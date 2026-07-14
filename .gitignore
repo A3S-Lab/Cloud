@@ -1,0 +1,25 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Web
+/web/node_modules/
+/web/dist/
+/web/.next/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Test and runtime state
+/coverage/
+/tmp/
+*.log
