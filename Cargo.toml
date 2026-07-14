@@ -1,0 +1,51 @@
+[workspace]
+members = [
+    "crates/contracts",
+    "crates/control-plane",
+    "crates/node-agent",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/A3S-Lab/Cloud"
+
+[workspace.dependencies]
+a3s-acl = "=0.2.1"
+a3s-boot = { version = "=0.1.1", default-features = false, features = [
+    "auth",
+    "axum",
+    "cqrs",
+    "health",
+    "logging",
+    "openapi-schemas",
+    "security",
+] }
+a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
+a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "469b34cbf09ec2396a88e86a7537efd240575c1c", default-features = false, features = ["postgres"] }
+a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "6fdeae38032a5134e858cf3985f47d60cb5180ac", default-features = false, features = ["postgres"] }
+a3s-runtime = { git = "https://github.com/A3S-Lab/Runtime.git", rev = "c77ea234c0f88578dc2b7887b7070a6bdea7e07b" }
+async-trait = "0.1"
+async-stream = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["serde", "v4", "v7"] }
+url = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "deny"

@@ -1,0 +1,34 @@
+[package]
+name = "a3s-cloud-control-plane"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+a3s-acl.workspace = true
+a3s-boot.workspace = true
+a3s-cloud-contracts = { path = "../contracts" }
+a3s-event.workspace = true
+a3s-flow.workspace = true
+a3s-orm.workspace = true
+async-trait.workspace = true
+async-stream.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

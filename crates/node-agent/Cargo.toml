@@ -1,0 +1,17 @@
+[package]
+name = "a3s-cloud-node-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+a3s-cloud-contracts = { path = "../contracts" }
+a3s-runtime.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

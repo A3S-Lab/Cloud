@@ -20,6 +20,7 @@
 .vscode/
 
 # Test and runtime state
+/.a3s/
 /coverage/
 /tmp/
 *.log

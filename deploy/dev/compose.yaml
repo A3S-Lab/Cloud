@@ -1,0 +1,50 @@
+name: a3s-cloud-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    environment:
+      POSTGRES_DB: ${A3S_CLOUD_POSTGRES_DB:-a3s_cloud}
+      POSTGRES_PASSWORD: ${A3S_CLOUD_POSTGRES_PASSWORD:-a3s_cloud}
+      POSTGRES_USER: ${A3S_CLOUD_POSTGRES_USER:-a3s_cloud}
+    ports:
+      - "127.0.0.1:${A3S_CLOUD_POSTGRES_PORT:-54320}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready
+          --dbname=$${POSTGRES_DB}
+          --username=$${POSTGRES_USER}
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.11-alpine@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00
+    command:
+      - --jetstream
+      - --store_dir=/data
+      - --http_port=8222
+    ports:
+      - "127.0.0.1:${A3S_CLOUD_NATS_PORT:-42220}:4222"
+      - "127.0.0.1:${A3S_CLOUD_NATS_MONITOR_PORT:-8220}:8222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=- http://127.0.0.1:8222/healthz | grep 'ok'
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  nats-data:
