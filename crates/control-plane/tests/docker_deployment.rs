@@ -118,7 +118,7 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
         runtime_state.clone(),
         runtime_driver,
     ));
-    let command_executor = CommandExecutor::new(
+    let command_executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
         runtime_client,
     );

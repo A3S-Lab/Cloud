@@ -1,8 +1,9 @@
 use super::*;
+use crate::GatewaySnapshotInstallOutcome;
 use a3s_cloud_contracts::{
-    NodeCertificate, NodeCommandEnvelope, NodeCommandLeaseResponse, NodeCommandMetadata,
-    NodeCommandPayload, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeObservationReceipt,
+    GatewaySnapshot, NodeCertificate, NodeCommandEnvelope, NodeCommandLeaseResponse,
+    NodeCommandMetadata, NodeCommandPayload, NodeGatewayAck, NodeGatewayAckReceipt,
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationReceipt,
 };
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
@@ -65,6 +66,7 @@ struct TransportState {
     acknowledgement_conflicts: usize,
     events: Vec<String>,
     reports: BTreeSet<Uuid>,
+    gateway_acknowledgements: BTreeSet<Uuid>,
 }
 
 #[derive(Default)]
@@ -173,11 +175,34 @@ impl NodeControlTransport for FakeTransport {
 
     async fn record_gateway_acknowledgement(
         &self,
-        _acknowledgement: &NodeGatewayAck,
+        acknowledgement: &NodeGatewayAck,
     ) -> Result<NodeGatewayAckReceipt, NodeControlClientError> {
-        Err(NodeControlClientError::Invalid(
-            "unexpected Gateway acknowledgement".into(),
-        ))
+        let mut state = self.state.lock().await;
+        state
+            .events
+            .push(format!("gateway:{}", acknowledgement.command_id));
+        let replayed = !state
+            .gateway_acknowledgements
+            .insert(acknowledgement.acknowledgement_id);
+        Ok(NodeGatewayAckReceipt {
+            schema: NodeGatewayAckReceipt::SCHEMA.into(),
+            acknowledgement_id: acknowledgement.acknowledgement_id,
+            command_id: acknowledgement.command_id,
+            node_id: acknowledgement.node_id,
+            replayed,
+        })
+    }
+}
+
+struct AppliedGatewayInstaller;
+
+#[async_trait]
+impl GatewaySnapshotInstaller for AppliedGatewayInstaller {
+    async fn install(
+        &self,
+        _snapshot: &GatewaySnapshot,
+    ) -> Result<GatewaySnapshotInstallOutcome, GatewaySnapshotInstallError> {
+        Ok(GatewaySnapshotInstallOutcome::Applied)
     }
 }
 
@@ -288,6 +313,29 @@ fn command(node_id: Uuid, command_id: Uuid, lease_id: Uuid) -> NodeCommandEnvelo
     .expect("command")
 }
 
+fn gateway_command(node_id: Uuid, command_id: Uuid, lease_id: Uuid) -> NodeCommandEnvelope {
+    let issued_at = Utc::now() - ChronoDuration::milliseconds(1);
+    NodeCommandEnvelope::new(
+        NodeCommandMetadata {
+            command_id,
+            lease_id,
+            node_id,
+            sequence: 1,
+            aggregate_id: Uuid::now_v7(),
+            issued_at,
+            not_after: issued_at + ChronoDuration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        },
+        NodeCommandPayload::GatewaySnapshotInstall {
+            snapshot: Box::new(
+                GatewaySnapshot::new(1, None, "management { enabled = true }\n")
+                    .expect("Gateway snapshot"),
+            ),
+        },
+    )
+    .expect("Gateway command")
+}
+
 async fn session(
     root: &Path,
     transport: Arc<FakeTransport>,
@@ -299,6 +347,7 @@ async fn session(
     NodeAgentSession::new(
         transport,
         runtime,
+        Arc::new(AppliedGatewayInstaller),
         identity,
         capabilities(),
         "test".into(),
@@ -327,6 +376,7 @@ async fn restarted_session(
     NodeAgentSession::new(
         transport,
         runtime,
+        Arc::new(AppliedGatewayInstaller),
         identity,
         capabilities(),
         "test".into(),
@@ -373,6 +423,35 @@ async fn command_observation_precedes_ack_and_only_ack_advances_the_cursor() {
         &[format!("report:{command_id}"), format!("ack:{command_id}")]
     );
     assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn gateway_acknowledgement_precedes_command_ack_and_is_replay_safe() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    let command_id = Uuid::now_v7();
+    let transport = Arc::new(FakeTransport::default());
+    transport
+        .state
+        .lock()
+        .await
+        .leases
+        .push_back(vec![gateway_command(node_id, command_id, Uuid::now_v7())]);
+    let runtime = Arc::new(InspectRuntime {
+        capabilities: capabilities(),
+        observation: observation(),
+        calls: AtomicUsize::new(0),
+    });
+    let session = session(directory.path(), transport.clone(), runtime, node_id).await;
+
+    session.synchronize_once().await.expect("synchronize");
+
+    let state = transport.state.lock().await;
+    assert_eq!(
+        &state.events[..2],
+        &[format!("gateway:{command_id}"), format!("ack:{command_id}")]
+    );
+    assert_eq!(state.gateway_acknowledgements.len(), 1);
 }
 
 #[tokio::test]

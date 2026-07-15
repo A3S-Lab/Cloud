@@ -1,13 +1,14 @@
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
 use crate::state_file::{self, StateLock};
 use crate::{
-    CommandExecutionError, CommandExecutor, CommandJournalError, EnrolledNodeIdentity,
-    FileCommandJournal, FileNodeIdentityStore, IdentityStoreError, NodeAgentConfig,
-    NodeControlClient, NodeControlClientError, NodeControlTransport, NodeIdentityState,
+    CommandExecutionError, CommandExecutor, CommandJournalError, DurableGatewaySnapshotInstaller,
+    EnrolledNodeIdentity, FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
+    GatewaySnapshotInstaller, IdentityStoreError, NodeAgentConfig, NodeControlClient,
+    NodeControlClientError, NodeControlTransport, NodeIdentityState,
 };
 use a3s_cloud_contracts::{
-    NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeHeartbeat,
-    NodeObservationBatch, RuntimeObservationReport,
+    NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
 };
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
 use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
@@ -27,6 +28,8 @@ pub async fn run_node_agent(
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), NodeAgentError> {
     let _process_lock = acquire_process_lock(&config.node.state_dir).await?;
+    let gateway: Arc<dyn GatewaySnapshotInstaller> =
+        Arc::new(DurableGatewaySnapshotInstaller::from_config(&config)?);
     let capabilities = runtime.client.capabilities().await?;
     capabilities.validate().map_err(NodeAgentError::Invalid)?;
 
@@ -54,6 +57,7 @@ pub async fn run_node_agent(
     let session = NodeAgentSession::new(
         session_transport,
         runtime.client,
+        gateway,
         identity,
         capabilities,
         env!("CARGO_PKG_VERSION").into(),
@@ -101,6 +105,7 @@ impl NodeAgentSession {
     pub fn new(
         transport: Arc<dyn NodeControlTransport>,
         runtime: Arc<dyn RuntimeClient>,
+        gateway: Arc<dyn GatewaySnapshotInstaller>,
         identity: EnrolledNodeIdentity,
         capabilities: RuntimeCapabilities,
         agent_version: String,
@@ -126,7 +131,7 @@ impl NodeAgentSession {
         let journal = FileCommandJournal::new(state_dir, identity.response.node_id)?;
         Ok(Self {
             transport,
-            executor: CommandExecutor::new(journal, runtime),
+            executor: CommandExecutor::new(journal, runtime, gateway),
             identity,
             capabilities,
             agent_version,
@@ -263,6 +268,14 @@ impl NodeAgentSession {
             }
         }
 
+        if let Some(gateway_acknowledgement) = completion_gateway_ack(acknowledgement) {
+            let receipt = self
+                .transport
+                .record_gateway_acknowledgement(gateway_acknowledgement)
+                .await?;
+            validate_gateway_acknowledgement_receipt(gateway_acknowledgement, &receipt)?;
+        }
+
         let receipt = match self.transport.acknowledge(acknowledgement).await {
             Ok(receipt) => receipt,
             Err(error) if error.requires_command_redelivery() => {
@@ -318,7 +331,8 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             } => observation,
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
-            | NodeCommandResult::RuntimeRemoved { .. } => return None,
+            | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::GatewaySnapshotInstalled { .. } => return None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => return None,
     };
@@ -328,6 +342,37 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
         observed_at: acknowledgement.completed_at,
         observation: observation.clone(),
     })
+}
+
+fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatewayAck> {
+    match &acknowledgement.outcome {
+        NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
+            NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
+                Some(acknowledgement)
+            }
+            NodeCommandResult::RuntimeApplied { .. }
+            | NodeCommandResult::RuntimeInspected { .. }
+            | NodeCommandResult::RuntimeStopped { .. }
+            | NodeCommandResult::RuntimeRemoved { .. } => None,
+        },
+        NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
+    }
+}
+
+fn validate_gateway_acknowledgement_receipt(
+    acknowledgement: &NodeGatewayAck,
+    receipt: &NodeGatewayAckReceipt,
+) -> Result<(), NodeAgentError> {
+    receipt.validate().map_err(NodeAgentError::Invalid)?;
+    if receipt.acknowledgement_id != acknowledgement.acknowledgement_id
+        || receipt.command_id != acknowledgement.command_id
+        || receipt.node_id != acknowledgement.node_id
+    {
+        return Err(NodeAgentError::Invalid(
+            "Gateway acknowledgement receipt changed the publication identity".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_acknowledgement_receipt(
@@ -572,6 +617,8 @@ pub enum NodeAgentError {
     ControlPlane(#[from] NodeControlClientError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error(transparent)]
+    Gateway(#[from] GatewaySnapshotInstallError),
 }
 
 impl NodeAgentError {
@@ -581,6 +628,7 @@ impl NodeAgentError {
             Self::Runtime(RuntimeError::ProviderUnavailable(_) | RuntimeError::Transport(_)) => {
                 true
             }
+            Self::Gateway(error) => error.retryable(),
             Self::Invalid(_)
             | Self::State(_)
             | Self::Config(_)

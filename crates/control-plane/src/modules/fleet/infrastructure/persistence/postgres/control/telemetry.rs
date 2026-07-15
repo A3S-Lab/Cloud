@@ -65,12 +65,28 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                 }
                 let state = gateway_state(acknowledgement.state);
                 if let Some(existing) = fetch_optional::<
-                    (Uuid, u64, String, String, Option<String>, DateTime<Utc>),
+                    (
+                        Uuid,
+                        Option<Uuid>,
+                        u64,
+                        String,
+                        String,
+                        Option<String>,
+                        DateTime<Utc>,
+                    ),
                     _,
                 >(
                     transaction,
-                    sql_query::<(Uuid, u64, String, String, Option<String>, DateTime<Utc>)>(
-                        "select node_id, revision, snapshot_digest, state, message, acknowledged_at from node_gateway_acknowledgements where acknowledgement_id = ",
+                    sql_query::<(
+                        Uuid,
+                        Option<Uuid>,
+                        u64,
+                        String,
+                        String,
+                        Option<String>,
+                        DateTime<Utc>,
+                    )>(
+                        "select node_id, command_id, revision, snapshot_digest, state, message, acknowledged_at from node_gateway_acknowledgements where acknowledgement_id = ",
                     )
                     .bind(acknowledgement.acknowledgement_id)
                     .append(" for update"),
@@ -80,6 +96,7 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                     if existing
                         != (
                             acknowledgement.node_id,
+                            Some(acknowledgement.command_id),
                             acknowledgement.revision,
                             acknowledgement.snapshot_digest.clone(),
                             state.into(),
@@ -100,17 +117,15 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                         "select acknowledgement_id from node_gateway_acknowledgements where node_id = ",
                     )
                     .bind(acknowledgement.node_id)
-                    .append(" and revision = ")
-                    .bind(acknowledgement.revision)
-                    .append(" and snapshot_digest = ")
-                    .bind(acknowledgement.snapshot_digest.as_str())
+                    .append(" and command_id = ")
+                    .bind(acknowledgement.command_id)
                     .append(" for update"),
                 )
                 .await?
                 .is_some()
                 {
                     return Err(RepositoryError::Conflict(
-                        "Gateway revision already has an acknowledgement".into(),
+                        "Gateway command already has an acknowledgement".into(),
                     )
                     .into());
                 }
@@ -119,11 +134,13 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                     execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into node_gateway_acknowledgements (acknowledgement_id, node_id, revision, snapshot_digest, state, message, acknowledged_at, received_at) values (",
+                            "insert into node_gateway_acknowledgements (acknowledgement_id, node_id, command_id, revision, snapshot_digest, state, message, acknowledged_at, received_at) values (",
                         )
                         .bind(acknowledgement.acknowledgement_id)
                         .append(", ")
                         .bind(acknowledgement.node_id)
+                        .append(", ")
+                        .bind(acknowledgement.command_id)
                         .append(", ")
                         .bind(acknowledgement.revision)
                         .append(", ")
@@ -362,6 +379,7 @@ fn gateway_receipt(acknowledgement: &NodeGatewayAck, replayed: bool) -> NodeGate
     NodeGatewayAckReceipt {
         schema: NodeGatewayAckReceipt::SCHEMA.into(),
         acknowledgement_id: acknowledgement.acknowledgement_id,
+        command_id: acknowledgement.command_id,
         node_id: acknowledgement.node_id,
         replayed,
     }

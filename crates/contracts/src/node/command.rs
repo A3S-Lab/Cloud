@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{validate_sha256, validate_single_line, validate_uuid};
+use super::{
+    validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot, NodeGatewayAck,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -16,6 +18,7 @@ pub enum NodeCommandPayload {
     RuntimeInspect { unit_id: String, generation: u64 },
     RuntimeStop { request: RuntimeActionRequest },
     RuntimeRemove { request: RuntimeActionRequest },
+    GatewaySnapshotInstall { snapshot: Box<GatewaySnapshot> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +40,7 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { .. } => "a3s.runtime.inspect-request.v1",
             Self::RuntimeStop { .. } => "a3s.runtime.stop-request.v1",
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
+            Self::GatewaySnapshotInstall { .. } => GatewaySnapshot::SCHEMA,
         }
     }
 
@@ -45,6 +49,7 @@ impl NodeCommandPayload {
             Self::RuntimeApply { request } => request.spec.generation,
             Self::RuntimeInspect { generation, .. } => *generation,
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
+            Self::GatewaySnapshotInstall { snapshot } => snapshot.revision,
         }
     }
 
@@ -62,6 +67,7 @@ impl NodeCommandPayload {
                 Ok(())
             }
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
+            Self::GatewaySnapshotInstall { snapshot } => snapshot.validate(),
         }
     }
 
@@ -163,6 +169,9 @@ pub enum NodeCommandResult {
     RuntimeRemoved {
         removal: RuntimeRemoval,
     },
+    GatewaySnapshotInstalled {
+        acknowledgement: NodeGatewayAck,
+    },
 }
 
 impl NodeCommandResult {
@@ -173,12 +182,13 @@ impl NodeCommandResult {
                 inspection.validate()
             }
             Self::RuntimeRemoved { removal } => removal.validate(),
+            Self::GatewaySnapshotInstalled { acknowledgement } => acknowledgement.validate(),
         }
     }
 
-    fn validate_against(&self, payload: &NodeCommandPayload) -> Result<(), String> {
+    fn validate_against(&self, command: &NodeCommandEnvelope) -> Result<(), String> {
         self.validate()?;
-        match (payload, self) {
+        match (&command.payload, self) {
             (
                 NodeCommandPayload::RuntimeApply { request },
                 Self::RuntimeApplied { observation },
@@ -211,6 +221,10 @@ impl NodeCommandResult {
             (NodeCommandPayload::RuntimeRemove { .. }, Self::RuntimeRemoved { .. }) => {
                 Err("node command result identity does not match its payload".into())
             }
+            (
+                NodeCommandPayload::GatewaySnapshotInstall { snapshot },
+                Self::GatewaySnapshotInstalled { acknowledgement },
+            ) => acknowledgement.validate_for(command.command_id, command.node_id, snapshot),
             _ => Err("node command result kind does not match its payload".into()),
         }
     }
@@ -326,7 +340,17 @@ impl NodeCommandAck {
         }
         self.outcome.validate()?;
         if let NodeCommandOutcome::Succeeded { result } = &self.outcome {
-            result.validate_against(&command.payload)?;
+            result.validate_against(command)?;
+            if let NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } = result.as_ref()
+            {
+                if acknowledgement.acknowledged_at < command.issued_at
+                    || acknowledgement.acknowledged_at > self.completed_at
+                {
+                    return Err(
+                        "Gateway acknowledgement time falls outside command execution".into(),
+                    );
+                }
+            }
         }
         Ok(())
     }

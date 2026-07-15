@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{validate_sha256, validate_single_line, validate_uuid};
+use super::{validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -235,6 +235,7 @@ pub enum GatewayAckState {
 pub struct NodeGatewayAck {
     pub schema: String,
     pub acknowledgement_id: Uuid,
+    pub command_id: Uuid,
     pub node_id: Uuid,
     pub revision: u64,
     pub snapshot_digest: String,
@@ -244,20 +245,51 @@ pub struct NodeGatewayAck {
 }
 
 impl NodeGatewayAck {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v1";
+    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v2";
 
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != Self::SCHEMA {
             return Err(format!("unsupported Gateway ack schema {:?}", self.schema));
         }
         validate_uuid("acknowledgement_id", self.acknowledgement_id)?;
+        validate_uuid("command_id", self.command_id)?;
         validate_uuid("node_id", self.node_id)?;
         if self.revision == 0 {
             return Err("Gateway acknowledgement revision must be positive".into());
         }
         validate_sha256("Gateway snapshot digest", &self.snapshot_digest)?;
-        if let Some(message) = &self.message {
-            validate_single_line("Gateway acknowledgement message", message, 16 * 1024)?;
+        match (self.state, self.message.as_deref()) {
+            (GatewayAckState::Applied, None) => {}
+            (GatewayAckState::Rejected, Some(message)) => {
+                validate_single_line("Gateway acknowledgement message", message, 16 * 1024)?;
+            }
+            (GatewayAckState::Applied, Some(_)) => {
+                return Err("applied Gateway acknowledgement cannot contain a message".into())
+            }
+            (GatewayAckState::Rejected, None) => {
+                return Err("rejected Gateway acknowledgement must contain a message".into())
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_for(
+        &self,
+        command_id: Uuid,
+        node_id: Uuid,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<(), String> {
+        self.validate()?;
+        snapshot.validate()?;
+        if self.command_id != command_id
+            || self.node_id != node_id
+            || self.revision != snapshot.revision
+            || self.snapshot_digest != snapshot.snapshot_digest
+        {
+            return Err(
+                "Gateway acknowledgement does not match its command and exact snapshot revision"
+                    .into(),
+            );
         }
         Ok(())
     }
@@ -268,12 +300,13 @@ impl NodeGatewayAck {
 pub struct NodeGatewayAckReceipt {
     pub schema: String,
     pub acknowledgement_id: Uuid,
+    pub command_id: Uuid,
     pub node_id: Uuid,
     pub replayed: bool,
 }
 
 impl NodeGatewayAckReceipt {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack-receipt.v1";
+    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack-receipt.v2";
 
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != Self::SCHEMA {
@@ -283,6 +316,7 @@ impl NodeGatewayAckReceipt {
             ));
         }
         validate_uuid("acknowledgement_id", self.acknowledgement_id)?;
+        validate_uuid("command_id", self.command_id)?;
         validate_uuid("node_id", self.node_id)
     }
 }

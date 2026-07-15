@@ -293,6 +293,15 @@ acknowledgement exists. The agent rejects expired, regressed, mismatched, or
 digest-conflicting commands and returns the previous result for an exact
 duplicate.
 
+Gateway publication is a distinct node command and never enters A3S Runtime.
+Its payload carries one complete ACL snapshot, a positive revision, the
+expected installed revision, and a SHA-256 digest. The node compares the
+expected revision, calls the node-local management API with independent
+validation and reload deadlines, and atomically persists the installed snapshot
+only after Gateway confirms a transactional reload. Its acknowledgement binds
+`command_id`, `node_id`, revision, and snapshot digest; the control plane rejects
+an acknowledgement that does not match the exact persisted command.
+
 The agent persists its command journal and last accepted generation locally.
 Provider labels also bind resources to unit ID, generation, and spec digest so
 the journal can be reconstructed after partial disk loss. SSH remains an

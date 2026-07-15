@@ -13,7 +13,7 @@ use crate::modules::shared_kernel::domain::{
     EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
 };
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, GatewayAckState, NodeCommandAck, NodeCommandFailure,
+    DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCommandAck, NodeCommandFailure,
     NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
     NodeGatewayAck, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
 };
@@ -311,12 +311,31 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         .await
         .is_err());
 
+    let snapshot =
+        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("Gateway snapshot");
+    let gateway_command = repository
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: NodeCommandId::new(),
+            node_id,
+            aggregate_id: Uuid::now_v7(),
+            payload: NodeCommandPayload::GatewaySnapshotInstall {
+                snapshot: Box::new(snapshot.clone()),
+            },
+            issued_at: observed_at,
+            not_after: observed_at + Duration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        })
+        .await
+        .expect("enqueue Gateway command")
+        .value;
+
     let acknowledgement = NodeGatewayAck {
         schema: NodeGatewayAck::SCHEMA.into(),
         acknowledgement_id: Uuid::now_v7(),
+        command_id: gateway_command.id.as_uuid(),
         node_id: node_id.as_uuid(),
-        revision: 1,
-        snapshot_digest: format!("sha256:{}", "6".repeat(64)),
+        revision: snapshot.revision,
+        snapshot_digest: snapshot.snapshot_digest,
         state: GatewayAckState::Applied,
         message: None,
         acknowledged_at: observed_at + Duration::seconds(1),

@@ -279,6 +279,7 @@ impl NodeControlClient {
             .validate()
             .map_err(NodeControlClientError::Invalid)?;
         if receipt.acknowledgement_id != acknowledgement.acknowledgement_id
+            || receipt.command_id != acknowledgement.command_id
             || receipt.node_id != acknowledgement.node_id
             || receipt.node_id != self.node_id
         {

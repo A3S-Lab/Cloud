@@ -14,7 +14,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, GatewayAckState, NodeCertificateRotationRequest,
+    DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCertificateRotationRequest,
     NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload,
     NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
@@ -295,12 +295,30 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     assert_eq!(replayed_observation.accepted_reports, 0);
     assert_eq!(replayed_observation.replayed_reports, 1);
 
+    let snapshot =
+        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("Gateway snapshot");
+    let gateway_command = nodes
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: NodeCommandId::new(),
+            node_id: NodeId::from_uuid(node_id),
+            aggregate_id: Uuid::now_v7(),
+            payload: NodeCommandPayload::GatewaySnapshotInstall {
+                snapshot: Box::new(snapshot.clone()),
+            },
+            issued_at: Utc::now(),
+            not_after: Utc::now() + Duration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        })
+        .await
+        .expect("enqueue Gateway command")
+        .value;
     let gateway_ack = NodeGatewayAck {
         schema: NodeGatewayAck::SCHEMA.into(),
         acknowledgement_id: Uuid::now_v7(),
+        command_id: gateway_command.id.as_uuid(),
         node_id,
-        revision: 1,
-        snapshot_digest: format!("sha256:{}", "6".repeat(64)),
+        revision: snapshot.revision,
+        snapshot_digest: snapshot.snapshot_digest,
         state: GatewayAckState::Applied,
         message: None,
         acknowledged_at: Utc::now(),
@@ -319,6 +337,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .await
         .expect("Gateway acknowledgement receipt");
     assert!(!first_gateway.replayed);
+    assert_eq!(first_gateway.command_id, gateway_command.id.as_uuid());
     let replayed_gateway = client
         .post(&gateway_endpoint)
         .json(&gateway_ack)
@@ -329,6 +348,20 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .await
         .expect("replayed Gateway acknowledgement receipt");
     assert!(replayed_gateway.replayed);
+
+    let mut wrong_revision = gateway_ack.clone();
+    wrong_revision.acknowledgement_id = Uuid::now_v7();
+    wrong_revision.revision += 1;
+    assert_eq!(
+        client
+            .post(&gateway_endpoint)
+            .json(&wrong_revision)
+            .send()
+            .await
+            .expect("reject mismatched Gateway acknowledgement")
+            .status(),
+        reqwest::StatusCode::CONFLICT
+    );
 
     let log_data = "service started";
     let log_batch = NodeLogChunkBatch {

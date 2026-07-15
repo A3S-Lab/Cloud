@@ -76,6 +76,9 @@ API command
 - **Outbound Node Control**: Enroll Linux nodes, rotate their certificates,
   lease idempotent commands, and recover command journals without inbound node
   ports
+- **Atomic Gateway Snapshots**: Validate and transactionally reload complete
+  A3S Gateway ACL snapshots with compare-and-swap revisions, durable local
+  state, and command-bound acknowledgements
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
@@ -98,7 +101,7 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | HTTPS routes, ordered logs, update, rollback, and crash recovery | Planned |
+| Reachability | Gateway snapshot publication is complete; HTTPS routes, ordered logs, update, rollback, and crash recovery remain | In progress |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned |
 
 ## Quick Start
@@ -188,6 +191,9 @@ D0 deployment policy is split across independent boundaries:
 | `deployments.cleanup_timeout_ms` | Bound before cleanup becomes operator-visible failure |
 | `registry.request_timeout_ms` | Timeout for one registry request |
 | `registry.insecure_hosts` | Explicit development-only HTTP registry allowlist |
+| `gateway.connect_timeout_ms` | Connection timeout for the node-local Gateway management API |
+| `gateway.validation_timeout_ms` | Independent deadline for validating one complete snapshot |
+| `gateway.reload_timeout_ms` | Independent deadline for transactionally reloading one snapshot |
 
 These timers do not consume one shared request budget. API acceptance commits
 desired state first; Flow, node command, Runtime, health, and cleanup deadlines
@@ -264,6 +270,7 @@ A3S Boot API ───> DDD application modules ───> PostgreSQL
    v                                                 │
 Node agent ───> A3S Runtime ───> Docker / containerd / A3S Box
    │
+   ├──────────> A3S Gateway ───> active edge revision
    └──────────> observations and durable acknowledgements
 ```
 
@@ -310,7 +317,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | HTTPS route, ordered logs, update, rollback, web timeline, and crash-recovery acceptance | Planned |
+| E0 — Reachable service | Gateway snapshot transport is verified; HTTPS route, ordered logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
 
 The MVP target is a single control plane, one Linux node, Docker-backed
@@ -377,6 +384,10 @@ cargo test -p a3s-cloud-control-plane --test docker_deployment -- --nocapture
 
 A3S_CLOUD_TEST_REGISTRY_URL="http://127.0.0.1:50020/" \
 cargo test -p a3s-cloud-control-plane --test oci_registry_integration -- --nocapture
+
+A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
+cargo test -p a3s-cloud-node-agent \
+  installed_a3s_gateway_validates_and_reloads_complete_snapshots -- --nocapture
 ```
 
 Run web checks from `web/`:

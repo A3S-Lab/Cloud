@@ -65,7 +65,7 @@ Status as of 2026-07-15:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | Planned | Gateway TLS, ordered log storage, update, rollback, and their crash gates are not implemented |
+| E0 | In progress | Complete Gateway snapshot commands, node CAS installation, real validate/reload, and exact command-bound acknowledgements pass; TLS routes, ordered logs, update, rollback, and crash gates remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -483,7 +483,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
-| 7 | Gateway reload before acknowledgement | Planned for E0 | Gateway publication and acknowledgement are not implemented |
+| 7 | Gateway reload before acknowledgement | In progress | Real Gateway validate/reload, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering pass; process-death injection and route activation are next |
 | 8 | Activation before old-revision cleanup | Planned for E0 | Rolling update and rollback cleanup are not implemented |
 
 The real-provider commands and PostgreSQL isolation contract are documented in
@@ -493,21 +493,19 @@ development database.
 
 ## 15. Next implementation backlog
 
-D0 is closed. The next changes belong only to E0 and should land as vertical,
-independently verified slices:
+D0 is closed. E0's versioned complete Gateway snapshot transport is verified.
+The remaining changes should land as vertical, independently verified slices:
 
-1. Versioned complete Gateway snapshot contract, node command, validation, and
-   exact-revision acknowledgement.
-2. Route ownership and certificate aggregates with a local deterministic test
+1. Route ownership and certificate aggregates with a local deterministic test
    CA, followed by a real TLS fixture through A3S Gateway.
-3. Ordered stdout/stderr chunk ingestion with cursor resume, bounded buffering,
+2. Ordered stdout/stderr chunk ingestion with cursor resume, bounded buffering,
    checksummed object storage, redaction, retention, and explicit gaps.
-4. One-node update orchestration that keeps the prior healthy revision until
+3. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
-5. Manual rollback through the same immutable revision and operation path.
-6. Web route, certificate, log, update-diff, rollback, and terminal-operation
+4. Manual rollback through the same immutable revision and operation path.
+5. Web route, certificate, log, update-diff, rollback, and terminal-operation
    surfaces backed only by authoritative projections.
-7. Crash gates for Gateway reload before acknowledgement and activation before
+6. Crash gates for Gateway reload before acknowledgement and activation before
    old-revision cleanup, followed by the clean-host end-to-end release run.
 
 Hosted assets, stateful services, and multi-node work remain out of scope until

@@ -484,11 +484,13 @@ impl INodeControlRepository for InMemoryNodeRepository {
         }
         if state.gateway_acknowledgements.values().any(|existing| {
             existing.acknowledgement.node_id == acknowledgement.node_id
-                && existing.acknowledgement.revision == acknowledgement.revision
-                && existing.acknowledgement.snapshot_digest == acknowledgement.snapshot_digest
+                && (existing.acknowledgement.command_id == acknowledgement.command_id
+                    || existing.acknowledgement.revision == acknowledgement.revision
+                        && existing.acknowledgement.snapshot_digest
+                            == acknowledgement.snapshot_digest)
         }) {
             return Err(RepositoryError::Conflict(
-                "Gateway revision already has an acknowledgement".into(),
+                "Gateway command already has an acknowledgement".into(),
             ));
         }
         state.gateway_acknowledgements.insert(
@@ -581,6 +583,7 @@ fn gateway_receipt(acknowledgement: &NodeGatewayAck, replayed: bool) -> NodeGate
     NodeGatewayAckReceipt {
         schema: NodeGatewayAckReceipt::SCHEMA.into(),
         acknowledgement_id: acknowledgement.acknowledgement_id,
+        command_id: acknowledgement.command_id,
         node_id: acknowledgement.node_id,
         replayed,
     }

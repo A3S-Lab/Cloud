@@ -61,7 +61,8 @@ impl JournalEntry {
 #[serde(deny_unknown_fields)]
 struct AggregateGeneration {
     generation: u64,
-    apply_spec_digest: String,
+    #[serde(rename = "apply_spec_digest")]
+    state_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,7 +141,7 @@ impl CommandJournal {
             ));
         }
         for generation in self.aggregate_generations.values() {
-            if generation.generation == 0 || !is_sha256(&generation.apply_spec_digest) {
+            if generation.generation == 0 || !is_sha256(&generation.state_digest) {
                 return Err(CommandJournalError::Invalid(
                     "command journal aggregate generation is invalid".into(),
                 ));
@@ -293,18 +294,14 @@ impl FileCommandJournal {
                 )));
             }
         }
-        if let NodeCommandPayload::RuntimeApply { request } = &envelope.payload {
-            let apply_spec_digest = request
-                .spec
-                .digest()
-                .map_err(CommandJournalError::Invalid)?;
+        if let Some(state_digest) = state_mutation_digest(&envelope.payload)? {
             match journal.aggregate_generations.get(&envelope.aggregate_id) {
                 Some(current)
                     if current.generation == envelope.generation
-                        && current.apply_spec_digest != apply_spec_digest =>
+                        && current.state_digest != state_digest =>
                 {
                     return Err(CommandJournalError::Conflict(
-                        "Runtime apply generation has a conflicting specification".into(),
+                        "state-changing command generation has conflicting content".into(),
                     ));
                 }
                 _ => {
@@ -312,7 +309,7 @@ impl FileCommandJournal {
                         envelope.aggregate_id,
                         AggregateGeneration {
                             generation: envelope.generation,
-                            apply_spec_digest,
+                            state_digest,
                         },
                     );
                 }
@@ -439,6 +436,25 @@ impl FileCommandJournal {
 
     fn write_journal(&self, journal: &CommandJournal) -> Result<(), CommandJournalError> {
         state_file::atomic_write(&self.root.join(JOURNAL_FILE), journal).map_err(Into::into)
+    }
+}
+
+fn state_mutation_digest(
+    payload: &NodeCommandPayload,
+) -> Result<Option<String>, CommandJournalError> {
+    match payload {
+        NodeCommandPayload::RuntimeApply { request } => request
+            .spec
+            .digest()
+            .map(Some)
+            .map_err(CommandJournalError::Invalid),
+        NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
+            snapshot.validate().map_err(CommandJournalError::Invalid)?;
+            Ok(Some(snapshot.snapshot_digest.clone()))
+        }
+        NodeCommandPayload::RuntimeInspect { .. }
+        | NodeCommandPayload::RuntimeStop { .. }
+        | NodeCommandPayload::RuntimeRemove { .. } => Ok(None),
     }
 }
 

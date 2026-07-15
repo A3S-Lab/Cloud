@@ -7,7 +7,7 @@ mod node;
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
 pub use node::{
-    GatewayAckState, NodeCertificate, NodeCertificateRotationRequest,
+    GatewayAckState, GatewaySnapshot, NodeCertificate, NodeCertificateRotationRequest,
     NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope,
     NodeCommandFailure, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata,
     NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest,

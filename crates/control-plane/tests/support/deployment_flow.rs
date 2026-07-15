@@ -142,7 +142,7 @@ pub async fn exercise_deployment_flow(
         let runtime_driver: Arc<dyn RuntimeDriver> = driver;
         let runtime: Arc<dyn RuntimeClient> =
             Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-        let executor = CommandExecutor::new(
+        let executor = CommandExecutor::runtime_only(
             FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
             runtime.clone(),
         );
@@ -598,7 +598,7 @@ pub async fn exercise_dispatched_cancellation(
     let runtime_driver: Arc<dyn RuntimeDriver> = driver;
     let runtime_client: Arc<dyn RuntimeClient> =
         Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-    let command_executor = CommandExecutor::new(
+    let command_executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
         runtime_client.clone(),
     );
@@ -823,7 +823,8 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             } => Some(observation.as_ref().clone()),
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
-            | NodeCommandResult::RuntimeRemoved { .. } => None,
+            | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::GatewaySnapshotInstalled { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }

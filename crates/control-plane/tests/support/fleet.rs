@@ -593,12 +593,29 @@ async fn exercise_observation_control(
         Err(RepositoryError::Conflict(_))
     ));
 
+    let snapshot =
+        a3s_cloud_contracts::GatewaySnapshot::new(1, None, "management { enabled = true }\n")?;
+    let gateway_command = nodes
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: NodeCommandId::new(),
+            node_id,
+            aggregate_id: Uuid::now_v7(),
+            payload: NodeCommandPayload::GatewaySnapshotInstall {
+                snapshot: Box::new(snapshot.clone()),
+            },
+            issued_at: observed_at,
+            not_after: observed_at + Duration::minutes(2),
+            correlation_id: Uuid::now_v7(),
+        })
+        .await?
+        .value;
     let gateway = NodeGatewayAck {
         schema: NodeGatewayAck::SCHEMA.into(),
         acknowledgement_id: Uuid::now_v7(),
+        command_id: gateway_command.id.as_uuid(),
         node_id: node_id.as_uuid(),
-        revision: 1,
-        snapshot_digest: format!("sha256:{}", "4".repeat(64)),
+        revision: snapshot.revision,
+        snapshot_digest: snapshot.snapshot_digest,
         state: GatewayAckState::Applied,
         message: None,
         acknowledged_at: observed_at + Duration::seconds(1),

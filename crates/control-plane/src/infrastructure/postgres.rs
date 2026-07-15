@@ -133,6 +133,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/009_runtime_apply_recovery.sql"
             )),
         ),
+        Migration::new(
+            "010",
+            "Gateway snapshot commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/010_gateway_snapshot_commands.sql"
+            )),
+        ),
     ]
 }
 

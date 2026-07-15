@@ -1,7 +1,10 @@
-use crate::{CommandJournalError, FileCommandJournal, JournalDecision};
+use crate::{
+    CommandJournalError, FileCommandJournal, GatewaySnapshotInstallError,
+    GatewaySnapshotInstallOutcome, GatewaySnapshotInstaller, JournalDecision,
+};
 use a3s_cloud_contracts::{
-    NodeCommandAck, NodeCommandEnvelope, NodeCommandFailure, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult,
+    GatewayAckState, NodeCommandAck, NodeCommandEnvelope, NodeCommandFailure, NodeCommandOutcome,
+    NodeCommandPayload, NodeCommandResult, NodeGatewayAck,
 };
 use a3s_runtime::contract::RuntimeInspection;
 use a3s_runtime::{RuntimeClient, RuntimeError};
@@ -11,11 +14,24 @@ use std::sync::Arc;
 pub struct CommandExecutor {
     journal: FileCommandJournal,
     runtime: Arc<dyn RuntimeClient>,
+    gateway: Arc<dyn GatewaySnapshotInstaller>,
 }
 
 impl CommandExecutor {
-    pub fn new(journal: FileCommandJournal, runtime: Arc<dyn RuntimeClient>) -> Self {
-        Self { journal, runtime }
+    pub fn runtime_only(journal: FileCommandJournal, runtime: Arc<dyn RuntimeClient>) -> Self {
+        Self::new(journal, runtime, Arc::new(RuntimeOnlyGatewayInstaller))
+    }
+
+    pub fn new(
+        journal: FileCommandJournal,
+        runtime: Arc<dyn RuntimeClient>,
+        gateway: Arc<dyn GatewaySnapshotInstaller>,
+    ) -> Self {
+        Self {
+            journal,
+            runtime,
+            gateway,
+        }
     }
 
     pub async fn execute(
@@ -30,7 +46,7 @@ impl CommandExecutor {
         let outcome = if envelope.is_expired_at(now) {
             rejected("command_expired", "command expired before Runtime dispatch")
         } else {
-            match self.dispatch(&envelope.payload).await {
+            match self.dispatch(&envelope).await {
                 Ok(_) if Utc::now() > envelope.not_after => NodeCommandOutcome::Failed {
                     failure: NodeCommandFailure {
                         code: "command_completed_after_deadline".into(),
@@ -41,7 +57,7 @@ impl CommandExecutor {
                 Ok(result) => NodeCommandOutcome::Succeeded {
                     result: Box::new(result),
                 },
-                Err(error) => runtime_failure(error),
+                Err(error) => dispatch_failure(error),
             }
         };
         self.journal
@@ -56,9 +72,9 @@ impl CommandExecutor {
 
     async fn dispatch(
         &self,
-        payload: &NodeCommandPayload,
-    ) -> Result<NodeCommandResult, RuntimeError> {
-        match payload {
+        envelope: &NodeCommandEnvelope,
+    ) -> Result<NodeCommandResult, DispatchError> {
+        match &envelope.payload {
             NodeCommandPayload::RuntimeApply { request } => {
                 let observation = self.runtime.apply(request).await?;
                 Ok(NodeCommandResult::RuntimeApplied {
@@ -72,7 +88,7 @@ impl CommandExecutor {
                 let inspection = self.runtime.inspect(unit_id).await?;
                 if let RuntimeInspection::Found { observation } = &inspection {
                     if observation.generation != *generation {
-                        return Err(if observation.generation > *generation {
+                        return Err((if observation.generation > *generation {
                             RuntimeError::StaleGeneration {
                                 unit_id: unit_id.clone(),
                                 requested: *generation,
@@ -83,7 +99,8 @@ impl CommandExecutor {
                                 unit_id: unit_id.clone(),
                                 generation: *generation,
                             }
-                        });
+                        })
+                        .into());
                     }
                 }
                 Ok(NodeCommandResult::RuntimeInspected { inspection })
@@ -96,7 +113,64 @@ impl CommandExecutor {
                 let removal = self.runtime.remove(request).await?;
                 Ok(NodeCommandResult::RuntimeRemoved { removal })
             }
+            NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
+                let installed = self.gateway.install(snapshot).await?;
+                let (state, message) = match installed {
+                    GatewaySnapshotInstallOutcome::Applied => (GatewayAckState::Applied, None),
+                    GatewaySnapshotInstallOutcome::Rejected { message } => {
+                        (GatewayAckState::Rejected, Some(message))
+                    }
+                };
+                let acknowledgement = NodeGatewayAck {
+                    schema: NodeGatewayAck::SCHEMA.into(),
+                    acknowledgement_id: uuid::Uuid::now_v7(),
+                    command_id: envelope.command_id,
+                    node_id: envelope.node_id,
+                    revision: snapshot.revision,
+                    snapshot_digest: snapshot.snapshot_digest.clone(),
+                    state,
+                    message,
+                    acknowledged_at: Utc::now(),
+                };
+                acknowledgement
+                    .validate_for(envelope.command_id, envelope.node_id, snapshot)
+                    .map_err(|error| {
+                        DispatchError::Gateway(GatewaySnapshotInstallError::Protocol(error))
+                    })?;
+                Ok(NodeCommandResult::GatewaySnapshotInstalled { acknowledgement })
+            }
         }
+    }
+}
+
+struct RuntimeOnlyGatewayInstaller;
+
+#[async_trait::async_trait]
+impl GatewaySnapshotInstaller for RuntimeOnlyGatewayInstaller {
+    async fn install(
+        &self,
+        _snapshot: &a3s_cloud_contracts::GatewaySnapshot,
+    ) -> Result<GatewaySnapshotInstallOutcome, GatewaySnapshotInstallError> {
+        Err(GatewaySnapshotInstallError::Protocol(
+            "Gateway installer is not configured for this Runtime-only executor".into(),
+        ))
+    }
+}
+
+enum DispatchError {
+    Runtime(RuntimeError),
+    Gateway(GatewaySnapshotInstallError),
+}
+
+impl From<RuntimeError> for DispatchError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
+impl From<GatewaySnapshotInstallError> for DispatchError {
+    fn from(error: GatewaySnapshotInstallError) -> Self {
+        Self::Gateway(error)
     }
 }
 
@@ -150,6 +224,24 @@ fn runtime_failure(error: RuntimeError) -> NodeCommandOutcome {
     }
 }
 
+fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
+    match error {
+        DispatchError::Runtime(error) => runtime_failure(error),
+        DispatchError::Gateway(error) => {
+            let failure = NodeCommandFailure {
+                code: error.code().into(),
+                message: sanitize_error(&error.to_string()),
+                retryable: error.retryable(),
+            };
+            if error.retryable() {
+                NodeCommandOutcome::Failed { failure }
+            } else {
+                NodeCommandOutcome::Rejected { failure }
+            }
+        }
+    }
+}
+
 enum FailureStatus {
     Rejected,
     Failed,
@@ -168,7 +260,7 @@ fn sanitize_error(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::{NodeCommandMetadata, NodeCommandPayload};
+    use a3s_cloud_contracts::{GatewaySnapshot, NodeCommandMetadata, NodeCommandPayload};
     use a3s_runtime::contract::{
         RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeExecRequest,
         RuntimeExecResult, RuntimeLogChunk, RuntimeLogQuery, RuntimeObservation, RuntimeRemoval,
@@ -182,6 +274,29 @@ mod tests {
     struct InspectRuntime {
         calls: AtomicUsize,
         error: bool,
+    }
+
+    struct InspectGateway {
+        calls: AtomicUsize,
+        outcome: GatewaySnapshotInstallOutcome,
+    }
+
+    #[async_trait]
+    impl GatewaySnapshotInstaller for InspectGateway {
+        async fn install(
+            &self,
+            _snapshot: &GatewaySnapshot,
+        ) -> Result<GatewaySnapshotInstallOutcome, GatewaySnapshotInstallError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.outcome.clone())
+        }
+    }
+
+    fn gateway() -> Arc<InspectGateway> {
+        Arc::new(InspectGateway {
+            calls: AtomicUsize::new(0),
+            outcome: GatewaySnapshotInstallOutcome::Applied,
+        })
     }
 
     #[async_trait]
@@ -263,6 +378,7 @@ mod tests {
         let executor = CommandExecutor::new(
             FileCommandJournal::new(directory.path(), node_id).expect("journal"),
             runtime.clone(),
+            gateway(),
         );
         let first = command(
             node_id,
@@ -290,6 +406,7 @@ mod tests {
         let expired_executor = CommandExecutor::new(
             FileCommandJournal::new(expired_directory.path(), expired_node).expect("journal"),
             runtime.clone(),
+            gateway(),
         );
         let expired = expired_executor
             .execute(command(
@@ -315,6 +432,7 @@ mod tests {
         let failure_executor = CommandExecutor::new(
             FileCommandJournal::new(failure_directory.path(), failure_node).expect("journal"),
             failing_runtime,
+            gateway(),
         );
         let failed = failure_executor
             .execute(command(
@@ -334,5 +452,54 @@ mod tests {
                 }
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn gateway_install_returns_an_exact_revision_acknowledgement() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let node_id = Uuid::now_v7();
+        let issued_at = Utc::now() - Duration::seconds(1);
+        let snapshot = GatewaySnapshot::new(3, Some(2), "management { enabled = true }\n")
+            .expect("Gateway snapshot");
+        let envelope = NodeCommandEnvelope::new(
+            NodeCommandMetadata {
+                command_id: Uuid::now_v7(),
+                lease_id: Uuid::now_v7(),
+                node_id,
+                sequence: 1,
+                aggregate_id: Uuid::now_v7(),
+                issued_at,
+                not_after: issued_at + Duration::minutes(1),
+                correlation_id: Uuid::now_v7(),
+            },
+            NodeCommandPayload::GatewaySnapshotInstall {
+                snapshot: Box::new(snapshot.clone()),
+            },
+        )
+        .expect("Gateway command");
+        let gateway = gateway();
+        let executor = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+            Arc::new(InspectRuntime {
+                calls: AtomicUsize::new(0),
+                error: false,
+            }),
+            gateway.clone(),
+        );
+        let acknowledgement = executor
+            .execute(envelope.clone())
+            .await
+            .expect("execute Gateway command");
+        let NodeCommandOutcome::Succeeded { result } = &acknowledgement.outcome else {
+            panic!("Gateway install must produce a result");
+        };
+        let NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } = result.as_ref()
+        else {
+            panic!("Gateway install returned the wrong result kind");
+        };
+        acknowledgement
+            .validate_for(envelope.command_id, node_id, &snapshot)
+            .expect("exact Gateway acknowledgement");
+        assert_eq!(gateway.calls.load(Ordering::SeqCst), 1);
     }
 }

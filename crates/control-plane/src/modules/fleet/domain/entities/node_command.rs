@@ -50,6 +50,7 @@ impl NodeCommand {
             NodeCommandPayload::RuntimeInspect { .. } => "runtime_inspect",
             NodeCommandPayload::RuntimeStop { .. } => "runtime_stop",
             NodeCommandPayload::RuntimeRemove { .. } => "runtime_remove",
+            NodeCommandPayload::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
         }
     }
 

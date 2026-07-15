@@ -122,7 +122,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 9);
+    assert_eq!(applied, 10);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -214,6 +214,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "010",
+                "Gateway snapshot commands",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/010_gateway_snapshot_commands.sql"
+                )),
+            ),
+            Migration::new(
+                "011",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -432,12 +440,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 "name": "expiring",
                 "token": EXPIRING_TOKEN,
                 "scopes": ["project:write"],
-                "expiresAt": Utc::now() + chrono::Duration::milliseconds(40)
+                "expiresAt": Utc::now() + chrono::Duration::seconds(1)
             }),
         ))
         .await?;
     assert_eq!(expiring_token.status(), 201);
-    tokio::time::sleep(Duration::from_millis(60)).await;
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
     let expired_use = app
         .call(post_json_as(
             &project_path,

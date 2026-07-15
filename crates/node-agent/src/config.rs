@@ -32,10 +32,21 @@ pub struct DockerConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayControlConfig {
+    pub management_url: Url,
+    pub auth_token_env: String,
+    pub state_file: PathBuf,
+    pub connect_timeout_ms: u64,
+    pub validation_timeout_ms: u64,
+    pub reload_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeAgentConfig {
     pub control_plane: ControlPlaneConfig,
     pub node: NodeConfig,
     pub docker: DockerConfig,
+    pub gateway: GatewayControlConfig,
 }
 
 impl NodeAgentConfig {
@@ -72,6 +83,18 @@ impl NodeAgentConfig {
         validate_block(node, &["name", "state_dir"])?;
         let docker = one_block(&document, "docker")?;
         validate_block(docker, &["socket", "namespace", "operation_timeout_ms"])?;
+        let gateway = one_block(&document, "gateway")?;
+        validate_block(
+            gateway,
+            &[
+                "management_url",
+                "auth_token_env",
+                "state_file",
+                "connect_timeout_ms",
+                "validation_timeout_ms",
+                "reload_timeout_ms",
+            ],
+        )?;
 
         let config = Self {
             control_plane: ControlPlaneConfig {
@@ -105,6 +128,19 @@ impl NodeAgentConfig {
                 namespace: string(docker, "namespace")?,
                 operation_timeout_ms: integer(docker, "operation_timeout_ms")?,
             },
+            gateway: GatewayControlConfig {
+                management_url: endpoint(
+                    "gateway.management_url",
+                    &string(gateway, "management_url")?,
+                    true,
+                    false,
+                )?,
+                auth_token_env: string(gateway, "auth_token_env")?,
+                state_file: PathBuf::from(string(gateway, "state_file")?),
+                connect_timeout_ms: integer(gateway, "connect_timeout_ms")?,
+                validation_timeout_ms: integer(gateway, "validation_timeout_ms")?,
+                reload_timeout_ms: integer(gateway, "reload_timeout_ms")?,
+            },
         };
         config.validate()?;
         Ok(config)
@@ -122,6 +158,14 @@ impl NodeAgentConfig {
             &self.control_plane.server_ca_file,
         )?;
         validate_path("node.state_dir", &self.node.state_dir)?;
+        validate_path("gateway.state_file", &self.gateway.state_file)?;
+        if self.gateway.state_file == self.node.state_dir
+            || !self.gateway.state_file.starts_with(&self.node.state_dir)
+        {
+            return Err(ConfigError::Invalid(
+                "gateway.state_file must be a file below node.state_dir".into(),
+            ));
+        }
         if self.node.name.trim().is_empty()
             || self.node.name.len() > 255
             || self.node.name.contains(['\0', '\r', '\n'])
@@ -177,6 +221,30 @@ impl NodeAgentConfig {
                 "docker namespace or operation timeout is invalid".into(),
             ));
         }
+        if !self
+            .gateway
+            .management_url
+            .host_str()
+            .is_some_and(is_loopback)
+            || self.gateway.management_url.path() == "/"
+        {
+            return Err(ConfigError::Invalid(
+                "gateway.management_url must be a node-local management API base URL".into(),
+            ));
+        }
+        if !valid_env_name(&self.gateway.auth_token_env)
+            || self.gateway.connect_timeout_ms == 0
+            || self.gateway.connect_timeout_ms > 60_000
+            || self.gateway.validation_timeout_ms == 0
+            || self.gateway.validation_timeout_ms > 120_000
+            || self.gateway.reload_timeout_ms == 0
+            || self.gateway.reload_timeout_ms > 120_000
+        {
+            return Err(ConfigError::Invalid(
+                "Gateway authentication environment variable or independent timeouts are invalid"
+                    .into(),
+            ));
+        }
         Ok(())
     }
 
@@ -201,6 +269,19 @@ impl NodeAgentConfig {
         }
         Ok(value)
     }
+
+    pub fn gateway_auth_token(&self) -> Result<String, ConfigError> {
+        let name = &self.gateway.auth_token_env;
+        let value = std::env::var(name).map_err(|_| {
+            ConfigError::Invalid(format!("required environment variable {name:?} is not set"))
+        })?;
+        if value.trim().is_empty() || value.len() > 4096 || value.contains(['\0', '\r', '\n']) {
+            return Err(ConfigError::Invalid(format!(
+                "environment variable {name:?} is not a valid Gateway management token"
+            )));
+        }
+        Ok(value)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -216,7 +297,7 @@ pub enum ConfigError {
 }
 
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
-    let allowed = ["control_plane", "docker", "node"];
+    let allowed = ["control_plane", "docker", "gateway", "node"];
     if document
         .blocks
         .iter()
@@ -376,6 +457,15 @@ docker {
   namespace = "a3s-cloud"
   operation_timeout_ms = 120000
 }
+
+gateway {
+  management_url = "http://127.0.0.1:9090/api/gateway"
+  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  state_file = ".a3s/cloud/node/gateway-snapshot.json"
+  connect_timeout_ms = 5000
+  validation_timeout_ms = 10000
+  reload_timeout_ms = 30000
+}
 "#;
 
     #[test]
@@ -384,6 +474,7 @@ docker {
         assert_eq!(config.node.name, "worker-1");
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.docker.namespace, "a3s-cloud");
+        assert_eq!(config.gateway.management_url.path(), "/api/gateway");
     }
 
     #[test]

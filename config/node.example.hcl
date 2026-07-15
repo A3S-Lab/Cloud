@@ -21,3 +21,12 @@ docker {
   namespace = "a3s-cloud"
   operation_timeout_ms = 120000
 }
+
+gateway {
+  management_url = "http://127.0.0.1:9090/api/gateway"
+  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  state_file = ".a3s/cloud/node/gateway-snapshot.json"
+  connect_timeout_ms = 5000
+  validation_timeout_ms = 10000
+  reload_timeout_ms = 30000
+}

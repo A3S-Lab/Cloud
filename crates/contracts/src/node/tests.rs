@@ -58,6 +58,18 @@ fn inspect_command(sequence: u64) -> NodeCommandEnvelope {
     .expect("valid command")
 }
 
+fn gateway_snapshot(revision: u64, expected_revision: Option<u64>) -> GatewaySnapshot {
+    GatewaySnapshot::new(
+        revision,
+        expected_revision,
+        r#"entrypoint "https" {
+  address = "0.0.0.0:443"
+}
+"#,
+    )
+    .expect("valid Gateway snapshot")
+}
+
 #[test]
 fn enrollment_is_closed_and_requires_a_real_token_shape() {
     let request = NodeEnrollmentRequest {
@@ -213,4 +225,66 @@ fn node_protocol_errors_are_versioned_and_strict() {
     let decoded: NodeProtocolError =
         serde_json::from_value(encoded).expect("decode protocol error");
     assert_eq!(decoded, error);
+}
+
+#[test]
+fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgement() {
+    let snapshot = gateway_snapshot(4, Some(3));
+    snapshot.validate().expect("valid Gateway snapshot");
+
+    let command = NodeCommandEnvelope::new(
+        metadata(9),
+        NodeCommandPayload::GatewaySnapshotInstall {
+            snapshot: Box::new(snapshot.clone()),
+        },
+    )
+    .expect("Gateway install command");
+    assert_eq!(command.generation, snapshot.revision);
+    assert_eq!(command.payload_schema, GatewaySnapshot::SCHEMA);
+
+    let acknowledgement = NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: command.command_id,
+        node_id: command.node_id,
+        revision: snapshot.revision,
+        snapshot_digest: snapshot.snapshot_digest.clone(),
+        state: GatewayAckState::Applied,
+        message: None,
+        acknowledged_at: command.issued_at + Duration::milliseconds(10),
+    };
+    acknowledgement
+        .validate_for(command.command_id, command.node_id, &snapshot)
+        .expect("exact Gateway acknowledgement");
+
+    let command_acknowledgement = NodeCommandAck {
+        schema: NodeCommandAck::SCHEMA.into(),
+        command_id: command.command_id,
+        lease_id: command.lease_id,
+        node_id: command.node_id,
+        sequence: command.sequence,
+        payload_digest: command.payload_digest.clone(),
+        completed_at: acknowledgement.acknowledged_at,
+        outcome: NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::GatewaySnapshotInstalled {
+                acknowledgement: acknowledgement.clone(),
+            }),
+        },
+    };
+    command_acknowledgement
+        .validate_against(&command)
+        .expect("Gateway command acknowledgement");
+
+    let mut wrong_revision = acknowledgement;
+    wrong_revision.revision += 1;
+    assert!(wrong_revision
+        .validate_for(command.command_id, command.node_id, &snapshot)
+        .is_err());
+
+    let mut wrong_digest = snapshot.clone();
+    wrong_digest.acl.push_str("# changed\n");
+    assert!(wrong_digest.validate().is_err());
+
+    let invalid_compare_and_swap = GatewaySnapshot::new(4, Some(4), "valid = true\n");
+    assert!(invalid_compare_and_swap.is_err());
 }

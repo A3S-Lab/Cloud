@@ -1,6 +1,7 @@
 mod command;
 mod enrollment;
 mod error;
+mod gateway;
 mod observation;
 #[cfg(test)]
 mod tests;
@@ -15,6 +16,7 @@ pub use enrollment::{
     NodeEnrollmentRequest, NodeEnrollmentResponse,
 };
 pub use error::{NodeProtocolError, NodeProtocolErrorCode};
+pub use gateway::GatewaySnapshot;
 pub use observation::{
     GatewayAckState, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
     NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt,
