@@ -324,7 +324,10 @@ deterministic, versioned ACL snapshot. A Gateway scope permits only one pending
 complete snapshot. Its PostgreSQL transaction binds route, scope revision,
 snapshot digest, command ID, original correlation ID, idempotency record, and
 outbox fact. A replay therefore reuses the first Fleet command identity even
-when the retry arrives under a new HTTP request ID.
+when the retry arrives under a new HTTP request ID. The application checks this
+durable replay before consulting current workload health, so later observation
+expiry or workload-state drift cannot turn an already accepted identical
+request into a conflict.
 
 Incremental route mutation is forbidden because a partial retry could expose a
 route to the wrong tenant or revision. Snapshot publication uses compare-and-

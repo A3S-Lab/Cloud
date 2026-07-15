@@ -44,6 +44,11 @@ pub struct EdgeRoutePublicationResult {
 
 #[async_trait]
 pub trait IEdgeRepository: Send + Sync {
+    async fn replay_route_publication(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<EdgeRoutePublicationResult>, RepositoryError>;
+
     async fn gateway_scope(&self, node_id: NodeId) -> Result<GatewayScopeState, RepositoryError>;
 
     async fn active_routes(&self, node_id: NodeId) -> Result<Vec<Route>, RepositoryError>;

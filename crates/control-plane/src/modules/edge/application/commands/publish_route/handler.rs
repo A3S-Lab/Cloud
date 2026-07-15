@@ -85,6 +85,20 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            match routes.replay_route_publication(&idempotency).await {
+                Ok(Some(publication)) => {
+                    let dispatched = match commands.enqueue(&publication.publication).await {
+                        Ok(value) => value,
+                        Err(error) => return Ok(Err(error.into())),
+                    };
+                    return Ok(Ok(PublishRouteResult {
+                        publication,
+                        command_replayed: dispatched.replayed,
+                    }));
+                }
+                Ok(None) => {}
+                Err(error) => return Ok(Err(error.into())),
+            }
             let target = match targets
                 .resolve_healthy_target(
                     command.organization_id,

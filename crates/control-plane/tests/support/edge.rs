@@ -210,6 +210,7 @@ pub async fn exercise_edge(
     )?;
     first.expected_scope_version = initial_scope.aggregate_version;
     let first_route_id = first.route.id;
+    let first_idempotency = first.idempotency.clone();
     let (stored, replay) = tokio::join!(
         repository.stage_route_publication(first.clone()),
         repository.stage_route_publication(first)
@@ -218,6 +219,21 @@ pub async fn exercise_edge(
     let replay = replay?;
     assert_ne!(stored.replayed, replay.replayed);
     assert_eq!(stored.route.id, replay.route.id);
+    let preflight = repository
+        .replay_route_publication(&first_idempotency)
+        .await?
+        .ok_or("stored route publication has no idempotency replay")?;
+    assert!(preflight.replayed);
+    assert_eq!(preflight.route.id, stored.route.id);
+    let changed_idempotency = IdempotencyRequest::new(
+        first_idempotency.scope,
+        first_idempotency.key,
+        b"changed route publication",
+    )?;
+    assert!(repository
+        .replay_route_publication(&changed_idempotency)
+        .await
+        .is_err());
     assert_eq!(
         repository
             .find_route(fixture.organization_id, first_route_id)

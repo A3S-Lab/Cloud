@@ -173,6 +173,28 @@ impl PublicationRow {
 
 #[async_trait]
 impl IEdgeRepository for PostgresEdgeRepository {
+    async fn replay_route_publication(
+        &self,
+        idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    ) -> Result<Option<EdgeRoutePublicationResult>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(mut replay) =
+                        idempotency_replay::<EdgeRoutePublicationResult>(transaction, &idempotency)
+                            .await?
+                    else {
+                        return Ok(None);
+                    };
+                    replay.value.replayed = true;
+                    Ok(Some(replay.value))
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn gateway_scope(&self, node_id: NodeId) -> Result<GatewayScopeState, RepositoryError> {
         let row = Database::new(PostgresDialect, self.executor.clone())
             .fetch_optional_as(

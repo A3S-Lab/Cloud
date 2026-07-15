@@ -41,6 +41,25 @@ impl InMemoryEdgeRepository {
 
 #[async_trait]
 impl IEdgeRepository for InMemoryEdgeRepository {
+    async fn replay_route_publication(
+        &self,
+        idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    ) -> Result<Option<EdgeRoutePublicationResult>, RepositoryError> {
+        let state = self.state.read().await;
+        let Some((digest, existing)) = state
+            .idempotency
+            .get(&(idempotency.scope.clone(), idempotency.key.clone()))
+        else {
+            return Ok(None);
+        };
+        if digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        let mut replay = existing.clone();
+        replay.replayed = true;
+        Ok(Some(replay))
+    }
+
     async fn gateway_scope(&self, node_id: NodeId) -> Result<GatewayScopeState, RepositoryError> {
         Ok(self
             .state

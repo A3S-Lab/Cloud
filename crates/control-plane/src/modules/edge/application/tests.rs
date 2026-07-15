@@ -43,6 +43,25 @@ impl IRouteTargetReader for FixedTargetReader {
     }
 }
 
+struct UnavailableTargetReader;
+
+#[async_trait]
+impl IRouteTargetReader for UnavailableTargetReader {
+    async fn resolve_healthy_target(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _revision_id: WorkloadRevisionId,
+        _port_name: &RoutePortName,
+        _now: chrono::DateTime<Utc>,
+    ) -> Result<RouteTarget, RepositoryError> {
+        Err(RepositoryError::Conflict(
+            "current target evidence is no longer available".into(),
+        ))
+    }
+}
+
 #[derive(Default)]
 struct RecordingGatewayQueue {
     commands: Mutex<Vec<GatewayPublication>>,
@@ -158,8 +177,17 @@ async fn publishes_one_exact_command_and_replays_the_same_route_intent() {
     let original_correlation_id = request.request_id;
     let mut replay_request = request;
     replay_request.request_id = Uuid::now_v7();
+    replay_request.requested_at += Duration::hours(1);
     assert_ne!(replay_request.request_id, original_correlation_id);
-    let replay = handler
+    let replay_handler = PublishRouteHandler::new(
+        routes,
+        Arc::new(UnavailableTargetReader),
+        queue.clone(),
+        compiler(),
+        Duration::minutes(3),
+    )
+    .expect("replay handler");
+    let replay = replay_handler
         .execute(replay_request, context())
         .await
         .expect("command bus")
