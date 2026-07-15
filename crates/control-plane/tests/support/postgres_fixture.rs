@@ -215,6 +215,14 @@ pub(super) fn config() -> CloudConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
         },
+        edge: EdgeConfig {
+            entrypoint_address: "0.0.0.0:8081".into(),
+            management_address: "127.0.0.1:9090".into(),
+            management_path_prefix: "/api/gateway".into(),
+            management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+            upstream_request_timeout_ms: 30_000,
+            command_ttl_ms: 10_000,
+        },
         fleet: FleetConfig {
             heartbeat_interval_ms: 1_000,
             heartbeat_timeout_ms: 5_000,

@@ -1,5 +1,6 @@
 mod certificate;
 pub mod commands;
+mod gateway_acknowledgement_projector;
 pub mod queries;
 
 pub use commands::{
@@ -12,6 +13,7 @@ pub use commands::{
     RecordNodeLogChunksHandler, RecordNodeObservations, RecordNodeObservationsHandler,
     RotateNodeCertificate, RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };
+pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
 pub use queries::{GetNode, GetNodeHandler, ListNodes, ListNodesHandler, NodeQueryResult};
 
 #[cfg(test)]

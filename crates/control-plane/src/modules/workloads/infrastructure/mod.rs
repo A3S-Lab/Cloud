@@ -2,7 +2,7 @@ mod deployment_flow;
 mod oci_registry;
 mod persistence;
 mod reconciliation;
-mod runtime_spec;
+pub(crate) mod runtime_spec;
 
 pub use deployment_flow::{DeploymentFlowConfig, DeploymentFlowRuntime};
 pub use oci_registry::OciRegistryArtifactResolver;

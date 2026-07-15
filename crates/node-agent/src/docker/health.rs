@@ -178,7 +178,7 @@ impl DockerRuntimeDriver {
     }
 }
 
-fn host_port(
+pub(super) fn host_port(
     spec: &RuntimeUnitSpec,
     container: &ContainerInspectResponse,
     name: &str,

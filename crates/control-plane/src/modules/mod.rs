@@ -1,3 +1,4 @@
+pub mod edge;
 pub mod fleet;
 pub mod identity;
 pub mod integration_events;

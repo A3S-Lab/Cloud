@@ -1,8 +1,8 @@
 use super::*;
 use crate::config::{
-    AuthConfig, DeploymentsConfig, EventProviderKind, EventsConfig, FleetConfig, NodeControlConfig,
-    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
-    SecurityProviderKind, ServerConfig,
+    AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
+    NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
+    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
 };
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
@@ -149,6 +149,14 @@ fn config() -> CloudConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
         },
+        edge: EdgeConfig {
+            entrypoint_address: "0.0.0.0:8081".into(),
+            management_address: "127.0.0.1:9090".into(),
+            management_path_prefix: "/api/gateway".into(),
+            management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+            upstream_request_timeout_ms: 30_000,
+            command_ttl_ms: 10_000,
+        },
         fleet: FleetConfig {
             heartbeat_interval_ms: 1_000,
             heartbeat_timeout_ms: 5_000,
@@ -207,6 +215,24 @@ fn build_test_application(
     projects: Arc<InMemoryProjectsRepository>,
 ) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
+    let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let workload_port: Arc<dyn IWorkloadRepository> = workloads;
+    let routes: Arc<dyn IEdgeRepository> =
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new());
+    let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
+        EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
+    );
+    let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
+        WorkloadRouteTargetReader::new(
+            Arc::clone(&workload_port),
+            Arc::clone(&node_control),
+            chrono::Duration::seconds(5),
+        )
+        .map_err(BootError::Internal)?,
+    );
+    let route_commands: Arc<dyn IGatewayCommandQueue> =
+        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
     build_application_with_health(
         config(),
         ApplicationDependencies {
@@ -214,10 +240,14 @@ fn build_test_application(
             api_tokens: identity,
             projects: projects.clone(),
             environments: projects,
-            workloads: Arc::new(InMemoryWorkloadRepository::new()),
+            workloads: workload_port,
+            routes,
+            route_targets,
+            route_commands,
+            gateway_projector,
             operations: Arc::new(InMemoryOperationRepository::new()),
             nodes: nodes.clone(),
-            node_control: nodes,
+            node_control,
             log_chunks: Arc::new(TestLogChunkStore),
             certificate_authority: Arc::new(TestCertificateAuthority),
             bootstrap_credential: BootstrapCredential::new(BOOTSTRAP_TOKEN)

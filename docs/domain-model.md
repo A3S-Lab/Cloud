@@ -121,14 +121,17 @@ engines while preserving the stricter Asset domain.
 
 ### 3.7 Edge routing
 
-Owns domains, path rules, certificate policy, and the desired A3S Gateway
-configuration revision. It does not mark a route active until its target
-deployment is healthy and the gateway has acknowledged the complete config
-revision.
+The implemented slice owns hostname/path rules and the desired A3S Gateway
+configuration revision. It resolves a route only from a healthy active workload
+revision and does not mark it active until the gateway acknowledges the exact
+complete snapshot. Domain claims, certificate policy, and TLS issuance remain
+E0 work.
 
-Primary aggregate:
+Primary domain records:
 
 - `Route`
+- `GatewayScopeState`
+- `GatewayPublication`
 
 ### 3.8 Secrets
 
@@ -239,8 +242,15 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 - A hostname/path tuple has one owner within a gateway scope.
 - Route publication targets an immutable workload revision.
+- The target port must be declared by that revision and resolved from current
+  healthy Runtime evidence to a node-local HTTP origin.
 - Gateway configuration is published as a complete revision with compare-and-
   swap semantics; partial route writes are forbidden.
+- A gateway scope has at most one pending complete snapshot.
+- Route, publication, Fleet command, and acknowledgement bind the same node,
+  command ID, revision, snapshot digest, and original correlation ID.
+- Only the exact `applied` acknowledgement activates a route; a rejected
+  publication cannot produce false activation.
 
 ### Secret
 
@@ -319,6 +329,17 @@ queued -> resolving -> applying -> verifying -> publishing -> succeeded
 This state is a projection of Flow history. Workload health is a separate
 projection: `unknown`, `healthy`, `degraded`, or `unavailable`.
 
+### Route state
+
+```text
+pending -> publishing -> active
+                     \-> rejected
+```
+
+`pending` exists only while constructing the aggregate. Persistence atomically
+stores the staged route as `publishing` with its complete Gateway publication.
+`active` and `rejected` require an exact terminal Gateway acknowledgement.
+
 ## 7. Data ownership
 
 | Fact | Authoritative owner |
@@ -331,6 +352,7 @@ projection: `unknown`, `healthy`, `degraded`, or `unavailable`.
 | Operation summary | Rebuildable PostgreSQL projection |
 | Provider resource and live health | Node agent plus Runtime provider |
 | Last accepted observation | PostgreSQL fleet/deployment projection |
+| Route desired state, Gateway scope, and publication identity | PostgreSQL Edge tables |
 | Gateway active config | A3S Gateway, keyed by config revision |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
@@ -354,7 +376,7 @@ workload.revision.created
 deployment.deployment.requested
 deployment.deployment.succeeded
 deployment.deployment.failed
-edge.route.published
+edge.route.publication-staged
 secret.version.created
 data.database.provisioned
 data.backup.completed

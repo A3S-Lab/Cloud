@@ -2,11 +2,14 @@
 
 ## 1. Status and decisions
 
-R0 through D0 are implemented and verified. E0 and later sections remain the
-accepted design until their exit gates pass. A3S Cloud ships as a Rust modular
-monolith, a separate Linux node agent, and a React web application. The first
-release still requires the E0 reachability, logs, update, and rollback loop
-before multi-node scheduling or hosted assets begin.
+R0 through D0 are implemented and verified. E0 now has durable Edge route
+ownership, healthy target resolution, complete snapshot compilation, Fleet
+dispatch, and exact acknowledgement projection verified against PostgreSQL.
+The routed data-plane and later sections remain the accepted design until their
+exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux
+node agent, and a React web application. The first release still requires the
+E0 routed Gateway/TLS, logs, update, and rollback loop before multi-node
+scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -310,14 +313,32 @@ explicit break-glass operator action, never the control protocol.
 ## 8. Gateway and edge publication
 
 For the first vertical slice, A3S Gateway runs on the workload node. The Edge
-module compiles every active route, certificate reference, upstream, and policy
-into one versioned snapshot. The node agent validates and atomically installs
-the snapshot, invokes Gateway reload, and reports the acknowledged revision.
+module persists one hostname/path owner per Gateway node scope. A publication
+may target only the workload's active immutable revision, a declared TCP port,
+and a current healthy Runtime observation. Docker observations expose the
+selected node-local HTTP origin as a typed evidence claim; Docker-specific
+container and port-binding details do not cross into the Route domain.
+
+The compiler sorts every active route plus the proposed route and emits one
+deterministic, versioned ACL snapshot. A Gateway scope permits only one pending
+complete snapshot. Its PostgreSQL transaction binds route, scope revision,
+snapshot digest, command ID, original correlation ID, idempotency record, and
+outbox fact. A replay therefore reuses the first Fleet command identity even
+when the retry arrives under a new HTTP request ID.
 
 Incremental route mutation is forbidden because a partial retry could expose a
 route to the wrong tenant or revision. Snapshot publication uses compare-and-
-swap against the previous revision. Route status is `active` only after both
-workload health and Gateway acknowledgement.
+swap against the previous installed revision. Fleet persists a Gateway
+acknowledgement before projecting it into Edge. Only an `applied`
+acknowledgement matching the exact node, command, revision, and digest moves a
+route from `publishing` to `active`; rejection is terminal and replay is
+idempotent.
+
+Certificate references and HTTPS compilation remain part of E0, not current
+behavior. The released A3S Gateway 1.0.11 validates the route-less management
+snapshot but stack-overflows on an ordinary router/service ACL emitted by this
+compiler. The real route-bearing validation/reload and TLS gates remain open
+until that Gateway defect is fixed and released.
 
 ## 9. Source, build, and asset hosting
 

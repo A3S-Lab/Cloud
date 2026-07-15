@@ -1,15 +1,22 @@
+use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
+use crate::modules::edge::{
+    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetRouteHandler, ListRoutesHandler,
+    PostgresEdgeRepository, PublishRouteHandler, WorkloadRouteTargetReader,
+};
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::fleet::domain::services::{
     ICertificateAuthority, IKeyEncryptionService, ILogChunkStore,
 };
 use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
-    EnrollNodeHandler, FleetModule, GetNodeHandler, IssueEnrollmentTokenHandler,
-    LeaseNodeCommandsHandler, ListNodesHandler, LocalCertificateAuthority,
-    LocalKeyEncryptionService, LocalLogChunkStore, NodeControlApi, NodeControlServer,
-    PostgresNodeRepository, RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler,
-    RecordNodeObservationsHandler, RotateNodeCertificateHandler, VaultCertificateAuthority,
-    VaultKeyEncryptionService,
+    EnrollNodeHandler, FleetModule, GetNodeHandler, IGatewayAcknowledgementProjector,
+    IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodesHandler,
+    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, NodeControlApi,
+    NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
+    RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
+    VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::identity::domain::repositories::IApiTokenRepository;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
@@ -109,6 +116,22 @@ pub async fn build_application(
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository;
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
+    let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
+    let routes: Arc<dyn IEdgeRepository> = edge_repository;
+    let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
+        EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
+    );
+    let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
+        WorkloadRouteTargetReader::new(
+            Arc::clone(&workloads),
+            Arc::clone(&node_control),
+            chrono_duration(config.fleet.heartbeat_timeout_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?,
+    );
+    let route_commands: Arc<dyn IGatewayCommandQueue> =
+        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
     let artifacts: Arc<dyn IOciArtifactResolver> = Arc::new(
         OciRegistryArtifactResolver::new(
             Duration::from_millis(config.registry.request_timeout_ms),
@@ -143,6 +166,7 @@ pub async fn build_application(
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
+            Arc::clone(&gateway_projector),
             Arc::clone(&log_chunks),
             Arc::clone(&certificate_authority),
             chrono_duration(config.fleet.certificate_ttl_ms)
@@ -224,6 +248,10 @@ pub async fn build_application(
             projects: projects.clone(),
             environments: projects,
             workloads,
+            routes,
+            route_targets,
+            route_commands,
+            gateway_projector,
             operations: operation_repository,
             nodes,
             node_control,
@@ -255,6 +283,10 @@ struct ApplicationDependencies {
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    routes: Arc<dyn IEdgeRepository>,
+    route_targets: Arc<dyn IRouteTargetReader>,
+    route_commands: Arc<dyn IGatewayCommandQueue>,
+    gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
     nodes: Arc<dyn INodeRepository>,
     node_control: Arc<dyn INodeControlRepository>,
@@ -274,6 +306,10 @@ fn build_application_with_health(
         projects,
         environments,
         workloads,
+        routes,
+        route_targets,
+        route_commands,
+        gateway_projector,
         operations,
         nodes,
         node_control,
@@ -310,6 +346,9 @@ fn build_application_with_health(
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
     let gateway_commands = node_control;
+    let publish_routes = Arc::clone(&routes);
+    let list_routes = Arc::clone(&routes);
+    let get_routes = routes;
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
     let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
@@ -330,6 +369,22 @@ fn build_application_with_health(
         rotation_nodes,
         Arc::clone(&certificate_authority),
         certificate_ttl,
+    )
+    .map_err(BootError::Internal)?;
+    let route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: config.edge.entrypoint_address.clone(),
+        management_address: config.edge.management_address.clone(),
+        management_path_prefix: config.edge.management_path_prefix.clone(),
+        management_auth_token_env: config.edge.management_auth_token_env.clone(),
+        upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
+    })
+    .map_err(BootError::Internal)?;
+    let publish_route_handler = PublishRouteHandler::new(
+        publish_routes,
+        route_targets,
+        route_commands,
+        route_compiler,
+        chrono_duration(config.edge.command_ttl_ms)?,
     )
     .map_err(BootError::Internal)?;
     BootApplication::builder()
@@ -373,6 +428,7 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::workloads::StopWorkload, _>(
                     StopWorkloadHandler::new(stop_workloads),
                 )
+                .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
                     IssueEnrollmentTokenHandler::new(
                         Arc::clone(&query_organizations),
@@ -408,7 +464,7 @@ fn build_application_with_health(
                     RecordNodeLogChunksHandler::new(log_commands, log_store),
                 )
                 .command_handler::<crate::modules::fleet::RecordGatewayAcknowledgement, _>(
-                    RecordGatewayAcknowledgementHandler::new(gateway_commands),
+                    RecordGatewayAcknowledgementHandler::new(gateway_commands, gateway_projector),
                 )
                 .query_handler::<crate::modules::identity::ListOrganizations, _>(
                     ListOrganizationsHandler::new(query_organizations),
@@ -450,6 +506,12 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::fleet::ListNodes, _>(
                     ListNodesHandler::new(nodes, heartbeat_timeout).map_err(BootError::Internal)?,
                 )
+                .query_handler::<crate::modules::edge::ListRoutes, _>(ListRoutesHandler::new(
+                    list_routes,
+                ))
+                .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
+                    get_routes,
+                ))
                 .global(),
         )
         .import(IdentityModule::new(bootstrap_credential))
@@ -457,6 +519,7 @@ fn build_application_with_health(
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)
+        .import(EdgeModule)
         .import(PlatformModule::new(&config))
         .use_global_middleware(RequestIdMiddleware)
         .use_global_auth()

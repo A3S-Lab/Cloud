@@ -1,4 +1,5 @@
 use super::RecordGatewayAcknowledgement;
+use crate::modules::fleet::application::IGatewayAcknowledgementProjector;
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{NodeCommandId, NodeId};
@@ -8,11 +9,15 @@ use std::sync::Arc;
 
 pub struct RecordGatewayAcknowledgementHandler {
     nodes: Arc<dyn INodeControlRepository>,
+    projector: Arc<dyn IGatewayAcknowledgementProjector>,
 }
 
 impl RecordGatewayAcknowledgementHandler {
-    pub fn new(nodes: Arc<dyn INodeControlRepository>) -> Self {
-        Self { nodes }
+    pub fn new(
+        nodes: Arc<dyn INodeControlRepository>,
+        projector: Arc<dyn IGatewayAcknowledgementProjector>,
+    ) -> Self {
+        Self { nodes, projector }
     }
 }
 
@@ -26,6 +31,7 @@ impl CommandHandler<RecordGatewayAcknowledgement> for RecordGatewayAcknowledgeme
         a3s_boot::Result<ApplicationResult<a3s_cloud_contracts::NodeGatewayAckReceipt>>,
     > {
         let nodes = Arc::clone(&self.nodes);
+        let projector = Arc::clone(&self.projector);
         Box::pin(async move {
             if command.acknowledgement.node_id != command.authenticated_node_id.as_uuid() {
                 return Ok(Err(ApplicationError::Forbidden(
@@ -64,15 +70,21 @@ impl CommandHandler<RecordGatewayAcknowledgement> for RecordGatewayAcknowledgeme
                     "Gateway acknowledgement predates its publication command".into(),
                 )));
             }
-            Ok(
-                match nodes
-                    .record_gateway_acknowledgement(command.acknowledgement, command.received_at)
-                    .await
-                {
-                    Ok(receipt) => Ok(receipt),
-                    Err(error) => Err(error.into()),
-                },
-            )
+            let acknowledgement = command.acknowledgement;
+            let receipt = match nodes
+                .record_gateway_acknowledgement(acknowledgement.clone(), command.received_at)
+                .await
+            {
+                Ok(receipt) => receipt,
+                Err(error) => return Ok(Err(error.into())),
+            };
+            if let Err(error) = projector
+                .project(&acknowledgement, command.received_at)
+                .await
+            {
+                return Ok(Err(error.into()));
+            }
+            Ok(Ok(receipt))
         })
     }
 }

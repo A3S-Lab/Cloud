@@ -14,4 +14,5 @@ pub use node::{
     NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat,
     NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch,
     NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
+    RuntimeServiceEndpoint,
 };

@@ -141,6 +141,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/010_gateway_snapshot_commands.sql"
             )),
         ),
+        Migration::new(
+            "011",
+            "Edge route publications",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/011_edge_routes.sql"
+            )),
+        ),
     ]
 }
 

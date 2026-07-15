@@ -16,12 +16,18 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+pub struct WorkloadFixture {
+    pub workload_id: WorkloadId,
+    pub revision_id: WorkloadRevisionId,
+    pub node_id: NodeId,
+}
+
 pub async fn exercise_workloads(
     executor: &PostgresExecutor,
     organization_uuid: Uuid,
     project_uuid: Uuid,
     environment_uuid: Uuid,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<WorkloadFixture, Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
     let project_id = ProjectId::from_uuid(project_uuid);
     let environment_id = EnvironmentId::from_uuid(environment_uuid);
@@ -312,7 +318,11 @@ pub async fn exercise_workloads(
             .await?,
         0
     );
-    Ok(())
+    Ok(WorkloadFixture {
+        workload_id: active_workload.id,
+        revision_id: first_revision_id,
+        node_id,
+    })
 }
 
 fn request(

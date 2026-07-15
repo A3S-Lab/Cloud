@@ -58,6 +58,15 @@ registry {
   insecure_hosts = ["127.0.0.1:50020"]
 }
 
+edge {
+  entrypoint_address = "0.0.0.0:8081"
+  management_address = "127.0.0.1:9090"
+  management_path_prefix = "/api/gateway"
+  management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  upstream_request_timeout_ms = 30000
+  command_ttl_ms = 180000
+}
+
 fleet {
   heartbeat_interval_ms = 5000
   heartbeat_timeout_ms = 20000

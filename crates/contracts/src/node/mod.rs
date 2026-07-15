@@ -3,6 +3,7 @@ mod enrollment;
 mod error;
 mod gateway;
 mod observation;
+mod runtime_endpoint;
 #[cfg(test)]
 mod tests;
 
@@ -22,6 +23,7 @@ pub use observation::{
     NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt,
     RuntimeObservationReport,
 };
+pub use runtime_endpoint::RuntimeServiceEndpoint;
 
 pub(crate) fn validate_single_line(label: &str, value: &str, max: usize) -> Result<(), String> {
     if value.trim().is_empty()

@@ -112,6 +112,16 @@ pub struct RegistryConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeConfig {
+    pub entrypoint_address: String,
+    pub management_address: String,
+    pub management_path_prefix: String,
+    pub management_auth_token_env: String,
+    pub upstream_request_timeout_ms: u64,
+    pub command_ttl_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FleetConfig {
     pub heartbeat_interval_ms: u64,
     pub heartbeat_timeout_ms: u64,
@@ -182,6 +192,7 @@ pub struct CloudConfig {
     pub operations: OperationsConfig,
     pub deployments: DeploymentsConfig,
     pub registry: RegistryConfig,
+    pub edge: EdgeConfig,
     pub fleet: FleetConfig,
     pub security: SecurityConfig,
 }
@@ -254,6 +265,18 @@ impl CloudConfig {
         )?;
         let registry = one_block(&document, "registry")?;
         validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
+        let edge = one_block(&document, "edge")?;
+        validate_block(
+            edge,
+            &[
+                "entrypoint_address",
+                "management_address",
+                "management_path_prefix",
+                "management_auth_token_env",
+                "upstream_request_timeout_ms",
+                "command_ttl_ms",
+            ],
+        )?;
         let fleet = one_block(&document, "fleet")?;
         validate_block(
             fleet,
@@ -336,6 +359,14 @@ impl CloudConfig {
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
+            },
+            edge: EdgeConfig {
+                entrypoint_address: string(edge, "entrypoint_address")?,
+                management_address: string(edge, "management_address")?,
+                management_path_prefix: string(edge, "management_path_prefix")?,
+                management_auth_token_env: string(edge, "management_auth_token_env")?,
+                upstream_request_timeout_ms: integer(edge, "upstream_request_timeout_ms")?,
+                command_ttl_ms: integer(edge, "command_ttl_ms")?,
             },
             fleet: FleetConfig {
                 heartbeat_interval_ms: integer(fleet, "heartbeat_interval_ms")?,
@@ -505,6 +536,40 @@ impl CloudConfig {
                 "registry.insecure_hosts cannot contain duplicates".into(),
             ));
         }
+        let entrypoint = self
+            .edge
+            .entrypoint_address
+            .parse::<SocketAddr>()
+            .map_err(|error| {
+                ConfigError::Invalid(format!("edge.entrypoint_address is invalid: {error}"))
+            })?;
+        let management = self
+            .edge
+            .management_address
+            .parse::<SocketAddr>()
+            .map_err(|error| {
+                ConfigError::Invalid(format!("edge.management_address is invalid: {error}"))
+            })?;
+        if entrypoint.port() == 0
+            || management.port() == 0
+            || !management.ip().is_loopback()
+            || !self.edge.management_path_prefix.starts_with('/')
+            || self.edge.management_path_prefix.len() > 255
+            || self
+                .edge
+                .management_path_prefix
+                .contains(['\0', '\r', '\n', '?', '#'])
+            || !valid_env_name(&self.edge.management_auth_token_env)
+            || self.edge.upstream_request_timeout_ms == 0
+            || self.edge.upstream_request_timeout_ms > 3_600_000
+            || self.edge.command_ttl_ms == 0
+            || self.edge.command_ttl_ms > 86_400_000
+        {
+            return Err(ConfigError::Invalid(
+                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, and independent bounded upstream and command timeouts"
+                    .into(),
+            ));
+        }
         if self.fleet.heartbeat_interval_ms == 0
             || self.fleet.heartbeat_timeout_ms <= self.fleet.heartbeat_interval_ms
             || self.fleet.command_long_poll_ms == 0
@@ -647,6 +712,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "auth",
         "events",
         "deployments",
+        "edge",
         "fleet",
         "node_control",
         "operations",
@@ -822,6 +888,14 @@ deployments {
 registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:5000"]
+}
+edge {
+  entrypoint_address = "0.0.0.0:8081"
+  management_address = "127.0.0.1:9090"
+  management_path_prefix = "/api/gateway"
+  management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  upstream_request_timeout_ms = 30000
+  command_ttl_ms = 180000
 }
 fleet {
   heartbeat_interval_ms = 5000

@@ -1,5 +1,7 @@
 use super::{NodeControlApi, NodeControlServer};
 use crate::config::NodeControlConfig;
+use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
+use crate::modules::edge::EdgeGatewayAcknowledgementProjector;
 use crate::modules::fleet::application::{EnrollNode, EnrollNodeHandler};
 use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
@@ -67,6 +69,9 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        Arc::new(EdgeGatewayAcknowledgementProjector::new(Arc::new(
+            InMemoryEdgeRepository::new(),
+        ))),
         log_store,
         authority.clone(),
         Duration::hours(1),

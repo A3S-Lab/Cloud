@@ -79,6 +79,10 @@ API command
 - **Atomic Gateway Snapshots**: Validate and transactionally reload complete
   A3S Gateway ACL snapshots with compare-and-swap revisions, durable local
   state, and command-bound acknowledgements
+- **Convergent Edge Routes**: Bind each hostname/path to one healthy immutable
+  workload revision, compile the complete Gateway scope deterministically, and
+  activate a route only after the exact command, revision, and digest are
+  acknowledged
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
@@ -101,7 +105,7 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | Gateway snapshot publication is complete; HTTPS routes, ordered logs, update, rollback, and crash recovery remain | In progress |
+| Reachability | Route ownership, healthy target resolution, complete snapshot publication, and exact acknowledgement projection are complete; routed Gateway validation, TLS, logs, update, rollback, and crash recovery remain | In progress |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned |
 
 ## Quick Start
@@ -178,7 +182,7 @@ origin, then sign in with the API token created during bootstrap.
 
 Cloud validates a closed HCL configuration at startup. Unknown fields and
 unsafe timing relationships fail before the API or worker starts. The shipped
-D0 deployment policy is split across independent boundaries:
+deployment and Edge policies are split across independent boundaries:
 
 | Setting | Owns |
 | --- | --- |
@@ -191,6 +195,12 @@ D0 deployment policy is split across independent boundaries:
 | `deployments.cleanup_timeout_ms` | Bound before cleanup becomes operator-visible failure |
 | `registry.request_timeout_ms` | Timeout for one registry request |
 | `registry.insecure_hosts` | Explicit development-only HTTP registry allowlist |
+| `edge.entrypoint_address` | Address rendered into the complete traffic snapshot |
+| `edge.management_address` | Loopback-only Gateway management address rendered into the snapshot |
+| `edge.management_path_prefix` | Closed management API path rendered into the snapshot |
+| `edge.management_auth_token_env` | Gateway-side environment variable that carries the management token |
+| `edge.upstream_request_timeout_ms` | Per-upstream request timeout rendered into every route service |
+| `edge.command_ttl_ms` | Independent lifetime of one complete Gateway publication command |
 | `gateway.connect_timeout_ms` | Connection timeout for the node-local Gateway management API |
 | `gateway.validation_timeout_ms` | Independent deadline for validating one complete snapshot |
 | `gateway.reload_timeout_ms` | Independent deadline for transactionally reloading one snapshot |
@@ -317,7 +327,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Gateway snapshot transport is verified; HTTPS route, ordered logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| E0 — Reachable service | Edge desired state and exact activation projection are verified; routed Gateway/TLS, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
 
 The MVP target is a single control plane, one Linux node, Docker-backed
@@ -388,7 +398,17 @@ cargo test -p a3s-cloud-control-plane --test oci_registry_integration -- --nocap
 A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
 cargo test -p a3s-cloud-node-agent \
   installed_a3s_gateway_validates_and_reloads_complete_snapshots -- --nocapture
+
+A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
+cargo test -p a3s-cloud-control-plane \
+  installed_gateway_validates_compiled_snapshot -- --nocapture
 ```
+
+The first command verifies route-less snapshot transport and node-local CAS.
+The second is the real route-bearing compiler gate. Released A3S Gateway 1.0.11
+currently stack-overflows while validating an ordinary router/service ACL, so
+that gate is expected to remain red until a fixed Gateway release is available;
+Cloud does not claim routed traffic or TLS acceptance before it passes.
 
 Run web checks from `web/`:
 

@@ -1,6 +1,8 @@
+use super::health::host_port;
 use super::{docker_error, is_status, DockerRuntimeDriver};
+use a3s_cloud_contracts::RuntimeServiceEndpoint;
 use a3s_runtime::contract::{
-    HealthProbe, NetworkMode, RestartPolicy, RuntimeActionRequest, RuntimeFailure,
+    HealthProbe, NetworkMode, RestartPolicy, RuntimeActionRequest, RuntimeEvidence, RuntimeFailure,
     RuntimeHealthObservation, RuntimeInspection, RuntimeMountSource, RuntimeObservation,
     RuntimeRemoval, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, TransportProtocol,
 };
@@ -15,7 +17,7 @@ use bollard::models::{
 };
 use chrono::DateTime;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -426,11 +428,12 @@ impl DockerRuntimeDriver {
         };
         let observed_at = now_ms();
         let terminal = unit_state.is_terminal();
+        let spec_digest = spec.digest().map_err(RuntimeError::Protocol)?;
         let observation = RuntimeObservation {
             schema: RuntimeObservation::SCHEMA.into(),
             unit_id: spec.unit_id.clone(),
             generation: spec.generation,
-            spec_digest: spec.digest().map_err(RuntimeError::Protocol)?,
+            spec_digest: spec_digest.clone(),
             class: spec.class,
             state: unit_state,
             provider_resource_id: Some(container_id(container)?),
@@ -442,7 +445,12 @@ impl DockerRuntimeDriver {
             health: running.then_some(health).flatten(),
             outputs: Vec::new(),
             usage: None,
-            evidence: None,
+            evidence: Some(RuntimeEvidence {
+                provider_build: provider_build.into(),
+                spec_digest,
+                semantics_profile_digest: spec.semantics_profile_digest.clone(),
+                claims: service_endpoint_claims(spec, container)?,
+            }),
             provider_attestation: None,
             failure,
         };
@@ -451,6 +459,28 @@ impl DockerRuntimeDriver {
             .map_err(RuntimeError::Protocol)?;
         Ok(observation)
     }
+}
+
+fn service_endpoint_claims(
+    spec: &RuntimeUnitSpec,
+    container: &ContainerInspectResponse,
+) -> RuntimeResult<BTreeMap<String, String>> {
+    if spec.class != RuntimeUnitClass::Service {
+        return Ok(BTreeMap::new());
+    }
+    spec.network
+        .ports
+        .iter()
+        .filter(|port| port.protocol == TransportProtocol::Tcp)
+        .map(|port| {
+            let endpoint = RuntimeServiceEndpoint::node_local_http(
+                port.name.clone(),
+                host_port(spec, container, &port.name)?,
+            )
+            .map_err(RuntimeError::Protocol)?;
+            Ok((endpoint.claim_key(), endpoint.origin))
+        })
+        .collect()
 }
 
 fn managed_labels(

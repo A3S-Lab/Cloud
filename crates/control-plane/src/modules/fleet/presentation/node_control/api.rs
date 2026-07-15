@@ -1,4 +1,5 @@
 use super::error::NodeControlHttpError;
+use crate::modules::fleet::application::IGatewayAcknowledgementProjector;
 use crate::modules::fleet::application::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, LeaseNodeCommands,
     LeaseNodeCommandsHandler, RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,
@@ -58,6 +59,7 @@ impl NodeControlApi {
     pub(crate) fn new(
         nodes: Arc<dyn INodeRepository>,
         commands: Arc<dyn INodeControlRepository>,
+        gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
         logs: Arc<dyn ILogChunkStore>,
         certificate_authority: Arc<dyn ICertificateAuthority>,
         certificate_ttl: Duration,
@@ -92,7 +94,7 @@ impl NodeControlApi {
                 acknowledge: AcknowledgeNodeCommandHandler::new(Arc::clone(&commands)),
                 observations: RecordNodeObservationsHandler::new(Arc::clone(&commands)),
                 logs: RecordNodeLogChunksHandler::new(Arc::clone(&commands), logs),
-                gateway: RecordGatewayAcknowledgementHandler::new(commands),
+                gateway: RecordGatewayAcknowledgementHandler::new(commands, gateway_projector),
                 rotate_certificate,
                 certificate_rotation_window,
                 maximum_body_bytes,

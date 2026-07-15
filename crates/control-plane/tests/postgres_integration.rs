@@ -1,8 +1,8 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_cloud_control_plane::config::{
-    AuthConfig, DeploymentsConfig, EventProviderKind, EventsConfig, FleetConfig, NodeControlConfig,
-    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
-    SecurityProviderKind, ServerConfig,
+    AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
+    NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
+    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::integration_events::{
@@ -33,6 +33,8 @@ use uuid::Uuid;
 mod cancellation_support;
 #[path = "support/deployment_flow.rs"]
 mod deployment_flow_support;
+#[path = "support/edge.rs"]
+mod edge_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
 #[path = "support/postgres_fixture.rs"]
@@ -87,6 +89,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
+             drop table if exists routes cascade;
+             drop table if exists gateway_publications cascade;
+             drop table if exists gateway_scopes cascade;
              drop table if exists node_gateway_acknowledgements cascade;
              drop table if exists node_log_batch_chunks cascade;
              drop table if exists node_log_chunks cascade;
@@ -122,7 +127,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 10);
+    assert_eq!(applied, 11);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -222,6 +227,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "011",
+                "Edge route publications",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/011_edge_routes.sql"
+                )),
+            ),
+            Migration::new(
+                "012",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -802,6 +815,10 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .as_str()
         .ok_or("workload creation response omitted deploymentId")?
         .to_owned();
+    let revision_id = created_workload_body["data"]["revisionId"]
+        .as_str()
+        .ok_or("workload creation response omitted revisionId")?
+        .to_owned();
     let listed_workloads = app.call(get_as(&workload_path, ADMIN_TOKEN)).await?;
     assert_eq!(listed_workloads.status(), 200);
     let listed = &response_json(&listed_workloads)?["data"];
@@ -839,6 +856,19 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         response_json(&deployment_detail)?["data"]["id"],
         deployment_id
     );
+
+    edge_support::exercise_edge_api(
+        &app,
+        &executor,
+        edge_support::EdgeApiFixture {
+            organization_id: &organization_id,
+            project_id: &project_id,
+            environment_id: &environment_id,
+            workload_revision_id: &revision_id,
+            token: ADMIN_TOKEN,
+        },
+    )
+    .await?;
 
     cancellation_support::exercise_deployment_cancellation(
         cancellation_support::CancellationScenario {
@@ -885,11 +915,29 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     );
 
     fleet_support::exercise_fleet(&executor, Uuid::parse_str(&organization_id)?).await?;
-    workloads_support::exercise_workloads(
+    let workload_fixture = workloads_support::exercise_workloads(
         &executor,
         Uuid::parse_str(&organization_id)?,
         Uuid::parse_str(&project_id)?,
         Uuid::parse_str(&environment_id)?,
+    )
+    .await?;
+    edge_support::exercise_edge(
+        &executor,
+        edge_support::EdgeFixture {
+            organization_id: OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+            project_id:
+                a3s_cloud_control_plane::modules::shared_kernel::domain::ProjectId::from_uuid(
+                    Uuid::parse_str(&project_id)?,
+                ),
+            environment_id:
+                a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
+                    Uuid::parse_str(&environment_id)?,
+                ),
+            node_id: workload_fixture.node_id,
+            workload_id: workload_fixture.workload_id,
+            revision_id: workload_fixture.revision_id,
+        },
     )
     .await?;
     Ok(())

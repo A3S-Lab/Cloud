@@ -1,6 +1,7 @@
 use a3s_cloud_contracts::{
     DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
     NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::fleet::domain::entities::EnrollmentToken;
@@ -31,8 +32,9 @@ use a3s_cloud_node_agent::{
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeActionRequest,
-    RuntimeCapabilities, RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState,
-    RuntimeInspection, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
+    RuntimeCapabilities, RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation,
+    RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
+    TransportProtocol,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
@@ -40,6 +42,7 @@ use a3s_runtime::{
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -907,11 +910,30 @@ fn healthy_observation(
 ) -> Result<RuntimeObservation, String> {
     let now_ms = u64::try_from(Utc::now().timestamp_millis())
         .map_err(|_| "integration clock predates Unix epoch")?;
+    let spec_digest = spec.digest()?;
+    let endpoint_claims = spec
+        .network
+        .ports
+        .iter()
+        .filter(|port| port.protocol == TransportProtocol::Tcp)
+        .enumerate()
+        .map(|(index, port)| {
+            let host_port = 49_152_u16
+                .checked_add(u16::try_from(index).map_err(|_| {
+                    "integration Runtime observation has too many service ports".to_owned()
+                })?)
+                .ok_or_else(|| {
+                    "integration Runtime observation service port range overflowed".to_owned()
+                })?;
+            let endpoint = RuntimeServiceEndpoint::node_local_http(&port.name, host_port)?;
+            Ok((endpoint.claim_key(), endpoint.origin))
+        })
+        .collect::<Result<BTreeMap<_, _>, String>>()?;
     let observation = RuntimeObservation {
         schema: RuntimeObservation::SCHEMA.into(),
         unit_id: spec.unit_id.clone(),
         generation: spec.generation,
-        spec_digest: spec.digest()?,
+        spec_digest: spec_digest.clone(),
         class: RuntimeUnitClass::Service,
         state: RuntimeUnitState::Running,
         provider_resource_id: Some("integration-container".into()),
@@ -926,7 +948,12 @@ fn healthy_observation(
         }),
         outputs: Vec::new(),
         usage: None,
-        evidence: None,
+        evidence: Some(RuntimeEvidence {
+            provider_build: "integration-runtime-1".into(),
+            spec_digest,
+            semantics_profile_digest: spec.semantics_profile_digest.clone(),
+            claims: endpoint_claims,
+        }),
         provider_attestation: None,
         failure: None,
     };
