@@ -4,6 +4,18 @@ server {
   role = "all"
 }
 
+node_control {
+  host = "127.0.0.1"
+  port = 8443
+  server_name = "localhost"
+  certificate_file = ".a3s/cloud/security/node-control/server.pem"
+  private_key_file = ".a3s/cloud/security/node-control/server-key.pem"
+  client_ca_file = ".a3s/cloud/security/node-ca/ca.pem"
+  max_request_bytes = 20971520
+  tls_handshake_timeout_ms = 5000
+  request_body_timeout_ms = 10000
+}
+
 postgres {
   url_env = "A3S_CLOUD_POSTGRES_URL"
   max_connections = 16
@@ -28,4 +40,43 @@ events {
 operations {
   reconcile_interval_ms = 5000
   lease_ms = 30000
+}
+
+deployments {
+  reconcile_interval_ms = 30000
+  command_ttl_ms = 180000
+  runtime_apply_timeout_ms = 120000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 600000
+  runtime_stop_timeout_ms = 60000
+  cleanup_poll_ms = 1000
+  cleanup_timeout_ms = 300000
+}
+
+registry {
+  request_timeout_ms = 10000
+  insecure_hosts = ["127.0.0.1:50020"]
+}
+
+fleet {
+  heartbeat_interval_ms = 5000
+  heartbeat_timeout_ms = 20000
+  command_long_poll_ms = 25000
+  command_lease_ms = 30000
+  certificate_ttl_ms = 3600000
+  certificate_rotation_window_ms = 900000
+}
+
+security {
+  profile = "development"
+  state_dir = ".a3s/cloud/security"
+  certificate_authority = "local"
+  key_encryption = "local"
+  vault_address_env = "A3S_CLOUD_VAULT_ADDR"
+  vault_token_env = "A3S_CLOUD_VAULT_TOKEN"
+  vault_pki_mount = "pki"
+  vault_pki_role = "a3s-cloud-node"
+  vault_transit_mount = "transit"
+  vault_transit_key = "a3s-cloud"
+  vault_timeout_ms = 5000
 }

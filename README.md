@@ -1,17 +1,18 @@
 # A3S Cloud
 
 <p align="center">
-  <strong>Self-Hosted Application and AI Workload Platform</strong>
+  <strong>Self-Hosted Cloud for Applications and AI Workloads</strong>
 </p>
 
 <p align="center">
-  <em>Deploy and operate applications, Agents, MCP servers, and Skills on infrastructure you own</em>
+  <em>Deploy, route, observe, update, and roll back workloads on infrastructure you own</em>
 </p>
 
 <p align="center">
   <a href="#overview">Overview</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
+  <a href="#configuration">Configuration</a> •
   <a href="#platform-model">Platform Model</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#mvp-roadmap">MVP Roadmap</a> •
@@ -22,25 +23,24 @@
 
 ## Overview
 
-**A3S Cloud** is a self-hosted control plane for running applications and A3S
-workloads on operator-owned Linux infrastructure. Organizations, projects, and
-environments define the tenancy boundary. PostgreSQL stores desired state, A3S
+**A3S Cloud** is a self-hosted platform for deploying applications and A3S
+workloads to operator-owned Linux infrastructure. Organizations, projects, and
+environments define its tenancy boundary. PostgreSQL stores desired state, A3S
 Flow advances durable operations, and node agents converge A3S Runtime resources
-with that state.
+with the requested state.
 
 Cloud is designed around observable convergence rather than request-time
 orchestration. An accepted command commits intent and returns an operation. The
 operation continues across process restarts, records its progress, and completes
 only after the relevant infrastructure reports the requested state.
 
-The current implementation provides the F0 control-plane foundation: closed HCL
-configuration, PostgreSQL persistence and migrations, scoped API tokens,
-organizations, projects, environments, durable operation projections, a
-transactional event outbox, health endpoints, authenticated operation streaming,
-and a React web console. Node control and workload deployment are the next MVP
-vertical slices.
+Cloud separates desired state from execution. The control plane persists intent
+before dispatching work, while Linux nodes establish outbound mTLS connections,
+apply provider-neutral A3S Runtime requests, and report observations back to the
+control plane. API latency is therefore independent from deployment duration,
+and recovery starts from persisted state instead of process memory.
 
-### Control-plane flow
+### Operation model
 
 ```text
 API command
@@ -73,19 +73,31 @@ API command
   them through either an in-memory A3S Event provider or NATS JetStream
 - **Independent Timing Policies**: Configure operation reconciliation, outbox
   polling, leases, publishing, and retry backoff independently
+- **Outbound Node Control**: Enroll Linux nodes, rotate their certificates,
+  lease idempotent commands, and recover command journals without inbound node
+  ports
+- **Runtime Observations**: Record provider capabilities, workload state,
+  health, logs, and durable command acknowledgements from A3S Runtime
+- **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
+  resulting digest, schedule one eligible node, and activate only after real
+  Runtime health evidence
+- **Convergent Recovery**: Reattach after provider creation, recover a lost
+  provider at the same generation, preserve the prior healthy revision on a
+  failed update, and drive cancellation through bounded cleanup
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
-  organization, project, and environment, and inspect live operation state
+  organization, project, and environment, and inspect desired revisions,
+  observed Runtime state, health, cancellation, and live operation progress
 
 ### MVP capability matrix
 
 | Area | Capability | State |
 | --- | --- | --- |
 | Runtime prerequisite | General Task and Service lifecycle with provider capability matching | Complete |
-| Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Implemented |
-| Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Next |
-| Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, and cancellation | Planned |
+| Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
+| Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
+| Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | HTTPS routes, ordered logs, update, rollback, and crash recovery | Planned |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned |
 
@@ -96,6 +108,7 @@ API command
 - Rust 1.85 or later
 - PostgreSQL 17 or a compatible supported release
 - Bun and Node.js 22 or later for the web console
+- Docker for the first node Runtime provider and real deployment gates
 - NATS JetStream only when the NATS event provider is enabled
 
 ### Run the control plane
@@ -158,6 +171,33 @@ The development server listens on `127.0.0.1:3010` and proxies `/api` to
 `http://127.0.0.1:8080`. Set `A3S_CLOUD_API_ORIGIN` to use another control-plane
 origin, then sign in with the API token created during bootstrap.
 
+## Configuration
+
+Cloud validates a closed HCL configuration at startup. Unknown fields and
+unsafe timing relationships fail before the API or worker starts. The shipped
+D0 deployment policy is split across independent boundaries:
+
+| Setting | Owns |
+| --- | --- |
+| `deployments.command_ttl_ms` | How long a leased node command remains valid |
+| `deployments.runtime_apply_timeout_ms` | Runtime apply deadline carried by the command |
+| `deployments.observation_poll_ms` | Poll interval while waiting for durable Runtime evidence |
+| `deployments.convergence_timeout_ms` | End-to-end deadline for one deployment generation |
+| `deployments.runtime_stop_timeout_ms` | Runtime stop deadline during cancellation or stop |
+| `deployments.cleanup_poll_ms` | Poll interval while cleanup remains pending |
+| `deployments.cleanup_timeout_ms` | Bound before cleanup becomes operator-visible failure |
+| `registry.request_timeout_ms` | Timeout for one registry request |
+| `registry.insecure_hosts` | Explicit development-only HTTP registry allowlist |
+
+These timers do not consume one shared request budget. API acceptance commits
+desired state first; Flow, node command, Runtime, health, and cleanup deadlines
+then advance independently. A mutable image tag is resolved before scheduling
+and the resulting workload revision remains digest-addressable on replay.
+
+See [`config/cloud.hcl`](config/cloud.hcl) and
+[`config/node.example.hcl`](config/node.example.hcl) for the complete control
+plane and node-agent profiles.
+
 ## Platform Model
 
 ### Tenancy
@@ -175,19 +215,19 @@ Bearer authentication is global except for bootstrap and health routes. A token
 is bound to an organization unless it carries the platform administrator role,
 and command handlers enforce both tenant ownership and the required scope.
 
-### A3S releases
+### Asset catalog
 
-Cloud's release catalog has three first-class families:
+Cloud publishes immutable versions of three A3S asset kinds:
 
-| Release | Immutable artifact | Execution role |
+| Asset | Immutable artifact | Runtime role |
 | --- | --- | --- |
 | Agent | Validated manifest and digest-pinned OCI artifact | Finite Task or long-running Service |
 | MCP | Validated manifest and digest-pinned OCI artifact | Long-running MCP Service |
 | Skill | Content-addressed bundle and validated manifest | Immutable input bound to an Agent revision |
 
-Publication records source and artifact provenance. Deployment consumes an
-immutable release through the same workload revision and operation pipeline used
-by applications.
+Each published version records source and artifact provenance. Agent and MCP
+versions enter the same workload revision and durable deployment pipeline used
+by applications. Skill versions are bound as immutable workload inputs.
 
 ### Runtime boundary
 
@@ -264,14 +304,14 @@ security model, consistency boundaries, and failure recovery.
 
 ## MVP Roadmap
 
-| Gate | Outcome |
-| --- | --- |
-| R0 — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and Docker conformance |
-| F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell |
-| N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver |
-| D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, and cancellation |
-| E0 — Reachable service | HTTPS route, ordered logs, update, rollback, web timeline, and crash-recovery acceptance |
-| A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path |
+| Gate | Outcome | State |
+| --- | --- | --- |
+| R0 — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and Docker conformance | Verified |
+| F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
+| N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
+| D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
+| E0 — Reachable service | HTTPS route, ordered logs, update, rollback, web timeline, and crash-recovery acceptance | Planned |
+| A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
 
 The MVP target is a single control plane, one Linux node, Docker-backed
 stateless workloads, and a repeatable end-to-end deployment on a clean host. The
@@ -291,6 +331,7 @@ Cloud/
 ├── config/
 │   ├── cloud.hcl
 │   └── node.example.hcl
+├── deploy/                 # local infrastructure profiles
 ├── migrations/
 ├── crates/
 │   ├── contracts/          # versioned public and node protocol types
@@ -312,13 +353,30 @@ cargo clippy --workspace --all-targets -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
-The PostgreSQL integration test activates when its database URL is present. Add
-a NATS URL to exercise JetStream publication and retry behavior in the same run:
+The PostgreSQL integration test treats the supplied URL as an administration
+connection, creates a uniquely named database for the run, and force-removes it
+after success, ordinary failure, or assertion panic. It never migrates or
+truncates the supplied development database. Add NATS and Docker to exercise
+JetStream redelivery and the real D0 Runtime path in the same run:
 
 ```bash
 A3S_CLOUD_TEST_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/a3s_cloud" \
 A3S_CLOUD_TEST_NATS_URL="nats://127.0.0.1:42220" \
+A3S_CLOUD_TEST_DOCKER=1 \
 cargo test -p a3s-cloud-control-plane --test postgres_integration -- --nocapture
+```
+
+Run the remaining real-provider gates explicitly:
+
+```bash
+A3S_CLOUD_TEST_DOCKER=1 \
+cargo test -p a3s-cloud-node-agent --test docker_conformance -- --nocapture
+
+A3S_CLOUD_TEST_DOCKER=1 \
+cargo test -p a3s-cloud-control-plane --test docker_deployment -- --nocapture
+
+A3S_CLOUD_TEST_REGISTRY_URL="http://127.0.0.1:50020/" \
+cargo test -p a3s-cloud-control-plane --test oci_registry_integration -- --nocapture
 ```
 
 Run web checks from `web/`:

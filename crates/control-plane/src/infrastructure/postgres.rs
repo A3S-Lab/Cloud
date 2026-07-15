@@ -93,6 +93,46 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/004_api_tokens.sql"
             )),
         ),
+        Migration::new(
+            "005",
+            "fleet node control",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/005_fleet.sql"
+            )),
+        ),
+        Migration::new(
+            "006",
+            "workloads and deployments",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/006_workloads.sql"
+            )),
+        ),
+        Migration::new(
+            "007",
+            "deployment cancellation cleanup",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/007_deployment_cleanup.sql"
+            )),
+        ),
+        Migration::new(
+            "008",
+            "workload revision resolution",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/008_workload_revision_resolution.sql"
+            )),
+        ),
+        Migration::new(
+            "009",
+            "same-generation Runtime apply recovery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/009_runtime_apply_recovery.sql"
+            )),
+        ),
     ]
 }
 
@@ -160,7 +200,7 @@ where
         .map_err(Into::into)
 }
 
-async fn lock_idempotency_key(
+pub(crate) async fn lock_idempotency_key(
     transaction: &PostgresTransaction,
     idempotency: &IdempotencyRequest,
 ) -> Result<(), PostgresPersistenceError> {
@@ -272,7 +312,10 @@ pub(crate) async fn store_outbox(
     require_one_row("outbox event", rows)
 }
 
-fn require_one_row(resource: &str, rows_affected: u64) -> Result<(), PostgresPersistenceError> {
+pub(crate) fn require_one_row(
+    resource: &str,
+    rows_affected: u64,
+) -> Result<(), PostgresPersistenceError> {
     if rows_affected == 1 {
         Ok(())
     } else {

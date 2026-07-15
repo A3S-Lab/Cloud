@@ -56,4 +56,106 @@ describe('CloudApi', () => {
       })
     );
   });
+
+  it('scopes workload reads to the selected environment without leaking the token', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ code: 200, message: 'Success', data: [], requestId: '1', timestamp: 'now' }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new CloudApi('a3s_secret').listWorkloads('org / one', 'project', 'production');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/organizations/org%20%2F%20one/projects/project/environments/production/workloads',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer a3s_secret' }),
+      })
+    );
+    expect(fetchMock.mock.calls[0][0]).not.toContain('a3s_secret');
+  });
+
+  it('cancels one deployment with an explicit stable idempotency key', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 202,
+          message: 'Success',
+          data: {
+            deploymentId: 'deployment / one',
+            operationId: 'operation-1',
+            status: 'cancelling',
+            replayed: false,
+          },
+          requestId: '1',
+          timestamp: 'now',
+        }),
+        { status: 202, headers: { 'content-type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new CloudApi('a3s_secret').cancelDeployment(
+      'organization',
+      'deployment / one',
+      'web-cancel:deployment-1'
+    );
+
+    expect(result.status).toBe('cancelling');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/organizations/organization/deployments/deployment%20%2F%20one',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer a3s_secret',
+          'Idempotency-Key': 'web-cancel:deployment-1',
+        }),
+      })
+    );
+  });
+
+  it('stops one active workload through its own durable operation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 202,
+          message: 'Success',
+          data: {
+            organizationId: 'organization',
+            workloadId: 'workload / one',
+            operationId: 'operation-2',
+            desiredState: 'stopped',
+            requestedAt: 'now',
+            replayed: false,
+          },
+          requestId: '1',
+          timestamp: 'now',
+        }),
+        { status: 202, headers: { 'content-type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new CloudApi('a3s_secret').stopWorkload(
+      'organization',
+      'workload / one',
+      'web-stop:workload-1'
+    );
+
+    expect(result.desiredState).toBe('stopped');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/organizations/organization/workloads/workload%20%2F%20one/stop',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer a3s_secret',
+          'Idempotency-Key': 'web-stop:workload-1',
+        }),
+      })
+    );
+  });
 });

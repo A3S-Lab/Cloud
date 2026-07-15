@@ -1,24 +1,32 @@
+use crate::infrastructure::FlowOperationCoordinator;
+use crate::modules::fleet::NodeControlServer;
 use crate::modules::integration_events::OutboxRelay;
-use crate::modules::operations::OperationReconciler;
+use crate::modules::workloads::WorkloadRuntimeReconciler;
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
 use std::net::SocketAddr;
 
 pub struct ControlPlane {
     application: BootApplication,
-    operation_reconciler: Option<OperationReconciler>,
+    operation_coordinator: Option<FlowOperationCoordinator>,
+    workload_reconciler: Option<WorkloadRuntimeReconciler>,
     outbox_relay: Option<OutboxRelay>,
+    node_control_server: Option<NodeControlServer>,
 }
 
 impl ControlPlane {
     pub(crate) fn new(
         application: BootApplication,
-        operation_reconciler: Option<OperationReconciler>,
+        operation_coordinator: Option<FlowOperationCoordinator>,
+        workload_reconciler: Option<WorkloadRuntimeReconciler>,
         outbox_relay: Option<OutboxRelay>,
+        node_control_server: Option<NodeControlServer>,
     ) -> Self {
         Self {
             application,
-            operation_reconciler,
+            operation_coordinator,
+            workload_reconciler,
             outbox_relay,
+            node_control_server,
         }
     }
 
@@ -30,15 +38,51 @@ impl ControlPlane {
     where
         A: HttpAdapter,
     {
+        let shutdown_application = self.application.clone();
+        if let Err(error) = self.application.bootstrap().await {
+            let _ = shutdown_application.shutdown().await;
+            return Err(error);
+        }
         let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
+        let (failure_sender, mut failure_receiver) =
+            tokio::sync::mpsc::unbounded_channel::<BootError>();
         let mut workers = Vec::new();
-        if let Some(reconciler) = self.operation_reconciler {
+        if let Some(coordinator) = self.operation_coordinator {
+            workers.push(tokio::spawn(coordinator.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workload_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(relay) = self.outbox_relay {
-            workers.push(tokio::spawn(relay.run(shutdown_receiver)));
+            workers.push(tokio::spawn(relay.run(shutdown_receiver.clone())));
         }
-        let serve_result = serve_until_shutdown(self.application, adapter, address).await;
+        if let Some(node_control) = self.node_control_server {
+            let failure_sender = failure_sender.clone();
+            let lifecycle = shutdown_receiver.clone();
+            workers.push(tokio::spawn(async move {
+                let result = node_control.run(shutdown_receiver).await;
+                if !*lifecycle.borrow() {
+                    let error = match result {
+                        Ok(()) => BootError::Internal(
+                            "node-control listener stopped before shutdown".into(),
+                        ),
+                        Err(error) => BootError::Internal(error.to_string()),
+                    };
+                    let _ = failure_sender.send(error);
+                }
+            }));
+        }
+        let serve_result = {
+            let serve = adapter.serve(self.application, address);
+            tokio::pin!(serve);
+            tokio::select! {
+                result = &mut serve => result,
+                result = wait_for_shutdown_signal() => result,
+                failure = failure_receiver.recv() => Err(failure.unwrap_or_else(|| {
+                    BootError::Internal("control-plane background failure channel closed".into())
+                })),
+            }
+        };
         let _ = shutdown_sender.send(true);
         let mut worker_error = None;
         for worker in workers {
@@ -48,40 +92,14 @@ impl ControlPlane {
                 });
             }
         }
-        serve_result?;
-        worker_error.map_or(Ok(()), Err)
-    }
-}
+        let shutdown_result = shutdown_application.shutdown().await;
 
-async fn serve_until_shutdown<A>(
-    application: BootApplication,
-    adapter: &A,
-    address: SocketAddr,
-) -> Result<()>
-where
-    A: HttpAdapter,
-{
-    let shutdown_application = application.clone();
-    if let Err(error) = application.bootstrap().await {
-        let _ = shutdown_application.shutdown().await;
-        return Err(error);
-    }
-
-    let serve = adapter.serve(application, address);
-    tokio::pin!(serve);
-    let serve_result = tokio::select! {
-        result = &mut serve => result,
-        result = wait_for_shutdown_signal() => {
-            result?;
-            Ok(())
-        },
-    };
-    let shutdown_result = shutdown_application.shutdown().await;
-
-    match (serve_result, shutdown_result) {
-        (Err(error), _) => Err(error),
-        (Ok(()), Err(error)) => Err(error),
-        (Ok(()), Ok(())) => Ok(()),
+        match (serve_result, worker_error, shutdown_result) {
+            (Err(error), _, _) => Err(error),
+            (Ok(()), Some(error), _) => Err(error),
+            (Ok(()), None, Err(error)) => Err(error),
+            (Ok(()), None, Ok(())) => Ok(()),
+        }
     }
 }
 

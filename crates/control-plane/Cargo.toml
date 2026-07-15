@@ -13,21 +13,38 @@ a3s-cloud-contracts = { path = "../contracts" }
 a3s-event.workspace = true
 a3s-flow.workspace = true
 a3s-orm.workspace = true
+a3s-runtime.workspace = true
+aes-gcm.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
+axum.workspace = true
+base64.workspace = true
 chrono.workspace = true
+getrandom.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http-body-util.workspace = true
+rcgen.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
+time.workspace = true
 tokio.workspace = true
+tokio-rustls.workspace = true
+tower.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+a3s-cloud-node-agent = { path = "../node-agent" }
+futures-util.workspace = true
 tempfile = "3"
 
 [lints]

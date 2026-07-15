@@ -2,16 +2,17 @@
 
 ## 1. Status and decisions
 
-This document is an implementation design, not a statement of completed
-functionality. A3S Cloud starts as a Rust modular monolith, a separate Linux
-node agent, and a React web application. The first release proves one complete
-deployment loop before adding multi-node scheduling or hosted assets.
+R0 through D0 are implemented and verified. E0 and later sections remain the
+accepted design until their exit gates pass. A3S Cloud ships as a Rust modular
+monolith, a separate Linux node agent, and a React web application. The first
+release still requires the E0 reachability, logs, update, and rollback loop
+before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
 - A3S Runtime is the required provider-neutral data-plane contract.
-- A3S Runtime itself must become general purpose. Candidate and Judge are Bench
-  concepts and must not remain in the Runtime core contract.
+- A3S Runtime is general purpose. Candidate and Judge remain Bench concepts and
+  do not appear in the Runtime core contract.
 - PostgreSQL stores business desired state.
 - A3S Flow stores durable operation history and coordinates long-running work.
 - A transactional outbox publishes committed facts through A3S Event.
@@ -55,18 +56,14 @@ services.
 
 ## 3. Universal A3S Runtime boundary
 
-### 3.1 Problem in the current contract
+### 3.1 Resolved Runtime prerequisite
 
-`a3s-runtime 0.1.0` exposes `RuntimeRole::Candidate` and
-`RuntimeRole::Judge`. Its request validation, result artifacts, privacy labels,
-token counters, and `supports_bench_p1()` capability helper encode those two
-Bench roles. Its session policy also chooses Docker for a signed-out caller,
-which is caller policy rather than a Runtime invariant. It can run a finite
-Bench operation, but it cannot honestly represent a long-running service,
-health checks, ports, restart policy, logs, or workload convergence.
-
-Adding a separate Cloud-only client would preserve the wrong abstraction. The
-Runtime core must instead describe a small, provider-neutral execution unit.
+The earlier Runtime contract encoded Candidate and Judge roles, Bench-specific
+validation, and caller-owned provider policy. R0 replaced that surface with a
+small provider-neutral execution unit. The same managed client now runs finite
+Tasks and long-running Services, including ports, health, restart policy,
+capability matching, durable identity, and idempotent recovery. Bench-specific
+profiles remain outside Runtime.
 
 ### 3.2 Core model
 
@@ -80,7 +77,7 @@ RuntimeUnitClass
 └── Service    # long-running execution: application, Agent, MCP server
 ```
 
-The first general contract should contain typed fields for:
+The general contract contains typed fields for:
 
 - stable `unit_id`, monotonically increasing `generation`, and spec digest;
 - a digest-pinned runnable artifact and process definition;

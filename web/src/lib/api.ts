@@ -5,6 +5,10 @@ import type {
   Operation,
   Organization,
   Project,
+  Deployment,
+  CancelDeploymentResult,
+  StopWorkloadResult,
+  Workload,
 } from '../types/api';
 
 export class CloudApiError extends Error {
@@ -49,6 +53,58 @@ export class CloudApi {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/operations?limit=100`, signal);
   }
 
+  listWorkloads(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<Workload[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/workloads`,
+      signal
+    );
+  }
+
+  getWorkload(organizationId: string, workloadId: string, signal?: AbortSignal): Promise<Workload> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}`,
+      signal
+    );
+  }
+
+  getDeployment(organizationId: string, deploymentId: string, signal?: AbortSignal): Promise<Deployment> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/deployments/${encodeURIComponent(deploymentId)}`,
+      signal
+    );
+  }
+
+  cancelDeployment(
+    organizationId: string,
+    deploymentId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<CancelDeploymentResult> {
+    return this.delete(
+      `/organizations/${encodeURIComponent(organizationId)}/deployments/${encodeURIComponent(deploymentId)}`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  stopWorkload(
+    organizationId: string,
+    workloadId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<StopWorkloadResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/stop`,
+      idempotencyKey,
+      signal
+    );
+  }
+
   operationStreamUrl(organizationId: string): string {
     return `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}/operations/stream`;
   }
@@ -58,6 +114,42 @@ export class CloudApi {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${this.token}`,
+      },
+      signal,
+    });
+    const payload = (await response.json()) as ApiEnvelope<T> | ApiErrorEnvelope;
+    if (!response.ok) {
+      const error = payload as ApiErrorEnvelope;
+      throw new CloudApiError(response.status, error.message, error.statusCode, error.requestId);
+    }
+    return (payload as ApiEnvelope<T>).data;
+  }
+
+  private async delete<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.token}`,
+        'Idempotency-Key': idempotencyKey,
+      },
+      signal,
+    });
+    const payload = (await response.json()) as ApiEnvelope<T> | ApiErrorEnvelope;
+    if (!response.ok) {
+      const error = payload as ApiErrorEnvelope;
+      throw new CloudApiError(response.status, error.message, error.statusCode, error.requestId);
+    }
+    return (payload as ApiEnvelope<T>).data;
+  }
+
+  private async post<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.token}`,
+        'Idempotency-Key': idempotencyKey,
       },
       signal,
     });

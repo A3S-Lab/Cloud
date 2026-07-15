@@ -1,0 +1,407 @@
+use a3s_acl::{Block, Document, Value};
+use std::collections::BTreeSet;
+use std::net::IpAddr;
+use std::path::{Path, PathBuf};
+use url::Url;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlPlaneConfig {
+    pub enrollment_url: Url,
+    pub node_control_url: Url,
+    pub enrollment_token_env: String,
+    pub server_ca_file: PathBuf,
+    pub max_response_bytes: usize,
+    pub connect_timeout_ms: u64,
+    pub request_timeout_ms: u64,
+    pub long_poll_margin_ms: u64,
+    pub retry_initial_ms: u64,
+    pub retry_max_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeConfig {
+    pub name: String,
+    pub state_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DockerConfig {
+    pub socket: String,
+    pub namespace: String,
+    pub operation_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeAgentConfig {
+    pub control_plane: ControlPlaneConfig,
+    pub node: NodeConfig,
+    pub docker: DockerConfig,
+}
+
+impl NodeAgentConfig {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
+        let path = path.as_ref();
+        let source = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+            path: path.display().to_string(),
+            source,
+        })?;
+        Self::parse(&source)
+    }
+
+    pub fn parse(source: &str) -> Result<Self, ConfigError> {
+        let document = a3s_acl::parse(source)
+            .map_err(|error| ConfigError::Invalid(format!("invalid HCL: {error}")))?;
+        validate_root(&document)?;
+        let control_plane = one_block(&document, "control_plane")?;
+        validate_block(
+            control_plane,
+            &[
+                "enrollment_url",
+                "node_control_url",
+                "enrollment_token_env",
+                "server_ca_file",
+                "max_response_bytes",
+                "connect_timeout_ms",
+                "request_timeout_ms",
+                "long_poll_margin_ms",
+                "retry_initial_ms",
+                "retry_max_ms",
+            ],
+        )?;
+        let node = one_block(&document, "node")?;
+        validate_block(node, &["name", "state_dir"])?;
+        let docker = one_block(&document, "docker")?;
+        validate_block(docker, &["socket", "namespace", "operation_timeout_ms"])?;
+
+        let config = Self {
+            control_plane: ControlPlaneConfig {
+                enrollment_url: endpoint(
+                    "control_plane.enrollment_url",
+                    &string(control_plane, "enrollment_url")?,
+                    true,
+                    false,
+                )?,
+                node_control_url: endpoint(
+                    "control_plane.node_control_url",
+                    &string(control_plane, "node_control_url")?,
+                    false,
+                    true,
+                )?,
+                enrollment_token_env: string(control_plane, "enrollment_token_env")?,
+                server_ca_file: PathBuf::from(string(control_plane, "server_ca_file")?),
+                max_response_bytes: integer(control_plane, "max_response_bytes")?,
+                connect_timeout_ms: integer(control_plane, "connect_timeout_ms")?,
+                request_timeout_ms: integer(control_plane, "request_timeout_ms")?,
+                long_poll_margin_ms: integer(control_plane, "long_poll_margin_ms")?,
+                retry_initial_ms: integer(control_plane, "retry_initial_ms")?,
+                retry_max_ms: integer(control_plane, "retry_max_ms")?,
+            },
+            node: NodeConfig {
+                name: string(node, "name")?,
+                state_dir: PathBuf::from(string(node, "state_dir")?),
+            },
+            docker: DockerConfig {
+                socket: string(docker, "socket")?,
+                namespace: string(docker, "namespace")?,
+                operation_timeout_ms: integer(docker, "operation_timeout_ms")?,
+            },
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if !valid_env_name(&self.control_plane.enrollment_token_env) {
+            return Err(ConfigError::Invalid(
+                "control_plane.enrollment_token_env must be an uppercase environment variable name"
+                    .into(),
+            ));
+        }
+        validate_path(
+            "control_plane.server_ca_file",
+            &self.control_plane.server_ca_file,
+        )?;
+        validate_path("node.state_dir", &self.node.state_dir)?;
+        if self.node.name.trim().is_empty()
+            || self.node.name.len() > 255
+            || self.node.name.contains(['\0', '\r', '\n'])
+        {
+            return Err(ConfigError::Invalid(
+                "node.name must be a bounded nonempty single-line value".into(),
+            ));
+        }
+        if self.control_plane.connect_timeout_ms == 0
+            || self.control_plane.connect_timeout_ms > 60_000
+            || self.control_plane.request_timeout_ms == 0
+            || self.control_plane.request_timeout_ms > 300_000
+            || self.control_plane.long_poll_margin_ms == 0
+            || self.control_plane.long_poll_margin_ms > 60_000
+            || self.control_plane.retry_initial_ms == 0
+            || self.control_plane.retry_max_ms < self.control_plane.retry_initial_ms
+            || self.control_plane.retry_max_ms > 300_000
+        {
+            return Err(ConfigError::Invalid(
+                "control-plane connection, request, long-poll margin, and retry timings are independently bounded"
+                    .into(),
+            ));
+        }
+        if !(1024 * 1024..=64 * 1024 * 1024).contains(&self.control_plane.max_response_bytes) {
+            return Err(ConfigError::Invalid(
+                "control_plane.max_response_bytes must be between 1 and 64 MiB".into(),
+            ));
+        }
+        let Some(socket_path) = self.docker.socket.strip_prefix("unix://") else {
+            return Err(ConfigError::Invalid(
+                "docker.socket must be an absolute unix:// socket path".into(),
+            ));
+        };
+        if !Path::new(socket_path).is_absolute()
+            || socket_path.len() > 4096
+            || socket_path.contains('\0')
+        {
+            return Err(ConfigError::Invalid(
+                "docker.socket must be an absolute unix:// socket path".into(),
+            ));
+        }
+        if self.docker.namespace.is_empty()
+            || self.docker.namespace.len() > 63
+            || !self.docker.namespace.bytes().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || matches!(byte, b'-' | b'_' | b'.')
+            })
+            || self.docker.operation_timeout_ms == 0
+            || self.docker.operation_timeout_ms > 900_000
+        {
+            return Err(ConfigError::Invalid(
+                "docker namespace or operation timeout is invalid".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn enrollment_token(&self) -> Result<String, ConfigError> {
+        let name = &self.control_plane.enrollment_token_env;
+        let value = std::env::var(name).map_err(|_| {
+            ConfigError::Invalid(format!("required environment variable {name:?} is not set"))
+        })?;
+        let Some(secret) = value.strip_prefix("a3sn_") else {
+            return Err(ConfigError::Invalid(format!(
+                "environment variable {name:?} is not a valid enrollment token"
+            )));
+        };
+        if secret.len() != 64
+            || !secret
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(ConfigError::Invalid(format!(
+                "environment variable {name:?} is not a valid enrollment token"
+            )));
+        }
+        Ok(value)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("could not read node-agent config {path}: {source}")]
+    Read {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("invalid node-agent config: {0}")]
+    Invalid(String),
+}
+
+fn validate_root(document: &Document) -> Result<(), ConfigError> {
+    let allowed = ["control_plane", "docker", "node"];
+    if document
+        .blocks
+        .iter()
+        .any(|block| !allowed.contains(&block.name.as_str()))
+    {
+        return Err(ConfigError::Invalid(
+            "config contains an unsupported root block".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn one_block<'a>(document: &'a Document, name: &str) -> Result<&'a Block, ConfigError> {
+    let blocks = document
+        .blocks
+        .iter()
+        .filter(|block| block.name == name)
+        .collect::<Vec<_>>();
+    if blocks.len() != 1 {
+        return Err(ConfigError::Invalid(format!(
+            "config must contain exactly one {name} block"
+        )));
+    }
+    Ok(blocks[0])
+}
+
+fn validate_block(block: &Block, fields: &[&str]) -> Result<(), ConfigError> {
+    if !block.labels.is_empty() || !block.blocks.is_empty() {
+        return Err(ConfigError::Invalid(format!(
+            "{} block cannot contain labels or nested blocks",
+            block.name
+        )));
+    }
+    let expected = fields.iter().copied().collect::<BTreeSet<_>>();
+    let actual = block
+        .attributes
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual != expected {
+        return Err(ConfigError::Invalid(format!(
+            "{} block must contain exactly {}",
+            block.name,
+            fields.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+fn string(block: &Block, field: &str) -> Result<String, ConfigError> {
+    block
+        .attributes
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| ConfigError::Invalid(format!("{}.{} must be a string", block.name, field)))
+}
+
+fn integer<T>(block: &Block, field: &str) -> Result<T, ConfigError>
+where
+    T: TryFrom<u64>,
+{
+    let number = block
+        .attributes
+        .get(field)
+        .and_then(Value::as_number)
+        .ok_or_else(|| {
+            ConfigError::Invalid(format!("{}.{} must be an integer", block.name, field))
+        })?;
+    if !number.is_finite() || number < 0.0 || number.fract() != 0.0 || number > u64::MAX as f64 {
+        return Err(ConfigError::Invalid(format!(
+            "{}.{} must be a nonnegative integer",
+            block.name, field
+        )));
+    }
+    T::try_from(number as u64)
+        .map_err(|_| ConfigError::Invalid(format!("{}.{} is out of range", block.name, field)))
+}
+
+fn endpoint(
+    label: &str,
+    value: &str,
+    allow_loopback_http: bool,
+    require_root_path: bool,
+) -> Result<Url, ConfigError> {
+    let url = Url::parse(value)
+        .map_err(|error| ConfigError::Invalid(format!("{label} is invalid: {error}")))?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.host_str().is_none()
+        || require_root_path && url.path() != "/"
+    {
+        return Err(ConfigError::Invalid(format!(
+            "{label} must be an absolute credential-free endpoint"
+        )));
+    }
+    let secure = url.scheme() == "https";
+    let development_loopback =
+        allow_loopback_http && url.scheme() == "http" && url.host_str().is_some_and(is_loopback);
+    if !secure && !development_loopback {
+        return Err(ConfigError::Invalid(format!(
+            "{label} must use HTTPS; HTTP is allowed only for loopback enrollment"
+        )));
+    }
+    Ok(url)
+}
+
+fn is_loopback(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+fn validate_path(label: &str, value: &Path) -> Result<(), ConfigError> {
+    let value = value.to_string_lossy();
+    if value.trim().is_empty() || value.len() > 4096 || value.contains('\0') {
+        return Err(ConfigError::Invalid(format!("{label} is invalid")));
+    }
+    Ok(())
+}
+
+fn valid_env_name(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CONFIG: &str = r#"
+control_plane {
+  enrollment_url = "http://127.0.0.1:8080/api/v1/node-control/enroll"
+  node_control_url = "https://localhost:8443"
+  enrollment_token_env = "A3S_CLOUD_ENROLLMENT_TOKEN"
+  server_ca_file = ".a3s/cloud/security/node-ca/ca.pem"
+  max_response_bytes = 20971520
+  connect_timeout_ms = 5000
+  request_timeout_ms = 10000
+  long_poll_margin_ms = 5000
+  retry_initial_ms = 250
+  retry_max_ms = 30000
+}
+
+node {
+  name = "worker-1"
+  state_dir = ".a3s/cloud/node"
+}
+
+docker {
+  socket = "unix:///var/run/docker.sock"
+  namespace = "a3s-cloud"
+  operation_timeout_ms = 120000
+}
+"#;
+
+    #[test]
+    fn parses_a_closed_node_agent_configuration() {
+        let config = NodeAgentConfig::parse(CONFIG).expect("node config");
+        assert_eq!(config.node.name, "worker-1");
+        assert_eq!(config.control_plane.node_control_url.scheme(), "https");
+        assert_eq!(config.docker.namespace, "a3s-cloud");
+    }
+
+    #[test]
+    fn rejects_unknown_fields_and_insecure_remote_enrollment() {
+        let unknown = CONFIG.replace(
+            "  retry_max_ms = 30000",
+            "  retry_max_ms = 30000\n  fallback_provider = \"process\"",
+        );
+        assert!(NodeAgentConfig::parse(&unknown).is_err());
+        let insecure = CONFIG.replace(
+            "http://127.0.0.1:8080/api/v1/node-control/enroll",
+            "http://cloud.example.com/api/v1/node-control/enroll",
+        );
+        assert!(NodeAgentConfig::parse(&insecure).is_err());
+        let raw_provider = CONFIG.replace(
+            "  name = \"worker-1\"",
+            "  name = \"worker-1\"\n  provider = \"docker\"",
+        );
+        assert!(NodeAgentConfig::parse(&raw_provider).is_err());
+    }
+}

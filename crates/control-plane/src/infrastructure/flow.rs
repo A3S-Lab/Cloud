@@ -1,10 +1,12 @@
 use a3s_boot::HealthIndicatorResult;
 use a3s_flow::{
-    FlowEngine, FlowError, FlowRuntime, FlowTaskQueue, PostgresEventStore, PostgresFlowTaskQueue,
-    RuntimeCommand, StepInvocation, WorkflowInvocation,
+    FlowEngine, FlowError, FlowRuntime, FlowScheduler, FlowTaskQueue, FlowWorker,
+    PostgresEventStore, PostgresFlowTaskQueue,
 };
-use async_trait::async_trait;
+use chrono::Utc;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::watch;
 use url::Url;
 
 const FLOW_SCHEMA: &str = "a3s_flow";
@@ -20,10 +22,112 @@ pub enum FlowInfrastructureError {
     Flow(#[from] FlowError),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FlowCoordinatorError {
+    #[error("operation reconciliation failed: {0}")]
+    Repository(#[from] crate::modules::shared_kernel::domain::RepositoryError),
+    #[error("A3S Flow coordination failed: {0}")]
+    Flow(#[from] FlowError),
+    #[error("operation Flow lease duration exceeds the supported range")]
+    InvalidLease,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FlowCoordinatorReport {
+    pub reconciled_before_work: usize,
+    pub reconciled_after_work: usize,
+    pub reconciliation_failures: usize,
+    pub recovered_tasks: usize,
+    pub enqueued_tasks: usize,
+    pub handled_tasks: usize,
+}
+
 #[derive(Clone)]
 pub struct FlowInfrastructure {
     engine: FlowEngine,
     queue: Arc<PostgresFlowTaskQueue>,
+}
+
+pub struct FlowOperationCoordinator {
+    reconciler: crate::modules::operations::OperationReconciler,
+    scheduler: FlowScheduler,
+    worker: FlowWorker,
+    queue: Arc<PostgresFlowTaskQueue>,
+    interval: Duration,
+    lease_duration: chrono::Duration,
+}
+
+impl FlowOperationCoordinator {
+    pub fn new(
+        reconciler: crate::modules::operations::OperationReconciler,
+        flow: &FlowInfrastructure,
+        interval: Duration,
+        lease_duration: Duration,
+    ) -> Result<Self, FlowCoordinatorError> {
+        let lease_duration = chrono::Duration::from_std(lease_duration)
+            .map_err(|_| FlowCoordinatorError::InvalidLease)?;
+        Ok(Self {
+            reconciler,
+            scheduler: FlowScheduler::new(flow.engine(), flow.queue()),
+            worker: FlowWorker::new(flow.engine(), flow.queue()),
+            queue: flow.queue(),
+            interval,
+            lease_duration,
+        })
+    }
+
+    pub async fn run_once(&self) -> Result<FlowCoordinatorReport, FlowCoordinatorError> {
+        let recovered_tasks = self
+            .queue
+            .requeue_inflight_older_than(Utc::now() - self.lease_duration)
+            .await?;
+        let before = self.reconciler.run_once().await?;
+        let tick = self.scheduler.enqueue_due_work(Utc::now()).await?;
+        let handled_tasks = self.worker.run_until_idle().await?.len();
+        let after = self.reconciler.run_once().await?;
+        Ok(FlowCoordinatorReport {
+            reconciled_before_work: before.projected,
+            reconciled_after_work: after.projected,
+            reconciliation_failures: before.failures.len() + after.failures.len(),
+            recovered_tasks,
+            enqueued_tasks: tick.enqueued_tasks,
+            handled_tasks,
+        })
+    }
+
+    pub async fn run(self, mut shutdown: watch::Receiver<bool>) {
+        let mut ticker = tokio::time::interval(self.interval);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
+                }
+                _ = ticker.tick() => {
+                    match self.run_once().await {
+                        Ok(report) => {
+                            if report.reconciliation_failures > 0 {
+                                tracing::warn!(
+                                    failures = report.reconciliation_failures,
+                                    "operation Flow cycle completed with reconciliation failures"
+                                );
+                            }
+                            tracing::debug!(
+                                recovered_tasks = report.recovered_tasks,
+                                enqueued_tasks = report.enqueued_tasks,
+                                handled_tasks = report.handled_tasks,
+                                projected = report.reconciled_before_work + report.reconciled_after_work,
+                                "operation Flow cycle completed"
+                            );
+                        }
+                        Err(error) => tracing::error!(error = %error, "operation Flow cycle failed"),
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl FlowInfrastructure {
@@ -70,8 +174,9 @@ impl FlowInfrastructure {
 
 pub async fn connect_flow(
     database_url: &str,
+    runtime: Arc<dyn FlowRuntime>,
 ) -> Result<FlowInfrastructure, FlowInfrastructureError> {
-    FlowInfrastructure::connect(database_url, Arc::new(DeferredCloudRuntime)).await
+    FlowInfrastructure::connect(database_url, runtime).await
 }
 
 fn scoped_postgres_url(database_url: &str) -> Result<Url, FlowInfrastructureError> {
@@ -82,29 +187,6 @@ fn scoped_postgres_url(database_url: &str) -> Result<Url, FlowInfrastructureErro
     url.query_pairs_mut()
         .append_pair("options", &format!("-csearch_path={FLOW_SCHEMA}"));
     Ok(url)
-}
-
-#[derive(Debug, Clone, Copy)]
-struct DeferredCloudRuntime;
-
-#[async_trait]
-impl FlowRuntime for DeferredCloudRuntime {
-    async fn run_workflow(
-        &self,
-        invocation: WorkflowInvocation,
-    ) -> a3s_flow::Result<RuntimeCommand> {
-        Err(FlowError::Runtime(format!(
-            "Cloud workflow {:?} has no registered runtime",
-            invocation.spec.name
-        )))
-    }
-
-    async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<serde_json::Value> {
-        Err(FlowError::Runtime(format!(
-            "Cloud step {:?} has no registered runtime",
-            invocation.step_name
-        )))
-    }
 }
 
 #[cfg(test)]

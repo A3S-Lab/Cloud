@@ -33,6 +33,19 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeControlConfig {
+    pub host: String,
+    pub port: u16,
+    pub server_name: String,
+    pub certificate_file: String,
+    pub private_key_file: String,
+    pub client_ca_file: String,
+    pub max_request_bytes: usize,
+    pub tls_handshake_timeout_ms: u64,
+    pub request_body_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresConfig {
     pub url_env: String,
     pub max_connections: usize,
@@ -81,12 +94,96 @@ pub struct OperationsConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeploymentsConfig {
+    pub reconcile_interval_ms: u64,
+    pub command_ttl_ms: u64,
+    pub runtime_apply_timeout_ms: u64,
+    pub observation_poll_ms: u64,
+    pub convergence_timeout_ms: u64,
+    pub runtime_stop_timeout_ms: u64,
+    pub cleanup_poll_ms: u64,
+    pub cleanup_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryConfig {
+    pub request_timeout_ms: u64,
+    pub insecure_hosts: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FleetConfig {
+    pub heartbeat_interval_ms: u64,
+    pub heartbeat_timeout_ms: u64,
+    pub command_long_poll_ms: u64,
+    pub command_lease_ms: u64,
+    pub certificate_ttl_ms: u64,
+    pub certificate_rotation_window_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityProfile {
+    Development,
+    Production,
+}
+
+impl SecurityProfile {
+    fn parse(value: &str) -> Result<Self, ConfigError> {
+        match value {
+            "development" => Ok(Self::Development),
+            "production" => Ok(Self::Production),
+            _ => Err(ConfigError::Invalid(format!(
+                "security.profile {value:?} must be development or production"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityProviderKind {
+    Local,
+    Vault,
+}
+
+impl SecurityProviderKind {
+    fn parse(field: &str, value: &str) -> Result<Self, ConfigError> {
+        match value {
+            "local" => Ok(Self::Local),
+            "vault" => Ok(Self::Vault),
+            _ => Err(ConfigError::Invalid(format!(
+                "security.{field} {value:?} must be local or vault"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecurityConfig {
+    pub profile: SecurityProfile,
+    pub state_dir: String,
+    pub certificate_authority: SecurityProviderKind,
+    pub key_encryption: SecurityProviderKind,
+    pub vault_address_env: String,
+    pub vault_token_env: String,
+    pub vault_pki_mount: String,
+    pub vault_pki_role: String,
+    pub vault_transit_mount: String,
+    pub vault_transit_key: String,
+    pub vault_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloudConfig {
     pub server: ServerConfig,
+    pub node_control: NodeControlConfig,
     pub postgres: PostgresConfig,
     pub auth: AuthConfig,
     pub events: EventsConfig,
     pub operations: OperationsConfig,
+    pub deployments: DeploymentsConfig,
+    pub registry: RegistryConfig,
+    pub fleet: FleetConfig,
+    pub security: SecurityConfig,
 }
 
 impl CloudConfig {
@@ -105,6 +202,21 @@ impl CloudConfig {
         validate_root(&document)?;
         let server = one_block(&document, "server")?;
         validate_block(server, &["host", "port", "role"])?;
+        let node_control = one_block(&document, "node_control")?;
+        validate_block(
+            node_control,
+            &[
+                "host",
+                "port",
+                "server_name",
+                "certificate_file",
+                "private_key_file",
+                "client_ca_file",
+                "max_request_bytes",
+                "tls_handshake_timeout_ms",
+                "request_body_timeout_ms",
+            ],
+        )?;
         let postgres = one_block(&document, "postgres")?;
         validate_block(postgres, &["url_env", "max_connections"])?;
         let auth = one_block(&document, "auth")?;
@@ -126,12 +238,68 @@ impl CloudConfig {
         )?;
         let operations = one_block(&document, "operations")?;
         validate_block(operations, &["reconcile_interval_ms", "lease_ms"])?;
+        let deployments = one_block(&document, "deployments")?;
+        validate_block(
+            deployments,
+            &[
+                "command_ttl_ms",
+                "reconcile_interval_ms",
+                "runtime_apply_timeout_ms",
+                "observation_poll_ms",
+                "convergence_timeout_ms",
+                "runtime_stop_timeout_ms",
+                "cleanup_poll_ms",
+                "cleanup_timeout_ms",
+            ],
+        )?;
+        let registry = one_block(&document, "registry")?;
+        validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
+        let fleet = one_block(&document, "fleet")?;
+        validate_block(
+            fleet,
+            &[
+                "heartbeat_interval_ms",
+                "heartbeat_timeout_ms",
+                "command_long_poll_ms",
+                "command_lease_ms",
+                "certificate_ttl_ms",
+                "certificate_rotation_window_ms",
+            ],
+        )?;
+        let security = one_block(&document, "security")?;
+        validate_block(
+            security,
+            &[
+                "profile",
+                "state_dir",
+                "certificate_authority",
+                "key_encryption",
+                "vault_address_env",
+                "vault_token_env",
+                "vault_pki_mount",
+                "vault_pki_role",
+                "vault_transit_mount",
+                "vault_transit_key",
+                "vault_timeout_ms",
+            ],
+        )?;
 
         let config = Self {
             server: ServerConfig {
                 host: string(server, "host")?,
                 port: integer(server, "port")?,
                 role: ProcessRole::parse(&string(server, "role")?)?,
+            },
+            node_control: NodeControlConfig {
+                host: string(node_control, "host")?,
+                port: integer(node_control, "port")?,
+                server_name: string(node_control, "server_name")?,
+                certificate_file: string(node_control, "certificate_file")?,
+                private_key_file: string(node_control, "private_key_file")?,
+                client_ca_file: string(node_control, "client_ca_file")?,
+                max_request_bytes: integer(node_control, "max_request_bytes")?,
+                tls_handshake_timeout_ms: integer(node_control, "tls_handshake_timeout_ms")?,
+                request_body_timeout_ms: integer(node_control, "request_body_timeout_ms")?,
             },
             postgres: PostgresConfig {
                 url_env: string(postgres, "url_env")?,
@@ -155,6 +323,47 @@ impl CloudConfig {
                 reconcile_interval_ms: integer(operations, "reconcile_interval_ms")?,
                 lease_ms: integer(operations, "lease_ms")?,
             },
+            deployments: DeploymentsConfig {
+                reconcile_interval_ms: integer(deployments, "reconcile_interval_ms")?,
+                command_ttl_ms: integer(deployments, "command_ttl_ms")?,
+                runtime_apply_timeout_ms: integer(deployments, "runtime_apply_timeout_ms")?,
+                observation_poll_ms: integer(deployments, "observation_poll_ms")?,
+                convergence_timeout_ms: integer(deployments, "convergence_timeout_ms")?,
+                runtime_stop_timeout_ms: integer(deployments, "runtime_stop_timeout_ms")?,
+                cleanup_poll_ms: integer(deployments, "cleanup_poll_ms")?,
+                cleanup_timeout_ms: integer(deployments, "cleanup_timeout_ms")?,
+            },
+            registry: RegistryConfig {
+                request_timeout_ms: integer(registry, "request_timeout_ms")?,
+                insecure_hosts: string_list(registry, "insecure_hosts")?,
+            },
+            fleet: FleetConfig {
+                heartbeat_interval_ms: integer(fleet, "heartbeat_interval_ms")?,
+                heartbeat_timeout_ms: integer(fleet, "heartbeat_timeout_ms")?,
+                command_long_poll_ms: integer(fleet, "command_long_poll_ms")?,
+                command_lease_ms: integer(fleet, "command_lease_ms")?,
+                certificate_ttl_ms: integer(fleet, "certificate_ttl_ms")?,
+                certificate_rotation_window_ms: integer(fleet, "certificate_rotation_window_ms")?,
+            },
+            security: SecurityConfig {
+                profile: SecurityProfile::parse(&string(security, "profile")?)?,
+                state_dir: string(security, "state_dir")?,
+                certificate_authority: SecurityProviderKind::parse(
+                    "certificate_authority",
+                    &string(security, "certificate_authority")?,
+                )?,
+                key_encryption: SecurityProviderKind::parse(
+                    "key_encryption",
+                    &string(security, "key_encryption")?,
+                )?,
+                vault_address_env: string(security, "vault_address_env")?,
+                vault_token_env: string(security, "vault_token_env")?,
+                vault_pki_mount: string(security, "vault_pki_mount")?,
+                vault_pki_role: string(security, "vault_pki_role")?,
+                vault_transit_mount: string(security, "vault_transit_mount")?,
+                vault_transit_key: string(security, "vault_transit_key")?,
+                vault_timeout_ms: integer(security, "vault_timeout_ms")?,
+            },
         };
         config.validate()?;
         Ok(config)
@@ -169,6 +378,39 @@ impl CloudConfig {
         if self.server.port == 0 {
             return Err(ConfigError::Invalid(
                 "server.port must be greater than zero".into(),
+            ));
+        }
+        if self.node_control.host.trim().is_empty()
+            || self.node_control.host.len() > 255
+            || self.node_control.port == 0
+            || self.node_control.server_name.trim().is_empty()
+            || self.node_control.server_name.len() > 255
+            || self.node_control.max_request_bytes < 1024 * 1024
+            || self.node_control.max_request_bytes > 64 * 1024 * 1024
+            || self.node_control.tls_handshake_timeout_ms == 0
+            || self.node_control.tls_handshake_timeout_ms > 60_000
+            || self.node_control.request_body_timeout_ms == 0
+            || self.node_control.request_body_timeout_ms > 60_000
+        {
+            return Err(ConfigError::Invalid(
+                "node_control requires a valid address, server name, 1-64 MiB request bound, and independent 1-60000 ms TLS handshake and request body timeouts"
+                    .into(),
+            ));
+        }
+        for (label, value) in [
+            ("certificate_file", &self.node_control.certificate_file),
+            ("private_key_file", &self.node_control.private_key_file),
+            ("client_ca_file", &self.node_control.client_ca_file),
+        ] {
+            if value.trim().is_empty() || value.len() > 4096 || value.contains('\0') {
+                return Err(ConfigError::Invalid(format!(
+                    "node_control.{label} is invalid"
+                )));
+            }
+        }
+        if self.node_control.certificate_file == self.node_control.private_key_file {
+            return Err(ConfigError::Invalid(
+                "node_control certificate and private key files must differ".into(),
             ));
         }
         if !valid_env_name(&self.postgres.url_env) {
@@ -224,6 +466,98 @@ impl CloudConfig {
                 "operations.lease_ms must exceed a positive reconcile interval".into(),
             ));
         }
+        if [
+            self.deployments.reconcile_interval_ms,
+            self.deployments.command_ttl_ms,
+            self.deployments.runtime_apply_timeout_ms,
+            self.deployments.observation_poll_ms,
+            self.deployments.convergence_timeout_ms,
+            self.deployments.runtime_stop_timeout_ms,
+            self.deployments.cleanup_poll_ms,
+            self.deployments.cleanup_timeout_ms,
+        ]
+        .contains(&0)
+        {
+            return Err(ConfigError::Invalid(
+                "deployment reconciliation, command, Runtime apply, convergence, Runtime stop, cleanup poll, and cleanup deadlines must each be positive"
+                    .into(),
+            ));
+        }
+        if self.registry.request_timeout_ms == 0
+            || self.registry.request_timeout_ms > 60_000
+            || self.registry.insecure_hosts.len() > 64
+            || self.registry.insecure_hosts.iter().any(|host| {
+                host.is_empty()
+                    || host.len() > 255
+                    || host.contains(['/', '@', '\\', '\0', '\r', '\n', ' ', '\t'])
+            })
+        {
+            return Err(ConfigError::Invalid(
+                "registry requires a 1-60000 ms request timeout and at most 64 explicit insecure host[:port] values"
+                    .into(),
+            ));
+        }
+        let mut unique_registry_hosts = self.registry.insecure_hosts.clone();
+        unique_registry_hosts.sort();
+        unique_registry_hosts.dedup();
+        if unique_registry_hosts.len() != self.registry.insecure_hosts.len() {
+            return Err(ConfigError::Invalid(
+                "registry.insecure_hosts cannot contain duplicates".into(),
+            ));
+        }
+        if self.fleet.heartbeat_interval_ms == 0
+            || self.fleet.heartbeat_timeout_ms <= self.fleet.heartbeat_interval_ms
+            || self.fleet.command_long_poll_ms == 0
+            || self.fleet.command_long_poll_ms > 60_000
+            || self.fleet.command_lease_ms <= self.fleet.command_long_poll_ms
+            || !(300_000..=86_400_000).contains(&self.fleet.certificate_ttl_ms)
+            || self.fleet.certificate_rotation_window_ms == 0
+            || self.fleet.certificate_rotation_window_ms >= self.fleet.certificate_ttl_ms
+        {
+            return Err(ConfigError::Invalid(
+                "fleet timing requires bounded independent heartbeat, command lease, and certificate windows"
+                    .into(),
+            ));
+        }
+        if self.security.state_dir.trim().is_empty()
+            || self.security.state_dir.len() > 4096
+            || self.security.state_dir.contains('\0')
+        {
+            return Err(ConfigError::Invalid("security.state_dir is invalid".into()));
+        }
+        for (label, value) in [
+            ("vault_address_env", &self.security.vault_address_env),
+            ("vault_token_env", &self.security.vault_token_env),
+        ] {
+            if !valid_env_name(value) {
+                return Err(ConfigError::Invalid(format!(
+                    "security.{label} must be an uppercase environment variable name"
+                )));
+            }
+        }
+        for (label, value) in [
+            ("vault_pki_mount", &self.security.vault_pki_mount),
+            ("vault_pki_role", &self.security.vault_pki_role),
+            ("vault_transit_mount", &self.security.vault_transit_mount),
+            ("vault_transit_key", &self.security.vault_transit_key),
+        ] {
+            if !valid_provider_segment(value) {
+                return Err(ConfigError::Invalid(format!("security.{label} is invalid")));
+            }
+        }
+        if self.security.vault_timeout_ms == 0 || self.security.vault_timeout_ms > 60_000 {
+            return Err(ConfigError::Invalid(
+                "security.vault_timeout_ms must be between 1 and 60000".into(),
+            ));
+        }
+        if self.security.profile == SecurityProfile::Production
+            && (self.security.certificate_authority != SecurityProviderKind::Vault
+                || self.security.key_encryption != SecurityProviderKind::Vault)
+        {
+            return Err(ConfigError::Invalid(
+                "production security requires external Vault PKI and Transit providers".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -231,6 +565,12 @@ impl CloudConfig {
         format!("{}:{}", self.server.host, self.server.port)
             .parse()
             .map_err(|error| ConfigError::Invalid(format!("invalid server address: {error}")))
+    }
+
+    pub fn node_control_address(&self) -> Result<SocketAddr, ConfigError> {
+        format!("{}:{}", self.node_control.host, self.node_control.port)
+            .parse()
+            .map_err(|error| ConfigError::Invalid(format!("invalid node-control address: {error}")))
     }
 
     pub fn postgres_url(&self) -> Result<String, ConfigError> {
@@ -271,6 +611,23 @@ impl CloudConfig {
         }
         Ok(value)
     }
+
+    pub fn vault_credentials(&self) -> Result<Option<(String, String)>, ConfigError> {
+        if self.security.certificate_authority != SecurityProviderKind::Vault
+            && self.security.key_encryption != SecurityProviderKind::Vault
+        {
+            return Ok(None);
+        }
+        let address = required_environment(&self.security.vault_address_env)?;
+        let token = required_environment(&self.security.vault_token_env)?;
+        if token.is_empty() || token.len() > 8192 || token.contains(['\0', '\r', '\n']) {
+            return Err(ConfigError::Invalid(format!(
+                "environment variable {:?} is not a valid Vault token",
+                self.security.vault_token_env
+            )));
+        }
+        Ok(Some((address, token)))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -286,7 +643,18 @@ pub enum ConfigError {
 }
 
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
-    let allowed = ["auth", "events", "operations", "postgres", "server"];
+    let allowed = [
+        "auth",
+        "events",
+        "deployments",
+        "fleet",
+        "node_control",
+        "operations",
+        "postgres",
+        "registry",
+        "security",
+        "server",
+    ];
     if document
         .blocks
         .iter()
@@ -304,6 +672,20 @@ fn valid_env_name(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn valid_provider_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 255
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn required_environment(name: &str) -> Result<String, ConfigError> {
+    std::env::var(name).map_err(|_| {
+        ConfigError::Invalid(format!("required environment variable {name:?} is not set"))
+    })
 }
 
 fn one_block<'a>(document: &'a Document, name: &str) -> Result<&'a Block, ConfigError> {
@@ -373,12 +755,46 @@ where
         .map_err(|_| ConfigError::Invalid(format!("{}.{} is out of range", block.name, field)))
 }
 
+fn string_list(block: &Block, field: &str) -> Result<Vec<String>, ConfigError> {
+    let values = match block.attributes.get(field) {
+        Some(Value::List(values)) => values,
+        _ => {
+            return Err(ConfigError::Invalid(format!(
+                "{}.{} must be a list of strings",
+                block.name, field
+            )))
+        }
+    };
+    values
+        .iter()
+        .map(|value| {
+            value.as_str().map(str::to_owned).ok_or_else(|| {
+                ConfigError::Invalid(format!(
+                    "{}.{} must contain only strings",
+                    block.name, field
+                ))
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const VALID: &str = r#"
 server { host = "127.0.0.1" port = 8080 role = "all" }
+node_control {
+  host = "127.0.0.1"
+  port = 8443
+  server_name = "localhost"
+  certificate_file = ".a3s/cloud/security/node-control/server.pem"
+  private_key_file = ".a3s/cloud/security/node-control/server-key.pem"
+  client_ca_file = ".a3s/cloud/security/node-ca/ca.pem"
+  max_request_bytes = 20971520
+  tls_handshake_timeout_ms = 5000
+  request_body_timeout_ms = 10000
+}
 postgres { url_env = "A3S_CLOUD_POSTGRES_URL" max_connections = 16 }
 auth { bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN" }
 events {
@@ -393,6 +809,41 @@ events {
   retry_max_ms = 30000
 }
 operations { reconcile_interval_ms = 5000 lease_ms = 30000 }
+deployments {
+  reconcile_interval_ms = 30000
+  command_ttl_ms = 180000
+  runtime_apply_timeout_ms = 120000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 600000
+  runtime_stop_timeout_ms = 60000
+  cleanup_poll_ms = 1000
+  cleanup_timeout_ms = 300000
+}
+registry {
+  request_timeout_ms = 10000
+  insecure_hosts = ["127.0.0.1:5000"]
+}
+fleet {
+  heartbeat_interval_ms = 5000
+  heartbeat_timeout_ms = 20000
+  command_long_poll_ms = 25000
+  command_lease_ms = 30000
+  certificate_ttl_ms = 3600000
+  certificate_rotation_window_ms = 900000
+}
+security {
+  profile = "development"
+  state_dir = ".a3s/cloud/security"
+  certificate_authority = "local"
+  key_encryption = "local"
+  vault_address_env = "A3S_CLOUD_VAULT_ADDR"
+  vault_token_env = "A3S_CLOUD_VAULT_TOKEN"
+  vault_pki_mount = "pki"
+  vault_pki_role = "a3s-cloud-node"
+  vault_transit_mount = "transit"
+  vault_transit_key = "a3s-cloud"
+  vault_timeout_ms = 5000
+}
 "#;
 
     #[test]
@@ -403,6 +854,7 @@ operations { reconcile_interval_ms = 5000 lease_ms = 30000 }
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.security.profile, SecurityProfile::Development);
     }
 
     #[test]
@@ -414,6 +866,10 @@ operations { reconcile_interval_ms = 5000 lease_ms = 30000 }
         assert!(CloudConfig::parse(&VALID.replace("lease_ms = 30000", "lease_ms = 1000")).is_err());
         assert!(CloudConfig::parse(
             &VALID.replace("publish_timeout_ms = 3000", "publish_timeout_ms = 10000")
+        )
+        .is_err());
+        assert!(CloudConfig::parse(
+            &VALID.replace("profile = \"development\"", "profile = \"production\"")
         )
         .is_err());
     }

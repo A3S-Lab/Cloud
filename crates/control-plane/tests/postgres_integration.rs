@@ -1,7 +1,8 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_cloud_control_plane::config::{
-    AuthConfig, EventProviderKind, EventsConfig, OperationsConfig, PostgresConfig, ProcessRole,
-    ServerConfig,
+    AuthConfig, DeploymentsConfig, EventProviderKind, EventsConfig, FleetConfig, NodeControlConfig,
+    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    SecurityProviderKind, ServerConfig,
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::integration_events::{
@@ -21,111 +22,61 @@ use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowI
 use a3s_orm::{sql_query, Database, Migration, Migrator, PostgresDialect, PostgresExecutor};
 use async_trait::async_trait;
 use chrono::Utc;
+use futures_util::FutureExt;
 use serde_json::{json, Value};
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const URL_ENV: &str = "A3S_CLOUD_INTEGRATION_POSTGRES_URL";
-const BOOTSTRAP_ENV: &str = "A3S_CLOUD_INTEGRATION_BOOTSTRAP_TOKEN";
-const BOOTSTRAP_TOKEN: &str = "integration-bootstrap-credential-0123456789abcdef";
-const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const PROJECT_TOKEN: &str = "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+#[path = "support/cancellation.rs"]
+mod cancellation_support;
+#[path = "support/deployment_flow.rs"]
+mod deployment_flow_support;
+#[path = "support/fleet.rs"]
+mod fleet_support;
+#[path = "support/postgres_fixture.rs"]
+mod postgres_fixture;
+#[path = "support/workloads.rs"]
+mod workloads_support;
 
-#[derive(Debug, Clone, Copy)]
-struct CompletingRuntime;
-
-#[async_trait]
-impl FlowRuntime for CompletingRuntime {
-    async fn run_workflow(
-        &self,
-        invocation: WorkflowInvocation,
-    ) -> a3s_flow::Result<RuntimeCommand> {
-        let output = invocation.input.clone();
-        Ok(invocation.context().complete(output))
-    }
-
-    async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<serde_json::Value> {
-        Err(FlowError::Runtime(format!(
-            "integration runtime does not support step {:?}",
-            invocation.step_name
-        )))
-    }
-}
-
-fn post_json(path: impl Into<String>, idempotency_key: &str, body: Value) -> BootRequest {
-    post_json_as(path, idempotency_key, body, ADMIN_TOKEN)
-}
-
-fn post_json_as(
-    path: impl Into<String>,
-    idempotency_key: &str,
-    body: Value,
-    token: &str,
-) -> BootRequest {
-    BootRequest::new(HttpMethod::Post, path.into())
-        .with_header("content-type", "application/json")
-        .with_header("idempotency-key", idempotency_key)
-        .with_header("authorization", format!("Bearer {token}"))
-        .with_body(body.to_string().into_bytes())
-}
-
-fn delete_as(path: impl Into<String>, idempotency_key: &str, token: &str) -> BootRequest {
-    BootRequest::new(HttpMethod::Delete, path.into())
-        .with_header("idempotency-key", idempotency_key)
-        .with_header("authorization", format!("Bearer {token}"))
-}
-
-fn response_json(response: &BootResponse) -> a3s_boot::Result<Value> {
-    response.body_json()
-}
-
-fn response_id(response: &BootResponse) -> a3s_boot::Result<String> {
-    response_json(response)?["data"]["id"]
-        .as_str()
-        .map(str::to_owned)
-        .ok_or_else(|| BootError::Internal("response does not contain a resource ID".into()))
-}
-
-fn config() -> CloudConfig {
-    CloudConfig {
-        server: ServerConfig {
-            host: "127.0.0.1".into(),
-            port: 8080,
-            role: ProcessRole::All,
-        },
-        postgres: PostgresConfig {
-            url_env: URL_ENV.into(),
-            max_connections: 8,
-        },
-        auth: AuthConfig {
-            bootstrap_token_env: BOOTSTRAP_ENV.into(),
-        },
-        events: EventsConfig {
-            provider: EventProviderKind::Memory,
-            nats_url_env: "A3S_CLOUD_NATS_URL".into(),
-            stream_name: "A3S_CLOUD_EVENTS".into(),
-            batch_size: 100,
-            poll_interval_ms: 250,
-            lease_ms: 10_000,
-            publish_timeout_ms: 3_000,
-            retry_initial_ms: 500,
-            retry_max_ms: 30_000,
-        },
-        operations: OperationsConfig {
-            reconcile_interval_ms: 1_000,
-            lease_ms: 5_000,
-        },
-    }
-}
+use postgres_fixture::*;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_foundation_is_migrated_atomic_and_idempotent(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return Ok(());
     };
+    let isolated = IsolatedPostgresDatabase::create(&admin_url).await?;
+    let result = AssertUnwindSafe(exercise_postgres_foundation(isolated.url().to_owned()))
+        .catch_unwind()
+        .await;
+    let cleanup = isolated.cleanup().await;
+
+    match result {
+        Ok(Ok(())) => cleanup,
+        Ok(Err(test_error)) => {
+            if let Err(cleanup_error) = cleanup {
+                return Err(std::io::Error::other(format!(
+                    "PostgreSQL integration test failed: {test_error}; isolated database cleanup also failed: {cleanup_error}"
+                ))
+                .into());
+            }
+            Err(test_error)
+        }
+        Err(panic_payload) => {
+            if let Err(cleanup_error) = cleanup {
+                eprintln!(
+                    "isolated PostgreSQL database cleanup failed after test panic: {cleanup_error}"
+                );
+            }
+            std::panic::resume_unwind(panic_payload)
+        }
+    }
+}
+
+async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::error::Error>> {
     let admin = PostgresExecutor::connect_no_tls(&url, 4)?;
     admin
         .pool()
@@ -133,6 +84,21 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists deployments cascade;
+             drop table if exists workload_revisions cascade;
+             drop table if exists workloads cascade;
+             drop table if exists node_gateway_acknowledgements cascade;
+             drop table if exists node_log_batch_chunks cascade;
+             drop table if exists node_log_chunks cascade;
+             drop table if exists node_log_batches cascade;
+             drop table if exists node_log_chunk_receipts cascade;
+             drop table if exists runtime_observations cascade;
+             drop table if exists node_commands cascade;
+             drop table if exists node_certificate_rotations cascade;
+             drop table if exists node_certificates cascade;
+             drop table if exists node_enrollment_reservations cascade;
+             drop table if exists nodes cascade;
+             drop table if exists enrollment_tokens cascade;
              drop table if exists api_tokens cascade;
              drop table if exists operation_projections cascade;
              drop table if exists operation_requests cascade;
@@ -156,7 +122,13 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 4);
+    assert_eq!(applied, 9);
+    let deployment_version_checks = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
+        ))
+        .await?;
+    assert_eq!(deployment_version_checks, 1);
 
     let drift = Migrator::new(executor.clone())
         .run([Migration::new("001", "changed", "select 1")])
@@ -202,6 +174,46 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
             ),
             Migration::new(
                 "005",
+                "fleet node control",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/005_fleet.sql"
+                )),
+            ),
+            Migration::new(
+                "006",
+                "workloads and deployments",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/006_workloads.sql"
+                )),
+            ),
+            Migration::new(
+                "007",
+                "deployment cancellation cleanup",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/007_deployment_cleanup.sql"
+                )),
+            ),
+            Migration::new(
+                "008",
+                "workload revision resolution",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/008_workload_revision_resolution.sql"
+                )),
+            ),
+            Migration::new(
+                "009",
+                "same-generation Runtime apply recovery",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/009_runtime_apply_recovery.sql"
+                )),
+            ),
+            Migration::new(
+                "010",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -215,9 +227,27 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
         .await?;
     assert_eq!(rollback_probe, None);
 
-    std::env::set_var(URL_ENV, &url);
-    std::env::set_var(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
-    let app = build_application(config()).await?;
+    let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
+    let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
+    let security_directory = tempfile::tempdir()?;
+    let mut application_config = config();
+    application_config.security.state_dir = security_directory.path().display().to_string();
+    application_config.node_control.certificate_file = security_directory
+        .path()
+        .join("node-control/server.pem")
+        .display()
+        .to_string();
+    application_config.node_control.private_key_file = security_directory
+        .path()
+        .join("node-control/server-key.pem")
+        .display()
+        .to_string();
+    application_config.node_control.client_ca_file = security_directory
+        .path()
+        .join("node-ca/ca.pem")
+        .display()
+        .to_string();
+    let app = build_application(application_config).await?;
     let readiness = app
         .call(
             BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
@@ -316,6 +346,7 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
         response_id(&environment)?,
         response_id(&environment_replay)?
     );
+    let environment_id = response_id(&environment)?;
 
     let cross_tenant = app
         .call(post_json(
@@ -681,7 +712,177 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
         .await?;
     assert_eq!(stored_organization, 0);
     assert_eq!(stored_idempotency, 0);
-    std::env::remove_var(URL_ENV);
-    std::env::remove_var(BOOTSTRAP_ENV);
+
+    let workload_path = format!(
+        "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/workloads"
+    );
+    let workload_body = json!({
+        "name": "API fixture",
+        "template": {
+            "artifact": {
+                "uri": "oci://docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+                "expectedDigest": "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
+            },
+            "process": {
+                "command": ["/bin/sh"],
+                "args": ["-c", "mkdir -p /www && printf 'healthy\\n' >/www/index.html && exec httpd -f -p 8080 -h /www"],
+                "workingDirectory": null,
+                "environment": {}
+            },
+            "resources": {
+                "cpuMillis": 250,
+                "memoryBytes": 67108864,
+                "pids": 64,
+                "ephemeralStorageBytes": null
+            },
+            "ports": [{"name": "http", "containerPort": 8080}],
+            "health": {
+                "portName": "http",
+                "path": "/",
+                "intervalMs": 100,
+                "timeoutMs": 100,
+                "healthyThreshold": 2,
+                "unhealthyThreshold": 20,
+                "stabilizationWindowMs": 100
+            }
+        }
+    });
+    let created_workload = app
+        .call(post_json(
+            &workload_path,
+            "api-workload-fixture",
+            workload_body.clone(),
+        ))
+        .await?;
+    let replayed_workload = app
+        .call(post_json(
+            &workload_path,
+            "api-workload-fixture",
+            workload_body.clone(),
+        ))
+        .await?;
+    assert_eq!(created_workload.status(), 202);
+    assert_eq!(replayed_workload.status(), 200);
+    assert_eq!(
+        response_json(&created_workload)?["data"]["deploymentId"],
+        response_json(&replayed_workload)?["data"]["deploymentId"]
+    );
+    assert_eq!(response_json(&replayed_workload)?["data"]["replayed"], true);
+    let changed_workload = app
+        .call(post_json(
+            &workload_path,
+            "api-workload-fixture",
+            json!({"name": "Changed", "template": workload_body["template"].clone()}),
+        ))
+        .await?;
+    assert_eq!(changed_workload.status(), 409);
+
+    deployment_flow_support::exercise_deployment_flow(
+        &executor,
+        &url,
+        Uuid::parse_str(&organization_id)?,
+        &response_json(&created_workload)?["data"],
+    )
+    .await?;
+
+    let created_workload_body = response_json(&created_workload)?;
+    let workload_id = created_workload_body["data"]["workloadId"]
+        .as_str()
+        .ok_or("workload creation response omitted workloadId")?
+        .to_owned();
+    let deployment_id = created_workload_body["data"]["deploymentId"]
+        .as_str()
+        .ok_or("workload creation response omitted deploymentId")?
+        .to_owned();
+    let listed_workloads = app.call(get_as(&workload_path, ADMIN_TOKEN)).await?;
+    assert_eq!(listed_workloads.status(), 200);
+    let listed = &response_json(&listed_workloads)?["data"];
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+    assert_eq!(listed[0]["id"], workload_id);
+    assert_eq!(listed[0]["desiredRevision"]["generation"], 1);
+    assert_eq!(listed[0]["activeRevision"]["generation"], 1);
+    assert_eq!(listed[0]["deployments"][0]["status"], "active");
+    assert_eq!(
+        listed[0]["deployments"][0]["observedRuntime"]["state"],
+        "running"
+    );
+    assert_eq!(
+        listed[0]["deployments"][0]["observedRuntime"]["healthState"],
+        "healthy"
+    );
+
+    let workload_detail = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization_id}/workloads/{workload_id}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(workload_detail.status(), 200);
+    assert_eq!(response_json(&workload_detail)?["data"]["id"], workload_id);
+
+    let deployment_detail = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization_id}/deployments/{deployment_id}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(deployment_detail.status(), 200);
+    assert_eq!(
+        response_json(&deployment_detail)?["data"]["id"],
+        deployment_id
+    );
+
+    cancellation_support::exercise_deployment_cancellation(
+        cancellation_support::CancellationScenario {
+            app: &app,
+            executor: &executor,
+            postgres_url: &url,
+            organization_id: &organization_id,
+            workload_path: &workload_path,
+            workload_body,
+            active_deployment_id: &deployment_id,
+            admin_token: ADMIN_TOKEN,
+        },
+    )
+    .await?;
+
+    let stop_path = format!("/api/v1/organizations/{organization_id}/workloads/{workload_id}/stop");
+    let stop = app
+        .call(post_json(&stop_path, "api-stop-workload", json!({})))
+        .await?;
+    let stop_replay = app
+        .call(post_json(&stop_path, "api-stop-workload", json!({})))
+        .await?;
+    assert_eq!(stop.status(), 202);
+    assert_eq!(stop_replay.status(), 200);
+    assert_eq!(response_json(&stop)?["data"]["desiredState"], "stopped");
+    assert_eq!(response_json(&stop_replay)?["data"]["replayed"], true);
+    assert_eq!(
+        response_json(&stop)?["data"]["operationId"],
+        response_json(&stop_replay)?["data"]["operationId"]
+    );
+    let stopped_detail = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization_id}/workloads/{workload_id}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&stopped_detail)?["data"]["desiredState"],
+        "stopped"
+    );
+    assert_eq!(
+        response_json(&stopped_detail)?["data"]["activeRevision"]["generation"],
+        1
+    );
+
+    fleet_support::exercise_fleet(&executor, Uuid::parse_str(&organization_id)?).await?;
+    workloads_support::exercise_workloads(
+        &executor,
+        Uuid::parse_str(&organization_id)?,
+        Uuid::parse_str(&project_id)?,
+        Uuid::parse_str(&environment_id)?,
+    )
+    .await?;
     Ok(())
 }

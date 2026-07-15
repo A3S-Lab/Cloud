@@ -55,6 +55,21 @@ flowchart LR
 The first release gate is `E0`. Hosted assets and stateful services begin only
 after that loop is repeatable under crash and retry tests.
 
+### 3.1 Verified delivery status
+
+Status as of 2026-07-15:
+
+| Gate | State | Release evidence |
+| --- | --- | --- |
+| R0 | Verified | General Task and Service conformance passes against the real Docker provider |
+| F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
+| N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
+| D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
+| E0 | Planned | Gateway TLS, ordered log storage, update, rollback, and their crash gates are not implemented |
+
+The MVP is not complete until E0 passes. D0 verification does not imply public
+reachability, production log retention, rolling update, or rollback support.
+
 ## 4. Milestone R0: generalize A3S Runtime
 
 ### Goal
@@ -191,6 +206,8 @@ its general Runtime provider.
 - The Task and Service Runtime conformance suites pass on real Linux/Docker.
 
 ## 7. Milestone D0: digest-pinned OCI deployment
+
+**Status:** Verified on 2026-07-15.
 
 ### Goal
 
@@ -456,23 +473,43 @@ For every case, the assertions are the same: one desired generation, at most
 one live provider unit for that generation, no false success, a terminal or
 explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 
-## 15. First implementation backlog
+### Current crash-point evidence
 
-Implementation should begin only after the architecture review accepts R0. The
-first small pull requests are:
+| # | Durable boundary | State | Evidence |
+| ---: | --- | --- | --- |
+| 1 | Aggregate commit before outbox publish | Verified | `postgres_foundation_is_migrated_atomic_and_idempotent` commits the outbox with state, injects lost publish acknowledgements for local and real NATS providers, and proves one logical event after retry |
+| 2 | Deployment commit before Flow run creation | Verified | The PostgreSQL integration gate accepts deployment intent before Flow work, then concurrent operation reconciliation creates one run and replay leaves one history |
+| 3 | Command lease before node receipt | Verified | Fleet persistence and node-agent journal tests redeliver the same command ID, reject conflicts and sequence gaps, and execute Runtime once |
+| 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container |
+| 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
+| 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
+| 7 | Gateway reload before acknowledgement | Planned for E0 | Gateway publication and acknowledgement are not implemented |
+| 8 | Activation before old-revision cleanup | Planned for E0 | Rolling update and rollback cleanup are not implemented |
 
-1. Runtime ADR plus failing Task/Service contract tests.
-2. Runtime v2 core types and capability matcher.
-3. Managed-client generation/idempotency tests and implementation.
-4. Bench-owned profile adapter and consumer migration.
-5. App-local Cloud workspace with `contracts` and a compiling A3S Boot health
-   endpoint.
-6. PostgreSQL migration runner and API response/error contract tests.
-7. Organization/project/environment vertical slice with transactional outbox.
-8. Real NATS provider contract test and production KMS/PKI integration spike;
-   neither blocks single-process development but both must finish before the
-   corresponding distributed or node-production support claim.
+The real-provider commands and PostgreSQL isolation contract are documented in
+the repository README. The integration test creates and removes a unique
+database, so a failed assertion cannot truncate or leave fixture rows in the
+development database.
 
-No node, deployment, route, or asset placeholder should be added before its
-own milestone starts. This keeps the codebase convergent and makes every merged
-surface either usable or a tested prerequisite for the next vertical slice.
+## 15. Next implementation backlog
+
+D0 is closed. The next changes belong only to E0 and should land as vertical,
+independently verified slices:
+
+1. Versioned complete Gateway snapshot contract, node command, validation, and
+   exact-revision acknowledgement.
+2. Route ownership and certificate aggregates with a local deterministic test
+   CA, followed by a real TLS fixture through A3S Gateway.
+3. Ordered stdout/stderr chunk ingestion with cursor resume, bounded buffering,
+   checksummed object storage, redaction, retention, and explicit gaps.
+4. One-node update orchestration that keeps the prior healthy revision until
+   Runtime health and Gateway acknowledgement both succeed.
+5. Manual rollback through the same immutable revision and operation path.
+6. Web route, certificate, log, update-diff, rollback, and terminal-operation
+   surfaces backed only by authoritative projections.
+7. Crash gates for Gateway reload before acknowledgement and activation before
+   old-revision cleanup, followed by the clean-host end-to-end release run.
+
+Hosted assets, stateful services, and multi-node work remain out of scope until
+E0 passes. This keeps every merged surface usable or a tested prerequisite for
+the release loop.

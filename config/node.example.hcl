@@ -1,10 +1,23 @@
 control_plane {
-  url = "https://cloud.example.com"
+  enrollment_url = "http://127.0.0.1:8080/api/v1/node-control/enroll"
+  node_control_url = "https://localhost:8443"
   enrollment_token_env = "A3S_CLOUD_ENROLLMENT_TOKEN"
+  server_ca_file = ".a3s/cloud/security/node-ca/ca.pem"
+  max_response_bytes = 20971520
+  connect_timeout_ms = 5000
+  request_timeout_ms = 10000
+  long_poll_margin_ms = 5000
+  retry_initial_ms = 250
+  retry_max_ms = 30000
 }
 
 node {
   name = "worker-1"
-  state_dir = "/var/lib/a3s-cloud-node"
-  provider = "docker"
+  state_dir = ".a3s/cloud/node"
+}
+
+docker {
+  socket = "unix:///var/run/docker.sock"
+  namespace = "a3s-cloud"
+  operation_timeout_ms = 120000
 }

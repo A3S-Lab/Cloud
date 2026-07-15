@@ -1,5 +1,24 @@
 //! Outbound node control and Runtime provider boundary.
 
+mod agent;
+mod config;
+mod control_plane;
+mod docker;
+mod executor;
+mod identity;
+mod journal;
+mod state_file;
+
+pub use config::{ConfigError, ControlPlaneConfig, DockerConfig, NodeAgentConfig, NodeConfig};
+pub use control_plane::{NodeControlClient, NodeControlClientError, NodeControlTransport};
+pub use docker::DockerRuntimeDriver;
+pub use executor::{CommandExecutionError, CommandExecutor};
+pub use identity::{
+    EnrolledNodeIdentity, FileNodeIdentityStore, IdentityStoreError, NodeIdentityState,
+    PendingNodeIdentity,
+};
+pub use journal::{CommandJournalError, FileCommandJournal, JournalDecision};
+
 use a3s_runtime::ProviderId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,3 +39,6 @@ impl NodeAgentIdentity {
         })
     }
 }
+pub use agent::{
+    run_node_agent, NodeAgentError, NodeAgentSession, NodeRuntimeBinding, NodeRuntimeProvider,
+};

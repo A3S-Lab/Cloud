@@ -1,3 +1,16 @@
+use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::services::{
+    ICertificateAuthority, IKeyEncryptionService, ILogChunkStore,
+};
+use crate::modules::fleet::{
+    AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
+    EnrollNodeHandler, FleetModule, GetNodeHandler, IssueEnrollmentTokenHandler,
+    LeaseNodeCommandsHandler, ListNodesHandler, LocalCertificateAuthority,
+    LocalKeyEncryptionService, LocalLogChunkStore, NodeControlApi, NodeControlServer,
+    PostgresNodeRepository, RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler,
+    RecordNodeObservationsHandler, RotateNodeCertificateHandler, VaultCertificateAuthority,
+    VaultKeyEncryptionService,
+};
 use crate::modules::identity::domain::repositories::IApiTokenRepository;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
@@ -19,11 +32,20 @@ use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, ListEnvironmentsHandler, ListProjectsHandler,
     PostgresProjectsRepository, ProjectsModule,
 };
+use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
+use crate::modules::workloads::domain::services::IOciArtifactResolver;
+use crate::modules::workloads::{
+    CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
+    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, IWorkloadRuntimeControl,
+    ListWorkloadsHandler, OciRegistryArtifactResolver, PostgresWorkloadRepository,
+    StopWorkloadHandler, WorkloadRuntimeReconciler, WorkloadsModule,
+};
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
 use crate::server::ControlPlane;
 use crate::{
-    config::{EventProviderKind, ProcessRole},
+    config::{EventProviderKind, ProcessRole, SecurityProviderKind},
     infrastructure::{connect_and_migrate, postgres_health, PostgresBootstrapError},
     CloudConfig,
 };
@@ -51,6 +73,14 @@ pub enum ControlPlaneStartupError {
     Auth(String),
     #[error("invalid outbox relay configuration: {0}")]
     Outbox(String),
+    #[error("could not initialize security providers: {0}")]
+    Security(String),
+    #[error("could not initialize log storage: {0}")]
+    LogStorage(String),
+    #[error("could not initialize node control: {0}")]
+    NodeControl(String),
+    #[error("could not initialize OCI registry access: {0}")]
+    Registry(String),
     #[error(transparent)]
     Framework(#[from] BootError),
 }
@@ -60,14 +90,90 @@ pub async fn build_application(
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
-    let flow = crate::infrastructure::connect_flow(&postgres_url).await?;
     let event_publisher = event_publisher(&config).await?;
+    let (certificate_authority, key_encryption) = security_providers(&config)?;
+    let log_chunks: Arc<dyn ILogChunkStore> = Arc::new(
+        LocalLogChunkStore::new(std::path::Path::new(&config.security.state_dir).join("logs"))
+            .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
+    );
     let bootstrap_credential = BootstrapCredential::new(&config.bootstrap_token()?)
         .map_err(ControlPlaneStartupError::Auth)?;
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let nodes: Arc<dyn INodeRepository> = node_repository.clone();
+    let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
+    let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
+    let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
+    let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository;
+    let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
+    let artifacts: Arc<dyn IOciArtifactResolver> = Arc::new(
+        OciRegistryArtifactResolver::new(
+            Duration::from_millis(config.registry.request_timeout_ms),
+            config.registry.insecure_hosts.clone(),
+        )
+        .map_err(ControlPlaneStartupError::Registry)?,
+    );
+    let deployment_flow_config = DeploymentFlowConfig::from_milliseconds(
+        config.deployments.command_ttl_ms,
+        config.deployments.runtime_apply_timeout_ms,
+        config.deployments.observation_poll_ms,
+        config.deployments.convergence_timeout_ms,
+        config.deployments.runtime_stop_timeout_ms,
+        config.deployments.cleanup_poll_ms,
+        config.deployments.cleanup_timeout_ms,
+    )
+    .map_err(ControlPlaneStartupError::NodeControl)?;
+    let deployment_runtime = DeploymentFlowRuntime::new(
+        Arc::clone(&workloads),
+        artifacts,
+        Arc::clone(&nodes),
+        Arc::clone(&node_control),
+        chrono_duration(config.fleet.heartbeat_timeout_ms)
+            .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+        deployment_flow_config,
+    )
+    .map_err(ControlPlaneStartupError::NodeControl)?;
+    let flow =
+        crate::infrastructure::connect_flow(&postgres_url, Arc::new(deployment_runtime)).await?;
+    let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
+    let node_control_server = if run_node_control {
+        let api = NodeControlApi::new(
+            Arc::clone(&nodes),
+            Arc::clone(&node_control),
+            Arc::clone(&log_chunks),
+            Arc::clone(&certificate_authority),
+            chrono_duration(config.fleet.certificate_ttl_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+            chrono_duration(config.fleet.certificate_rotation_window_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+            chrono::Duration::try_milliseconds(
+                i64::try_from(config.fleet.command_lease_ms).map_err(|_| {
+                    ControlPlaneStartupError::NodeControl(
+                        "command lease duration exceeds supported range".into(),
+                    )
+                })?,
+            )
+            .ok_or_else(|| {
+                ControlPlaneStartupError::NodeControl(
+                    "command lease duration exceeds supported range".into(),
+                )
+            })?,
+            Duration::from_millis(config.fleet.command_long_poll_ms),
+            Duration::from_millis(config.fleet.command_long_poll_ms.clamp(1, 50)),
+            config.node_control.max_request_bytes,
+            Duration::from_millis(config.node_control.request_body_timeout_ms),
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        Some(
+            NodeControlServer::from_config(&config.node_control, api)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+        )
+    } else {
+        None
+    };
     let operation_repository: Arc<dyn IOperationRepository> =
         Arc::new(PostgresOperationRepository::new(executor.clone()));
     let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
@@ -79,6 +185,13 @@ pub async fn build_application(
         Duration::from_millis(config.operations.reconcile_interval_ms),
         100,
     );
+    let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(
+        operation_reconciler,
+        &flow,
+        Duration::from_millis(config.operations.reconcile_interval_ms),
+        Duration::from_millis(config.operations.lease_ms),
+    )
+    .map_err(|error| ControlPlaneStartupError::Framework(BootError::Internal(error.to_string())))?;
     let outbox_relay = OutboxRelay::new(
         Arc::new(PostgresOutboxRepository::new(executor.clone())),
         event_publisher.clone(),
@@ -94,6 +207,15 @@ pub async fn build_application(
     .map_err(ControlPlaneStartupError::Outbox)?;
     let run_operations = matches!(config.server.role, ProcessRole::All | ProcessRole::Worker);
     let run_relay = matches!(config.server.role, ProcessRole::All | ProcessRole::Relay);
+    let workload_reconciler = WorkloadRuntimeReconciler::new(
+        workload_targets,
+        workload_runtime_control,
+        Duration::from_millis(config.deployments.reconcile_interval_ms),
+        Duration::from_millis(config.deployments.command_ttl_ms),
+        Duration::from_millis(config.deployments.runtime_apply_timeout_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::NodeControl)?;
     let application = build_application_with_health(
         config,
         ApplicationDependencies {
@@ -101,15 +223,29 @@ pub async fn build_application(
             api_tokens,
             projects: projects.clone(),
             environments: projects,
+            workloads,
             operations: operation_repository,
+            nodes,
+            node_control,
+            log_chunks: log_chunks.clone(),
+            certificate_authority: certificate_authority.clone(),
             bootstrap_credential,
-            readiness: infrastructure_readiness(executor, flow, event_publisher),
+            readiness: infrastructure_readiness(
+                executor,
+                flow,
+                event_publisher,
+                certificate_authority,
+                key_encryption,
+                log_chunks,
+            ),
         },
     )?;
     Ok(ControlPlane::new(
         application,
-        run_operations.then_some(operation_reconciler),
+        run_operations.then_some(operation_coordinator),
+        run_operations.then_some(workload_reconciler),
         run_relay.then_some(outbox_relay),
+        node_control_server,
     ))
 }
 
@@ -118,35 +254,14 @@ struct ApplicationDependencies {
     api_tokens: Arc<dyn IApiTokenRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
+    workloads: Arc<dyn IWorkloadRepository>,
     operations: Arc<dyn IOperationRepository>,
+    nodes: Arc<dyn INodeRepository>,
+    node_control: Arc<dyn INodeControlRepository>,
+    log_chunks: Arc<dyn ILogChunkStore>,
+    certificate_authority: Arc<dyn ICertificateAuthority>,
     bootstrap_credential: BootstrapCredential,
     readiness: HealthModule,
-}
-
-#[cfg(test)]
-pub(crate) fn build_application_with_repositories(
-    config: CloudConfig,
-    organizations: Arc<dyn IOrganizationRepository>,
-    api_tokens: Arc<dyn IApiTokenRepository>,
-    projects: Arc<dyn IProjectRepository>,
-    environments: Arc<dyn IEnvironmentRepository>,
-    operations: Arc<dyn IOperationRepository>,
-    bootstrap_credential: BootstrapCredential,
-) -> Result<BootApplication> {
-    build_application_with_health(
-        config,
-        ApplicationDependencies {
-            organizations,
-            api_tokens,
-            projects,
-            environments,
-            operations,
-            bootstrap_credential,
-            readiness: HealthModule::new("readiness")
-                .with_route("/health/ready")
-                .indicator("repositories", || async { Ok(HealthIndicatorResult::up()) }),
-        },
-    )
 }
 
 fn build_application_with_health(
@@ -158,15 +273,65 @@ fn build_application_with_health(
         api_tokens,
         projects,
         environments,
+        workloads,
         operations,
+        nodes,
+        node_control,
+        log_chunks,
+        certificate_authority,
         bootstrap_credential,
         readiness,
     } = dependencies;
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
+    let workload_environments = Arc::clone(&environments);
+    let create_workloads = Arc::clone(&workloads);
+    let cancel_workloads = Arc::clone(&workloads);
+    let stop_workloads = Arc::clone(&workloads);
+    let list_workloads = Arc::clone(&workloads);
+    let get_workloads = Arc::clone(&workloads);
+    let get_deployment_workloads = Arc::clone(&workloads);
+    let workload_list_operations = Arc::clone(&operations);
+    let workload_get_operations = Arc::clone(&operations);
+    let deployment_get_operations = Arc::clone(&operations);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
     let query_environments = Arc::clone(&environments);
+    let enrollment_nodes = Arc::clone(&nodes);
+    let rotation_nodes = Arc::clone(&nodes);
+    let state_nodes = Arc::clone(&nodes);
+    let get_nodes = Arc::clone(&nodes);
+    let enqueue_commands = Arc::clone(&node_control);
+    let lease_commands = Arc::clone(&node_control);
+    let acknowledge_commands = Arc::clone(&node_control);
+    let observation_commands = Arc::clone(&node_control);
+    let log_commands = Arc::clone(&node_control);
+    let workload_list_observations = Arc::clone(&node_control);
+    let workload_get_observations = Arc::clone(&node_control);
+    let deployment_get_observations = Arc::clone(&node_control);
+    let gateway_commands = node_control;
+    let log_store = log_chunks;
+    let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
+    let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
+    let command_lease = chrono_duration(config.fleet.command_lease_ms)?;
+    let command_long_poll = Duration::from_millis(config.fleet.command_long_poll_ms);
+    let command_poll_interval =
+        Duration::from_millis(config.fleet.command_long_poll_ms.clamp(1, 50));
+    let enroll_handler = EnrollNodeHandler::new(
+        enrollment_nodes,
+        Arc::clone(&certificate_authority),
+        certificate_ttl,
+        config.fleet.certificate_rotation_window_ms,
+        config.fleet.heartbeat_interval_ms,
+        config.fleet.command_long_poll_ms,
+    )
+    .map_err(BootError::Internal)?;
+    let rotation_handler = RotateNodeCertificateHandler::new(
+        rotation_nodes,
+        Arc::clone(&certificate_authority),
+        certificate_ttl,
+    )
+    .map_err(BootError::Internal)?;
     BootApplication::builder()
         .import(PublicHealthModule::new(
             HealthModule::new("health")
@@ -199,6 +364,52 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
                 )
+                .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
+                    CreateWorkloadDeploymentHandler::new(workload_environments, create_workloads),
+                )
+                .command_handler::<crate::modules::workloads::CancelDeployment, _>(
+                    CancelDeploymentHandler::new(cancel_workloads),
+                )
+                .command_handler::<crate::modules::workloads::StopWorkload, _>(
+                    StopWorkloadHandler::new(stop_workloads),
+                )
+                .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
+                    IssueEnrollmentTokenHandler::new(
+                        Arc::clone(&query_organizations),
+                        Arc::clone(&nodes),
+                    ),
+                )
+                .command_handler::<crate::modules::fleet::EnrollNode, _>(enroll_handler)
+                .command_handler::<crate::modules::fleet::RotateNodeCertificate, _>(
+                    rotation_handler,
+                )
+                .command_handler::<crate::modules::fleet::ChangeNodeState, _>(
+                    ChangeNodeStateHandler::new(state_nodes, certificate_authority),
+                )
+                .command_handler::<crate::modules::fleet::EnqueueNodeCommand, _>(
+                    EnqueueNodeCommandHandler::new(enqueue_commands),
+                )
+                .command_handler::<crate::modules::fleet::LeaseNodeCommands, _>(
+                    LeaseNodeCommandsHandler::new(
+                        lease_commands,
+                        command_lease,
+                        command_long_poll,
+                        command_poll_interval,
+                    )
+                    .map_err(BootError::Internal)?,
+                )
+                .command_handler::<crate::modules::fleet::AcknowledgeNodeCommand, _>(
+                    AcknowledgeNodeCommandHandler::new(acknowledge_commands),
+                )
+                .command_handler::<crate::modules::fleet::RecordNodeObservations, _>(
+                    RecordNodeObservationsHandler::new(observation_commands),
+                )
+                .command_handler::<crate::modules::fleet::RecordNodeLogChunks, _>(
+                    RecordNodeLogChunksHandler::new(log_commands, log_store),
+                )
+                .command_handler::<crate::modules::fleet::RecordGatewayAcknowledgement, _>(
+                    RecordGatewayAcknowledgementHandler::new(gateway_commands),
+                )
                 .query_handler::<crate::modules::identity::ListOrganizations, _>(
                     ListOrganizationsHandler::new(query_organizations),
                 )
@@ -211,11 +422,41 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),
                 )
+                .query_handler::<crate::modules::workloads::ListWorkloads, _>(
+                    ListWorkloadsHandler::new(
+                        list_workloads,
+                        workload_list_operations,
+                        workload_list_observations,
+                    ),
+                )
+                .query_handler::<crate::modules::workloads::GetWorkload, _>(
+                    GetWorkloadHandler::new(
+                        get_workloads,
+                        workload_get_operations,
+                        workload_get_observations,
+                    ),
+                )
+                .query_handler::<crate::modules::workloads::GetDeployment, _>(
+                    GetDeploymentHandler::new(
+                        get_deployment_workloads,
+                        deployment_get_operations,
+                        deployment_get_observations,
+                    ),
+                )
+                .query_handler::<crate::modules::fleet::GetNode, _>(
+                    GetNodeHandler::new(get_nodes, heartbeat_timeout)
+                        .map_err(BootError::Internal)?,
+                )
+                .query_handler::<crate::modules::fleet::ListNodes, _>(
+                    ListNodesHandler::new(nodes, heartbeat_timeout).map_err(BootError::Internal)?,
+                )
                 .global(),
         )
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
         .import(OperationsModule)
+        .import(FleetModule::new(heartbeat_timeout)?)
+        .import(WorkloadsModule)
         .import(PlatformModule::new(&config))
         .use_global_middleware(RequestIdMiddleware)
         .use_global_auth()
@@ -271,6 +512,9 @@ fn infrastructure_readiness(
     executor: PostgresExecutor,
     flow: crate::infrastructure::FlowInfrastructure,
     events: Arc<dyn IEventPublisher>,
+    certificate_authority: Arc<dyn ICertificateAuthority>,
+    key_encryption: Arc<dyn IKeyEncryptionService>,
+    log_chunks: Arc<dyn ILogChunkStore>,
 ) -> HealthModule {
     HealthModule::new("readiness")
         .with_route("/health/ready")
@@ -295,6 +539,122 @@ fn infrastructure_readiness(
                 }
             }
         })
+        .indicator("certificate-authority", move || {
+            let certificate_authority = certificate_authority.clone();
+            async move {
+                match certificate_authority.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+        .indicator("key-encryption", move || {
+            let key_encryption = key_encryption.clone();
+            async move {
+                match key_encryption.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+        .indicator("log-storage", move || {
+            let log_chunks = log_chunks.clone();
+            async move {
+                match log_chunks.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+}
+
+type SecurityProviders = (
+    Arc<dyn ICertificateAuthority>,
+    Arc<dyn IKeyEncryptionService>,
+);
+
+fn security_providers(
+    config: &CloudConfig,
+) -> std::result::Result<SecurityProviders, ControlPlaneStartupError> {
+    let credentials = config.vault_credentials()?;
+    let timeout = Duration::from_millis(config.security.vault_timeout_ms);
+    let certificate_authority: Arc<dyn ICertificateAuthority> =
+        match config.security.certificate_authority {
+            SecurityProviderKind::Local => {
+                let authority = LocalCertificateAuthority::load_or_create(
+                    std::path::Path::new(&config.security.state_dir).join("node-ca"),
+                )
+                .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?;
+                authority
+                    .ensure_ca_bundle(std::path::Path::new(&config.node_control.client_ca_file))
+                    .and_then(|()| {
+                        authority.ensure_server_identity(
+                            &config.node_control.server_name,
+                            std::path::Path::new(&config.node_control.certificate_file),
+                            std::path::Path::new(&config.node_control.private_key_file),
+                        )
+                    })
+                    .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?;
+                Arc::new(authority)
+            }
+            SecurityProviderKind::Vault => {
+                let (address, token) = credentials.as_ref().ok_or_else(|| {
+                    ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
+                })?;
+                Arc::new(
+                    VaultCertificateAuthority::new(
+                        address,
+                        token,
+                        config.security.vault_pki_mount.clone(),
+                        config.security.vault_pki_role.clone(),
+                        timeout,
+                    )
+                    .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+                )
+            }
+        };
+    let key_encryption: Arc<dyn IKeyEncryptionService> = match config.security.key_encryption {
+        SecurityProviderKind::Local => Arc::new(
+            LocalKeyEncryptionService::load_or_create(
+                std::path::Path::new(&config.security.state_dir).join("key-encryption.key"),
+            )
+            .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+        ),
+        SecurityProviderKind::Vault => {
+            let (address, token) = credentials.as_ref().ok_or_else(|| {
+                ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
+            })?;
+            Arc::new(
+                VaultKeyEncryptionService::new(
+                    address,
+                    token,
+                    config.security.vault_transit_mount.clone(),
+                    config.security.vault_transit_key.clone(),
+                    timeout,
+                )
+                .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+            )
+        }
+    };
+    Ok((certificate_authority, key_encryption))
+}
+
+fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration> {
+    i64::try_from(milliseconds)
+        .map(chrono::Duration::milliseconds)
+        .map_err(|_| BootError::Internal("duration exceeds supported range".into()))
 }
 
 async fn event_publisher(
@@ -319,616 +679,4 @@ async fn event_publisher(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::{
-        AuthConfig, EventProviderKind, EventsConfig, OperationsConfig, PostgresConfig, ProcessRole,
-        ServerConfig,
-    };
-    use crate::modules::identity::domain::value_objects::ApiTokenScope;
-    use crate::modules::identity::InMemoryIdentityRepository;
-    use crate::modules::operations::InMemoryOperationRepository;
-    use crate::modules::projects::InMemoryProjectsRepository;
-    use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
-    use serde_json::{json, Value};
-    use uuid::Uuid;
-
-    const BOOTSTRAP_TOKEN: &str = "test-bootstrap-credential-0123456789abcdef";
-    const ADMIN_TOKEN: &str =
-        "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const PROJECT_TOKEN: &str =
-        "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    const EXPIRING_TOKEN: &str =
-        "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-
-    fn config() -> CloudConfig {
-        CloudConfig {
-            server: ServerConfig {
-                host: "127.0.0.1".into(),
-                port: 8080,
-                role: ProcessRole::All,
-            },
-            postgres: PostgresConfig {
-                url_env: "A3S_CLOUD_POSTGRES_URL".into(),
-                max_connections: 4,
-            },
-            auth: AuthConfig {
-                bootstrap_token_env: "A3S_CLOUD_BOOTSTRAP_TOKEN".into(),
-            },
-            events: EventsConfig {
-                provider: EventProviderKind::Memory,
-                nats_url_env: "A3S_CLOUD_NATS_URL".into(),
-                stream_name: "A3S_CLOUD_EVENTS".into(),
-                batch_size: 100,
-                poll_interval_ms: 250,
-                lease_ms: 10_000,
-                publish_timeout_ms: 3_000,
-                retry_initial_ms: 500,
-                retry_max_ms: 30_000,
-            },
-            operations: OperationsConfig {
-                reconcile_interval_ms: 1_000,
-                lease_ms: 5_000,
-            },
-        }
-    }
-
-    fn post_json(path: impl Into<String>, idempotency_key: &str, body: Value) -> BootRequest {
-        post_json_as(path, idempotency_key, body, ADMIN_TOKEN)
-    }
-
-    fn post_json_as(
-        path: impl Into<String>,
-        idempotency_key: &str,
-        body: Value,
-        token: &str,
-    ) -> BootRequest {
-        BootRequest::new(HttpMethod::Post, path.into())
-            .with_header("content-type", "application/json")
-            .with_header("idempotency-key", idempotency_key)
-            .with_header("authorization", format!("Bearer {token}"))
-            .with_body(body.to_string().into_bytes())
-    }
-
-    fn delete_as(path: impl Into<String>, idempotency_key: &str, token: &str) -> BootRequest {
-        BootRequest::new(HttpMethod::Delete, path.into())
-            .with_header("idempotency-key", idempotency_key)
-            .with_header("authorization", format!("Bearer {token}"))
-    }
-
-    fn get_as(path: impl Into<String>, token: &str) -> BootRequest {
-        BootRequest::new(HttpMethod::Get, path.into())
-            .with_header("accept", "application/json")
-            .with_header("authorization", format!("Bearer {token}"))
-    }
-
-    fn build_test_application(
-        identity: Arc<InMemoryIdentityRepository>,
-        projects: Arc<InMemoryProjectsRepository>,
-    ) -> Result<BootApplication> {
-        build_application_with_repositories(
-            config(),
-            identity.clone(),
-            identity,
-            projects.clone(),
-            projects,
-            Arc::new(InMemoryOperationRepository::new()),
-            BootstrapCredential::new(BOOTSTRAP_TOKEN).map_err(BootError::Internal)?,
-        )
-    }
-
-    fn response_json(response: &BootResponse) -> Result<Value> {
-        response.body_json()
-    }
-
-    fn response_id(response: &BootResponse) -> Result<String> {
-        response_json(response)?["data"]["id"]
-            .as_str()
-            .map(str::to_owned)
-            .ok_or_else(|| BootError::Internal("response does not contain a resource ID".into()))
-    }
-
-    async fn create_organization(
-        app: &BootApplication,
-        idempotency_key: &str,
-        name: &str,
-    ) -> Result<String> {
-        let response = app
-            .call(post_json(
-                "/api/v1/organizations",
-                idempotency_key,
-                json!({"name": name}),
-            ))
-            .await?;
-        assert_eq!(response.status(), 201);
-        response_id(&response)
-    }
-
-    async fn bootstrap_organization(
-        app: &BootApplication,
-        idempotency_key: &str,
-        name: &str,
-    ) -> Result<String> {
-        let response = app
-            .call(
-                post_json(
-                    "/api/v1/bootstrap",
-                    idempotency_key,
-                    json!({
-                        "organizationName": name,
-                        "tokenName": "bootstrap-admin",
-                        "token": ADMIN_TOKEN,
-                        "expiresAt": null
-                    }),
-                )
-                .with_header("x-a3s-bootstrap-token", BOOTSTRAP_TOKEN),
-            )
-            .await?;
-        assert_eq!(response.status(), 201);
-        response_json(&response)?["data"]["organization"]["id"]
-            .as_str()
-            .map(str::to_owned)
-            .ok_or_else(|| BootError::Internal("bootstrap response has no organization ID".into()))
-    }
-
-    async fn create_project(
-        app: &BootApplication,
-        organization_id: &str,
-        idempotency_key: &str,
-        name: &str,
-    ) -> Result<String> {
-        let response = app
-            .call(post_json(
-                format!("/api/v1/organizations/{organization_id}/projects"),
-                idempotency_key,
-                json!({"name": name}),
-            ))
-            .await?;
-        assert_eq!(response.status(), 201);
-        response_id(&response)
-    }
-
-    async fn create_api_token(
-        app: &BootApplication,
-        organization_id: &str,
-        idempotency_key: &str,
-        name: &str,
-        secret: &str,
-        scopes: &[&str],
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<String> {
-        let response = app
-            .call(post_json(
-                format!("/api/v1/organizations/{organization_id}/api-tokens"),
-                idempotency_key,
-                json!({
-                    "name": name,
-                    "token": secret,
-                    "scopes": scopes,
-                    "expiresAt": expires_at,
-                }),
-            ))
-            .await?;
-        assert_eq!(response.status(), 201);
-        assert!(!String::from_utf8_lossy(response.body()).contains(secret));
-        response_id(&response)
-    }
-
-    #[tokio::test]
-    async fn boot_shell_exposes_wrapped_platform_and_health_responses() -> Result<()> {
-        let organizations = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(organizations, projects)?;
-        let platform = app
-            .call(
-                BootRequest::new(HttpMethod::Get, "/api/v1/platform")
-                    .with_header("accept", "application/json")
-                    .with_header("x-request-id", "018f3f56-8d4a-7c2a-9f13-5ab3d245d701"),
-            )
-            .await?;
-        let body = response_json(&platform)?;
-        assert_eq!(platform.status(), 200);
-        assert_eq!(body["code"], 200);
-        assert_eq!(body["data"]["name"], "a3s-cloud");
-        assert_eq!(body["requestId"], "018f3f56-8d4a-7c2a-9f13-5ab3d245d701");
-
-        let health = app
-            .call(
-                BootRequest::new(HttpMethod::Get, "/api/v1/health/live")
-                    .with_header("accept", "application/json"),
-            )
-            .await?;
-        let body = response_json(&health)?;
-        assert_eq!(body["data"]["status"], "up");
-
-        let readiness = app
-            .call(
-                BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
-                    .with_header("accept", "application/json"),
-            )
-            .await?;
-        let body = response_json(&readiness)?;
-        assert_eq!(body["data"]["status"], "up");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn organization_writes_are_idempotent_unique_and_atomic() -> Result<()> {
-        let repository = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(repository.clone(), projects)?;
-        bootstrap_organization(&app, "bootstrap-root", "Root").await?;
-        let request = || {
-            post_json(
-                "/api/v1/organizations",
-                "create-acme",
-                json!({"name": "Acme"}),
-            )
-        };
-
-        let first = app.call(request()).await?;
-        let second = app.call(request()).await?;
-        let first_body = response_json(&first)?;
-        let second_body = response_json(&second)?;
-        assert_eq!(first.status(), 201);
-        assert_eq!(second.status(), 200);
-        assert_eq!(first_body["data"]["id"], second_body["data"]["id"]);
-        assert_eq!(second_body["data"]["replayed"], true);
-
-        let changed = app
-            .call(post_json(
-                "/api/v1/organizations",
-                "create-acme",
-                json!({"name": "Other"}),
-            ))
-            .await?;
-        assert_eq!(changed.status(), 409);
-        assert_eq!(response_json(&changed)?["statusCode"], "CONFLICT");
-
-        let duplicate = app
-            .call(post_json(
-                "/api/v1/organizations",
-                "duplicate-acme",
-                json!({"name": "acme"}),
-            ))
-            .await?;
-        assert_eq!(duplicate.status(), 409);
-        assert_eq!(repository.outbox_events().await.len(), 3);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn project_writes_are_idempotent_and_names_are_organization_scoped() -> Result<()> {
-        let organizations = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(organizations, projects.clone())?;
-        let acme = bootstrap_organization(&app, "organization-acme", "Acme").await?;
-        let beta = create_organization(&app, "organization-beta", "Beta").await?;
-        let path = format!("/api/v1/organizations/{acme}/projects");
-        let request = || post_json(&path, "project-cloud", json!({"name": "Cloud"}));
-
-        let first = app.call(request()).await?;
-        let second = app.call(request()).await?;
-        assert_eq!(first.status(), 201);
-        assert_eq!(second.status(), 200);
-        assert_eq!(response_id(&first)?, response_id(&second)?);
-        assert_eq!(response_json(&second)?["data"]["replayed"], true);
-
-        let changed = app
-            .call(post_json(&path, "project-cloud", json!({"name": "Other"})))
-            .await?;
-        assert_eq!(changed.status(), 409);
-
-        let duplicate = app
-            .call(post_json(
-                &path,
-                "project-cloud-duplicate",
-                json!({"name": "cloud"}),
-            ))
-            .await?;
-        assert_eq!(duplicate.status(), 409);
-
-        let other_scope = app
-            .call(post_json(
-                format!("/api/v1/organizations/{beta}/projects"),
-                "project-cloud",
-                json!({"name": "Cloud"}),
-            ))
-            .await?;
-        assert_eq!(other_scope.status(), 201);
-        let events = projects.outbox_events().await;
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.event_key == "project.project.created")
-                .count(),
-            2
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn environment_writes_are_idempotent_and_names_are_project_scoped() -> Result<()> {
-        let organizations = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(organizations, projects.clone())?;
-        let organization = bootstrap_organization(&app, "organization", "Acme").await?;
-        let cloud = create_project(&app, &organization, "project-cloud", "Cloud").await?;
-        let data = create_project(&app, &organization, "project-data", "Data").await?;
-        let path = format!("/api/v1/organizations/{organization}/projects/{cloud}/environments");
-        let request = || {
-            post_json(
-                &path,
-                "environment-production",
-                json!({"name": "Production"}),
-            )
-        };
-
-        let first = app.call(request()).await?;
-        let second = app.call(request()).await?;
-        assert_eq!(first.status(), 201);
-        assert_eq!(second.status(), 200);
-        assert_eq!(response_id(&first)?, response_id(&second)?);
-        assert_eq!(response_json(&second)?["data"]["replayed"], true);
-
-        let changed = app
-            .call(post_json(
-                &path,
-                "environment-production",
-                json!({"name": "Staging"}),
-            ))
-            .await?;
-        assert_eq!(changed.status(), 409);
-
-        let duplicate = app
-            .call(post_json(
-                &path,
-                "environment-production-duplicate",
-                json!({"name": "production"}),
-            ))
-            .await?;
-        assert_eq!(duplicate.status(), 409);
-
-        let other_scope = app
-            .call(post_json(
-                format!("/api/v1/organizations/{organization}/projects/{data}/environments"),
-                "environment-production",
-                json!({"name": "Production"}),
-            ))
-            .await?;
-        assert_eq!(other_scope.status(), 201);
-        let events = projects.outbox_events().await;
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.event_key == "project.environment.created")
-                .count(),
-            2
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn projects_and_environments_reject_cross_tenant_references() -> Result<()> {
-        let organizations = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(organizations, projects.clone())?;
-        let organization_id = bootstrap_organization(&app, "organization", "Acme").await?;
-        let project_id = create_project(&app, &organization_id, "project", "Cloud").await?;
-
-        let wrong_organization = Uuid::new_v4();
-        let rejected = app
-            .call(post_json(
-                format!(
-                    "/api/v1/organizations/{wrong_organization}/projects/{project_id}/environments"
-                ),
-                "wrong-environment",
-                json!({"name": "Production"}),
-            ))
-            .await?;
-        let rejected_body = response_json(&rejected)?;
-        assert_eq!(rejected.status(), 404);
-        assert_eq!(rejected_body["statusCode"], "NOT_FOUND");
-
-        let environment = app
-            .call(post_json(
-                format!(
-                    "/api/v1/organizations/{organization_id}/projects/{project_id}/environments"
-                ),
-                "environment",
-                json!({"name": "Production"}),
-            ))
-            .await?;
-        assert_eq!(environment.status(), 201);
-        assert_eq!(projects.outbox_events().await.len(), 2);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn bearer_tokens_are_scoped_to_one_organization_and_never_echoed() -> Result<()> {
-        let identity = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(identity, projects)?;
-        let acme = bootstrap_organization(&app, "bootstrap-acme", "Acme").await?;
-        let beta = create_organization(&app, "organization-beta", "Beta").await?;
-        create_api_token(
-            &app,
-            &acme,
-            "token-projects",
-            "project-automation",
-            PROJECT_TOKEN,
-            &[ApiTokenScope::PROJECT_WRITE],
-            None,
-        )
-        .await?;
-
-        let no_credentials = app
-            .call(
-                BootRequest::new(
-                    HttpMethod::Post,
-                    format!("/api/v1/organizations/{acme}/projects"),
-                )
-                .with_header("content-type", "application/json")
-                .with_header("idempotency-key", "unauthenticated")
-                .with_body(json!({"name": "Rejected"}).to_string().into_bytes()),
-            )
-            .await?;
-        assert_eq!(no_credentials.status(), 401);
-
-        let own_project = app
-            .call(post_json_as(
-                format!("/api/v1/organizations/{acme}/projects"),
-                "project-own",
-                json!({"name": "Own"}),
-                PROJECT_TOKEN,
-            ))
-            .await?;
-        assert_eq!(own_project.status(), 201);
-
-        let cross_tenant = app
-            .call(post_json_as(
-                format!("/api/v1/organizations/{beta}/projects"),
-                "project-cross-tenant",
-                json!({"name": "Rejected"}),
-                PROJECT_TOKEN,
-            ))
-            .await?;
-        assert_eq!(cross_tenant.status(), 403);
-
-        let scope_escalation = app
-            .call(post_json_as(
-                format!("/api/v1/organizations/{acme}/api-tokens"),
-                "scope-escalation",
-                json!({
-                    "name": "Escalated",
-                    "token": EXPIRING_TOKEN,
-                    "scopes": [ApiTokenScope::TOKEN_WRITE],
-                    "expiresAt": null
-                }),
-                PROJECT_TOKEN,
-            ))
-            .await?;
-        assert_eq!(scope_escalation.status(), 403);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn revoked_and_expired_tokens_stop_authenticating_immediately() -> Result<()> {
-        let identity = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(identity, projects)?;
-        let organization = bootstrap_organization(&app, "bootstrap", "Acme").await?;
-        let project_token_id = create_api_token(
-            &app,
-            &organization,
-            "token-revoked",
-            "revoked-token",
-            PROJECT_TOKEN,
-            &[ApiTokenScope::PROJECT_WRITE],
-            None,
-        )
-        .await?;
-        let revoke_path =
-            format!("/api/v1/organizations/{organization}/api-tokens/{project_token_id}");
-        let revoked = app
-            .call(delete_as(&revoke_path, "revoke-project-token", ADMIN_TOKEN))
-            .await?;
-        assert_eq!(revoked.status(), 200);
-        assert!(response_json(&revoked)?["data"]["revokedAt"].is_string());
-        let replayed = app
-            .call(delete_as(&revoke_path, "revoke-project-token", ADMIN_TOKEN))
-            .await?;
-        assert_eq!(response_json(&replayed)?["data"]["replayed"], true);
-
-        let revoked_use = app
-            .call(post_json_as(
-                format!("/api/v1/organizations/{organization}/projects"),
-                "revoked-use",
-                json!({"name": "Rejected"}),
-                PROJECT_TOKEN,
-            ))
-            .await?;
-        assert_eq!(revoked_use.status(), 401);
-
-        create_api_token(
-            &app,
-            &organization,
-            "token-expiring",
-            "expiring-token",
-            EXPIRING_TOKEN,
-            &[ApiTokenScope::PROJECT_WRITE],
-            Some(chrono::Utc::now() + chrono::Duration::milliseconds(40)),
-        )
-        .await?;
-        tokio::time::sleep(Duration::from_millis(60)).await;
-        let expired_use = app
-            .call(post_json_as(
-                format!("/api/v1/organizations/{organization}/projects"),
-                "expired-use",
-                json!({"name": "Rejected"}),
-                EXPIRING_TOKEN,
-            ))
-            .await?;
-        assert_eq!(expired_use.status(), 401);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn authenticated_queries_and_operation_stream_return_authoritative_snapshots(
-    ) -> Result<()> {
-        let identity = Arc::new(InMemoryIdentityRepository::new());
-        let projects = Arc::new(InMemoryProjectsRepository::new());
-        let app = build_test_application(identity, projects)?;
-        let organization = bootstrap_organization(&app, "bootstrap", "Acme").await?;
-        let project = create_project(&app, &organization, "project", "Cloud").await?;
-        let environment_path =
-            format!("/api/v1/organizations/{organization}/projects/{project}/environments");
-        let environment = app
-            .call(post_json(
-                &environment_path,
-                "environment",
-                json!({"name": "Production"}),
-            ))
-            .await?;
-        assert_eq!(environment.status(), 201);
-
-        let organizations = app
-            .call(get_as("/api/v1/organizations", ADMIN_TOKEN))
-            .await?;
-        assert_eq!(response_json(&organizations)?["data"][0]["name"], "Acme");
-        let listed_projects = app
-            .call(get_as(
-                format!("/api/v1/organizations/{organization}/projects"),
-                ADMIN_TOKEN,
-            ))
-            .await?;
-        assert_eq!(response_json(&listed_projects)?["data"][0]["name"], "Cloud");
-        let environments = app.call(get_as(&environment_path, ADMIN_TOKEN)).await?;
-        assert_eq!(
-            response_json(&environments)?["data"][0]["name"],
-            "Production"
-        );
-        let operations = app
-            .call(get_as(
-                format!("/api/v1/organizations/{organization}/operations"),
-                ADMIN_TOKEN,
-            ))
-            .await?;
-        assert_eq!(response_json(&operations)?["data"], json!([]));
-
-        let stream = app
-            .call(
-                BootRequest::new(
-                    HttpMethod::Get,
-                    format!("/api/v1/organizations/{organization}/operations/stream"),
-                )
-                .with_header("accept", "text/event-stream")
-                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
-            )
-            .await?;
-        assert_eq!(stream.status(), 200);
-        assert!(stream.is_streaming());
-        assert!(stream.is_event_stream());
-        Ok(())
-    }
-}
+mod tests;

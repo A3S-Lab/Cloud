@@ -6,4 +6,12 @@ mod node;
 
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
-pub use node::{NodeHeartbeat, NodeProtocolEnvelope};
+pub use node::{
+    GatewayAckState, NodeCertificate, NodeCertificateRotationRequest,
+    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope,
+    NodeCommandFailure, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata,
+    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest,
+    NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat,
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch,
+    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
+};
