@@ -141,7 +141,7 @@ pub async fn exercise_fleet(
     ));
     let runtime_capabilities = capabilities();
     let node_capabilities = NodeCapabilities::new(
-        runtime_capabilities.provider_id.clone(),
+        runtime_capabilities.provider_id.to_string(),
         runtime_capabilities.provider_build.clone(),
         serde_json::to_value(runtime_capabilities)?,
     )
@@ -505,6 +505,7 @@ fn inspected_ack(
         outcome: NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeInspected {
                 inspection: a3s_runtime::contract::RuntimeInspection::NotFound {
+                    schema: a3s_runtime::contract::RuntimeInspection::SCHEMA.into(),
                     unit_id: unit_id.clone(),
                     last_generation: Some(*generation),
                 },
@@ -731,7 +732,7 @@ fn csr() -> String {
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "docker".into(),
+        provider_id: a3s_runtime::ProviderId::parse("docker").unwrap(),
         provider_build: "postgres-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

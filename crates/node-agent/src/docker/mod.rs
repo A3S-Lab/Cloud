@@ -10,7 +10,7 @@ use a3s_runtime::contract::{
     RuntimeLogChunk, RuntimeLogQuery, RuntimeObservation, RuntimeRemoval, RuntimeUnitClass,
     RuntimeUnitSpec,
 };
-use a3s_runtime::{RuntimeDriver, RuntimeError, RuntimeResult, RuntimeUnitRecord};
+use a3s_runtime::{ProviderId, RuntimeDriver, RuntimeError, RuntimeResult, RuntimeUnitRecord};
 use async_trait::async_trait;
 use bollard::errors::Error as DockerError;
 use bollard::{Docker, API_DEFAULT_VERSION};
@@ -23,6 +23,7 @@ const OCI_IMAGE_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 const DOCKER_IMAGE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
 
 pub struct DockerRuntimeDriver {
+    provider_id: ProviderId,
     pub(super) docker: Docker,
     pub(super) namespace: String,
     pub(super) operation_timeout: Duration,
@@ -51,6 +52,7 @@ impl DockerRuntimeDriver {
             .build()
             .map_err(|error| RuntimeError::Protocol(error.to_string()))?;
         Ok(Self {
+            provider_id: ProviderId::parse("docker")?,
             docker,
             namespace: config.namespace.clone(),
             operation_timeout: Duration::from_millis(config.operation_timeout_ms),
@@ -112,10 +114,14 @@ impl NodeRuntimeBinding for DockerRuntimeDriver {
 
 #[async_trait]
 impl RuntimeDriver for DockerRuntimeDriver {
+    fn provider_id(&self) -> &ProviderId {
+        &self.provider_id
+    }
+
     async fn capabilities(&self) -> RuntimeResult<RuntimeCapabilities> {
         let capabilities = RuntimeCapabilities {
             schema: RuntimeCapabilities::SCHEMA.into(),
-            provider_id: "docker".into(),
+            provider_id: self.provider_id.clone(),
             provider_build: self.provider_build().await?,
             unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
             artifact_media_types: vec![OCI_IMAGE_MANIFEST.into(), DOCKER_IMAGE_MANIFEST.into()],

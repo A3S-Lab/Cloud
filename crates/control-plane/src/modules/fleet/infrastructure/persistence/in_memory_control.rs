@@ -339,7 +339,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
     ) -> Result<NodeObservationReceipt, RepositoryError> {
         batch.validate().map_err(RepositoryError::Conflict)?;
         let capabilities = NodeCapabilities::new(
-            batch.heartbeat.runtime_capabilities.provider_id.clone(),
+            batch.heartbeat.runtime_capabilities.provider_id.to_string(),
             batch.heartbeat.runtime_capabilities.provider_build.clone(),
             serde_json::to_value(&batch.heartbeat.runtime_capabilities)
                 .map_err(|error| RepositoryError::Storage(error.to_string()))?,

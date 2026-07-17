@@ -10,6 +10,7 @@ fn report(data: &str) -> NodeLogChunkReport {
         unit_id: "service-1".into(),
         generation: 1,
         chunk: RuntimeLogChunk {
+            schema: RuntimeLogChunk::SCHEMA.into(),
             cursor: "opaque:cursor:1".into(),
             sequence: 1,
             observed_at_ms: 1,

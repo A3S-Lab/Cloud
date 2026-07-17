@@ -319,6 +319,7 @@ pub async fn exercise_deployment_flow(
             outcome: NodeCommandOutcome::Succeeded {
                 result: Box::new(NodeCommandResult::RuntimeInspected {
                     inspection: RuntimeInspection::NotFound {
+                        schema: RuntimeInspection::SCHEMA.into(),
                         unit_id: request.spec.unit_id.clone(),
                         last_generation: Some(request.spec.generation),
                     },
@@ -710,7 +711,7 @@ pub async fn exercise_dispatched_cancellation(
         OperationStatus::Cancelled
     );
     match runtime_client.inspect(&expected_spec.unit_id).await? {
-        RuntimeInspection::Found { observation } => {
+        RuntimeInspection::Found { observation, .. } => {
             assert_eq!(observation.state, RuntimeUnitState::Stopped)
         }
         RuntimeInspection::NotFound { .. } => {}
@@ -822,7 +823,7 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
         NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
             NodeCommandResult::RuntimeApplied { observation } => Some(observation.as_ref().clone()),
             NodeCommandResult::RuntimeStopped {
-                inspection: RuntimeInspection::Found { observation },
+                inspection: RuntimeInspection::Found { observation, .. },
             } => Some(observation.as_ref().clone()),
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
@@ -874,7 +875,7 @@ async fn ready_node(
         .await?;
     let capabilities = runtime_capabilities();
     let stored_capabilities = NodeCapabilities::new(
-        capabilities.provider_id.clone(),
+        capabilities.provider_id.to_string(),
         capabilities.provider_build.clone(),
         serde_json::to_value(&capabilities)?,
     )?;
@@ -964,7 +965,7 @@ fn healthy_observation(
 fn runtime_capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "integration-runtime".into(),
+        provider_id: a3s_runtime::ProviderId::parse("integration-runtime").unwrap(),
         provider_build: "integration-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

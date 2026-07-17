@@ -531,6 +531,7 @@ mod tests {
         NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeInspected {
                 inspection: RuntimeInspection::NotFound {
+                    schema: RuntimeInspection::SCHEMA.into(),
                     unit_id: "service-1".into(),
                     last_generation: Some(1),
                 },

@@ -119,7 +119,7 @@ pub(super) async fn ready_node(
         .await?;
     let runtime_capabilities = capabilities();
     let node_capabilities = NodeCapabilities::new(
-        runtime_capabilities.provider_id.clone(),
+        runtime_capabilities.provider_id.to_string(),
         runtime_capabilities.provider_build.clone(),
         serde_json::to_value(&runtime_capabilities)?,
     )?;
@@ -388,7 +388,7 @@ pub(super) fn stopped_observation(
 pub(super) fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "test-runtime".into(),
+        provider_id: a3s_runtime::ProviderId::parse("test-runtime").unwrap(),
         provider_build: "test-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

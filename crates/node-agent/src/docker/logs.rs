@@ -83,6 +83,7 @@ impl DockerRuntimeDriver {
             let record_cursor = LogCursor::new(&record, per_second)?;
             per_second += 1;
             chunks.push(RuntimeLogChunk {
+                schema: RuntimeLogChunk::SCHEMA.into(),
                 cursor: record_cursor.encode(),
                 sequence: u64::try_from(seconds)
                     .ok()

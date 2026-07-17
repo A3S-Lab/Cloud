@@ -82,7 +82,7 @@ impl CommandHandler<EnrollNode> for EnrollNodeHandler {
             let capabilities_document = serde_json::to_value(&command.request.runtime_capabilities)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
             let capabilities = match NodeCapabilities::new(
-                command.request.runtime_capabilities.provider_id.clone(),
+                command.request.runtime_capabilities.provider_id.to_string(),
                 command.request.runtime_capabilities.provider_build.clone(),
                 capabilities_document,
             ) {

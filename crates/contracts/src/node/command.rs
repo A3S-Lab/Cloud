@@ -236,7 +236,7 @@ fn validate_inspection_identity(
     expected_generation: u64,
 ) -> Result<(), String> {
     match inspection {
-        RuntimeInspection::Found { observation }
+        RuntimeInspection::Found { observation, .. }
             if observation.unit_id == expected_unit_id
                 && observation.generation == expected_generation =>
         {

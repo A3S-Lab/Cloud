@@ -112,6 +112,7 @@ impl DockerRuntimeDriver {
         let digest = unit.spec.digest().map_err(RuntimeError::Protocol)?;
         let Some(container) = self.find_container(node_id, &unit.spec, &digest).await? else {
             return Ok(RuntimeInspection::NotFound {
+                schema: RuntimeInspection::SCHEMA.into(),
                 unit_id: unit.spec.unit_id.clone(),
                 last_generation: Some(unit.spec.generation),
             });
@@ -124,6 +125,7 @@ impl DockerRuntimeDriver {
         };
         let observation = self.observation(&unit.spec, &container, &provider_build, health)?;
         Ok(RuntimeInspection::Found {
+            schema: RuntimeInspection::SCHEMA.into(),
             observation: Box::new(observation),
         })
     }

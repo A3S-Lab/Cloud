@@ -428,7 +428,7 @@ async fn observe_step(
                     })
                 }
                 a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
-                    inspection: RuntimeInspection::Found { observation },
+                    inspection: RuntimeInspection::Found { observation, .. },
                 } if observation.state == RuntimeUnitState::Stopped => {
                     return Ok(ObserveOutput::Ready {
                         stopped_at: acknowledgement.completed_at,

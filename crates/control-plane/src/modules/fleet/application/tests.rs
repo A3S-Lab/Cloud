@@ -42,7 +42,7 @@ fn context() -> CqrsContext {
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "docker".into(),
+        provider_id: a3s_runtime::ProviderId::parse("docker").unwrap(),
         provider_build: "docker-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
@@ -180,7 +180,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
     let node_id = NodeId::from_uuid(enrolled.response.node_id);
     let runtime_capabilities = capabilities();
     let node_capabilities = NodeCapabilities::new(
-        runtime_capabilities.provider_id.clone(),
+        runtime_capabilities.provider_id.to_string(),
         runtime_capabilities.provider_build.clone(),
         serde_json::to_value(runtime_capabilities).expect("capability document"),
     )
@@ -274,6 +274,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         outcome: NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeInspected {
                 inspection: a3s_runtime::contract::RuntimeInspection::NotFound {
+                    schema: a3s_runtime::contract::RuntimeInspection::SCHEMA.into(),
                     unit_id: "worker-service".into(),
                     last_generation: Some(1),
                 },
@@ -324,6 +325,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             unit_id: "worker-service".into(),
             generation: 1,
             chunk: RuntimeLogChunk {
+                schema: RuntimeLogChunk::SCHEMA.into(),
                 cursor: "cursor:1".into(),
                 sequence: 1,
                 observed_at_ms: 1,

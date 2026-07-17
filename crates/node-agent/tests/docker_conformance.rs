@@ -127,7 +127,7 @@ async fn lost_provider_container_is_recreated_once_for_the_same_generation() {
         )
         .await
         .expect("remove provider container outside Runtime");
-    let RuntimeInspection::Found { observation } = runtime
+    let RuntimeInspection::Found { observation, .. } = runtime
         .inspect(&unit_id)
         .await
         .expect("inspect lost provider")

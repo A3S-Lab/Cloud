@@ -509,7 +509,7 @@ mod tests {
     fn capabilities() -> RuntimeCapabilities {
         RuntimeCapabilities {
             schema: RuntimeCapabilities::SCHEMA.into(),
-            provider_id: "docker".into(),
+            provider_id: a3s_runtime::ProviderId::parse("docker").unwrap(),
             provider_build: "docker-test".into(),
             unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
             artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

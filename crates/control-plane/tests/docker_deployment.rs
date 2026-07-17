@@ -227,7 +227,7 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
     assert_ne!(first_revision.id, second_revision.id);
 
     match RuntimeDriver::inspect(driver.as_ref(), &first_record).await? {
-        RuntimeInspection::Found { observation } => {
+        RuntimeInspection::Found { observation, .. } => {
             assert_eq!(observation.state, RuntimeUnitState::Running);
             assert_eq!(
                 observation.health.as_ref().map(|health| health.state),
@@ -280,7 +280,7 @@ async fn ready_node(
         )
         .await?;
     let stored_capabilities = NodeCapabilities::new(
-        capabilities.provider_id.clone(),
+        capabilities.provider_id.to_string(),
         capabilities.provider_build.clone(),
         serde_json::to_value(&capabilities)?,
     )?;

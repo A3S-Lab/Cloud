@@ -86,7 +86,7 @@ impl CommandExecutor {
                 generation,
             } => {
                 let inspection = self.runtime.inspect(unit_id).await?;
-                if let RuntimeInspection::Found { observation } = &inspection {
+                if let RuntimeInspection::Found { observation, .. } = &inspection {
                     if observation.generation != *generation {
                         return Err((if observation.generation > *generation {
                             RuntimeError::StaleGeneration {
@@ -317,6 +317,7 @@ mod tests {
                 ))
             } else {
                 Ok(RuntimeInspection::NotFound {
+                    schema: RuntimeInspection::SCHEMA.into(),
                     unit_id: unit_id.into(),
                     last_generation: Some(1),
                 })
