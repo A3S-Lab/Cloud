@@ -216,7 +216,11 @@ impl DockerRuntimeDriver {
         spec: &RuntimeUnitSpec,
         spec_digest: &str,
     ) -> RuntimeResult<Option<ContainerInspectResponse>> {
-        let labels = managed_labels(&self.namespace, node_id, spec, spec_digest);
+        // Search by caller-owned generation identity before validating the
+        // mutable provider metadata. Including the spec digest in Docker's
+        // label filter would make a digest-tampered container look absent and
+        // bypass the fail-closed binding check below.
+        let labels = managed_generation_labels(&self.namespace, node_id, spec);
         let mut filters = HashMap::new();
         filters.insert(
             "label".to_owned(),
@@ -609,9 +613,18 @@ fn managed_labels(
     spec: &RuntimeUnitSpec,
     digest: &str,
 ) -> HashMap<String, String> {
+    let mut labels = managed_generation_labels(namespace, node_id, spec);
+    labels.insert(SPEC_DIGEST_LABEL.into(), digest.into());
+    labels
+}
+
+fn managed_generation_labels(
+    namespace: &str,
+    node_id: Uuid,
+    spec: &RuntimeUnitSpec,
+) -> HashMap<String, String> {
     let mut labels = managed_unit_labels(namespace, node_id, &spec.unit_id);
     labels.insert(GENERATION_LABEL.into(), spec.generation.to_string());
-    labels.insert(SPEC_DIGEST_LABEL.into(), digest.into());
     labels
 }
 

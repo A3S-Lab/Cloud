@@ -250,14 +250,13 @@ impl DockerConformanceFixture {
             )
             .await?;
 
-        let rejection = client
-            .apply(&specs::apply("security-tamper-retry", spec.clone()))
-            .await;
+        let rejection = client.inspect(&spec.unit_id).await;
         require(
             matches!(
                 rejection,
-                Err(RuntimeError::ProviderUnavailable(message))
-                    if message.contains("conflict")
+                Err(RuntimeError::Protocol(message))
+                    if message.contains("spec-digest")
+                        && message.contains("durable identity")
             ),
             "metadata-tampered Docker resource did not fail closed",
         )?;
