@@ -16,7 +16,7 @@ pub(super) fn capabilities(build: &str) -> NodeCapabilities {
 pub(super) fn runtime_capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("docker").unwrap(),
+        provider_id: a3s_runtime::ProviderId::parse("docker").expect("valid Docker provider ID"),
         provider_build: "observation-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

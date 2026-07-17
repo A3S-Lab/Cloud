@@ -388,7 +388,8 @@ pub(super) fn stopped_observation(
 pub(super) fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("test-runtime").unwrap(),
+        provider_id: a3s_runtime::ProviderId::parse("test-runtime")
+            .expect("valid test provider ID"),
         provider_build: "test-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

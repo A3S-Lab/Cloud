@@ -965,7 +965,8 @@ fn healthy_observation(
 fn runtime_capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("integration-runtime").unwrap(),
+        provider_id: a3s_runtime::ProviderId::parse("integration-runtime")
+            .expect("valid integration provider ID"),
         provider_build: "integration-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
