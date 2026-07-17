@@ -354,7 +354,8 @@ record_host_inventory before
 log "phase=build-start"
 timeout --signal=TERM --kill-after=30s 1200s \
     env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
-    "$cargo_bin" test --locked -p a3s-cloud-node-agent --test docker_conformance --no-run \
+    "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+    -p a3s-cloud-node-agent --test docker_conformance --no-run \
     2>&1 | tee "$evidence/cargo-build.log"
 log "phase=build-pass"
 
@@ -510,7 +511,7 @@ timeout --signal=TERM --kill-after=30s 2100s \
         A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
         A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
         CARGO_TARGET_DIR="$target_dir" \
-        "$cargo_bin" test --locked \
+        "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
             -p a3s-cloud-node-agent \
             --test docker_conformance \
             real_docker_passes_all_advertised_runtime_profiles \
