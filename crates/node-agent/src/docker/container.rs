@@ -612,11 +612,7 @@ fn managed_labels(
     labels
 }
 
-fn managed_unit_labels(
-    namespace: &str,
-    node_id: Uuid,
-    unit_id: &str,
-) -> HashMap<String, String> {
+fn managed_unit_labels(namespace: &str, node_id: Uuid, unit_id: &str) -> HashMap<String, String> {
     HashMap::from([
         (MANAGED_LABEL.into(), "true".into()),
         (NAMESPACE_LABEL.into(), namespace.into()),

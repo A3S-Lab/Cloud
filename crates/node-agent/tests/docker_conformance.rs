@@ -205,11 +205,7 @@ async fn newer_generation_retires_the_previous_managed_container() {
     assert_eq!(managed_container_count(&namespace, &unit_id).await, 1);
 
     runtime
-        .remove(&action_generation(
-            "generation-remove",
-            unit_id.clone(),
-            2,
-        ))
+        .remove(&action_generation("generation-remove", unit_id.clone(), 2))
         .await
         .expect("remove generation two provider container");
     assert_eq!(managed_container_count(&namespace, &unit_id).await, 0);
