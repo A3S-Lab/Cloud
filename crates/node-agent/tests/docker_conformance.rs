@@ -99,14 +99,7 @@ async fn real_docker_exercises_advertised_optional_profile_behavior() {
         .expect("Docker profile probe capabilities");
 
     let execution = async {
-        for profile in [
-            RuntimeConformanceProfile::Networking,
-            RuntimeConformanceProfile::Mounts,
-            RuntimeConformanceProfile::Health,
-            RuntimeConformanceProfile::Resources,
-            RuntimeConformanceProfile::Logs,
-            RuntimeConformanceProfile::Security,
-        ] {
+        for profile in optional_probe_profiles() {
             let evidence = fixture
                 .run_profile(&runtime, &capabilities, profile)
                 .await?;
@@ -131,4 +124,23 @@ fn require_docker_gate() {
         Ok("1"),
         "the dedicated Docker conformance gate must set A3S_CLOUD_TEST_DOCKER=1"
     );
+}
+
+fn optional_probe_profiles() -> Vec<RuntimeConformanceProfile> {
+    let all = vec![
+        RuntimeConformanceProfile::Networking,
+        RuntimeConformanceProfile::Mounts,
+        RuntimeConformanceProfile::Health,
+        RuntimeConformanceProfile::Resources,
+        RuntimeConformanceProfile::Logs,
+        RuntimeConformanceProfile::Security,
+    ];
+    let Ok(selected) = std::env::var("A3S_CLOUD_TEST_RUNTIME_PROFILE") else {
+        return all;
+    };
+    let profile = all
+        .into_iter()
+        .find(|profile| profile.as_str() == selected)
+        .unwrap_or_else(|| panic!("unsupported optional Docker profile {selected:?}"));
+    vec![profile]
 }

@@ -28,6 +28,14 @@ impl DockerConformanceFixture {
         )?;
 
         let all = client.logs(&log_query(&task, None, 32, None)).await?;
+        for chunk in &all {
+            let prefix = chunk.data.chars().take(32).collect::<String>();
+            eprintln!(
+                "A3S_RUNTIME_LOG_RECORD stream={:?} len={} prefix={prefix:?}",
+                chunk.stream,
+                chunk.data.len()
+            );
+        }
         require(
             all.len() >= 5,
             format!("Docker log fixture returned too few records: {}", all.len()),

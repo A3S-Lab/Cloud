@@ -52,3 +52,6 @@ A3S_CLOUD_TEST_DOCKER=1 cargo test -p a3s-cloud-node-agent \
 ```
 
 Its result never substitutes for the mandatory Base and Recovery gate.
+Set `A3S_CLOUD_TEST_RUNTIME_PROFILE` to one of `networking`, `mounts`,
+`health`, `resources`, `logs`, or `security` to run one focused optional
+profile during development. Omitting it runs all optional profiles.
