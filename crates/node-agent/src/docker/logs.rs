@@ -25,7 +25,7 @@ impl DockerRuntimeDriver {
         let since = cursor
             .as_ref()
             .map_or(0, |cursor| cursor.seconds.saturating_sub(1));
-        let options = LogsOptions {
+        let options: LogsOptions<String> = LogsOptions {
             follow: false,
             stdout: query.stream != Some(RuntimeLogStream::Stderr),
             stderr: query.stream != Some(RuntimeLogStream::Stdout),
