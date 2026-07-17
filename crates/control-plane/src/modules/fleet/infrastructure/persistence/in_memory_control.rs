@@ -181,10 +181,8 @@ impl INodeControlRepository for InMemoryNodeRepository {
         now: DateTime<Utc>,
         leased_until: DateTime<Utc>,
     ) -> Result<NodeCommandLeaseResponse, RepositoryError> {
-        let now = canonical_timestamp("node command lease start", now)
-            .map_err(RepositoryError::Conflict)?;
-        let leased_until = canonical_timestamp("node command lease expiry", leased_until)
-            .map_err(RepositoryError::Conflict)?;
+        let now = canonical_timestamp(now);
+        let leased_until = canonical_timestamp(leased_until);
         request.validate().map_err(RepositoryError::Conflict)?;
         if lease_id.is_nil() || leased_until <= now {
             return Err(RepositoryError::Conflict(
@@ -268,9 +266,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
         mut acknowledgement: NodeCommandAck,
         _received_at: DateTime<Utc>,
     ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
-        acknowledgement.completed_at =
-            canonical_timestamp("node command completion", acknowledgement.completed_at)
-                .map_err(RepositoryError::Conflict)?;
+        acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
         let mut state = self.state.write().await;
         let stored = state
             .commands
@@ -344,17 +340,12 @@ impl INodeControlRepository for InMemoryNodeRepository {
         mut batch: NodeObservationBatch,
         received_at: DateTime<Utc>,
     ) -> Result<NodeObservationReceipt, RepositoryError> {
-        batch.sent_at = canonical_timestamp("observation batch send", batch.sent_at)
-            .map_err(RepositoryError::Conflict)?;
-        batch.heartbeat.observed_at =
-            canonical_timestamp("observation heartbeat", batch.heartbeat.observed_at)
-                .map_err(RepositoryError::Conflict)?;
+        batch.sent_at = canonical_timestamp(batch.sent_at);
+        batch.heartbeat.observed_at = canonical_timestamp(batch.heartbeat.observed_at);
         for report in &mut batch.observations {
-            report.observed_at = canonical_timestamp("Runtime observation", report.observed_at)
-                .map_err(RepositoryError::Conflict)?;
+            report.observed_at = canonical_timestamp(report.observed_at);
         }
-        let _received_at = canonical_timestamp("observation receipt", received_at)
-            .map_err(RepositoryError::Conflict)?;
+        let _received_at = canonical_timestamp(received_at);
         batch.validate().map_err(RepositoryError::Conflict)?;
         let capabilities = NodeCapabilities::new(
             batch.heartbeat.runtime_capabilities.provider_id.to_string(),
@@ -477,11 +468,8 @@ impl INodeControlRepository for InMemoryNodeRepository {
         mut acknowledgement: NodeGatewayAck,
         received_at: DateTime<Utc>,
     ) -> Result<NodeGatewayAckReceipt, RepositoryError> {
-        acknowledgement.acknowledged_at =
-            canonical_timestamp("Gateway acknowledgement", acknowledgement.acknowledged_at)
-                .map_err(RepositoryError::Conflict)?;
-        let _received_at = canonical_timestamp("Gateway acknowledgement receipt", received_at)
-            .map_err(RepositoryError::Conflict)?;
+        acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+        let _received_at = canonical_timestamp(received_at);
         acknowledgement
             .validate()
             .map_err(RepositoryError::Conflict)?;
@@ -530,10 +518,8 @@ impl INodeControlRepository for InMemoryNodeRepository {
         mut batch: NodeLogBatchReceiptDraft,
         received_at: DateTime<Utc>,
     ) -> Result<NodeLogChunkReceipt, RepositoryError> {
-        batch.sent_at = canonical_timestamp("log batch send", batch.sent_at)
-            .map_err(RepositoryError::Conflict)?;
-        let _received_at = canonical_timestamp("log batch receipt", received_at)
-            .map_err(RepositoryError::Conflict)?;
+        batch.sent_at = canonical_timestamp(batch.sent_at);
+        let _received_at = canonical_timestamp(received_at);
         batch.validate().map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let node = state

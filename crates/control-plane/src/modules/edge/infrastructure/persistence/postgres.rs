@@ -409,11 +409,8 @@ impl IEdgeRepository for PostgresEdgeRepository {
         received_at: DateTime<Utc>,
     ) -> Result<bool, RepositoryError> {
         let mut acknowledgement = acknowledgement.clone();
-        acknowledgement.acknowledged_at =
-            canonical_timestamp("Gateway acknowledgement", acknowledgement.acknowledged_at)
-                .map_err(RepositoryError::Conflict)?;
-        let received_at = canonical_timestamp("Gateway acknowledgement receipt", received_at)
-            .map_err(RepositoryError::Conflict)?;
+        acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+        let received_at = canonical_timestamp(received_at);
         acknowledgement
             .validate()
             .map_err(RepositoryError::Conflict)?;

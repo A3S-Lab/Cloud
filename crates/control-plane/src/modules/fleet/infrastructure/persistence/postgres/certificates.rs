@@ -36,9 +36,7 @@ pub(super) async fn reserve_rotation(
     mut draft: NodeCertificateRotationDraft,
     idempotency: IdempotencyRequest,
 ) -> Result<NodeCertificateRotationReservation, RepositoryError> {
-    draft.requested_at =
-        canonical_timestamp("node certificate rotation request", draft.requested_at)
-            .map_err(RepositoryError::Conflict)?;
+    draft.requested_at = canonical_timestamp(draft.requested_at);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
@@ -125,8 +123,7 @@ pub(super) async fn complete_rotation(
     event: DomainEventEnvelope,
     idempotency: IdempotencyRequest,
 ) -> Result<NodeCertificateRotationReservation, RepositoryError> {
-    let rotated_at = canonical_timestamp("node certificate rotation", rotated_at)
-        .map_err(RepositoryError::Conflict)?;
+    let rotated_at = canonical_timestamp(rotated_at);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

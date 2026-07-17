@@ -3,7 +3,7 @@ use crate::modules::operations::domain::entities::{
 };
 use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OperationId, OrganizationId, RepositoryError,
+    canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -78,8 +78,9 @@ impl IOperationRepository for InMemoryOperationRepository {
 
     async fn upsert_projection(
         &self,
-        projection: OperationProjection,
+        mut projection: OperationProjection,
     ) -> Result<(), RepositoryError> {
+        projection.updated_at = canonical_timestamp(projection.updated_at);
         let mut state = self.state.write().await;
         if !state.requests.contains_key(&projection.operation_id) {
             return Err(RepositoryError::NotFound);

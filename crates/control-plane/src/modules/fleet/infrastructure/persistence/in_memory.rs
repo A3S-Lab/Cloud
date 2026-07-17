@@ -117,8 +117,7 @@ impl INodeRepository for InMemoryNodeRepository {
         credential: &EnrollmentTokenCredential,
         mut draft: NodeEnrollmentDraft,
     ) -> Result<NodeEnrollmentReservation, RepositoryError> {
-        draft.requested_at = canonical_timestamp("node enrollment request", draft.requested_at)
-            .map_err(RepositoryError::Conflict)?;
+        draft.requested_at = canonical_timestamp(draft.requested_at);
         let mut state = self.state.write().await;
         let token_id = state
             .token_by_digest
@@ -223,9 +222,7 @@ impl INodeRepository for InMemoryNodeRepository {
         mut draft: NodeCertificateRotationDraft,
         idempotency: IdempotencyRequest,
     ) -> Result<NodeCertificateRotationReservation, RepositoryError> {
-        draft.requested_at =
-            canonical_timestamp("node certificate rotation request", draft.requested_at)
-                .map_err(RepositoryError::Conflict)?;
+        draft.requested_at = canonical_timestamp(draft.requested_at);
         let mut state = self.state.write().await;
         let idempotency_key = (idempotency.scope.clone(), idempotency.key.clone());
         if let Some(record) = state.rotation_idempotency.get(&idempotency_key) {
@@ -288,8 +285,7 @@ impl INodeRepository for InMemoryNodeRepository {
             event: _,
             idempotency,
         } = completion;
-        let rotated_at = canonical_timestamp("node certificate rotation", rotated_at)
-            .map_err(RepositoryError::Conflict)?;
+        let rotated_at = canonical_timestamp(rotated_at);
         let mut state = self.state.write().await;
         let idempotency_key = (idempotency.scope.clone(), idempotency.key.clone());
         let record = state
@@ -477,8 +473,7 @@ impl INodeRepository for InMemoryNodeRepository {
         &self,
         mut update: NodeHeartbeatUpdate,
     ) -> Result<Node, RepositoryError> {
-        update.observed_at = canonical_timestamp("node heartbeat", update.observed_at)
-            .map_err(RepositoryError::Conflict)?;
+        update.observed_at = canonical_timestamp(update.observed_at);
         let mut state = self.state.write().await;
         let node_key = state
             .nodes
@@ -510,8 +505,7 @@ impl INodeRepository for InMemoryNodeRepository {
             event: _,
             idempotency,
         } = change;
-        let changed_at = canonical_timestamp("node state change", changed_at)
-            .map_err(RepositoryError::Conflict)?;
+        let changed_at = canonical_timestamp(changed_at);
         let mut state = self.state.write().await;
         let idempotency_key = (idempotency.scope.clone(), idempotency.key.clone());
         if let Some((request_digest, node)) = state.state_idempotency.get(&idempotency_key) {

@@ -359,10 +359,8 @@ pub(super) async fn lease(
     now: DateTime<Utc>,
     leased_until: DateTime<Utc>,
 ) -> Result<NodeCommandLeaseResponse, RepositoryError> {
-    let now =
-        canonical_timestamp("node command lease start", now).map_err(RepositoryError::Conflict)?;
-    let leased_until = canonical_timestamp("node command lease expiry", leased_until)
-        .map_err(RepositoryError::Conflict)?;
+    let now = canonical_timestamp(now);
+    let leased_until = canonical_timestamp(leased_until);
     request.validate().map_err(RepositoryError::Conflict)?;
     if lease_id.is_nil() || leased_until <= now {
         return Err(RepositoryError::Conflict(
@@ -455,9 +453,7 @@ pub(super) async fn acknowledge(
     mut acknowledgement: NodeCommandAck,
     _received_at: DateTime<Utc>,
 ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
-    acknowledgement.completed_at =
-        canonical_timestamp("node command completion", acknowledgement.completed_at)
-            .map_err(RepositoryError::Conflict)?;
+    acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

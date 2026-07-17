@@ -41,7 +41,7 @@ impl Node {
         {
             return Err("agent version is invalid".into());
         }
-        let enrolled_at = canonical_timestamp("node enrollment", enrolled_at)?;
+        let enrolled_at = canonical_timestamp(enrolled_at);
         Ok(Self {
             id,
             organization_id,

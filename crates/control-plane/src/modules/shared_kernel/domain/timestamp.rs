@@ -1,12 +1,11 @@
-use chrono::{DateTime, Timelike, Utc};
+use chrono::{DateTime, TimeDelta, Timelike, Utc};
 
-pub(crate) fn canonical_timestamp(
-    label: &str,
-    value: DateTime<Utc>,
-) -> Result<DateTime<Utc>, String> {
-    value
-        .with_nanosecond(value.nanosecond() / 1_000 * 1_000)
-        .ok_or_else(|| format!("{label} timestamp is outside supported bounds"))
+/// Canonicalize a timestamp to PostgreSQL's microsecond precision.
+///
+/// The subtraction never crosses the current second, so every valid UTC
+/// timestamp has a canonical representation without a fallible conversion.
+pub(crate) fn canonical_timestamp(value: DateTime<Utc>) -> DateTime<Utc> {
+    value - TimeDelta::nanoseconds(i64::from(value.nanosecond() % 1_000))
 }
 
 #[cfg(test)]
@@ -21,11 +20,6 @@ mod tests {
             .single()
             .expect("timestamp");
 
-        assert_eq!(
-            canonical_timestamp("fixture", timestamp)
-                .expect("canonical timestamp")
-                .nanosecond(),
-            123_456_000
-        );
+        assert_eq!(canonical_timestamp(timestamp).nanosecond(), 123_456_000);
     }
 }

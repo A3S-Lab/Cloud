@@ -86,8 +86,7 @@ pub(super) async fn reserve(
     credential: &EnrollmentTokenCredential,
     mut draft: NodeEnrollmentDraft,
 ) -> Result<NodeEnrollmentReservation, RepositoryError> {
-    draft.requested_at = canonical_timestamp("node enrollment request", draft.requested_at)
-        .map_err(RepositoryError::Conflict)?;
+    draft.requested_at = canonical_timestamp(draft.requested_at);
     let digest = credential.digest().to_owned();
     executor
         .transaction(move |transaction| {

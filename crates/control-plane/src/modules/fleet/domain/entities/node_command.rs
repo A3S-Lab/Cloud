@@ -29,8 +29,8 @@ impl NodeCommand {
         if sequence == 0 {
             return Err("node command sequence must be positive".into());
         }
-        let issued_at = canonical_timestamp("node command issue", draft.issued_at)?;
-        let not_after = canonical_timestamp("node command expiry", draft.not_after)?;
+        let issued_at = canonical_timestamp(draft.issued_at);
+        let not_after = canonical_timestamp(draft.not_after);
         if not_after <= issued_at {
             return Err("node command expiry must follow issue time".into());
         }

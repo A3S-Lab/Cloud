@@ -39,8 +39,8 @@ impl NodeCertificate {
         {
             return Err("node certificate material exceeds size limits".into());
         }
-        let issued_at = canonical_timestamp("node certificate issue", material.issued_at)?;
-        let expires_at = canonical_timestamp("node certificate expiry", material.expires_at)?;
+        let issued_at = canonical_timestamp(material.issued_at);
+        let expires_at = canonical_timestamp(material.expires_at);
         if expires_at <= issued_at {
             return Err("node certificate must expire after issue time".into());
         }

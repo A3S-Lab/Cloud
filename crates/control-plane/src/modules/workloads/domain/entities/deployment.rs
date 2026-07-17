@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId, WorkloadId,
-    WorkloadRevisionId,
+    canonical_timestamp, DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId,
+    WorkloadId, WorkloadRevisionId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -92,6 +92,7 @@ impl Deployment {
         operation_id: OperationId,
         requested_at: DateTime<Utc>,
     ) -> Self {
+        let requested_at = canonical_timestamp(requested_at);
         Self {
             id,
             organization_id,
@@ -119,7 +120,7 @@ impl Deployment {
     pub fn schedule(&mut self, node_id: NodeId, at: DateTime<Utc>) -> Result<(), String> {
         if self.status == DeploymentStatus::Scheduled {
             return if self.node_id == Some(node_id) {
-                self.ensure_time(at)
+                self.canonical_time(at).map(|_| ())
             } else {
                 Err("scheduled deployment cannot change node".into())
             };
@@ -132,7 +133,7 @@ impl Deployment {
     pub fn dispatch(&mut self, command_id: NodeCommandId, at: DateTime<Utc>) -> Result<(), String> {
         if self.status == DeploymentStatus::Applying {
             return if self.command_id == Some(command_id) {
-                self.ensure_time(at)
+                self.canonical_time(at).map(|_| ())
             } else {
                 Err("dispatched deployment cannot change command".into())
             };
@@ -150,8 +151,9 @@ impl Deployment {
     }
 
     pub fn activate(&mut self, at: DateTime<Utc>) -> Result<(), String> {
+        let at = self.canonical_time(at)?;
         if self.status == DeploymentStatus::Active {
-            return self.ensure_time(at);
+            return Ok(());
         }
         self.transition(DeploymentStatus::Verifying, DeploymentStatus::Active, at)?;
         self.activated_at = Some(at);
@@ -171,7 +173,7 @@ impl Deployment {
         {
             return Err("deployment failure is invalid".into());
         }
-        self.ensure_time(at)?;
+        let at = self.canonical_time(at)?;
         if matches!(
             self.status,
             DeploymentStatus::Failed | DeploymentStatus::Orphaned
@@ -198,8 +200,9 @@ impl Deployment {
     }
 
     pub fn cancel(&mut self, at: DateTime<Utc>) -> Result<(), String> {
+        let at = self.canonical_time(at)?;
         if self.status == DeploymentStatus::Cancelled {
-            return self.ensure_time(at);
+            return Ok(());
         }
         if !matches!(
             self.status,
@@ -207,7 +210,6 @@ impl Deployment {
         ) {
             self.request_cancellation(at)?;
         }
-        self.ensure_time(at)?;
         self.status = DeploymentStatus::Cancelled;
         self.cancelled_at = Some(at);
         self.aggregate_version += 1;
@@ -216,7 +218,7 @@ impl Deployment {
     }
 
     pub fn request_cancellation(&mut self, at: DateTime<Utc>) -> Result<(), String> {
-        self.ensure_time(at)?;
+        let at = self.canonical_time(at)?;
         if matches!(
             self.status,
             DeploymentStatus::Cancelling | DeploymentStatus::CleanupPending
@@ -238,7 +240,7 @@ impl Deployment {
         command_id: NodeCommandId,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
-        self.ensure_time(at)?;
+        let at = self.canonical_time(at)?;
         if self.status == DeploymentStatus::CleanupPending {
             return if self.cleanup_command_id == Some(command_id) {
                 Ok(())
@@ -264,7 +266,7 @@ impl Deployment {
         command_id: NodeCommandId,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
-        self.ensure_time(at)?;
+        let at = self.canonical_time(at)?;
         if self.status != DeploymentStatus::CleanupPending || self.cleanup_command_id.is_none() {
             return Err("deployment has no pending cleanup to retry".into());
         }
@@ -282,7 +284,7 @@ impl Deployment {
         next: DeploymentStatus,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
-        self.ensure_time(at)?;
+        let at = self.canonical_time(at)?;
         if self.status == next {
             return Ok(());
         }
@@ -299,10 +301,11 @@ impl Deployment {
         Ok(())
     }
 
-    fn ensure_time(&self, at: DateTime<Utc>) -> Result<(), String> {
+    fn canonical_time(&self, at: DateTime<Utc>) -> Result<DateTime<Utc>, String> {
+        let at = canonical_timestamp(at);
         if at < self.updated_at {
             return Err("deployment update time regressed".into());
         }
-        Ok(())
+        Ok(at)
     }
 }

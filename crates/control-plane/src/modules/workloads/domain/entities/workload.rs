@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, ResourceName, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, EnvironmentId, OrganizationId, ProjectId, ResourceName, WorkloadId,
+    WorkloadRevisionId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,7 @@ impl Workload {
         name: ResourceName,
         created_at: DateTime<Utc>,
     ) -> Self {
+        let created_at = canonical_timestamp(created_at);
         Self {
             id,
             organization_id,
@@ -70,6 +72,7 @@ impl Workload {
         revision_id: WorkloadRevisionId,
         activated_at: DateTime<Utc>,
     ) -> Result<(), String> {
+        let activated_at = canonical_timestamp(activated_at);
         if self.desired_state != WorkloadDesiredState::Running {
             return Err("stopped workload cannot activate a revision".into());
         }
@@ -85,6 +88,7 @@ impl Workload {
     }
 
     pub fn request_stop(&mut self, requested_at: DateTime<Utc>) -> Result<(), String> {
+        let requested_at = canonical_timestamp(requested_at);
         if requested_at < self.updated_at {
             return Err("workload stop request time regressed".into());
         }
@@ -98,6 +102,7 @@ impl Workload {
     }
 
     pub fn complete_stop(&mut self, stopped_at: DateTime<Utc>) -> Result<(), String> {
+        let stopped_at = canonical_timestamp(stopped_at);
         if self.desired_state != WorkloadDesiredState::Stopped {
             return Err("running workload cannot complete a stop".into());
         }

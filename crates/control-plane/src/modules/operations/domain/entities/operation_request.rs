@@ -1,5 +1,5 @@
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::shared_kernel::domain::{OperationId, OrganizationId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, OperationId, OrganizationId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,7 @@ impl OperationRequest {
         input: serde_json::Value,
         requested_at: DateTime<Utc>,
     ) -> Self {
+        let requested_at = canonical_timestamp(requested_at);
         Self {
             id,
             organization_id,

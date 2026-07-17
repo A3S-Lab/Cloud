@@ -31,8 +31,7 @@ pub(super) async fn record_heartbeat_in_transaction(
     transaction: &PostgresTransaction,
     mut update: NodeHeartbeatUpdate,
 ) -> Result<Node, PostgresPersistenceError> {
-    update.observed_at = canonical_timestamp("node heartbeat", update.observed_at)
-        .map_err(RepositoryError::Conflict)?;
+    update.observed_at = canonical_timestamp(update.observed_at);
     let mut node = queries::node_by_id(transaction, update.node_id, true)
         .await?
         .ok_or(RepositoryError::NotFound)?;
@@ -111,8 +110,7 @@ pub(super) async fn set_state(
     event: DomainEventEnvelope,
     idempotency: IdempotencyRequest,
 ) -> Result<IdempotentWrite<Node>, RepositoryError> {
-    let changed_at =
-        canonical_timestamp("node state change", changed_at).map_err(RepositoryError::Conflict)?;
+    let changed_at = canonical_timestamp(changed_at);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

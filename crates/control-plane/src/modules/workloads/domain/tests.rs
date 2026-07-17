@@ -1,9 +1,9 @@
 use super::entities::*;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId, ResourceName, WorkloadId,
-    WorkloadRevisionId,
+    canonical_timestamp, DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId,
+    ResourceName, WorkloadId, WorkloadRevisionId,
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, Timelike, Utc};
 use std::collections::BTreeMap;
 
 fn template(digest_character: char) -> ServiceTemplate {
@@ -161,6 +161,9 @@ fn revision_requires_a_digest_bound_oci_artifact_and_has_a_stable_digest() {
 #[test]
 fn deployment_lifecycle_is_monotonic_and_activation_selects_the_revision() {
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("sub-microsecond workload timestamp");
     let workload_id = WorkloadId::new();
     let revision_id = WorkloadRevisionId::new();
     let mut workload = Workload::create(
@@ -197,6 +200,10 @@ fn deployment_lifecycle_is_monotonic_and_activation_selects_the_revision() {
         .expect("select active revision");
     assert_eq!(deployment.status, DeploymentStatus::Active);
     assert_eq!(workload.active_revision_id, Some(revision_id));
+    assert_eq!(deployment.requested_at.nanosecond() % 1_000, 0);
+    assert_eq!(deployment.updated_at.nanosecond() % 1_000, 0);
+    assert_eq!(workload.created_at.nanosecond() % 1_000, 0);
+    assert_eq!(workload.updated_at.nanosecond() % 1_000, 0);
     assert!(deployment
         .fail("late failure".into(), now + Duration::seconds(5))
         .is_err());
@@ -337,7 +344,10 @@ fn dispatched_cancellation_tracks_cleanup_before_becoming_terminal() {
         .cancel(now + Duration::seconds(4))
         .expect("complete cancellation");
     assert_eq!(deployment.status, DeploymentStatus::Cancelled);
-    assert_eq!(deployment.cancelled_at, Some(now + Duration::seconds(4)));
+    assert_eq!(
+        deployment.cancelled_at,
+        Some(canonical_timestamp(now + Duration::seconds(4)))
+    );
 }
 
 #[test]

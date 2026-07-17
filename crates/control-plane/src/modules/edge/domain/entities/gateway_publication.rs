@@ -1,4 +1,4 @@
-use crate::modules::shared_kernel::domain::{NodeCommandId, NodeId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeCommandId, NodeId};
 use a3s_cloud_contracts::{GatewayAckState, GatewaySnapshot, NodeGatewayAck};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,8 @@ impl GatewayPublication {
         if command_correlation_id.is_nil() {
             return Err("Gateway publication command correlation ID must not be nil".into());
         }
+        let command_issued_at = canonical_timestamp(command_issued_at);
+        let command_not_after = canonical_timestamp(command_not_after);
         if command_not_after <= command_issued_at {
             return Err("Gateway publication command expiry must follow its issue time".into());
         }
@@ -94,7 +96,8 @@ impl GatewayPublication {
             self.node_id.as_uuid(),
             &self.snapshot()?,
         )?;
-        if acknowledgement.acknowledged_at < self.command_issued_at {
+        let acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+        if acknowledged_at < self.command_issued_at {
             return Err("Gateway acknowledgement predates its publication".into());
         }
         let next = match acknowledgement.state {
@@ -103,7 +106,7 @@ impl GatewayPublication {
         };
         if self.state == next
             && self.failure == acknowledgement.message
-            && self.acknowledged_at == Some(acknowledgement.acknowledged_at)
+            && self.acknowledged_at == Some(acknowledged_at)
         {
             return Ok(());
         }
@@ -112,7 +115,7 @@ impl GatewayPublication {
         }
         self.state = next;
         self.failure = acknowledgement.message.clone();
-        self.acknowledged_at = Some(acknowledgement.acknowledged_at);
+        self.acknowledged_at = Some(acknowledged_at);
         Ok(())
     }
 }

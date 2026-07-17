@@ -8,7 +8,7 @@ use crate::modules::operations::domain::entities::{
 use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OperationId, OrganizationId, RepositoryError,
+    canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use async_trait::async_trait;
@@ -146,8 +146,9 @@ impl IOperationRepository for PostgresOperationRepository {
 
     async fn upsert_projection(
         &self,
-        projection: OperationProjection,
+        mut projection: OperationProjection,
     ) -> Result<(), RepositoryError> {
+        projection.updated_at = canonical_timestamp(projection.updated_at);
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {

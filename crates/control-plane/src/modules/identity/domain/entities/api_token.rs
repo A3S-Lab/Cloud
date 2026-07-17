@@ -1,6 +1,6 @@
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::value_objects::{ApiTokenName, ApiTokenScope};
-use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, ApiTokenId, OrganizationId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -32,6 +32,8 @@ impl ApiToken {
         created_at: DateTime<Utc>,
         expires_at: Option<DateTime<Utc>>,
     ) -> Result<Self, String> {
+        let created_at = canonical_timestamp(created_at);
+        let expires_at = expires_at.map(canonical_timestamp);
         if scopes.is_empty() {
             return Err("API token must grant at least one scope".into());
         }
@@ -58,7 +60,7 @@ impl ApiToken {
         if self.revoked_at.is_some() {
             return false;
         }
-        self.revoked_at = Some(revoked_at.max(self.created_at));
+        self.revoked_at = Some(canonical_timestamp(revoked_at).max(self.created_at));
         self.aggregate_version += 1;
         true
     }
