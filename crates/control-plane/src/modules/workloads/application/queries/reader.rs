@@ -113,7 +113,7 @@ impl WorkloadQueryReader {
                 self.node_control
                     .latest_runtime_observation(
                         node_id,
-                        &format!("workload:{}", deployment.workload_id),
+                        &revision.runtime_unit_id(),
                         revision.generation,
                     )
                     .await?

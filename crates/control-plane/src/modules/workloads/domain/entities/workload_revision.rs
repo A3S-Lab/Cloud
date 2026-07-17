@@ -438,6 +438,10 @@ impl WorkloadRevision {
             .as_ref()
             .ok_or_else(|| "workload revision has not resolved its OCI artifact".into())
     }
+
+    pub fn runtime_unit_id(&self) -> String {
+        format!("workload:{}:revision:{}", self.workload_id, self.id)
+    }
 }
 
 fn validate_sha256(value: &str) -> Result<(), String> {

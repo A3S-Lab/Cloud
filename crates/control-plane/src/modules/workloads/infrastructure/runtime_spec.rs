@@ -9,7 +9,7 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
     let template = revision.resolved_template()?;
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
-        unit_id: format!("workload:{}", revision.workload_id),
+        unit_id: revision.runtime_unit_id(),
         generation: revision.generation,
         class: RuntimeUnitClass::Service,
         artifact: ArtifactRef {
@@ -119,6 +119,10 @@ mod tests {
         )
         .expect("revision");
         let spec = project_runtime_spec(&revision).expect("Runtime spec");
+        assert_eq!(
+            spec.unit_id,
+            format!("workload:{}:revision:{}", revision.workload_id, revision.id)
+        );
         assert_eq!(spec.generation, 3);
         assert_eq!(spec.artifact.digest, digest);
         assert_eq!(spec.class, RuntimeUnitClass::Service);

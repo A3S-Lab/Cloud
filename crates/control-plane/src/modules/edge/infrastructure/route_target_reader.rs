@@ -94,7 +94,7 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
             .observations
             .latest_runtime_observation(
                 node_id,
-                &format!("workload:{}", workload.id),
+                &revision.runtime_unit_id(),
                 revision.generation,
             )
             .await?
