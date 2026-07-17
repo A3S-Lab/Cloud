@@ -196,23 +196,7 @@ impl DockerRuntimeDriver {
         let container = self.find_container(node_id, &unit.spec, &digest).await?;
         let already_absent = container.is_none();
         if let Some(container) = container {
-            let id = container_id(&container)?;
-            match self
-                .docker
-                .remove_container(
-                    &id,
-                    Some(RemoveContainerOptions {
-                        force: true,
-                        v: false,
-                        link: false,
-                    }),
-                )
-                .await
-            {
-                Ok(()) => {}
-                Err(error) if is_status(&error, 404) => {}
-                Err(error) => return Err(docker_error(error)),
-            }
+            self.remove_managed_container(&container).await?;
         }
         let removal = RuntimeRemoval {
             schema: RuntimeRemoval::SCHEMA.into(),
@@ -293,22 +277,7 @@ impl DockerRuntimeDriver {
                 Err(error) => return Err(docker_error(error)),
             };
             self.validate_managed_unit_binding(&container, node_id, &spec.unit_id)?;
-            match self
-                .docker
-                .remove_container(
-                    id,
-                    Some(RemoveContainerOptions {
-                        force: true,
-                        v: false,
-                        link: false,
-                    }),
-                )
-                .await
-            {
-                Ok(()) => {}
-                Err(error) if is_status(&error, 404) => {}
-                Err(error) => return Err(docker_error(error)),
-            }
+            self.remove_managed_container(&container).await?;
         }
 
         let remaining = self
@@ -321,6 +290,38 @@ impl DockerRuntimeDriver {
             )));
         }
         Ok(())
+    }
+
+    async fn remove_managed_container(
+        &self,
+        container: &ContainerInspectResponse,
+    ) -> RuntimeResult<()> {
+        let id = container_id(container)?;
+        match self
+            .docker
+            .stop_container(&id, Some(StopContainerOptions { t: 1 }))
+            .await
+        {
+            Ok(()) => {}
+            Err(error) if is_status(&error, 304) || is_status(&error, 404) => {}
+            Err(error) => return Err(docker_error(error)),
+        }
+        match self
+            .docker
+            .remove_container(
+                &id,
+                Some(RemoveContainerOptions {
+                    force: true,
+                    v: false,
+                    link: false,
+                }),
+            )
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) if is_status(&error, 404) => Ok(()),
+            Err(error) => Err(docker_error(error)),
+        }
     }
 
     async fn managed_unit_container_ids(
