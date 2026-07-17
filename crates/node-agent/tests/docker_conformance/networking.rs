@@ -291,10 +291,12 @@ impl DockerConformanceFixture {
         let url = format!("http://127.0.0.1:{port}/");
         for _ in 0..40 {
             if let Ok(response) = reqwest::get(&url).await {
-                if response.status().is_success()
-                    && response.text().await.as_deref() == Ok(expected)
-                {
-                    return Ok(());
+                if response.status().is_success() {
+                    if let Ok(body) = response.text().await {
+                        if body == expected {
+                            return Ok(());
+                        }
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(100)).await;

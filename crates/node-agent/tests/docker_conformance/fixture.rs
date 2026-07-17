@@ -4,8 +4,7 @@ use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObser
 use a3s_runtime::{
     runtime_profile_requirements, FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient,
     RuntimeConformanceFixture, RuntimeConformanceInventory, RuntimeConformanceProfile,
-    RuntimeConformanceProfileEvidence, RuntimeDriver, RuntimeError, RuntimeResult,
-    RuntimeStateStore,
+    RuntimeConformanceProfileEvidence, RuntimeError, RuntimeResult, RuntimeStateStore,
 };
 use async_trait::async_trait;
 use bollard::container::{ListContainersOptions, RemoveContainerOptions, RestartContainerOptions};
