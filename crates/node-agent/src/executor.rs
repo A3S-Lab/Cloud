@@ -193,7 +193,9 @@ fn rejected(code: &str, message: &str) -> NodeCommandOutcome {
 fn runtime_failure(error: RuntimeError) -> NodeCommandOutcome {
     let (status, code, retryable) = match error {
         RuntimeError::InvalidRequest(_) => (FailureStatus::Rejected, "invalid_request", false),
-        RuntimeError::NotFound { .. } => (FailureStatus::Rejected, "not_found", false),
+        RuntimeError::NotFound { .. } | RuntimeError::RequestNotFound { .. } => {
+            (FailureStatus::Rejected, "not_found", false)
+        }
         RuntimeError::RequestConflict { .. } => {
             (FailureStatus::Rejected, "request_conflict", false)
         }
