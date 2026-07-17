@@ -247,9 +247,16 @@ def digest_bytes(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def validated_url(value: str, label: str, schemes: set[str]) -> str:
+def validated_url(
+    value: str,
+    label: str,
+    schemes: set[str],
+    *,
+    allow_path: bool = False,
+) -> str:
     parsed = urllib.parse.urlparse(value)
-    if parsed.scheme not in schemes or not parsed.netloc or parsed.path not in ("", "/"):
+    invalid_path = not allow_path and parsed.path not in ("", "/")
+    if parsed.scheme not in schemes or not parsed.netloc or invalid_path:
         choices = ", ".join(sorted(schemes))
         raise argparse.ArgumentTypeError(
             f"{label} must be an origin using one of: {choices}"
@@ -271,7 +278,9 @@ def parse_args() -> CopyConfig:
     args = parser.parse_args()
 
     source = validated_url(args.source, "source", {"https"})
-    token_url = validated_url(args.token_url, "token URL", {"https"})
+    token_url = validated_url(
+        args.token_url, "token URL", {"https"}, allow_path=True
+    )
     target = validated_url(args.target, "target", {"http", "https"})
     if not REPOSITORY_PATTERN.fullmatch(args.repository):
         parser.error("repository is not a valid lowercase OCI repository path")
