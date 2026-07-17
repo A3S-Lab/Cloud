@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::domain::{NodeCommandId, NodeId};
 use a3s_cloud_contracts::{NodeCommandEnvelope, NodeCommandMetadata, NodeCommandPayload};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -28,7 +28,9 @@ impl NodeCommand {
         if sequence == 0 {
             return Err("node command sequence must be positive".into());
         }
-        if draft.not_after <= draft.issued_at {
+        let issued_at = canonical_command_timestamp("issue", draft.issued_at)?;
+        let not_after = canonical_command_timestamp("expiry", draft.not_after)?;
+        if not_after <= issued_at {
             return Err("node command expiry must follow issue time".into());
         }
         draft.payload.validate()?;
@@ -38,8 +40,8 @@ impl NodeCommand {
             sequence,
             aggregate_id: draft.aggregate_id,
             payload: draft.payload,
-            issued_at: draft.issued_at,
-            not_after: draft.not_after,
+            issued_at,
+            not_after,
             correlation_id: draft.correlation_id,
         })
     }
@@ -83,6 +85,15 @@ impl NodeCommand {
     }
 }
 
+fn canonical_command_timestamp(
+    label: &str,
+    value: DateTime<Utc>,
+) -> Result<DateTime<Utc>, String> {
+    value
+        .with_nanosecond(value.nanosecond() / 1_000 * 1_000)
+        .ok_or_else(|| format!("node command {label} timestamp is outside supported bounds"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeCommandDraft {
     pub proposed_command_id: NodeCommandId,
@@ -92,4 +103,38 @@ pub struct NodeCommandDraft {
     pub issued_at: DateTime<Utc>,
     pub not_after: DateTime<Utc>,
     pub correlation_id: Uuid,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use a3s_cloud_contracts::NodeCommandPayload;
+    use chrono::TimeZone;
+
+    #[test]
+    fn command_timestamps_are_canonical_at_database_precision() {
+        let issued_at = Utc
+            .timestamp_opt(1_700_000_000, 123_456_789)
+            .single()
+            .expect("timestamp");
+        let draft = NodeCommandDraft {
+            proposed_command_id: NodeCommandId::new(),
+            node_id: NodeId::new(),
+            aggregate_id: Uuid::now_v7(),
+            payload: NodeCommandPayload::RuntimeInspect {
+                unit_id: "timestamp-fixture".into(),
+                generation: 1,
+            },
+            issued_at,
+            not_after: issued_at + chrono::Duration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        };
+
+        let command = NodeCommand::issue(draft.clone(), 1).expect("issue command");
+        let replay = NodeCommand::issue(draft, 1).expect("replay command");
+
+        assert_eq!(command, replay);
+        assert_eq!(command.issued_at.nanosecond(), 123_456_000);
+        assert_eq!(command.not_after.nanosecond(), 123_456_000);
+    }
 }
