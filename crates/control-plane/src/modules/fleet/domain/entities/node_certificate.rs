@@ -1,4 +1,4 @@
-use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeCertificateId, NodeId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +39,9 @@ impl NodeCertificate {
         {
             return Err("node certificate material exceeds size limits".into());
         }
-        if material.expires_at <= material.issued_at {
+        let issued_at = canonical_timestamp("node certificate issue", material.issued_at)?;
+        let expires_at = canonical_timestamp("node certificate expiry", material.expires_at)?;
+        if expires_at <= issued_at {
             return Err("node certificate must expire after issue time".into());
         }
         Ok(Self {
@@ -49,14 +51,66 @@ impl NodeCertificate {
             fingerprint: material.fingerprint,
             certificate_pem: material.certificate_pem,
             ca_bundle_pem: material.ca_bundle_pem,
-            issued_at: material.issued_at,
-            expires_at: material.expires_at,
+            issued_at,
+            expires_at,
             revoked_at: None,
         })
     }
 
     pub fn is_valid_at(&self, now: DateTime<Utc>) -> bool {
         self.revoked_at.is_none() && now >= self.issued_at && now < self.expires_at
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, TimeZone, Timelike};
+
+    #[test]
+    fn certificate_timestamps_are_canonical_at_database_precision() {
+        let issued_at = Utc
+            .timestamp_opt(1_700_000_000, 123_456_789)
+            .single()
+            .expect("timestamp");
+        let certificate = NodeCertificate::new(
+            NodeCertificateId::new(),
+            NodeId::new(),
+            NodeCertificateMaterial {
+                serial_number: "serial-1".into(),
+                fingerprint: format!("sha256:{}", "a".repeat(64)),
+                certificate_pem: "certificate".into(),
+                ca_bundle_pem: "CA".into(),
+                issued_at,
+                expires_at: issued_at + Duration::hours(1),
+            },
+        )
+        .expect("certificate");
+
+        assert_eq!(certificate.issued_at.nanosecond(), 123_456_000);
+        assert_eq!(certificate.expires_at.nanosecond(), 123_456_000);
+    }
+
+    #[test]
+    fn rejects_lifetime_that_collapses_at_database_precision() {
+        let issued_at = Utc
+            .timestamp_opt(1_700_000_000, 123_456_100)
+            .single()
+            .expect("timestamp");
+
+        assert!(NodeCertificate::new(
+            NodeCertificateId::new(),
+            NodeId::new(),
+            NodeCertificateMaterial {
+                serial_number: "serial-1".into(),
+                fingerprint: format!("sha256:{}", "a".repeat(64)),
+                certificate_pem: "certificate".into(),
+                ca_bundle_pem: "CA".into(),
+                issued_at,
+                expires_at: issued_at + Duration::nanoseconds(100),
+            },
+        )
+        .is_err());
     }
 }
 

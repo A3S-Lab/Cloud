@@ -8,7 +8,8 @@ use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertifi
 use crate::modules::fleet::domain::repositories::{NodeEnrollmentDraft, NodeEnrollmentReservation};
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
-    EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeId, RepositoryError,
+    canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeId,
+    RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::{sql_query, PostgresExecutor, PostgresTransaction};
@@ -83,8 +84,10 @@ pub(super) async fn issue_token(
 pub(super) async fn reserve(
     executor: &PostgresExecutor,
     credential: &EnrollmentTokenCredential,
-    draft: NodeEnrollmentDraft,
+    mut draft: NodeEnrollmentDraft,
 ) -> Result<NodeEnrollmentReservation, RepositoryError> {
+    draft.requested_at = canonical_timestamp("node enrollment request", draft.requested_at)
+        .map_err(RepositoryError::Conflict)?;
     let digest = credential.digest().to_owned();
     executor
         .transaction(move |transaction| {

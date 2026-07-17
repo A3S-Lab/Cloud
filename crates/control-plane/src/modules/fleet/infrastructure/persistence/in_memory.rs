@@ -6,8 +6,8 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::shared_kernel::domain::{
-    EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId, NodeCommandId,
-    NodeId, OrganizationId, RepositoryError,
+    canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId,
+    NodeCommandId, NodeId, OrganizationId, RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -115,8 +115,10 @@ impl INodeRepository for InMemoryNodeRepository {
     async fn reserve_enrollment(
         &self,
         credential: &EnrollmentTokenCredential,
-        draft: NodeEnrollmentDraft,
+        mut draft: NodeEnrollmentDraft,
     ) -> Result<NodeEnrollmentReservation, RepositoryError> {
+        draft.requested_at = canonical_timestamp("node enrollment request", draft.requested_at)
+            .map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let token_id = state
             .token_by_digest
@@ -218,9 +220,12 @@ impl INodeRepository for InMemoryNodeRepository {
         organization_id: OrganizationId,
         node_id: NodeId,
         current_certificate_id: NodeCertificateId,
-        draft: NodeCertificateRotationDraft,
+        mut draft: NodeCertificateRotationDraft,
         idempotency: IdempotencyRequest,
     ) -> Result<NodeCertificateRotationReservation, RepositoryError> {
+        draft.requested_at =
+            canonical_timestamp("node certificate rotation request", draft.requested_at)
+                .map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let idempotency_key = (idempotency.scope.clone(), idempotency.key.clone());
         if let Some(record) = state.rotation_idempotency.get(&idempotency_key) {
@@ -283,6 +288,8 @@ impl INodeRepository for InMemoryNodeRepository {
             event: _,
             idempotency,
         } = completion;
+        let rotated_at = canonical_timestamp("node certificate rotation", rotated_at)
+            .map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let idempotency_key = (idempotency.scope.clone(), idempotency.key.clone());
         let record = state
@@ -466,7 +473,12 @@ impl INodeRepository for InMemoryNodeRepository {
             .ok_or(RepositoryError::NotFound)
     }
 
-    async fn record_heartbeat(&self, update: NodeHeartbeatUpdate) -> Result<Node, RepositoryError> {
+    async fn record_heartbeat(
+        &self,
+        mut update: NodeHeartbeatUpdate,
+    ) -> Result<Node, RepositoryError> {
+        update.observed_at = canonical_timestamp("node heartbeat", update.observed_at)
+            .map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let node_key = state
             .nodes
@@ -498,6 +510,8 @@ impl INodeRepository for InMemoryNodeRepository {
             event: _,
             idempotency,
         } = change;
+        let changed_at = canonical_timestamp("node state change", changed_at)
+            .map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let idempotency_key = (idempotency.scope.clone(), idempotency.key.clone());
         if let Some((request_digest, node)) = state.state_idempotency.get(&idempotency_key) {

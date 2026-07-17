@@ -8,7 +8,8 @@ use crate::modules::fleet::domain::entities::Node;
 use crate::modules::fleet::domain::repositories::NodeHeartbeatUpdate;
 use crate::modules::fleet::domain::value_objects::NodeState;
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, RepositoryError,
+    canonical_timestamp, IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId,
+    RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor, PostgresTransaction};
@@ -28,8 +29,10 @@ pub(super) async fn record_heartbeat(
 
 pub(super) async fn record_heartbeat_in_transaction(
     transaction: &PostgresTransaction,
-    update: NodeHeartbeatUpdate,
+    mut update: NodeHeartbeatUpdate,
 ) -> Result<Node, PostgresPersistenceError> {
+    update.observed_at = canonical_timestamp("node heartbeat", update.observed_at)
+        .map_err(RepositoryError::Conflict)?;
     let mut node = queries::node_by_id(transaction, update.node_id, true)
         .await?
         .ok_or(RepositoryError::NotFound)?;
@@ -108,6 +111,8 @@ pub(super) async fn set_state(
     event: DomainEventEnvelope,
     idempotency: IdempotencyRequest,
 ) -> Result<IdempotentWrite<Node>, RepositoryError> {
+    let changed_at =
+        canonical_timestamp("node state change", changed_at).map_err(RepositoryError::Conflict)?;
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

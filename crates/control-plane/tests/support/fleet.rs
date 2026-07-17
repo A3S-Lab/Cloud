@@ -33,7 +33,7 @@ use a3s_runtime::contract::{
     RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
 };
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
+use chrono::{Duration, Timelike, Utc};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -81,6 +81,9 @@ pub async fn exercise_fleet(
         fail_revoke: AtomicBool::new(true),
     });
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("sub-microsecond Fleet timestamp");
     let token_secret = format!("a3sn_{}", "d".repeat(64));
     let issue_handler = IssueEnrollmentTokenHandler::new(organizations, nodes.clone());
     let issue = IssueEnrollmentToken {
@@ -132,6 +135,8 @@ pub async fn exercise_fleet(
     let right = right??;
     assert_eq!(left.response, right.response);
     assert_eq!(left.response.schema, NodeEnrollmentResponse::SCHEMA);
+    assert_eq!(left.response.certificate.issued_at.nanosecond() % 1_000, 0);
+    assert_eq!(left.response.certificate.expires_at.nanosecond() % 1_000, 0);
     assert_ne!(left.replayed, right.replayed);
 
     let node_id = NodeId::from_uuid(left.response.node_id);
@@ -155,6 +160,7 @@ pub async fn exercise_fleet(
     };
     let ready = nodes.record_heartbeat(heartbeat.clone()).await?;
     assert_eq!(ready.state, NodeState::Ready);
+    assert_eq!(ready.last_observed_at.nanosecond() % 1_000, 0);
     assert_eq!(nodes.record_heartbeat(heartbeat.clone()).await?, ready);
     let mut conflicting = heartbeat;
     conflicting.agent_version = "0.1.1".into();
@@ -355,12 +361,13 @@ async fn exercise_command_control(
         .is_empty());
 
     let first_ack = inspected_ack(&first_lease.commands[0], now + Duration::seconds(11));
-    let expected_first_ack = first_ack.clone();
-    assert!(
-        !nodes
-            .acknowledge_command(first_ack.clone(), now + Duration::seconds(11))
-            .await?
-            .replayed
+    let accepted_first_ack = nodes
+        .acknowledge_command(first_ack.clone(), now + Duration::seconds(11))
+        .await?;
+    assert!(!accepted_first_ack.replayed);
+    assert_eq!(
+        accepted_first_ack.value.completed_at.nanosecond() % 1_000,
+        0
     );
     assert!(
         nodes
@@ -375,7 +382,7 @@ async fn exercise_command_control(
                 NodeCommandId::from_uuid(first_lease.commands[0].command_id),
             )
             .await?,
-        Some(expected_first_ack)
+        Some(accepted_first_ack.value)
     );
 
     let second_lease = nodes

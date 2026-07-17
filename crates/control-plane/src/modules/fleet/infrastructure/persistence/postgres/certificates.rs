@@ -10,7 +10,8 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::value_objects::NodeState;
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, NodeCertificateId, NodeId, OrganizationId, RepositoryError,
+    canonical_timestamp, IdempotencyRequest, NodeCertificateId, NodeId, OrganizationId,
+    RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::{sql_query, PostgresExecutor, PostgresTransaction};
@@ -32,9 +33,12 @@ pub(super) async fn reserve_rotation(
     organization_id: OrganizationId,
     node_id: NodeId,
     current_certificate_id: NodeCertificateId,
-    draft: NodeCertificateRotationDraft,
+    mut draft: NodeCertificateRotationDraft,
     idempotency: IdempotencyRequest,
 ) -> Result<NodeCertificateRotationReservation, RepositoryError> {
+    draft.requested_at =
+        canonical_timestamp("node certificate rotation request", draft.requested_at)
+            .map_err(RepositoryError::Conflict)?;
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
@@ -121,6 +125,8 @@ pub(super) async fn complete_rotation(
     event: DomainEventEnvelope,
     idempotency: IdempotencyRequest,
 ) -> Result<NodeCertificateRotationReservation, RepositoryError> {
+    let rotated_at = canonical_timestamp("node certificate rotation", rotated_at)
+        .map_err(RepositoryError::Conflict)?;
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

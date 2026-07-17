@@ -1,7 +1,7 @@
 use crate::modules::fleet::domain::value_objects::{
     NodeAvailability, NodeCapabilities, NodeName, NodeState,
 };
-use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeId, OrganizationId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -41,6 +41,7 @@ impl Node {
         {
             return Err("agent version is invalid".into());
         }
+        let enrolled_at = canonical_timestamp("node enrollment", enrolled_at)?;
         Ok(Self {
             id,
             organization_id,
