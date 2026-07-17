@@ -6,18 +6,19 @@ use bollard::container::RemoveContainerOptions;
 
 impl DockerConformanceFixture {
     pub(crate) async fn run_logs(&self, client: &dyn RuntimeClient) -> RuntimeResult<()> {
-        self.verify_order_filter_cursor_limit_retention_and_large_record(client)
+        self.verify_order_filter_cursor_limit_and_retention(client)
             .await?;
+        self.verify_large_record(client).await?;
         self.verify_rotation_gap(client).await
     }
 
-    async fn verify_order_filter_cursor_limit_retention_and_large_record(
+    async fn verify_order_filter_cursor_limit_and_retention(
         &self,
         client: &dyn RuntimeClient,
     ) -> RuntimeResult<()> {
         let task = specs::task_spec(
             specs::unit_id(&self.namespace, "logs-complete"),
-            "printf 'same-a\\nsame-b\\n'; printf 'error-a\\n' >&2; sleep 1; printf 'later-a\\n'; head -c 1048575 /dev/zero | tr '\\000' x; printf '\\n'",
+            "printf 'same-a\\nsame-b\\n'; printf 'error-a\\n' >&2; sleep 1; printf 'later-a\\n'",
         );
         let observation = client
             .apply(&specs::apply("logs-complete-apply", task.clone()))
@@ -37,7 +38,7 @@ impl DockerConformanceFixture {
             );
         }
         require(
-            all.len() >= 5,
+            all.len() >= 4,
             format!("Docker log fixture returned too few records: {}", all.len()),
         )?;
         require_strict_order(&all)?;
@@ -47,11 +48,6 @@ impl DockerConformanceFixture {
                 && all.iter().any(|chunk| chunk.data == "error-a\n"),
             "Docker logs lost stdout or stderr records",
         )?;
-        require(
-            all.iter().any(|chunk| chunk.data.len() == 1024 * 1024),
-            "Docker logs did not preserve a one-MiB boundary record",
-        )?;
-
         let stdout = client
             .logs(&log_query(&task, None, 32, Some(RuntimeLogStream::Stdout)))
             .await?;
@@ -113,6 +109,43 @@ impl DockerConformanceFixture {
             ),
             "removed Runtime unit still exposed Docker logs",
         )
+    }
+
+    async fn verify_large_record(&self, client: &dyn RuntimeClient) -> RuntimeResult<()> {
+        let task = specs::task_spec(
+            specs::unit_id(&self.namespace, "logs-large-record"),
+            "head -c 1048575 /dev/zero | tr '\\000' x; printf '\\n'",
+        );
+        let observation = client
+            .apply(&specs::apply("logs-large-record-apply", task.clone()))
+            .await?;
+        require(
+            observation.state == RuntimeUnitState::Succeeded,
+            "Docker large-log Task did not finish successfully",
+        )?;
+        let chunks = client
+            .logs(&log_query(
+                &task,
+                None,
+                10_000,
+                Some(RuntimeLogStream::Stdout),
+            ))
+            .await?;
+        require_strict_order(&chunks)?;
+        let total_bytes = chunks.iter().map(|chunk| chunk.data.len()).sum::<usize>();
+        require(
+            chunks.len() > 1
+                && total_bytes == 1024 * 1024
+                && chunks.iter().all(|chunk| chunk.data.len() <= 1024 * 1024),
+            format!(
+                "Docker large log was not losslessly bounded: chunks={}, bytes={total_bytes}",
+                chunks.len()
+            ),
+        )?;
+        client
+            .remove(&specs::action("logs-large-record-remove", &task))
+            .await?;
+        Ok(())
     }
 
     async fn verify_rotation_gap(&self, client: &dyn RuntimeClient) -> RuntimeResult<()> {
