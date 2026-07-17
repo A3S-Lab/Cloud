@@ -85,10 +85,7 @@ impl NodeCommand {
     }
 }
 
-fn canonical_command_timestamp(
-    label: &str,
-    value: DateTime<Utc>,
-) -> Result<DateTime<Utc>, String> {
+fn canonical_command_timestamp(label: &str, value: DateTime<Utc>) -> Result<DateTime<Utc>, String> {
     value
         .with_nanosecond(value.nanosecond() / 1_000 * 1_000)
         .ok_or_else(|| format!("node command {label} timestamp is outside supported bounds"))
