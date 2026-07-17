@@ -55,3 +55,10 @@ Its result never substitutes for the mandatory Base and Recovery gate.
 Set `A3S_CLOUD_TEST_RUNTIME_PROFILE` to one of `networking`, `mounts`,
 `health`, `resources`, `logs`, or `security` to run one focused optional
 profile during development. Omitting it runs all optional profiles.
+
+Docker log queries page forward from the earliest retained provider record.
+The initial request stops after `limit` records, while a cursor request scans
+from the preceding provider timestamp boundary until it finds the exact
+stream/timestamp/ordinal/digest cursor and then returns the next page. A missing
+cursor is an explicit retention or rotation gap, never an empty successful
+page.
