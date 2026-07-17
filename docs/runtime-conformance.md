@@ -39,3 +39,16 @@ inspection and workload-visible behavior checks. The fixture uses a unique
 namespace, enforces bounded Docker operations, removes only namespace-owned
 containers and volumes, and requires the canonical post-cleanup inventory to
 equal its baseline.
+
+When developing on a dedicated Docker host that cannot safely restart its
+daemon, the following non-certifying probe exercises only the advertised
+optional behavior and still enforces cleanup and inventory equality:
+
+```bash
+A3S_CLOUD_TEST_DOCKER=1 cargo test -p a3s-cloud-node-agent \
+  --test docker_conformance \
+  real_docker_exercises_advertised_optional_profile_behavior \
+  -- --ignored --exact --nocapture --test-threads=1
+```
+
+Its result never substitutes for the mandatory Base and Recovery gate.

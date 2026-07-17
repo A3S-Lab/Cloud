@@ -18,8 +18,9 @@ mod security;
 mod specs;
 
 use a3s_runtime::{
-    required_runtime_profiles, verify_runtime_profiles, FileRuntimeStateStore,
-    ManagedRuntimeClient, RuntimeClient, RuntimeConformanceProfile, RuntimeStateStore,
+    required_runtime_profiles, runtime_profile_requirements, verify_runtime_profiles,
+    FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeConformanceFixture,
+    RuntimeConformanceProfile, RuntimeStateStore,
 };
 use fixture::{connect_driver, DockerConformanceFixture};
 use std::collections::BTreeSet;
@@ -29,11 +30,7 @@ use uuid::Uuid;
 #[tokio::test]
 #[ignore = "requires A3S_CLOUD_TEST_DOCKER=1 on a dedicated Docker provider runner"]
 async fn real_docker_passes_all_advertised_runtime_profiles() {
-    assert_eq!(
-        std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref(),
-        Ok("1"),
-        "the dedicated Docker conformance gate must set A3S_CLOUD_TEST_DOCKER=1"
-    );
+    require_docker_gate();
 
     let state_directory = tempfile::tempdir().expect("Runtime state directory");
     let namespace = format!(
@@ -70,4 +67,68 @@ async fn real_docker_passes_all_advertised_runtime_profiles() {
     assert!(actual.contains(&RuntimeConformanceProfile::Base));
     assert!(actual.contains(&RuntimeConformanceProfile::Recovery));
     assert_eq!(report.inventory_after, report.inventory_before);
+}
+
+/// Focused development probe for capability-specific behavior on a Docker
+/// host that cannot safely restart its daemon. This is not certification:
+/// only `real_docker_passes_all_advertised_runtime_profiles` runs mandatory
+/// Base and Recovery together.
+#[tokio::test]
+#[ignore = "requires A3S_CLOUD_TEST_DOCKER=1; does not certify Base or Recovery"]
+async fn real_docker_exercises_advertised_optional_profile_behavior() {
+    require_docker_gate();
+    let state_directory = tempfile::tempdir().expect("Runtime state directory");
+    let namespace = format!(
+        "runtime-profile-probe-{}",
+        &Uuid::now_v7().simple().to_string()[..12]
+    );
+    let node_id = Uuid::now_v7();
+    let driver = Arc::new(
+        connect_driver(&namespace, node_id)
+            .await
+            .expect("connect Docker profile probe driver"),
+    );
+    let store = Arc::new(FileRuntimeStateStore::new(state_directory.path()));
+    let runtime =
+        ManagedRuntimeClient::new(store.clone() as Arc<dyn RuntimeStateStore>, driver.clone());
+    let fixture = DockerConformanceFixture::new(namespace, node_id, driver, store);
+    let before = fixture.inventory().await.expect("profile probe inventory");
+    let capabilities = runtime
+        .capabilities()
+        .await
+        .expect("Docker profile probe capabilities");
+
+    let execution = async {
+        for profile in [
+            RuntimeConformanceProfile::Networking,
+            RuntimeConformanceProfile::Mounts,
+            RuntimeConformanceProfile::Health,
+            RuntimeConformanceProfile::Resources,
+            RuntimeConformanceProfile::Logs,
+            RuntimeConformanceProfile::Security,
+        ] {
+            let evidence = fixture
+                .run_profile(&runtime, &capabilities, profile)
+                .await?;
+            let requirements = runtime_profile_requirements(&capabilities, profile)?;
+            assert_eq!(evidence.case_ids, requirements.case_ids);
+            assert_eq!(evidence.capability_claims, requirements.capability_claims);
+        }
+        Ok::<(), a3s_runtime::RuntimeError>(())
+    }
+    .await;
+
+    let cleanup = fixture.cleanup().await;
+    let after = fixture.inventory().await;
+    cleanup.expect("clean Docker profile probe resources");
+    assert_eq!(after.expect("post-cleanup profile probe inventory"), before);
+    execution.expect("real Docker optional profile behavior");
+}
+
+fn require_docker_gate() {
+    assert_eq!(
+        std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref(),
+        Ok("1"),
+        "the dedicated Docker conformance gate must set A3S_CLOUD_TEST_DOCKER=1"
+    );
 }

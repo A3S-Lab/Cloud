@@ -7,12 +7,15 @@ use a3s_runtime::{
     RuntimeConformanceProfileEvidence, RuntimeError, RuntimeResult, RuntimeStateStore,
 };
 use async_trait::async_trait;
-use bollard::container::{ListContainersOptions, RemoveContainerOptions, RestartContainerOptions};
+use bollard::container::{
+    ListContainersOptions, RemoveContainerOptions, RestartContainerOptions, StopContainerOptions,
+};
 use bollard::errors::Error as DockerError;
 use bollard::volume::{ListVolumesOptions, RemoveVolumeOptions};
 use bollard::{Docker, API_DEFAULT_VERSION};
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -152,6 +155,22 @@ impl DockerConformanceFixture {
             labels.get(RESTART_TARGET_LABEL).map(String::as_str) == Some("true"),
             format!("Docker provider restart target must carry {RESTART_TARGET_LABEL}=true"),
         )?;
+        let socket = docker_socket();
+        let socket_path = Path::new(socket.strip_prefix("unix://").ok_or_else(|| {
+            RuntimeError::InvalidRequest("Docker conformance socket must use unix://".into())
+        })?);
+        let owns_socket_directory = target_inspection.mounts.as_ref().is_some_and(|mounts| {
+            mounts.iter().any(|mount| {
+                mount.source.as_deref().is_some_and(|source| {
+                    let source = Path::new(source);
+                    source != socket_path && source.is_dir() && socket_path.starts_with(source)
+                })
+            })
+        });
+        require(
+            owns_socket_directory,
+            "Docker provider restart target does not own the configured socket directory",
+        )?;
 
         tokio::time::timeout(
             PROVIDER_OPERATION_TIMEOUT,
@@ -175,6 +194,78 @@ impl DockerConformanceFixture {
         Err(RuntimeError::ProviderUnavailable(
             "isolated Docker provider did not become ready after restart".into(),
         ))
+    }
+
+    async fn remove_fixture_container(&self, id: &str) -> RuntimeResult<()> {
+        match tokio::time::timeout(
+            PROVIDER_OPERATION_TIMEOUT,
+            self.docker
+                .stop_container(id, Some(StopContainerOptions { t: 1 })),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if docker_status(&error, 304) || docker_status(&error, 404) => {}
+            Ok(Err(error)) => {
+                return Err(docker_fixture_error(
+                    "stop conformance container before cleanup",
+                    error,
+                ))
+            }
+            Err(_) => {
+                return Err(RuntimeError::ProviderUnavailable(
+                    "Docker fixture stop before cleanup exceeded 30 seconds".into(),
+                ))
+            }
+        }
+
+        for _ in 0..40 {
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                self.docker.remove_container(
+                    id,
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        v: false,
+                        link: false,
+                    }),
+                ),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) if docker_status(&error, 404) => return Ok(()),
+                Ok(Err(error)) if docker_status(&error, 409) => {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    continue;
+                }
+                Ok(Err(error)) => {
+                    return Err(docker_fixture_error("remove conformance container", error))
+                }
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    continue;
+                }
+            }
+            match tokio::time::timeout(
+                Duration::from_secs(2),
+                self.docker.inspect_container(id, None),
+            )
+            .await
+            {
+                Ok(Err(error)) if docker_status(&error, 404) => return Ok(()),
+                Ok(Ok(_)) | Err(_) => tokio::time::sleep(Duration::from_millis(250)).await,
+                Ok(Err(error)) => {
+                    return Err(docker_fixture_error(
+                        "verify conformance container cleanup",
+                        error,
+                    ))
+                }
+            }
+        }
+        Err(RuntimeError::ProviderUnavailable(format!(
+            "Docker conformance container {id} did not disappear after cleanup"
+        )))
     }
 
     async fn evidence(
@@ -267,19 +358,7 @@ impl RuntimeConformanceFixture for DockerConformanceFixture {
     async fn cleanup(&self) -> RuntimeResult<()> {
         let mut failures = Vec::new();
         for id in self.namespace_container_ids().await? {
-            let result = self
-                .docker_call(
-                    "remove conformance container",
-                    self.docker.remove_container(
-                        &id,
-                        Some(RemoveContainerOptions {
-                            force: true,
-                            v: false,
-                            link: false,
-                        }),
-                    ),
-                )
-                .await;
+            let result = self.remove_fixture_container(&id).await;
             if let Err(error) = result {
                 failures.push(error.to_string());
             }
@@ -360,4 +439,12 @@ pub(crate) fn resource_id(observation: &RuntimeObservation) -> RuntimeResult<&st
 
 fn docker_fixture_error(operation: &str, error: DockerError) -> RuntimeError {
     RuntimeError::ProviderUnavailable(format!("Docker fixture {operation} failed: {error}"))
+}
+
+fn docker_status(error: &DockerError, expected: u16) -> bool {
+    matches!(
+        error,
+        DockerError::DockerResponseServerError { status_code, .. }
+            if *status_code == expected
+    )
 }
