@@ -1,0 +1,41 @@
+# Runtime Provider Conformance
+
+The Docker Runtime certification is a dedicated provider gate. The integration
+test is deliberately `ignored` during ordinary workspace tests so an absent
+Docker prerequisite is visible as skipped rather than silently reported as a
+passing provider test.
+
+Run the gate only on a dedicated Linux provider runner:
+
+```bash
+export A3S_CLOUD_TEST_DOCKER=1
+export A3S_CLOUD_TEST_DOCKER_SOCKET=unix:///run/a3s-runtime-provider/docker.sock
+export A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER=a3s-runtime-provider
+
+cargo test -p a3s-cloud-node-agent \
+  --test docker_conformance \
+  real_docker_passes_all_advertised_runtime_profiles \
+  -- --ignored --exact --nocapture --test-threads=1
+```
+
+`A3S_CLOUD_TEST_DOCKER_SOCKET` defaults to
+`unix:///var/run/docker.sock`. Recovery certification additionally requires a
+restartable, isolated Docker provider. The container named by
+`A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER` must expose that socket and carry the
+label:
+
+```text
+a3s.runtime.conformance.provider=true
+```
+
+Never point the restart target at shared infrastructure. A runner that uses
+the host Docker daemon must be disposable and own the daemon restart outside
+the test process.
+
+The suite always runs Base and Recovery and derives every other profile from
+the driver's reported capabilities. Docker currently activates Networking,
+Mounts, Health, Resources, Logs, and Security. Each profile performs provider
+inspection and workload-visible behavior checks. The fixture uses a unique
+namespace, enforces bounded Docker operations, removes only namespace-owned
+containers and volumes, and requires the canonical post-cleanup inventory to
+equal its baseline.

@@ -504,6 +504,8 @@ impl DockerRuntimeDriver {
                 tmpfs: (!tmpfs.is_empty()).then_some(tmpfs),
                 init: Some(true),
                 privileged: Some(false),
+                cap_drop: Some(vec!["ALL".into()]),
+                security_opt: Some(vec!["no-new-privileges=true".into()]),
                 ..Default::default()
             }),
             ..Default::default()
