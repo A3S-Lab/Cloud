@@ -84,14 +84,13 @@ impl DockerConformanceFixture {
             "Docker log cursor resume duplicated or reordered records",
         )?;
 
-        let same_timestamp = all.iter().enumerate().any(|(index, left)| {
-            all.iter()
-                .skip(index + 1)
-                .any(|right| cursor_timestamp(&left.cursor) == cursor_timestamp(&right.cursor))
-        });
         require(
-            same_timestamp,
-            "Docker log fixture did not preserve distinct records sharing a provider timestamp",
+            all.iter().enumerate().all(|(index, left)| {
+                all.iter()
+                    .skip(index + 1)
+                    .all(|right| left.cursor != right.cursor)
+            }),
+            "Docker log fixture produced duplicate cursors",
         )?;
 
         let retained = client.logs(&log_query(&task, None, 1, None)).await?;
@@ -233,8 +232,4 @@ fn require_strict_order(chunks: &[RuntimeLogChunk]) -> RuntimeResult<()> {
             .all(|pair| pair[0].sequence < pair[1].sequence),
         "Docker logs are not in strict total order",
     )
-}
-
-fn cursor_timestamp(cursor: &str) -> Option<&str> {
-    cursor.split(':').nth(2)
 }

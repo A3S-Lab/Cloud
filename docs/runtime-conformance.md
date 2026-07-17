@@ -62,3 +62,9 @@ from the preceding provider timestamp boundary until it finds the exact
 stream/timestamp/ordinal/digest cursor and then returns the next page. A missing
 cursor is an explicit retention or rotation gap, never an empty successful
 page.
+
+Docker does not expose an API for requesting two log records with an identical
+daemon nanosecond timestamp. The real profile verifies provider ordering,
+unique cursors, and resume behavior. The production cursor/sequence helpers
+separately have a deterministic unit case with two records at the exact same
+timestamp, proving ordinal disambiguation without modifying Docker's log files.

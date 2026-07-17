@@ -73,13 +73,7 @@ impl DockerRuntimeDriver {
                 }
                 let record_cursor = LogCursor::new(&record, per_second)?;
                 per_second += 1;
-                let sequence = u64::try_from(seconds)
-                    .ok()
-                    .and_then(|seconds| seconds.checked_mul(1_000_000))
-                    .and_then(|base| base.checked_add(per_second))
-                    .ok_or_else(|| {
-                        RuntimeError::Protocol("Docker log sequence overflowed".into())
-                    })?;
+                let sequence = log_sequence(record.timestamp_ns, per_second)?;
                 if previous_sequence.is_some_and(|previous| previous >= sequence) {
                     return Err(RuntimeError::Protocol(
                         "Docker log records are not strictly ordered".into(),
@@ -219,6 +213,14 @@ fn parse_docker_log_line(value: &str) -> RuntimeResult<(i64, &str)> {
     Ok((timestamp, data))
 }
 
+fn log_sequence(timestamp_ns: i64, ordinal_after_increment: u64) -> RuntimeResult<u64> {
+    u64::try_from(timestamp_ns.div_euclid(1_000_000_000))
+        .ok()
+        .and_then(|seconds| seconds.checked_mul(1_000_000))
+        .and_then(|base| base.checked_add(ordinal_after_increment))
+        .ok_or_else(|| RuntimeError::Protocol("Docker log sequence overflowed".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,6 +256,10 @@ mod tests {
         assert_eq!(
             LogCursor::parse(&second.encode()).expect("parse").ordinal,
             1
+        );
+        assert!(
+            log_sequence(first.timestamp_ns, 1).expect("first sequence")
+                < log_sequence(second.timestamp_ns, 2).expect("second sequence")
         );
     }
 }
