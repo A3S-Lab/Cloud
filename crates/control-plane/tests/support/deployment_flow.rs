@@ -134,7 +134,7 @@ pub async fn exercise_deployment_flow(
     let (observation, acknowledgement, observed_at) = if docker_tests_enabled() {
         let state_directory = tempfile::tempdir()?;
         let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-            socket: "unix:///var/run/docker.sock".into(),
+            socket: docker_socket(),
             namespace: format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]),
             operation_timeout_ms: 30_000,
         })?);
@@ -588,7 +588,7 @@ pub async fn exercise_dispatched_cancellation(
 
     let state_directory = tempfile::tempdir()?;
     let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-        socket: "unix:///var/run/docker.sock".into(),
+        socket: docker_socket(),
         namespace: format!(
             "cloud-cancel-{}",
             &Uuid::now_v7().simple().to_string()[..12]
@@ -995,4 +995,9 @@ fn field_uuid(value: &Value, field: &str) -> Result<Uuid, Box<dyn std::error::Er
 
 fn docker_tests_enabled() -> bool {
     std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() == Ok("1")
+}
+
+fn docker_socket() -> String {
+    std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
+        .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
 }

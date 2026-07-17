@@ -56,7 +56,7 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
         &Uuid::now_v7().simple().to_string()[..12]
     );
     let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-        socket: "unix:///var/run/docker.sock".into(),
+        socket: docker_socket(),
         namespace,
         operation_timeout_ms: 30_000,
     })?);
@@ -510,6 +510,11 @@ fn busybox_template(command: Vec<String>, args: Vec<String>) -> ServiceTemplate 
 
 fn workflow_spec() -> WorkflowSpec {
     WorkflowSpec::rust_embedded("cloud.deployment", "1", "a3s-cloud", "main")
+}
+
+fn docker_socket() -> String {
+    std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
+        .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
 }
 
 struct UnusedArtifactResolver;
