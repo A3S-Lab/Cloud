@@ -118,7 +118,7 @@ impl DockerConformanceFixture {
         let service = health_service(
             &self.namespace,
             "health-timeout",
-            "mkdir -p /www/cgi-bin && printf '#!/bin/sh\\nsleep 2\\nprintf \\\'Content-Type: text/plain\\\\r\\\\n\\\\r\\\\nslow\\\\n\\\'\\n' >/www/cgi-bin/slow && chmod +x /www/cgi-bin/slow && exec httpd -f -p 8080 -h /www",
+            r#"mkdir -p /www/cgi-bin && printf '%s\n' '#!/bin/sh' 'sleep 2' 'printf "Content-Type: text/plain\r\n\r\nslow\n"' >/www/cgi-bin/slow && chmod +x /www/cgi-bin/slow && exec httpd -f -p 8080 -h /www"#,
             HealthProbe::Http {
                 port: "health".into(),
                 path: "/cgi-bin/slow".into(),
