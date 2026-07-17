@@ -21,7 +21,7 @@ use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
     RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, Timelike, Utc};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -270,6 +270,9 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
     let now = Utc::now();
     let (node_id, agent_instance_id) = command_node(&repository, now).await;
     let observed_at = now + Duration::seconds(1);
+    let observed_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000 + 123)
+        .expect("sub-microsecond observation timestamp");
     let report_id = Uuid::now_v7();
     let batch = NodeObservationBatch {
         schema: NodeObservationBatch::SCHEMA.into(),
@@ -297,8 +300,15 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         .expect("record observation");
     assert_eq!(accepted.accepted_reports, 1);
     assert_eq!(accepted.replayed_reports, 0);
+    let mut replay_batch = batch.clone();
+    let replayed_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000 + 987)
+        .expect("sub-microsecond replay timestamp");
+    replay_batch.sent_at = replayed_at;
+    replay_batch.heartbeat.observed_at = replayed_at;
+    replay_batch.observations[0].observed_at = replayed_at;
     let replayed = repository
-        .record_observations(batch.clone(), observed_at + Duration::milliseconds(1))
+        .record_observations(replay_batch, observed_at + Duration::milliseconds(1))
         .await
         .expect("replay observation");
     assert_eq!(replayed.accepted_reports, 0);
@@ -350,10 +360,15 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
             .expect("record Gateway acknowledgement")
             .replayed
     );
+    let mut acknowledgement_replay = acknowledgement.clone();
+    acknowledgement_replay.acknowledged_at = acknowledgement_replay
+        .acknowledged_at
+        .with_nanosecond(acknowledgement_replay.acknowledged_at.nanosecond() / 1_000 * 1_000 + 987)
+        .expect("sub-microsecond Gateway replay timestamp");
     assert!(
         repository
             .record_gateway_acknowledgement(
-                acknowledgement.clone(),
+                acknowledgement_replay,
                 observed_at + Duration::seconds(2),
             )
             .await

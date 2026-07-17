@@ -1,6 +1,7 @@
+use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::shared_kernel::domain::{NodeCommandId, NodeId};
 use a3s_cloud_contracts::{NodeCommandEnvelope, NodeCommandMetadata, NodeCommandPayload};
-use chrono::{DateTime, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -28,8 +29,8 @@ impl NodeCommand {
         if sequence == 0 {
             return Err("node command sequence must be positive".into());
         }
-        let issued_at = canonical_command_timestamp("issue", draft.issued_at)?;
-        let not_after = canonical_command_timestamp("expiry", draft.not_after)?;
+        let issued_at = canonical_timestamp("node command issue", draft.issued_at)?;
+        let not_after = canonical_timestamp("node command expiry", draft.not_after)?;
         if not_after <= issued_at {
             return Err("node command expiry must follow issue time".into());
         }
@@ -85,12 +86,6 @@ impl NodeCommand {
     }
 }
 
-fn canonical_command_timestamp(label: &str, value: DateTime<Utc>) -> Result<DateTime<Utc>, String> {
-    value
-        .with_nanosecond(value.nanosecond() / 1_000 * 1_000)
-        .ok_or_else(|| format!("node command {label} timestamp is outside supported bounds"))
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeCommandDraft {
     pub proposed_command_id: NodeCommandId,
@@ -106,7 +101,7 @@ pub struct NodeCommandDraft {
 mod tests {
     use super::*;
     use a3s_cloud_contracts::NodeCommandPayload;
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Timelike};
 
     #[test]
     fn command_timestamps_are_canonical_at_database_precision() {

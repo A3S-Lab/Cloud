@@ -5,7 +5,8 @@ use crate::modules::edge::domain::{
     GatewayPublication, GatewayPublicationState, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
+    RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, GatewayAckState, NodeGatewayAck};
 use async_trait::async_trait;
@@ -210,6 +211,12 @@ impl IEdgeRepository for InMemoryEdgeRepository {
         acknowledgement: &NodeGatewayAck,
         received_at: DateTime<Utc>,
     ) -> Result<bool, RepositoryError> {
+        let mut acknowledgement = acknowledgement.clone();
+        acknowledgement.acknowledged_at =
+            canonical_timestamp("Gateway acknowledgement", acknowledgement.acknowledged_at)
+                .map_err(RepositoryError::Conflict)?;
+        let received_at = canonical_timestamp("Gateway acknowledgement receipt", received_at)
+            .map_err(RepositoryError::Conflict)?;
         acknowledgement
             .validate()
             .map_err(RepositoryError::Conflict)?;
@@ -234,7 +241,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
                 )
             })?;
         publication
-            .acknowledge(acknowledgement)
+            .acknowledge(&acknowledgement)
             .map_err(RepositoryError::Conflict)?;
         let route_ids = state
             .routes
@@ -256,7 +263,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
                 .routes
                 .get_mut(&route_id)
                 .ok_or_else(|| RepositoryError::Storage("staged route disappeared".into()))?
-                .apply_gateway_acknowledgement(acknowledgement)
+                .apply_gateway_acknowledgement(&acknowledgement)
                 .map_err(RepositoryError::Conflict)?;
         }
         state.publications.insert((node_id, revision), publication);

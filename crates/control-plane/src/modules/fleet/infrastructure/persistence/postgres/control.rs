@@ -16,7 +16,7 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
+    canonical_timestamp, IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse,

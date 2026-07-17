@@ -2,9 +2,20 @@ use super::*;
 
 pub(in super::super) async fn record_observations(
     executor: &PostgresExecutor,
-    batch: NodeObservationBatch,
+    mut batch: NodeObservationBatch,
     received_at: DateTime<Utc>,
 ) -> Result<NodeObservationReceipt, RepositoryError> {
+    batch.sent_at = canonical_timestamp("observation batch send", batch.sent_at)
+        .map_err(RepositoryError::Conflict)?;
+    batch.heartbeat.observed_at =
+        canonical_timestamp("observation heartbeat", batch.heartbeat.observed_at)
+            .map_err(RepositoryError::Conflict)?;
+    for report in &mut batch.observations {
+        report.observed_at = canonical_timestamp("Runtime observation", report.observed_at)
+            .map_err(RepositoryError::Conflict)?;
+    }
+    let received_at = canonical_timestamp("observation receipt", received_at)
+        .map_err(RepositoryError::Conflict)?;
     batch.validate().map_err(RepositoryError::Conflict)?;
     let capabilities = NodeCapabilities::new(
         batch.heartbeat.runtime_capabilities.provider_id.to_string(),
