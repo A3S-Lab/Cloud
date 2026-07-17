@@ -5,6 +5,8 @@ umask 077
 
 readonly PROVIDER_IMAGE="docker@sha256:66d292e5c26bd33a6f6f61cacb880de2186339a524ecba1ce098dbbaceed6515"
 readonly REGISTRY_IMAGE="registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+readonly POSTGRES_IMAGE="postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+readonly NATS_IMAGE="nats@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00"
 readonly WORKLOAD_DIGEST="sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
 readonly WORKLOAD_IMAGE="docker.io/library/busybox@${WORKLOAD_DIGEST}"
 readonly EXPECTED_MANIFESTS=18
@@ -20,6 +22,7 @@ target_dir=""
 cargo_bin=""
 ttl_seconds=2400
 registry_data_owned=0
+suite=provider
 
 usage() {
     cat <<'USAGE'
@@ -34,6 +37,7 @@ Usage:
     [--evidence-dir PATH] \
     [--target-dir PATH] \
     [--cargo PATH] \
+    [--suite provider|cloud] \
     [--ttl-seconds SECONDS]
 
 The source root must contain clean apps/cloud and crates/runtime Git worktrees at
@@ -44,9 +48,13 @@ An existing registry store is mounted read-only and audited before use.
 This command requires Linux, root, an already-running host Docker daemon, loop
 devices, ext4 tools, nsenter, and the two pinned runner images already present in
 the host image store. It never restarts the host Docker daemon.
+
+The default provider suite runs Runtime conformance. The cloud suite also
+requires the pinned PostgreSQL and NATS images and runs the A3S Cloud restart,
+redelivery, reconciliation, cancellation, log transport, and cleanup E2E gates.
 USAGE
-    printf '\nProvider image: %s\nRegistry image: %s\nWorkload image: %s\n' \
-        "$PROVIDER_IMAGE" "$REGISTRY_IMAGE" "$WORKLOAD_IMAGE"
+    printf '\nProvider image: %s\nRegistry image: %s\nPostgreSQL image: %s\nNATS image: %s\nWorkload image: %s\n' \
+        "$PROVIDER_IMAGE" "$REGISTRY_IMAGE" "$POSTGRES_IMAGE" "$NATS_IMAGE" "$WORKLOAD_IMAGE"
 }
 
 die() {
@@ -91,6 +99,11 @@ while [[ $# -gt 0 ]]; do
             cargo_bin=$2
             shift 2
             ;;
+        --suite)
+            [[ $# -ge 2 ]] || die "--suite requires a value"
+            suite=$2
+            shift 2
+            ;;
         --ttl-seconds)
             [[ $# -ge 2 ]] || die "--ttl-seconds requires a value"
             ttl_seconds=$2
@@ -110,6 +123,7 @@ done
 [[ $(id -u) -eq 0 ]] || die "the isolated Docker gate must run as root"
 [[ $cloud_sha =~ ^[0-9a-f]{40}$ ]] || die "--cloud-sha must be a full lowercase Git SHA"
 [[ $runtime_sha =~ ^[0-9a-f]{40}$ ]] || die "--runtime-sha must be a full lowercase Git SHA"
+[[ $suite == provider || $suite == cloud ]] || die "--suite must be provider or cloud"
 [[ $ttl_seconds =~ ^[0-9]+$ ]] || die "--ttl-seconds must be an integer"
 ((ttl_seconds >= 600 && ttl_seconds <= 3600)) || die "--ttl-seconds must be between 600 and 3600"
 [[ -n $source_root ]] || die "--source-root is required"
@@ -144,9 +158,17 @@ runtime=$source_root/crates/runtime
 docker info >/dev/null 2>&1 || die "the host Docker daemon is unavailable"
 docker image inspect "$PROVIDER_IMAGE" >/dev/null || die "the pinned Docker provider image is not present"
 docker image inspect "$REGISTRY_IMAGE" >/dev/null || die "the pinned registry image is not present"
+if [[ $suite == cloud ]]; then
+    docker image inspect "$POSTGRES_IMAGE" >/dev/null || die "the pinned PostgreSQL image is not present"
+    docker image inspect "$NATS_IMAGE" >/dev/null || die "the pinned NATS image is not present"
+fi
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-run_id="full-${cloud_sha:0:7}-${runtime_sha:0:7}-${stamp}"
+if [[ $suite == provider ]]; then
+    run_id="full-${cloud_sha:0:7}-${runtime_sha:0:7}-${stamp}"
+else
+    run_id="cloud-r15-${cloud_sha:0:7}-${runtime_sha:0:7}-${stamp}"
+fi
 suffix=$(printf '%s' "$run_id-$$-$RANDOM" | sha256sum | cut -c1-12)
 provider_root=/var/tmp/a3s-runtime-provider/$run_id
 data_dir=$provider_root/data
@@ -155,9 +177,17 @@ disk_image=$provider_root/provider-data.ext4
 provider=a3s-runtime-provider-$suffix
 keeper=a3s-runtime-network-keeper-$suffix
 registry=a3s-runtime-registry-$suffix
+postgres=a3s-runtime-postgres-$suffix
+nats=a3s-runtime-nats-$suffix
 network=a3s-runtime-provider-net-$suffix
 provider_host=unix://$socket_dir/docker.sock
-[[ -n $evidence ]] || evidence=/tmp/a3s-cloud-docker-full-isolated-$run_id
+if [[ -z $evidence ]]; then
+    if [[ $suite == provider ]]; then
+        evidence=/tmp/a3s-cloud-docker-full-isolated-$run_id
+    else
+        evidence=/tmp/a3s-cloud-runtime-e2e-isolated-$run_id
+    fi
+fi
 [[ -n $target_dir ]] || target_dir=/var/tmp/a3s-runtime-build-cache/${cloud_sha:0:7}-${runtime_sha:0:7}
 evidence=$(realpath -m "$evidence")
 target_dir=$(realpath -m "$target_dir")
@@ -259,6 +289,16 @@ cleanup_resources() {
             docker inspect "$keeper" >"$evidence/keeper-inspect-final.json" 2>&1
             timeout --signal=TERM --kill-after=10s 60s docker rm -fv "$keeper"
         fi
+        if docker container inspect "$postgres" >/dev/null 2>&1; then
+            timeout --signal=TERM --kill-after=10s 60s docker logs "$postgres" >"$evidence/postgres.log" 2>&1
+            docker inspect "$postgres" >"$evidence/postgres-inspect-final.json" 2>&1
+            timeout --signal=TERM --kill-after=10s 60s docker rm -fv "$postgres"
+        fi
+        if docker container inspect "$nats" >/dev/null 2>&1; then
+            timeout --signal=TERM --kill-after=10s 60s docker logs "$nats" >"$evidence/nats.log" 2>&1
+            docker inspect "$nats" >"$evidence/nats-inspect-final.json" 2>&1
+            timeout --signal=TERM --kill-after=10s 60s docker rm -fv "$nats"
+        fi
         if docker container inspect "$registry" >/dev/null 2>&1; then
             timeout --signal=TERM --kill-after=10s 60s docker logs "$registry" >"$evidence/registry.log" 2>&1
             docker inspect "$registry" >"$evidence/registry-inspect-final.json" 2>&1
@@ -302,6 +342,7 @@ cleanup_resources() {
         write_deltas host-volumes "$evidence/host-volumes-before.names" "$evidence/host-volumes-after.names" names names
         write_deltas host-networks "$evidence/host-networks-before.ids" "$evidence/host-networks-after.ids" ids ids
         write_deltas host-loops "$evidence/host-loops-before.txt" "$evidence/host-loops-after.txt" txt txt
+        write_deltas host-loop-mounts "$evidence/host-loop-mounts-before.txt" "$evidence/host-loop-mounts-after.txt" txt txt
         write_deltas host-docker-netns "$evidence/host-docker-netns-before.names" "$evidence/host-docker-netns-after.names" names names
 
         if [[ -s $evidence/target-containers-after.ids ||
@@ -325,8 +366,13 @@ on_exit() {
     cleanup_resources
     [[ $cleanup_failed -eq 0 ]] || exit_status=1
     if [[ $exit_status -eq 0 && $gate_completed -eq 1 ]]; then
-        printf 'A3S_DOCKER_CERTIFICATION_PASS cloud=%s runtime=%s run_id=%s\n' \
-            "$cloud_sha" "$runtime_sha" "$run_id" | tee "$evidence/result.txt"
+        if [[ $suite == provider ]]; then
+            printf 'A3S_DOCKER_CERTIFICATION_PASS cloud=%s runtime=%s run_id=%s\n' \
+                "$cloud_sha" "$runtime_sha" "$run_id" | tee "$evidence/result.txt"
+        else
+            printf 'A3S_CLOUD_RUNTIME_E2E_PASS cloud=%s runtime=%s run_id=%s\n' \
+                "$cloud_sha" "$runtime_sha" "$run_id" | tee "$evidence/result.txt"
+        fi
     else
         rm -f "$evidence/result.txt"
     fi
@@ -341,8 +387,11 @@ trap 'exit 129' HUP
 
 printf '%s\n' "$cloud_sha" >"$evidence/cloud.sha"
 printf '%s\n' "$runtime_sha" >"$evidence/runtime.sha"
+printf '%s\n' "$suite" >"$evidence/suite.txt"
 printf '%s\n' "$PROVIDER_IMAGE" >"$evidence/provider-image.txt"
 printf '%s\n' "$REGISTRY_IMAGE" >"$evidence/registry-image.txt"
+printf '%s\n' "$POSTGRES_IMAGE" >"$evidence/postgres-image.txt"
+printf '%s\n' "$NATS_IMAGE" >"$evidence/nats-image.txt"
 printf '%s\n' "$WORKLOAD_IMAGE" >"$evidence/workload-image.txt"
 printf '%s\n' "$source_root" >"$evidence/source-root.txt"
 printf '%s\n' "$target_dir" >"$evidence/cargo-target-dir.txt"
@@ -352,11 +401,24 @@ record_host_inventory before
 [[ -z $(docker ps -aq --filter "label=a3s.runtime.conformance.run-id=$run_id") ]] || die "run ID already owns containers"
 
 log "phase=build-start"
-timeout --signal=TERM --kill-after=30s 1200s \
-    env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
-    "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
-    -p a3s-cloud-node-agent --test docker_conformance --no-run \
-    2>&1 | tee "$evidence/cargo-build.log"
+if [[ $suite == provider ]]; then
+    timeout --signal=TERM --kill-after=30s 1200s \
+        env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
+        "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+        -p a3s-cloud-node-agent --test docker_conformance --no-run \
+        2>&1 | tee "$evidence/cargo-build.log"
+else
+    timeout --signal=TERM --kill-after=30s 1200s \
+        env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
+        "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+        -p a3s-cloud-control-plane --test postgres_integration --no-run \
+        2>&1 | tee "$evidence/cargo-postgres-build.log"
+    timeout --signal=TERM --kill-after=30s 1200s \
+        env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
+        "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+        -p a3s-cloud-control-plane --test docker_deployment --no-run \
+        2>&1 | tee "$evidence/cargo-docker-deployment-build.log"
+fi
 log "phase=build-pass"
 
 docker network create --label "a3s.runtime.conformance.run-id=$run_id" "$network" >"$evidence/network.id"
@@ -404,6 +466,40 @@ curl --fail --silent --show-error --head --max-time 10 \
 grep -Fi "Docker-Content-Digest: $WORKLOAD_DIGEST" "$evidence/registry-manifest-head.txt" >/dev/null
 log "phase=registry-pass"
 
+if [[ $suite == cloud ]]; then
+    docker run -d --pull=never --name "$postgres" --network "$network" \
+        --network-alias a3s-runtime-postgres \
+        --label "a3s.runtime.conformance.run-id=$run_id" \
+        --cpus 1 --memory 1g --pids-limit 512 --shm-size 128m \
+        --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=2147483648 \
+        --env POSTGRES_DB=postgres \
+        --env POSTGRES_USER=a3s_cloud \
+        --env POSTGRES_PASSWORD=a3s_cloud \
+        "$POSTGRES_IMAGE" >"$evidence/postgres.id"
+    docker run -d --pull=never --name "$nats" --network "$network" \
+        --network-alias a3s-runtime-nats \
+        --label "a3s.runtime.conformance.run-id=$run_id" \
+        --cpus 0.5 --memory 256m --pids-limit 128 \
+        --tmpfs /data:rw,nosuid,nodev,noexec,size=268435456 \
+        "$NATS_IMAGE" --jetstream --store_dir=/data --http_port=8222 \
+        >"$evidence/nats.id"
+    for attempt in $(seq 1 90); do
+        docker exec "$postgres" pg_isready --dbname=postgres --username=a3s_cloud >/dev/null 2>&1 && break
+        [[ $attempt -ne 90 ]] || die "PostgreSQL readiness timed out"
+        sleep 0.5
+    done
+    for attempt in $(seq 1 90); do
+        docker exec "$nats" wget --quiet --output-document=- http://127.0.0.1:8222/healthz 2>/dev/null | grep -q ok && break
+        [[ $attempt -ne 90 ]] || die "NATS readiness timed out"
+        sleep 0.5
+    done
+    [[ -z $(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$postgres") ]] || die "PostgreSQL unexpectedly owns an anonymous volume"
+    [[ -z $(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$nats") ]] || die "NATS unexpectedly owns an anonymous volume"
+    docker inspect "$postgres" >"$evidence/postgres-inspect-initial.json"
+    docker inspect "$nats" >"$evidence/nats-inspect-initial.json"
+    log "phase=cloud-services-pass"
+fi
+
 truncate -s "$PROVIDER_DISK_BYTES" "$disk_image"
 loop_device=$(losetup --find --show "$disk_image")
 printf '%s\n' "$loop_device" >"$evidence/loop-device.txt"
@@ -448,7 +544,8 @@ docker run -d --pull=never --name "$provider" --network "container:$keeper" \
 
 (
     sleep "$ttl_seconds"
-    timeout --signal=TERM --kill-after=10s 90s docker rm -fv "$provider" "$keeper" "$registry" || true
+    timeout --signal=TERM --kill-after=10s 90s \
+        docker rm -fv "$provider" "$keeper" "$postgres" "$nats" "$registry" || true
     timeout --signal=TERM --kill-after=10s 60s docker network rm "$network" || true
     mountpoint -q "$data_dir" && umount "$data_dir" || true
     [[ -z $loop_device ]] || ! losetup "$loop_device" >/dev/null 2>&1 || losetup -d "$loop_device" || true
@@ -503,23 +600,80 @@ run_resource_probe "a3s-runtime-restart-postflight-$suffix"
 record_provider_inventory before
 log "phase=provider-preflight-pass netns=$keeper_netns"
 
-set +e
-timeout --signal=TERM --kill-after=30s 2100s \
-    nsenter -t "$keeper_pid" -n -- \
-    env PATH="$cargo_path" \
-        A3S_CLOUD_TEST_DOCKER=1 \
-        A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
-        A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
-        CARGO_TARGET_DIR="$target_dir" \
-        "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
-            -p a3s-cloud-node-agent \
-            --test docker_conformance \
-            real_docker_passes_all_advertised_runtime_profiles \
-            -- --ignored --nocapture --test-threads=1 \
-    2>&1 | tee "$evidence/cargo-test.log"
-test_status=${PIPESTATUS[0]}
-set -e
-printf '%s\n' "$test_status" >"$evidence/cargo-test-status.txt"
+if [[ $suite == provider ]]; then
+    set +e
+    timeout --signal=TERM --kill-after=30s 2100s \
+        nsenter -t "$keeper_pid" -n -- \
+        env PATH="$cargo_path" \
+            A3S_CLOUD_TEST_DOCKER=1 \
+            A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
+            CARGO_TARGET_DIR="$target_dir" \
+            "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+                -p a3s-cloud-node-agent \
+                --test docker_conformance \
+                real_docker_passes_all_advertised_runtime_profiles \
+                -- --ignored --nocapture --test-threads=1 \
+        2>&1 | tee "$evidence/cargo-test.log"
+    test_status=${PIPESTATUS[0]}
+    set -e
+    printf '%s\n' "$test_status" >"$evidence/cargo-test-status.txt"
+else
+    postgres_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$postgres")
+    nats_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$nats")
+    [[ -n $postgres_ip ]] || die "PostgreSQL container has no network address"
+    [[ -n $nats_ip ]] || die "NATS container has no network address"
+    printf '%s\n' "$postgres_ip" >"$evidence/postgres.ip"
+    printf '%s\n' "$nats_ip" >"$evidence/nats.ip"
+
+    set +e
+    timeout --signal=TERM --kill-after=30s 1800s \
+        nsenter -t "$keeper_pid" -n -- \
+        env PATH="$cargo_path" \
+            RUST_BACKTRACE=1 \
+            A3S_CLOUD_TEST_DOCKER=1 \
+            A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            A3S_CLOUD_TEST_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@$postgres_ip:5432/postgres" \
+            A3S_CLOUD_TEST_NATS_URL="nats://$nats_ip:4222" \
+            CARGO_TARGET_DIR="$target_dir" \
+            "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+                -p a3s-cloud-control-plane \
+                --test postgres_integration \
+                postgres_foundation_is_migrated_atomic_and_idempotent \
+                -- --exact --nocapture --test-threads=1 \
+        2>&1 | tee "$evidence/cargo-postgres-test.log"
+    postgres_test_status=${PIPESTATUS[0]}
+
+    timeout --signal=TERM --kill-after=30s 900s \
+        nsenter -t "$keeper_pid" -n -- \
+        env PATH="$cargo_path" \
+            RUST_BACKTRACE=1 \
+            A3S_CLOUD_TEST_DOCKER=1 \
+            A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            CARGO_TARGET_DIR="$target_dir" \
+            "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+                -p a3s-cloud-control-plane \
+                --test docker_deployment \
+                permanently_unhealthy_real_docker_update_preserves_healthy_revision \
+                -- --exact --nocapture --test-threads=1 \
+        2>&1 | tee "$evidence/cargo-docker-deployment-test.log"
+    docker_deployment_test_status=${PIPESTATUS[0]}
+    set -e
+    printf '%s\n' "$postgres_test_status" >"$evidence/cargo-postgres-test-status.txt"
+    printf '%s\n' "$docker_deployment_test_status" >"$evidence/cargo-docker-deployment-test-status.txt"
+    if [[ $postgres_test_status -eq 0 && $docker_deployment_test_status -eq 0 ]]; then
+        test_status=0
+    else
+        test_status=1
+    fi
+    printf '%s\n' "$test_status" >"$evidence/cargo-test-status.txt"
+
+    docker exec "$postgres" psql --username=a3s_cloud --dbname=postgres --tuples-only --no-align \
+        --command="select count(*) from pg_database where datname like 'a3s_cloud_test_%'" \
+        >"$evidence/postgres-test-database-count.txt"
+    [[ $(tr -d '[:space:]' <"$evidence/postgres-test-database-count.txt") == 0 ]] || \
+        die "Cloud E2E left an isolated PostgreSQL test database"
+fi
 
 for attempt in $(seq 1 120); do
     docker --host "$provider_host" version >/dev/null 2>&1 && break
@@ -539,7 +693,11 @@ write_deltas provider-networks "$evidence/provider-networks-before.semantic" "$e
 git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-after.txt"
 git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-after.txt"
 
-[[ $test_status -eq 0 ]] || die "Docker Runtime certification test failed"
+if [[ $suite == provider ]]; then
+    [[ $test_status -eq 0 ]] || die "Docker Runtime certification test failed"
+else
+    [[ $test_status -eq 0 ]] || die "A3S Cloud Runtime E2E test failed"
+fi
 for empty_file in \
     "$evidence/provider-containers-added.ids" \
     "$evidence/provider-containers-removed.ids" \
