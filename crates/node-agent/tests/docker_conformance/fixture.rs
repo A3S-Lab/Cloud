@@ -334,6 +334,7 @@ impl RuntimeConformanceFixture for DockerConformanceFixture {
         capabilities: &RuntimeCapabilities,
         profile: RuntimeConformanceProfile,
     ) -> RuntimeResult<RuntimeConformanceProfileEvidence> {
+        eprintln!("A3S_RUNTIME_PROFILE_START profile={}", profile.as_str());
         match profile {
             RuntimeConformanceProfile::Recovery => self.run_recovery(client).await?,
             RuntimeConformanceProfile::Networking => self.run_networking(client).await?,
@@ -352,7 +353,9 @@ impl RuntimeConformanceFixture for DockerConformanceFixture {
                 )))
             }
         }
-        self.evidence(capabilities, profile).await
+        let evidence = self.evidence(capabilities, profile).await?;
+        eprintln!("A3S_RUNTIME_PROFILE_PASS profile={}", profile.as_str());
+        Ok(evidence)
     }
 
     async fn cleanup(&self) -> RuntimeResult<()> {

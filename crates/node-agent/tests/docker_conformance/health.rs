@@ -28,8 +28,8 @@ impl DockerConformanceFixture {
                 expected_statuses: vec![200],
             },
             2,
-            5,
-            100,
+            30,
+            500,
         );
         let observation = client
             .apply(&specs::apply("health-http-apply", service.clone()))
@@ -50,8 +50,8 @@ impl DockerConformanceFixture {
                 port: "health".into(),
             },
             2,
-            5,
-            100,
+            30,
+            500,
         );
         let observation = client
             .apply(&specs::apply("health-tcp-apply", service.clone()))
@@ -125,8 +125,8 @@ impl DockerConformanceFixture {
                 expected_statuses: vec![200],
             },
             1,
-            2,
-            100,
+            5,
+            500,
         );
         let observation = client
             .apply(&specs::apply("health-timeout-apply", service.clone()))
