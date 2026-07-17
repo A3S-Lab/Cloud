@@ -324,6 +324,16 @@ fn write_new(path: &Path, value: &str, private: bool) -> Result<(), CertificateA
     let mut file = options
         .open(path)
         .map_err(unavailable("create local CA file"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(if private {
+            0o600
+        } else {
+            0o644
+        }))
+        .map_err(unavailable("set local CA file permissions"))?;
+    }
     file.write_all(value.as_bytes())
         .map_err(unavailable("write local CA file"))?;
     file.sync_all().map_err(unavailable("sync local CA file"))
