@@ -370,6 +370,40 @@ cargo clippy --workspace --all-targets -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
+### Certify the Runtime boundary
+
+Run real-provider certification only on a dedicated Linux or A3S OS runner.
+Prepare clean `apps/cloud` and `crates/runtime` worktrees directly through Git
+at the exact 40-character commits, then run the isolated gate from the Cloud
+worktree. The default suite certifies the Docker provider without restarting
+or reconfiguring the host Docker daemon:
+
+```bash
+sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
+  --source-root /var/tmp/a3s-runtime-tests/release-candidate \
+  --cloud-sha "$CLOUD_SHA" \
+  --runtime-sha "$RUNTIME_SHA"
+```
+
+After the provider suite passes, run the Cloud consumer recovery gate with its
+pinned PostgreSQL and NATS services:
+
+```bash
+sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
+  --source-root /var/tmp/a3s-runtime-tests/release-candidate \
+  --cloud-sha "$CLOUD_SHA" \
+  --runtime-sha "$RUNTIME_SHA" \
+  --suite cloud
+```
+
+The provider suite covers Base, Recovery, Networking, Mounts, Health,
+Resources, Logs, and Security. The Cloud suite covers persisted projections,
+the command journal, restart, JetStream redelivery, reconciliation, log
+transport, cancellation, failed-update preservation, and cleanup. Both suites
+require zero provider and host inventory drift. See
+[`tools/runtime-conformance/README.md`](tools/runtime-conformance/README.md) for
+the pinned images, safety model, and evidence contract.
+
 The PostgreSQL integration test treats the supplied URL as an administration
 connection, creates a uniquely named database for the run, and force-removes it
 after success, ordinary failure, or assertion panic. It never migrates or

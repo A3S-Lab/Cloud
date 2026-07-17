@@ -56,6 +56,28 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
   --runtime-sha "$RUNTIME_SHA"
 ```
 
+Omitting `--suite` selects `--suite provider`. This is the release gate for the
+Docker `RuntimeDriver`: it runs the mandatory Base and Recovery profiles and
+every profile advertised by the driver (Networking, Mounts, Health, Resources,
+Logs, and Security).
+
+Run the Cloud consumer gate explicitly after the provider gate passes:
+
+```bash
+sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
+  --source-root /var/tmp/a3s-runtime-tests/release-candidate \
+  --cloud-sha "$CLOUD_SHA" \
+  --runtime-sha "$RUNTIME_SHA" \
+  --suite cloud
+```
+
+The Cloud suite adds digest-pinned PostgreSQL and NATS services. It runs
+`postgres_foundation_is_migrated_atomic_and_idempotent`, which covers the
+persisted projection, command journal, process restart, JetStream redelivery,
+reconciliation, log transport, cancellation, and cleanup path, followed by
+`permanently_unhealthy_real_docker_update_preserves_healthy_revision` against
+the real isolated Docker provider.
+
 Without `--registry-data`, the runner copies the pinned multi-platform BusyBox
 OCI index from Docker Hub into a temporary registry and retries transient copy
 failures three times. For an offline or rate-limited runner, pass a persistent
@@ -75,18 +97,33 @@ expected fixture contains 18 manifests and 34 blobs under root digest
 
 ## Evidence
 
-The default evidence directory is
-`/tmp/a3s-cloud-docker-full-isolated-<run-id>`. A successful execution contains
-`result.txt` with `A3S_DOCKER_CERTIFICATION_PASS` and `exit-status.txt` with
-`0`. It also retains:
+The default provider evidence directory is
+`/tmp/a3s-cloud-docker-full-isolated-<run-id>`. A successful provider execution
+contains `result.txt` with `A3S_DOCKER_CERTIFICATION_PASS` and
+`exit-status.txt` with `0`.
+
+The Cloud suite writes
+`/tmp/a3s-cloud-runtime-e2e-isolated-<run-id>`. Its success marker is
+`A3S_CLOUD_RUNTIME_E2E_PASS`. Its three status files (the aggregate status and
+the two individual Cargo test statuses) must all contain `0`, and
+`postgres-test-database-count.txt` must contain `0` after the isolated test
+database is removed.
+
+Both suites retain:
 
 - exact source and image digests;
-- OCI fixture hashes and manifest headers;
+- OCI fixture hashes and manifest headers (18 manifests, 34 blobs, and 52
+  audited objects for the pinned fixture);
 - provider build, pull, test, inspect, and daemon logs;
 - provider inventories before and after conformance;
 - host container, volume, network, loop-device, mount, and Docker-netns deltas;
 - provider/keeper network namespace identities across every restart; and
 - cleanup logs plus targeted post-cleanup leak inventories.
+
+Certification succeeds only when the exact-SHA source worktrees remain clean,
+the provider inventory returns to its baseline, every host inventory delta is
+empty, the TTL process exits, and the provider root, loop device, mount, and
+Docker network namespace leave no residue.
 
 Default Docker network IDs may rotate across a provider restart. The runner
 records that rotation, but leak certification compares stable network semantics
