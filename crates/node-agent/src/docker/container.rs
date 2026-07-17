@@ -583,7 +583,7 @@ fn service_endpoint_claims(
     spec: &RuntimeUnitSpec,
     container: &ContainerInspectResponse,
 ) -> RuntimeResult<BTreeMap<String, String>> {
-    if spec.class != RuntimeUnitClass::Service {
+    if spec.class != RuntimeUnitClass::Service || !container_is_running(container) {
         return Ok(BTreeMap::new());
     }
     spec.network
@@ -798,5 +798,49 @@ mod tests {
         assert_eq!(name, container_name("cloud", &spec, &digest));
         assert!(!name.contains("secret-shaped-name"));
         assert!(name.len() <= 63);
+    }
+
+    #[test]
+    fn stopped_service_does_not_advertise_an_unreachable_endpoint() {
+        let spec = RuntimeUnitSpec {
+            schema: RuntimeUnitSpec::SCHEMA.into(),
+            unit_id: "stopped-service".into(),
+            generation: 1,
+            class: RuntimeUnitClass::Service,
+            artifact: ArtifactRef {
+                uri: format!("oci://registry.example/app@sha256:{}", "a".repeat(64)),
+                digest: format!("sha256:{}", "a".repeat(64)),
+                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            },
+            process: RuntimeProcessSpec {
+                command: Vec::new(),
+                args: Vec::new(),
+                working_directory: None,
+                environment: BTreeMap::new(),
+            },
+            mounts: Vec::new(),
+            secrets: Vec::new(),
+            network: RuntimeNetworkSpec {
+                mode: NetworkMode::Service,
+                ports: Vec::new(),
+            },
+            resources: ResourceLimits {
+                cpu_millis: 100,
+                memory_bytes: 32 * 1024 * 1024,
+                pids: 32,
+                ephemeral_storage_bytes: None,
+                execution_timeout_ms: None,
+            },
+            isolation: IsolationLevel::Container,
+            health: None,
+            restart: RestartPolicy::Never,
+            outputs: Vec::new(),
+            semantics_profile_digest: None,
+        };
+        assert!(
+            service_endpoint_claims(&spec, &ContainerInspectResponse::default())
+                .expect("stopped Service claims")
+                .is_empty()
+        );
     }
 }
