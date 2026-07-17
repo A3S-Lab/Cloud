@@ -115,9 +115,9 @@ done
 [[ -n $source_root ]] || die "--source-root is required"
 source_root=$(realpath "$source_root")
 
-for command in awk comm curl docker find findmnt git losetup mkfs.ext4 mount \
-    mountpoint nsenter pkill python3 realpath sha256sum sort stat tee timeout \
-    umount; do
+for command in awk basename comm curl dirname docker find findmnt git losetup \
+    mkfs.ext4 mount mountpoint nsenter pkill python3 realpath sha256sum sort \
+    stat tee timeout umount; do
     command -v "$command" >/dev/null || die "required command is unavailable: $command"
 done
 
@@ -125,9 +125,13 @@ if [[ -z $cargo_bin ]]; then
     cargo_bin=$(command -v cargo || true)
     [[ -n $cargo_bin ]] || [[ ! -x /root/.cargo/bin/cargo ]] || cargo_bin=/root/.cargo/bin/cargo
 fi
+if [[ $cargo_bin != */* ]]; then
+    cargo_bin=$(command -v "$cargo_bin" || true)
+fi
 [[ -x $cargo_bin ]] || die "Cargo executable is unavailable: $cargo_bin"
-cargo_bin=$(realpath "$cargo_bin")
-cargo_path=$(dirname "$cargo_bin"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+cargo_dir=$(cd "$(dirname "$cargo_bin")" && pwd -P)
+cargo_bin=$cargo_dir/$(basename "$cargo_bin")
+cargo_path=$cargo_dir:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 cloud=$source_root/apps/cloud
 runtime=$source_root/crates/runtime
