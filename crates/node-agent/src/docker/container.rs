@@ -95,13 +95,19 @@ impl DockerRuntimeDriver {
                 .await
                 .map_err(docker_error)?;
         }
-        match spec.class {
+        let observation = match spec.class {
             RuntimeUnitClass::Task => self.wait_for_task(spec, container, &provider_build).await,
             RuntimeUnitClass::Service => {
                 self.wait_for_service(spec, container, &provider_build)
                     .await
             }
-        }
+        }?;
+        let current_id = observation.provider_resource_id.as_deref().ok_or_else(|| {
+            RuntimeError::Protocol("Docker apply observation has no resource identity".into())
+        })?;
+        self.retire_stale_containers(node_id, spec, current_id)
+            .await?;
+        Ok(observation)
     }
 
     pub(super) async fn inspect_unit(
@@ -263,6 +269,115 @@ impl DockerRuntimeDriver {
             .map_err(docker_error)?;
         self.validate_container_binding(&inspect, node_id, spec, spec_digest)?;
         Ok(Some(inspect))
+    }
+
+    async fn retire_stale_containers(
+        &self,
+        node_id: Uuid,
+        spec: &RuntimeUnitSpec,
+        current_id: &str,
+    ) -> RuntimeResult<()> {
+        let container_ids = self
+            .managed_unit_container_ids(node_id, &spec.unit_id)
+            .await?;
+        if !container_ids.iter().any(|id| id == current_id) {
+            return Err(RuntimeError::ProviderUnavailable(
+                "Docker lost the current container during generation reconciliation".into(),
+            ));
+        }
+
+        for id in container_ids.iter().filter(|id| id.as_str() != current_id) {
+            let container = match self.docker.inspect_container(id, None).await {
+                Ok(container) => container,
+                Err(error) if is_status(&error, 404) => continue,
+                Err(error) => return Err(docker_error(error)),
+            };
+            self.validate_managed_unit_binding(&container, node_id, &spec.unit_id)?;
+            match self
+                .docker
+                .remove_container(
+                    id,
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        v: false,
+                        link: false,
+                    }),
+                )
+                .await
+            {
+                Ok(()) => {}
+                Err(error) if is_status(&error, 404) => {}
+                Err(error) => return Err(docker_error(error)),
+            }
+        }
+
+        let remaining = self
+            .managed_unit_container_ids(node_id, &spec.unit_id)
+            .await?;
+        if remaining.len() != 1 || remaining[0] != current_id {
+            return Err(RuntimeError::Protocol(format!(
+                "Docker generation reconciliation for unit {:?} left resources {remaining:?}",
+                spec.unit_id
+            )));
+        }
+        Ok(())
+    }
+
+    async fn managed_unit_container_ids(
+        &self,
+        node_id: Uuid,
+        unit_id: &str,
+    ) -> RuntimeResult<Vec<String>> {
+        let mut filters = HashMap::new();
+        filters.insert(
+            "label".to_owned(),
+            managed_unit_labels(&self.namespace, node_id, unit_id)
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect(),
+        );
+        let summaries = self
+            .docker
+            .list_containers(Some(ListContainersOptions {
+                all: true,
+                filters,
+                ..Default::default()
+            }))
+            .await
+            .map_err(docker_error)?;
+        let mut ids = summaries
+            .into_iter()
+            .map(|summary| {
+                summary.id.ok_or_else(|| {
+                    RuntimeError::Protocol("Docker container summary has no resource ID".into())
+                })
+            })
+            .collect::<RuntimeResult<Vec<_>>>()?;
+        ids.sort_unstable();
+        Ok(ids)
+    }
+
+    fn validate_managed_unit_binding(
+        &self,
+        container: &ContainerInspectResponse,
+        node_id: Uuid,
+        unit_id: &str,
+    ) -> RuntimeResult<()> {
+        let labels = container
+            .config
+            .as_ref()
+            .and_then(|config| config.labels.as_ref())
+            .ok_or_else(|| {
+                RuntimeError::Protocol("managed Docker container has no labels".into())
+            })?;
+        for (key, expected) in managed_unit_labels(&self.namespace, node_id, unit_id) {
+            if labels.get(&key) != Some(&expected) {
+                return Err(RuntimeError::Protocol(format!(
+                    "managed Docker container label {key:?} does not match unit ownership"
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn validate_container_binding(
@@ -491,13 +606,22 @@ fn managed_labels(
     spec: &RuntimeUnitSpec,
     digest: &str,
 ) -> HashMap<String, String> {
+    let mut labels = managed_unit_labels(namespace, node_id, &spec.unit_id);
+    labels.insert(GENERATION_LABEL.into(), spec.generation.to_string());
+    labels.insert(SPEC_DIGEST_LABEL.into(), digest.into());
+    labels
+}
+
+fn managed_unit_labels(
+    namespace: &str,
+    node_id: Uuid,
+    unit_id: &str,
+) -> HashMap<String, String> {
     HashMap::from([
         (MANAGED_LABEL.into(), "true".into()),
         (NAMESPACE_LABEL.into(), namespace.into()),
         (NODE_LABEL.into(), node_id.to_string()),
-        (UNIT_LABEL.into(), spec.unit_id.clone()),
-        (GENERATION_LABEL.into(), spec.generation.to_string()),
-        (SPEC_DIGEST_LABEL.into(), digest.into()),
+        (UNIT_LABEL.into(), unit_id.into()),
     ])
 }
 

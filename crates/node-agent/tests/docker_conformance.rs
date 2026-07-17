@@ -153,6 +153,68 @@ async fn lost_provider_container_is_recreated_once_for_the_same_generation() {
         .expect("remove recovered provider container");
 }
 
+#[tokio::test]
+async fn newer_generation_retires_the_previous_managed_container() {
+    if !docker_tests_enabled() {
+        return;
+    }
+    let directory = tempfile::tempdir().expect("Runtime state directory");
+    let namespace = test_namespace("generation");
+    let driver = Arc::new(driver(&namespace).await);
+    let store: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(directory.path()));
+    let runtime = ManagedRuntimeClient::new(store, driver);
+    let unit_id = format!("generation-service-{}", Uuid::now_v7());
+    let first_spec = service_spec(unit_id.clone(), false);
+    let first = runtime
+        .apply(&apply("generation-one", first_spec.clone()))
+        .await
+        .expect("apply generation one");
+    let first_resource = first
+        .provider_resource_id
+        .clone()
+        .expect("generation one provider resource ID");
+
+    let mut second_spec = first_spec;
+    second_spec.generation = 2;
+    second_spec.process.args = vec!["-c".into(), "exec sleep 301".into()];
+    let second_request = apply("generation-two", second_spec);
+    let second = runtime
+        .apply(&second_request)
+        .await
+        .expect("apply generation two");
+    let second_resource = second
+        .provider_resource_id
+        .clone()
+        .expect("generation two provider resource ID");
+
+    assert_eq!(second.generation, 2);
+    assert_ne!(second_resource, first_resource);
+    assert_eq!(
+        managed_container_ids(&namespace, &unit_id).await,
+        vec![second_resource.clone()]
+    );
+    assert_eq!(
+        runtime
+            .apply(&second_request)
+            .await
+            .expect("replay generation two")
+            .provider_resource_id
+            .as_deref(),
+        Some(second_resource.as_str())
+    );
+    assert_eq!(managed_container_count(&namespace, &unit_id).await, 1);
+
+    runtime
+        .remove(&action_generation(
+            "generation-remove",
+            unit_id.clone(),
+            2,
+        ))
+        .await
+        .expect("remove generation two provider container");
+    assert_eq!(managed_container_count(&namespace, &unit_id).await, 0);
+}
+
 async fn driver(namespace: &str) -> DockerRuntimeDriver {
     let driver = DockerRuntimeDriver::connect(&DockerConfig {
         socket: "unix:///var/run/docker.sock".into(),
@@ -177,11 +239,15 @@ fn apply(prefix: &str, spec: RuntimeUnitSpec) -> RuntimeApplyRequest {
 }
 
 fn action(prefix: &str, unit_id: String) -> RuntimeActionRequest {
+    action_generation(prefix, unit_id, 1)
+}
+
+fn action_generation(prefix: &str, unit_id: String, generation: u64) -> RuntimeActionRequest {
     RuntimeActionRequest {
         schema: RuntimeActionRequest::SCHEMA.into(),
         request_id: format!("{prefix}-{}", Uuid::now_v7()),
         unit_id,
-        generation: 1,
+        generation,
         deadline_at_ms: None,
     }
 }
@@ -292,6 +358,10 @@ fn resources(execution_timeout_ms: Option<u64>) -> ResourceLimits {
 }
 
 async fn managed_container_count(namespace: &str, unit_id: &str) -> usize {
+    managed_container_ids(namespace, unit_id).await.len()
+}
+
+async fn managed_container_ids(namespace: &str, unit_id: &str) -> Vec<String> {
     let docker = Docker::connect_with_unix_defaults().expect("Docker client");
     let mut filters = HashMap::new();
     filters.insert(
@@ -302,7 +372,7 @@ async fn managed_container_count(namespace: &str, unit_id: &str) -> usize {
             format!("a3s.runtime.unit-id={unit_id}"),
         ],
     );
-    docker
+    let mut ids = docker
         .list_containers(Some(ListContainersOptions {
             all: true,
             filters,
@@ -310,7 +380,11 @@ async fn managed_container_count(namespace: &str, unit_id: &str) -> usize {
         }))
         .await
         .expect("list managed containers")
-        .len()
+        .into_iter()
+        .map(|container| container.id.expect("managed container ID"))
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids
 }
 
 fn test_namespace(label: &str) -> String {
