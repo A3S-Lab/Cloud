@@ -436,7 +436,7 @@ boundaries satisfy these requirements.
 | Component | Decision | Owned capability |
 | --- | --- | --- |
 | A3S Boot | Required | HTTP, DI, CQRS, validation, OpenAPI, lifecycle |
-| A3S ACL | Required | Typed HCL-style product configuration and asset manifests |
+| A3S ACL | Required | Typed block-structured product configuration and asset manifests |
 | A3S ORM | Required | PostgreSQL queries, transactions, migrations |
 | A3S Runtime | Required after generalization | Provider-neutral Task and Service lifecycle |
 | A3S Flow | Required | Durable deployment/build/backup operations |
@@ -505,7 +505,7 @@ text search at a volume that the chunk index cannot serve.
   would split operation history.
 
 Every optional middleware is hidden behind a typed application port. A new
-provider is selected by validated HCL and capability discovery, never by
+provider is selected by validated A3S ACL and capability discovery, never by
 branching on raw backend-name strings inside a domain module.
 
 ## 15. Deployment profiles

@@ -61,7 +61,7 @@ impl NodeAgentConfig {
 
     pub fn parse(source: &str) -> Result<Self, ConfigError> {
         let document = a3s_acl::parse(source)
-            .map_err(|error| ConfigError::Invalid(format!("invalid HCL: {error}")))?;
+            .map_err(|error| ConfigError::Invalid(format!("invalid A3S ACL: {error}")))?;
         validate_root(&document)?;
         let control_plane = one_block(&document, "control_plane")?;
         validate_block(
@@ -471,6 +471,18 @@ gateway {
     #[test]
     fn parses_a_closed_node_agent_configuration() {
         let config = NodeAgentConfig::parse(CONFIG).expect("node config");
+        assert_eq!(config.node.name, "worker-1");
+        assert_eq!(config.control_plane.node_control_url.scheme(), "https");
+        assert_eq!(config.docker.namespace, "a3s-cloud");
+        assert_eq!(config.gateway.management_url.path(), "/api/gateway");
+    }
+
+    #[test]
+    fn loads_shipped_node_example_acl() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/node.example.acl");
+        let config = NodeAgentConfig::load(&path)
+            .unwrap_or_else(|error| panic!("failed to load {}: {error}", path.display()));
+
         assert_eq!(config.node.name, "worker-1");
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.docker.namespace, "a3s-cloud");

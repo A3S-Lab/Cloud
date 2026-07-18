@@ -47,10 +47,10 @@ fn config_path() -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
         .and_then(|value| PathBuf::from(value).file_name().map(|name| name.to_owned()))
         .unwrap_or_else(|| "a3s-cloud-node-agent".into());
     let Some(path) = arguments.next() else {
-        return Err(format!("usage: {} <node-config.hcl>", executable.to_string_lossy()).into());
+        return Err(format!("usage: {} <node-config.acl>", executable.to_string_lossy()).into());
     };
     if arguments.next().is_some() {
-        return Err(format!("usage: {} <node-config.hcl>", executable.to_string_lossy()).into());
+        return Err(format!("usage: {} <node-config.acl>", executable.to_string_lossy()).into());
     }
     Ok(path.into())
 }
