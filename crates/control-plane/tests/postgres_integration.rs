@@ -90,6 +90,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
              drop table if exists routes cascade;
+             drop table if exists gateway_certificates cascade;
+             drop table if exists domain_claims cascade;
              drop table if exists gateway_publications cascade;
              drop table if exists gateway_scopes cascade;
              drop table if exists node_gateway_acknowledgements cascade;
@@ -127,7 +129,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 11);
+    assert_eq!(applied, 12);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -235,6 +237,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "012",
+                "Edge domain ownership and TLS certificates",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/012_edge_tls.sql"
+                )),
+            ),
+            Migration::new(
+                "013",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

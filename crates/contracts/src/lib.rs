@@ -7,12 +7,13 @@ mod node;
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
 pub use node::{
-    GatewayAckState, GatewaySnapshot, NodeCertificate, NodeCertificateRotationRequest,
-    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope,
-    NodeCommandFailure, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata,
-    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest,
-    NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat,
-    NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch,
-    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
-    RuntimeServiceEndpoint,
+    GatewayAckState, GatewayCertificateRequest, GatewayCertificateSigningRequest,
+    GatewayCertificateSigningResponse, GatewaySnapshot, NodeCertificate,
+    NodeCertificateRotationRequest, NodeCertificateRotationResponse, NodeCommandAck,
+    NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure, NodeCommandLeaseRequest,
+    NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult, NodeEnrollmentRequest, NodeEnrollmentResponse, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch, NodeLogChunkReceipt,
+    NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt, NodeProtocolError,
+    NodeProtocolErrorCode, RuntimeObservationReport, RuntimeServiceEndpoint,
 };

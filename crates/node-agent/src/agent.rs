@@ -28,8 +28,6 @@ pub async fn run_node_agent(
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), NodeAgentError> {
     let _process_lock = acquire_process_lock(&config.node.state_dir).await?;
-    let gateway: Arc<dyn GatewaySnapshotInstaller> =
-        Arc::new(DurableGatewaySnapshotInstaller::from_config(&config)?);
     let capabilities = runtime.client.capabilities().await?;
     capabilities.validate().map_err(NodeAgentError::Invalid)?;
 
@@ -52,6 +50,14 @@ pub async fn run_node_agent(
     else {
         return Ok(());
     };
+    let certificate_transport: Arc<dyn crate::GatewayCertificateSigningTransport> =
+        transport.clone();
+    let gateway: Arc<dyn GatewaySnapshotInstaller> =
+        Arc::new(DurableGatewaySnapshotInstaller::from_config(
+            &config,
+            identity.response.node_id,
+            certificate_transport,
+        )?);
     runtime.binding.bind_node(identity.response.node_id).await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(

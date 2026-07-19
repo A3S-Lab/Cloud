@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::repositories::EdgeRoutePublicationResult;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, OrganizationId, ProjectId, WorkloadRevisionId,
 };
 use a3s_boot::Command;
 use chrono::{DateTime, Utc};
@@ -14,6 +14,7 @@ pub struct PublishRoute {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub workload_revision_id: WorkloadRevisionId,
+    pub domain_claim_id: DomainClaimId,
     pub hostname: String,
     pub path_prefix: String,
     pub port_name: String,

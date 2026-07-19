@@ -1,7 +1,9 @@
-use crate::modules::edge::domain::{RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint};
+use crate::modules::edge::domain::{
+    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
+};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId,
-    WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use chrono::{DateTime, Utc};
@@ -46,6 +48,9 @@ pub struct Route {
     pub gateway_node_id: NodeId,
     pub hostname: RouteHostname,
     pub path_prefix: RoutePath,
+    pub domain_claim_id: Option<DomainClaimId>,
+    pub domain_pattern: Option<DomainNamePattern>,
+    pub gateway_certificate_id: Option<GatewayCertificateId>,
     pub workload_id: WorkloadId,
     pub workload_revision_id: WorkloadRevisionId,
     pub port_name: RoutePortName,
@@ -71,14 +76,20 @@ impl Route {
         gateway_node_id: NodeId,
         hostname: RouteHostname,
         path_prefix: RoutePath,
+        domain_claim_id: DomainClaimId,
+        domain_pattern: DomainNamePattern,
+        gateway_certificate_id: GatewayCertificateId,
         workload_id: WorkloadId,
         workload_revision_id: WorkloadRevisionId,
         port_name: RoutePortName,
         upstream: UpstreamEndpoint,
         created_at: DateTime<Utc>,
-    ) -> Self {
+    ) -> Result<Self, String> {
+        if !domain_pattern.covers(&hostname) {
+            return Err("domain claim pattern does not cover the route hostname".into());
+        }
         let created_at = canonical_timestamp(created_at);
-        Self {
+        Ok(Self {
             id,
             organization_id,
             project_id,
@@ -86,6 +97,9 @@ impl Route {
             gateway_node_id,
             hostname,
             path_prefix,
+            domain_claim_id: Some(domain_claim_id),
+            domain_pattern: Some(domain_pattern),
+            gateway_certificate_id: Some(gateway_certificate_id),
             workload_id,
             workload_revision_id,
             port_name,
@@ -99,7 +113,7 @@ impl Route {
             created_at,
             updated_at: created_at,
             activated_at: None,
-        }
+        })
     }
 
     pub fn stage(
@@ -114,6 +128,9 @@ impl Route {
             || self.gateway_revision.is_some()
             || self.gateway_command_id.is_some()
             || self.snapshot_digest.is_some()
+            || self.domain_claim_id.is_none()
+            || self.domain_pattern.is_none()
+            || self.gateway_certificate_id.is_none()
         {
             return Err("route publication has already been staged".into());
         }

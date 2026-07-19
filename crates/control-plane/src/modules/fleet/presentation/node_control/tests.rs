@@ -1,7 +1,7 @@
 use super::{NodeControlApi, NodeControlServer};
 use crate::config::NodeControlConfig;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
-use crate::modules::edge::EdgeGatewayAcknowledgementProjector;
+use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCertificateAuthority};
 use crate::modules::fleet::application::{EnrollNode, EnrollNodeHandler};
 use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
@@ -66,14 +66,19 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let node_repository: Arc<dyn INodeRepository> = nodes.clone();
     let log_store =
         Arc::new(LocalLogChunkStore::new(directory.path().join("logs")).expect("log object store"));
+    let edge = Arc::new(InMemoryEdgeRepository::new());
     let api = NodeControlApi::new(
         node_repository,
         commands,
-        Arc::new(EdgeGatewayAcknowledgementProjector::new(Arc::new(
-            InMemoryEdgeRepository::new(),
-        ))),
+        Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),
+        edge,
+        Arc::new(
+            LocalGatewayCertificateAuthority::load_or_create(directory.path().join("gateway-ca"))
+                .expect("Gateway CA"),
+        ),
         log_store,
         authority.clone(),
+        Duration::days(30),
         Duration::hours(1),
         Duration::milliseconds(250),
         Duration::seconds(30),

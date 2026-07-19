@@ -1,9 +1,16 @@
 use crate::modules::edge::domain::repositories::IEdgeRepository;
-use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
+use crate::modules::edge::domain::services::{
+    IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
+    IRouteTargetReader,
+};
 use crate::modules::edge::{
-    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetRouteHandler, ListRoutesHandler,
-    PostgresEdgeRepository, PublishRouteHandler, WorkloadRouteTargetReader,
+    CreateDomainClaimHandler, EdgeGatewayAcknowledgementProjector, EdgeModule,
+    FleetGatewayCommandQueue, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, PostgresEdgeRepository, PublishRouteHandler,
+    UnavailableDomainOwnershipVerifier, UnavailableGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::fleet::domain::services::{
@@ -52,7 +59,7 @@ use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
 use crate::server::ControlPlane;
 use crate::{
-    config::{EventProviderKind, ProcessRole, SecurityProviderKind},
+    config::{EventProviderKind, ProcessRole, SecurityProfile, SecurityProviderKind},
     infrastructure::{connect_and_migrate, postgres_health, PostgresBootstrapError},
     CloudConfig,
 };
@@ -99,6 +106,7 @@ pub async fn build_application(
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
     let (certificate_authority, key_encryption) = security_providers(&config)?;
+    let gateway_certificate_authority = gateway_certificate_authority(&config)?;
     let log_chunks: Arc<dyn ILogChunkStore> = Arc::new(
         LocalLogChunkStore::new(std::path::Path::new(&config.security.state_dir).join("logs"))
             .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
@@ -118,6 +126,10 @@ pub async fn build_application(
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository;
+    let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
+        SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
+        SecurityProfile::Production => Arc::new(UnavailableDomainOwnershipVerifier),
+    };
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
@@ -167,8 +179,12 @@ pub async fn build_application(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
             Arc::clone(&gateway_projector),
+            Arc::clone(&routes),
+            Arc::clone(&gateway_certificate_authority),
             Arc::clone(&log_chunks),
             Arc::clone(&certificate_authority),
+            chrono_duration(config.edge.certificate_ttl_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             chrono_duration(config.fleet.certificate_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             chrono_duration(config.fleet.certificate_rotation_window_ms)
@@ -251,6 +267,7 @@ pub async fn build_application(
             routes,
             route_targets,
             route_commands,
+            domain_verifier,
             gateway_projector,
             operations: operation_repository,
             nodes,
@@ -263,6 +280,7 @@ pub async fn build_application(
                 flow,
                 event_publisher,
                 certificate_authority,
+                gateway_certificate_authority,
                 key_encryption,
                 log_chunks,
             ),
@@ -286,6 +304,7 @@ struct ApplicationDependencies {
     routes: Arc<dyn IEdgeRepository>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
+    domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
     nodes: Arc<dyn INodeRepository>,
@@ -309,6 +328,7 @@ fn build_application_with_health(
         routes,
         route_targets,
         route_commands,
+        domain_verifier,
         gateway_projector,
         operations,
         nodes,
@@ -321,6 +341,7 @@ fn build_application_with_health(
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
     let workload_environments = Arc::clone(&environments);
+    let domain_environments = Arc::clone(&environments);
     let create_workloads = Arc::clone(&workloads);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
@@ -346,7 +367,12 @@ fn build_application_with_health(
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
     let gateway_commands = node_control;
+    let create_domain_claims = Arc::clone(&routes);
+    let verify_domain_claims = Arc::clone(&routes);
     let publish_routes = Arc::clone(&routes);
+    let list_domain_claims = Arc::clone(&routes);
+    let get_domain_claims = Arc::clone(&routes);
+    let list_gateway_certificates = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
     let log_store = log_chunks;
@@ -377,6 +403,7 @@ fn build_application_with_health(
         management_path_prefix: config.edge.management_path_prefix.clone(),
         management_auth_token_env: config.edge.management_auth_token_env.clone(),
         upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
+        certificate_directory: config.edge.certificate_directory.clone(),
     })
     .map_err(BootError::Internal)?;
     let publish_route_handler = PublishRouteHandler::new(
@@ -427,6 +454,12 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workloads::StopWorkload, _>(
                     StopWorkloadHandler::new(stop_workloads),
+                )
+                .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
+                    CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
+                )
+                .command_handler::<crate::modules::edge::VerifyDomainClaim, _>(
+                    VerifyDomainClaimHandler::new(verify_domain_claims, domain_verifier),
                 )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
@@ -509,6 +542,15 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::edge::ListRoutes, _>(ListRoutesHandler::new(
                     list_routes,
                 ))
+                .query_handler::<crate::modules::edge::ListDomainClaims, _>(
+                    ListDomainClaimsHandler::new(list_domain_claims),
+                )
+                .query_handler::<crate::modules::edge::GetDomainClaim, _>(
+                    GetDomainClaimHandler::new(get_domain_claims),
+                )
+                .query_handler::<crate::modules::edge::ListGatewayCertificates, _>(
+                    ListGatewayCertificatesHandler::new(list_gateway_certificates),
+                )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,
                 ))
@@ -576,6 +618,7 @@ fn infrastructure_readiness(
     flow: crate::infrastructure::FlowInfrastructure,
     events: Arc<dyn IEventPublisher>,
     certificate_authority: Arc<dyn ICertificateAuthority>,
+    gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     key_encryption: Arc<dyn IKeyEncryptionService>,
     log_chunks: Arc<dyn ILogChunkStore>,
 ) -> HealthModule {
@@ -606,6 +649,19 @@ fn infrastructure_readiness(
             let certificate_authority = certificate_authority.clone();
             async move {
                 match certificate_authority.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+        .indicator("gateway-certificate-authority", move || {
+            let gateway_certificate_authority = gateway_certificate_authority.clone();
+            async move {
+                match gateway_certificate_authority.health().await {
                     Ok(true) => Ok(HealthIndicatorResult::up()),
                     Ok(false) => Ok(HealthIndicatorResult::down()),
                     Err(error) => {
@@ -712,6 +768,20 @@ fn security_providers(
         }
     };
     Ok((certificate_authority, key_encryption))
+}
+
+fn gateway_certificate_authority(
+    config: &CloudConfig,
+) -> std::result::Result<Arc<dyn IGatewayCertificateAuthority>, ControlPlaneStartupError> {
+    match config.security.profile {
+        SecurityProfile::Development => Ok(Arc::new(
+            LocalGatewayCertificateAuthority::load_or_create(
+                std::path::Path::new(&config.security.state_dir).join("gateway-ca"),
+            )
+            .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+        )),
+        SecurityProfile::Production => Ok(Arc::new(UnavailableGatewayCertificateAuthority)),
+    }
 }
 
 fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration> {

@@ -117,6 +117,9 @@ pub struct EdgeConfig {
     pub management_address: String,
     pub management_path_prefix: String,
     pub management_auth_token_env: String,
+    pub certificate_directory: String,
+    pub certificate_ttl_ms: u64,
+    pub certificate_renewal_window_ms: u64,
     pub upstream_request_timeout_ms: u64,
     pub command_ttl_ms: u64,
 }
@@ -273,6 +276,9 @@ impl CloudConfig {
                 "management_address",
                 "management_path_prefix",
                 "management_auth_token_env",
+                "certificate_directory",
+                "certificate_ttl_ms",
+                "certificate_renewal_window_ms",
                 "upstream_request_timeout_ms",
                 "command_ttl_ms",
             ],
@@ -365,6 +371,9 @@ impl CloudConfig {
                 management_address: string(edge, "management_address")?,
                 management_path_prefix: string(edge, "management_path_prefix")?,
                 management_auth_token_env: string(edge, "management_auth_token_env")?,
+                certificate_directory: string(edge, "certificate_directory")?,
+                certificate_ttl_ms: integer(edge, "certificate_ttl_ms")?,
+                certificate_renewal_window_ms: integer(edge, "certificate_renewal_window_ms")?,
                 upstream_request_timeout_ms: integer(edge, "upstream_request_timeout_ms")?,
                 command_ttl_ms: integer(edge, "command_ttl_ms")?,
             },
@@ -550,6 +559,7 @@ impl CloudConfig {
             .map_err(|error| {
                 ConfigError::Invalid(format!("edge.management_address is invalid: {error}"))
             })?;
+        let certificate_directory = std::path::Path::new(&self.edge.certificate_directory);
         if entrypoint.port() == 0
             || management.port() == 0
             || !management.ip().is_loopback()
@@ -560,13 +570,22 @@ impl CloudConfig {
                 .management_path_prefix
                 .contains(['\0', '\r', '\n', '?', '#'])
             || !valid_env_name(&self.edge.management_auth_token_env)
+            || self.edge.certificate_directory.len() > 4096
+            || self.edge.certificate_directory.contains(['\0', '\r', '\n'])
+            || !certificate_directory.is_absolute()
+            || certificate_directory
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+            || !(3_600_000..=34_300_800_000).contains(&self.edge.certificate_ttl_ms)
+            || self.edge.certificate_renewal_window_ms == 0
+            || self.edge.certificate_renewal_window_ms >= self.edge.certificate_ttl_ms
             || self.edge.upstream_request_timeout_ms == 0
             || self.edge.upstream_request_timeout_ms > 3_600_000
             || self.edge.command_ttl_ms == 0
             || self.edge.command_ttl_ms > 86_400_000
         {
             return Err(ConfigError::Invalid(
-                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, and independent bounded upstream and command timeouts"
+                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, a normalized certificate directory with bounded lifecycle windows, and independent bounded upstream and command timeouts"
                     .into(),
             ));
         }
@@ -894,6 +913,9 @@ edge {
   management_address = "127.0.0.1:9090"
   management_path_prefix = "/api/gateway"
   management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
+  certificate_ttl_ms = 2592000000
+  certificate_renewal_window_ms = 604800000
   upstream_request_timeout_ms = 30000
   command_ttl_ms = 180000
 }

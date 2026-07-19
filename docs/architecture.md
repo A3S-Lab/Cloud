@@ -3,13 +3,15 @@
 ## 1. Status and decisions
 
 R0 through D0 are implemented and verified. E0 now has durable Edge route
-ownership, healthy target resolution, complete snapshot compilation, Fleet
-dispatch, and exact acknowledgement projection verified against PostgreSQL.
-The routed data-plane and later sections remain the accepted design until their
-exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux
-node agent, and a React web application. The first release still requires the
-E0 routed Gateway/TLS, logs, update, and rollback loop before multi-node
-scheduling or hosted assets begin.
+ownership, exact and wildcard domain claims, managed Gateway certificate
+provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
+acknowledgement projection. PostgreSQL and offline gates pass, and a dedicated
+remote Gateway job exercises the real managed-TLS path. Later E0 sections
+remain the accepted design until their exit gates pass. A3S Cloud ships as a
+Rust modular monolith, a separate Linux node agent, and a React web application.
+The first release still requires production DNS/CA integration, renewal, logs,
+update, rollback, web, crash, and clean-host gates before multi-node scheduling
+or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -287,6 +289,7 @@ POST /v1/node-control/commands/{id}:ack
 POST /v1/node-control/observations
 POST /v1/node-control/log-chunks
 POST /v1/node-control/gateway-acks
+POST /v1/node-control/gateway-certificates:sign
 ```
 
 A command envelope contains `command_id`, `node_id`, `sequence`,
@@ -298,9 +301,13 @@ duplicate.
 
 Gateway publication is a distinct node command and never enters A3S Runtime.
 Its payload carries one complete ACL snapshot, a positive revision, the
-expected installed revision, and a SHA-256 digest. The node compares the
-expected revision, calls the node-local management API with independent
-validation and reload deadlines, and atomically persists the installed snapshot
+expected installed revision, a typed certificate request when TLS is required,
+and a SHA-256 digest over both ACL and certificate intent. Before validation or
+reload, the node generates or reuses its private key and CSR, obtains public
+certificate material through the authenticated signing endpoint, and verifies
+identity, SANs, serial, fingerprint, validity, server usage, CA chain, and
+private-key match. It then calls the node-local management API with independent
+validation and reload deadlines and atomically persists the installed snapshot
 only after Gateway confirms a transactional reload. Its acknowledgement binds
 `command_id`, `node_id`, revision, and snapshot digest; the control plane rejects
 an acknowledgement that does not match the exact persisted command.
@@ -337,11 +344,30 @@ acknowledgement matching the exact node, command, revision, and digest moves a
 route from `publishing` to `active`; rejection is terminal and replay is
 idempotent.
 
-Certificate references and HTTPS compilation remain part of E0, not current
-behavior. The released A3S Gateway 1.0.11 validates the route-less management
-snapshot but stack-overflows on an ordinary router/service ACL emitted by this
-compiler. The real route-bearing validation/reload and TLS gates remain open
-until that Gateway defect is fixed and released.
+Domain claims are organization, project, and environment scoped. Canonical
+exact names cover only themselves; a wildcard covers exactly one label. A route
+can compile only from verified claims that cover every hostname in the complete
+snapshot. Development uses a deterministic local proof verifier, while
+production fails closed until a real DNS verifier is configured.
+
+The compiler emits one HTTPS entrypoint with TLS 1.2 as the minimum, unions and
+sorts the required SAN patterns, and binds one typed certificate request into
+snapshot schema v2. The control plane stores claim state, CSR digest, serial,
+fingerprint, leaf certificate, and CA bundle. It never receives or persists the
+Gateway private key. The node creates that key and CSR under its configured
+managed directory, keeps the key at mode `0600`, reuses the pair after
+interruption, and atomically writes the verified certificate chain before
+Gateway validation and reload.
+
+Gateway certificates move from `provisioning` to `issued`, then become `ready`
+only after the exact applied Gateway acknowledgement; provisioning may fail and
+a ready certificate may be revoked. The development Gateway CA is separate from
+the Fleet/node CA and overrides CSR SANs with the desired set. Production
+issuance fails closed until its certificate provider exists. A dedicated Ubuntu
+CI job installs A3S Gateway 1.0.12 and proves the node-generated key, managed
+chain, exact reload, trusted DNS/SNI HTTPS request, and durable revision against
+a loopback upstream. Production DNS/CA adapters, automated renewal, and
+revocation-driven route convergence remain E0 work.
 
 ## 9. Source, build, and asset hosting
 
@@ -468,6 +494,7 @@ provided by the middleware below rather than reimplemented in A3S Cloud.
 | Workload persistent volumes | Node-local, single-writer volume provider | Ceph RBD or another fenced attach/detach provider | Required for stateful services; multi-node failover is forbidden without fencing evidence |
 | Secret key encryption | Development-only local key provider | OpenBao/Vault Transit or a cloud KMS/HSM-backed key provider | A production profile may not keep the master key as a plain environment variable |
 | Node certificate authority | Development intermediate CA | OpenBao/Vault PKI, step-ca, or an HSM/KMS-backed intermediate | Required from node enrollment; root material stays outside the control-plane database |
+| Gateway certificate authority | Separate development Gateway CA | ACME or an external PKI/KMS-backed issuer | Node private keys never enter the control plane; production issuance fails closed until configured |
 | Metrics and traces | Structured logs plus local OpenTelemetry export | OpenTelemetry Collector, Prometheus-compatible metrics storage, and Tempo/Jaeger when trace retention is enabled | Required before production support; backends remain replaceable |
 | Durable log search | PostgreSQL metadata plus S3 chunk objects | Loki or ClickHouse only when cross-node ad-hoc search/retention measurements justify it | Do not put high-volume log bodies in PostgreSQL |
 | Cache and distributed rate limits | Bounded in-process cache | Redis only when multiple API replicas need shared ephemeral counters/cache | Optional; never an authority for deployments, sessions, or operations |

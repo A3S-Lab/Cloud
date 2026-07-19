@@ -1,5 +1,9 @@
+use crate::gateway_certificate::{
+    GatewayCertificateProvisioningError, NodeGatewayCertificateProvisioner,
+    SystemGatewayCertificateClock,
+};
 use crate::state_file::{self, SecureStateError};
-use crate::NodeAgentConfig;
+use crate::{GatewayCertificateSigningTransport, NodeAgentConfig};
 use a3s_cloud_contracts::GatewaySnapshot;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -70,11 +74,16 @@ trait GatewayControl: Send + Sync {
 pub struct DurableGatewaySnapshotInstaller {
     state_file: PathBuf,
     control: Arc<dyn GatewayControl>,
+    certificates: Option<Arc<NodeGatewayCertificateProvisioner>>,
     installation: Mutex<()>,
 }
 
 impl DurableGatewaySnapshotInstaller {
-    pub fn from_config(config: &NodeAgentConfig) -> Result<Self, GatewaySnapshotInstallError> {
+    pub fn from_config(
+        config: &NodeAgentConfig,
+        node_id: uuid::Uuid,
+        transport: Arc<dyn GatewayCertificateSigningTransport>,
+    ) -> Result<Self, GatewaySnapshotInstallError> {
         let token = config
             .gateway_auth_token()
             .map_err(|error| GatewaySnapshotInstallError::InvalidState(error.to_string()))?;
@@ -85,13 +94,41 @@ impl DurableGatewaySnapshotInstaller {
             Duration::from_millis(config.gateway.validation_timeout_ms),
             Duration::from_millis(config.gateway.reload_timeout_ms),
         )?);
-        Ok(Self::new(config.gateway.state_file.clone(), control))
+        let certificates = Arc::new(
+            NodeGatewayCertificateProvisioner::new(
+                config.gateway.certificate_directory.clone(),
+                node_id,
+                transport,
+                Arc::new(SystemGatewayCertificateClock),
+            )
+            .map_err(map_certificate_error)?,
+        );
+        Ok(Self::new_with_certificates(
+            config.gateway.state_file.clone(),
+            control,
+            certificates,
+        ))
     }
 
+    #[cfg(test)]
     fn new(state_file: PathBuf, control: Arc<dyn GatewayControl>) -> Self {
         Self {
             state_file,
             control,
+            certificates: None,
+            installation: Mutex::new(()),
+        }
+    }
+
+    fn new_with_certificates(
+        state_file: PathBuf,
+        control: Arc<dyn GatewayControl>,
+        certificates: Arc<NodeGatewayCertificateProvisioner>,
+    ) -> Self {
+        Self {
+            state_file,
+            control,
+            certificates: Some(certificates),
             installation: Mutex::new(()),
         }
     }
@@ -171,6 +208,32 @@ impl DurableGatewaySnapshotInstaller {
             }
         }
     }
+
+    async fn provision_certificate(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<Option<GatewaySnapshotInstallOutcome>, GatewaySnapshotInstallError> {
+        let Some(request) = snapshot.certificate_request.as_ref() else {
+            return Ok(None);
+        };
+        let Some(certificates) = self.certificates.as_ref() else {
+            return Ok(Some(GatewaySnapshotInstallOutcome::Rejected {
+                message: "Gateway certificate provisioner is not configured".into(),
+            }));
+        };
+        match certificates.provision(request).await {
+            Ok(()) => Ok(None),
+            Err(GatewayCertificateProvisioningError::Invalid(message)) => {
+                Ok(Some(GatewaySnapshotInstallOutcome::Rejected {
+                    message: sanitize_message(
+                        &message,
+                        "Gateway certificate provisioning was rejected",
+                    ),
+                }))
+            }
+            Err(error) => Err(map_certificate_error(error)),
+        }
+    }
 }
 
 #[async_trait]
@@ -191,6 +254,9 @@ impl GatewaySnapshotInstaller for DurableGatewaySnapshotInstaller {
                 && installed.snapshot.snapshot_digest == snapshot.snapshot_digest
                 && installed.snapshot.acl == snapshot.acl
         }) {
+            if let Some(outcome) = self.provision_certificate(snapshot).await? {
+                return Ok(outcome);
+            }
             return Ok(GatewaySnapshotInstallOutcome::Applied);
         }
         let installed_revision = installed.as_ref().map(|state| state.snapshot.revision);
@@ -207,6 +273,9 @@ impl GatewaySnapshotInstaller for DurableGatewaySnapshotInstaller {
             return Ok(GatewaySnapshotInstallOutcome::Rejected {
                 message: "Gateway snapshot revision does not advance the installed revision".into(),
             });
+        }
+        if let Some(outcome) = self.provision_certificate(snapshot).await? {
+            return Ok(outcome);
         }
         if let Some(outcome) = Self::call_control(self.control.validate(&snapshot.acl).await)? {
             return Ok(outcome);
@@ -373,6 +442,29 @@ fn map_state_error(error: SecureStateError) -> GatewaySnapshotInstallError {
     }
 }
 
+fn map_certificate_error(
+    error: GatewayCertificateProvisioningError,
+) -> GatewaySnapshotInstallError {
+    match error {
+        GatewayCertificateProvisioningError::Invalid(message) => {
+            GatewaySnapshotInstallError::InvalidState(message)
+        }
+        GatewayCertificateProvisioningError::Storage(message) => {
+            GatewaySnapshotInstallError::Storage(message)
+        }
+        GatewayCertificateProvisioningError::ControlPlane(error) if error.retryable() => {
+            GatewaySnapshotInstallError::Unavailable(
+                "Gateway certificate signing request could not complete".into(),
+            )
+        }
+        GatewayCertificateProvisioningError::ControlPlane(_) => {
+            GatewaySnapshotInstallError::Protocol(
+                "Gateway certificate signing request was rejected".into(),
+            )
+        }
+    }
+}
+
 fn display_revision(revision: Option<u64>) -> String {
     revision.map_or_else(|| "none".into(), |revision| revision.to_string())
 }
@@ -397,8 +489,6 @@ fn sanitize_message(message: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
-    use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[derive(Default)]
@@ -522,136 +612,8 @@ mod tests {
             1
         );
     }
-
-    #[tokio::test]
-    async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() {
-        let Ok(binary) = std::env::var("A3S_CLOUD_TEST_GATEWAY_BIN") else {
-            return;
-        };
-        let directory = tempfile::tempdir().expect("real Gateway test directory");
-        let (traffic_port, management_port) = unused_ports();
-        let token = "a3s-cloud-gateway-integration-token";
-        let bootstrap = gateway_acl(traffic_port, management_port, 0);
-        let config_path = directory.path().join("gateway.acl");
-        std::fs::write(&config_path, &bootstrap).expect("write Gateway bootstrap config");
-        let mut gateway = Command::new(binary)
-            .arg("--config")
-            .arg(&config_path)
-            .env("A3S_GATEWAY_ADMIN_TOKEN", token)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("start A3S Gateway");
-
-        let result = async {
-            let base_url = format!("http://127.0.0.1:{management_port}/api/gateway");
-            wait_for_gateway(&base_url, token, &mut gateway).await?;
-            let control = Arc::new(GatewayManagementClient::new(
-                url::Url::parse(&base_url)?,
-                token.into(),
-                Duration::from_secs(2),
-                Duration::from_secs(2),
-                Duration::from_secs(5),
-            )?);
-            let installer = DurableGatewaySnapshotInstaller::new(
-                directory.path().join("installed.json"),
-                control,
-            );
-            let first =
-                GatewaySnapshot::new(1, None, gateway_acl(traffic_port, management_port, 1))?;
-            if installer.install(&first).await? != GatewaySnapshotInstallOutcome::Applied {
-                return Err("real Gateway did not apply the first snapshot".into());
-            }
-            let second =
-                GatewaySnapshot::new(2, Some(1), gateway_acl(traffic_port, management_port, 2))?;
-            if installer.install(&second).await? != GatewaySnapshotInstallOutcome::Applied {
-                return Err("real Gateway did not apply the second snapshot".into());
-            }
-            let invalid = GatewaySnapshot::new(3, Some(2), invalid_gateway_acl(management_port))?;
-            if !matches!(
-                installer.install(&invalid).await?,
-                GatewaySnapshotInstallOutcome::Rejected { .. }
-            ) {
-                return Err("real Gateway accepted invalid ACL".into());
-            }
-            let installed = installer
-                .read_installed()
-                .await?
-                .ok_or("real Gateway test has no durable snapshot")?;
-            if installed.snapshot.revision != 2 {
-                return Err("rejected real Gateway reload changed durable state".into());
-            }
-            Ok::<(), Box<dyn std::error::Error>>(())
-        }
-        .await;
-        let _ = gateway.kill();
-        let _ = gateway.wait();
-        result.expect("real A3S Gateway snapshot integration");
-    }
-
-    fn unused_ports() -> (u16, u16) {
-        let traffic = TcpListener::bind("127.0.0.1:0").expect("bind traffic port");
-        let management = TcpListener::bind("127.0.0.1:0").expect("bind management port");
-        let ports = (
-            traffic.local_addr().expect("traffic address").port(),
-            management.local_addr().expect("management address").port(),
-        );
-        drop((traffic, management));
-        ports
-    }
-
-    fn gateway_acl(traffic_port: u16, management_port: u16, revision: u64) -> String {
-        format!(
-            r#"# revision {revision}
-entrypoints "web" {{ address = "127.0.0.1:{traffic_port}" }}
-
-management {{
-  enabled = true
-  address = "127.0.0.1:{management_port}"
-  path_prefix = "/api/gateway"
-  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  allowed_ips = ["127.0.0.1"]
-}}
-"#
-        )
-    }
-
-    fn invalid_gateway_acl(management_port: u16) -> String {
-        format!(
-            r#"entrypoints "web" {{ address = "invalid-address" }}
-
-management {{
-  enabled = true
-  address = "127.0.0.1:{management_port}"
-  path_prefix = "/api/gateway"
-  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  allowed_ips = ["127.0.0.1"]
-}}
-"#
-        )
-    }
-
-    async fn wait_for_gateway(
-        base_url: &str,
-        token: &str,
-        child: &mut std::process::Child,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = reqwest::Client::new();
-        for _ in 0..100 {
-            if child.try_wait()?.is_some() {
-                return Err("A3S Gateway exited before its management API was ready".into());
-            }
-            if client
-                .get(format!("{base_url}/version"))
-                .bearer_auth(token)
-                .send()
-                .await
-                .is_ok_and(|response| response.status().is_success())
-            {
-                return Ok(());
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        Err("A3S Gateway management API did not become ready".into())
-    }
 }
+
+#[cfg(test)]
+#[path = "gateway_remote_tests.rs"]
+mod remote_tests;

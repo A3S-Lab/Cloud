@@ -14,7 +14,7 @@ license = "MIT"
 repository = "https://github.com/A3S-Lab/Cloud"
 
 [workspace.dependencies]
-a3s-acl = "=0.2.1"
+a3s-acl = "=0.2.2"
 a3s-boot = { version = "=0.1.1", default-features = false, features = [
     "auth",
     "axum",

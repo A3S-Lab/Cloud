@@ -83,6 +83,10 @@ API command
   workload revision, compile the complete Gateway scope deterministically, and
   activate a route only after the exact command, revision, and digest are
   acknowledged
+- **Managed Gateway TLS**: Verify exact or one-label wildcard domain claims,
+  bind certificate intent into the complete snapshot digest, issue only public
+  certificate material over node mTLS, and keep generated private keys on the
+  Gateway node
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
@@ -105,7 +109,7 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | Route ownership, healthy target resolution, complete snapshot publication, and exact acknowledgement projection are complete; routed Gateway validation, TLS, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
+| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Tenant-scoped encrypted workload and provider references, rotation, Runtime injection, and end-to-end redaction | Planned (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
@@ -205,8 +209,12 @@ deployment and Edge policies are split across independent boundaries:
 | `edge.management_address` | Loopback-only Gateway management address rendered into the snapshot |
 | `edge.management_path_prefix` | Closed management API path rendered into the snapshot |
 | `edge.management_auth_token_env` | Gateway-side environment variable that carries the management token |
+| `edge.certificate_directory` | Absolute node path rendered for managed Gateway certificate files |
+| `edge.certificate_ttl_ms` | Validity requested for a managed Gateway certificate |
+| `edge.certificate_renewal_window_ms` | Window reserved for replacing a certificate before expiry |
 | `edge.upstream_request_timeout_ms` | Per-upstream request timeout rendered into every route service |
 | `edge.command_ttl_ms` | Independent lifetime of one complete Gateway publication command |
+| `gateway.certificate_directory` | Absolute node-local root where generated Gateway keys, CSRs, and chains are stored |
 | `gateway.connect_timeout_ms` | Connection timeout for the node-local Gateway management API |
 | `gateway.validation_timeout_ms` | Independent deadline for validating one complete snapshot |
 | `gateway.reload_timeout_ms` | Independent deadline for transactionally reloading one snapshot |
@@ -333,7 +341,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state and exact activation projection are verified; routed Gateway/TLS, secrets, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, routed Gateway validation, and exact activation projection are implemented; production certificate automation, secrets, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -454,19 +462,28 @@ A3S_CLOUD_TEST_REGISTRY_URL="http://127.0.0.1:50020/" \
 cargo test -p a3s-cloud-control-plane --test oci_registry_integration -- --nocapture
 
 A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
-cargo test -p a3s-cloud-node-agent \
-  installed_a3s_gateway_validates_and_reloads_complete_snapshots -- --nocapture
+cargo test -p a3s-cloud-node-agent --lib \
+  gateway::remote_tests::installed_a3s_gateway_validates_and_reloads_complete_snapshots \
+  -- --ignored --exact --nocapture --test-threads=1
 
 A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
 cargo test -p a3s-cloud-control-plane \
   installed_gateway_validates_compiled_snapshot -- --nocapture
+
+A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
+cargo test -p a3s-cloud-node-agent --lib \
+  gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
+  -- --ignored --exact --nocapture --test-threads=1
 ```
 
-The first command verifies route-less snapshot transport and node-local CAS.
-The second is the real route-bearing compiler gate. Released A3S Gateway 1.0.11
-currently stack-overflows while validating an ordinary router/service ACL, so
-that gate is expected to remain red until a fixed Gateway release is available;
-Cloud does not claim routed traffic or TLS acceptance before it passes.
+The first Gateway command verifies route-less snapshot transport and node-local
+CAS. The second is the real route-bearing compiler gate. A3S Gateway 1.0.12
+fixes the ACL recursion defect present in 1.0.11, and the generated
+router/service snapshot passes that gate. The final Gateway command is also a
+dedicated CI job: it generates a private key and CSR on the node, provisions the
+managed certificate, reloads the exact HTTPS snapshot, trusts the fixture CA,
+and reaches a loopback upstream through DNS/SNI. Production DNS and certificate
+authority providers plus automated renewal remain E0 work.
 
 Run web checks from `web/`:
 

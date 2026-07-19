@@ -4,17 +4,20 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::{
-    EdgeRoutePublicationResult, IEdgeRepository, StageRoutePublication,
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, IEdgeRepository, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
-    GatewayPublication, GatewayPublicationState, GatewayScopeState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
+    GatewayPublicationState, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName,
+    RouteState, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
-    RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotentWrite,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
-use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
+use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateRequest, NodeGatewayAck};
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
 };
@@ -22,8 +25,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at from routes";
-const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at from gateway_publications";
+use super::postgres_tls::{
+    self as tls, insert_certificate, update_certificate, CertificateRow, SELECT_CERTIFICATES,
+};
+
+const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
+const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request from gateway_publications";
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {
@@ -57,6 +64,9 @@ struct RouteRow {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     activated_at: Option<DateTime<Utc>>,
+    domain_claim_id: Option<Uuid>,
+    domain_pattern: Option<String>,
+    gateway_certificate_id: Option<Uuid>,
 }
 
 impl FromRow for RouteRow {
@@ -82,6 +92,9 @@ impl FromRow for RouteRow {
             created_at: decode(row, 17)?,
             updated_at: decode(row, 18)?,
             activated_at: decode(row, 19)?,
+            domain_claim_id: decode(row, 20)?,
+            domain_pattern: decode(row, 21)?,
+            gateway_certificate_id: decode(row, 22)?,
         })
     }
 }
@@ -96,6 +109,15 @@ impl RouteRow {
             gateway_node_id: NodeId::from_uuid(self.gateway_node_id),
             hostname: RouteHostname::parse(self.hostname).map_err(stored("hostname"))?,
             path_prefix: RoutePath::parse(self.path_prefix).map_err(stored("path"))?,
+            domain_claim_id: self.domain_claim_id.map(DomainClaimId::from_uuid),
+            domain_pattern: self
+                .domain_pattern
+                .map(DomainNamePattern::parse)
+                .transpose()
+                .map_err(stored("domain pattern"))?,
+            gateway_certificate_id: self
+                .gateway_certificate_id
+                .map(GatewayCertificateId::from_uuid),
             workload_id: WorkloadId::from_uuid(self.workload_id),
             workload_revision_id: WorkloadRevisionId::from_uuid(self.workload_revision_id),
             port_name: RoutePortName::parse(self.port_name).map_err(stored("port name"))?,
@@ -129,6 +151,7 @@ struct PublicationRow {
     command_issued_at: DateTime<Utc>,
     command_not_after: DateTime<Utc>,
     acknowledged_at: Option<DateTime<Utc>>,
+    certificate_request: Option<serde_json::Value>,
 }
 
 impl FromRow for PublicationRow {
@@ -146,12 +169,18 @@ impl FromRow for PublicationRow {
             command_issued_at: decode(row, 9)?,
             command_not_after: decode(row, 10)?,
             acknowledged_at: decode(row, 11)?,
+            certificate_request: decode(row, 12)?,
         })
     }
 }
 
 impl PublicationRow {
     fn publication(self) -> Result<GatewayPublication, RepositoryError> {
+        let certificate_request = self
+            .certificate_request
+            .map(serde_json::from_value::<GatewayCertificateRequest>)
+            .transpose()
+            .map_err(|error| stored("certificate request")(error.to_string()))?;
         let publication = GatewayPublication {
             node_id: NodeId::from_uuid(self.node_id),
             revision: self.revision,
@@ -160,6 +189,7 @@ impl PublicationRow {
             command_correlation_id: self.command_correlation_id,
             snapshot_digest: self.snapshot_digest,
             acl: self.acl,
+            certificate_request,
             state: GatewayPublicationState::parse(&self.state).map_err(stored("state"))?,
             failure: self.failure,
             command_issued_at: self.command_issued_at,
@@ -173,6 +203,44 @@ impl PublicationRow {
 
 #[async_trait]
 impl IEdgeRepository for PostgresEdgeRepository {
+    async fn replay_domain_claim_write(
+        &self,
+        idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    ) -> Result<Option<DomainClaim>, RepositoryError> {
+        tls::replay_domain_claim_write(&self.executor, idempotency).await
+    }
+
+    async fn create_domain_claim(
+        &self,
+        bundle: CreateDomainClaimWrite,
+    ) -> Result<IdempotentWrite<DomainClaim>, RepositoryError> {
+        tls::create_domain_claim(&self.executor, bundle).await
+    }
+
+    async fn transition_domain_claim(
+        &self,
+        bundle: TransitionDomainClaim,
+    ) -> Result<IdempotentWrite<DomainClaim>, RepositoryError> {
+        tls::transition_domain_claim(&self.executor, bundle).await
+    }
+
+    async fn find_domain_claim(
+        &self,
+        organization_id: OrganizationId,
+        claim_id: DomainClaimId,
+    ) -> Result<DomainClaim, RepositoryError> {
+        tls::find_domain_claim(&self.executor, organization_id, claim_id).await
+    }
+
+    async fn list_domain_claims(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<DomainClaim>, RepositoryError> {
+        tls::list_domain_claims(&self.executor, organization_id, project_id, environment_id).await
+    }
+
     async fn replay_route_publication(
         &self,
         idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
@@ -311,6 +379,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
                         .into());
                     }
                     insert_publication(transaction, &bundle.publication).await?;
+                    insert_certificate(transaction, &bundle.certificate).await?;
                     insert_route(transaction, &bundle.route).await?;
                     if current.aggregate_version == 0 {
                         require_one_row(
@@ -352,6 +421,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
                     }
                     let result = EdgeRoutePublicationResult {
                         route: bundle.route,
+                        certificate: bundle.certificate,
                         publication: bundle.publication,
                         replayed: false,
                     };
@@ -403,6 +473,29 @@ impl IEdgeRepository for PostgresEdgeRepository {
         .await
     }
 
+    async fn find_gateway_certificate(
+        &self,
+        node_id: NodeId,
+        certificate_id: GatewayCertificateId,
+    ) -> Result<GatewayCertificate, RepositoryError> {
+        tls::find_gateway_certificate(&self.executor, node_id, certificate_id).await
+    }
+
+    async fn list_gateway_certificates(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<GatewayCertificate>, RepositoryError> {
+        tls::list_gateway_certificates(&self.executor, organization_id).await
+    }
+
+    async fn transition_gateway_certificate(
+        &self,
+        certificate: GatewayCertificate,
+        expected_version: u64,
+    ) -> Result<GatewayCertificate, RepositoryError> {
+        tls::transition_gateway_certificate(&self.executor, certificate, expected_version).await
+    }
+
     async fn project_gateway_acknowledgement(
         &self,
         acknowledgement: &NodeGatewayAck,
@@ -443,6 +536,28 @@ impl IEdgeRepository for PostgresEdgeRepository {
                     if !was_pending {
                         return Ok(true);
                     }
+                    let mut certificate = fetch_optional::<CertificateRow, _>(
+                        transaction,
+                        sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+                            .append(" where node_id = ")
+                            .bind(acknowledgement.node_id)
+                            .append(" and gateway_revision = ")
+                            .bind(acknowledgement.revision)
+                            .append(" and gateway_command_id = ")
+                            .bind(acknowledgement.command_id)
+                            .append(" for update"),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        PostgresPersistenceError::Invariant(
+                            "Gateway publication has no staged certificate".into(),
+                        )
+                    })?
+                    .certificate()?;
+                    let certificate_version = certificate.aggregate_version;
+                    certificate
+                        .apply_gateway_acknowledgement(&acknowledgement)
+                        .map_err(RepositoryError::Conflict)?;
                     let rows = fetch_all::<RouteRow, _>(
                         transaction,
                         sql_query::<RouteRow>(SELECT_ROUTES)
@@ -487,6 +602,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
                         )
                         .await?,
                     )?;
+                    update_certificate(transaction, &certificate, certificate_version).await?;
                     for route in routes {
                         require_one_row(
                             "route Gateway acknowledgement",
@@ -541,10 +657,16 @@ async fn insert_publication(
     transaction: &a3s_orm::PostgresTransaction,
     publication: &GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
+    let certificate_request = publication
+        .certificate_request
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?;
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at) values (",
+            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request) values (",
         )
         .bind(publication.node_id.as_uuid())
         .append(", ")
@@ -569,6 +691,8 @@ async fn insert_publication(
         .bind(publication.command_not_after)
         .append(", ")
         .bind(publication.acknowledged_at)
+        .append(", ")
+        .bind(certificate_request)
         .append(")"),
     )
     .await;
@@ -582,7 +706,7 @@ async fn insert_route(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at) values (",
+            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id) values (",
         )
         .bind(route.id.as_uuid())
         .append(", ")
@@ -623,6 +747,12 @@ async fn insert_route(
         .bind(route.updated_at)
         .append(", ")
         .bind(route.activated_at)
+        .append(", ")
+        .bind(route.domain_claim_id.map(|id| id.as_uuid()))
+        .append(", ")
+        .bind(route.domain_pattern.as_ref().map(|pattern| pattern.as_str()))
+        .append(", ")
+        .bind(route.gateway_certificate_id.map(|id| id.as_uuid()))
         .append(")"),
     )
     .await;
@@ -682,7 +812,17 @@ fn validate_stored_route(route: &Route) -> Result<(), RepositoryError> {
         RouteState::Active => route.failure.is_none() && route.activated_at.is_some(),
         RouteState::Rejected => route.failure.is_some() && route.activated_at.is_none(),
     };
+    let tls_consistent = match (
+        route.domain_claim_id,
+        route.domain_pattern.as_ref(),
+        route.gateway_certificate_id,
+    ) {
+        (None, None, None) => true,
+        (Some(_), Some(pattern), Some(_)) => pattern.covers(&route.hostname),
+        _ => false,
+    };
     if !status_consistent
+        || !tls_consistent
         || route.gateway_revision.is_none()
         || route.gateway_command_id.is_none()
         || route.snapshot_digest.is_none()

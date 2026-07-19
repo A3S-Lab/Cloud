@@ -70,6 +70,48 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --locked
 
+  gateway-managed-tls:
+    name: Gateway managed TLS
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install A3S Gateway 1.0.12
+        run: cargo install a3s-gateway --version 1.0.12 --locked
+
+      - name: Serve an exact managed TLS snapshot
+        run: |
+          A3S_CLOUD_TEST_GATEWAY_BIN=$(command -v a3s-gateway) \
+            cargo test -p a3s-cloud-node-agent --lib --locked \
+              gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
+              -- --ignored --exact --nocapture --test-threads=1
+
   repository-policy:
     name: Repository policy
     runs-on: ubuntu-24.04

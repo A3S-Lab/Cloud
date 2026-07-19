@@ -1,5 +1,7 @@
 use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeCommandId, NodeId};
-use a3s_cloud_contracts::{GatewayAckState, GatewaySnapshot, NodeGatewayAck};
+use a3s_cloud_contracts::{
+    GatewayAckState, GatewayCertificateRequest, GatewaySnapshot, NodeGatewayAck,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -40,6 +42,7 @@ pub struct GatewayPublication {
     pub command_correlation_id: Uuid,
     pub snapshot_digest: String,
     pub acl: String,
+    pub certificate_request: Option<GatewayCertificateRequest>,
     pub state: GatewayPublicationState,
     pub failure: Option<String>,
     pub command_issued_at: DateTime<Utc>,
@@ -73,6 +76,7 @@ impl GatewayPublication {
             command_correlation_id,
             snapshot_digest: snapshot.snapshot_digest,
             acl: snapshot.acl,
+            certificate_request: snapshot.certificate_request,
             state: GatewayPublicationState::Pending,
             failure: None,
             command_issued_at,
@@ -82,8 +86,12 @@ impl GatewayPublication {
     }
 
     pub fn snapshot(&self) -> Result<GatewaySnapshot, String> {
-        let snapshot =
-            GatewaySnapshot::new(self.revision, self.expected_revision, self.acl.clone())?;
+        let snapshot = GatewaySnapshot::new_with_certificate(
+            self.revision,
+            self.expected_revision,
+            self.acl.clone(),
+            self.certificate_request.clone(),
+        )?;
         if snapshot.snapshot_digest != self.snapshot_digest {
             return Err("stored Gateway publication digest does not match its ACL".into());
         }

@@ -26,6 +26,7 @@ gateway {
   management_url = "http://127.0.0.1:9090/api/gateway"
   auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
   state_file = ".a3s/cloud/node/gateway-snapshot.json"
+  certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
   connect_timeout_ms = 5000
   validation_timeout_ms = 10000
   reload_timeout_ms = 30000

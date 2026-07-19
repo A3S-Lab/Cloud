@@ -149,6 +149,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/011_edge_routes.sql"
             )),
         ),
+        Migration::new(
+            "012",
+            "Edge domain ownership and TLS certificates",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/012_edge_tls.sql"
+            )),
+        ),
     ]
 }
 

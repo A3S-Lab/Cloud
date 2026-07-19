@@ -1,14 +1,17 @@
 use a3s_boot::{BootRequest, CommandHandler, CqrsContext, HttpMethod, ModuleRef};
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCommandPayload, NodeGatewayAck,
+    DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
+    NodeCommandPayload, NodeGatewayAck,
 };
+use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
-    IEdgeRepository, StageRoutePublication,
+    CreateDomainClaimWrite, IEdgeRepository, StageRoutePublication, TransitionDomainClaim,
 };
 use a3s_cloud_control_plane::modules::edge::infrastructure::persistence::PostgresEdgeRepository;
 use a3s_cloud_control_plane::modules::edge::{
-    EdgeGatewayAcknowledgementProjector, GatewayPublication, Route, RouteHostname, RoutePath,
-    RoutePortName, RouteState, UpstreamEndpoint,
+    DomainClaim, DomainNamePattern, EdgeGatewayAcknowledgementProjector, GatewayCertificate,
+    GatewayCertificateMaterial, GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName,
+    RouteState, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::{
@@ -16,8 +19,8 @@ use a3s_cloud_control_plane::modules::fleet::{
     RecordGatewayAcknowledgementHandler,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId,
-    WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::ControlPlane;
 use a3s_orm::PostgresExecutor;
@@ -48,12 +51,44 @@ pub async fn exercise_edge_api(
     executor: &PostgresExecutor,
     fixture: EdgeApiFixture<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let domain_collection_path = format!(
+        "/api/v1/organizations/{}/projects/{}/environments/{}/domain-claims",
+        fixture.organization_id, fixture.project_id, fixture.environment_id
+    );
+    let created_claim = app
+        .call(post_json(
+            &domain_collection_path,
+            "edge-api-domain-claim",
+            json!({"pattern": "api.integration.example"}),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(created_claim.status(), 201);
+    let created_claim = response_json(&created_claim)?;
+    let domain_claim_id = field_str(&created_claim["data"], "id")?.to_owned();
+    let proof = field_str(&created_claim["data"], "challengeValue")?.to_owned();
+    let verify_path = format!(
+        "/api/v1/organizations/{}/domain-claims/{}/verify",
+        fixture.organization_id, domain_claim_id
+    );
+    let verified_claim = app
+        .call(post_json(
+            &verify_path,
+            "edge-api-domain-verification",
+            json!({"proof": proof}),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(verified_claim.status(), 202);
+    assert_eq!(response_json(&verified_claim)?["data"]["state"], "verified");
+
     let collection_path = format!(
         "/api/v1/organizations/{}/projects/{}/environments/{}/routes",
         fixture.organization_id, fixture.project_id, fixture.environment_id
     );
     let request_body = json!({
         "workloadRevisionId": fixture.workload_revision_id,
+        "domainClaimId": domain_claim_id,
         "hostname": "api.integration.example",
         "pathPrefix": "/v1",
         "portName": "http"
@@ -87,6 +122,8 @@ pub async fn exercise_edge_api(
     let route_id = field_uuid(route, "id")?;
     let node_id = NodeId::from_uuid(field_uuid(route, "gatewayNodeId")?);
     let command_id = NodeCommandId::from_uuid(field_uuid(route, "gatewayCommandId")?);
+    let certificate_id =
+        GatewayCertificateId::from_uuid(field_uuid(&first_body["data"]["certificate"], "id")?);
     let revision = field_u64(route, "gatewayRevision")?;
     let snapshot_digest = field_str(route, "snapshotDigest")?.to_owned();
 
@@ -117,6 +154,10 @@ pub async fn exercise_edge_api(
     assert_eq!(snapshot.snapshot_digest, snapshot_digest);
 
     let routes: Arc<dyn IEdgeRepository> = Arc::new(PostgresEdgeRepository::new(executor.clone()));
+    let certificate = routes
+        .find_gateway_certificate(node_id, certificate_id)
+        .await?;
+    issue_certificate(routes.as_ref(), &certificate, Utc::now()).await?;
     let projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
@@ -198,6 +239,13 @@ pub async fn exercise_edge(
         )
         .await?
         .len();
+    let domain_claim = verified_claim(
+        &repository,
+        &fixture,
+        "*.example.com",
+        now - Duration::seconds(1),
+    )
+    .await?;
     let first_revision = initial_scope.next_revision()?;
     let mut first = staged(
         &fixture,
@@ -207,6 +255,7 @@ pub async fn exercise_edge(
         "/v1",
         "edge-first",
         now,
+        &domain_claim,
     )?;
     first.expected_scope_version = initial_scope.aggregate_version;
     let first_route_id = first.route.id;
@@ -244,6 +293,12 @@ pub async fn exercise_edge(
         repository.active_routes(fixture.node_id).await?.len(),
         initial_active
     );
+    issue_certificate(
+        &repository,
+        &stored.certificate,
+        now + Duration::milliseconds(1),
+    )
+    .await?;
 
     let acknowledgement = NodeGatewayAck {
         schema: NodeGatewayAck::SCHEMA.into(),
@@ -294,6 +349,7 @@ pub async fn exercise_edge(
         "/v1",
         "edge-duplicate",
         now + Duration::seconds(3),
+        &domain_claim,
     )?;
     duplicate.expected_scope_version = scope.aggregate_version;
     assert!(repository.stage_route_publication(duplicate).await.is_err());
@@ -306,6 +362,7 @@ pub async fn exercise_edge(
         "/",
         "edge-second",
         now + Duration::seconds(4),
+        &domain_claim,
     )?;
     second.expected_scope_version = scope.aggregate_version;
     let second = repository.stage_route_publication(second).await?;
@@ -324,6 +381,79 @@ pub async fn exercise_edge(
     Ok(())
 }
 
+async fn verified_claim(
+    repository: &PostgresEdgeRepository,
+    fixture: &EdgeFixture,
+    pattern: &str,
+    now: chrono::DateTime<Utc>,
+) -> Result<DomainClaim, Box<dyn std::error::Error>> {
+    let mut claim = DomainClaim::create(
+        DomainClaimId::new(),
+        fixture.organization_id,
+        fixture.project_id,
+        fixture.environment_id,
+        DomainNamePattern::parse(pattern)?,
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )?;
+    let created = DomainClaimChanged::envelope(&claim, Uuid::now_v7())?;
+    repository
+        .create_domain_claim(CreateDomainClaimWrite {
+            claim: claim.clone(),
+            idempotency: IdempotencyRequest::new(
+                "postgres-edge-domain-claims",
+                claim.id.to_string(),
+                pattern.as_bytes(),
+            )?,
+            event: created,
+        })
+        .await?;
+    let expected_version = claim.aggregate_version;
+    claim.verify(now + Duration::milliseconds(1))?;
+    let verified = DomainClaimChanged::envelope(&claim, Uuid::now_v7())?;
+    repository
+        .transition_domain_claim(TransitionDomainClaim {
+            claim: claim.clone(),
+            expected_version,
+            idempotency: IdempotencyRequest::new(
+                "postgres-edge-domain-verifications",
+                claim.id.to_string(),
+                b"verified",
+            )?,
+            event: verified,
+        })
+        .await?;
+    Ok(claim)
+}
+
+async fn issue_certificate(
+    repository: &dyn IEdgeRepository,
+    certificate: &GatewayCertificate,
+    now: chrono::DateTime<Utc>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut issued = certificate.clone();
+    let expected_version = issued.aggregate_version;
+    issued.record_issued(
+        format!("sha256:{}", "b".repeat(64)),
+        GatewayCertificateMaterial {
+            serial_number: issued.id.to_string(),
+            fingerprint: format!("sha256:{}", "a".repeat(64)),
+            certificate_pem: "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n"
+                .into(),
+            ca_bundle_pem: "-----BEGIN CERTIFICATE-----\ndGVzdC1jYQ==\n-----END CERTIFICATE-----\n"
+                .into(),
+            issued_at: now,
+            expires_at: now + Duration::days(30),
+        },
+        now,
+    )?;
+    repository
+        .transition_gateway_certificate(issued, expected_version)
+        .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn staged(
     fixture: &EdgeFixture,
     revision: u64,
@@ -332,13 +462,25 @@ fn staged(
     path: &str,
     idempotency_key: &str,
     now: chrono::DateTime<Utc>,
+    domain_claim: &DomainClaim,
 ) -> Result<StageRoutePublication, Box<dyn std::error::Error>> {
     let command_id = NodeCommandId::new();
     let correlation_id = Uuid::now_v7();
-    let snapshot = GatewaySnapshot::new(
+    let certificate_id = GatewayCertificateId::new();
+    let certificate_request = GatewayCertificateRequest::new(
+        certificate_id.as_uuid(),
+        vec![domain_claim.pattern.as_str().into()],
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+    )?;
+    let snapshot = GatewaySnapshot::new_with_certificate(
         revision,
         expected_revision,
-        format!("# route {hostname}{path}\nmanagement {{ enabled = true }}\n"),
+        format!(
+            "# route {hostname}{path}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
+            certificate_request.certificate_file, certificate_request.private_key_file
+        ),
+        Some(certificate_request.clone()),
     )?;
     let mut route = Route::create(
         RouteId::new(),
@@ -348,12 +490,15 @@ fn staged(
         fixture.node_id,
         RouteHostname::parse(hostname)?,
         RoutePath::parse(path)?,
+        domain_claim.id,
+        domain_claim.pattern.clone(),
+        certificate_id,
         fixture.workload_id,
         fixture.revision_id,
         RoutePortName::parse("http")?,
         UpstreamEndpoint::parse("http://127.0.0.1:49152")?,
         now,
-    );
+    )?;
     route.stage(revision, command_id, snapshot.snapshot_digest.clone(), now)?;
     let publication = GatewayPublication::stage(
         fixture.node_id,
@@ -363,9 +508,21 @@ fn staged(
         now,
         now + Duration::minutes(3),
     )?;
+    let certificate = GatewayCertificate::provision(
+        certificate_id,
+        fixture.organization_id,
+        fixture.node_id,
+        vec![domain_claim.id],
+        revision,
+        command_id,
+        publication.snapshot_digest.clone(),
+        certificate_request,
+        now,
+    )?;
     let canonical = format!("{hostname}{path}");
     Ok(StageRoutePublication {
         route: route.clone(),
+        certificate,
         publication,
         expected_scope_version: 0,
         idempotency: IdempotencyRequest::new(

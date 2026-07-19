@@ -3,8 +3,9 @@ use crate::{
     PendingNodeIdentity,
 };
 use a3s_cloud_contracts::{
-    ApiErrorResponse, NodeCertificateRotationRequest, NodeCertificateRotationResponse,
-    NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
+    ApiErrorResponse, GatewayCertificateSigningRequest, GatewayCertificateSigningResponse,
+    NodeCertificateRotationRequest, NodeCertificateRotationResponse, NodeCommandAck,
+    NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
     NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
     NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt, NodeProtocolError,
 };
@@ -56,6 +57,14 @@ pub trait NodeControlTransport: Send + Sync {
         &self,
         acknowledgement: &NodeGatewayAck,
     ) -> Result<NodeGatewayAckReceipt, NodeControlClientError>;
+}
+
+#[async_trait]
+pub trait GatewayCertificateSigningTransport: Send + Sync {
+    async fn sign_gateway_certificate(
+        &self,
+        request: &GatewayCertificateSigningRequest,
+    ) -> Result<GatewayCertificateSigningResponse, NodeControlClientError>;
 }
 
 impl NodeControlClient {
@@ -174,6 +183,37 @@ impl NodeControlClient {
         {
             return Err(NodeControlClientError::Invalid(
                 "certificate rotation response changed the certificate identity".into(),
+            ));
+        }
+        Ok(response)
+    }
+
+    pub async fn sign_gateway_certificate(
+        &self,
+        request: &GatewayCertificateSigningRequest,
+    ) -> Result<GatewayCertificateSigningResponse, NodeControlClientError> {
+        request
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if request.node_id != self.node_id {
+            return Err(NodeControlClientError::Invalid(
+                "Gateway certificate signing request changed the node identity".into(),
+            ));
+        }
+        let response: GatewayCertificateSigningResponse = self
+            .send(
+                self.client
+                    .post(self.endpoint("v1/node-control/gateway-certificates:sign")?)
+                    .timeout(self.request_timeout)
+                    .json(request),
+            )
+            .await?;
+        response
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if response.node_id != self.node_id || response.certificate_id != request.certificate_id {
+            return Err(NodeControlClientError::Invalid(
+                "Gateway certificate signing response changed the requested identity".into(),
             ));
         }
         Ok(response)
@@ -426,6 +466,16 @@ impl NodeControlTransport for NodeControlClient {
 }
 
 #[async_trait]
+impl GatewayCertificateSigningTransport for NodeControlClient {
+    async fn sign_gateway_certificate(
+        &self,
+        request: &GatewayCertificateSigningRequest,
+    ) -> Result<GatewayCertificateSigningResponse, NodeControlClientError> {
+        NodeControlClient::sign_gateway_certificate(self, request).await
+    }
+}
+
+#[async_trait]
 impl NodeControlTransport for ReloadableNodeControlClient {
     async fn lease(
         &self,
@@ -469,6 +519,20 @@ impl NodeControlTransport for ReloadableNodeControlClient {
             .read()
             .await
             .record_gateway_acknowledgement(acknowledgement)
+            .await
+    }
+}
+
+#[async_trait]
+impl GatewayCertificateSigningTransport for ReloadableNodeControlClient {
+    async fn sign_gateway_certificate(
+        &self,
+        request: &GatewayCertificateSigningRequest,
+    ) -> Result<GatewayCertificateSigningResponse, NodeControlClientError> {
+        self.inner
+            .read()
+            .await
+            .sign_gateway_certificate(request)
             .await
     }
 }

@@ -5,9 +5,13 @@ pub mod services;
 mod value_objects;
 
 pub use entities::{
-    GatewayPublication, GatewayPublicationState, GatewayScopeState, Route, RouteState,
+    DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateMaterial,
+    GatewayCertificateState, GatewayPublication, GatewayPublicationState, GatewayScopeState, Route,
+    RouteState,
 };
-pub use value_objects::{RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint};
+pub use value_objects::{
+    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
+};
 
 #[cfg(test)]
 mod tests;
