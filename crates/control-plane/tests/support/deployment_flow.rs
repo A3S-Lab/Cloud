@@ -164,6 +164,7 @@ pub async fn exercise_deployment_flow(
         let state_directory = tempfile::tempdir()?;
         let namespace = format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]);
         let secret_memory_dir = docker_secret_memory_dir();
+        let secret_namespace_dir = secret_memory_dir.join(&namespace);
         let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
             socket: docker_socket(),
             namespace: namespace.clone(),
@@ -193,6 +194,7 @@ pub async fn exercise_deployment_flow(
         );
         assert!(!serde_json::to_string(command)?.contains(secret_plaintext));
         let acknowledgement = command_executor.execute(command.clone()).await?;
+        assert_secret_file_modes(&secret_namespace_dir, &[0o400])?;
         assert_eq!(
             command_executor.execute(command.clone()).await?,
             acknowledgement
@@ -220,7 +222,7 @@ pub async fn exercise_deployment_flow(
         let observed_at = acknowledgement.completed_at;
         docker_runtime = Some(runtime);
         docker_state_directory = Some(state_directory);
-        docker_secret_directory = Some(secret_memory_dir.join(namespace));
+        docker_secret_directory = Some(secret_namespace_dir);
         (observation, Some(acknowledgement), observed_at)
     } else {
         (healthy_observation(&request.spec)?, None, Utc::now())
@@ -720,6 +722,30 @@ fn assert_log_objects_redacted(
             std::io::Error::other("durable log objects contain no redaction evidence").into(),
         );
     }
+    Ok(())
+}
+
+fn assert_secret_file_modes(
+    root: &Path,
+    expected: &[u32],
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut directories = vec![root.to_path_buf()];
+    let mut modes = Vec::new();
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                directories.push(entry.path());
+            } else if file_type.is_file() {
+                modes.push(entry.metadata()?.permissions().mode() & 0o777);
+            }
+        }
+    }
+    modes.sort_unstable();
+    assert_eq!(modes, expected);
     Ok(())
 }
 

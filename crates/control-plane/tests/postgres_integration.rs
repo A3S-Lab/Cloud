@@ -879,7 +879,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             },
             "process": {
                 "command": ["/bin/sh"],
-                "args": ["-c", "set -eu; test \"$(stat -c %a /run/secrets/database-url)\" = 400; file_value=$(cat /run/secrets/database-url); test \"$DATABASE_URL\" = \"$file_value\"; printf 'env-secret=%s\\n' \"$DATABASE_URL\"; printf 'file-secret=%s\\n' \"$file_value\" >&2; mkdir -p /www; printf 'healthy\\n' >/www/index.html; exec httpd -f -p 8080 -h /www"],
+                "args": ["-c", "set -eu; file_value=$(cat /run/secrets/database-url); test \"$DATABASE_URL\" = \"$file_value\"; printf 'env-secret=%s\\n' \"$DATABASE_URL\"; printf 'file-secret=%s\\n' \"$file_value\" >&2; mkdir -p /www; printf 'healthy\\n' >/www/index.html; exec httpd -f -p 8080 -h /www"],
                 "workingDirectory": null,
                 "environment": {}
             },

@@ -255,6 +255,15 @@ jobs:
       - name: Stop Secret and log fixtures
         if: always()
         run: |
+          managed_containers=$(docker ps --all --quiet \
+            --filter label=a3s.cloud.managed=true)
+          for container in $managed_containers; do
+            docker inspect --format \
+              'name={{.Name}} state={{.State.Status}} exit={{.State.ExitCode}} ports={{json .NetworkSettings.Ports}} mounts={{range .Mounts}}{{.Destination}}:rw={{.RW}} {{end}}' \
+              "$container" || true
+          done
+          [[ -z $managed_containers ]] ||
+            docker rm --force $managed_containers || true
           docker rm --force a3s-cloud-secret-log-postgres || true
           rm -rf /dev/shm/a3s-cloud/ci-secret-logs
 
