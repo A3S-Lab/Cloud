@@ -87,7 +87,7 @@ passed their single-node gates.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-15:
+Status as of 2026-07-19:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ Status as of 2026-07-15:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, healthy target resolution, complete snapshot dispatch/replay, exact acknowledgement activation, and route-less node CAS validate/reload pass. A3S Gateway 1.0.11 stack-overflows on the route-bearing ACL gate; TLS, logs, update, rollback, and crash gates remain |
+| E0 | In progress | PostgreSQL-backed route ownership, healthy target resolution, complete snapshot dispatch/replay, exact acknowledgement activation, routed A3S Gateway 1.0.12 validation, and node CAS validate/reload pass. TLS, logs, update, rollback, and crash gates remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -305,10 +305,9 @@ Complete the first user-visible release loop.
 - Implemented: healthy immutable target resolution from typed Runtime endpoint
   evidence, Fleet command dispatch, stable correlation across retries, and
   exact-revision acknowledgement projection.
-- Implemented for route-less snapshots: node-local A3S Gateway validation,
-  atomic compare-and-swap install, reload, and durable acknowledgement ordering.
-- Blocked on A3S Gateway: fix and release route-bearing router/service ACL
-  validation; 1.0.11 currently stack-overflows on the real compiler gate.
+- Implemented: node-local A3S Gateway validation, atomic compare-and-swap
+  install, reload, durable acknowledgement ordering, and the real route-bearing
+  router/service ACL gate against A3S Gateway 1.0.12.
 - Implement custom-domain ownership verification, exact and wildcard
   certificate policy, ACME HTTP-01 and typed DNS-01 provider ports, automated
   renewal, failure projection, and a local test CA for deterministic CI.
@@ -789,7 +788,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
-| 7 | Gateway reload before acknowledgement | In progress | Route-less Gateway validate/reload, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering pass. PostgreSQL API tests prove exact route activation and replay. The real route-bearing gate is blocked by the A3S Gateway 1.0.11 parser stack overflow; process-death injection remains |
+| 7 | Gateway reload before acknowledgement | In progress | Route-bearing Gateway validate/reload, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering pass with A3S Gateway 1.0.12. PostgreSQL API tests prove exact route activation and replay; process-death injection remains |
 | 8 | Activation before old-revision cleanup | Planned for E0 | Rolling update and rollback cleanup are not implemented |
 | 9 | Secret version commit before workload restart command | Planned for E0 | Secret references, encrypted storage, rotation, and Runtime injection are not implemented |
 
@@ -824,8 +823,9 @@ D0 is closed. E0's route desired-state and versioned complete snapshot transport
 are verified through the PostgreSQL/Fleet boundary. The remaining changes should
 land as vertical, independently verified slices:
 
-1. Fix and release A3S Gateway route ACL validation, then add certificate
-   policy, a local deterministic test CA, and a real TLS fixture.
+1. Add certificate policy, a local deterministic test CA, node-local private-key
+   placement, and a real TLS fixture now that A3S Gateway 1.0.12 passes the
+   route-bearing ACL gate.
 2. Tenant-scoped encrypted Secret resources, Runtime injection, rotation,
    revocation, end-to-end redaction, and the restart-after-version-commit
    recovery gate.

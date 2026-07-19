@@ -338,10 +338,11 @@ route from `publishing` to `active`; rejection is terminal and replay is
 idempotent.
 
 Certificate references and HTTPS compilation remain part of E0, not current
-behavior. The released A3S Gateway 1.0.11 validates the route-less management
-snapshot but stack-overflows on an ordinary router/service ACL emitted by this
-compiler. The real route-bearing validation/reload and TLS gates remain open
-until that Gateway defect is fixed and released.
+behavior. A3S Gateway 1.0.12 fixes the ACL recursion defect in 1.0.11, and the
+ordinary router/service ACL emitted by this compiler now passes the real
+route-bearing validation gate. TLS remains open until domain ownership,
+certificate lifecycle, node-local private-key placement, and the HTTPS fixture
+are verified.
 
 ## 9. Source, build, and asset hosting
 

@@ -105,7 +105,7 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | Route ownership, healthy target resolution, complete snapshot publication, and exact acknowledgement projection are complete; routed Gateway validation, TLS, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
+| Reachability | Route ownership, healthy target resolution, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are complete; TLS, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Tenant-scoped encrypted workload and provider references, rotation, Runtime injection, and end-to-end redaction | Planned (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
@@ -333,7 +333,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state and exact activation projection are verified; routed Gateway/TLS, secrets, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| E0 — Reachable service | Edge desired state, routed Gateway validation, and exact activation projection are verified; TLS, secrets, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -463,10 +463,10 @@ cargo test -p a3s-cloud-control-plane \
 ```
 
 The first command verifies route-less snapshot transport and node-local CAS.
-The second is the real route-bearing compiler gate. Released A3S Gateway 1.0.11
-currently stack-overflows while validating an ordinary router/service ACL, so
-that gate is expected to remain red until a fixed Gateway release is available;
-Cloud does not claim routed traffic or TLS acceptance before it passes.
+The second is the real route-bearing compiler gate. A3S Gateway 1.0.12 fixes
+the ACL recursion defect present in 1.0.11, and the generated router/service
+snapshot now passes that gate. TLS acceptance remains open until certificate
+policy, node-local key placement, and the real HTTPS fixture pass.
 
 Run web checks from `web/`:
 

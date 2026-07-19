@@ -123,9 +123,9 @@ engines while preserving the stricter Asset domain.
 
 The implemented slice owns hostname/path rules and the desired A3S Gateway
 configuration revision. It resolves a route only from a healthy active workload
-revision and does not mark it active until the gateway acknowledges the exact
-complete snapshot. Domain claims, certificate policy, and TLS issuance remain
-E0 work.
+revision, validates the real routed snapshot with A3S Gateway 1.0.12, and does
+not mark it active until the gateway acknowledges the exact complete snapshot.
+Domain claims, certificate policy, and TLS issuance remain E0 work.
 
 Primary domain records:
 
