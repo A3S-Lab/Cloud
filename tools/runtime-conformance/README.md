@@ -39,10 +39,13 @@ git clone git@github.com:A3S-Lab/Cloud.git "$root/apps/cloud"
 git clone git@github.com:A3S-Lab/Runtime.git "$root/crates/runtime"
 
 git -C "$root/apps/cloud" checkout --detach "$CLOUD_SHA"
-git -C "$root/crates/runtime" checkout --detach "$RUNTIME_SHA"
+runtime_revision=$(<"$root/apps/cloud/tools/runtime-conformance/runtime-revision")
+git -C "$root/crates/runtime" checkout --detach "$runtime_revision"
 ```
 
-Both worktrees must be clean, and the two full 40-character SHAs are mandatory.
+Both worktrees must be clean. The Cloud SHA is supplied by the release
+candidate, while Cloud pins the compatible full 40-character Runtime SHA in
+`tools/runtime-conformance/runtime-revision`.
 
 ## Run the gate
 
@@ -52,8 +55,7 @@ working Rust toolchain. Run from the Cloud worktree:
 ```bash
 sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
   --source-root /var/tmp/a3s-runtime-tests/release-candidate \
-  --cloud-sha "$CLOUD_SHA" \
-  --runtime-sha "$RUNTIME_SHA"
+  --cloud-sha "$CLOUD_SHA"
 ```
 
 Omitting `--suite` selects `--suite provider`. This is the release gate for the
@@ -67,7 +69,6 @@ Run the Cloud consumer gate explicitly after the provider gate passes:
 sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
   --source-root /var/tmp/a3s-runtime-tests/release-candidate \
   --cloud-sha "$CLOUD_SHA" \
-  --runtime-sha "$RUNTIME_SHA" \
   --suite cloud
 ```
 
@@ -87,7 +88,6 @@ registry data directory that already contains the same pinned root digest:
 sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
   --source-root /var/tmp/a3s-runtime-tests/release-candidate \
   --cloud-sha "$CLOUD_SHA" \
-  --runtime-sha "$RUNTIME_SHA" \
   --registry-data /var/tmp/a3s-runtime-fixtures/registry-busybox
 ```
 

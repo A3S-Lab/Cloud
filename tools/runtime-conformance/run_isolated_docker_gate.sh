@@ -12,6 +12,8 @@ readonly WORKLOAD_IMAGE="docker.io/library/busybox@${WORKLOAD_DIGEST}"
 readonly EXPECTED_MANIFESTS=18
 readonly EXPECTED_BLOBS=34
 readonly PROVIDER_DISK_BYTES=$((4 * 1024 * 1024 * 1024))
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+readonly RUNTIME_REVISION_FILE="$script_dir/runtime-revision"
 
 source_root=""
 cloud_sha=""
@@ -32,7 +34,7 @@ Usage:
   run_isolated_docker_gate.sh \
     --source-root PATH \
     --cloud-sha FULL_SHA \
-    --runtime-sha FULL_SHA \
+    [--runtime-sha FULL_SHA] \
     [--registry-data PATH] \
     [--evidence-dir PATH] \
     [--target-dir PATH] \
@@ -41,9 +43,11 @@ Usage:
     [--ttl-seconds SECONDS]
 
 The source root must contain clean apps/cloud and crates/runtime Git worktrees at
-the exact supplied commits. If --registry-data is omitted, the runner creates a
-temporary registry store and copies the pinned BusyBox OCI index from Docker Hub.
-An existing registry store is mounted read-only and audited before use.
+the exact supplied commits. The Runtime commit defaults to the repository-pinned
+tools/runtime-conformance/runtime-revision value; an explicit --runtime-sha must
+match it. If --registry-data is omitted, the runner creates a temporary registry
+store and copies the pinned BusyBox OCI index from Docker Hub. An existing
+registry store is mounted read-only and audited before use.
 
 This command requires Linux, root, an already-running host Docker daemon, loop
 devices, ext4 tools, nsenter, and the two pinned runner images already present in
@@ -122,7 +126,15 @@ done
 [[ $(uname -s) == Linux ]] || die "the isolated Docker gate requires Linux"
 [[ $(id -u) -eq 0 ]] || die "the isolated Docker gate must run as root"
 [[ $cloud_sha =~ ^[0-9a-f]{40}$ ]] || die "--cloud-sha must be a full lowercase Git SHA"
+[[ -f $RUNTIME_REVISION_FILE ]] || die "Runtime revision file is missing: $RUNTIME_REVISION_FILE"
+IFS= read -r pinned_runtime_sha <"$RUNTIME_REVISION_FILE" ||
+    die "Runtime revision file is unreadable: $RUNTIME_REVISION_FILE"
+[[ $pinned_runtime_sha =~ ^[0-9a-f]{40}$ ]] ||
+    die "Runtime revision file must contain one full lowercase Git SHA"
+[[ -n $runtime_sha ]] || runtime_sha=$pinned_runtime_sha
 [[ $runtime_sha =~ ^[0-9a-f]{40}$ ]] || die "--runtime-sha must be a full lowercase Git SHA"
+[[ $runtime_sha == "$pinned_runtime_sha" ]] ||
+    die "--runtime-sha must match the repository-pinned Runtime revision $pinned_runtime_sha"
 [[ $suite == provider || $suite == cloud ]] || die "--suite must be provider or cloud"
 [[ $ttl_seconds =~ ^[0-9]+$ ]] || die "--ttl-seconds must be an integer"
 ((ttl_seconds >= 600 && ttl_seconds <= 3600)) || die "--ttl-seconds must be between 600 and 3600"

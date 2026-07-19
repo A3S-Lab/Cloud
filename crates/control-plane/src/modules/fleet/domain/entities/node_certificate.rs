@@ -62,6 +62,16 @@ impl NodeCertificate {
     }
 }
 
+fn validate_digest(value: &str) -> Result<(), String> {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return Err("certificate fingerprint must use sha256".into());
+    };
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("certificate fingerprint must contain 64 hexadecimal characters".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,14 +122,4 @@ mod tests {
         )
         .is_err());
     }
-}
-
-fn validate_digest(value: &str) -> Result<(), String> {
-    let Some(hex) = value.strip_prefix("sha256:") else {
-        return Err("certificate fingerprint must use sha256".into());
-    };
-    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err("certificate fingerprint must contain 64 hexadecimal characters".into());
-    }
-    Ok(())
 }

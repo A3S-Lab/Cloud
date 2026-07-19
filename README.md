@@ -396,15 +396,15 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 Run real-provider certification only on a dedicated Linux or A3S OS runner.
 Prepare clean `apps/cloud` and `crates/runtime` worktrees directly through Git
-at the exact 40-character commits, then run the isolated gate from the Cloud
-worktree. The default suite certifies the Docker provider without restarting
-or reconfiguring the host Docker daemon:
+at the exact 40-character commits. Cloud pins its compatible Runtime commit in
+`tools/runtime-conformance/runtime-revision`. Then run the isolated gate from
+the Cloud worktree. The default suite certifies the Docker provider without
+restarting or reconfiguring the host Docker daemon:
 
 ```bash
 sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
   --source-root /var/tmp/a3s-runtime-tests/release-candidate \
-  --cloud-sha "$CLOUD_SHA" \
-  --runtime-sha "$RUNTIME_SHA"
+  --cloud-sha "$CLOUD_SHA"
 ```
 
 After the provider suite passes, run the Cloud consumer recovery gate with its
@@ -414,7 +414,6 @@ pinned PostgreSQL and NATS services:
 sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
   --source-root /var/tmp/a3s-runtime-tests/release-candidate \
   --cloud-sha "$CLOUD_SHA" \
-  --runtime-sha "$RUNTIME_SHA" \
   --suite cloud
 ```
 
@@ -443,7 +442,10 @@ Run the remaining real-provider gates explicitly:
 
 ```bash
 A3S_CLOUD_TEST_DOCKER=1 \
-cargo test -p a3s-cloud-node-agent --test docker_conformance -- --nocapture
+cargo test -p a3s-cloud-node-agent \
+  --test docker_conformance \
+  real_docker_passes_all_advertised_runtime_profiles \
+  -- --ignored --exact --nocapture --test-threads=1
 
 A3S_CLOUD_TEST_DOCKER=1 \
 cargo test -p a3s-cloud-control-plane --test docker_deployment -- --nocapture
