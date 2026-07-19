@@ -60,11 +60,17 @@ Docker log queries page forward from the earliest retained provider record.
 The initial request stops after `limit` records, while a cursor request scans
 from the preceding provider timestamp boundary until it finds the exact
 stream/timestamp/ordinal/digest cursor and then returns the next page. A missing
-cursor is an explicit retention or rotation gap, never an empty successful
-page.
+cursor returns `RuntimeError::LogDiscontinuity` with the exact unit, generation,
+requested cursor, and `cursor_lost` reason, never an empty successful page. A
+durable unit whose managed Docker source disappeared returns the same typed
+boundary with `source_disconnected`; transport and provider availability errors
+remain retryable.
 
 Docker does not expose an API for requesting two log records with an identical
 daemon nanosecond timestamp. The real profile verifies provider ordering,
 unique cursors, and resume behavior. The production cursor/sequence helpers
 separately have a deterministic unit case with two records at the exact same
 timestamp, proving ordinal disambiguation without modifying Docker's log files.
+The real rotation profile removes the managed source, verifies the exact
+`source_disconnected` boundary, recreates the same generation, and then verifies
+that the old cursor yields the exact `cursor_lost` boundary.

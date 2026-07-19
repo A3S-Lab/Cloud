@@ -4,7 +4,8 @@ use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
     NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange,
-    NodeLogCompactionResult, NodeLogRetentionTarget, RuntimeObservationRecord,
+    NodeLogCompactionResult, NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget,
+    RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -48,6 +49,11 @@ pub(super) struct StoredLogChunkReceipt {
     draft: NodeLogChunkReceiptDraft,
     received_at: DateTime<Utc>,
     retained_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StoredLogGapReceipt {
+    draft: NodeLogGapReceiptDraft,
 }
 
 #[derive(Debug, Clone)]
@@ -530,6 +536,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
             || existing.draft.payload_digest != batch.payload_digest
             || existing.draft.sent_at != batch.sent_at
             || existing.draft.chunks.len() != usize::from(batch.chunk_count)
+            || existing.draft.gaps.len() != usize::from(batch.gap_count)
         {
             return Err(RepositoryError::Conflict(
                 "log batch ID was reused with different content".into(),
@@ -588,6 +595,16 @@ impl INodeControlRepository for InMemoryNodeRepository {
                     })
                     .map(|(_, _, _, sequence)| *sequence)
                     .max();
+                let maximum_gap = state
+                    .log_gaps
+                    .keys()
+                    .filter(|(node_id, unit_id, generation, _)| {
+                        *node_id == batch.node_id
+                            && unit_id == &chunk.unit_id
+                            && *generation == chunk.generation
+                    })
+                    .map(|(_, _, _, sequence)| *sequence)
+                    .max();
                 let maximum_compacted = state
                     .log_compaction_ranges
                     .iter()
@@ -600,6 +617,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
                     .max();
                 if maximum_chunk
                     .into_iter()
+                    .chain(maximum_gap)
                     .chain(maximum_compacted)
                     .max()
                     .is_some_and(|sequence| chunk.sequence <= sequence)
@@ -625,6 +643,68 @@ impl INodeControlRepository for InMemoryNodeRepository {
                 ));
             }
         }
+        for gap in &batch.gaps {
+            let key = (
+                batch.node_id,
+                gap.unit_id.clone(),
+                gap.generation,
+                gap.sequence,
+            );
+            if let Some(existing) = state.log_gaps.get(&key) {
+                if existing.draft != *gap {
+                    return Err(RepositoryError::Conflict(
+                        "log gap sequence was reused with different content".into(),
+                    ));
+                }
+            } else {
+                if state.log_chunks.contains_key(&key) {
+                    return Err(RepositoryError::Conflict(
+                        "log sequence was reused across a chunk and gap".into(),
+                    ));
+                }
+                let maximum_chunk = state
+                    .log_chunks
+                    .keys()
+                    .filter(|(node_id, unit_id, generation, _)| {
+                        *node_id == batch.node_id
+                            && unit_id == &gap.unit_id
+                            && *generation == gap.generation
+                    })
+                    .map(|(_, _, _, sequence)| *sequence)
+                    .max();
+                let maximum_gap = state
+                    .log_gaps
+                    .keys()
+                    .filter(|(node_id, unit_id, generation, _)| {
+                        *node_id == batch.node_id
+                            && unit_id == &gap.unit_id
+                            && *generation == gap.generation
+                    })
+                    .map(|(_, _, _, sequence)| *sequence)
+                    .max();
+                let maximum_compacted = state
+                    .log_compaction_ranges
+                    .iter()
+                    .filter(|range| {
+                        range.node_id == batch.node_id
+                            && range.unit_id == gap.unit_id
+                            && range.generation == gap.generation
+                    })
+                    .map(|range| range.through_sequence)
+                    .max();
+                if maximum_chunk
+                    .into_iter()
+                    .chain(maximum_gap)
+                    .chain(maximum_compacted)
+                    .max()
+                    .is_some_and(|sequence| gap.sequence <= sequence)
+                {
+                    return Err(RepositoryError::Conflict(
+                        "log gap sequence did not advance beyond durable history".into(),
+                    ));
+                }
+            }
+        }
         for chunk in &batch.chunks {
             state
                 .log_chunks
@@ -639,6 +719,17 @@ impl INodeControlRepository for InMemoryNodeRepository {
                     received_at,
                     retained_at: None,
                 });
+        }
+        for gap in &batch.gaps {
+            state
+                .log_gaps
+                .entry((
+                    batch.node_id,
+                    gap.unit_id.clone(),
+                    gap.generation,
+                    gap.sequence,
+                ))
+                .or_insert_with(|| StoredLogGapReceipt { draft: gap.clone() });
         }
         state.log_batches.insert(
             batch.batch_id,
@@ -678,6 +769,33 @@ impl INodeControlRepository for InMemoryNodeRepository {
                 stored
                     .draft
                     .metadata(query.node_id, stored.retained_at)
+                    .map_err(RepositoryError::Storage)
+            })
+            .collect()
+    }
+
+    async fn list_log_gaps(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogGapMetadata>, RepositoryError> {
+        query.validate().map_err(RepositoryError::Conflict)?;
+        let state = self.state.read().await;
+        state
+            .log_gaps
+            .iter()
+            .filter(|((node_id, unit_id, generation, sequence), _)| {
+                *node_id == query.node_id
+                    && unit_id == &query.unit_id
+                    && *generation == query.generation
+                    && query
+                        .after_sequence
+                        .is_none_or(|after_sequence| *sequence > after_sequence)
+            })
+            .take(query.limit)
+            .map(|(_, stored)| {
+                stored
+                    .draft
+                    .metadata(query.node_id)
                     .map_err(RepositoryError::Storage)
             })
             .collect()
@@ -891,6 +1009,8 @@ fn log_receipt(
         node_id: batch.node_id.as_uuid(),
         accepted_chunks: u16::try_from(batch.chunks.len())
             .map_err(|_| RepositoryError::Storage("log chunk count overflowed".into()))?,
+        accepted_gaps: u16::try_from(batch.gaps.len())
+            .map_err(|_| RepositoryError::Storage("log gap count overflowed".into()))?,
         replayed,
     };
     receipt.validate().map_err(RepositoryError::Storage)?;

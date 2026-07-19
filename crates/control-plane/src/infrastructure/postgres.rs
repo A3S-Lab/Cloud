@@ -181,6 +181,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/015_log_tombstone_compaction.sql"
             )),
         ),
+        Migration::new(
+            "016",
+            "durable provider log gaps",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/016_provider_log_gaps.sql"
+            )),
+        ),
     ]
 }
 

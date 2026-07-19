@@ -8,7 +8,8 @@ pub use log_retention_repository::{
 };
 pub use node_control_repository::{
     INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogChunkReceiptDraft, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogGapMetadata, NodeLogGapReceiptDraft,
+    RuntimeObservationRecord,
 };
 pub use node_repository::{
     INodeRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,

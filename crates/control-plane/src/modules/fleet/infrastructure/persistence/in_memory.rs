@@ -37,6 +37,8 @@ pub(super) struct State {
     pub(super) log_batches: BTreeMap<Uuid, super::in_memory_control::StoredLogBatch>,
     pub(super) log_chunks:
         BTreeMap<(NodeId, String, u64, u64), super::in_memory_control::StoredLogChunkReceipt>,
+    pub(super) log_gaps:
+        BTreeMap<(NodeId, String, u64, u64), super::in_memory_control::StoredLogGapReceipt>,
     pub(super) log_compaction_ranges: Vec<NodeLogCompactionRange>,
 }
 

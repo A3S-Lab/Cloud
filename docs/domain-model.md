@@ -29,6 +29,7 @@ distributes committed facts after the corresponding database transaction.
 | Node | Enrolled Linux execution target running the A3S Cloud node agent. |
 | Observation | Node-reported fact about the current provider resource and health. |
 | Log chunk | One ordered stdout/stderr position for a Runtime unit generation, stored as verified object bytes with authoritative metadata until body retention leaves a durable tombstone and later compaction leaves a durable sequence range. |
+| Provider log gap | One ordered, bodyless cursor-loss or source-disconnect boundary for a Runtime unit generation. |
 | Route | Domain/path mapping from A3S Gateway to one healthy workload revision. |
 | Domain claim | Tenant-scoped proof that an exact or one-label wildcard DNS pattern may be routed. |
 | Gateway certificate | Public certificate lifecycle bound to one node, claim set, Gateway revision, command, and snapshot digest. |
@@ -321,7 +322,16 @@ tables directly. Audit records are append-only and separate from event delivery.
   cursor advances only after the control plane validates an exact batch
   receipt.
 - One node may have at most one persisted pending upload batch. Exact replay is
-  idempotent; a changed batch, sequence, cursor, or object body is a conflict.
+  idempotent; chunk and provider-gap counts and memberships are durable, and a
+  changed batch, sequence, cursor, reason, or object body is a conflict.
+- Runtime distinguishes retryable provider/transport failure from permanent
+  `cursor_lost` and `source_disconnected` boundaries. The node accepts a
+  boundary only when its unit, generation, and requested cursor match exactly,
+  then persists and replays it like a chunk.
+- After a gap receipt, the node clears the provider cursor while retaining the
+  Cloud sequence watermark. It resumes from the earliest available provider
+  record and rebases later chunks monotonically. A continuous disconnect is
+  emitted once and is re-armed only after the source succeeds again.
 - PostgreSQL stores ordering and integrity metadata only. The log report body is
   stored as an immutable object and verified again before a tenant query returns
   its text.
@@ -349,7 +359,10 @@ tables directly. Audit records are append-only and separate from event delivery.
   sequence bounds and a compacted-chunk count. Individual cursor, observation,
   and stream values are not retained; compacted ranges therefore remain visible
   under a stream filter. An unseen sequence must advance beyond the maximum live
-  or compacted sequence for its node, unit, and generation.
+  chunk, provider gap, or compacted sequence for its node, unit, and generation.
+- Provider gaps are returned in the same ordered page as chunks and compaction
+  ranges with reason `provider_cursor_lost` or `provider_disconnected`. Their
+  stream is unknown, so filters never hide them; the source cursor is nullable.
 - Organization, workload, and revision ownership are checked before metadata is
   read. An object that is absent or fails verification produces an ordered
   `missing` or `corrupt` gap; storage transport failure is not disguised as a
@@ -474,8 +487,8 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Secret identity and encrypted immutable versions | PostgreSQL Secret tables |
 | Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
-| Durable Runtime log cursor and pending upload | Node-agent secure state, keyed by unit and generation |
-| Log chunk ordering, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
+| Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation |
+| Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |

@@ -1,7 +1,7 @@
 use crate::modules::workloads::application::{
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
 };
-use a3s_runtime::contract::RuntimeLogStream;
+use a3s_runtime::contract::{RuntimeLogDiscontinuityReason, RuntimeLogStream};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -94,6 +94,18 @@ impl From<WorkloadLogRecord> for WorkloadLogRecordResponse {
                 through_sequence: Some(range.through_sequence),
                 compacted_chunks: Some(range.compacted_chunks()),
             },
+            WorkloadLogRecord::ProviderGap { metadata } => Self {
+                kind: WorkloadLogRecordKind::Gap,
+                source_cursor: metadata.cursor,
+                sequence: metadata.sequence,
+                observed_at_ms: Some(metadata.observed_at_ms),
+                stream: None,
+                data: None,
+                gap_reason: Some(provider_gap_reason_name(metadata.reason)),
+                from_sequence: None,
+                through_sequence: None,
+                compacted_chunks: None,
+            },
         }
     }
 }
@@ -104,6 +116,19 @@ const fn gap_reason_name(reason: WorkloadLogGapReason) -> &'static str {
         WorkloadLogGapReason::Corrupt => "corrupt",
         WorkloadLogGapReason::Retained => "retained",
         WorkloadLogGapReason::Compacted => "compacted",
+        WorkloadLogGapReason::ProviderCursorLost => "provider_cursor_lost",
+        WorkloadLogGapReason::ProviderDisconnected => "provider_disconnected",
+    }
+}
+
+const fn provider_gap_reason_name(reason: RuntimeLogDiscontinuityReason) -> &'static str {
+    match reason {
+        RuntimeLogDiscontinuityReason::CursorLost => {
+            gap_reason_name(WorkloadLogGapReason::ProviderCursorLost)
+        }
+        RuntimeLogDiscontinuityReason::SourceDisconnected => {
+            gap_reason_name(WorkloadLogGapReason::ProviderDisconnected)
+        }
     }
 }
 
@@ -117,7 +142,7 @@ const fn stream_name(stream: RuntimeLogStream) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::fleet::domain::repositories::NodeLogCompactionRange;
+    use crate::modules::fleet::domain::repositories::{NodeLogCompactionRange, NodeLogGapMetadata};
     use crate::modules::shared_kernel::domain::NodeId;
     use chrono::Utc;
     use serde_json::json;
@@ -148,6 +173,64 @@ mod tests {
                 "fromSequence": 4,
                 "throughSequence": 7,
                 "compactedChunks": 4
+            })
+        );
+    }
+
+    #[test]
+    fn provider_gap_json_preserves_the_exact_boundary_and_typed_reason() {
+        let node_id = NodeId::new();
+        let cursor_lost = WorkloadLogRecordResponse::from(WorkloadLogRecord::ProviderGap {
+            metadata: NodeLogGapMetadata {
+                node_id,
+                unit_id: "service".into(),
+                generation: 1,
+                cursor: Some("provider-cursor".into()),
+                sequence: 8,
+                observed_at_ms: 1_000,
+                reason: RuntimeLogDiscontinuityReason::CursorLost,
+            },
+        });
+        assert_eq!(
+            serde_json::to_value(cursor_lost).expect("serialize provider cursor loss"),
+            json!({
+                "kind": "gap",
+                "sourceCursor": "provider-cursor",
+                "sequence": 8,
+                "observedAtMs": 1_000,
+                "stream": null,
+                "data": null,
+                "gapReason": "provider_cursor_lost",
+                "fromSequence": null,
+                "throughSequence": null,
+                "compactedChunks": null
+            })
+        );
+
+        let disconnected = WorkloadLogRecordResponse::from(WorkloadLogRecord::ProviderGap {
+            metadata: NodeLogGapMetadata {
+                node_id,
+                unit_id: "service".into(),
+                generation: 1,
+                cursor: None,
+                sequence: 9,
+                observed_at_ms: 1_001,
+                reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+            },
+        });
+        assert_eq!(
+            serde_json::to_value(disconnected).expect("serialize provider disconnect"),
+            json!({
+                "kind": "gap",
+                "sourceCursor": null,
+                "sequence": 9,
+                "observedAtMs": 1_001,
+                "stream": null,
+                "data": null,
+                "gapReason": "provider_disconnected",
+                "fromSequence": null,
+                "throughSequence": null,
+                "compactedChunks": null
             })
         );
     }

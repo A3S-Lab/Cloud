@@ -1,7 +1,9 @@
 use super::container::container_id;
-use super::{docker_error, DockerRuntimeDriver};
+use super::{docker_error, is_status, DockerRuntimeDriver};
 use crate::SecretMaterial;
-use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogQuery, RuntimeLogStream};
+use a3s_runtime::contract::{
+    RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogQuery, RuntimeLogStream,
+};
 use a3s_runtime::{RuntimeError, RuntimeResult, RuntimeUnitRecord};
 use bollard::container::{LogOutput, LogsOptions};
 use chrono::DateTime;
@@ -22,8 +24,12 @@ impl DockerRuntimeDriver {
         let container = self
             .find_container(node_id, &unit.spec, &digest)
             .await?
-            .ok_or_else(|| RuntimeError::NotFound {
-                unit_id: unit.spec.unit_id.clone(),
+            .ok_or_else(|| {
+                log_discontinuity(
+                    unit,
+                    query,
+                    RuntimeLogDiscontinuityReason::SourceDisconnected,
+                )
             })?;
         let redaction_materials = self.resolve_log_redaction_materials(&unit.spec).await?;
         let cursor = query.cursor.as_deref().map(LogCursor::parse).transpose()?;
@@ -47,7 +53,17 @@ impl DockerRuntimeDriver {
         let mut previous_second = None;
         let mut previous_sequence = None;
         'logs: while let Some(output) = stream.next().await {
-            let output = output.map_err(docker_error)?;
+            let output = output.map_err(|error| {
+                if is_status(&error, 404) {
+                    log_discontinuity(
+                        unit,
+                        query,
+                        RuntimeLogDiscontinuityReason::SourceDisconnected,
+                    )
+                } else {
+                    docker_error(error)
+                }
+            })?;
             let stream = match output {
                 LogOutput::StdErr { .. } => RuntimeLogStream::Stderr,
                 LogOutput::StdOut { .. } | LogOutput::Console { .. } => RuntimeLogStream::Stdout,
@@ -110,12 +126,26 @@ impl DockerRuntimeDriver {
             }
         }
         if !cursor_found {
-            return Err(RuntimeError::Protocol(
-                "Docker log cursor is no longer available; the stream contains an explicit gap"
-                    .into(),
+            return Err(log_discontinuity(
+                unit,
+                query,
+                RuntimeLogDiscontinuityReason::CursorLost,
             ));
         }
         Ok(chunks)
+    }
+}
+
+fn log_discontinuity(
+    unit: &RuntimeUnitRecord,
+    query: &RuntimeLogQuery,
+    reason: RuntimeLogDiscontinuityReason,
+) -> RuntimeError {
+    RuntimeError::LogDiscontinuity {
+        unit_id: unit.spec.unit_id.clone(),
+        generation: unit.spec.generation,
+        cursor: query.cursor.clone(),
+        reason,
     }
 }
 

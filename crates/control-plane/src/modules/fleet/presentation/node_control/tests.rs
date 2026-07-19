@@ -22,14 +22,14 @@ use a3s_cloud_contracts::{
     NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload,
     NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt,
-    NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
+    NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch,
+    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
 };
 use a3s_cloud_node_agent::{EnrolledNodeIdentity, FileNodeIdentityStore, NodeIdentityState};
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeInspection, RuntimeLogChunk, RuntimeLogStream, RuntimeObservation, RuntimeUnitClass,
-    RuntimeUnitState,
+    RuntimeInspection, RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream,
+    RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
 };
 use chrono::{Duration, Utc};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
@@ -403,6 +403,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
             },
             checksum: format!("sha256:{:x}", Sha256::digest(log_data.as_bytes())),
         }],
+        gaps: Vec::new(),
     };
     let logs_endpoint = format!(
         "https://localhost:{}/v1/node-control/log-chunks",
@@ -428,6 +429,33 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .await
         .expect("replayed log receipt");
     assert!(replayed_logs.replayed);
+    let gap_batch = NodeLogChunkBatch {
+        schema: NodeLogChunkBatch::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id,
+        sent_at: Utc::now(),
+        chunks: Vec::new(),
+        gaps: vec![NodeLogGapReport {
+            unit_id: "service-1".into(),
+            generation: 1,
+            cursor: Some("opaque:1".into()),
+            sequence: 2,
+            observed_at_ms: 2,
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }],
+    };
+    let gap_receipt = client
+        .post(&logs_endpoint)
+        .json(&gap_batch)
+        .send()
+        .await
+        .expect("record provider gap")
+        .json::<NodeLogChunkReceipt>()
+        .await
+        .expect("provider gap receipt");
+    assert_eq!(gap_receipt.accepted_chunks, 0);
+    assert_eq!(gap_receipt.accepted_gaps, 1);
+    assert!(!gap_receipt.replayed);
 
     let oversized = client
         .post(&endpoint)

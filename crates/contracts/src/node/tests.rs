@@ -1,10 +1,11 @@
 use super::*;
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeUnitClass,
+    RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeUnitClass,
 };
 use chrono::{Duration, Utc};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 fn capabilities() -> RuntimeCapabilities {
@@ -209,6 +210,101 @@ fn observation_batches_bind_agent_and_node_identity() {
     batch.validate().expect("valid observation batch");
     batch.agent_instance_id = Uuid::now_v7();
     assert!(batch.validate().is_err());
+}
+
+#[test]
+fn log_batches_accept_gap_only_uploads_and_reject_cross_kind_sequence_conflicts() {
+    let node_id = Uuid::now_v7();
+    let mut batch = NodeLogChunkBatch {
+        schema: NodeLogChunkBatch::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id,
+        sent_at: Utc::now(),
+        chunks: Vec::new(),
+        gaps: vec![NodeLogGapReport {
+            unit_id: "unit-1".into(),
+            generation: 4,
+            cursor: Some("provider-cursor".into()),
+            sequence: 9,
+            observed_at_ms: 1_000,
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }],
+    };
+    batch.validate().expect("valid gap-only batch");
+
+    let receipt = NodeLogChunkReceipt {
+        schema: NodeLogChunkReceipt::SCHEMA.into(),
+        batch_id: batch.batch_id,
+        node_id,
+        accepted_chunks: 0,
+        accepted_gaps: 1,
+        replayed: false,
+    };
+    receipt.validate().expect("valid gap-only receipt");
+
+    let data = "replacement log\n";
+    batch.chunks.push(NodeLogChunkReport {
+        unit_id: "unit-1".into(),
+        generation: 4,
+        chunk: RuntimeLogChunk {
+            schema: RuntimeLogChunk::SCHEMA.into(),
+            cursor: "replacement-cursor".into(),
+            sequence: 9,
+            observed_at_ms: 1_001,
+            stream: RuntimeLogStream::Stdout,
+            data: data.into(),
+        },
+        checksum: format!("sha256:{:x}", Sha256::digest(data.as_bytes())),
+    });
+    assert!(batch.validate().is_err());
+}
+
+#[test]
+fn chunk_only_log_batches_keep_the_v1_wire_shape() {
+    let data = "hello\n";
+    let encoded = json!({
+        "schema": NodeLogChunkBatch::SCHEMA,
+        "batch_id": Uuid::now_v7(),
+        "node_id": Uuid::now_v7(),
+        "sent_at": Utc::now(),
+        "chunks": [{
+            "unit_id": "unit-1",
+            "generation": 1,
+            "chunk": {
+                "schema": RuntimeLogChunk::SCHEMA,
+                "cursor": "provider-cursor",
+                "sequence": 1,
+                "observed_at_ms": 1_000,
+                "stream": "stdout",
+                "data": data
+            },
+            "checksum": format!("sha256:{:x}", Sha256::digest(data.as_bytes()))
+        }]
+    });
+    let batch: NodeLogChunkBatch =
+        serde_json::from_value(encoded.clone()).expect("decode legacy chunk-only batch");
+    batch.validate().expect("valid legacy chunk-only batch");
+    assert!(batch.gaps.is_empty());
+    assert_eq!(
+        serde_json::to_value(batch).expect("encode chunk-only batch"),
+        encoded
+    );
+
+    let receipt = json!({
+        "schema": NodeLogChunkReceipt::SCHEMA,
+        "batch_id": Uuid::now_v7(),
+        "node_id": Uuid::now_v7(),
+        "accepted_chunks": 1,
+        "replayed": false
+    });
+    let decoded: NodeLogChunkReceipt =
+        serde_json::from_value(receipt.clone()).expect("decode legacy chunk-only receipt");
+    decoded.validate().expect("valid legacy chunk-only receipt");
+    assert_eq!(decoded.accepted_gaps, 0);
+    assert_eq!(
+        serde_json::to_value(decoded).expect("encode chunk-only receipt"),
+        receipt
+    );
 }
 
 #[test]

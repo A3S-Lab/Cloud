@@ -1,6 +1,9 @@
 use super::fixture::{found, require, resource_id, DockerConformanceFixture};
 use super::specs;
-use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogQuery, RuntimeLogStream, RuntimeUnitState};
+use a3s_runtime::contract::{
+    RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogQuery, RuntimeLogStream,
+    RuntimeUnitState,
+};
 use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
 use bollard::container::RemoveContainerOptions;
 
@@ -184,6 +187,23 @@ impl DockerConformanceFixture {
             lost.state == RuntimeUnitState::Unknown,
             "external log source deletion did not become unknown",
         )?;
+        let disconnected = client
+            .logs(&log_query(&service, Some(old_cursor.clone()), 10, None))
+            .await;
+        require(
+            matches!(
+                disconnected,
+                Err(RuntimeError::LogDiscontinuity {
+                    unit_id,
+                    generation,
+                    cursor: Some(cursor),
+                    reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+                }) if unit_id == service.unit_id
+                    && generation == service.generation
+                    && cursor == old_cursor
+            ),
+            "Docker provider-source deletion did not report an exact source disconnect",
+        )?;
         let replacement = client
             .apply(&specs::apply("logs-gap-replacement", service.clone()))
             .await?;
@@ -192,15 +212,21 @@ impl DockerConformanceFixture {
             "replacement log source did not start",
         )?;
         let gap = client
-            .logs(&log_query(&service, Some(old_cursor), 10, None))
+            .logs(&log_query(&service, Some(old_cursor.clone()), 10, None))
             .await;
         require(
             matches!(
                 gap,
-                Err(RuntimeError::Protocol(message))
-                    if message.contains("explicit gap")
+                Err(RuntimeError::LogDiscontinuity {
+                    unit_id,
+                    generation,
+                    cursor: Some(cursor),
+                    reason: RuntimeLogDiscontinuityReason::CursorLost,
+                }) if unit_id == service.unit_id
+                    && generation == service.generation
+                    && cursor == old_cursor
             ),
-            "Docker log rotation/replacement did not report an explicit cursor gap",
+            "Docker log rotation/replacement did not report an exact cursor loss",
         )?;
         client
             .remove(&specs::action("logs-gap-remove", &service))

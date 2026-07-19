@@ -95,7 +95,7 @@ Status as of 2026-07-19:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe filesystem/S3-compatible workload-log path with configurable body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, provider cursor-loss recovery, update, rollback, and web remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, configurable body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, update, rollback, and web remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -339,7 +339,7 @@ Complete the first user-visible release loop.
   active log targets from the command journal. A separate retrying node loop
   persists one bounded pending batch before upload, replays the exact batch
   after restart, and advances each cursor only after a validated receipt.
-  ACL-only settings close a batch at 256 chunks and 16 MiB.
+  ACL-only settings close a batch at 256 chunk/gap records and 16 MiB.
 - Implemented: Docker log reads resolve every bound immutable Secret, fail
   closed on authorization or materialization failure, redact exact overlapping
   values, and zeroize the temporary raw text buffer before returning chunks.
@@ -364,9 +364,13 @@ Complete the first user-visible release loop.
   old per-chunk tombstones and batch memberships, write and coalesce durable
   sequence ranges, preserve exact batch-header replay and sequence watermarks,
   and return explicit `compacted` gaps even under stream filtering.
-- Add an explicit provider cursor-loss/disconnect gap contract, real
-  Linux/Docker/PostgreSQL restart and corruption certification, and bounded live
-  delivery to the web console.
+- Implemented: Runtime exposes typed permanent cursor-loss/source-disconnect
+  boundaries separately from retryable transport failure. Docker returns exact
+  identities, the node persists/replays provider gaps and monotonically rebases
+  replacement chunks, PostgreSQL atomically stores gap membership and sequence
+  watermarks, and snapshot pages expose provider gaps under every stream filter.
+- Add real Linux/Docker/PostgreSQL restart and corruption certification and
+  bounded live delivery to the web console.
 - Export metrics and traces through OpenTelemetry and publish the initial
   Prometheus-compatible service/node/operation dashboard contract.
 - Implement rolling update for one node, activation after health and route
@@ -388,10 +392,13 @@ Complete the first user-visible release loop.
 - A failed Gateway reload cannot mark the route or deployment active.
 - Losing the Gateway acknowledgement and restarting either process converges
   without duplicating or partially applying routes.
-- Log reconnect resumes from the last cursor without silent gaps or unbounded
-  buffering; secret fixtures never appear in logs or operation payloads.
-- Deleting, corrupting, or retaining a log chunk creates an explicit ordered
-  gap; log bodies never enter PostgreSQL, NATS, or Flow history.
+- Log reconnect resumes from the last cursor or, after an acknowledged typed
+  provider gap, from the earliest available record with a monotonic delivery
+  sequence and no unbounded buffering; secret fixtures never appear in logs or
+  operation payloads.
+- Provider cursor loss/source disconnect and deleting, corrupting, retaining, or
+  compacting a log chunk create explicit ordered gaps; log bodies never enter
+  PostgreSQL, NATS, or Flow history.
 - Updating from image A to B and rolling back to A passes through real Runtime,
   health, and Gateway paths.
 - The full scenario runs from a clean machine in CI and on a separately managed
@@ -867,8 +874,9 @@ real fault gate passes. Planned rows are not release evidence.
 D0 is closed. E0's route desired-state, managed TLS mechanics, versioned
 complete snapshot transport, Secret injection, and filesystem/S3-compatible
 durable log query/retention/compaction path are implemented through the
-PostgreSQL, Fleet, node/Runtime, and Gateway boundaries. The remaining changes
-should land as vertical, independently verified slices:
+PostgreSQL, Fleet, node/Runtime, and Gateway boundaries, including typed
+provider cursor-loss/source-disconnect recovery. The remaining changes should
+land as vertical, independently verified slices:
 
 1. Certify the implemented encrypted Secret resource/version API, immutable
    workload bindings, assigned-node mTLS materialization, and late Docker
@@ -877,10 +885,9 @@ should land as vertical, independently verified slices:
    end-to-end redaction scans, and the restart-after-version-commit recovery
    gate.
 2. Complete production log acceptance after the implemented S3-compatible
-   adapter, pinned-MinIO lifecycle gate, and bounded tombstone compaction: add
-   the provider cursor-loss/disconnect gap contract, pass real
-   Linux/Docker/PostgreSQL crash and corruption gates, and add bounded live web
-   delivery.
+   adapter, pinned-MinIO lifecycle gate, bounded tombstone compaction, and typed
+   provider-gap recovery: pass real Linux/Docker/PostgreSQL crash and corruption
+   gates and add bounded live web delivery.
 3. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
 4. Manual rollback through the same immutable revision and operation path.

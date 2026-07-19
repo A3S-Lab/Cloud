@@ -1,5 +1,5 @@
 use crate::modules::fleet::domain::repositories::{
-    NodeLogChunkMetadata, NodeLogCompactionRange, RuntimeObservationRecord,
+    NodeLogChunkMetadata, NodeLogCompactionRange, NodeLogGapMetadata, RuntimeObservationRecord,
 };
 use crate::modules::operations::domain::entities::OperationProjection;
 use crate::modules::shared_kernel::domain::{NodeId, WorkloadId, WorkloadRevisionId};
@@ -27,6 +27,8 @@ pub enum WorkloadLogGapReason {
     Corrupt,
     Retained,
     Compacted,
+    ProviderCursorLost,
+    ProviderDisconnected,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +40,9 @@ pub enum WorkloadLogRecord {
     },
     CompactedGap {
         range: NodeLogCompactionRange,
+    },
+    ProviderGap {
+        metadata: NodeLogGapMetadata,
     },
 }
 

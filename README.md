@@ -96,11 +96,12 @@ API command
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Durable Workload Logs**: Project active Runtime targets from the command
   journal, persist one bounded batch before mTLS upload, resume only after an
-  exact receipt, redact bound Secret values at the Docker log boundary, and
-  query verified immutable filesystem or S3-compatible chunk objects through
-  tenant-scoped cursor pages while a configurable worker deletes expired bodies
-  and a second bounded worker compacts old tombstones into explicit sequence
-  ranges without losing replay or ordering watermarks
+  exact receipt, project typed provider cursor-loss/source-disconnect gaps,
+  redact bound Secret values at the Docker log boundary, and query verified
+  immutable filesystem or S3-compatible chunk objects through tenant-scoped
+  cursor pages while a configurable worker deletes expired bodies and a second
+  bounded worker compacts old tombstones into explicit sequence ranges without
+  losing replay or ordering watermarks
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
@@ -123,7 +124,7 @@ API command
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
-| Logs | Restart-safe bounded node shipping, Docker-bound Secret redaction, PostgreSQL metadata, verified filesystem/S3-compatible chunk objects, cursor paging, tenant isolation, configurable body retention, bounded tombstone compaction, explicit missing/corrupt/retained/compacted gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; provider cursor-loss recovery, full Linux/Docker/PostgreSQL crash certification, and live web logs remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; full Linux/Docker/PostgreSQL crash certification and live web logs remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -252,7 +253,7 @@ deployment and Edge policies are split across independent boundaries:
 | `logs.tombstone_compaction_poll_ms` | Independent tombstone-compaction interval; no longer than the tombstone retention age or 24 hours |
 | `logs.tombstone_compaction_batch_size` | Maximum tombstones replaced in one atomic compaction transaction; 1 through 10,000 |
 | `logs.poll_interval_ms` | Independent node-agent interval for polling active Runtime log targets |
-| `logs.max_batch_chunks` | Maximum chunks in one durable upload batch; closed at 256 |
+| `logs.max_batch_chunks` | Maximum chunk and provider-gap records in one durable upload batch; closed at 256 |
 | `logs.max_batch_bytes` | Maximum log-data bytes in one durable upload batch; closed at 16 MiB |
 | `docker.secret_memory_dir` | Linux tmpfs root used only for transient Docker file-Secret bind mounts |
 
@@ -299,6 +300,15 @@ filesystem or S3-compatible object, the same ordered position is returned as a
 deletes an expired body, its durable metadata remains at the same position as a
 `retained` gap and the query does not read object storage for that row.
 
+When Runtime proves that a provider cursor was lost or that a durable unit's
+log source disappeared, the node first persists and uploads an ordered gap with
+reason `provider_cursor_lost` or `provider_disconnected`. After the exact
+receipt, it clears only the provider cursor, retains the Cloud sequence
+watermark, resumes from the earliest available provider record, and rebases
+replacement chunk sequences monotonically. Provider gaps have no known stream,
+so they remain visible under `stdout` or `stderr` filtering; their source cursor
+is nullable.
+
 After the separate tombstone retention age, a bounded worker atomically replaces
 eligible per-chunk tombstones with coalesced sequence ranges. Those ranges are
 returned as `gapReason: "compacted"` with `fromSequence`, `throughSequence`, and
@@ -307,9 +317,10 @@ returned as `gapReason: "compacted"` with `fromSequence`, `throughSequence`, and
 query still includes compacted ranges because per-chunk stream metadata has
 been discarded. Durable batch headers and sequence watermarks remain, so an
 exact old-batch replay returns its receipt without recreating objects and an
-unseen sequence must advance beyond all live or compacted history. Storage
-unavailability remains an API error. The endpoint is snapshot paging, not the
-still-planned live web stream.
+unseen sequence must advance beyond all live, provider-gap, or compacted
+history. Storage unavailability and retryable Runtime/provider transport
+failure remain errors, not fabricated gaps. The endpoint is snapshot paging,
+not the still-planned live web stream.
 
 See [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) for the complete control
@@ -428,7 +439,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, update, rollback, and web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, update, rollback, and web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
