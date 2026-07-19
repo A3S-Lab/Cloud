@@ -9,7 +9,7 @@ pub struct GetWorkloadLogs {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
-    pub after_sequence: u64,
+    pub after_sequence: Option<u64>,
     pub limit: u16,
     pub stream: Option<RuntimeLogStream>,
 }

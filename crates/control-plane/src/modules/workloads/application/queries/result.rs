@@ -23,6 +23,7 @@ pub struct WorkloadQueryResult {
 pub enum WorkloadLogGapReason {
     Missing,
     Corrupt,
+    Retained,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

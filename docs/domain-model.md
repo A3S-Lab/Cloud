@@ -28,7 +28,7 @@ distributes committed facts after the corresponding database transaction.
 | Deployment | One attempt to make a workload revision active on a node. |
 | Node | Enrolled Linux execution target running the A3S Cloud node agent. |
 | Observation | Node-reported fact about the current provider resource and health. |
-| Log chunk | One ordered stdout/stderr record for a Runtime unit generation, stored as verified object bytes with authoritative metadata. |
+| Log chunk | One ordered stdout/stderr position for a Runtime unit generation, stored as verified object bytes with authoritative metadata until body retention leaves a durable tombstone. |
 | Route | Domain/path mapping from A3S Gateway to one healthy workload revision. |
 | Domain claim | Tenant-scoped proof that an exact or one-label wildcard DNS pattern may be routed. |
 | Gateway certificate | Public certificate lifecycle bound to one node, claim set, Gateway revision, command, and snapshot digest. |
@@ -102,8 +102,9 @@ Primary aggregate:
 
 Owns enrollment, node identity, capabilities, scheduling eligibility, drain,
 revocation, last accepted observation, and authenticated bounded log ingestion
-metadata. A node agent does not receive direct database or NATS credentials.
-Log bodies are immutable object-store payloads rather than Fleet table values.
+and body-retention metadata. A node agent does not receive direct database or
+NATS credentials. Log bodies are immutable object-store payloads rather than
+Fleet table values.
 
 Primary aggregate:
 
@@ -324,6 +325,14 @@ tables directly. Audit records are append-only and separate from event delivery.
 - PostgreSQL stores ordering and integrity metadata only. The log report body is
   stored as an immutable object and verified again before a tenant query returns
   its text.
+- Body retention is based on the control plane's durable receipt time. The
+  worker deletes the object first and records `retained_at` only after that
+  idempotent deletion succeeds; deletion or metadata-commit failures remain
+  eligible for retry.
+- A retained row remains in sequence order as an explicit `retained` gap.
+  Concurrent workers compare-and-set the tombstone, and replay of its persisted
+  batch is resolved before object writes so it cannot recreate the retained
+  body. Bounded tombstone compaction remains future work.
 - Organization, workload, and revision ownership are checked before metadata is
   read. An object that is absent or fails verification produces an ordered
   `missing` or `corrupt` gap; storage transport failure is not disguised as a
@@ -449,7 +458,7 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor and pending upload | Node-agent secure state, keyed by unit and generation |
-| Log chunk ordering, cursor, stream, checksum, and object key | PostgreSQL Fleet telemetry tables |
+| Log chunk ordering, cursor, stream, checksum, object key, and retained tombstone | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage; filesystem adapter for development and S3-compatible storage for production |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |

@@ -1,6 +1,6 @@
 use super::RecordNodeLogChunks;
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogChunkReceiptDraft,
+    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkReceiptDraft,
 };
 use crate::modules::fleet::domain::services::{ILogChunkStore, LogChunkStoreError, StoredLogChunk};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -44,6 +44,26 @@ impl CommandHandler<RecordNodeLogChunks> for RecordNodeLogChunksHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            let chunk_count = match u16::try_from(command.batch.chunks.len()) {
+                Ok(chunk_count) => chunk_count,
+                Err(_) => {
+                    return Ok(Err(ApplicationError::Invalid(
+                        "log batch chunk count exceeds the protocol bound".into(),
+                    )))
+                }
+            };
+            let replay = NodeLogBatchReplay {
+                batch_id: command.batch.batch_id,
+                node_id: command.authenticated_node_id,
+                payload_digest: payload_digest.clone(),
+                sent_at: command.batch.sent_at,
+                chunk_count,
+            };
+            match nodes.replay_log_batch(replay).await {
+                Ok(Some(receipt)) => return Ok(Ok(receipt)),
+                Ok(None) => {}
+                Err(error) => return Ok(Err(error.into())),
+            }
             let mut stored = Vec::with_capacity(command.batch.chunks.len());
             let mut receipts = Vec::with_capacity(command.batch.chunks.len());
             for (ordinal, report) in command.batch.chunks.iter().enumerate() {

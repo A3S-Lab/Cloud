@@ -1,7 +1,7 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_cloud_control_plane::config::{
     AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
-    NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
+    LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
     SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
@@ -131,7 +131,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 13);
+    assert_eq!(applied, 14);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -255,6 +255,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "014",
+                "durable log retention tombstones",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/014_log_retention.sql"
+                )),
+            ),
+            Migration::new(
+                "015",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

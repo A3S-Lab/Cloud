@@ -2,11 +2,14 @@ use super::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, ChangeNodeState, ChangeNodeStateHandler,
     EnqueueNodeCommand, EnqueueNodeCommandHandler, EnrollNode, EnrollNodeHandler, GetNode,
     GetNodeHandler, IssueEnrollmentToken, IssueEnrollmentTokenHandler, LeaseNodeCommands,
-    LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, RecordNodeLogChunks,
+    LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogRetentionWorker, RecordNodeLogChunks,
     RecordNodeLogChunksHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
 };
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
-use crate::modules::fleet::domain::repositories::{INodeRepository, NodeHeartbeatUpdate};
+use crate::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeRepository, NodeHeartbeatUpdate, NodeLogChunkQuery,
+};
+use crate::modules::fleet::domain::services::{ILogChunkStore, RetrievedLogChunk};
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LocalLogChunkStore};
@@ -311,10 +314,9 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .replayed
     );
 
-    let log_handler = RecordNodeLogChunksHandler::new(
-        nodes.clone(),
-        Arc::new(LocalLogChunkStore::new(ca_directory.path().join("logs")).expect("log store")),
-    );
+    let log_store =
+        Arc::new(LocalLogChunkStore::new(ca_directory.path().join("logs")).expect("log store"));
+    let log_handler = RecordNodeLogChunksHandler::new(nodes.clone(), log_store.clone());
     let log_data = "service started";
     let log_batch = NodeLogChunkBatch {
         schema: NodeLogChunkBatch::SCHEMA.into(),
@@ -353,7 +355,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .execute(
                 RecordNodeLogChunks {
                     authenticated_node_id: node_id,
-                    batch: log_batch,
+                    batch: log_batch.clone(),
                     received_at: issued_at + Duration::seconds(4),
                 },
                 context(),
@@ -362,6 +364,60 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .expect("framework result")
             .expect("replay logs")
             .replayed
+    );
+    let retention = LogRetentionWorker::new(
+        nodes.clone(),
+        log_store.clone(),
+        StdDuration::from_secs(1),
+        StdDuration::from_millis(10),
+        16,
+    )
+    .expect("log retention worker");
+    let retained = retention
+        .run_once(issued_at + Duration::seconds(5))
+        .await
+        .expect("retain logs");
+    assert_eq!(retained.retained, 1);
+    let metadata = nodes
+        .list_log_chunks(NodeLogChunkQuery {
+            node_id,
+            unit_id: "worker-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: None,
+        })
+        .await
+        .expect("retained log metadata");
+    assert!(metadata[0].retained_at.is_some());
+    assert_eq!(
+        log_store
+            .get(&metadata[0].object_key, &metadata[0].checksum)
+            .await
+            .expect("retained object lookup"),
+        RetrievedLogChunk::Missing
+    );
+    assert!(
+        log_handler
+            .execute(
+                RecordNodeLogChunks {
+                    authenticated_node_id: node_id,
+                    batch: log_batch,
+                    received_at: issued_at + Duration::seconds(6),
+                },
+                context(),
+            )
+            .await
+            .expect("framework result")
+            .expect("replay retained logs")
+            .replayed
+    );
+    assert_eq!(
+        log_store
+            .get(&metadata[0].object_key, &metadata[0].checksum)
+            .await
+            .expect("retained replay object lookup"),
+        RetrievedLogChunk::Missing
     );
 
     let rotate_handler = RotateNodeCertificateHandler::new(

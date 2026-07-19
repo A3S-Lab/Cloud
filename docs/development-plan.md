@@ -95,7 +95,7 @@ Status as of 2026-07-19:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe local workload-log path are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, S3-compatible log storage and retention, provider cursor-loss recovery, update, rollback, and web remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe local workload-log path with configurable body retention are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, S3-compatible log storage, tombstone compaction, provider cursor-loss recovery, update, rollback, and web remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -347,10 +347,16 @@ Complete the first user-visible release loop.
   writes immutable checksummed objects through the development filesystem
   adapter, verifies objects on read, and exposes tenant-authorized cursor pages
   with stdout/stderr filtering and explicit missing/corrupt gap records.
-- Add the production S3-compatible adapter, retention policy and worker, an
-  explicit provider cursor-loss/disconnect gap contract, real
-  Linux/Docker/PostgreSQL restart and corruption certification, and bounded
-  live delivery to the web console.
+- Implemented: validated control-plane ACL configures receipt-age retention,
+  polling, and bounded scan size. The `all` and `worker` roles delete local
+  objects before compare-and-setting durable `retained_at` tombstones, retry
+  interrupted deletion or metadata commits, preserve sequence zero, and return
+  explicit `retained` gaps without reading deleted objects. Persisted batch
+  replay is checked before object writes so it cannot recreate a retained body.
+- Add the production S3-compatible adapter with the same object-first retry
+  contract, bounded tombstone compaction, an explicit provider
+  cursor-loss/disconnect gap contract, real Linux/Docker/PostgreSQL restart and
+  corruption certification, and bounded live delivery to the web console.
 - Export metrics and traces through OpenTelemetry and publish the initial
   Prometheus-compatible service/node/operation dashboard contract.
 - Implement rolling update for one node, activation after health and route
@@ -374,8 +380,8 @@ Complete the first user-visible release loop.
   without duplicating or partially applying routes.
 - Log reconnect resumes from the last cursor without silent gaps or unbounded
   buffering; secret fixtures never appear in logs or operation payloads.
-- Deleting or corrupting a log chunk creates an explicit gap; log bodies never
-  enter PostgreSQL, NATS, or Flow history.
+- Deleting, corrupting, or retaining a log chunk creates an explicit ordered
+  gap; log bodies never enter PostgreSQL, NATS, or Flow history.
 - Updating from image A to B and rolling back to A passes through real Runtime,
   health, and Gateway paths.
 - The full scenario runs from a clean machine in CI and on a separately managed
@@ -849,10 +855,10 @@ real fault gate passes. Planned rows are not release evidence.
 ### 18.1 Immediate E0 backlog
 
 D0 is closed. E0's route desired-state, managed TLS mechanics, versioned
-complete snapshot transport, Secret injection, and local durable log query path
-are implemented through the PostgreSQL, Fleet, node/Runtime, and Gateway
-boundaries. The remaining changes should land as vertical, independently
-verified slices:
+complete snapshot transport, Secret injection, and local durable log
+query/retention path are implemented through the PostgreSQL, Fleet,
+node/Runtime, and Gateway boundaries. The remaining changes should land as
+vertical, independently verified slices:
 
 1. Certify the implemented encrypted Secret resource/version API, immutable
    workload bindings, assigned-node mTLS materialization, and late Docker
@@ -861,9 +867,10 @@ verified slices:
    end-to-end redaction scans, and the restart-after-version-commit recovery
    gate.
 2. Promote the implemented local stdout/stderr path to production: add the
-   S3-compatible object adapter, retention policy/worker, provider
-   cursor-loss/disconnect gap contract, real Linux/Docker/PostgreSQL crash and
-   corruption gates, and bounded live web delivery.
+   S3-compatible object adapter while preserving object-first retention
+   retries, define bounded tombstone compaction, add the provider
+   cursor-loss/disconnect gap contract, pass real Linux/Docker/PostgreSQL crash
+   and corruption gates, and add bounded live web delivery.
 3. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
 4. Manual rollback through the same immutable revision and operation path.

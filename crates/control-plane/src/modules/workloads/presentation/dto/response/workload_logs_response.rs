@@ -74,6 +74,7 @@ impl From<WorkloadLogRecord> for WorkloadLogRecordResponse {
                 gap_reason: Some(match reason {
                     WorkloadLogGapReason::Missing => "missing",
                     WorkloadLogGapReason::Corrupt => "corrupt",
+                    WorkloadLogGapReason::Retained => "retained",
                 }),
             },
         }
