@@ -759,6 +759,66 @@ async fn exercise_observation_control(
         .await?
         .expect("stored log batch replay");
     assert!(replay.replayed);
+    let compacted = nodes
+        .compact_log_tombstones(
+            observed_at + Duration::seconds(8),
+            observed_at + Duration::seconds(9),
+            2,
+        )
+        .await?;
+    assert_eq!(compacted.compacted_tombstones, 1);
+    assert_eq!(compacted.created_ranges, 1);
+    assert!(nodes
+        .list_log_chunks(NodeLogChunkQuery {
+            node_id,
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: None,
+        })
+        .await?
+        .is_empty());
+    let ranges = nodes
+        .list_log_compaction_ranges(NodeLogChunkQuery {
+            node_id,
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: Some(RuntimeLogStream::Stderr),
+        })
+        .await?;
+    assert_eq!(ranges.len(), 1);
+    assert_eq!(ranges[0].first_sequence, 1);
+    assert_eq!(ranges[0].through_sequence, 1);
+    assert!(
+        nodes
+            .record_log_chunks(log_batch.clone(), observed_at + Duration::seconds(10))
+            .await?
+            .replayed
+    );
+    let mut reused_sequence = log_batch.clone();
+    reused_sequence.batch_id = Uuid::now_v7();
+    assert!(matches!(
+        nodes
+            .record_log_chunks(reused_sequence, observed_at + Duration::seconds(10))
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert!(
+        nodes
+            .replay_log_batch(NodeLogBatchReplay {
+                batch_id: log_batch.batch_id,
+                node_id,
+                payload_digest: log_batch.payload_digest.clone(),
+                sent_at: log_batch.sent_at,
+                chunk_count: 1,
+            })
+            .await?
+            .expect("compacted log batch replay")
+            .replayed
+    );
 
     let database = Database::new(PostgresDialect, executor.clone());
     assert_eq!(
@@ -775,6 +835,26 @@ async fn exercise_observation_control(
             .fetch_one_as(
                 sql_query::<i64>("select count(*) from node_log_chunks where node_id = ",)
                     .bind(node_id.as_uuid())
+            )
+            .await?,
+        0
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from node_log_batch_chunks where batch_id = ",)
+                    .bind(log_batch.batch_id)
+            )
+            .await?,
+        0
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from node_log_compaction_ranges where node_id = ",
+                )
+                .bind(node_id.as_uuid())
             )
             .await?,
         1

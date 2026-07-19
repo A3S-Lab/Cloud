@@ -173,6 +173,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/014_log_retention.sql"
             )),
         ),
+        Migration::new(
+            "015",
+            "bounded log tombstone compaction",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/015_log_tombstone_compaction.sql"
+            )),
+        ),
     ]
 }
 

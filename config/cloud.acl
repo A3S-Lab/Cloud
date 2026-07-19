@@ -76,6 +76,9 @@ logs {
   retention_ms = 604800000
   retention_poll_ms = 60000
   retention_batch_size = 256
+  tombstone_retention_ms = 2592000000
+  tombstone_compaction_poll_ms = 3600000
+  tombstone_compaction_batch_size = 1000
 }
 
 edge {

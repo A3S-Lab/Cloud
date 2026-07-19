@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::fleet::domain::repositories::NodeLogCompactionResult;
 use crate::modules::fleet::domain::services::{
     LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
 };
@@ -52,6 +53,17 @@ impl ILogRetentionRepository for RetentionRepository {
         self.marks.lock().await.push(target.clone());
         targets.remove(index);
         Ok(true)
+    }
+
+    async fn compact_log_tombstones(
+        &self,
+        _retained_before: DateTime<Utc>,
+        _compacted_at: DateTime<Utc>,
+        _limit: usize,
+    ) -> Result<NodeLogCompactionResult, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "unexpected tombstone compaction".into(),
+        ))
     }
 }
 

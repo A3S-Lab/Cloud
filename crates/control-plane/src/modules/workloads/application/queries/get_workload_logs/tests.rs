@@ -2,7 +2,7 @@ use super::{GetWorkloadLogs, GetWorkloadLogsHandler};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogCompactionRange, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
@@ -43,6 +43,7 @@ use uuid::Uuid;
 
 struct LogMetadataRepository {
     chunks: Vec<NodeLogChunkMetadata>,
+    ranges: Vec<NodeLogCompactionRange>,
     calls: AtomicUsize,
 }
 
@@ -151,6 +152,25 @@ impl INodeControlRepository for LogMetadataRepository {
             .cloned()
             .collect())
     }
+
+    async fn list_log_compaction_ranges(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogCompactionRange>, RepositoryError> {
+        query.validate().map_err(RepositoryError::Conflict)?;
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .ranges
+            .iter()
+            .filter(|range| {
+                range.node_id == query.node_id
+                    && range.unit_id == query.unit_id
+                    && range.generation == query.generation
+            })
+            .filter_map(|range| range.clipped_after(query.after_sequence))
+            .take(query.limit)
+            .collect())
+    }
 }
 
 struct QueryLogStore {
@@ -222,6 +242,7 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
         .collect::<Vec<_>>();
     let metadata = Arc::new(LogMetadataRepository {
         chunks,
+        ranges: Vec::new(),
         calls: AtomicUsize::new(0),
     });
     let objects = Arc::new(QueryLogStore {
@@ -282,6 +303,7 @@ async fn retained_sequence_zero_is_an_explicit_gap_without_an_object_read() {
     retained.retained_at = Some(Utc::now());
     let metadata = Arc::new(LogMetadataRepository {
         chunks: vec![retained],
+        ranges: Vec::new(),
         calls: AtomicUsize::new(0),
     });
     let objects = Arc::new(QueryLogStore {
@@ -306,10 +328,110 @@ async fn retained_sequence_zero_is_an_explicit_gap_without_an_object_read() {
 }
 
 #[tokio::test]
+async fn compacted_ranges_are_explicit_and_page_to_their_terminal_sequence() {
+    let seeded = seed_workload().await;
+    let stale_report = report(&seeded.unit_id, 5);
+    let live_report = report(&seeded.unit_id, 10);
+    let metadata = Arc::new(LogMetadataRepository {
+        chunks: vec![
+            metadata(seeded.node_id, "stale-object".into(), &stale_report),
+            metadata(seeded.node_id, "live-object".into(), &live_report),
+        ],
+        ranges: vec![
+            NodeLogCompactionRange {
+                node_id: seeded.node_id,
+                unit_id: seeded.unit_id.clone(),
+                generation: 1,
+                first_sequence: 0,
+                through_sequence: 4,
+                compacted_at: Utc::now(),
+            },
+            NodeLogCompactionRange {
+                node_id: seeded.node_id,
+                unit_id: seeded.unit_id.clone(),
+                generation: 1,
+                first_sequence: 5,
+                through_sequence: 9,
+                compacted_at: Utc::now(),
+            },
+        ],
+        calls: AtomicUsize::new(0),
+    });
+    let objects = Arc::new(QueryLogStore {
+        objects: RwLock::new(BTreeMap::from([(
+            "live-object".into(),
+            RetrievedLogChunk::Found(live_report),
+        )])),
+        calls: AtomicUsize::new(0),
+    });
+    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata, objects.clone());
+
+    let compacted = handler
+        .execute(query(&seeded, seeded.organization_id, None, 1), context())
+        .await
+        .expect("framework result")
+        .expect("compacted log page");
+    assert!(matches!(
+        &compacted.records[..],
+        [WorkloadLogRecord::CompactedGap { range }]
+            if range.first_sequence == 0 && range.through_sequence == 4
+    ));
+    assert_eq!(compacted.next_after_sequence, Some(4));
+    assert_eq!(objects.calls.load(Ordering::SeqCst), 0);
+
+    let continued = handler
+        .execute(
+            query(&seeded, seeded.organization_id, Some(4), 1),
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .expect("continued compacted log page");
+    assert!(matches!(
+        &continued.records[..],
+        [WorkloadLogRecord::CompactedGap { range }]
+            if range.first_sequence == 5 && range.through_sequence == 9
+    ));
+    assert_eq!(continued.next_after_sequence, Some(9));
+    assert_eq!(objects.calls.load(Ordering::SeqCst), 0);
+
+    let mut filtered_query = query(&seeded, seeded.organization_id, Some(6), 10);
+    filtered_query.stream = Some(RuntimeLogStream::Stderr);
+    let clipped = handler
+        .execute(filtered_query, context())
+        .await
+        .expect("framework result")
+        .expect("stream-filtered compacted log page");
+    assert!(matches!(
+        &clipped.records[..],
+        [WorkloadLogRecord::CompactedGap { range }]
+            if range.first_sequence == 7 && range.through_sequence == 9
+    ));
+    assert_eq!(clipped.next_after_sequence, None);
+    assert_eq!(objects.calls.load(Ordering::SeqCst), 0);
+
+    let live = handler
+        .execute(
+            query(&seeded, seeded.organization_id, Some(9), 1),
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .expect("live log page");
+    assert!(matches!(
+        &live.records[..],
+        [WorkloadLogRecord::Data(chunk)] if chunk.sequence == 10
+    ));
+    assert_eq!(live.next_after_sequence, None);
+    assert_eq!(objects.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn workload_log_query_does_not_cross_the_organization_boundary() {
     let seeded = seed_workload().await;
     let metadata = Arc::new(LogMetadataRepository {
         chunks: Vec::new(),
+        ranges: Vec::new(),
         calls: AtomicUsize::new(0),
     });
     let handler = GetWorkloadLogsHandler::new(

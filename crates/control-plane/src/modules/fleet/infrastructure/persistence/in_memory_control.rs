@@ -3,8 +3,8 @@ use super::InMemoryNodeRepository;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
-    NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogRetentionTarget,
-    RuntimeObservationRecord,
+    NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange,
+    NodeLogCompactionResult, NodeLogRetentionTarget, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -577,6 +577,37 @@ impl INodeControlRepository for InMemoryNodeRepository {
                         "log sequence was reused with different content".into(),
                     ));
                 }
+            } else {
+                let maximum_chunk = state
+                    .log_chunks
+                    .keys()
+                    .filter(|(node_id, unit_id, generation, _)| {
+                        *node_id == batch.node_id
+                            && unit_id == &chunk.unit_id
+                            && *generation == chunk.generation
+                    })
+                    .map(|(_, _, _, sequence)| *sequence)
+                    .max();
+                let maximum_compacted = state
+                    .log_compaction_ranges
+                    .iter()
+                    .filter(|range| {
+                        range.node_id == batch.node_id
+                            && range.unit_id == chunk.unit_id
+                            && range.generation == chunk.generation
+                    })
+                    .map(|range| range.through_sequence)
+                    .max();
+                if maximum_chunk
+                    .into_iter()
+                    .chain(maximum_compacted)
+                    .max()
+                    .is_some_and(|sequence| chunk.sequence <= sequence)
+                {
+                    return Err(RepositoryError::Conflict(
+                        "log sequence did not advance beyond durable history".into(),
+                    ));
+                }
             }
             if state
                 .log_chunks
@@ -650,6 +681,27 @@ impl INodeControlRepository for InMemoryNodeRepository {
                     .map_err(RepositoryError::Storage)
             })
             .collect()
+    }
+
+    async fn list_log_compaction_ranges(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogCompactionRange>, RepositoryError> {
+        query.validate().map_err(RepositoryError::Conflict)?;
+        let state = self.state.read().await;
+        let mut ranges = state
+            .log_compaction_ranges
+            .iter()
+            .filter(|range| {
+                range.node_id == query.node_id
+                    && range.unit_id == query.unit_id
+                    && range.generation == query.generation
+            })
+            .filter_map(|range| range.clipped_after(query.after_sequence))
+            .collect::<Vec<_>>();
+        ranges.sort_by_key(|range| range.first_sequence);
+        ranges.truncate(query.limit);
+        Ok(ranges)
     }
 }
 
@@ -737,6 +789,85 @@ impl ILogRetentionRepository for InMemoryNodeRepository {
         }
         stored.retained_at = Some(retained_at);
         Ok(true)
+    }
+
+    async fn compact_log_tombstones(
+        &self,
+        retained_before: DateTime<Utc>,
+        compacted_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<NodeLogCompactionResult, RepositoryError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "log compaction limit must be between 1 and 10000".into(),
+            ));
+        }
+        let retained_before = canonical_timestamp(retained_before);
+        let compacted_at = canonical_timestamp(compacted_at);
+        if compacted_at < retained_before {
+            return Err(RepositoryError::Conflict(
+                "log compaction timestamp precedes its cutoff".into(),
+            ));
+        }
+        let mut state = self.state.write().await;
+        let mut candidates = state
+            .log_chunks
+            .iter()
+            .filter_map(|(key, stored)| {
+                stored
+                    .retained_at
+                    .filter(|retained_at| *retained_at < retained_before)
+                    .map(|retained_at| (key.clone(), retained_at))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|(left_key, left_retained), (right_key, right_retained)| {
+            (
+                left_retained,
+                left_key.0,
+                left_key.1.as_str(),
+                left_key.2,
+                left_key.3,
+            )
+                .cmp(&(
+                    right_retained,
+                    right_key.0,
+                    right_key.1.as_str(),
+                    right_key.2,
+                    right_key.3,
+                ))
+        });
+        candidates.truncate(limit);
+        let ranges = NodeLogCompactionRange::coalesce(
+            candidates
+                .iter()
+                .map(
+                    |((node_id, unit_id, generation, sequence), _)| NodeLogCompactionRange {
+                        node_id: *node_id,
+                        unit_id: unit_id.clone(),
+                        generation: *generation,
+                        first_sequence: *sequence,
+                        through_sequence: *sequence,
+                        compacted_at,
+                    },
+                )
+                .collect(),
+        )
+        .map_err(RepositoryError::Storage)?;
+        let created_ranges = ranges.len();
+        let mut durable_ranges = state.log_compaction_ranges.clone();
+        durable_ranges.extend(ranges);
+        let durable_ranges =
+            NodeLogCompactionRange::coalesce(durable_ranges).map_err(RepositoryError::Storage)?;
+        for (key, _) in &candidates {
+            state.log_chunks.remove(key).ok_or_else(|| {
+                RepositoryError::Storage("log tombstone disappeared during compaction".into())
+            })?;
+        }
+        state.log_compaction_ranges = durable_ranges;
+        Ok(NodeLogCompactionResult {
+            compacted_tombstones: candidates.len(),
+            created_ranges,
+        })
     }
 }
 

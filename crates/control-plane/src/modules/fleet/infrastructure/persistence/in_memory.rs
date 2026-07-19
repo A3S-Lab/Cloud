@@ -2,7 +2,7 @@ use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertifi
 use crate::modules::fleet::domain::repositories::{
     INodeRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
-    NodeHeartbeatUpdate, NodeStateChange,
+    NodeHeartbeatUpdate, NodeLogCompactionRange, NodeStateChange,
 };
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -37,6 +37,7 @@ pub(super) struct State {
     pub(super) log_batches: BTreeMap<Uuid, super::in_memory_control::StoredLogBatch>,
     pub(super) log_chunks:
         BTreeMap<(NodeId, String, u64, u64), super::in_memory_control::StoredLogChunkReceipt>,
+    pub(super) log_compaction_ranges: Vec<NodeLogCompactionRange>,
 }
 
 #[derive(Clone)]

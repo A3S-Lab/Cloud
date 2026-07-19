@@ -95,7 +95,7 @@ Status as of 2026-07-19:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe filesystem/S3-compatible workload-log path with configurable body retention and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, tombstone compaction, provider cursor-loss recovery, update, rollback, and web remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe filesystem/S3-compatible workload-log path with configurable body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, provider cursor-loss recovery, update, rollback, and web remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -359,9 +359,14 @@ Complete the first user-visible release loop.
   deletion, and readiness lifecycle share the filesystem semantics. Credentials
   come only from named environment variables, and a dedicated CI job provisions
   digest-pinned MinIO and a disposable bucket for the real lifecycle gate.
-- Add bounded tombstone compaction, an explicit provider
-  cursor-loss/disconnect gap contract, real Linux/Docker/PostgreSQL restart and
-  corruption certification, and bounded live delivery to the web console.
+- Implemented: independent ACL policy bounds tombstone retention, compaction
+  polling, and transaction size. The `all` and `worker` roles atomically delete
+  old per-chunk tombstones and batch memberships, write and coalesce durable
+  sequence ranges, preserve exact batch-header replay and sequence watermarks,
+  and return explicit `compacted` gaps even under stream filtering.
+- Add an explicit provider cursor-loss/disconnect gap contract, real
+  Linux/Docker/PostgreSQL restart and corruption certification, and bounded live
+  delivery to the web console.
 - Export metrics and traces through OpenTelemetry and publish the initial
   Prometheus-compatible service/node/operation dashboard contract.
 - Implement rolling update for one node, activation after health and route
@@ -861,9 +866,9 @@ real fault gate passes. Planned rows are not release evidence.
 
 D0 is closed. E0's route desired-state, managed TLS mechanics, versioned
 complete snapshot transport, Secret injection, and filesystem/S3-compatible
-durable log query/retention path are implemented through the PostgreSQL, Fleet,
-node/Runtime, and Gateway boundaries. The remaining changes should land as
-vertical, independently verified slices:
+durable log query/retention/compaction path are implemented through the
+PostgreSQL, Fleet, node/Runtime, and Gateway boundaries. The remaining changes
+should land as vertical, independently verified slices:
 
 1. Certify the implemented encrypted Secret resource/version API, immutable
    workload bindings, assigned-node mTLS materialization, and late Docker
@@ -872,8 +877,8 @@ vertical, independently verified slices:
    end-to-end redaction scans, and the restart-after-version-commit recovery
    gate.
 2. Complete production log acceptance after the implemented S3-compatible
-   adapter and pinned-MinIO lifecycle gate: define bounded tombstone compaction,
-   add the provider cursor-loss/disconnect gap contract, pass real
+   adapter, pinned-MinIO lifecycle gate, and bounded tombstone compaction: add
+   the provider cursor-loss/disconnect gap contract, pass real
    Linux/Docker/PostgreSQL crash and corruption gates, and add bounded live web
    delivery.
 3. One-node update orchestration that keeps the prior healthy revision until

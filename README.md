@@ -99,7 +99,8 @@ API command
   exact receipt, redact bound Secret values at the Docker log boundary, and
   query verified immutable filesystem or S3-compatible chunk objects through
   tenant-scoped cursor pages while a configurable worker deletes expired bodies
-  and preserves explicit missing, corrupt, or retained positions
+  and a second bounded worker compacts old tombstones into explicit sequence
+  ranges without losing replay or ordering watermarks
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
@@ -122,7 +123,7 @@ API command
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
-| Logs | Restart-safe bounded node shipping, Docker-bound Secret redaction, PostgreSQL metadata, verified filesystem/S3-compatible chunk objects, cursor paging, tenant isolation, configurable body retention, explicit missing/corrupt/retained gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; tombstone compaction, provider cursor-loss recovery, full Linux/Docker/PostgreSQL crash certification, and live web logs remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, Docker-bound Secret redaction, PostgreSQL metadata, verified filesystem/S3-compatible chunk objects, cursor paging, tenant isolation, configurable body retention, bounded tombstone compaction, explicit missing/corrupt/retained/compacted gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; provider cursor-loss recovery, full Linux/Docker/PostgreSQL crash certification, and live web logs remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -247,6 +248,9 @@ deployment and Edge policies are split across independent boundaries:
 | `logs.retention_ms` | Control-plane age from durable receipt before a log object becomes eligible for deletion; 1 minute through 10 years |
 | `logs.retention_poll_ms` | Control-plane retention scan interval; no longer than the retention age or 24 hours |
 | `logs.retention_batch_size` | Maximum metadata rows inspected by one control-plane retention scan; 1 through 10,000 |
+| `logs.tombstone_retention_ms` | Age from durable `retained_at` before an individual log tombstone becomes eligible for range compaction; 1 minute through 10 years |
+| `logs.tombstone_compaction_poll_ms` | Independent tombstone-compaction interval; no longer than the tombstone retention age or 24 hours |
+| `logs.tombstone_compaction_batch_size` | Maximum tombstones replaced in one atomic compaction transaction; 1 through 10,000 |
 | `logs.poll_interval_ms` | Independent node-agent interval for polling active Runtime log targets |
 | `logs.max_batch_chunks` | Maximum chunks in one durable upload batch; closed at 256 |
 | `logs.max_batch_bytes` | Maximum log-data bytes in one durable upload batch; closed at 16 MiB |
@@ -293,7 +297,17 @@ stream, and text. If PostgreSQL metadata points to a deleted or invalid
 filesystem or S3-compatible object, the same ordered position is returned as a
 `gap` with reason `missing` or `corrupt`. Once the configured retention worker
 deletes an expired body, its durable metadata remains at the same position as a
-`retained` gap and the query does not read object storage for that row. Storage
+`retained` gap and the query does not read object storage for that row.
+
+After the separate tombstone retention age, a bounded worker atomically replaces
+eligible per-chunk tombstones with coalesced sequence ranges. Those ranges are
+returned as `gapReason: "compacted"` with `fromSequence`, `throughSequence`, and
+`compactedChunks`; `sourceCursor`, `observedAtMs`, and `stream` are `null`, and
+`sequence` is the terminal range position used for paging. A stream-filtered
+query still includes compacted ranges because per-chunk stream metadata has
+been discarded. Durable batch headers and sequence watermarks remain, so an
+exact old-batch replay returns its receipt without recreating objects and an
+unseen sequence must advance beyond all live or compacted history. Storage
 unavailability remains an API error. The endpoint is snapshot paging, not the
 still-planned live web stream.
 
@@ -414,7 +428,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with body retention and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, tombstone compaction, update, rollback, and web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, update, rollback, and web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |

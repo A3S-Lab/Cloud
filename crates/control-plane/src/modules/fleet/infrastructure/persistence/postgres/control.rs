@@ -3,8 +3,9 @@ mod telemetry;
 
 pub(super) use observations::{latest_runtime_observation, record_observations};
 pub(super) use telemetry::{
-    list_log_chunks, list_log_chunks_for_retention, mark_log_chunk_retained,
-    record_gateway_acknowledgement, record_log_chunks, replay_log_batch,
+    compact_log_tombstones, list_log_chunks, list_log_chunks_for_retention,
+    list_log_compaction_ranges, mark_log_chunk_retained, record_gateway_acknowledgement,
+    record_log_chunks, replay_log_batch,
 };
 
 use super::{nodes, queries};
@@ -15,7 +16,8 @@ use crate::infrastructure::{
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogRetentionTarget, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange, NodeLogCompactionResult,
+    NodeLogRetentionTarget, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{

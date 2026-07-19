@@ -28,12 +28,15 @@ pub enum WorkloadLogRecordKind {
 #[serde(rename_all = "camelCase")]
 pub struct WorkloadLogRecordResponse {
     pub kind: WorkloadLogRecordKind,
-    pub source_cursor: String,
+    pub source_cursor: Option<String>,
     pub sequence: u64,
-    pub observed_at_ms: u64,
-    pub stream: &'static str,
+    pub observed_at_ms: Option<u64>,
+    pub stream: Option<&'static str>,
     pub data: Option<String>,
     pub gap_reason: Option<&'static str>,
+    pub from_sequence: Option<u64>,
+    pub through_sequence: Option<u64>,
+    pub compacted_chunks: Option<u64>,
 }
 
 impl From<WorkloadLogPage> for WorkloadLogsResponse {
@@ -57,27 +60,50 @@ impl From<WorkloadLogRecord> for WorkloadLogRecordResponse {
         match record {
             WorkloadLogRecord::Data(chunk) => Self {
                 kind: WorkloadLogRecordKind::Data,
-                source_cursor: chunk.cursor,
+                source_cursor: Some(chunk.cursor),
                 sequence: chunk.sequence,
-                observed_at_ms: chunk.observed_at_ms,
-                stream: stream_name(chunk.stream),
+                observed_at_ms: Some(chunk.observed_at_ms),
+                stream: Some(stream_name(chunk.stream)),
                 data: Some(chunk.data),
                 gap_reason: None,
+                from_sequence: None,
+                through_sequence: None,
+                compacted_chunks: None,
             },
             WorkloadLogRecord::Gap { metadata, reason } => Self {
                 kind: WorkloadLogRecordKind::Gap,
-                source_cursor: metadata.cursor,
+                source_cursor: Some(metadata.cursor),
                 sequence: metadata.sequence,
-                observed_at_ms: metadata.observed_at_ms,
-                stream: stream_name(metadata.stream),
+                observed_at_ms: Some(metadata.observed_at_ms),
+                stream: Some(stream_name(metadata.stream)),
                 data: None,
-                gap_reason: Some(match reason {
-                    WorkloadLogGapReason::Missing => "missing",
-                    WorkloadLogGapReason::Corrupt => "corrupt",
-                    WorkloadLogGapReason::Retained => "retained",
-                }),
+                gap_reason: Some(gap_reason_name(reason)),
+                from_sequence: None,
+                through_sequence: None,
+                compacted_chunks: None,
+            },
+            WorkloadLogRecord::CompactedGap { range } => Self {
+                kind: WorkloadLogRecordKind::Gap,
+                source_cursor: None,
+                sequence: range.through_sequence,
+                observed_at_ms: None,
+                stream: None,
+                data: None,
+                gap_reason: Some(gap_reason_name(WorkloadLogGapReason::Compacted)),
+                from_sequence: Some(range.first_sequence),
+                through_sequence: Some(range.through_sequence),
+                compacted_chunks: Some(range.compacted_chunks()),
             },
         }
+    }
+}
+
+const fn gap_reason_name(reason: WorkloadLogGapReason) -> &'static str {
+    match reason {
+        WorkloadLogGapReason::Missing => "missing",
+        WorkloadLogGapReason::Corrupt => "corrupt",
+        WorkloadLogGapReason::Retained => "retained",
+        WorkloadLogGapReason::Compacted => "compacted",
     }
 }
 
@@ -85,5 +111,44 @@ const fn stream_name(stream: RuntimeLogStream) -> &'static str {
     match stream {
         RuntimeLogStream::Stdout => "stdout",
         RuntimeLogStream::Stderr => "stderr",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::fleet::domain::repositories::NodeLogCompactionRange;
+    use crate::modules::shared_kernel::domain::NodeId;
+    use chrono::Utc;
+    use serde_json::json;
+
+    #[test]
+    fn compacted_gap_json_has_explicit_range_and_nullable_source_fields() {
+        let response = WorkloadLogRecordResponse::from(WorkloadLogRecord::CompactedGap {
+            range: NodeLogCompactionRange {
+                node_id: NodeId::new(),
+                unit_id: "service".into(),
+                generation: 1,
+                first_sequence: 4,
+                through_sequence: 7,
+                compacted_at: Utc::now(),
+            },
+        });
+
+        assert_eq!(
+            serde_json::to_value(response).expect("serialize compacted log gap"),
+            json!({
+                "kind": "gap",
+                "sourceCursor": null,
+                "sequence": 7,
+                "observedAtMs": null,
+                "stream": null,
+                "data": null,
+                "gapReason": "compacted",
+                "fromSequence": 4,
+                "throughSequence": 7,
+                "compactedChunks": 4
+            })
+        );
     }
 }

@@ -2,8 +2,9 @@ use super::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, ChangeNodeState, ChangeNodeStateHandler,
     EnqueueNodeCommand, EnqueueNodeCommandHandler, EnrollNode, EnrollNodeHandler, GetNode,
     GetNodeHandler, IssueEnrollmentToken, IssueEnrollmentTokenHandler, LeaseNodeCommands,
-    LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogRetentionWorker, RecordNodeLogChunks,
-    RecordNodeLogChunksHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
+    LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogCompactionWorker, LogRetentionWorker,
+    RecordNodeLogChunks, RecordNodeLogChunksHandler, RotateNodeCertificate,
+    RotateNodeCertificateHandler,
 };
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::fleet::domain::repositories::{
@@ -402,7 +403,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .execute(
                 RecordNodeLogChunks {
                     authenticated_node_id: node_id,
-                    batch: log_batch,
+                    batch: log_batch.clone(),
                     received_at: issued_at + Duration::seconds(6),
                 },
                 context(),
@@ -417,6 +418,81 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .get(&metadata[0].object_key, &metadata[0].checksum)
             .await
             .expect("retained replay object lookup"),
+        RetrievedLogChunk::Missing
+    );
+    let compaction = LogCompactionWorker::new(
+        nodes.clone(),
+        StdDuration::from_secs(1),
+        StdDuration::from_millis(10),
+        16,
+    )
+    .expect("log compaction worker");
+    let compacted = compaction
+        .run_once(issued_at + Duration::seconds(7))
+        .await
+        .expect("compact retained logs");
+    assert_eq!(compacted.compacted_tombstones, 1);
+    assert_eq!(compacted.created_ranges, 1);
+    assert!(nodes
+        .list_log_chunks(NodeLogChunkQuery {
+            node_id,
+            unit_id: "worker-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: None,
+        })
+        .await
+        .expect("compacted log metadata")
+        .is_empty());
+    let ranges = nodes
+        .list_log_compaction_ranges(NodeLogChunkQuery {
+            node_id,
+            unit_id: "worker-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: None,
+        })
+        .await
+        .expect("log compaction ranges");
+    assert_eq!(ranges.len(), 1);
+    assert_eq!(ranges[0].first_sequence, 1);
+    assert_eq!(ranges[0].through_sequence, 1);
+    assert!(
+        log_handler
+            .execute(
+                RecordNodeLogChunks {
+                    authenticated_node_id: node_id,
+                    batch: log_batch.clone(),
+                    received_at: issued_at + Duration::seconds(8),
+                },
+                context(),
+            )
+            .await
+            .expect("framework result")
+            .expect("replay compacted logs")
+            .replayed
+    );
+    let mut reused_sequence = log_batch;
+    reused_sequence.batch_id = Uuid::now_v7();
+    assert!(log_handler
+        .execute(
+            RecordNodeLogChunks {
+                authenticated_node_id: node_id,
+                batch: reused_sequence,
+                received_at: issued_at + Duration::seconds(9),
+            },
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .is_err());
+    assert_eq!(
+        log_store
+            .get(&metadata[0].object_key, &metadata[0].checksum)
+            .await
+            .expect("compacted conflict object lookup"),
         RetrievedLogChunk::Missing
     );
 

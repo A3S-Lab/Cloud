@@ -1,4 +1,6 @@
-use crate::modules::fleet::domain::repositories::{NodeLogChunkMetadata, RuntimeObservationRecord};
+use crate::modules::fleet::domain::repositories::{
+    NodeLogChunkMetadata, NodeLogCompactionRange, RuntimeObservationRecord,
+};
 use crate::modules::operations::domain::entities::OperationProjection;
 use crate::modules::shared_kernel::domain::{NodeId, WorkloadId, WorkloadRevisionId};
 use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
@@ -24,6 +26,7 @@ pub enum WorkloadLogGapReason {
     Missing,
     Corrupt,
     Retained,
+    Compacted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +35,9 @@ pub enum WorkloadLogRecord {
     Gap {
         metadata: NodeLogChunkMetadata,
         reason: WorkloadLogGapReason,
+    },
+    CompactedGap {
+        range: NodeLogCompactionRange,
     },
 }
 

@@ -1,5 +1,5 @@
 use crate::infrastructure::FlowOperationCoordinator;
-use crate::modules::fleet::{LogRetentionWorker, NodeControlServer};
+use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::workloads::WorkloadRuntimeReconciler;
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
@@ -10,6 +10,7 @@ pub struct ControlPlane {
     operation_coordinator: Option<FlowOperationCoordinator>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
+    log_compaction_worker: Option<LogCompactionWorker>,
     outbox_relay: Option<OutboxRelay>,
     node_control_server: Option<NodeControlServer>,
 }
@@ -20,6 +21,7 @@ impl ControlPlane {
         operation_coordinator: Option<FlowOperationCoordinator>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
+        log_compaction_worker: Option<LogCompactionWorker>,
         outbox_relay: Option<OutboxRelay>,
         node_control_server: Option<NodeControlServer>,
     ) -> Self {
@@ -28,6 +30,7 @@ impl ControlPlane {
             operation_coordinator,
             workload_reconciler,
             log_retention_worker,
+            log_compaction_worker,
             outbox_relay,
             node_control_server,
         }
@@ -57,6 +60,9 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(worker) = self.log_retention_worker {
+            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
+        }
+        if let Some(worker) = self.log_compaction_worker {
             workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
         }
         if let Some(relay) = self.outbox_relay {

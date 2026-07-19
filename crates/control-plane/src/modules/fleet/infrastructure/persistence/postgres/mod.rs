@@ -11,7 +11,8 @@ use crate::modules::fleet::domain::repositories::{
     NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogRetentionTarget, NodeStateChange, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogRetentionTarget,
+    NodeStateChange, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
@@ -291,6 +292,13 @@ impl INodeControlRepository for PostgresNodeRepository {
     ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError> {
         control::list_log_chunks(&self.executor, query).await
     }
+
+    async fn list_log_compaction_ranges(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogCompactionRange>, RepositoryError> {
+        control::list_log_compaction_ranges(&self.executor, query).await
+    }
 }
 
 #[async_trait]
@@ -309,5 +317,14 @@ impl ILogRetentionRepository for PostgresNodeRepository {
         retained_at: DateTime<Utc>,
     ) -> Result<bool, RepositoryError> {
         control::mark_log_chunk_retained(&self.executor, target, retained_at).await
+    }
+
+    async fn compact_log_tombstones(
+        &self,
+        retained_before: DateTime<Utc>,
+        compacted_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<NodeLogCompactionResult, RepositoryError> {
+        control::compact_log_tombstones(&self.executor, retained_before, compacted_at, limit).await
     }
 }
