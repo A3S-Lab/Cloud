@@ -354,6 +354,11 @@ async fn session(
         capabilities(),
         "test".into(),
         root.to_owned(),
+        LogShippingConfig {
+            poll_interval_ms: 10,
+            max_batch_chunks: 16,
+            max_batch_bytes: 1024 * 1024,
+        },
         Duration::from_millis(1),
         Duration::from_millis(4),
     )
@@ -383,6 +388,11 @@ async fn restarted_session(
         capabilities(),
         "test".into(),
         root.to_owned(),
+        LogShippingConfig {
+            poll_interval_ms: 10,
+            max_batch_chunks: 16,
+            max_batch_bytes: 1024 * 1024,
+        },
         Duration::from_millis(1),
         Duration::from_millis(4),
     )

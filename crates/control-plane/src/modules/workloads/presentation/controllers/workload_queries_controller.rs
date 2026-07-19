@@ -1,17 +1,24 @@
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId,
+    DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::{GetDeployment, GetWorkload, ListWorkloads};
-use crate::modules::workloads::presentation::dto::{DeploymentResponse, WorkloadResponse};
+use crate::modules::workloads::application::{
+    GetDeployment, GetWorkload, GetWorkloadLogs, ListWorkloads,
+};
+use crate::modules::workloads::presentation::dto::{
+    DeploymentResponse, WorkloadLogsResponse, WorkloadResponse,
+};
 use crate::presentation::application_error_response;
 use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_runtime::contract::RuntimeLogStream;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let get_workload_bus = Arc::clone(&bus);
     let get_deployment_bus = Arc::clone(&bus);
+    let get_logs_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .get(
@@ -90,7 +97,77 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                     }
                 }
             },
+        )?
+        .get(
+            "/{organization_id}/workloads/{workload_id}/revisions/{revision_id}/logs",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_logs_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let parameters: WorkloadLogsQuery = request.query()?;
+                    match bus
+                        .execute(GetWorkloadLogs {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            workload_id: WorkloadId::from_uuid(
+                                request.param_as::<Uuid>("workload_id")?,
+                            ),
+                            revision_id: WorkloadRevisionId::from_uuid(
+                                request.param_as::<Uuid>("revision_id")?,
+                            ),
+                            after_sequence: decode_cursor(parameters.cursor.as_deref())?,
+                            limit: parameters.limit,
+                            stream: parameters.stream.map(Into::into),
+                        })
+                        .await?
+                    {
+                        Ok(logs) => BootResponse::json(&WorkloadLogsResponse::from(logs)),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
         )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkloadLogsQuery {
+    cursor: Option<String>,
+    #[serde(default = "default_log_limit")]
+    limit: u16,
+    stream: Option<WorkloadLogStreamQuery>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WorkloadLogStreamQuery {
+    Stdout,
+    Stderr,
+}
+
+impl From<WorkloadLogStreamQuery> for RuntimeLogStream {
+    fn from(stream: WorkloadLogStreamQuery) -> Self {
+        match stream {
+            WorkloadLogStreamQuery::Stdout => Self::Stdout,
+            WorkloadLogStreamQuery::Stderr => Self::Stderr,
+        }
+    }
+}
+
+const fn default_log_limit() -> u16 {
+    100
+}
+
+fn decode_cursor(cursor: Option<&str>) -> Result<u64> {
+    let Some(cursor) = cursor else {
+        return Ok(0);
+    };
+    cursor
+        .strip_prefix("v1:")
+        .filter(|sequence| !sequence.is_empty())
+        .and_then(|sequence| sequence.parse::<u64>().ok())
+        .ok_or_else(|| BootError::BadRequest("invalid workload log cursor".into()))
 }
 
 fn request_id(request: &BootRequest) -> Result<Uuid> {

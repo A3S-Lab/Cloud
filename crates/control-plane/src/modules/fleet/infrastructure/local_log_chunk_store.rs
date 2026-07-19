@@ -1,4 +1,6 @@
-use crate::modules::fleet::domain::services::{ILogChunkStore, LogChunkStoreError, StoredLogChunk};
+use crate::modules::fleet::domain::services::{
+    ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
+};
 use a3s_cloud_contracts::NodeLogChunkReport;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
@@ -6,6 +8,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
+
+// A valid one MiB text chunk can expand to six bytes per byte when JSON escaped.
+const MAX_LOG_OBJECT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct LocalLogChunkStore {
@@ -64,6 +69,27 @@ impl ILogChunkStore for LocalLogChunkStore {
         })
     }
 
+    async fn get(
+        &self,
+        object_key: &str,
+        expected_checksum: &str,
+    ) -> Result<RetrievedLogChunk, LogChunkStoreError> {
+        validate_object_key(object_key)?;
+        if !is_sha256(expected_checksum) {
+            return Err(LogChunkStoreError::Invalid(
+                "expected log checksum is invalid".into(),
+            ));
+        }
+        let root = self.root.clone();
+        let object_key = object_key.to_owned();
+        let expected_checksum = expected_checksum.to_owned();
+        tokio::task::spawn_blocking(move || read_verified(&root, &object_key, &expected_checksum))
+            .await
+            .map_err(|error| {
+                LogChunkStoreError::Unavailable(format!("log object reader failed: {error}"))
+            })?
+    }
+
     async fn remove(&self, object_key: &str) -> Result<(), LogChunkStoreError> {
         validate_object_key(object_key)?;
         let root = self.root.clone();
@@ -105,6 +131,37 @@ impl ILogChunkStore for LocalLogChunkStore {
             LogChunkStoreError::Unavailable(format!("log store health check failed: {error}"))
         })?
     }
+}
+
+fn read_verified(
+    root: &Path,
+    object_key: &str,
+    expected_checksum: &str,
+) -> Result<RetrievedLogChunk, LogChunkStoreError> {
+    validate_object_key(object_key)?;
+    let path = root.join(object_key);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RetrievedLogChunk::Missing)
+        }
+        Err(error) => return Err(unavailable("inspect log object")(error)),
+    };
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_LOG_OBJECT_BYTES
+    {
+        return Ok(RetrievedLogChunk::Corrupt);
+    }
+    let body = fs::read(path).map_err(unavailable("read log object"))?;
+    let report = match serde_json::from_slice::<NodeLogChunkReport>(&body) {
+        Ok(report) => report,
+        Err(_) => return Ok(RetrievedLogChunk::Corrupt),
+    };
+    if report.validate().is_err() || report.checksum != expected_checksum {
+        return Ok(RetrievedLogChunk::Corrupt);
+    }
+    Ok(RetrievedLogChunk::Found(report))
 }
 
 fn write_once(root: &Path, object_key: &str, body: &[u8]) -> Result<bool, LogChunkStoreError> {
@@ -173,6 +230,15 @@ fn validate_object_key(object_key: &str) -> Result<(), LogChunkStoreError> {
         ));
     }
     Ok(())
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 fn secure_directory(path: &Path) -> Result<(), LogChunkStoreError> {

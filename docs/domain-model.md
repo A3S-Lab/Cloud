@@ -28,6 +28,7 @@ distributes committed facts after the corresponding database transaction.
 | Deployment | One attempt to make a workload revision active on a node. |
 | Node | Enrolled Linux execution target running the A3S Cloud node agent. |
 | Observation | Node-reported fact about the current provider resource and health. |
+| Log chunk | One ordered stdout/stderr record for a Runtime unit generation, stored as verified object bytes with authoritative metadata. |
 | Route | Domain/path mapping from A3S Gateway to one healthy workload revision. |
 | Domain claim | Tenant-scoped proof that an exact or one-label wildcard DNS pattern may be routed. |
 | Gateway certificate | Public certificate lifecycle bound to one node, claim set, Gateway revision, command, and snapshot digest. |
@@ -100,8 +101,9 @@ Primary aggregate:
 ### 3.5 Fleet
 
 Owns enrollment, node identity, capabilities, scheduling eligibility, drain,
-revocation, and last accepted observation. A node agent does not receive direct
-database or NATS credentials.
+revocation, last accepted observation, and authenticated bounded log ingestion
+metadata. A node agent does not receive direct database or NATS credentials.
+Log bodies are immutable object-store payloads rather than Fleet table values.
 
 Primary aggregate:
 
@@ -119,7 +121,9 @@ Primary aggregates:
 
 `Workload` is the single deployment abstraction. Its source may be a generic
 application image or an Agent/MCP release. This avoids parallel deployment
-engines while preserving the stricter Asset domain.
+engines while preserving the stricter Asset domain. Workloads also owns the
+tenant-authorized query that maps one exact revision and assigned deployment to
+ordered Fleet log metadata; it does not become the owner of log bodies.
 
 ### 3.7 Edge routing
 
@@ -306,6 +310,27 @@ tables directly. Audit records are append-only and separate from event delivery.
   atomically beneath a Linux tmpfs root, bind-mounted read-only at the requested
   path, and removed when the provider resource is retired.
 
+### Workload log
+
+- A log identity binds the authenticated node, Runtime unit ID, immutable
+  generation, provider cursor, strictly increasing sequence, observation time,
+  stdout/stderr stream, checksum, and object key.
+- Successful Runtime apply outcomes add active node-agent log targets, and
+  successful remove outcomes retire the matching generation. The durable
+  cursor advances only after the control plane validates an exact batch
+  receipt.
+- One node may have at most one persisted pending upload batch. Exact replay is
+  idempotent; a changed batch, sequence, cursor, or object body is a conflict.
+- PostgreSQL stores ordering and integrity metadata only. The log report body is
+  stored as an immutable object and verified again before a tenant query returns
+  its text.
+- Organization, workload, and revision ownership are checked before metadata is
+  read. An object that is absent or fails verification produces an ordered
+  `missing` or `corrupt` gap; storage transport failure is not disguised as a
+  gap.
+- Bound Secret material is resolved and redacted at the Docker log boundary.
+  Failure to authorize or materialize every binding fails the log read closed.
+
 ### Managed database, volume, and backup
 
 - A managed database belongs to one environment and references one immutable
@@ -423,6 +448,9 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Secret identity and encrypted immutable versions | PostgreSQL Secret tables |
 | Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
+| Durable Runtime log cursor and pending upload | Node-agent secure state, keyed by unit and generation |
+| Log chunk ordering, cursor, stream, checksum, and object key | PostgreSQL Fleet telemetry tables |
+| Log chunk report bodies | Immutable object storage; filesystem adapter for development and S3-compatible storage for production |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |

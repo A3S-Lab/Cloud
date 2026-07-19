@@ -10,5 +10,6 @@ pub use commands::create_workload_deployment::{
 pub use commands::stop_workload::{StopWorkload, StopWorkloadHandler, StopWorkloadResult};
 pub use queries::{
     DeploymentQueryResult, GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler,
-    ListWorkloads, ListWorkloadsHandler, WorkloadQueryResult,
+    GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,
+    WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
 };

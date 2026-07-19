@@ -9,7 +9,7 @@ use a3s_cloud_control_plane::modules::fleet::domain::entities::{
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft,
-    NodeLogChunkReceiptDraft,
+    NodeLogChunkQuery, NodeLogChunkReceiptDraft,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::services::{
     CertificateAuthorityError, ICertificateAuthority, NodeCertificateRequest,
@@ -30,7 +30,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
+    RuntimeLogStream, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Timelike, Utc};
@@ -677,6 +677,30 @@ async fn exercise_observation_control(
             .await?
             .replayed
     );
+    let stored_logs = nodes
+        .list_log_chunks(NodeLogChunkQuery {
+            node_id,
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            after_sequence: 0,
+            limit: 2,
+            stream: Some(RuntimeLogStream::Stdout),
+        })
+        .await?;
+    assert_eq!(stored_logs.len(), 1);
+    assert_eq!(stored_logs[0].sequence, 1);
+    assert_eq!(stored_logs[0].object_key, log_batch.chunks[0].object_key);
+    assert!(nodes
+        .list_log_chunks(NodeLogChunkQuery {
+            node_id,
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            after_sequence: 1,
+            limit: 2,
+            stream: None,
+        })
+        .await?
+        .is_empty());
     let mut log_conflict = log_batch;
     log_conflict.chunks[0].checksum = format!("sha256:{}", "1".repeat(64));
     assert!(matches!(

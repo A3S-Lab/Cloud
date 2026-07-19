@@ -3,6 +3,6 @@ pub mod response;
 
 pub use request::CreateWorkloadRequest;
 pub use response::{
-    CancelDeploymentResponse, DeploymentResponse, WorkloadDeploymentResponse, WorkloadResponse,
-    WorkloadStopResponse,
+    CancelDeploymentResponse, DeploymentResponse, WorkloadDeploymentResponse, WorkloadLogsResponse,
+    WorkloadResponse, WorkloadStopResponse,
 };

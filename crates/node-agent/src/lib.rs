@@ -9,12 +9,13 @@ mod gateway;
 mod gateway_certificate;
 mod identity;
 mod journal;
+mod log_shipper;
 mod secret;
 mod state_file;
 
 pub use config::{
-    ConfigError, ControlPlaneConfig, DockerConfig, GatewayControlConfig, NodeAgentConfig,
-    NodeConfig,
+    ConfigError, ControlPlaneConfig, DockerConfig, GatewayControlConfig, LogShippingConfig,
+    NodeAgentConfig, NodeConfig,
 };
 pub use control_plane::{
     GatewayCertificateSigningTransport, NodeControlClient, NodeControlClientError,
@@ -30,7 +31,8 @@ pub use identity::{
     EnrolledNodeIdentity, FileNodeIdentityStore, IdentityStoreError, NodeIdentityState,
     PendingNodeIdentity,
 };
-pub use journal::{CommandJournalError, FileCommandJournal, JournalDecision};
+pub use journal::{CommandJournalError, FileCommandJournal, JournalDecision, RuntimeLogTarget};
+pub use log_shipper::LogShippingError;
 pub use secret::{NodeSecretTransport, SecretMaterial};
 
 use a3s_runtime::ProviderId;

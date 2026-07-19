@@ -1,11 +1,15 @@
 use super::container::container_id;
 use super::{docker_error, DockerRuntimeDriver};
+use crate::SecretMaterial;
 use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogQuery, RuntimeLogStream};
 use a3s_runtime::{RuntimeError, RuntimeResult, RuntimeUnitRecord};
 use bollard::container::{LogOutput, LogsOptions};
 use chrono::DateTime;
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
+
+const REDACTED_SECRET: &str = "[REDACTED]";
 
 impl DockerRuntimeDriver {
     pub(super) async fn read_logs(
@@ -21,6 +25,7 @@ impl DockerRuntimeDriver {
             .ok_or_else(|| RuntimeError::NotFound {
                 unit_id: unit.spec.unit_id.clone(),
             })?;
+        let redaction_materials = self.resolve_log_redaction_materials(&unit.spec).await?;
         let cursor = query.cursor.as_deref().map(LogCursor::parse).transpose()?;
         let since = cursor
             .as_ref()
@@ -48,7 +53,7 @@ impl DockerRuntimeDriver {
                 LogOutput::StdOut { .. } | LogOutput::Console { .. } => RuntimeLogStream::Stdout,
                 LogOutput::StdIn { .. } => continue,
             };
-            let text = output.to_string();
+            let text = Zeroizing::new(output.to_string());
             for line in text.split_inclusive('\n') {
                 let (timestamp, data) = parse_docker_log_line(line)?;
                 if data.len() > 1024 * 1024 {
@@ -59,7 +64,7 @@ impl DockerRuntimeDriver {
                 let record = RawLogRecord {
                     timestamp_ns: timestamp,
                     stream,
-                    data: data.into(),
+                    data: redact_log_data(data, &redaction_materials),
                 };
                 let seconds = record.timestamp_ns.div_euclid(1_000_000_000);
                 if previous_second != Some(seconds) {
@@ -221,6 +226,38 @@ fn log_sequence(timestamp_ns: i64, ordinal_after_increment: u64) -> RuntimeResul
         .ok_or_else(|| RuntimeError::Protocol("Docker log sequence overflowed".into()))
 }
 
+fn redact_log_data(data: &str, materials: &[SecretMaterial]) -> String {
+    let mut patterns = materials
+        .iter()
+        .filter_map(|material| std::str::from_utf8(material.as_bytes()).ok())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    patterns.sort_unstable_by_key(|value| std::cmp::Reverse(value.len()));
+    patterns.dedup();
+    if patterns.is_empty() {
+        return data.into();
+    }
+    let mut redacted = String::with_capacity(data.len());
+    let mut offset = 0_usize;
+    while offset < data.len() {
+        let remaining = &data[offset..];
+        if let Some(pattern) = patterns
+            .iter()
+            .find(|pattern| remaining.starts_with(**pattern))
+        {
+            redacted.push_str(REDACTED_SECRET);
+            offset += pattern.len();
+            continue;
+        }
+        let Some(character) = remaining.chars().next() else {
+            break;
+        };
+        redacted.push(character);
+        offset += character.len_utf8();
+    }
+    redacted
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +298,20 @@ mod tests {
             log_sequence(first.timestamp_ns, 1).expect("first sequence")
                 < log_sequence(second.timestamp_ns, 2).expect("second sequence")
         );
+    }
+
+    #[test]
+    fn exact_secret_values_are_redacted_without_overlap_or_marker_reprocessing() {
+        let materials = vec![
+            SecretMaterial::new(b"token".to_vec()).expect("short Secret"),
+            SecretMaterial::new(b"token-value".to_vec()).expect("long Secret"),
+            SecretMaterial::new(b"REDACTED".to_vec()).expect("marker Secret"),
+        ];
+        let redacted = redact_log_data("token-value token REDACTED remains private\n", &materials);
+        assert_eq!(
+            redacted,
+            "[REDACTED] [REDACTED] [REDACTED] remains private\n"
+        );
+        assert!(!redacted.contains("token"));
     }
 }

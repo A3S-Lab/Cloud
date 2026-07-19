@@ -141,6 +141,24 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
     let bound_workload = app.call(workload_request("secret-workload-v2", 2)).await?;
     assert_eq!(bound_workload.status(), 202);
     assert_response_hides_secret_material(&bound_workload, &[first_plaintext, second_plaintext]);
+    let bound_workload_json = response_json(&bound_workload)?;
+    let workload_id = bound_workload_json["data"]["workloadId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("workload response has no workload ID".into()))?;
+    let revision_id = bound_workload_json["data"]["revisionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("workload response has no revision ID".into()))?;
+    let logs_path = format!(
+        "/api/v1/organizations/{organization}/workloads/{workload_id}/revisions/{revision_id}/logs?limit=2&stream=stdout"
+    );
+    let logs = app.call(get_as(&logs_path, ADMIN_TOKEN)).await?;
+    assert_eq!(logs.status(), 200);
+    assert_eq!(response_json(&logs)?["data"]["records"], json!([]));
+    assert_eq!(response_json(&logs)?["data"]["nodeId"], json!(null));
+    let invalid_cursor = app
+        .call(get_as(format!("{logs_path}&cursor=untrusted"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(invalid_cursor.status(), 400);
     let missing_version = app
         .call(workload_request("secret-workload-missing", 3))
         .await?;

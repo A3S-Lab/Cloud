@@ -25,6 +25,13 @@ pub struct NodeConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogShippingConfig {
+    pub poll_interval_ms: u64,
+    pub max_batch_chunks: u16,
+    pub max_batch_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DockerConfig {
     pub socket: String,
     pub namespace: String,
@@ -47,6 +54,7 @@ pub struct GatewayControlConfig {
 pub struct NodeAgentConfig {
     pub control_plane: ControlPlaneConfig,
     pub node: NodeConfig,
+    pub logs: LogShippingConfig,
     pub docker: DockerConfig,
     pub gateway: GatewayControlConfig,
 }
@@ -83,6 +91,11 @@ impl NodeAgentConfig {
         )?;
         let node = one_block(&document, "node")?;
         validate_block(node, &["name", "state_dir"])?;
+        let logs = one_block(&document, "logs")?;
+        validate_block(
+            logs,
+            &["poll_interval_ms", "max_batch_chunks", "max_batch_bytes"],
+        )?;
         let docker = one_block(&document, "docker")?;
         validate_block(
             docker,
@@ -133,6 +146,11 @@ impl NodeAgentConfig {
             node: NodeConfig {
                 name: string(node, "name")?,
                 state_dir: PathBuf::from(string(node, "state_dir")?),
+            },
+            logs: LogShippingConfig {
+                poll_interval_ms: integer(logs, "poll_interval_ms")?,
+                max_batch_chunks: integer(logs, "max_batch_chunks")?,
+                max_batch_bytes: integer(logs, "max_batch_bytes")?,
             },
             docker: DockerConfig {
                 socket: string(docker, "socket")?,
@@ -222,6 +240,16 @@ impl NodeAgentConfig {
         if !(1024 * 1024..=64 * 1024 * 1024).contains(&self.control_plane.max_response_bytes) {
             return Err(ConfigError::Invalid(
                 "control_plane.max_response_bytes must be between 1 and 64 MiB".into(),
+            ));
+        }
+        if self.logs.poll_interval_ms == 0
+            || self.logs.poll_interval_ms > 60_000
+            || self.logs.max_batch_chunks == 0
+            || self.logs.max_batch_chunks > 256
+            || !(1024 * 1024..=16 * 1024 * 1024).contains(&self.logs.max_batch_bytes)
+        {
+            return Err(ConfigError::Invalid(
+                "logs polling and batch bounds are invalid".into(),
             ));
         }
         let Some(socket_path) = self.docker.socket.strip_prefix("unix://") else {
@@ -333,7 +361,7 @@ pub enum ConfigError {
 }
 
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
-    let allowed = ["control_plane", "docker", "gateway", "node"];
+    let allowed = ["control_plane", "docker", "gateway", "logs", "node"];
     if document
         .blocks
         .iter()
@@ -497,6 +525,12 @@ node {
   state_dir = ".a3s/cloud/node"
 }
 
+logs {
+  poll_interval_ms = 1000
+  max_batch_chunks = 256
+  max_batch_bytes = 16777216
+}
+
 docker {
   socket = "unix:///var/run/docker.sock"
   namespace = "a3s-cloud"
@@ -520,6 +554,7 @@ gateway {
         let config = NodeAgentConfig::parse(CONFIG).expect("node config");
         assert_eq!(config.node.name, "worker-1");
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
+        assert_eq!(config.logs.max_batch_chunks, 256);
         assert_eq!(config.docker.namespace, "a3s-cloud");
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
         assert_eq!(
@@ -536,6 +571,7 @@ gateway {
 
         assert_eq!(config.node.name, "worker-1");
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
+        assert_eq!(config.logs.poll_interval_ms, 1000);
         assert_eq!(config.docker.namespace, "a3s-cloud");
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
     }

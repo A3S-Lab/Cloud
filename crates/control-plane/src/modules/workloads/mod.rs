@@ -6,8 +6,9 @@ pub mod presentation;
 pub use application::{
     CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult, CreateWorkloadDeployment,
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
-    GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, ListWorkloads,
-    ListWorkloadsHandler, StopWorkload, StopWorkloadHandler, StopWorkloadResult,
+    GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, GetWorkloadLogs,
+    GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, StopWorkload, StopWorkloadHandler,
+    StopWorkloadResult, WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
     WorkloadQueryResult,
 };
 pub use domain::entities::{

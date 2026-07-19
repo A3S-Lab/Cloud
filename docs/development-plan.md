@@ -95,7 +95,7 @@ Status as of 2026-07-19:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, and Docker environment/file injection are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret certification, restart orchestration, full redaction/crash gates, logs, update, rollback, and web remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe local workload-log path are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, S3-compatible log storage and retention, provider cursor-loss recovery, update, rollback, and web remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -335,9 +335,22 @@ Complete the first user-visible release loop.
 - Verify ordinary HTTP, streaming responses, and WebSocket upgrade through the
   same acknowledged Gateway revision. Advanced caching and transport tuning are
   not part of E0.
-- Implement ordered stdout/stderr log chunks with cursor resume, bounded
-  ingestion, checksummed S3-compatible chunk storage, PostgreSQL indexes,
-  redaction, backpressure, retention, and disconnect recovery.
+- Implemented: successful Runtime apply/remove outcomes project restart-safe
+  active log targets from the command journal. A separate retrying node loop
+  persists one bounded pending batch before upload, replays the exact batch
+  after restart, and advances each cursor only after a validated receipt.
+  ACL-only settings close a batch at 256 chunks and 16 MiB.
+- Implemented: Docker log reads resolve every bound immutable Secret, fail
+  closed on authorization or materialization failure, redact exact overlapping
+  values, and zeroize the temporary raw text buffer before returning chunks.
+- Implemented: the control plane keeps ordered log metadata in PostgreSQL,
+  writes immutable checksummed objects through the development filesystem
+  adapter, verifies objects on read, and exposes tenant-authorized cursor pages
+  with stdout/stderr filtering and explicit missing/corrupt gap records.
+- Add the production S3-compatible adapter, retention policy and worker, an
+  explicit provider cursor-loss/disconnect gap contract, real
+  Linux/Docker/PostgreSQL restart and corruption certification, and bounded
+  live delivery to the web console.
 - Export metrics and traces through OpenTelemetry and publish the initial
   Prometheus-compatible service/node/operation dashboard contract.
 - Implement rolling update for one node, activation after health and route
@@ -835,10 +848,11 @@ real fault gate passes. Planned rows are not release evidence.
 
 ### 18.1 Immediate E0 backlog
 
-D0 is closed. E0's route desired-state, managed TLS mechanics, and versioned
-complete snapshot transport are implemented through the PostgreSQL, Fleet, and
-node/Gateway boundaries. The remaining changes should land as vertical,
-independently verified slices:
+D0 is closed. E0's route desired-state, managed TLS mechanics, versioned
+complete snapshot transport, Secret injection, and local durable log query path
+are implemented through the PostgreSQL, Fleet, node/Runtime, and Gateway
+boundaries. The remaining changes should land as vertical, independently
+verified slices:
 
 1. Certify the implemented encrypted Secret resource/version API, immutable
    workload bindings, assigned-node mTLS materialization, and late Docker
@@ -846,8 +860,10 @@ independently verified slices:
    add registry-credential binding, automatic restart orchestration,
    end-to-end redaction scans, and the restart-after-version-commit recovery
    gate.
-2. Ordered stdout/stderr chunk ingestion with cursor resume, bounded buffering,
-   checksummed object storage, redaction, retention, and explicit gaps.
+2. Promote the implemented local stdout/stderr path to production: add the
+   S3-compatible object adapter, retention policy/worker, provider
+   cursor-loss/disconnect gap contract, real Linux/Docker/PostgreSQL crash and
+   corruption gates, and bounded live web delivery.
 3. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
 4. Manual rollback through the same immutable revision and operation path.
