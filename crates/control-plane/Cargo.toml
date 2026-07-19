@@ -24,6 +24,7 @@ getrandom.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 http-body-util.workspace = true
+object_store.workspace = true
 rcgen.workspace = true
 reqwest.workspace = true
 rustls.workspace = true

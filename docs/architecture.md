@@ -11,18 +11,19 @@ metadata-only events and idempotency records, typed workload bindings, and late
 Docker environment/file injection. The first-node log slice now projects active
 Runtime targets durably, persists bounded batches before mTLS upload, redacts
 bound Secret values at the Docker boundary, stores verified chunk objects
-through the local adapter, indexes metadata in PostgreSQL, and exposes
-tenant-scoped cursor queries with explicit missing/corrupt gaps. A bounded
-control-plane worker now removes locally stored bodies after the configured
-receipt age while durable `retained` tombstones preserve every cursor position.
-PostgreSQL and offline gates pass, and a dedicated remote Gateway job exercises
-the real managed-TLS path. Later E0 sections remain the accepted design until
-their exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate
-Linux node agent, and a React web application. The first release still requires
-production DNS/CA integration and renewal, real Secret/log crash certification,
-S3-compatible log storage, tombstone compaction, provider cursor-loss recovery,
-update, rollback, live web logs, and clean-host gates before multi-node
-scheduling or hosted assets begin.
+through a typed filesystem or S3-compatible adapter, indexes metadata in
+PostgreSQL, and exposes tenant-scoped cursor queries with explicit
+missing/corrupt gaps. A bounded control-plane worker removes object bodies after
+the configured receipt age while durable `retained` tombstones preserve every
+cursor position. A dedicated digest-pinned MinIO CI job defines the real
+S3-compatible lifecycle gate, and a separate remote Gateway job exercises the
+real managed-TLS path. Later E0 sections remain the accepted design until their
+exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux
+node agent, and a React web application. The first release still requires
+production DNS/CA integration and renewal, full Secret/log Linux, Docker, and
+PostgreSQL crash certification, tombstone compaction, provider cursor-loss
+recovery, update, rollback, live web logs, and clean-host gates before
+multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -354,8 +355,8 @@ the temporary raw Docker text buffer is zeroized before the sanitized chunks
 leave the driver. Provider cursor disappearance and disconnect-to-gap semantics
 still require an explicit Runtime contract and real-provider certification.
 
-For the local object adapter, control-plane `all` and `worker` roles also run a
-bounded retention scan. Eligibility uses the durable Fleet `received_at`
+For either selected object adapter, control-plane `all` and `worker` roles also
+run a bounded retention scan. Eligibility uses the durable Fleet `received_at`
 timestamp, not a node-supplied observation time. The worker first performs an
 idempotent object deletion and only then compare-and-sets `retained_at` on the
 metadata row. A deletion failure leaves active metadata for retry; a metadata
@@ -364,6 +365,15 @@ workers may inspect the same row safely. Persisted batch replays are recognized
 before object writes, so an acknowledged retained batch cannot recreate its
 body. Tombstone metadata remains queryable until a future bounded compaction
 policy is implemented.
+
+The S3-compatible adapter uses conditional create for every immutable object.
+An exact replay compares the existing bytes and returns the original logical
+result; different bytes at the same key are a conflict. Reads enforce the same
+size, schema, report, and checksum validation as the filesystem adapter, and
+deletion is idempotent. Readiness uses a unique write/read/delete probe.
+Credentials are resolved only from configured environment-variable names.
+Production ACL must select the S3 adapter and forbids HTTP endpoints; custom
+HTTP endpoints remain an explicit development-only option.
 
 ## 8. Gateway and edge publication
 
@@ -514,13 +524,14 @@ selects the newest assigned deployment for that revision. `cursor=v1:<sequence>`
 pages strictly after that sequence; omitting the cursor includes sequence zero.
 `limit` is closed to 1 through 256, and an optional
 `stream=stdout|stderr` filter preserves sequence order. Each active object key
-is validated, then its file type, size, JSON schema, report checksum, and
-expected metadata are verified before its body is returned. Deleted and invalid
-objects remain visible as ordered `missing` and `corrupt` gap records. A row
-whose body was removed by the configured retention worker remains visible as a
-`retained` gap without an object-store read. Object-storage unavailability is an
-error rather than a fabricated gap. This is a snapshot query; bounded live
-fan-out and the web log stream remain E0 work.
+is validated, then its bounded size, JSON schema, report checksum, and expected
+metadata are verified before its body is returned. The filesystem adapter also
+rejects non-files and symbolic links. Deleted and invalid objects remain
+visible as ordered `missing` and `corrupt` gap records. A row whose body was
+removed by the configured retention worker remains visible as a `retained` gap
+without an object-store read. Object-storage unavailability is an error rather
+than a fabricated gap. This is a snapshot query; bounded live fan-out and the
+web log stream remain E0 work.
 
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
@@ -595,17 +606,17 @@ selects a BuildKit endpoint, captures provenance, and registers the resulting
 digest. Runtime remains unaware of Dockerfiles, buildpacks, or registry policy.
 
 The implemented first-node log path writes ordered, checksummed report objects
-through an immutable filesystem adapter and keeps node, unit, generation,
-cursor, sequence, observation time, stream, checksum, and object key metadata
-in PostgreSQL. Reads revalidate the object and surface missing or corrupt
-objects without putting log bodies in PostgreSQL. The local retention worker
+through an immutable filesystem or S3-compatible adapter and keeps node, unit,
+generation, cursor, sequence, observation time, stream, checksum, and object key
+metadata in PostgreSQL. Reads revalidate the object and surface missing or
+corrupt objects without putting log bodies in PostgreSQL. The retention worker
 deletes expired bodies first and then records durable `retained_at` tombstones,
-so snapshot queries never silently skip old positions. Production must replace
-the filesystem adapter with S3-compatible storage while preserving those
-object-first retry semantics. Bounded tombstone compaction and live fan-out are
-also still planned. Loki or ClickHouse is introduced only when product
-requirements demand global text search at a volume that the chunk index cannot
-serve.
+so snapshot queries never silently skip old positions. The production profile
+requires HTTPS S3-compatible storage, and the dedicated CI job provisions
+digest-pinned MinIO to exercise the immutable object lifecycle. Bounded
+tombstone compaction, full crash certification, and live fan-out are still
+planned. Loki or ClickHouse is introduced only when product requirements demand
+global text search at a volume that the chunk index cannot serve.
 
 ### 14.2 Middleware deliberately not selected
 

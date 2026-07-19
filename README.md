@@ -97,9 +97,9 @@ API command
 - **Durable Workload Logs**: Project active Runtime targets from the command
   journal, persist one bounded batch before mTLS upload, resume only after an
   exact receipt, redact bound Secret values at the Docker log boundary, and
-  query verified local chunk objects through tenant-scoped cursor pages while
-  a configurable worker deletes expired bodies and preserves explicit missing,
-  corrupt, or retained positions
+  query verified immutable filesystem or S3-compatible chunk objects through
+  tenant-scoped cursor pages while a configurable worker deletes expired bodies
+  and preserves explicit missing, corrupt, or retained positions
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
@@ -122,7 +122,7 @@ API command
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
-| Logs | Restart-safe bounded node shipping, Docker-bound Secret redaction, PostgreSQL metadata, verified local chunk objects, cursor paging, tenant isolation, configurable local body retention, and explicit missing/corrupt/retained gaps are implemented; production S3-compatible storage, tombstone compaction, provider cursor-loss recovery, real crash certification, and live web logs remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, Docker-bound Secret redaction, PostgreSQL metadata, verified filesystem/S3-compatible chunk objects, cursor paging, tenant isolation, configurable body retention, explicit missing/corrupt/retained gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; tombstone compaction, provider cursor-loss recovery, full Linux/Docker/PostgreSQL crash certification, and live web logs remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -230,6 +230,20 @@ deployment and Edge policies are split across independent boundaries:
 | `gateway.connect_timeout_ms` | Connection timeout for the node-local Gateway management API |
 | `gateway.validation_timeout_ms` | Independent deadline for validating one complete snapshot |
 | `gateway.reload_timeout_ms` | Independent deadline for transactionally reloading one snapshot |
+| `logs.storage_provider` | Typed log-object adapter: `local` for development or `s3`; production requires `s3` |
+| `logs.s3_endpoint` | Optional absolute custom S3-compatible endpoint; empty selects the regional AWS endpoint, HTTPS is the default, and HTTP requires the development-only opt-in |
+| `logs.s3_region` | Region used for S3 endpoint selection and request signing |
+| `logs.s3_bucket` | Lowercase alphanumeric-and-hyphen bucket name, between 3 and 63 characters |
+| `logs.s3_prefix` | Nonempty bounded object-key prefix composed of safe path segments |
+| `logs.s3_access_key_env` | Name of the environment variable carrying the S3 access key ID |
+| `logs.s3_secret_key_env` | Name of the environment variable carrying the S3 secret access key |
+| `logs.s3_session_token_env` | Optional environment-variable name for a temporary S3 session token; empty disables it |
+| `logs.s3_allow_http` | Development-only opt-in for an `http` custom endpoint; forbidden by the production profile |
+| `logs.s3_virtual_hosted_style` | Whether S3 requests address the bucket as a virtual host instead of a path segment |
+| `logs.s3_request_timeout_ms` | Timeout for one S3 request; 1 through 300,000 milliseconds |
+| `logs.s3_connect_timeout_ms` | S3 connection timeout; 1 through 60,000 milliseconds and no longer than the request timeout |
+| `logs.s3_retry_timeout_ms` | Overall S3 retry bound; at least the request timeout and at most 300,000 milliseconds |
+| `logs.s3_max_retries` | Maximum S3 retries after the initial request; 0 through 10 |
 | `logs.retention_ms` | Control-plane age from durable receipt before a log object becomes eligible for deletion; 1 minute through 10 years |
 | `logs.retention_poll_ms` | Control-plane retention scan interval; no longer than the retention age or 24 hours |
 | `logs.retention_batch_size` | Maximum metadata rows inspected by one control-plane retention scan; 1 through 10,000 |
@@ -275,13 +289,13 @@ GET /api/v1/organizations/{organizationId}/workloads/{workloadId}/revisions/{rev
 `limit` is between 1 and 256, and `stream` may be `stdout` or `stderr`. Omitting
 `cursor` includes sequence zero; `cursor=v1:0` means strictly after sequence
 zero. A data record carries the provider cursor, sequence, observation time,
-stream, and text. If PostgreSQL metadata points to a deleted or invalid local
-object, the same ordered position is returned as a `gap` with reason `missing`
-or `corrupt`. Once the configured local retention worker deletes an expired
-body, its durable metadata remains at the same position as a `retained` gap and
-the query does not read object storage for that row. Storage unavailability
-remains an API error. The endpoint is snapshot paging, not the still-planned
-live web stream.
+stream, and text. If PostgreSQL metadata points to a deleted or invalid
+filesystem or S3-compatible object, the same ordered position is returned as a
+`gap` with reason `missing` or `corrupt`. Once the configured retention worker
+deletes an expired body, its durable metadata remains at the same position as a
+`retained` gap and the query does not read object storage for that row. Storage
+unavailability remains an API error. The endpoint is snapshot paging, not the
+still-planned live web stream.
 
 See [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) for the complete control
@@ -400,7 +414,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe local workload-log path with body retention are implemented; production certificate automation, Secret/log real-provider crash acceptance, S3 log storage, tombstone compaction, update, rollback, and web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with body retention and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, tombstone compaction, update, rollback, and web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -533,6 +547,15 @@ A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
 cargo test -p a3s-cloud-node-agent --lib \
   gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
   -- --ignored --exact --nocapture --test-threads=1
+
+A3S_CLOUD_TEST_S3_ENDPOINT="http://127.0.0.1:9000" \
+A3S_CLOUD_TEST_S3_REGION="us-east-1" \
+A3S_CLOUD_TEST_S3_BUCKET="a3s-cloud-disposable-test" \
+A3S_CLOUD_TEST_S3_ACCESS_KEY_ID="test-access-key" \
+A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY="test-secret-key" \
+cargo test -p a3s-cloud-control-plane --lib --locked \
+  modules::fleet::infrastructure::s3_log_chunk_store::tests::real_s3_compatible_store_preserves_immutable_log_semantics \
+  -- --ignored --exact --nocapture --test-threads=1
 ```
 
 The first Gateway command verifies route-less snapshot transport and node-local
@@ -543,6 +566,12 @@ dedicated CI job: it generates a private key and CSR on the node, provisions the
 managed certificate, reloads the exact HTTPS snapshot, trusts the fixture CA,
 and reaches a loopback upstream through DNS/SNI. Production DNS and certificate
 authority providers plus automated renewal remain E0 work.
+
+The final S3 command must target a disposable bucket controlled by the test
+operator. The dedicated CI job creates a fresh bucket in digest-pinned MinIO,
+exercises conditional create, exact replay, verified read, idempotent delete,
+and readiness cleanup, then removes the provider container. No credential value
+is stored in ACL configuration.
 
 Run web checks from `web/`:
 

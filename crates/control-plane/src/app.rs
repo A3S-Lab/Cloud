@@ -23,7 +23,7 @@ use crate::modules::fleet::{
     LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, LogRetentionWorker,
     NodeControlApi, NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
     RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
-    VaultCertificateAuthority, VaultKeyEncryptionService,
+    S3LogChunkStore, S3LogChunkStoreOptions, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::identity::domain::repositories::IApiTokenRepository;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
@@ -64,7 +64,10 @@ use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
 use crate::server::ControlPlane;
 use crate::{
-    config::{EventProviderKind, ProcessRole, SecurityProfile, SecurityProviderKind},
+    config::{
+        EventProviderKind, LogStorageProviderKind, ProcessRole, SecurityProfile,
+        SecurityProviderKind,
+    },
     infrastructure::{connect_and_migrate, postgres_health, PostgresBootstrapError},
     CloudConfig,
 };
@@ -112,10 +115,7 @@ pub async fn build_application(
     let event_publisher = event_publisher(&config).await?;
     let (certificate_authority, key_encryption) = security_providers(&config)?;
     let gateway_certificate_authority = gateway_certificate_authority(&config)?;
-    let log_chunks: Arc<dyn ILogChunkStore> = Arc::new(
-        LocalLogChunkStore::new(std::path::Path::new(&config.security.state_dir).join("logs"))
-            .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
-    );
+    let log_chunks = log_chunk_store(&config)?;
     let bootstrap_credential = BootstrapCredential::new(&config.bootstrap_token()?)
         .map_err(ControlPlaneStartupError::Auth)?;
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
@@ -850,6 +850,41 @@ fn gateway_certificate_authority(
             .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
         )),
         SecurityProfile::Production => Ok(Arc::new(UnavailableGatewayCertificateAuthority)),
+    }
+}
+
+fn log_chunk_store(
+    config: &CloudConfig,
+) -> std::result::Result<Arc<dyn ILogChunkStore>, ControlPlaneStartupError> {
+    match config.logs.storage_provider {
+        LogStorageProviderKind::Local => Ok(Arc::new(
+            LocalLogChunkStore::new(std::path::Path::new(&config.security.state_dir).join("logs"))
+                .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
+        )),
+        LogStorageProviderKind::S3 => {
+            let credentials = config.s3_log_credentials()?.ok_or_else(|| {
+                ControlPlaneStartupError::LogStorage("S3 credentials were not resolved".into())
+            })?;
+            Ok(Arc::new(
+                S3LogChunkStore::new(S3LogChunkStoreOptions {
+                    endpoint: (!config.logs.s3_endpoint.is_empty())
+                        .then(|| config.logs.s3_endpoint.clone()),
+                    region: config.logs.s3_region.clone(),
+                    bucket: config.logs.s3_bucket.clone(),
+                    prefix: config.logs.s3_prefix.clone(),
+                    access_key_id: credentials.access_key_id,
+                    secret_access_key: credentials.secret_access_key,
+                    session_token: credentials.session_token,
+                    allow_http: config.logs.s3_allow_http,
+                    virtual_hosted_style: config.logs.s3_virtual_hosted_style,
+                    request_timeout: Duration::from_millis(config.logs.s3_request_timeout_ms),
+                    connect_timeout: Duration::from_millis(config.logs.s3_connect_timeout_ms),
+                    retry_timeout: Duration::from_millis(config.logs.s3_retry_timeout_ms),
+                    max_retries: config.logs.s3_max_retries,
+                })
+                .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
+            ))
+        }
     }
 }
 

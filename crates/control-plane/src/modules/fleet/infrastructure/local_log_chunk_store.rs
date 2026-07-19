@@ -1,16 +1,16 @@
+use super::log_chunk_object::{
+    prepare_log_object, validate_expected_checksum, validate_object_key, verify_log_object,
+    MAX_LOG_OBJECT_BYTES,
+};
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
 };
 use a3s_cloud_contracts::NodeLogChunkReport;
 use async_trait::async_trait;
-use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
-
-// A valid one MiB text chunk can expand to six bytes per byte when JSON escaped.
-const MAX_LOG_OBJECT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct LocalLogChunkStore {
@@ -27,15 +27,6 @@ impl LocalLogChunkStore {
         secure_directory(&root.join(".tmp"))?;
         Ok(Self { root })
     }
-
-    fn object_key(node_id: Uuid, report: &NodeLogChunkReport) -> String {
-        let unit_digest = format!("{:x}", Sha256::digest(report.unit_id.as_bytes()));
-        let cursor_digest = format!("{:x}", Sha256::digest(report.chunk.cursor.as_bytes()));
-        format!(
-            "nodes/{node_id}/units/{unit_digest}/generations/{}/chunks/{:020}-{cursor_digest}.json",
-            report.generation, report.chunk.sequence
-        )
-    }
 }
 
 #[async_trait]
@@ -47,15 +38,7 @@ impl ILogChunkStore for LocalLogChunkStore {
         _ordinal: u16,
         report: &NodeLogChunkReport,
     ) -> Result<StoredLogChunk, LogChunkStoreError> {
-        report.validate().map_err(LogChunkStoreError::Invalid)?;
-        if node_id.is_nil() {
-            return Err(LogChunkStoreError::Invalid(
-                "node ID must not be nil".into(),
-            ));
-        }
-        let object_key = Self::object_key(node_id, report);
-        let body = serde_json::to_vec(report)
-            .map_err(|error| LogChunkStoreError::Invalid(error.to_string()))?;
+        let (object_key, body) = prepare_log_object(node_id, report)?;
         let root = self.root.clone();
         let write_key = object_key.clone();
         let created = tokio::task::spawn_blocking(move || write_once(&root, &write_key, &body))
@@ -75,11 +58,7 @@ impl ILogChunkStore for LocalLogChunkStore {
         expected_checksum: &str,
     ) -> Result<RetrievedLogChunk, LogChunkStoreError> {
         validate_object_key(object_key)?;
-        if !is_sha256(expected_checksum) {
-            return Err(LogChunkStoreError::Invalid(
-                "expected log checksum is invalid".into(),
-            ));
-        }
+        validate_expected_checksum(expected_checksum)?;
         let root = self.root.clone();
         let object_key = object_key.to_owned();
         let expected_checksum = expected_checksum.to_owned();
@@ -154,14 +133,7 @@ fn read_verified(
         return Ok(RetrievedLogChunk::Corrupt);
     }
     let body = fs::read(path).map_err(unavailable("read log object"))?;
-    let report = match serde_json::from_slice::<NodeLogChunkReport>(&body) {
-        Ok(report) => report,
-        Err(_) => return Ok(RetrievedLogChunk::Corrupt),
-    };
-    if report.validate().is_err() || report.checksum != expected_checksum {
-        return Ok(RetrievedLogChunk::Corrupt);
-    }
-    Ok(RetrievedLogChunk::Found(report))
+    verify_log_object(&body, expected_checksum)
 }
 
 fn write_once(root: &Path, object_key: &str, body: &[u8]) -> Result<bool, LogChunkStoreError> {
@@ -214,31 +186,6 @@ fn compare_existing(path: &Path, expected: &[u8]) -> Result<(), LogChunkStoreErr
     } else {
         Err(LogChunkStoreError::Conflict(path.display().to_string()))
     }
-}
-
-fn validate_object_key(object_key: &str) -> Result<(), LogChunkStoreError> {
-    let path = Path::new(object_key);
-    if object_key.is_empty()
-        || object_key.len() > 4096
-        || path.is_absolute()
-        || path
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err(LogChunkStoreError::Invalid(
-            "log object key is invalid".into(),
-        ));
-    }
-    Ok(())
-}
-
-fn is_sha256(value: &str) -> bool {
-    value.strip_prefix("sha256:").is_some_and(|hex| {
-        hex.len() == 64
-            && hex
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    })
 }
 
 fn secure_directory(path: &Path) -> Result<(), LogChunkStoreError> {

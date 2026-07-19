@@ -325,6 +325,13 @@ tables directly. Audit records are append-only and separate from event delivery.
 - PostgreSQL stores ordering and integrity metadata only. The log report body is
   stored as an immutable object and verified again before a tenant query returns
   its text.
+- Every object adapter enforces create-once semantics. Exact byte replay is
+  idempotent, while different bytes at the same derived object key are a
+  conflict; reads revalidate the bounded body, report schema, and expected
+  checksum.
+- Development may use the filesystem adapter. The production security profile
+  requires HTTPS S3-compatible storage selected through typed ACL, with
+  credential values supplied only through named environment variables.
 - Body retention is based on the control plane's durable receipt time. The
   worker deletes the object first and records `retained_at` only after that
   idempotent deletion succeeds; deletion or metadata-commit failures remain
@@ -459,7 +466,7 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor and pending upload | Node-agent secure state, keyed by unit and generation |
 | Log chunk ordering, cursor, stream, checksum, object key, and retained tombstone | PostgreSQL Fleet telemetry tables |
-| Log chunk report bodies | Immutable object storage; filesystem adapter for development and S3-compatible storage for production |
+| Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |

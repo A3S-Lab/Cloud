@@ -2,6 +2,7 @@ use a3s_acl::{Block, Document, Value};
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::Path;
+use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessRole {
@@ -111,8 +112,40 @@ pub struct RegistryConfig {
     pub insecure_hosts: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogStorageProviderKind {
+    Local,
+    S3,
+}
+
+impl LogStorageProviderKind {
+    fn parse(value: &str) -> Result<Self, ConfigError> {
+        match value {
+            "local" => Ok(Self::Local),
+            "s3" => Ok(Self::S3),
+            _ => Err(ConfigError::Invalid(format!(
+                "logs.storage_provider {value:?} must be local or s3"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogsConfig {
+    pub storage_provider: LogStorageProviderKind,
+    pub s3_endpoint: String,
+    pub s3_region: String,
+    pub s3_bucket: String,
+    pub s3_prefix: String,
+    pub s3_access_key_env: String,
+    pub s3_secret_key_env: String,
+    pub s3_session_token_env: String,
+    pub s3_allow_http: bool,
+    pub s3_virtual_hosted_style: bool,
+    pub s3_request_timeout_ms: u64,
+    pub s3_connect_timeout_ms: u64,
+    pub s3_retry_timeout_ms: u64,
+    pub s3_max_retries: usize,
     pub retention_ms: u64,
     pub retention_poll_ms: u64,
     pub retention_batch_size: usize,
@@ -279,7 +312,25 @@ impl CloudConfig {
         let logs = one_block(&document, "logs")?;
         validate_block(
             logs,
-            &["retention_ms", "retention_poll_ms", "retention_batch_size"],
+            &[
+                "storage_provider",
+                "s3_endpoint",
+                "s3_region",
+                "s3_bucket",
+                "s3_prefix",
+                "s3_access_key_env",
+                "s3_secret_key_env",
+                "s3_session_token_env",
+                "s3_allow_http",
+                "s3_virtual_hosted_style",
+                "s3_request_timeout_ms",
+                "s3_connect_timeout_ms",
+                "s3_retry_timeout_ms",
+                "s3_max_retries",
+                "retention_ms",
+                "retention_poll_ms",
+                "retention_batch_size",
+            ],
         )?;
         let edge = one_block(&document, "edge")?;
         validate_block(
@@ -380,6 +431,23 @@ impl CloudConfig {
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
             },
             logs: LogsConfig {
+                storage_provider: LogStorageProviderKind::parse(&string(
+                    logs,
+                    "storage_provider",
+                )?)?,
+                s3_endpoint: string(logs, "s3_endpoint")?,
+                s3_region: string(logs, "s3_region")?,
+                s3_bucket: string(logs, "s3_bucket")?,
+                s3_prefix: string(logs, "s3_prefix")?,
+                s3_access_key_env: string(logs, "s3_access_key_env")?,
+                s3_secret_key_env: string(logs, "s3_secret_key_env")?,
+                s3_session_token_env: string(logs, "s3_session_token_env")?,
+                s3_allow_http: boolean(logs, "s3_allow_http")?,
+                s3_virtual_hosted_style: boolean(logs, "s3_virtual_hosted_style")?,
+                s3_request_timeout_ms: integer(logs, "s3_request_timeout_ms")?,
+                s3_connect_timeout_ms: integer(logs, "s3_connect_timeout_ms")?,
+                s3_retry_timeout_ms: integer(logs, "s3_retry_timeout_ms")?,
+                s3_max_retries: integer(logs, "s3_max_retries")?,
                 retention_ms: integer(logs, "retention_ms")?,
                 retention_poll_ms: integer(logs, "retention_poll_ms")?,
                 retention_batch_size: integer(logs, "retention_batch_size")?,
@@ -575,6 +643,42 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        for (label, value) in [
+            ("s3_access_key_env", &self.logs.s3_access_key_env),
+            ("s3_secret_key_env", &self.logs.s3_secret_key_env),
+        ] {
+            if !valid_env_name(value) {
+                return Err(ConfigError::Invalid(format!(
+                    "logs.{label} must be an uppercase environment variable name"
+                )));
+            }
+        }
+        if !self.logs.s3_session_token_env.is_empty()
+            && !valid_env_name(&self.logs.s3_session_token_env)
+        {
+            return Err(ConfigError::Invalid(
+                "logs.s3_session_token_env must be empty or an uppercase environment variable name"
+                    .into(),
+            ));
+        }
+        if !valid_s3_region(&self.logs.s3_region)
+            || !valid_s3_bucket(&self.logs.s3_bucket)
+            || !valid_object_prefix(&self.logs.s3_prefix)
+            || !valid_s3_endpoint(&self.logs.s3_endpoint, self.logs.s3_allow_http)
+            || self.logs.s3_request_timeout_ms == 0
+            || self.logs.s3_request_timeout_ms > 300_000
+            || self.logs.s3_connect_timeout_ms == 0
+            || self.logs.s3_connect_timeout_ms > 60_000
+            || self.logs.s3_connect_timeout_ms > self.logs.s3_request_timeout_ms
+            || self.logs.s3_retry_timeout_ms < self.logs.s3_request_timeout_ms
+            || self.logs.s3_retry_timeout_ms > 300_000
+            || self.logs.s3_max_retries > 10
+        {
+            return Err(ConfigError::Invalid(
+                "logs S3 storage requires a safe endpoint, region, bucket, prefix, 1-300000 ms request/retry bounds, a connect timeout no longer than the request timeout, and at most 10 retries"
+                    .into(),
+            ));
+        }
         let entrypoint = self
             .edge
             .entrypoint_address
@@ -672,6 +776,13 @@ impl CloudConfig {
                 "production security requires external Vault PKI and Transit providers".into(),
             ));
         }
+        if self.security.profile == SecurityProfile::Production
+            && (self.logs.storage_provider != LogStorageProviderKind::S3 || self.logs.s3_allow_http)
+        {
+            return Err(ConfigError::Invalid(
+                "production security requires HTTPS S3-compatible log storage".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -742,6 +853,40 @@ impl CloudConfig {
         }
         Ok(Some((address, token)))
     }
+
+    pub(crate) fn s3_log_credentials(&self) -> Result<Option<S3LogCredentials>, ConfigError> {
+        if self.logs.storage_provider == LogStorageProviderKind::Local {
+            return Ok(None);
+        }
+        let access_key_id = required_environment(&self.logs.s3_access_key_env)?;
+        let secret_access_key = required_environment(&self.logs.s3_secret_key_env)?;
+        let session_token = if self.logs.s3_session_token_env.is_empty() {
+            None
+        } else {
+            Some(required_environment(&self.logs.s3_session_token_env)?)
+        };
+        if !valid_credential(&access_key_id, 1024)
+            || !valid_credential(&secret_access_key, 8192)
+            || session_token
+                .as_deref()
+                .is_some_and(|token| !valid_credential(token, 8192))
+        {
+            return Err(ConfigError::Invalid(
+                "S3 credential environment variables contain invalid values".into(),
+            ));
+        }
+        Ok(Some(S3LogCredentials {
+            access_key_id,
+            secret_access_key,
+            session_token,
+        }))
+    }
+}
+
+pub(crate) struct S3LogCredentials {
+    pub(crate) access_key_id: String,
+    pub(crate) secret_access_key: String,
+    pub(crate) session_token: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -796,6 +941,57 @@ fn valid_provider_segment(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn valid_s3_region(value: &str) -> bool {
+    value.len() <= 64 && valid_provider_segment(value)
+}
+
+fn valid_s3_bucket(value: &str) -> bool {
+    (3..=63).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && value
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
+}
+
+fn valid_object_prefix(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 1024
+        && value.split('/').all(|segment| {
+            !segment.is_empty()
+                && !matches!(segment, "." | "..")
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        })
+}
+
+fn valid_s3_endpoint(value: &str, allow_http: bool) -> bool {
+    if value.is_empty() {
+        return !allow_http;
+    }
+    let Ok(endpoint) = Url::parse(value) else {
+        return false;
+    };
+    (endpoint.scheme() == "https" || allow_http && endpoint.scheme() == "http")
+        && endpoint.host_str().is_some()
+        && endpoint.username().is_empty()
+        && endpoint.password().is_none()
+        && endpoint.query().is_none()
+        && endpoint.fragment().is_none()
+        && matches!(endpoint.path(), "" | "/")
+}
+
+fn valid_credential(value: &str, max_len: usize) -> bool {
+    !value.is_empty() && value.len() <= max_len && !value.contains(['\0', '\r', '\n'])
 }
 
 fn required_environment(name: &str) -> Result<String, ConfigError> {
@@ -871,6 +1067,14 @@ where
         .map_err(|_| ConfigError::Invalid(format!("{}.{} is out of range", block.name, field)))
 }
 
+fn boolean(block: &Block, field: &str) -> Result<bool, ConfigError> {
+    block
+        .attributes
+        .get(field)
+        .and_then(Value::as_bool)
+        .ok_or_else(|| ConfigError::Invalid(format!("{}.{} must be a boolean", block.name, field)))
+}
+
 fn string_list(block: &Block, field: &str) -> Result<Vec<String>, ConfigError> {
     let values = match block.attributes.get(field) {
         Some(Value::List(values)) => values,
@@ -940,6 +1144,20 @@ registry {
   insecure_hosts = ["127.0.0.1:5000"]
 }
 logs {
+  storage_provider = "local"
+  s3_endpoint = ""
+  s3_region = "us-east-1"
+  s3_bucket = "a3s-cloud-logs"
+  s3_prefix = "logs"
+  s3_access_key_env = "A3S_CLOUD_S3_ACCESS_KEY_ID"
+  s3_secret_key_env = "A3S_CLOUD_S3_SECRET_ACCESS_KEY"
+  s3_session_token_env = ""
+  s3_allow_http = false
+  s3_virtual_hosted_style = false
+  s3_request_timeout_ms = 30000
+  s3_connect_timeout_ms = 5000
+  s3_retry_timeout_ms = 60000
+  s3_max_retries = 3
   retention_ms = 604800000
   retention_poll_ms = 60000
   retention_batch_size = 256
@@ -986,6 +1204,7 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
@@ -1024,6 +1243,49 @@ security {
         assert!(CloudConfig::parse(
             &VALID.replace("retention_poll_ms = 60000", "retention_poll_ms = 604800001")
         )
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "s3_endpoint = \"\"",
+            "s3_endpoint = \"http://object-store\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "s3_bucket = \"a3s-cloud-logs\"",
+            "s3_bucket = \"Invalid_Bucket\""
+        ))
+        .is_err());
+
+        let development_s3 = VALID
+            .replace("storage_provider = \"local\"", "storage_provider = \"s3\"")
+            .replace(
+                "s3_endpoint = \"\"",
+                "s3_endpoint = \"http://127.0.0.1:9000\"",
+            )
+            .replace("s3_allow_http = false", "s3_allow_http = true");
+        assert!(CloudConfig::parse(&development_s3).is_ok());
+
+        let production_s3 = VALID
+            .replace("profile = \"development\"", "profile = \"production\"")
+            .replace(
+                "certificate_authority = \"local\"",
+                "certificate_authority = \"vault\"",
+            )
+            .replace("key_encryption = \"local\"", "key_encryption = \"vault\"")
+            .replace("storage_provider = \"local\"", "storage_provider = \"s3\"");
+        assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(
+            &production_s3
+                .replace(
+                    "s3_endpoint = \"\"",
+                    "s3_endpoint = \"http://127.0.0.1:9000\""
+                )
+                .replace("s3_allow_http = false", "s3_allow_http = true")
+        )
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "s3_endpoint = \"\"",
+            "s3_endpoint = \"https://credential@objects.example\""
+        ))
         .is_err());
     }
 }
