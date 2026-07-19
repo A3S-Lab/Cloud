@@ -13,9 +13,7 @@ use crate::modules::edge::{
     VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
-use crate::modules::fleet::domain::services::{
-    ICertificateAuthority, IKeyEncryptionService, ILogChunkStore,
-};
+use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
     EnrollNodeHandler, FleetModule, GetNodeHandler, IGatewayAcknowledgementProjector,
@@ -46,6 +44,7 @@ use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, ListEnvironmentsHandler, ListProjectsHandler,
     PostgresProjectsRepository, ProjectsModule,
 };
+use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::IOciArtifactResolver;
@@ -619,7 +618,7 @@ fn infrastructure_readiness(
     events: Arc<dyn IEventPublisher>,
     certificate_authority: Arc<dyn ICertificateAuthority>,
     gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
-    key_encryption: Arc<dyn IKeyEncryptionService>,
+    key_encryption: Arc<dyn ISecretEncryptionService>,
     log_chunks: Arc<dyn ILogChunkStore>,
 ) -> HealthModule {
     HealthModule::new("readiness")
@@ -701,7 +700,7 @@ fn infrastructure_readiness(
 
 type SecurityProviders = (
     Arc<dyn ICertificateAuthority>,
-    Arc<dyn IKeyEncryptionService>,
+    Arc<dyn ISecretEncryptionService>,
 );
 
 fn security_providers(
@@ -744,7 +743,7 @@ fn security_providers(
                 )
             }
         };
-    let key_encryption: Arc<dyn IKeyEncryptionService> = match config.security.key_encryption {
+    let key_encryption: Arc<dyn ISecretEncryptionService> = match config.security.key_encryption {
         SecurityProviderKind::Local => Arc::new(
             LocalKeyEncryptionService::load_or_create(
                 std::path::Path::new(&config.security.state_dir).join("key-encryption.key"),
