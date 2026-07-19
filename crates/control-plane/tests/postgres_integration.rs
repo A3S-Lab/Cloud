@@ -698,8 +698,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         },
     )?;
     let delivered = relay.run_once().await?;
-    assert_eq!(delivered.claimed, 8);
-    assert_eq!(delivered.published, 8);
+    let initial_event_count = usize::try_from(outbox_events)?;
+    assert_eq!(delivered.claimed, initial_event_count);
+    assert_eq!(delivered.published, initial_event_count);
     assert!(delivered.failures.is_empty());
     assert_eq!(relay.run_once().await?.claimed, 0);
 
@@ -744,12 +745,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     tokio::time::sleep(Duration::from_millis(5)).await;
     assert_eq!(relay.run_once().await?.published, 1);
     let local_events = memory_bus.list_events(None, 100).await?;
-    assert_eq!(local_events.len(), 10);
+    assert_eq!(local_events.len(), initial_event_count + 2);
     let unique_event_ids = local_events
         .iter()
         .map(|event| event.id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(unique_event_ids.len(), 9);
+    assert_eq!(unique_event_ids.len(), initial_event_count + 1);
 
     if let Ok(nats_url) = std::env::var("A3S_CLOUD_TEST_NATS_URL") {
         let nats_created = app
