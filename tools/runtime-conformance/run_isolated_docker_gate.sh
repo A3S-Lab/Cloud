@@ -193,6 +193,8 @@ postgres=a3s-runtime-postgres-$suffix
 nats=a3s-runtime-nats-$suffix
 network=a3s-runtime-provider-net-$suffix
 provider_host=unix://$socket_dir/docker.sock
+secret_memory_dir=""
+provider_secret_mount=()
 if [[ -z $evidence ]]; then
     if [[ $suite == provider ]]; then
         evidence=/tmp/a3s-cloud-docker-full-isolated-$run_id
@@ -216,6 +218,14 @@ ttl_pid=""
 cleanup_failed=0
 gate_completed=0
 mkdir -p "$evidence" "$provider_root" "$data_dir" "$socket_dir" "$target_dir" "$registry_data"
+if [[ $suite == cloud ]]; then
+    secret_memory_dir=/dev/shm/a3s-cloud/$run_id
+    mkdir -p "$secret_memory_dir"
+    chmod 700 "$secret_memory_dir"
+    [[ $(findmnt -rn -T "$secret_memory_dir" -o FSTYPE) == tmpfs ]] ||
+        die "Cloud Secret material directory is not tmpfs-backed"
+    provider_secret_mount=(--mount "type=bind,source=$secret_memory_dir,target=$secret_memory_dir")
+fi
 exec > >(tee -a "$evidence/runner.log") 2>&1
 
 log() {
@@ -343,6 +353,18 @@ cleanup_resources() {
             cleanup_failed=1
             log "cleanup-error=loop-still-attached loop=$loop_device"
         fi
+        if [[ -n $secret_memory_dir ]]; then
+            find "$secret_memory_dir" -type f -print >"$evidence/secret-files-after-test.paths"
+            if [[ -s $evidence/secret-files-after-test.paths ]]; then
+                cleanup_failed=1
+                log "cleanup-error=secret-files-remain"
+            fi
+            rm -rf "$secret_memory_dir"
+            if [[ -e $secret_memory_dir ]]; then
+                cleanup_failed=1
+                log "cleanup-error=secret-memory-directory-remains"
+            fi
+        fi
         mountpoint -q "$data_dir" || rm -rf "$provider_root"
 
         docker ps -aq --filter "label=a3s.runtime.conformance.run-id=$run_id" | sort >"$evidence/target-containers-after.ids"
@@ -407,6 +429,7 @@ printf '%s\n' "$NATS_IMAGE" >"$evidence/nats-image.txt"
 printf '%s\n' "$WORKLOAD_IMAGE" >"$evidence/workload-image.txt"
 printf '%s\n' "$source_root" >"$evidence/source-root.txt"
 printf '%s\n' "$target_dir" >"$evidence/cargo-target-dir.txt"
+printf '%s\n' "$secret_memory_dir" >"$evidence/secret-memory-dir.txt"
 git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-before.txt"
 git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-before.txt"
 record_host_inventory before
@@ -531,6 +554,7 @@ docker run -d --pull=never --name "$provider" --network "container:$keeper" \
     --privileged --cpus 2 --memory 4g --pids-limit 2048 \
     --mount "type=bind,source=$data_dir,target=/var/lib/docker" \
     --mount "type=bind,source=$socket_dir,target=/run/a3s-provider" \
+    "${provider_secret_mount[@]}" \
     --entrypoint /bin/sh "$PROVIDER_IMAGE" \
     -ceu '
         root=/sys/fs/cgroup
@@ -561,6 +585,7 @@ docker run -d --pull=never --name "$provider" --network "container:$keeper" \
     timeout --signal=TERM --kill-after=10s 60s docker network rm "$network" || true
     mountpoint -q "$data_dir" && umount "$data_dir" || true
     [[ -z $loop_device ]] || ! losetup "$loop_device" >/dev/null 2>&1 || losetup -d "$loop_device" || true
+    [[ -z $secret_memory_dir ]] || rm -rf "$secret_memory_dir"
     mountpoint -q "$data_dir" || rm -rf "$provider_root"
 ) >"$evidence/ttl.log" 2>&1 &
 ttl_pid=$!
@@ -645,6 +670,7 @@ else
             RUST_BACKTRACE=1 \
             A3S_CLOUD_TEST_DOCKER=1 \
             A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
             A3S_CLOUD_TEST_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@$postgres_ip:5432/postgres" \
             A3S_CLOUD_TEST_NATS_URL="nats://$nats_ip:4222" \
             CARGO_TARGET_DIR="$target_dir" \
@@ -662,6 +688,7 @@ else
             RUST_BACKTRACE=1 \
             A3S_CLOUD_TEST_DOCKER=1 \
             A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
             CARGO_TARGET_DIR="$target_dir" \
             "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
                 -p a3s-cloud-control-plane \

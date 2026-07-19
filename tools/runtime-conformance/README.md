@@ -75,7 +75,12 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
 The Cloud suite adds digest-pinned PostgreSQL and NATS services. It runs
 `postgres_foundation_is_migrated_atomic_and_idempotent`, which covers the
 persisted projection, command journal, process restart, JetStream redelivery,
-reconciliation, log transport, cancellation, and cleanup path, followed by
+reconciliation, cancellation, and cleanup path. It also binds a run-specific
+tmpfs Secret directory into the nested provider and exercises real
+PostgreSQL-backed Secret authorization/decryption, Docker environment and
+`0400` file injection, provider-boundary stdout/stderr redaction, immutable
+filesystem log objects, PostgreSQL metadata, reconstructed-adapter exact batch
+replay, REST readback, and post-test Secret-file cleanup. The suite then runs
 `permanently_unhealthy_real_docker_update_preserves_healthy_revision` against
 the real isolated Docker provider.
 
@@ -117,13 +122,17 @@ Both suites retain:
 - provider build, pull, test, inspect, and daemon logs;
 - provider inventories before and after conformance;
 - host container, volume, network, loop-device, mount, and Docker-netns deltas;
-- provider/keeper network namespace identities across every restart; and
+- provider/keeper network namespace identities across every restart;
+- the run-specific tmpfs Secret path and any post-test Secret-file findings;
+  and
 - cleanup logs plus targeted post-cleanup leak inventories.
 
 Certification succeeds only when the exact-SHA source worktrees remain clean,
 the provider inventory returns to its baseline, every host inventory delta is
 empty, the TTL process exits, and the provider root, loop device, mount, and
-Docker network namespace leave no residue.
+Docker network namespace leave no residue. The Cloud suite additionally
+requires its run-specific tmpfs Secret directory to contain no files before
+targeted removal.
 
 Default Docker network IDs may rotate across a provider restart. The runner
 records that rotation, but leak certification compares stable network semantics

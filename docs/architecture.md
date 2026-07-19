@@ -8,11 +8,13 @@ provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
 acknowledgement projection. It also has tenant-scoped Secret identities,
 immutable encrypted versions, rotation and version revocation APIs, and
 metadata-only events and idempotency records, typed workload bindings, and late
-Docker environment/file injection. The first-node log slice now projects active
-Runtime targets durably, persists bounded batches before mTLS upload, redacts
-bound Secret values at the Docker boundary, stores verified chunk objects
-through a typed filesystem or S3-compatible adapter, indexes metadata in
-PostgreSQL, and exposes tenant-scoped cursor queries with explicit
+Docker environment/file injection. A dedicated Linux acceptance gate now uses
+real PostgreSQL authorization/decryption and Docker to prove active-version
+environment and `0400` tmpfs-file injection. The first-node log slice now
+projects active Runtime targets durably, persists bounded batches before mTLS
+upload, redacts bound Secret values at the Docker boundary, stores verified
+chunk objects through a typed filesystem or S3-compatible adapter, indexes
+metadata in PostgreSQL, and exposes tenant-scoped cursor queries with explicit
 provider/missing/corrupt gaps. Typed Runtime cursor-loss and source-disconnect
 boundaries are persisted and replayed by the node, stored atomically with batch
 headers in PostgreSQL, and merged into the same sequence pages and bounded
@@ -22,13 +24,16 @@ cursor position. An independently configured bounded worker later replaces old
 per-chunk tombstones with coalesced durable sequence ranges, and queries expose
 those ranges as explicit `compacted` gaps. A dedicated digest-pinned MinIO CI
 job defines the real S3-compatible lifecycle gate, and a separate remote
-Gateway job exercises the real managed-TLS path. Later E0 sections remain the
-accepted design until their exit gates pass. A3S Cloud ships as a Rust modular
-monolith, a separate Linux node agent, and a React web application. The first
-release still requires production DNS/CA integration and renewal, full
-Secret/log Linux, Docker, and PostgreSQL crash certification, update, rollback,
-the remaining web timeline, and clean-host gates before multi-node scheduling
-or hosted assets begin.
+Gateway job exercises the real managed-TLS path. The Linux acceptance gate also
+captures real Docker stdout/stderr after redaction, persists immutable
+filesystem objects and PostgreSQL metadata, reconstructs the adapters for exact
+batch replay, and reads the sanitized records through the REST API. Later E0
+sections remain the accepted design until their exit gates pass. A3S Cloud
+ships as a Rust modular monolith, a separate Linux node agent, and a React web
+application. The first release still requires production DNS/CA integration
+and renewal, Secret/log process-death and corruption certification, automatic
+Secret restart orchestration, update, rollback, the remaining web timeline,
+and clean-host gates before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -363,6 +368,18 @@ absent, including an explicit Docker 404 during the read, returns
 `source_disconnected`; transient Docker transport and availability errors stay
 retryable and never become gaps.
 
+The Linux Secret/log acceptance path binds one active encrypted PostgreSQL
+Secret version to both an environment variable and a `0400` file. The workload
+proves both values agree without embedding plaintext in its Runtime spec,
+emits the value on real stdout and stderr, and verifies that only redaction
+markers leave the Docker driver. It then writes the sanitized batch through the
+production PostgreSQL metadata repository and immutable filesystem object
+adapter, reconstructs both adapters and the handler, verifies exact replay, and
+queries the same sanitized records through the tenant-authorized REST API. The
+gate scans those durable log objects for the bound plaintext and requires its
+run-specific tmpfs Secret root to contain no files after cleanup. This is
+success-path acceptance, not provider or control-plane process-death injection.
+
 The node validates the discontinuity's exact unit, generation, and requested
 cursor, assigns the next monotonic Cloud sequence, and includes the gap in the
 same durable replay protocol as chunks. An acknowledged gap clears the provider
@@ -667,10 +684,11 @@ digest-pinned MinIO to exercise the immutable object lifecycle. A separate
 bounded worker compacts aged tombstones into coalesced sequence ranges while
 preserving batch replay and durable sequence watermarks. Provider cursor loss
 and source disconnects use typed Runtime errors, durable node replay, and
-ordered PostgreSQL gap metadata without creating object bodies. Full crash
-certification is still planned. Loki or ClickHouse is introduced only when
-product requirements demand global text search at a volume that the chunk
-index cannot serve.
+ordered PostgreSQL gap metadata without creating object bodies. Full crash and
+corruption certification is still planned; the real Docker Secret/log success
+path and exact durable batch replay are covered independently. Loki or
+ClickHouse is introduced only when product requirements demand global text
+search at a volume that the chunk index cannot serve.
 
 ### 14.2 Middleware deliberately not selected
 

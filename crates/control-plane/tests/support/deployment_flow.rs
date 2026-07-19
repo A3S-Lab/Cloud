@@ -1,21 +1,31 @@
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
-    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
-    RuntimeServiceEndpoint,
+    CloudSecretReference, DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest,
+    NodeCommandOutcome, NodeCommandResult, NodeHeartbeat, NodeLogChunkBatch, NodeLogChunkReport,
+    NodeObservationBatch, RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::fleet::domain::entities::EnrollmentToken;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::services::ILogChunkStore;
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName,
 };
-use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
+use a3s_cloud_control_plane::modules::fleet::{
+    LocalKeyEncryptionService, LocalLogChunkStore, PostgresNodeRepository, RecordNodeLogChunks,
+    RecordNodeLogChunksHandler,
+};
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationReconciler, OperationStatus,
     PostgresOperationRepository, ReconcileOperationsHandler,
 };
+use a3s_cloud_control_plane::modules::secrets::{
+    ISecretEncryptionService, ISecretRepository, PostgresSecretRepository, ResolveSecretMaterial,
+    ResolveSecretMaterialHandler,
+};
+use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DeploymentId, EnrollmentTokenId, IdempotencyRequest, NodeId, OperationId, OrganizationId,
 };
@@ -27,14 +37,15 @@ use a3s_cloud_control_plane::modules::workloads::{
     WorkloadRuntimeReconciler,
 };
 use a3s_cloud_node_agent::{
-    CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeRuntimeBinding,
+    CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeControlClientError,
+    NodeRuntimeBinding, NodeSecretTransport, SecretMaterial,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeActionRequest,
     RuntimeCapabilities, RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation,
-    RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
-    TransportProtocol,
+    RuntimeHealthState, RuntimeInspection, RuntimeLogQuery, RuntimeLogStream, RuntimeObservation,
+    RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, TransportProtocol,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
@@ -42,7 +53,9 @@ use a3s_runtime::{
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -52,6 +65,8 @@ pub async fn exercise_deployment_flow(
     postgres_url: &str,
     organization_uuid: Uuid,
     response: &Value,
+    security_state_dir: &Path,
+    secret_plaintext: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
@@ -131,27 +146,44 @@ pub async fn exercise_deployment_flow(
     };
     let mut docker_runtime: Option<Arc<dyn RuntimeClient>> = None;
     let mut docker_state_directory = None;
+    let mut docker_secret_directory = None;
     let (observation, acknowledgement, observed_at) = if docker_tests_enabled() {
         let state_directory = tempfile::tempdir()?;
+        let namespace = format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]);
+        let secret_memory_dir = docker_secret_memory_dir();
         let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
             socket: docker_socket(),
-            namespace: format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]),
+            namespace: namespace.clone(),
             operation_timeout_ms: 30_000,
-            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
+            secret_memory_dir: secret_memory_dir.clone(),
         })?);
         driver.bind_node(node_id.as_uuid()).await?;
+        let secret_workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
+        let secret_transport: Arc<dyn NodeSecretTransport> =
+            Arc::new(PostgresSecretTransport::new(
+                executor,
+                secret_workloads,
+                organization_id,
+                node_id,
+                security_state_dir,
+            )?);
+        driver.bind_secret_transport(secret_transport).await?;
         let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
             state_directory.path().join("runtime"),
         ));
         let runtime_driver: Arc<dyn RuntimeDriver> = driver;
         let runtime: Arc<dyn RuntimeClient> =
             Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-        let executor = CommandExecutor::runtime_only(
+        let command_executor = CommandExecutor::runtime_only(
             FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
             runtime.clone(),
         );
-        let acknowledgement = executor.execute(command.clone()).await?;
-        assert_eq!(executor.execute(command.clone()).await?, acknowledgement);
+        assert!(!serde_json::to_string(command)?.contains(secret_plaintext));
+        let acknowledgement = command_executor.execute(command.clone()).await?;
+        assert_eq!(
+            command_executor.execute(command.clone()).await?,
+            acknowledgement
+        );
         let observation = match &acknowledgement.outcome {
             a3s_cloud_contracts::NodeCommandOutcome::Succeeded { result } => {
                 match result.as_ref() {
@@ -163,9 +195,19 @@ pub async fn exercise_deployment_flow(
             }
             outcome => return Err(format!("Docker Runtime apply failed: {outcome:?}").into()),
         };
+        persist_redacted_docker_logs(
+            executor,
+            node_id,
+            Arc::clone(&runtime),
+            &request.spec,
+            security_state_dir,
+            secret_plaintext,
+        )
+        .await?;
         let observed_at = acknowledgement.completed_at;
         docker_runtime = Some(runtime);
         docker_state_directory = Some(state_directory);
+        docker_secret_directory = Some(secret_memory_dir.join(namespace));
         (observation, Some(acknowledgement), observed_at)
     } else {
         (healthy_observation(&request.spec)?, None, Utc::now())
@@ -430,7 +472,228 @@ pub async fn exercise_deployment_flow(
             })
             .await?;
     }
+    if let Some(directory) = docker_secret_directory {
+        match tokio::fs::remove_dir(directory).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
     drop(docker_state_directory);
+    Ok(())
+}
+
+struct PostgresSecretTransport {
+    handler: ResolveSecretMaterialHandler,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+}
+
+impl PostgresSecretTransport {
+    fn new(
+        executor: &PostgresExecutor,
+        workloads: Arc<dyn IWorkloadRepository>,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+        security_state_dir: &Path,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let secrets: Arc<dyn ISecretRepository> =
+            Arc::new(PostgresSecretRepository::new(executor.clone()));
+        let encryption: Arc<dyn ISecretEncryptionService> =
+            Arc::new(LocalKeyEncryptionService::load_or_create(
+                security_state_dir.join("key-encryption.key"),
+            )?);
+        Ok(Self {
+            handler: ResolveSecretMaterialHandler::new(workloads, secrets, encryption),
+            organization_id,
+            node_id,
+        })
+    }
+}
+
+#[async_trait]
+impl NodeSecretTransport for PostgresSecretTransport {
+    async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        let plaintext = self
+            .handler
+            .execute(
+                ResolveSecretMaterial {
+                    organization_id: self.organization_id,
+                    authenticated_node_id: self.node_id,
+                    reference,
+                },
+                context(),
+            )
+            .await
+            .map_err(|_| {
+                NodeControlClientError::Transport("PostgreSQL Secret material query failed".into())
+            })?
+            .map_err(secret_application_error)?;
+        SecretMaterial::new(plaintext.as_bytes().to_vec()).map_err(NodeControlClientError::Invalid)
+    }
+}
+
+fn secret_application_error(error: ApplicationError) -> NodeControlClientError {
+    match error {
+        ApplicationError::Internal(_) => NodeControlClientError::Rejected {
+            status: 503,
+            code: "secret_material_unavailable".into(),
+            message: "Secret material is temporarily unavailable".into(),
+            retryable: true,
+        },
+        ApplicationError::Invalid(_)
+        | ApplicationError::NotFound(_)
+        | ApplicationError::Conflict(_)
+        | ApplicationError::Forbidden(_) => NodeControlClientError::Rejected {
+            status: 403,
+            code: "secret_material_forbidden".into(),
+            message: "Secret material is not authorized".into(),
+            retryable: false,
+        },
+    }
+}
+
+async fn persist_redacted_docker_logs(
+    executor: &PostgresExecutor,
+    node_id: NodeId,
+    runtime: Arc<dyn RuntimeClient>,
+    spec: &RuntimeUnitSpec,
+    security_state_dir: &Path,
+    secret_plaintext: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(spec.secrets.len(), 2);
+    let query = RuntimeLogQuery {
+        schema: RuntimeLogQuery::SCHEMA.into(),
+        unit_id: spec.unit_id.clone(),
+        generation: spec.generation,
+        cursor: None,
+        limit: 32,
+        stream: None,
+    };
+    let mut chunks = Vec::new();
+    for attempt in 0..20 {
+        chunks = runtime.logs(&query).await?;
+        let stdout_ready = chunks.iter().any(|chunk| {
+            chunk.stream == RuntimeLogStream::Stdout && chunk.data.contains("env-secret=[REDACTED]")
+        });
+        let stderr_ready = chunks.iter().any(|chunk| {
+            chunk.stream == RuntimeLogStream::Stderr
+                && chunk.data.contains("file-secret=[REDACTED]")
+        });
+        if stdout_ready && stderr_ready {
+            break;
+        }
+        if attempt < 19 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+    if chunks
+        .iter()
+        .any(|chunk| chunk.data.contains(secret_plaintext))
+        || !chunks.iter().any(|chunk| {
+            chunk.stream == RuntimeLogStream::Stdout && chunk.data.contains("env-secret=[REDACTED]")
+        })
+        || !chunks.iter().any(|chunk| {
+            chunk.stream == RuntimeLogStream::Stderr
+                && chunk.data.contains("file-secret=[REDACTED]")
+        })
+    {
+        return Err(
+            std::io::Error::other("real Docker Secret logs were not completely redacted").into(),
+        );
+    }
+
+    let batch = NodeLogChunkBatch {
+        schema: NodeLogChunkBatch::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id: node_id.as_uuid(),
+        sent_at: Utc::now(),
+        chunks: chunks
+            .into_iter()
+            .map(|chunk| NodeLogChunkReport {
+                unit_id: spec.unit_id.clone(),
+                generation: spec.generation,
+                checksum: format!("sha256:{:x}", Sha256::digest(chunk.data.as_bytes())),
+                chunk,
+            })
+            .collect(),
+        gaps: Vec::new(),
+    };
+    batch.validate()?;
+
+    let first = record_log_batch(executor, security_state_dir, node_id, batch.clone()).await?;
+    assert!(!first.replayed);
+    assert_eq!(usize::from(first.accepted_chunks), batch.chunks.len());
+
+    // Recreate the handler, repository, and object-store adapter to model a
+    // control-plane restart after the batch receipt became durable.
+    let replay = record_log_batch(executor, security_state_dir, node_id, batch).await?;
+    assert!(replay.replayed);
+    assert_eq!(replay.accepted_chunks, first.accepted_chunks);
+    assert_log_objects_redacted(&security_state_dir.join("logs"), secret_plaintext)?;
+    Ok(())
+}
+
+async fn record_log_batch(
+    executor: &PostgresExecutor,
+    security_state_dir: &Path,
+    node_id: NodeId,
+    batch: NodeLogChunkBatch,
+) -> Result<a3s_cloud_contracts::NodeLogChunkReceipt, Box<dyn std::error::Error>> {
+    let nodes: Arc<dyn INodeControlRepository> =
+        Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let objects: Arc<dyn ILogChunkStore> =
+        Arc::new(LocalLogChunkStore::new(security_state_dir.join("logs"))?);
+    RecordNodeLogChunksHandler::new(nodes, objects)
+        .execute(
+            RecordNodeLogChunks {
+                authenticated_node_id: node_id,
+                batch,
+                received_at: Utc::now(),
+            },
+            context(),
+        )
+        .await?
+        .map_err(|error| {
+            std::io::Error::other(format!("could not persist real Docker log batch: {error}"))
+                .into()
+        })
+}
+
+fn assert_log_objects_redacted(
+    root: &Path,
+    secret_plaintext: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let secret = secret_plaintext.as_bytes();
+    let marker = b"[REDACTED]";
+    let mut directories = vec![root.to_path_buf()];
+    let mut found_marker = false;
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                directories.push(entry.path());
+            } else if file_type.is_file() {
+                let body = std::fs::read(entry.path())?;
+                if !secret.is_empty() && body.windows(secret.len()).any(|window| window == secret) {
+                    return Err(std::io::Error::other(
+                        "plaintext Secret reached the durable log object store",
+                    )
+                    .into());
+                }
+                found_marker |= body.windows(marker.len()).any(|window| window == marker);
+            }
+        }
+    }
+    if !found_marker {
+        return Err(
+            std::io::Error::other("durable log objects contain no redaction evidence").into(),
+        );
+    }
     Ok(())
 }
 
@@ -595,7 +858,7 @@ pub async fn exercise_dispatched_cancellation(
             &Uuid::now_v7().simple().to_string()[..12]
         ),
         operation_timeout_ms: 30_000,
-        secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
+        secret_memory_dir: docker_secret_memory_dir(),
     })?);
     driver.bind_node(node_id.as_uuid()).await?;
     let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
@@ -1002,4 +1265,14 @@ fn docker_tests_enabled() -> bool {
 fn docker_socket() -> String {
     std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
         .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
+}
+
+fn docker_secret_memory_dir() -> PathBuf {
+    std::env::var_os("A3S_CLOUD_TEST_SECRET_MEMORY_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/dev/shm/a3s-cloud/test-secrets"))
+}
+
+fn context() -> CqrsContext {
+    CqrsContext::new(ModuleRef::new())
 }

@@ -878,10 +878,31 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             },
             "process": {
                 "command": ["/bin/sh"],
-                "args": ["-c", "mkdir -p /www && printf 'healthy\\n' >/www/index.html && exec httpd -f -p 8080 -h /www"],
+                "args": ["-c", "set -eu; test \"$(stat -c %a /run/secrets/database-url)\" = 400; file_value=$(cat /run/secrets/database-url); test \"$DATABASE_URL\" = \"$file_value\"; printf 'env-secret=%s\\n' \"$DATABASE_URL\"; printf 'file-secret=%s\\n' \"$file_value\" >&2; mkdir -p /www; printf 'healthy\\n' >/www/index.html; exec httpd -f -p 8080 -h /www"],
                 "workingDirectory": null,
                 "environment": {}
             },
+            "secrets": [
+                {
+                    "name": "database-url-environment",
+                    "secretId": secret_id,
+                    "version": 2,
+                    "target": {
+                        "kind": "environment",
+                        "variable": "DATABASE_URL"
+                    }
+                },
+                {
+                    "name": "database-url-file",
+                    "secretId": secret_id,
+                    "version": 2,
+                    "target": {
+                        "kind": "file",
+                        "path": "/run/secrets/database-url",
+                        "mode": 256
+                    }
+                }
+            ],
             "resources": {
                 "cpuMillis": 250,
                 "memoryBytes": 67108864,
@@ -935,6 +956,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         &url,
         Uuid::parse_str(&organization_id)?,
         &response_json(&created_workload)?["data"],
+        security_directory.path(),
+        second_secret_value,
     )
     .await?;
 
@@ -951,6 +974,36 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .as_str()
         .ok_or("workload creation response omitted revisionId")?
         .to_owned();
+    if std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() == Ok("1") {
+        let persisted_logs = app
+            .call(get_as(
+                format!(
+                    "/api/v1/organizations/{organization_id}/workloads/{workload_id}/revisions/{revision_id}/logs?limit=32"
+                ),
+                ADMIN_TOKEN,
+            ))
+            .await?;
+        assert_eq!(persisted_logs.status(), 200);
+        let persisted_logs_body = String::from_utf8_lossy(persisted_logs.body());
+        assert!(!persisted_logs_body.contains(first_secret_value));
+        assert!(!persisted_logs_body.contains(second_secret_value));
+        let persisted_logs_json = response_json(&persisted_logs)?;
+        let records = persisted_logs_json["data"]["records"]
+            .as_array()
+            .ok_or("persisted workload logs response omitted records")?;
+        assert!(records.iter().any(|record| {
+            record["stream"] == "stdout"
+                && record["data"]
+                    .as_str()
+                    .is_some_and(|data| data.contains("env-secret=[REDACTED]"))
+        }));
+        assert!(records.iter().any(|record| {
+            record["stream"] == "stderr"
+                && record["data"]
+                    .as_str()
+                    .is_some_and(|data| data.contains("file-secret=[REDACTED]"))
+        }));
+    }
     let listed_workloads = app.call(get_as(&workload_path, ADMIN_TOKEN)).await?;
     assert_eq!(listed_workloads.status(), 200);
     let listed = &response_json(&listed_workloads)?["data"];
@@ -1002,6 +1055,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await?;
 
+    let mut cancellation_workload_body = workload_body;
+    cancellation_workload_body["template"]["secrets"] = json!([]);
+    cancellation_workload_body["template"]["process"]["args"] = json!([
+        "-c",
+        "mkdir -p /www && printf 'healthy\\n' >/www/index.html && exec httpd -f -p 8080 -h /www"
+    ]);
     cancellation_support::exercise_deployment_cancellation(
         cancellation_support::CancellationScenario {
             app: &app,
@@ -1009,7 +1068,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             postgres_url: &url,
             organization_id: &organization_id,
             workload_path: &workload_path,
-            workload_body,
+            workload_body: cancellation_workload_body,
             active_deployment_id: &deployment_id,
             admin_token: ADMIN_TOKEN,
         },

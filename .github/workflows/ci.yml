@@ -185,6 +185,79 @@ jobs:
         if: always()
         run: docker rm --force a3s-cloud-minio || true
 
+  linux-secret-logs:
+    name: Linux Secret and logs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install Rust 1.85.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+
+      - name: Start pinned PostgreSQL and pull workload
+        run: |
+          docker run --detach --rm \
+            --name a3s-cloud-secret-log-postgres \
+            --publish 127.0.0.1:54320:5432 \
+            --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=2147483648 \
+            --env POSTGRES_DB=postgres \
+            --env POSTGRES_USER=a3s_cloud \
+            --env POSTGRES_PASSWORD=a3s_cloud \
+            postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          for attempt in $(seq 1 90); do
+            if docker exec a3s-cloud-secret-log-postgres \
+              pg_isready --dbname=postgres --username=a3s_cloud >/dev/null 2>&1; then
+              break
+            fi
+            [[ $attempt -ne 90 ]]
+            sleep 0.5
+          done
+          docker pull \
+            docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+
+      - name: Exercise PostgreSQL-backed Secret injection and redacted logs
+        env:
+          A3S_CLOUD_TEST_DOCKER: "1"
+          A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
+          A3S_CLOUD_TEST_POSTGRES_URL: postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/postgres
+          A3S_CLOUD_TEST_SECRET_MEMORY_DIR: /dev/shm/a3s-cloud/ci-secret-logs
+        run: |
+          install -d -m 0700 "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR"
+          cargo test -p a3s-cloud-control-plane --test postgres_integration --locked \
+            postgres_foundation_is_migrated_atomic_and_idempotent \
+            -- --exact --nocapture --test-threads=1
+          [[ -z $(find "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" -type f -print -quit) ]]
+
+      - name: Stop Secret and log fixtures
+        if: always()
+        run: |
+          docker rm --force a3s-cloud-secret-log-postgres || true
+          rm -rf /dev/shm/a3s-cloud/ci-secret-logs
+
   repository-policy:
     name: Repository policy
     runs-on: ubuntu-24.04

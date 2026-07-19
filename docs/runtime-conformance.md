@@ -74,3 +74,28 @@ timestamp, proving ordinal disambiguation without modifying Docker's log files.
 The real rotation profile removes the managed source, verifies the exact
 `source_disconnected` boundary, recreates the same generation, and then verifies
 that the old cursor yields the exact `cursor_lost` boundary.
+
+## Cloud Secret and log acceptance
+
+The isolated runner's `--suite cloud` path additionally sets
+`A3S_CLOUD_TEST_SECRET_MEMORY_DIR` to a run-specific directory beneath
+`/dev/shm`, verifies that the directory is tmpfs-backed, and bind-mounts the
+same absolute path into the nested Docker provider. The PostgreSQL integration
+gate then:
+
+- authorizes and decrypts an active Secret version through the production
+  application handler;
+- injects it into a real Docker environment variable and `0400` file without
+  placing plaintext in the Runtime command;
+- emits it on stdout and stderr and requires provider-boundary redaction;
+- persists the sanitized batch as immutable filesystem objects plus PostgreSQL
+  metadata, reconstructs the handler/repository/store, and verifies exact
+  replay;
+- reads the sanitized records through the tenant-authorized REST endpoint; and
+- scans the durable log objects for plaintext and requires the post-test tmpfs
+  directory to contain no Secret files.
+
+This gate proves the real success path and durable replay boundary. It does not
+claim provider or control-plane process-death injection, object corruption, or
+automatic workload restart after Secret rotation; those remain separate E0
+acceptance gates.
