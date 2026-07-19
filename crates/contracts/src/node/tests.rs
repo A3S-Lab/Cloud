@@ -290,3 +290,103 @@ fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgemen
     let invalid_compare_and_swap = GatewaySnapshot::new(4, Some(4), "valid = true\n");
     assert!(invalid_compare_and_swap.is_err());
 }
+
+#[test]
+fn gateway_tls_snapshot_binds_one_closed_certificate_request() {
+    let certificate_id = Uuid::now_v7();
+    let certificate = GatewayCertificateRequest::new(
+        certificate_id,
+        vec!["*.example.com".into(), "api.internal.example.com".into()],
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+    )
+    .expect("certificate request");
+    let acl = format!(
+        r#"entrypoints "https" {{
+  address = "0.0.0.0:443"
+  tls {{
+    cert_file = "{}"
+    key_file = "{}"
+  }}
+}}
+"#,
+        certificate.certificate_file, certificate.private_key_file
+    );
+    let snapshot =
+        GatewaySnapshot::new_with_certificate(5, Some(4), acl, Some(certificate.clone()))
+            .expect("TLS snapshot");
+    snapshot.validate().expect("valid TLS snapshot");
+
+    let mut changed_certificate = snapshot.clone();
+    changed_certificate
+        .certificate_request
+        .as_mut()
+        .expect("certificate")
+        .dns_names = vec!["other.example.com".into()];
+    assert_eq!(
+        changed_certificate
+            .validate()
+            .expect_err("certificate digest conflict"),
+        "Gateway snapshot digest does not match its desired state"
+    );
+
+    let mut missing_reference = snapshot;
+    missing_reference.acl = "management { enabled = true }\n".into();
+    assert!(missing_reference.validate().is_err());
+}
+
+#[test]
+fn gateway_certificate_request_rejects_ambiguous_names_and_paths() {
+    let certificate_id = Uuid::now_v7();
+    assert!(GatewayCertificateRequest::new(
+        certificate_id,
+        vec!["*.example.com".into(), "api.example.com".into()],
+        "/cert.pem",
+        "/key.pem",
+    )
+    .is_ok());
+    assert!(GatewayCertificateRequest::new(
+        certificate_id,
+        vec!["api.example.com".into(), "*.example.com".into()],
+        "/cert.pem",
+        "/key.pem",
+    )
+    .is_err());
+    assert!(GatewayCertificateRequest::new(
+        certificate_id,
+        vec!["*.*.example.com".into()],
+        "/cert.pem",
+        "/key.pem",
+    )
+    .is_err());
+    assert!(GatewayCertificateRequest::new(
+        certificate_id,
+        vec!["api.example.com".into()],
+        "relative/cert.pem",
+        "/key.pem",
+    )
+    .is_err());
+}
+
+#[test]
+fn gateway_certificate_signing_contract_never_accepts_or_debugs_a_private_key() {
+    let request = GatewayCertificateSigningRequest {
+        schema: GatewayCertificateSigningRequest::SCHEMA.into(),
+        certificate_id: Uuid::now_v7(),
+        node_id: Uuid::now_v7(),
+        csr_pem:
+            "-----BEGIN CERTIFICATE REQUEST-----\ndGVzdA==\n-----END CERTIFICATE REQUEST-----\n"
+                .into(),
+        requested_at: Utc::now(),
+    };
+    request.validate().expect("signing request");
+    let debug = format!("{request:?}");
+    assert!(debug.contains("<redacted-csr>"));
+    assert!(!debug.contains("dGVzdA"));
+
+    let mut leaked = request;
+    leaked.csr_pem =
+        "-----BEGIN CERTIFICATE REQUEST-----\nPRIVATE KEY\n-----END CERTIFICATE REQUEST-----\n"
+            .into();
+    assert!(leaked.validate().is_err());
+}

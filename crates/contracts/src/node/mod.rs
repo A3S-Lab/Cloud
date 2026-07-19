@@ -17,7 +17,10 @@ pub use enrollment::{
     NodeEnrollmentRequest, NodeEnrollmentResponse,
 };
 pub use error::{NodeProtocolError, NodeProtocolErrorCode};
-pub use gateway::GatewaySnapshot;
+pub use gateway::{
+    GatewayCertificateRequest, GatewayCertificateSigningRequest, GatewayCertificateSigningResponse,
+    GatewaySnapshot,
+};
 pub use observation::{
     GatewayAckState, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
     NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt,

@@ -2,11 +2,13 @@ use super::{PublishRoute, PublishRouteResult};
 use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
 use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
 use crate::modules::edge::domain::{
-    GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName,
+    GatewayCertificate, GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName,
 };
 use crate::modules::edge::infrastructure::GatewaySnapshotCompiler;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, NodeCommandId, RouteId};
+use crate::modules::shared_kernel::domain::{
+    GatewayCertificateId, IdempotencyRequest, NodeCommandId, RouteId,
+};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Duration;
 use std::sync::Arc;
@@ -69,6 +71,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 "project_id": command.project_id,
                 "environment_id": command.environment_id,
                 "workload_revision_id": command.workload_revision_id,
+                "domain_claim_id": command.domain_claim_id,
                 "hostname": hostname.as_str(),
                 "path_prefix": path_prefix.as_str(),
                 "port_name": port_name.as_str(),
@@ -99,6 +102,24 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
+            let claim = match routes
+                .find_domain_claim(command.organization_id, command.domain_claim_id)
+                .await
+            {
+                Ok(value)
+                    if value.project_id == command.project_id
+                        && value.environment_id == command.environment_id
+                        && value.covers(&hostname) =>
+                {
+                    value
+                }
+                Ok(_) => {
+                    return Ok(Err(ApplicationError::Conflict(
+                        "verified domain claim does not cover this route and environment".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
+            };
             let target = match targets
                 .resolve_healthy_target(
                     command.organization_id,
@@ -113,7 +134,8 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
-            let mut route = Route::create(
+            let certificate_id = GatewayCertificateId::new();
+            let mut route = match Route::create(
                 RouteId::new(),
                 command.organization_id,
                 command.project_id,
@@ -121,12 +143,18 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 target.node_id,
                 hostname,
                 path_prefix,
+                claim.id,
+                claim.pattern,
+                certificate_id,
                 target.workload_id,
                 target.workload_revision_id,
                 port_name,
                 target.upstream,
                 command.requested_at,
-            );
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let (scope, mut active_routes) = match tokio::try_join!(
                 routes.gateway_scope(target.node_id),
                 routes.active_routes(target.node_id)
@@ -143,6 +171,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 target.node_id,
                 revision,
                 scope.installed_revision,
+                certificate_id,
                 &active_routes,
             ) {
                 Ok(value) => value,
@@ -176,6 +205,34 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            let certificate_request = match publication.certificate_request.clone() {
+                Some(value) => value,
+                None => {
+                    return Err(BootError::Internal(
+                        "TLS Gateway publication omitted its certificate request".into(),
+                    ))
+                }
+            };
+            let mut domain_claim_ids = active_routes
+                .iter()
+                .filter_map(|route| route.domain_claim_id)
+                .collect::<Vec<_>>();
+            domain_claim_ids.sort();
+            domain_claim_ids.dedup();
+            let certificate = match GatewayCertificate::provision(
+                certificate_id,
+                command.organization_id,
+                target.node_id,
+                domain_claim_ids,
+                revision,
+                command_id,
+                publication.snapshot_digest.clone(),
+                certificate_request,
+                command.requested_at,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let event = match crate::modules::edge::domain::events::RoutePublicationStaged::envelope(
                 &route,
                 &publication,
@@ -186,6 +243,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
             let staged = match routes
                 .stage_route_publication(StageRoutePublication {
                     route,
+                    certificate,
                     publication,
                     expected_scope_version: scope.aggregate_version,
                     idempotency,

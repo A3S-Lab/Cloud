@@ -4,17 +4,20 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::{
-    EdgeRoutePublicationResult, IEdgeRepository, StageRoutePublication,
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, IEdgeRepository, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
+    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateState,
     GatewayPublication, GatewayPublicationState, GatewayScopeState, Route, RouteHostname,
     RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
-    RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotentWrite,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
-use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
+use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateRequest, NodeGatewayAck};
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
 };
@@ -22,8 +25,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at from routes";
-const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at from gateway_publications";
+use super::postgres_tls::{
+    insert_certificate, insert_domain_claim, update_certificate, CertificateRow, DomainClaimRow,
+    SELECT_CERTIFICATES, SELECT_DOMAIN_CLAIMS,
+};
+
+const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
+const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request from gateway_publications";
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {
@@ -57,6 +65,9 @@ struct RouteRow {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     activated_at: Option<DateTime<Utc>>,
+    domain_claim_id: Option<Uuid>,
+    domain_pattern: Option<String>,
+    gateway_certificate_id: Option<Uuid>,
 }
 
 impl FromRow for RouteRow {
@@ -82,6 +93,9 @@ impl FromRow for RouteRow {
             created_at: decode(row, 17)?,
             updated_at: decode(row, 18)?,
             activated_at: decode(row, 19)?,
+            domain_claim_id: decode(row, 20)?,
+            domain_pattern: decode(row, 21)?,
+            gateway_certificate_id: decode(row, 22)?,
         })
     }
 }
@@ -96,6 +110,15 @@ impl RouteRow {
             gateway_node_id: NodeId::from_uuid(self.gateway_node_id),
             hostname: RouteHostname::parse(self.hostname).map_err(stored("hostname"))?,
             path_prefix: RoutePath::parse(self.path_prefix).map_err(stored("path"))?,
+            domain_claim_id: self.domain_claim_id.map(DomainClaimId::from_uuid),
+            domain_pattern: self
+                .domain_pattern
+                .map(DomainNamePattern::parse)
+                .transpose()
+                .map_err(stored("domain pattern"))?,
+            gateway_certificate_id: self
+                .gateway_certificate_id
+                .map(GatewayCertificateId::from_uuid),
             workload_id: WorkloadId::from_uuid(self.workload_id),
             workload_revision_id: WorkloadRevisionId::from_uuid(self.workload_revision_id),
             port_name: RoutePortName::parse(self.port_name).map_err(stored("port name"))?,
@@ -129,6 +152,7 @@ struct PublicationRow {
     command_issued_at: DateTime<Utc>,
     command_not_after: DateTime<Utc>,
     acknowledged_at: Option<DateTime<Utc>>,
+    certificate_request: Option<serde_json::Value>,
 }
 
 impl FromRow for PublicationRow {
@@ -146,12 +170,18 @@ impl FromRow for PublicationRow {
             command_issued_at: decode(row, 9)?,
             command_not_after: decode(row, 10)?,
             acknowledged_at: decode(row, 11)?,
+            certificate_request: decode(row, 12)?,
         })
     }
 }
 
 impl PublicationRow {
     fn publication(self) -> Result<GatewayPublication, RepositoryError> {
+        let certificate_request = self
+            .certificate_request
+            .map(serde_json::from_value::<GatewayCertificateRequest>)
+            .transpose()
+            .map_err(|error| stored("certificate request")(error.to_string()))?;
         let publication = GatewayPublication {
             node_id: NodeId::from_uuid(self.node_id),
             revision: self.revision,
@@ -160,6 +190,7 @@ impl PublicationRow {
             command_correlation_id: self.command_correlation_id,
             snapshot_digest: self.snapshot_digest,
             acl: self.acl,
+            certificate_request,
             state: GatewayPublicationState::parse(&self.state).map_err(stored("state"))?,
             failure: self.failure,
             command_issued_at: self.command_issued_at,
@@ -173,6 +204,179 @@ impl PublicationRow {
 
 #[async_trait]
 impl IEdgeRepository for PostgresEdgeRepository {
+    async fn replay_domain_claim_write(
+        &self,
+        idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    ) -> Result<Option<DomainClaim>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    Ok(idempotency_replay::<DomainClaim>(transaction, &idempotency)
+                        .await?
+                        .map(|replay| replay.value))
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_domain_claim(
+        &self,
+        bundle: CreateDomainClaimWrite,
+    ) -> Result<IdempotentWrite<DomainClaim>, RepositoryError> {
+        validate_domain_event(&bundle.claim, &bundle.event)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(mut replay) =
+                        idempotency_replay::<DomainClaim>(transaction, &bundle.idempotency).await?
+                    {
+                        replay.replayed = true;
+                        return Ok(replay);
+                    }
+                    execute(
+                        transaction,
+                        sql_query::<()>("lock table domain_claims in share row exclusive mode"),
+                    )
+                    .await?;
+                    let rows = fetch_all::<DomainClaimRow, _>(
+                        transaction,
+                        sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
+                            .append(" where state in ('pending', 'verified') for update"),
+                    )
+                    .await?;
+                    for existing in rows {
+                        if existing
+                            .claim()?
+                            .pattern
+                            .conflicts_with(&bundle.claim.pattern)
+                        {
+                            return Err(RepositoryError::Conflict(
+                                "domain pattern overlaps an existing ownership claim".into(),
+                            )
+                            .into());
+                        }
+                    }
+                    insert_domain_claim(transaction, &bundle.claim).await?;
+                    store_outbox(transaction, &bundle.event).await?;
+                    store_idempotency(transaction, &bundle.idempotency, &bundle.claim).await?;
+                    Ok(IdempotentWrite {
+                        value: bundle.claim,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn transition_domain_claim(
+        &self,
+        bundle: TransitionDomainClaim,
+    ) -> Result<IdempotentWrite<DomainClaim>, RepositoryError> {
+        validate_domain_event(&bundle.claim, &bundle.event)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(mut replay) =
+                        idempotency_replay::<DomainClaim>(transaction, &bundle.idempotency).await?
+                    {
+                        replay.replayed = true;
+                        return Ok(replay);
+                    }
+                    let existing = fetch_optional::<DomainClaimRow, _>(
+                        transaction,
+                        sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
+                            .append(" where organization_id = ")
+                            .bind(bundle.claim.organization_id.as_uuid())
+                            .append(" and id = ")
+                            .bind(bundle.claim.id.as_uuid())
+                            .append(" for update"),
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?
+                    .claim()?;
+                    validate_domain_transition(&existing, &bundle.claim, bundle.expected_version)?;
+                    require_one_row(
+                        "domain claim transition",
+                        execute(
+                            transaction,
+                            sql_query::<()>("update domain_claims set state = ")
+                                .bind(bundle.claim.state.as_str())
+                                .append(", failure = ")
+                                .bind(bundle.claim.failure.as_deref())
+                                .append(", aggregate_version = ")
+                                .bind(bundle.claim.aggregate_version)
+                                .append(", updated_at = ")
+                                .bind(bundle.claim.updated_at)
+                                .append(", verified_at = ")
+                                .bind(bundle.claim.verified_at)
+                                .append(", revoked_at = ")
+                                .bind(bundle.claim.revoked_at)
+                                .append(" where id = ")
+                                .bind(bundle.claim.id.as_uuid())
+                                .append(" and aggregate_version = ")
+                                .bind(bundle.expected_version),
+                        )
+                        .await?,
+                    )?;
+                    store_outbox(transaction, &bundle.event).await?;
+                    store_idempotency(transaction, &bundle.idempotency, &bundle.claim).await?;
+                    Ok(IdempotentWrite {
+                        value: bundle.claim,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn find_domain_claim(
+        &self,
+        organization_id: OrganizationId,
+        claim_id: DomainClaimId,
+    ) -> Result<DomainClaim, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
+                    .append(" where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(claim_id.as_uuid()),
+            )
+            .await
+            .map_err(storage)?
+            .ok_or(RepositoryError::NotFound)?
+            .claim()
+    }
+
+    async fn list_domain_claims(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<DomainClaim>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_all_as(
+                sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
+                    .append(" where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and project_id = ")
+                    .bind(project_id.as_uuid())
+                    .append(" and environment_id = ")
+                    .bind(environment_id.as_uuid())
+                    .append(" order by created_at, id"),
+            )
+            .await
+            .map_err(storage)?
+            .rows
+            .into_iter()
+            .map(DomainClaimRow::claim)
+            .collect()
+    }
+
     async fn replay_route_publication(
         &self,
         idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
@@ -311,6 +515,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
                         .into());
                     }
                     insert_publication(transaction, &bundle.publication).await?;
+                    insert_certificate(transaction, &bundle.certificate).await?;
                     insert_route(transaction, &bundle.route).await?;
                     if current.aggregate_version == 0 {
                         require_one_row(
@@ -352,6 +557,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
                     }
                     let result = EdgeRoutePublicationResult {
                         route: bundle.route,
+                        certificate: bundle.certificate,
                         publication: bundle.publication,
                         replayed: false,
                     };
@@ -403,6 +609,75 @@ impl IEdgeRepository for PostgresEdgeRepository {
         .await
     }
 
+    async fn find_gateway_certificate(
+        &self,
+        node_id: NodeId,
+        certificate_id: GatewayCertificateId,
+    ) -> Result<GatewayCertificate, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+                    .append(" where node_id = ")
+                    .bind(node_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(certificate_id.as_uuid()),
+            )
+            .await
+            .map_err(storage)?
+            .ok_or(RepositoryError::NotFound)?
+            .certificate()
+    }
+
+    async fn list_gateway_certificates(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<GatewayCertificate>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_all_as(
+                sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+                    .append(" where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" order by created_at, id"),
+            )
+            .await
+            .map_err(storage)?
+            .rows
+            .into_iter()
+            .map(CertificateRow::certificate)
+            .collect()
+    }
+
+    async fn transition_gateway_certificate(
+        &self,
+        certificate: GatewayCertificate,
+        expected_version: u64,
+    ) -> Result<GatewayCertificate, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let existing = fetch_optional::<CertificateRow, _>(
+                        transaction,
+                        sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+                            .append(" where id = ")
+                            .bind(certificate.id.as_uuid())
+                            .append(" for update"),
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?
+                    .certificate()?;
+                    validate_gateway_certificate_transition(
+                        &existing,
+                        &certificate,
+                        expected_version,
+                    )?;
+                    update_certificate(transaction, &certificate, expected_version).await?;
+                    Ok(certificate)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn project_gateway_acknowledgement(
         &self,
         acknowledgement: &NodeGatewayAck,
@@ -443,6 +718,28 @@ impl IEdgeRepository for PostgresEdgeRepository {
                     if !was_pending {
                         return Ok(true);
                     }
+                    let mut certificate = fetch_optional::<CertificateRow, _>(
+                        transaction,
+                        sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+                            .append(" where node_id = ")
+                            .bind(acknowledgement.node_id)
+                            .append(" and gateway_revision = ")
+                            .bind(acknowledgement.revision)
+                            .append(" and gateway_command_id = ")
+                            .bind(acknowledgement.command_id)
+                            .append(" for update"),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        PostgresPersistenceError::Invariant(
+                            "Gateway publication has no staged certificate".into(),
+                        )
+                    })?
+                    .certificate()?;
+                    let certificate_version = certificate.aggregate_version;
+                    certificate
+                        .apply_gateway_acknowledgement(&acknowledgement)
+                        .map_err(RepositoryError::Conflict)?;
                     let rows = fetch_all::<RouteRow, _>(
                         transaction,
                         sql_query::<RouteRow>(SELECT_ROUTES)
@@ -487,6 +784,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
                         )
                         .await?,
                     )?;
+                    update_certificate(transaction, &certificate, certificate_version).await?;
                     for route in routes {
                         require_one_row(
                             "route Gateway acknowledgement",
@@ -541,10 +839,16 @@ async fn insert_publication(
     transaction: &a3s_orm::PostgresTransaction,
     publication: &GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
+    let certificate_request = publication
+        .certificate_request
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?;
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at) values (",
+            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request) values (",
         )
         .bind(publication.node_id.as_uuid())
         .append(", ")
@@ -569,6 +873,8 @@ async fn insert_publication(
         .bind(publication.command_not_after)
         .append(", ")
         .bind(publication.acknowledged_at)
+        .append(", ")
+        .bind(certificate_request)
         .append(")"),
     )
     .await;
@@ -582,7 +888,7 @@ async fn insert_route(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at) values (",
+            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id) values (",
         )
         .bind(route.id.as_uuid())
         .append(", ")
@@ -623,6 +929,12 @@ async fn insert_route(
         .bind(route.updated_at)
         .append(", ")
         .bind(route.activated_at)
+        .append(", ")
+        .bind(route.domain_claim_id.map(|id| id.as_uuid()))
+        .append(", ")
+        .bind(route.domain_pattern.as_ref().map(|pattern| pattern.as_str()))
+        .append(", ")
+        .bind(route.gateway_certificate_id.map(|id| id.as_uuid()))
         .append(")"),
     )
     .await;
@@ -682,7 +994,17 @@ fn validate_stored_route(route: &Route) -> Result<(), RepositoryError> {
         RouteState::Active => route.failure.is_none() && route.activated_at.is_some(),
         RouteState::Rejected => route.failure.is_some() && route.activated_at.is_none(),
     };
+    let tls_consistent = match (
+        route.domain_claim_id,
+        route.domain_pattern.as_ref(),
+        route.gateway_certificate_id,
+    ) {
+        (None, None, None) => true,
+        (Some(_), Some(pattern), Some(_)) => pattern.covers(&route.hostname),
+        _ => false,
+    };
     if !status_consistent
+        || !tls_consistent
         || route.gateway_revision.is_none()
         || route.gateway_command_id.is_none()
         || route.snapshot_digest.is_none()
@@ -690,6 +1012,98 @@ fn validate_stored_route(route: &Route) -> Result<(), RepositoryError> {
     {
         return Err(RepositoryError::Storage(
             "stored route state is inconsistent".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_domain_event(
+    claim: &DomainClaim,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+) -> Result<(), RepositoryError> {
+    if event.organization_id != claim.organization_id.as_uuid()
+        || event.aggregate_id != claim.id.as_uuid()
+        || event.aggregate_version != claim.aggregate_version
+        || event.correlation_id.is_nil()
+        || event.event_id.is_nil()
+        || event.schema_version == 0
+        || event.event_key.trim().is_empty()
+    {
+        return Err(RepositoryError::Conflict(
+            "domain claim event does not match its aggregate".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_domain_transition(
+    existing: &DomainClaim,
+    next: &DomainClaim,
+    expected_version: u64,
+) -> Result<(), RepositoryError> {
+    if existing.aggregate_version != expected_version
+        || next.aggregate_version != expected_version.saturating_add(1)
+        || existing.id != next.id
+        || existing.organization_id != next.organization_id
+        || existing.project_id != next.project_id
+        || existing.environment_id != next.environment_id
+        || existing.pattern != next.pattern
+        || existing.challenge_dns_name != next.challenge_dns_name
+        || existing.challenge_value != next.challenge_value
+        || existing.created_at != next.created_at
+    {
+        return Err(RepositoryError::Conflict(
+            "domain claim changed while applying its transition".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_gateway_certificate_transition(
+    existing: &GatewayCertificate,
+    next: &GatewayCertificate,
+    expected_version: u64,
+) -> Result<(), RepositoryError> {
+    let transition_is_valid = match (existing.state, next.state) {
+        (GatewayCertificateState::Provisioning, GatewayCertificateState::Issued) => {
+            next.csr_digest.is_some()
+                && next.material.is_some()
+                && next.failure.is_none()
+                && next.ready_at.is_none()
+                && next.revoked_at.is_none()
+        }
+        (GatewayCertificateState::Provisioning, GatewayCertificateState::Failed) => {
+            next.csr_digest.is_some()
+                && next.material.is_none()
+                && next.failure.is_some()
+                && next.ready_at.is_none()
+                && next.revoked_at.is_none()
+        }
+        (GatewayCertificateState::Ready, GatewayCertificateState::Revoked) => {
+            next.csr_digest == existing.csr_digest
+                && next.material == existing.material
+                && next.failure.is_some()
+                && next.ready_at == existing.ready_at
+                && next.revoked_at.is_some()
+        }
+        _ => false,
+    };
+    if existing.aggregate_version != expected_version
+        || next.aggregate_version != expected_version.saturating_add(1)
+        || !transition_is_valid
+        || existing.id != next.id
+        || existing.organization_id != next.organization_id
+        || existing.node_id != next.node_id
+        || existing.domain_claim_ids != next.domain_claim_ids
+        || existing.gateway_revision != next.gateway_revision
+        || existing.gateway_command_id != next.gateway_command_id
+        || existing.snapshot_digest != next.snapshot_digest
+        || existing.request != next.request
+        || existing.created_at != next.created_at
+        || next.updated_at < existing.updated_at
+    {
+        return Err(RepositoryError::Conflict(
+            "Gateway certificate changed while applying its transition".into(),
         ));
     }
     Ok(())

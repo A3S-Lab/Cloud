@@ -4,18 +4,30 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    GetRoute, GetRouteHandler, ListRoutes, ListRoutesHandler, PublishRoute, PublishRouteHandler,
-    PublishRouteResult,
+    CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, GetDomainClaim,
+    GetDomainClaimHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
+    ListGatewayCertificates, ListGatewayCertificatesHandler, ListRoutes, ListRoutesHandler,
+    PublishRoute, PublishRouteHandler, PublishRouteResult, VerifyDomainClaim,
+    VerifyDomainClaimHandler, VerifyDomainClaimResult,
 };
-pub use domain::repositories::{EdgeRoutePublicationResult, IEdgeRepository};
-pub use domain::services::{IGatewayCommandQueue, IRouteTargetReader, RouteTarget};
+pub use domain::repositories::{
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, IEdgeRepository, TransitionDomainClaim,
+};
+pub use domain::services::{
+    DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
+    GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, IDomainOwnershipVerifier,
+    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, RouteTarget,
+};
 pub use domain::{
-    GatewayPublication, GatewayPublicationState, GatewayScopeState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
+    GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
+    GatewayPublicationState, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName,
+    RouteState, UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
     EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, WorkloadRouteTargetReader,
+    GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
+    UnavailableDomainOwnershipVerifier, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

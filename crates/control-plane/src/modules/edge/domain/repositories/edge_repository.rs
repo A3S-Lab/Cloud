@@ -1,6 +1,9 @@
-use crate::modules::edge::domain::{GatewayPublication, GatewayScopeState, Route};
+use crate::modules::edge::domain::{
+    DomainClaim, GatewayCertificate, GatewayPublication, GatewayScopeState, Route,
+};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, IdempotentWrite,
+    NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, NodeGatewayAck};
 use async_trait::async_trait;
@@ -10,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct StageRoutePublication {
     pub route: Route,
+    pub certificate: GatewayCertificate,
     pub publication: GatewayPublication,
     pub expected_scope_version: u64,
     pub idempotency: IdempotencyRequest,
@@ -19,6 +23,7 @@ pub struct StageRoutePublication {
 impl StageRoutePublication {
     pub fn validate(&self) -> Result<(), String> {
         let route = &self.route;
+        let certificate = &self.certificate;
         let publication = &self.publication;
         if route.state != crate::modules::edge::domain::RouteState::Publishing
             || route.gateway_node_id != publication.node_id
@@ -26,6 +31,19 @@ impl StageRoutePublication {
             || route.gateway_command_id != Some(publication.command_id)
             || route.snapshot_digest.as_deref() != Some(&publication.snapshot_digest)
             || publication.state != crate::modules::edge::domain::GatewayPublicationState::Pending
+            || route.gateway_certificate_id != Some(certificate.id)
+            || certificate.node_id != publication.node_id
+            || certificate.gateway_revision != publication.revision
+            || certificate.gateway_command_id != publication.command_id
+            || certificate.snapshot_digest != publication.snapshot_digest
+            || publication.certificate_request.as_ref() != Some(&certificate.request)
+            || certificate.state
+                != crate::modules::edge::domain::GatewayCertificateState::Provisioning
+            || certificate.csr_digest.is_some()
+            || certificate.material.is_some()
+            || route
+                .domain_claim_id
+                .is_none_or(|claim_id| !certificate.domain_claim_ids.contains(&claim_id))
             || self.event.correlation_id != publication.command_correlation_id
         {
             return Err("route and complete Gateway publication are inconsistent".into());
@@ -35,15 +53,59 @@ impl StageRoutePublication {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateDomainClaimWrite {
+    pub claim: DomainClaim,
+    pub idempotency: IdempotencyRequest,
+    pub event: DomainEventEnvelope,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransitionDomainClaim {
+    pub claim: DomainClaim,
+    pub expected_version: u64,
+    pub idempotency: IdempotencyRequest,
+    pub event: DomainEventEnvelope,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EdgeRoutePublicationResult {
     pub route: Route,
+    pub certificate: GatewayCertificate,
     pub publication: GatewayPublication,
     pub replayed: bool,
 }
 
 #[async_trait]
 pub trait IEdgeRepository: Send + Sync {
+    async fn replay_domain_claim_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<DomainClaim>, RepositoryError>;
+
+    async fn create_domain_claim(
+        &self,
+        bundle: CreateDomainClaimWrite,
+    ) -> Result<IdempotentWrite<DomainClaim>, RepositoryError>;
+
+    async fn transition_domain_claim(
+        &self,
+        bundle: TransitionDomainClaim,
+    ) -> Result<IdempotentWrite<DomainClaim>, RepositoryError>;
+
+    async fn find_domain_claim(
+        &self,
+        organization_id: OrganizationId,
+        claim_id: DomainClaimId,
+    ) -> Result<DomainClaim, RepositoryError>;
+
+    async fn list_domain_claims(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<DomainClaim>, RepositoryError>;
+
     async fn replay_route_publication(
         &self,
         idempotency: &IdempotencyRequest,
@@ -70,6 +132,23 @@ pub trait IEdgeRepository: Send + Sync {
         project_id: ProjectId,
         environment_id: EnvironmentId,
     ) -> Result<Vec<Route>, RepositoryError>;
+
+    async fn find_gateway_certificate(
+        &self,
+        node_id: NodeId,
+        certificate_id: GatewayCertificateId,
+    ) -> Result<GatewayCertificate, RepositoryError>;
+
+    async fn list_gateway_certificates(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<GatewayCertificate>, RepositoryError>;
+
+    async fn transition_gateway_certificate(
+        &self,
+        certificate: GatewayCertificate,
+        expected_version: u64,
+    ) -> Result<GatewayCertificate, RepositoryError>;
 
     async fn project_gateway_acknowledgement(
         &self,

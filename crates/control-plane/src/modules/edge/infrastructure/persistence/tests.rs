@@ -1,14 +1,17 @@
 use super::*;
 use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
 use crate::modules::edge::domain::{
-    GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
-    UpstreamEndpoint,
+    DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId,
-    WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
-use a3s_cloud_contracts::{DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeGatewayAck};
+use a3s_cloud_contracts::{
+    DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
+    NodeGatewayAck,
+};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
@@ -23,10 +26,23 @@ fn staged(
     let now = Utc::now();
     let command_id = NodeCommandId::new();
     let correlation_id = Uuid::now_v7();
-    let snapshot = GatewaySnapshot::new(
+    let certificate_id = GatewayCertificateId::new();
+    let domain_claim_id = DomainClaimId::new();
+    let certificate_request = GatewayCertificateRequest::new(
+        certificate_id.as_uuid(),
+        vec![hostname.to_ascii_lowercase()],
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+    )
+    .expect("certificate request");
+    let snapshot = GatewaySnapshot::new_with_certificate(
         revision,
         expected_revision,
-        format!("# {hostname}{path}\nmanagement {{ enabled = true }}\n"),
+        format!(
+            "# {hostname}{path}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
+            certificate_request.certificate_file, certificate_request.private_key_file
+        ),
+        Some(certificate_request.clone()),
     )
     .expect("snapshot");
     let mut route = Route::create(
@@ -37,12 +53,16 @@ fn staged(
         node_id,
         RouteHostname::parse(hostname).expect("hostname"),
         RoutePath::parse(path).expect("path"),
+        domain_claim_id,
+        DomainNamePattern::parse(hostname).expect("domain pattern"),
+        certificate_id,
         WorkloadId::new(),
         WorkloadRevisionId::new(),
         RoutePortName::parse("http").expect("port"),
         UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("endpoint"),
         now,
-    );
+    )
+    .expect("route");
     route
         .stage(revision, command_id, snapshot.snapshot_digest.clone(), now)
         .expect("stage route");
@@ -55,9 +75,22 @@ fn staged(
         now + Duration::minutes(3),
     )
     .expect("publication");
+    let certificate = GatewayCertificate::provision(
+        certificate_id,
+        route.organization_id,
+        node_id,
+        vec![domain_claim_id],
+        revision,
+        command_id,
+        publication.snapshot_digest.clone(),
+        certificate_request,
+        now,
+    )
+    .expect("certificate");
     let canonical = format!("{hostname}{path}");
     StageRoutePublication {
         route: route.clone(),
+        certificate,
         publication,
         expected_scope_version: 0,
         idempotency: IdempotencyRequest::new("routes", key, canonical.as_bytes())
@@ -75,6 +108,35 @@ fn staged(
             payload: serde_json::json!({ "route_id": route.id }),
         },
     }
+}
+
+async fn issue(
+    repository: &InMemoryEdgeRepository,
+    certificate: &GatewayCertificate,
+    issued_at: chrono::DateTime<Utc>,
+) {
+    let mut issued = certificate.clone();
+    let expected_version = issued.aggregate_version;
+    issued
+        .record_issued(
+            format!("sha256:{}", "b".repeat(64)),
+            GatewayCertificateMaterial {
+                serial_number: issued.id.to_string(),
+                fingerprint: format!("sha256:{}", "a".repeat(64)),
+                certificate_pem:
+                    "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n".into(),
+                ca_bundle_pem:
+                    "-----BEGIN CERTIFICATE-----\ndGVzdC1jYQ==\n-----END CERTIFICATE-----\n".into(),
+                issued_at,
+                expires_at: issued_at + Duration::days(30),
+            },
+            issued_at,
+        )
+        .expect("record issue");
+    repository
+        .transition_gateway_certificate(issued, expected_version)
+        .await
+        .expect("persist issue");
 }
 
 fn acknowledgement(
@@ -103,6 +165,12 @@ async fn enforces_one_owner_for_hostname_path_inside_gateway_scope() {
         .stage_route_publication(first)
         .await
         .expect("first route");
+    issue(
+        &repository,
+        &stored.certificate,
+        stored.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await;
     repository
         .project_gateway_acknowledgement(
             &acknowledgement(&stored, GatewayAckState::Applied),
@@ -163,6 +231,12 @@ async fn serializes_complete_snapshots_and_projects_exact_acknowledgements() {
         .stage_route_publication(second)
         .await
         .expect("stage after rejection");
+    issue(
+        &repository,
+        &second.certificate,
+        second.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await;
     let applied = acknowledgement(&second, GatewayAckState::Applied);
     repository
         .project_gateway_acknowledgement(&applied, applied.acknowledged_at + Duration::seconds(1))
@@ -172,4 +246,90 @@ async fn serializes_complete_snapshots_and_projects_exact_acknowledgements() {
     assert_eq!(scope.last_issued_revision, 2);
     assert_eq!(scope.installed_revision, Some(2));
     assert_eq!(scope.aggregate_version, 3);
+}
+
+#[tokio::test]
+async fn persists_only_closed_gateway_certificate_transitions() {
+    let repository = InMemoryEdgeRepository::new();
+    let failed = repository
+        .stage_route_publication(staged(
+            NodeId::new(),
+            1,
+            None,
+            "failed.example.com",
+            "/",
+            "failed-certificate",
+        ))
+        .await
+        .expect("stage failed certificate");
+    let mut failed_certificate = failed.certificate.clone();
+    let failed_version = failed_certificate.aggregate_version;
+    failed_certificate
+        .fail_provisioning(
+            format!("sha256:{}", "c".repeat(64)),
+            "certificate authority unavailable",
+            failed.publication.command_issued_at + Duration::milliseconds(1),
+        )
+        .expect("fail provisioning");
+    repository
+        .transition_gateway_certificate(failed_certificate.clone(), failed_version)
+        .await
+        .expect("persist provisioning failure");
+    assert_eq!(
+        repository
+            .find_gateway_certificate(failed_certificate.node_id, failed_certificate.id)
+            .await
+            .expect("failed certificate")
+            .state,
+        crate::modules::edge::domain::GatewayCertificateState::Failed
+    );
+
+    let ready = repository
+        .stage_route_publication(staged(
+            NodeId::new(),
+            1,
+            None,
+            "ready.example.com",
+            "/",
+            "ready-certificate",
+        ))
+        .await
+        .expect("stage ready certificate");
+    issue(
+        &repository,
+        &ready.certificate,
+        ready.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await;
+    let applied = acknowledgement(&ready, GatewayAckState::Applied);
+    repository
+        .project_gateway_acknowledgement(
+            &applied,
+            applied.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await
+        .expect("ready certificate");
+    let mut revoked = repository
+        .find_gateway_certificate(ready.certificate.node_id, ready.certificate.id)
+        .await
+        .expect("ready certificate");
+    let ready_version = revoked.aggregate_version;
+    revoked
+        .revoke(
+            "domain ownership removed",
+            applied.acknowledged_at + Duration::seconds(1),
+        )
+        .expect("revoke ready certificate");
+    repository
+        .transition_gateway_certificate(revoked.clone(), ready_version)
+        .await
+        .expect("persist revocation");
+    assert_eq!(
+        repository
+            .find_gateway_certificate(revoked.node_id, revoked.id)
+            .await
+            .expect("revoked certificate")
+            .state,
+        crate::modules::edge::domain::GatewayCertificateState::Revoked
+    );
 }

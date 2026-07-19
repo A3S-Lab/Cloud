@@ -1,9 +1,14 @@
 use crate::modules::edge::domain::repositories::IEdgeRepository;
-use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
+use crate::modules::edge::domain::services::{
+    IDomainOwnershipVerifier, IGatewayCommandQueue, IRouteTargetReader,
+};
 use crate::modules::edge::{
-    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetRouteHandler, ListRoutesHandler,
-    PostgresEdgeRepository, PublishRouteHandler, WorkloadRouteTargetReader,
+    CreateDomainClaimHandler, EdgeGatewayAcknowledgementProjector, EdgeModule,
+    FleetGatewayCommandQueue, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
+    PostgresEdgeRepository, PublishRouteHandler, UnavailableDomainOwnershipVerifier,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::fleet::domain::services::{
@@ -52,7 +57,7 @@ use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
 use crate::server::ControlPlane;
 use crate::{
-    config::{EventProviderKind, ProcessRole, SecurityProviderKind},
+    config::{EventProviderKind, ProcessRole, SecurityProfile, SecurityProviderKind},
     infrastructure::{connect_and_migrate, postgres_health, PostgresBootstrapError},
     CloudConfig,
 };
@@ -118,6 +123,10 @@ pub async fn build_application(
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository;
+    let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
+        SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
+        SecurityProfile::Production => Arc::new(UnavailableDomainOwnershipVerifier),
+    };
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
@@ -251,6 +260,7 @@ pub async fn build_application(
             routes,
             route_targets,
             route_commands,
+            domain_verifier,
             gateway_projector,
             operations: operation_repository,
             nodes,
@@ -286,6 +296,7 @@ struct ApplicationDependencies {
     routes: Arc<dyn IEdgeRepository>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
+    domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
     nodes: Arc<dyn INodeRepository>,
@@ -309,6 +320,7 @@ fn build_application_with_health(
         routes,
         route_targets,
         route_commands,
+        domain_verifier,
         gateway_projector,
         operations,
         nodes,
@@ -321,6 +333,7 @@ fn build_application_with_health(
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
     let workload_environments = Arc::clone(&environments);
+    let domain_environments = Arc::clone(&environments);
     let create_workloads = Arc::clone(&workloads);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
@@ -346,7 +359,12 @@ fn build_application_with_health(
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
     let gateway_commands = node_control;
+    let create_domain_claims = Arc::clone(&routes);
+    let verify_domain_claims = Arc::clone(&routes);
     let publish_routes = Arc::clone(&routes);
+    let list_domain_claims = Arc::clone(&routes);
+    let get_domain_claims = Arc::clone(&routes);
+    let list_gateway_certificates = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
     let log_store = log_chunks;
@@ -377,6 +395,7 @@ fn build_application_with_health(
         management_path_prefix: config.edge.management_path_prefix.clone(),
         management_auth_token_env: config.edge.management_auth_token_env.clone(),
         upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
+        certificate_directory: config.edge.certificate_directory.clone(),
     })
     .map_err(BootError::Internal)?;
     let publish_route_handler = PublishRouteHandler::new(
@@ -427,6 +446,12 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workloads::StopWorkload, _>(
                     StopWorkloadHandler::new(stop_workloads),
+                )
+                .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
+                    CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
+                )
+                .command_handler::<crate::modules::edge::VerifyDomainClaim, _>(
+                    VerifyDomainClaimHandler::new(verify_domain_claims, domain_verifier),
                 )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
@@ -509,6 +534,15 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::edge::ListRoutes, _>(ListRoutesHandler::new(
                     list_routes,
                 ))
+                .query_handler::<crate::modules::edge::ListDomainClaims, _>(
+                    ListDomainClaimsHandler::new(list_domain_claims),
+                )
+                .query_handler::<crate::modules::edge::GetDomainClaim, _>(
+                    GetDomainClaimHandler::new(get_domain_claims),
+                )
+                .query_handler::<crate::modules::edge::ListGatewayCertificates, _>(
+                    ListGatewayCertificatesHandler::new(list_gateway_certificates),
+                )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,
                 ))

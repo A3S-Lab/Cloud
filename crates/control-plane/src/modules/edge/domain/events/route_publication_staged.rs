@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::{GatewayPublication, Route};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
-    WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,8 @@ pub struct RoutePublicationStaged {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub route_id: RouteId,
+    pub domain_claim_id: DomainClaimId,
+    pub gateway_certificate_id: GatewayCertificateId,
     pub node_id: NodeId,
     pub workload_id: WorkloadId,
     pub workload_revision_id: WorkloadRevisionId,
@@ -27,7 +29,13 @@ impl RoutePublicationStaged {
     pub fn envelope(
         route: &Route,
         publication: &GatewayPublication,
-    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+    ) -> Result<DomainEventEnvelope, String> {
+        let domain_claim_id = route
+            .domain_claim_id
+            .ok_or_else(|| "staged route must have a domain claim".to_string())?;
+        let gateway_certificate_id = route
+            .gateway_certificate_id
+            .ok_or_else(|| "staged route must have a Gateway certificate".to_string())?;
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "edge.route.publication-staged".into(),
@@ -43,6 +51,8 @@ impl RoutePublicationStaged {
                 project_id: route.project_id,
                 environment_id: route.environment_id,
                 route_id: route.id,
+                domain_claim_id,
+                gateway_certificate_id,
                 node_id: route.gateway_node_id,
                 workload_id: route.workload_id,
                 workload_revision_id: route.workload_revision_id,
@@ -51,7 +61,8 @@ impl RoutePublicationStaged {
                 snapshot_digest: publication.snapshot_digest.clone(),
                 hostname: route.hostname.as_str().to_owned(),
                 path_prefix: route.path_prefix.as_str().to_owned(),
-            })?,
+            })
+            .map_err(|error| error.to_string())?,
         })
     }
 }
