@@ -323,7 +323,7 @@ impl WorkloadRuntimeReconciler {
             match acknowledgement.outcome {
                 NodeCommandOutcome::Succeeded { result } => match *result {
                     NodeCommandResult::RuntimeInspected {
-                        inspection: RuntimeInspection::Found { observation },
+                        inspection: RuntimeInspection::Found { observation, .. },
                     } => {
                         observation.validate_against(spec).map_err(|error| {
                             format!("Runtime inspect result is inconsistent: {error}")

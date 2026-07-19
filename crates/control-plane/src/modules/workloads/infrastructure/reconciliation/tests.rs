@@ -204,6 +204,7 @@ async fn missing_provider_evidence_reapplies_the_same_revision_once_and_stop_rem
             NodeCommandOutcome::Succeeded {
                 result: Box::new(NodeCommandResult::RuntimeInspected {
                     inspection: RuntimeInspection::NotFound {
+                        schema: RuntimeInspection::SCHEMA.into(),
                         unit_id: spec.unit_id.clone(),
                         last_generation: Some(spec.generation),
                     },

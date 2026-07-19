@@ -44,9 +44,11 @@ impl From<&NodeLogChunkReceiptDraft> for LogChunkRow {
 
 pub(in super::super) async fn record_gateway_acknowledgement(
     executor: &PostgresExecutor,
-    acknowledgement: NodeGatewayAck,
+    mut acknowledgement: NodeGatewayAck,
     received_at: DateTime<Utc>,
 ) -> Result<NodeGatewayAckReceipt, RepositoryError> {
+    acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+    let received_at = canonical_timestamp(received_at);
     acknowledgement
         .validate()
         .map_err(RepositoryError::Conflict)?;
@@ -166,9 +168,11 @@ pub(in super::super) async fn record_gateway_acknowledgement(
 
 pub(in super::super) async fn record_log_chunks(
     executor: &PostgresExecutor,
-    batch: NodeLogBatchReceiptDraft,
+    mut batch: NodeLogBatchReceiptDraft,
     received_at: DateTime<Utc>,
 ) -> Result<NodeLogChunkReceipt, RepositoryError> {
+    batch.sent_at = canonical_timestamp(batch.sent_at);
+    let received_at = canonical_timestamp(received_at);
     batch.validate().map_err(RepositoryError::Conflict)?;
     executor
         .transaction(move |transaction| {

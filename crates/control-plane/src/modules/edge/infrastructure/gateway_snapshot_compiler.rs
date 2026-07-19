@@ -71,32 +71,32 @@ impl GatewaySnapshotCompiler {
 
         let mut acl = format!(
             "# a3s-cloud complete Gateway snapshot {revision}\nentrypoints \"a3s-cloud-http\" {{\n  address = {}\n}}\n\n",
-            hcl_string(&self.config.entrypoint_address)
+            acl_string(&self.config.entrypoint_address)
         );
         for route in &routes {
             let name = format!("route-{}", route.id.as_uuid().simple());
             acl.push_str(&format!(
                 "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-http\"]\n}}\n\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
-                hcl_string(&format!(
+                acl_string(&format!(
                     "Host(`{}`) && PathPrefix(`{}`)",
                     route.hostname.as_str(),
                     route.path_prefix.as_str()
                 )),
-                hcl_string(&duration(self.config.upstream_request_timeout_ms)),
-                hcl_string(route.upstream.as_str()),
+                acl_string(&duration(self.config.upstream_request_timeout_ms)),
+                acl_string(route.upstream.as_str()),
             ));
         }
         acl.push_str(&format!(
             "management {{\n  enabled = true\n  address = {}\n  path_prefix = {}\n  auth_token_env = {}\n  allowed_ips = [\"127.0.0.1\", \"::1\"]\n}}\n",
-            hcl_string(&self.config.management_address),
-            hcl_string(&self.config.management_path_prefix),
-            hcl_string(&self.config.management_auth_token_env),
+            acl_string(&self.config.management_address),
+            acl_string(&self.config.management_path_prefix),
+            acl_string(&self.config.management_auth_token_env),
         ));
         GatewaySnapshot::new(revision, expected_revision, acl)
     }
 }
 
-fn hcl_string(value: &str) -> String {
+fn acl_string(value: &str) -> String {
     let escaped = value
         .replace('\\', "\\\\")
         .replace('"', "\\\"")

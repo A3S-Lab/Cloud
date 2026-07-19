@@ -216,6 +216,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         outcome: NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeInspected {
                 inspection: RuntimeInspection::NotFound {
+                    schema: RuntimeInspection::SCHEMA.into(),
                     unit_id: "service-1".into(),
                     last_generation: Some(1),
                 },
@@ -378,6 +379,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
             unit_id: "service-1".into(),
             generation: 1,
             chunk: RuntimeLogChunk {
+                schema: RuntimeLogChunk::SCHEMA.into(),
                 cursor: "opaque:1".into(),
                 sequence: 1,
                 observed_at_ms: 1,
@@ -736,7 +738,7 @@ fn lease_request(node_id: Uuid, agent_instance_id: Uuid) -> NodeCommandLeaseRequ
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "docker".into(),
+        provider_id: a3s_runtime::ProviderId::parse("docker").expect("valid Docker provider ID"),
         provider_build: "docker-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

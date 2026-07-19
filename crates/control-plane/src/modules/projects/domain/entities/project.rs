@@ -1,5 +1,5 @@
 use crate::modules::projects::domain::value_objects::ProjectName;
-use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, OrganizationId, ProjectId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +19,7 @@ impl Project {
         name: ProjectName,
         created_at: DateTime<Utc>,
     ) -> Self {
+        let created_at = canonical_timestamp(created_at);
         Self {
             organization_id,
             id,

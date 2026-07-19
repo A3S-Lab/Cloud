@@ -11,7 +11,7 @@ use a3s_cloud_control_plane::modules::workloads::{
     ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
-use chrono::{Duration, Utc};
+use chrono::{Duration, Timelike, Utc};
 use serde_json::json;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -33,6 +33,9 @@ pub async fn exercise_workloads(
     let environment_id = EnvironmentId::from_uuid(environment_uuid);
     let repository = PostgresWorkloadRepository::new(executor.clone());
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("sub-microsecond workload timestamp");
     let workload = Workload::create(
         WorkloadId::new(),
         organization_id,
@@ -165,6 +168,7 @@ pub async fn exercise_workloads(
         .mark_resolving(first_deployment_id, 1, now + Duration::seconds(1))
         .await?;
     assert_eq!(resolving.status, DeploymentStatus::Resolving);
+    assert_eq!(resolving.updated_at.nanosecond() % 1_000, 0);
     assert_eq!(
         repository
             .mark_resolving(first_deployment_id, 1, now + Duration::seconds(1))

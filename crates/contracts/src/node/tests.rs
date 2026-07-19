@@ -10,7 +10,7 @@ use uuid::Uuid;
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "docker".into(),
+        provider_id: a3s_runtime::ProviderId::parse("docker").expect("valid Docker provider ID"),
         provider_build: "docker-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
@@ -137,6 +137,7 @@ fn acknowledgements_and_leases_fail_closed_on_identity_changes() {
         outcome: NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeInspected {
                 inspection: a3s_runtime::contract::RuntimeInspection::NotFound {
+                    schema: a3s_runtime::contract::RuntimeInspection::SCHEMA.into(),
                     unit_id: "unit-1".into(),
                     last_generation: Some(4),
                 },
@@ -149,6 +150,7 @@ fn acknowledgements_and_leases_fail_closed_on_identity_changes() {
     wrong_result.outcome = NodeCommandOutcome::Succeeded {
         result: Box::new(NodeCommandResult::RuntimeInspected {
             inspection: a3s_runtime::contract::RuntimeInspection::NotFound {
+                schema: a3s_runtime::contract::RuntimeInspection::SCHEMA.into(),
                 unit_id: "different-unit".into(),
                 last_generation: Some(4),
             },

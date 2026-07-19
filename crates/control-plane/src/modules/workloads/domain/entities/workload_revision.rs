@@ -1,4 +1,4 @@
-use crate::modules::shared_kernel::domain::{WorkloadId, WorkloadRevisionId};
+use crate::modules::shared_kernel::domain::{canonical_timestamp, WorkloadId, WorkloadRevisionId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -374,6 +374,7 @@ impl WorkloadRevision {
             health: template.health.clone(),
         };
         let request_digest = request.request_digest()?;
+        let created_at = canonical_timestamp(created_at);
         Ok(Self {
             id,
             workload_id,
@@ -398,6 +399,7 @@ impl WorkloadRevision {
             return Err("workload revision generation must be positive".into());
         }
         let request_digest = request.request_digest()?;
+        let created_at = canonical_timestamp(created_at);
         Ok(Self {
             id,
             workload_id,
@@ -416,6 +418,7 @@ impl WorkloadRevision {
         artifact: OciArtifact,
         resolved_at: DateTime<Utc>,
     ) -> Result<(), String> {
+        let resolved_at = canonical_timestamp(resolved_at);
         if resolved_at < self.created_at {
             return Err("workload revision resolution time regressed".into());
         }
@@ -437,6 +440,10 @@ impl WorkloadRevision {
         self.template
             .as_ref()
             .ok_or_else(|| "workload revision has not resolved its OCI artifact".into())
+    }
+
+    pub fn runtime_unit_id(&self) -> String {
+        format!("workload:{}:revision:{}", self.workload_id, self.id)
     }
 }
 

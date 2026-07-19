@@ -358,7 +358,7 @@ async fn create_api_token(
 
 fn runtime_capabilities() -> Value {
     json!({
-        "schema": "a3s.runtime.capabilities.v2",
+        "schema": "a3s.runtime.capabilities.v3",
         "provider_id": "docker",
         "provider_build": "test",
         "unit_classes": ["task", "service"],

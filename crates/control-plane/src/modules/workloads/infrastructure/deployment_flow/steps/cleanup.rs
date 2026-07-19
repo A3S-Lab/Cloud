@@ -205,7 +205,7 @@ pub(super) async fn observe_cleanup(
                     })
                 }
                 a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
-                    inspection: RuntimeInspection::Found { observation },
+                    inspection: RuntimeInspection::Found { observation, .. },
                 } if observation.state == RuntimeUnitState::Stopped => {
                     return Ok(CleanupObserveStepOutput::Ready {
                         cleaned_at: acknowledgement.completed_at,

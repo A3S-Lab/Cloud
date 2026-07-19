@@ -78,6 +78,14 @@ impl DockerRuntimeDriver {
         if policy.start_period_ms > 0 {
             tokio::time::sleep(Duration::from_millis(policy.start_period_ms)).await;
         }
+        container = self
+            .docker
+            .inspect_container(&container_id(&container)?, None)
+            .await
+            .map_err(docker_error)?;
+        if !container_is_running(&container) {
+            return self.observation(spec, &container, provider_build, None);
+        }
         let mut successes = 0_u32;
         let mut failures = 0_u32;
         loop {
@@ -124,7 +132,10 @@ impl DockerRuntimeDriver {
                 path,
                 expected_statuses,
             } => {
-                let port = host_port(spec, container, port)?;
+                let port = match host_port(spec, container, port) {
+                    Ok(port) => port,
+                    Err(error) => return unavailable_port_health(error),
+                };
                 let url = format!("http://127.0.0.1:{port}{path}");
                 match self
                     .health_client
@@ -147,7 +158,10 @@ impl DockerRuntimeDriver {
                 }
             }
             HealthProbe::Tcp { port } => {
-                let port = host_port(spec, container, port)?;
+                let port = match host_port(spec, container, port) {
+                    Ok(port) => port,
+                    Err(error) => return unavailable_port_health(error),
+                };
                 match tokio::time::timeout(
                     Duration::from_millis(policy.timeout_ms),
                     TcpStream::connect(("127.0.0.1", port)),
@@ -175,6 +189,17 @@ impl DockerRuntimeDriver {
             checked_at_ms: now_ms(),
             message,
         })
+    }
+}
+
+fn unavailable_port_health(error: RuntimeError) -> RuntimeResult<RuntimeHealthObservation> {
+    match error {
+        RuntimeError::ProviderUnavailable(message) => Ok(RuntimeHealthObservation {
+            state: RuntimeHealthState::Unhealthy,
+            checked_at_ms: now_ms(),
+            message: Some(sanitize_probe_message(&message)),
+        }),
+        error => Err(error),
     }
 }
 
@@ -244,5 +269,28 @@ fn sanitize_probe_message(message: &str) -> String {
         "health probe failed".into()
     } else {
         value.chars().take(4096).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unpublished_port_is_retryable_health_state_but_protocol_errors_fail_closed() {
+        let observation = unavailable_port_health(RuntimeError::ProviderUnavailable(
+            "Docker port publication is pending".into(),
+        ))
+        .expect("pending port publication must produce a health observation");
+        assert_eq!(observation.state, RuntimeHealthState::Unhealthy);
+        assert_eq!(
+            observation.message.as_deref(),
+            Some("Docker port publication is pending")
+        );
+
+        assert!(matches!(
+            unavailable_port_health(RuntimeError::Protocol("invalid binding".into())),
+            Err(RuntimeError::Protocol(message)) if message == "invalid binding"
+        ));
     }
 }

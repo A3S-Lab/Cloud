@@ -11,8 +11,8 @@ use crate::modules::edge::domain::{
     RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
-    WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
+    RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use a3s_orm::{
@@ -408,6 +408,9 @@ impl IEdgeRepository for PostgresEdgeRepository {
         acknowledgement: &NodeGatewayAck,
         received_at: DateTime<Utc>,
     ) -> Result<bool, RepositoryError> {
+        let mut acknowledgement = acknowledgement.clone();
+        acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+        let received_at = canonical_timestamp(received_at);
         acknowledgement
             .validate()
             .map_err(RepositoryError::Conflict)?;
@@ -416,7 +419,6 @@ impl IEdgeRepository for PostgresEdgeRepository {
                 "Gateway acknowledgement receipt predates its node timestamp".into(),
             ));
         }
-        let acknowledgement = acknowledgement.clone();
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {

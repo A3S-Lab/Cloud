@@ -1,5 +1,7 @@
 use crate::modules::projects::domain::value_objects::EnvironmentName;
-use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, EnvironmentId, OrganizationId, ProjectId,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +23,7 @@ impl Environment {
         name: EnvironmentName,
         created_at: DateTime<Utc>,
     ) -> Self {
+        let created_at = canonical_timestamp(created_at);
         Self {
             organization_id,
             project_id,

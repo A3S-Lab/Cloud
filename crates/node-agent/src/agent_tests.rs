@@ -38,6 +38,7 @@ impl RuntimeClient for InspectRuntime {
     async fn inspect(&self, _unit_id: &str) -> RuntimeResult<RuntimeInspection> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(RuntimeInspection::Found {
+            schema: RuntimeInspection::SCHEMA.into(),
             observation: Box::new(self.observation.clone()),
         })
     }
@@ -209,7 +210,8 @@ impl GatewaySnapshotInstaller for AppliedGatewayInstaller {
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "docker".into(),
+        provider_id: a3s_runtime::ProviderId::parse("docker")
+            .expect("test Docker provider ID must be valid"),
         provider_build: "docker-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],

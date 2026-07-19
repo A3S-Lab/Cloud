@@ -21,7 +21,7 @@ use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
     RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, Timelike, Utc};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -33,6 +33,9 @@ use support::*;
 async fn command_queue_is_sequenced_leased_redelivered_and_acknowledged_exactly() {
     let repository = InMemoryNodeRepository::new();
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 123)
+        .expect("sub-microsecond command timestamp");
     let (node_id, agent_instance_id) = command_node(&repository, now).await;
     let aggregate_id = Uuid::now_v7();
     let first_draft = inspect_draft(
@@ -100,6 +103,7 @@ async fn command_queue_is_sequenced_leased_redelivered_and_acknowledged_exactly(
         .expect("lease first command");
     assert_eq!(first_lease.commands.len(), 1);
     assert_eq!(first_lease.commands[0].sequence, 1);
+    assert_eq!(first_lease.leased_until.nanosecond() % 1_000, 0);
 
     let blocked = repository
         .lease_commands(
@@ -125,9 +129,15 @@ async fn command_queue_is_sequenced_leased_redelivered_and_acknowledged_exactly(
         .await
         .expect("acknowledge first command");
     assert!(!accepted.replayed);
+    assert_eq!(accepted.value.completed_at.nanosecond() % 1_000, 0);
+    let mut replay_ack = first_ack;
+    replay_ack.completed_at = replay_ack
+        .completed_at
+        .with_nanosecond(replay_ack.completed_at.nanosecond() / 1_000 * 1_000 + 987)
+        .expect("sub-microsecond acknowledgement replay timestamp");
     assert!(
         repository
-            .acknowledge_command(first_ack, now + Duration::seconds(4))
+            .acknowledge_command(replay_ack, now + Duration::seconds(4))
             .await
             .expect("replay acknowledgement")
             .replayed
@@ -270,6 +280,9 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
     let now = Utc::now();
     let (node_id, agent_instance_id) = command_node(&repository, now).await;
     let observed_at = now + Duration::seconds(1);
+    let observed_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000 + 123)
+        .expect("sub-microsecond observation timestamp");
     let report_id = Uuid::now_v7();
     let batch = NodeObservationBatch {
         schema: NodeObservationBatch::SCHEMA.into(),
@@ -297,8 +310,15 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         .expect("record observation");
     assert_eq!(accepted.accepted_reports, 1);
     assert_eq!(accepted.replayed_reports, 0);
+    let mut replay_batch = batch.clone();
+    let replayed_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000 + 987)
+        .expect("sub-microsecond replay timestamp");
+    replay_batch.sent_at = replayed_at;
+    replay_batch.heartbeat.observed_at = replayed_at;
+    replay_batch.observations[0].observed_at = replayed_at;
     let replayed = repository
-        .record_observations(batch.clone(), observed_at + Duration::milliseconds(1))
+        .record_observations(replay_batch, observed_at + Duration::milliseconds(1))
         .await
         .expect("replay observation");
     assert_eq!(replayed.accepted_reports, 0);
@@ -350,10 +370,15 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
             .expect("record Gateway acknowledgement")
             .replayed
     );
+    let mut acknowledgement_replay = acknowledgement.clone();
+    acknowledgement_replay.acknowledged_at = acknowledgement_replay
+        .acknowledged_at
+        .with_nanosecond(acknowledgement_replay.acknowledged_at.nanosecond() / 1_000 * 1_000 + 987)
+        .expect("sub-microsecond Gateway replay timestamp");
     assert!(
         repository
             .record_gateway_acknowledgement(
-                acknowledgement.clone(),
+                acknowledgement_replay,
                 observed_at + Duration::seconds(2),
             )
             .await
@@ -702,6 +727,9 @@ async fn heartbeat_and_state_replays_are_exact_and_do_not_advance_versions() {
     let secret = format!("a3sn_{}", "f".repeat(64));
     let credential = EnrollmentTokenCredential::from_secret(&secret).expect("credential");
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 123)
+        .expect("sub-microsecond Fleet timestamp");
     let token = EnrollmentToken::new(
         EnrollmentTokenId::new(),
         organization_id,
@@ -778,8 +806,14 @@ async fn heartbeat_and_state_replays_are_exact_and_do_not_advance_versions() {
         .record_heartbeat(heartbeat.clone())
         .await
         .expect("heartbeat");
+    assert_eq!(accepted.last_observed_at.nanosecond() % 1_000, 0);
+    let mut replay_heartbeat = heartbeat.clone();
+    replay_heartbeat.observed_at = replay_heartbeat
+        .observed_at
+        .with_nanosecond(replay_heartbeat.observed_at.nanosecond() / 1_000 * 1_000 + 987)
+        .expect("sub-microsecond heartbeat replay timestamp");
     let replayed = repository
-        .record_heartbeat(heartbeat.clone())
+        .record_heartbeat(replay_heartbeat)
         .await
         .expect("heartbeat replay");
     assert_eq!(replayed, accepted);

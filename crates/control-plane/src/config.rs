@@ -209,7 +209,7 @@ impl CloudConfig {
 
     pub fn parse(source: &str) -> Result<Self, ConfigError> {
         let document = a3s_acl::parse(source)
-            .map_err(|error| ConfigError::Invalid(format!("invalid HCL: {error}")))?;
+            .map_err(|error| ConfigError::Invalid(format!("invalid A3S ACL: {error}")))?;
         validate_root(&document)?;
         let server = one_block(&document, "server")?;
         validate_block(server, &["host", "port", "role"])?;
@@ -921,12 +921,27 @@ security {
 "#;
 
     #[test]
-    fn parses_closed_hcl_configuration() {
+    fn parses_closed_acl_configuration() {
         let config = CloudConfig::parse(VALID).expect("valid config");
         assert_eq!(config.server.role, ProcessRole::All);
         assert_eq!(config.server_address().expect("address").port(), 8080);
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
+        assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.security.profile, SecurityProfile::Development);
+    }
+
+    #[test]
+    fn loads_shipped_cloud_acl() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/cloud.acl");
+        let config = CloudConfig::load(&path)
+            .unwrap_or_else(|error| panic!("failed to load {}: {error}", path.display()));
+
+        assert_eq!(config.server.role, ProcessRole::All);
+        assert_eq!(
+            config.server_address().expect("server address").port(),
+            8080
+        );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }

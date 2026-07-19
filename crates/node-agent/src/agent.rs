@@ -324,10 +324,10 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
         NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
             NodeCommandResult::RuntimeApplied { observation } => observation,
             NodeCommandResult::RuntimeInspected {
-                inspection: RuntimeInspection::Found { observation },
+                inspection: RuntimeInspection::Found { observation, .. },
             }
             | NodeCommandResult::RuntimeStopped {
-                inspection: RuntimeInspection::Found { observation },
+                inspection: RuntimeInspection::Found { observation, .. },
             } => observation,
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }

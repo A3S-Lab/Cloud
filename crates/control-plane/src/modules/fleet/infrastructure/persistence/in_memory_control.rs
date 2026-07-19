@@ -7,7 +7,7 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
+    canonical_timestamp, IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome,
@@ -181,6 +181,8 @@ impl INodeControlRepository for InMemoryNodeRepository {
         now: DateTime<Utc>,
         leased_until: DateTime<Utc>,
     ) -> Result<NodeCommandLeaseResponse, RepositoryError> {
+        let now = canonical_timestamp(now);
+        let leased_until = canonical_timestamp(leased_until);
         request.validate().map_err(RepositoryError::Conflict)?;
         if lease_id.is_nil() || leased_until <= now {
             return Err(RepositoryError::Conflict(
@@ -261,9 +263,10 @@ impl INodeControlRepository for InMemoryNodeRepository {
 
     async fn acknowledge_command(
         &self,
-        acknowledgement: NodeCommandAck,
+        mut acknowledgement: NodeCommandAck,
         _received_at: DateTime<Utc>,
     ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
+        acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
         let mut state = self.state.write().await;
         let stored = state
             .commands
@@ -334,12 +337,18 @@ impl INodeControlRepository for InMemoryNodeRepository {
 
     async fn record_observations(
         &self,
-        batch: NodeObservationBatch,
-        _received_at: DateTime<Utc>,
+        mut batch: NodeObservationBatch,
+        received_at: DateTime<Utc>,
     ) -> Result<NodeObservationReceipt, RepositoryError> {
+        batch.sent_at = canonical_timestamp(batch.sent_at);
+        batch.heartbeat.observed_at = canonical_timestamp(batch.heartbeat.observed_at);
+        for report in &mut batch.observations {
+            report.observed_at = canonical_timestamp(report.observed_at);
+        }
+        let _received_at = canonical_timestamp(received_at);
         batch.validate().map_err(RepositoryError::Conflict)?;
         let capabilities = NodeCapabilities::new(
-            batch.heartbeat.runtime_capabilities.provider_id.clone(),
+            batch.heartbeat.runtime_capabilities.provider_id.to_string(),
             batch.heartbeat.runtime_capabilities.provider_build.clone(),
             serde_json::to_value(&batch.heartbeat.runtime_capabilities)
                 .map_err(|error| RepositoryError::Storage(error.to_string()))?,
@@ -456,9 +465,11 @@ impl INodeControlRepository for InMemoryNodeRepository {
 
     async fn record_gateway_acknowledgement(
         &self,
-        acknowledgement: NodeGatewayAck,
-        _received_at: DateTime<Utc>,
+        mut acknowledgement: NodeGatewayAck,
+        received_at: DateTime<Utc>,
     ) -> Result<NodeGatewayAckReceipt, RepositoryError> {
+        acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+        let _received_at = canonical_timestamp(received_at);
         acknowledgement
             .validate()
             .map_err(RepositoryError::Conflict)?;
@@ -504,9 +515,11 @@ impl INodeControlRepository for InMemoryNodeRepository {
 
     async fn record_log_chunks(
         &self,
-        batch: NodeLogBatchReceiptDraft,
-        _received_at: DateTime<Utc>,
+        mut batch: NodeLogBatchReceiptDraft,
+        received_at: DateTime<Utc>,
     ) -> Result<NodeLogChunkReceipt, RepositoryError> {
+        batch.sent_at = canonical_timestamp(batch.sent_at);
+        let _received_at = canonical_timestamp(received_at);
         batch.validate().map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let node = state

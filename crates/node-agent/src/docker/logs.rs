@@ -25,23 +25,23 @@ impl DockerRuntimeDriver {
         let since = cursor
             .as_ref()
             .map_or(0, |cursor| cursor.seconds.saturating_sub(1));
-        let options = LogsOptions {
+        let options: LogsOptions<String> = LogsOptions {
             follow: false,
             stdout: query.stream != Some(RuntimeLogStream::Stderr),
             stderr: query.stream != Some(RuntimeLogStream::Stdout),
             since,
             until: 0,
             timestamps: true,
-            tail: if cursor.is_some() {
-                "all".into()
-            } else {
-                query.limit.to_string()
-            },
+            tail: "all".into(),
         };
         let mut stream = self.docker.logs(&container_id(&container)?, Some(options));
-        let mut records = Vec::new();
-        let mut original_order = 0_u64;
-        while let Some(output) = stream.next().await {
+        let target_cursor = cursor.as_ref().map(LogCursor::encode);
+        let mut cursor_found = target_cursor.is_none();
+        let mut chunks = Vec::with_capacity(query.limit as usize);
+        let mut per_second = 0_u64;
+        let mut previous_second = None;
+        let mut previous_sequence = None;
+        'logs: while let Some(output) = stream.next().await {
             let output = output.map_err(docker_error)?;
             let stream = match output {
                 LogOutput::StdErr { .. } => RuntimeLogStream::Stderr,
@@ -56,70 +56,58 @@ impl DockerRuntimeDriver {
                         "Docker log record exceeds the Runtime one-MiB chunk bound".into(),
                     ));
                 }
-                records.push(RawLogRecord {
+                let record = RawLogRecord {
                     timestamp_ns: timestamp,
-                    original_order,
                     stream,
                     data: data.into(),
-                });
-                original_order = original_order.saturating_add(1);
+                };
+                let seconds = record.timestamp_ns.div_euclid(1_000_000_000);
+                if previous_second != Some(seconds) {
+                    previous_second = Some(seconds);
+                    per_second = 0;
+                }
+                if per_second >= 1_000_000 {
+                    return Err(RuntimeError::Protocol(
+                        "Docker emitted more than one million log records in one second".into(),
+                    ));
+                }
+                let record_cursor = LogCursor::new(&record, per_second)?;
+                per_second += 1;
+                let sequence = log_sequence(record.timestamp_ns, per_second)?;
+                if previous_sequence.is_some_and(|previous| previous >= sequence) {
+                    return Err(RuntimeError::Protocol(
+                        "Docker log records are not strictly ordered".into(),
+                    ));
+                }
+                previous_sequence = Some(sequence);
+                let chunk = RuntimeLogChunk {
+                    schema: RuntimeLogChunk::SCHEMA.into(),
+                    cursor: record_cursor.encode(),
+                    sequence,
+                    observed_at_ms: u64::try_from(record.timestamp_ns.div_euclid(1_000_000))
+                        .map_err(|_| {
+                            RuntimeError::Protocol("Docker log timestamp is invalid".into())
+                        })?,
+                    stream: record.stream,
+                    data: record.data,
+                };
+                chunk.validate().map_err(RuntimeError::Protocol)?;
+                if !cursor_found {
+                    if target_cursor.as_deref() == Some(chunk.cursor.as_str()) {
+                        cursor_found = true;
+                    }
+                    continue;
+                }
+                chunks.push(chunk);
+                if chunks.len() == query.limit as usize {
+                    break 'logs;
+                }
             }
         }
-        records.sort_by_key(|record| (record.timestamp_ns, record.original_order));
-        let mut chunks = Vec::new();
-        let mut per_second = 0_u64;
-        let mut previous_second = None;
-        for record in records {
-            let seconds = record.timestamp_ns.div_euclid(1_000_000_000);
-            if previous_second != Some(seconds) {
-                previous_second = Some(seconds);
-                per_second = 0;
-            }
-            if per_second >= 1_000_000 {
-                return Err(RuntimeError::Protocol(
-                    "Docker emitted more than one million log records in one second".into(),
-                ));
-            }
-            let record_cursor = LogCursor::new(&record, per_second)?;
-            per_second += 1;
-            chunks.push(RuntimeLogChunk {
-                cursor: record_cursor.encode(),
-                sequence: u64::try_from(seconds)
-                    .ok()
-                    .and_then(|seconds| seconds.checked_mul(1_000_000))
-                    .and_then(|base| base.checked_add(per_second))
-                    .ok_or_else(|| {
-                        RuntimeError::Protocol("Docker log sequence overflowed".into())
-                    })?,
-                observed_at_ms: u64::try_from(record.timestamp_ns.div_euclid(1_000_000)).map_err(
-                    |_| RuntimeError::Protocol("Docker log timestamp is invalid".into()),
-                )?,
-                stream: record.stream,
-                data: record.data,
-            });
-        }
-        if let Some(cursor) = cursor {
-            let Some(position) = chunks
-                .iter()
-                .position(|chunk| chunk.cursor == cursor.encode())
-            else {
-                return Err(RuntimeError::Protocol(
-                    "Docker log cursor is no longer available; the stream contains an explicit gap"
-                        .into(),
-                ));
-            };
-            chunks.drain(..=position);
-        }
-        chunks.truncate(query.limit as usize);
-        for chunk in &chunks {
-            chunk.validate().map_err(RuntimeError::Protocol)?;
-        }
-        if chunks
-            .windows(2)
-            .any(|pair| pair[0].sequence >= pair[1].sequence)
-        {
+        if !cursor_found {
             return Err(RuntimeError::Protocol(
-                "Docker log records are not strictly ordered".into(),
+                "Docker log cursor is no longer available; the stream contains an explicit gap"
+                    .into(),
             ));
         }
         Ok(chunks)
@@ -128,7 +116,6 @@ impl DockerRuntimeDriver {
 
 struct RawLogRecord {
     timestamp_ns: i64,
-    original_order: u64,
     stream: RuntimeLogStream,
     data: String,
 }
@@ -226,6 +213,14 @@ fn parse_docker_log_line(value: &str) -> RuntimeResult<(i64, &str)> {
     Ok((timestamp, data))
 }
 
+fn log_sequence(timestamp_ns: i64, ordinal_after_increment: u64) -> RuntimeResult<u64> {
+    u64::try_from(timestamp_ns.div_euclid(1_000_000_000))
+        .ok()
+        .and_then(|seconds| seconds.checked_mul(1_000_000))
+        .and_then(|base| base.checked_add(ordinal_after_increment))
+        .ok_or_else(|| RuntimeError::Protocol("Docker log sequence overflowed".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,12 +229,37 @@ mod tests {
     fn cursor_round_trip_is_stable() {
         let record = RawLogRecord {
             timestamp_ns: 1_700_000_000_123_456_789,
-            original_order: 0,
             stream: RuntimeLogStream::Stderr,
             data: "failure\n".into(),
         };
         let cursor = LogCursor::new(&record, 7).expect("cursor");
         let encoded = cursor.encode();
         assert_eq!(LogCursor::parse(&encoded).expect("parse").encode(), encoded);
+    }
+
+    #[test]
+    fn cursor_ordinal_distinguishes_records_with_one_provider_timestamp() {
+        let first = RawLogRecord {
+            timestamp_ns: 1_700_000_000_123_456_789,
+            stream: RuntimeLogStream::Stdout,
+            data: "first\n".into(),
+        };
+        let second = RawLogRecord {
+            timestamp_ns: first.timestamp_ns,
+            stream: RuntimeLogStream::Stdout,
+            data: "second\n".into(),
+        };
+        let first = LogCursor::new(&first, 0).expect("first cursor");
+        let second = LogCursor::new(&second, 1).expect("second cursor");
+        assert_eq!(first.timestamp_ns, second.timestamp_ns);
+        assert_ne!(first.encode(), second.encode());
+        assert_eq!(
+            LogCursor::parse(&second.encode()).expect("parse").ordinal,
+            1
+        );
+        assert!(
+            log_sequence(first.timestamp_ns, 1).expect("first sequence")
+                < log_sequence(second.timestamp_ns, 2).expect("second sequence")
+        );
     }
 }

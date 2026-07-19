@@ -95,13 +95,19 @@ impl DockerRuntimeDriver {
                 .await
                 .map_err(docker_error)?;
         }
-        match spec.class {
+        let observation = match spec.class {
             RuntimeUnitClass::Task => self.wait_for_task(spec, container, &provider_build).await,
             RuntimeUnitClass::Service => {
                 self.wait_for_service(spec, container, &provider_build)
                     .await
             }
-        }
+        }?;
+        let current_id = observation.provider_resource_id.as_deref().ok_or_else(|| {
+            RuntimeError::Protocol("Docker apply observation has no resource identity".into())
+        })?;
+        self.retire_stale_containers(node_id, spec, current_id)
+            .await?;
+        Ok(observation)
     }
 
     pub(super) async fn inspect_unit(
@@ -112,6 +118,7 @@ impl DockerRuntimeDriver {
         let digest = unit.spec.digest().map_err(RuntimeError::Protocol)?;
         let Some(container) = self.find_container(node_id, &unit.spec, &digest).await? else {
             return Ok(RuntimeInspection::NotFound {
+                schema: RuntimeInspection::SCHEMA.into(),
                 unit_id: unit.spec.unit_id.clone(),
                 last_generation: Some(unit.spec.generation),
             });
@@ -124,6 +131,7 @@ impl DockerRuntimeDriver {
         };
         let observation = self.observation(&unit.spec, &container, &provider_build, health)?;
         Ok(RuntimeInspection::Found {
+            schema: RuntimeInspection::SCHEMA.into(),
             observation: Box::new(observation),
         })
     }
@@ -188,23 +196,7 @@ impl DockerRuntimeDriver {
         let container = self.find_container(node_id, &unit.spec, &digest).await?;
         let already_absent = container.is_none();
         if let Some(container) = container {
-            let id = container_id(&container)?;
-            match self
-                .docker
-                .remove_container(
-                    &id,
-                    Some(RemoveContainerOptions {
-                        force: true,
-                        v: false,
-                        link: false,
-                    }),
-                )
-                .await
-            {
-                Ok(()) => {}
-                Err(error) if is_status(&error, 404) => {}
-                Err(error) => return Err(docker_error(error)),
-            }
+            self.remove_managed_container(&container).await?;
         }
         let removal = RuntimeRemoval {
             schema: RuntimeRemoval::SCHEMA.into(),
@@ -224,7 +216,11 @@ impl DockerRuntimeDriver {
         spec: &RuntimeUnitSpec,
         spec_digest: &str,
     ) -> RuntimeResult<Option<ContainerInspectResponse>> {
-        let labels = managed_labels(&self.namespace, node_id, spec, spec_digest);
+        // Search by caller-owned generation identity before validating the
+        // mutable provider metadata. Including the spec digest in Docker's
+        // label filter would make a digest-tampered container look absent and
+        // bypass the fail-closed binding check below.
+        let labels = managed_generation_labels(&self.namespace, node_id, spec);
         let mut filters = HashMap::new();
         filters.insert(
             "label".to_owned(),
@@ -261,6 +257,132 @@ impl DockerRuntimeDriver {
             .map_err(docker_error)?;
         self.validate_container_binding(&inspect, node_id, spec, spec_digest)?;
         Ok(Some(inspect))
+    }
+
+    async fn retire_stale_containers(
+        &self,
+        node_id: Uuid,
+        spec: &RuntimeUnitSpec,
+        current_id: &str,
+    ) -> RuntimeResult<()> {
+        let container_ids = self
+            .managed_unit_container_ids(node_id, &spec.unit_id)
+            .await?;
+        if !container_ids.iter().any(|id| id == current_id) {
+            return Err(RuntimeError::ProviderUnavailable(
+                "Docker lost the current container during generation reconciliation".into(),
+            ));
+        }
+
+        for id in container_ids.iter().filter(|id| id.as_str() != current_id) {
+            let container = match self.docker.inspect_container(id, None).await {
+                Ok(container) => container,
+                Err(error) if is_status(&error, 404) => continue,
+                Err(error) => return Err(docker_error(error)),
+            };
+            self.validate_managed_unit_binding(&container, node_id, &spec.unit_id)?;
+            self.remove_managed_container(&container).await?;
+        }
+
+        let remaining = self
+            .managed_unit_container_ids(node_id, &spec.unit_id)
+            .await?;
+        if remaining.len() != 1 || remaining[0] != current_id {
+            return Err(RuntimeError::Protocol(format!(
+                "Docker generation reconciliation for unit {:?} left resources {remaining:?}",
+                spec.unit_id
+            )));
+        }
+        Ok(())
+    }
+
+    async fn remove_managed_container(
+        &self,
+        container: &ContainerInspectResponse,
+    ) -> RuntimeResult<()> {
+        let id = container_id(container)?;
+        match self
+            .docker
+            .stop_container(&id, Some(StopContainerOptions { t: 1 }))
+            .await
+        {
+            Ok(()) => {}
+            Err(error) if is_status(&error, 304) || is_status(&error, 404) => {}
+            Err(error) => return Err(docker_error(error)),
+        }
+        match self
+            .docker
+            .remove_container(
+                &id,
+                Some(RemoveContainerOptions {
+                    force: true,
+                    v: false,
+                    link: false,
+                }),
+            )
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) if is_status(&error, 404) => Ok(()),
+            Err(error) => Err(docker_error(error)),
+        }
+    }
+
+    async fn managed_unit_container_ids(
+        &self,
+        node_id: Uuid,
+        unit_id: &str,
+    ) -> RuntimeResult<Vec<String>> {
+        let mut filters = HashMap::new();
+        filters.insert(
+            "label".to_owned(),
+            managed_unit_labels(&self.namespace, node_id, unit_id)
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect(),
+        );
+        let summaries = self
+            .docker
+            .list_containers(Some(ListContainersOptions {
+                all: true,
+                filters,
+                ..Default::default()
+            }))
+            .await
+            .map_err(docker_error)?;
+        let mut ids = summaries
+            .into_iter()
+            .map(|summary| {
+                summary.id.ok_or_else(|| {
+                    RuntimeError::Protocol("Docker container summary has no resource ID".into())
+                })
+            })
+            .collect::<RuntimeResult<Vec<_>>>()?;
+        ids.sort_unstable();
+        Ok(ids)
+    }
+
+    fn validate_managed_unit_binding(
+        &self,
+        container: &ContainerInspectResponse,
+        node_id: Uuid,
+        unit_id: &str,
+    ) -> RuntimeResult<()> {
+        let labels = container
+            .config
+            .as_ref()
+            .and_then(|config| config.labels.as_ref())
+            .ok_or_else(|| {
+                RuntimeError::Protocol("managed Docker container has no labels".into())
+            })?;
+        for (key, expected) in managed_unit_labels(&self.namespace, node_id, unit_id) {
+            if labels.get(&key) != Some(&expected) {
+                return Err(RuntimeError::Protocol(format!(
+                    "managed Docker container label {key:?} does not match unit ownership"
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn validate_container_binding(
@@ -386,6 +508,8 @@ impl DockerRuntimeDriver {
                 tmpfs: (!tmpfs.is_empty()).then_some(tmpfs),
                 init: Some(true),
                 privileged: Some(false),
+                cap_drop: Some(vec!["ALL".into()]),
+                security_opt: Some(vec!["no-new-privileges=true".into()]),
                 ..Default::default()
             }),
             ..Default::default()
@@ -465,7 +589,7 @@ fn service_endpoint_claims(
     spec: &RuntimeUnitSpec,
     container: &ContainerInspectResponse,
 ) -> RuntimeResult<BTreeMap<String, String>> {
-    if spec.class != RuntimeUnitClass::Service {
+    if spec.class != RuntimeUnitClass::Service || !container_is_running(container) {
         return Ok(BTreeMap::new());
     }
     spec.network
@@ -489,13 +613,27 @@ fn managed_labels(
     spec: &RuntimeUnitSpec,
     digest: &str,
 ) -> HashMap<String, String> {
+    let mut labels = managed_generation_labels(namespace, node_id, spec);
+    labels.insert(SPEC_DIGEST_LABEL.into(), digest.into());
+    labels
+}
+
+fn managed_generation_labels(
+    namespace: &str,
+    node_id: Uuid,
+    spec: &RuntimeUnitSpec,
+) -> HashMap<String, String> {
+    let mut labels = managed_unit_labels(namespace, node_id, &spec.unit_id);
+    labels.insert(GENERATION_LABEL.into(), spec.generation.to_string());
+    labels
+}
+
+fn managed_unit_labels(namespace: &str, node_id: Uuid, unit_id: &str) -> HashMap<String, String> {
     HashMap::from([
         (MANAGED_LABEL.into(), "true".into()),
         (NAMESPACE_LABEL.into(), namespace.into()),
         (NODE_LABEL.into(), node_id.to_string()),
-        (UNIT_LABEL.into(), spec.unit_id.clone()),
-        (GENERATION_LABEL.into(), spec.generation.to_string()),
-        (SPEC_DIGEST_LABEL.into(), digest.into()),
+        (UNIT_LABEL.into(), unit_id.into()),
     ])
 }
 
@@ -675,5 +813,49 @@ mod tests {
         assert_eq!(name, container_name("cloud", &spec, &digest));
         assert!(!name.contains("secret-shaped-name"));
         assert!(name.len() <= 63);
+    }
+
+    #[test]
+    fn stopped_service_does_not_advertise_an_unreachable_endpoint() {
+        let spec = RuntimeUnitSpec {
+            schema: RuntimeUnitSpec::SCHEMA.into(),
+            unit_id: "stopped-service".into(),
+            generation: 1,
+            class: RuntimeUnitClass::Service,
+            artifact: ArtifactRef {
+                uri: format!("oci://registry.example/app@sha256:{}", "a".repeat(64)),
+                digest: format!("sha256:{}", "a".repeat(64)),
+                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            },
+            process: RuntimeProcessSpec {
+                command: Vec::new(),
+                args: Vec::new(),
+                working_directory: None,
+                environment: BTreeMap::new(),
+            },
+            mounts: Vec::new(),
+            secrets: Vec::new(),
+            network: RuntimeNetworkSpec {
+                mode: NetworkMode::Service,
+                ports: Vec::new(),
+            },
+            resources: ResourceLimits {
+                cpu_millis: 100,
+                memory_bytes: 32 * 1024 * 1024,
+                pids: 32,
+                ephemeral_storage_bytes: None,
+                execution_timeout_ms: None,
+            },
+            isolation: IsolationLevel::Container,
+            health: None,
+            restart: RestartPolicy::Never,
+            outputs: Vec::new(),
+            semantics_profile_digest: None,
+        };
+        assert!(
+            service_endpoint_claims(&spec, &ContainerInspectResponse::default())
+                .expect("stopped Service claims")
+                .is_empty()
+        );
     }
 }

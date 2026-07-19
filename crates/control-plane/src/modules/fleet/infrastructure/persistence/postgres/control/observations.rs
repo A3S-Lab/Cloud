@@ -2,12 +2,18 @@ use super::*;
 
 pub(in super::super) async fn record_observations(
     executor: &PostgresExecutor,
-    batch: NodeObservationBatch,
+    mut batch: NodeObservationBatch,
     received_at: DateTime<Utc>,
 ) -> Result<NodeObservationReceipt, RepositoryError> {
+    batch.sent_at = canonical_timestamp(batch.sent_at);
+    batch.heartbeat.observed_at = canonical_timestamp(batch.heartbeat.observed_at);
+    for report in &mut batch.observations {
+        report.observed_at = canonical_timestamp(report.observed_at);
+    }
+    let received_at = canonical_timestamp(received_at);
     batch.validate().map_err(RepositoryError::Conflict)?;
     let capabilities = NodeCapabilities::new(
-        batch.heartbeat.runtime_capabilities.provider_id.clone(),
+        batch.heartbeat.runtime_capabilities.provider_id.to_string(),
         batch.heartbeat.runtime_capabilities.provider_build.clone(),
         serde_json::to_value(&batch.heartbeat.runtime_capabilities)
             .map_err(|error| RepositoryError::Storage(error.to_string()))?,

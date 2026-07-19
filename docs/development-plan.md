@@ -18,13 +18,25 @@ when its exit evidence passes against real dependencies. Later milestones do
 not compensate for an unproven Runtime contract, lost-operation recovery, or a
 mock-only deployment path.
 
+The roadmap has three delivery horizons:
+
+| Horizon | Required gates | Product outcome |
+| --- | --- | --- |
+| Usable service platform | `R0` through `E0` | One operator can deploy, reach, observe, update, and roll back one stateless Service on one Linux node |
+| Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, multi-service import, stable automation surfaces, and A3S asset releases use the same deployment path |
+| Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable |
+
+These horizons are cumulative. A broader interface or import format never
+creates a second orchestration path and never weakens an earlier durability,
+security, or recovery gate.
+
 ## 2. Engineering rules
 
 - Implement vertical behavior through domain, application, infrastructure,
   transport, web UI, documentation, and tests in the same milestone.
 - Write aggregate and protocol tests before the implementation they constrain.
 - Keep the repository root as orchestration only. The Rust workspace lives at
-  `apps/cloud/Cargo.toml` when implementation starts.
+  `apps/cloud/Cargo.toml`.
 - Commit changes in external crate submodules separately from the root pointer
   update. Never mix an A3S Runtime release with unrelated Cloud code.
 - Pin A3S dependency revisions and keep one app-local `Cargo.lock`.
@@ -34,6 +46,16 @@ mock-only deployment path.
   Runtime driver, fake Gateway acknowledgement, or mocked health response.
 - Every long-running command is idempotent, cancellable, resumable after
   process death, and visible as one Operation timeline.
+- REST, web, CLI, and MCP surfaces call the same application commands and
+  queries. No interface owns business rules or bypasses tenant guards.
+- External project formats such as Git repositories and Compose files are
+  immutable inputs. Cloud normalizes them into versioned typed desired state;
+  they never become a second mutable source of truth.
+- Detected configuration is a reviewable proposal. Accepted build, deployment,
+  route, and storage plans are explicit and digest-addressed.
+- A provider-backed capability remains unavailable until its real conformance,
+  failure, cleanup, and recovery gates pass. Unsupported input fails explicitly
+  instead of degrading silently.
 - Documentation describes shipped behavior only; planned behavior stays marked
   as planned.
 
@@ -46,14 +68,22 @@ flowchart LR
     N0 --> D0[OCI deployment convergence]
     D0 --> E0[HTTPS, logs, update, rollback]
     E0 --> G0[External Git builds]
+    E0 --> C0[Control surfaces and team operations]
+    G0 --> P0[Developer workflows and project import]
     G0 --> A0[Agent/MCP/Skill hosting]
     E0 --> S0[Databases, volumes, backups]
+    P0 --> H0[Multi-node hardening]
+    C0 --> H0
     A0 --> H0[Multi-node hardening]
     S0 --> H0
 ```
 
-The first release gate is `E0`. Hosted assets and stateful services begin only
-after that loop is repeatable under crash and retry tests.
+The first release gate is `E0`. After E0, source delivery (`G0`), stable control
+surfaces (`C0`), and stateful foundations (`S0`) may advance as independent
+lanes. Project import (`P0`) depends on the immutable source and build contracts
+from G0. Hosted assets (`A0`) reuse the same source-to-artifact path. Production
+multi-node work (`H0`) starts only after the product surfaces it must scale have
+passed their single-node gates.
 
 ### 3.1 Verified delivery status
 
@@ -69,6 +99,28 @@ Status as of 2026-07-15:
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
+
+### 3.2 Capability ownership
+
+Cloud does not pursue feature parity by adding unrelated subsystems to the
+control plane. Each broader platform capability has one milestone and one
+authoritative model:
+
+| Capability | Owning gate | Planning decision |
+| --- | --- | --- |
+| Prebuilt OCI deployment | `D0` | Verified; remains the common deployment path |
+| HTTPS, logs, update, and rollback | `E0` | Complete the first release before broadening inputs or providers |
+| Workload and provider secrets | `E0` | Store encrypted values behind tenant-scoped references; never persist or project plaintext |
+| Logs, metrics, traces, and alerts | `E0`/`C0`/`H0` | Establish truthful single-node signals first, then notifications, SLOs, and measured scaling |
+| External Git and reproducible builds | `G0` | Explicit recipes first; automatic detection builds on the proven contract |
+| Stack detection, previews, monorepos, and Compose import | `P0` | Normalize into Workload, Route, and later Volume resources; no second orchestrator |
+| Web, worker, and scheduled Task profiles | `P0` | Compile explicit product profiles into the common Runtime Service or Task contracts |
+| CLI, management MCP, collaboration, notifications, and audited exec | `C0` | Reuse public commands, queries, scopes, idempotency, and audit |
+| Agent, MCP, and Skill releases | `A0` | A3S-specific catalog over the common build and deployment path |
+| Databases, volumes, and backups | `S0` | Model state explicitly with fencing and verified restore |
+| Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
+| Edge caching and transport optimization | `E0`/`H0` | A3S Gateway owns HTTP, TLS, compression, and cache mechanics; Cloud owns desired policy |
+| Mail hosting, native desktop, and commercial billing | Outside core | Use integrations or separately owned products; do not couple them to workload orchestration |
 
 ## 4. Milestone R0: generalize A3S Runtime
 
@@ -133,7 +185,7 @@ commit and query tenant-scoped desired state.
 - Create `contracts`, `control-plane`, and `node-agent` crates under
   `apps/cloud`, plus the React application under `web`.
 - Bootstrap A3S Boot with API, worker, relay, and all-in-one process roles.
-- Add validated `cloud.hcl` configuration, environment-secret resolution,
+- Add validated `cloud.acl` configuration, environment-secret resolution,
   startup checks, structured logging, request IDs, health endpoints, and clean
   shutdown.
 - Add a reproducible local infrastructure profile and readiness probes for
@@ -257,8 +309,17 @@ Complete the first user-visible release loop.
   atomic compare-and-swap install, reload, and durable acknowledgement ordering.
 - Blocked on A3S Gateway: fix and release route-bearing router/service ACL
   validation; 1.0.11 currently stack-overflows on the real compiler gate.
-- Implement certificate policy, ACME for production, and a local test CA for
-  deterministic CI.
+- Implement custom-domain ownership verification, exact and wildcard
+  certificate policy, ACME HTTP-01 and typed DNS-01 provider ports, automated
+  renewal, failure projection, and a local test CA for deterministic CI.
+- Add tenant-scoped Secret resources and references for workload environment,
+  registry access, and later build/data providers. Development may use the local
+  authenticated-encryption provider; production uses an external key service.
+  Plaintext never enters desired-state rows, Flow history, events, logs, audit,
+  API responses, or revision digests.
+- Verify ordinary HTTP, streaming responses, and WebSocket upgrade through the
+  same acknowledged Gateway revision. Advanced caching and transport tuning are
+  not part of E0.
 - Implement ordered stdout/stderr log chunks with cursor resume, bounded
   ingestion, checksummed S3-compatible chunk storage, PostgreSQL indexes,
   redaction, backpressure, retention, and disconnect recovery.
@@ -273,6 +334,13 @@ Complete the first user-visible release loop.
 
 - A real client reaches the fixture through A3S Gateway over TLS only after the
   exact desired Gateway revision is acknowledged.
+- Unverified, expired, revoked, cross-tenant, and conflicting domain claims
+  cannot receive an active route or certificate. Renewal under an injected
+  clock preserves the prior valid certificate until the replacement is proven.
+- Workload secret create, bind, rotate, revoke, restart, and authorization
+  fixtures pass with encrypted PostgreSQL state and real Runtime injection;
+  plaintext scans of database rows, events, Flow history, logs, and API payloads
+  find no secret value.
 - A failed Gateway reload cannot mark the route or deployment active.
 - Losing the Gateway acknowledgement and restarting either process converges
   without duplicating or partially applying routes.
@@ -296,15 +364,24 @@ through the proven loop.
 
 - Add Git credential references, repository allow/deny policy, ref resolution,
   webhook deduplication, and immutable source revisions.
+- Start with a GitHub App provider behind a provider-neutral source port.
+  GitLab, Bitbucket, and other providers require their own real webhook,
+  credential, ref-race, and retry evidence before becoming available.
 - Define a typed build recipe and run builds as isolated Runtime Tasks with
-  deny-by-default network policy.
+  deny-by-default network policy. G0 requires an explicit recipe; automatic
+  stack detection is a P0 input that may propose, but never silently replace,
+  this contract.
 - Use rootless BuildKit through a typed Build service port; BuildKit endpoint,
   Dockerfile, buildpack, and cache details do not leak into Runtime contracts.
 - Push by digest to the configured OCI registry and record source, recipe,
   builder, platform, SBOM, signature, and artifact provenance.
 - Add content-addressed build caching without allowing cache hits to weaken
   digest or provenance validation.
-- Add build logs and source-to-deployment traceability to the web UI.
+- Keep source and registry credentials as secret references. They may be
+  materialized only inside the bounded build attempt and must not enter source
+  revisions, Flow history, logs, cache keys, or provenance documents.
+- Add build logs, cancellation, retry, provenance, and
+  source-to-deployment traceability to the API and web UI.
 
 ### Exit gate
 
@@ -316,8 +393,162 @@ through the proven loop.
 - A built digest deploys through the same path as a user-supplied OCI digest.
 - A real BuildKit worker and OCI registry pass build, push, pull, cancellation,
   provenance, and architecture-mismatch tests.
+- Untrusted fork webhooks, repository URL confusion, submodule credential
+  forwarding, malicious archive paths, and source/build network-policy bypasses
+  fail closed without exposing whether a protected credential exists.
 
-## 10. Milestone A0: hosted Agent, MCP, and Skill assets
+## 10. Milestone P0: developer workflows and project import
+
+### Goal
+
+Turn the explicit G0 source-to-artifact path into a productive developer
+workflow for detected applications, pull-request previews, monorepos, and
+multi-service project imports without introducing another desired-state or
+deployment engine.
+
+### Work
+
+- Add typed stack-detector ports whose output is a versioned, reviewable
+  `BuildPlan` proposal. Detection may select defaults for supported language,
+  build, start, port, health, and output settings, but an accepted plan is
+  persisted explicitly and bound to the source revision.
+- Deliver detectors incrementally. Start with Dockerfile and the A3S asset
+  manifest, then add measured Node.js, Python, Go, Rust, Java, .NET, Ruby, and
+  PHP profiles only when each profile has a real build-and-run fixture.
+- Add explicit `web`, `worker`, and `scheduled_task` workload profiles that
+  compile into the existing Runtime Service or Task contracts. Workers have no
+  implicit route; scheduled Tasks have timezone, concurrency, catch-up, retry,
+  and history-retention policy owned by a durable scheduler.
+- Model a preview as an ordinary Environment with an explicit source revision,
+  owner, pull-request identity, expiration time, quota, and cleanup Operation.
+  Preview routing, logs, updates, and deletion reuse E0 behavior.
+- Add environment promotion that binds the exact accepted source revision,
+  artifact digest, build provenance, and deployment template. Promotion from
+  preview to staging or production never rebuilds a moving branch and may
+  require an environment-owned approval policy.
+- Deduplicate provider webhook deliveries and reconcile pull-request open,
+  synchronize, reopen, merge, and close events. Forked contributions receive
+  no protected build secrets unless an explicit policy grants them.
+- Add monorepo project roots, shared dependency paths, and a deterministic
+  affected-workload planner. A shared-path change invalidates every dependent
+  build; an unrelated change must not rebuild or redeploy another workload.
+- Add a closed Compose import adapter. The first slice supports `image`,
+  `build`, `command`, `environment`, `ports`, `healthcheck`, and
+  `depends_on`; unsupported keys produce structured diagnostics.
+- Normalize every imported service into typed Workload and Route intent with
+  source provenance. A later import creates a new normalized project revision
+  and an authoritative diff; Cloud never edits the source repository or keeps
+  the raw Compose document as a parallel mutable authority.
+- Reject inline Compose secret material. A later `secrets` mapping may bind
+  existing E0 Secret references without importing plaintext.
+- Keep volume, database, and cross-node Compose semantics disabled until the
+  corresponding S0 and H0 resources can represent them truthfully.
+- Add preview, detected-plan, monorepo, import-diff, and unsupported-capability
+  surfaces to the web application and, when available, the C0 CLI.
+
+### Exit gate
+
+- The same source revision and accepted BuildPlan produce the same canonical
+  plan digest and artifact identity regardless of checkout directory or caller.
+- A duplicate or reordered webhook sequence creates one logical preview. Closing
+  or expiring it eventually removes its route, Runtime units, Operations, and
+  temporary artifacts without crossing tenant boundaries.
+- A real pull request deploys through build, health, TLS, logs, update, and
+  cleanup. A fork cannot read protected credentials or reuse a trusted cache
+  entry that contains them.
+- Promotion from preview through staging to production uses the exact accepted
+  artifact and provenance, records every approval, and cannot be changed by a
+  later branch update.
+- Monorepo changed-path and shared-path fixtures select exactly the expected
+  workload set, including rename, delete, force-push, and provider compare-API
+  failure cases.
+- Re-importing identical Compose input is a no-op. A supported change produces
+  a deterministic diff and new desired revision; an unsupported or ambiguous
+  field fails before any resource mutation.
+- A real stateless multi-service fixture reaches healthy routes and rolls back
+  through the existing Workload path. Stateful Compose fields remain rejected
+  until their S0 provider gates pass.
+- Real worker and scheduled-Task fixtures restart, cancel, retry, and recover
+  without an unintended public route or duplicate logical schedule occurrence.
+
+## 11. Milestone C0: control surfaces and team operations
+
+### Goal
+
+Expose one stable, least-privilege control plane through web, REST, CLI, and a
+management MCP endpoint, then add the collaboration and audited operator
+surfaces required to run it safely.
+
+The management MCP endpoint in this milestone is not an A0 hosted MCP asset.
+It is another authenticated interface to Cloud application commands and
+queries; hosted MCP releases remain ordinary deployable workloads.
+
+### Work
+
+- Version the public REST and OpenAPI contracts, define compatibility and
+  deprecation policy, and generate or maintain one typed client used by the web
+  console and Cloud CLI.
+- Implement a thin Cloud CLI first for authentication, context selection,
+  projects, environments, nodes, deployments, operations, routes, logs, and
+  administrative diagnostics. Later gates add build, preview, release, and
+  backup commands with their owning capability. The CLI contains presentation
+  logic only and never reads PostgreSQL or contacts a node directly.
+- Add a node bootstrap command that issues one short-lived enrollment
+  credential and prints a checksum-verified agent installation invocation.
+  Package publication and upgrade reuse signed A3S release channels; Cloud never
+  accepts or stores a server SSH password or private key.
+- Implement a stateless Streamable HTTP management MCP endpoint with a curated
+  tool set. Derive tool visibility from the caller's effective scopes, separate
+  read and mutation tools, reject batching initially, and route every call
+  through the same command/query bus and response contract as REST.
+- Start MCP authentication with bounded API tokens. Add OAuth 2.1 discovery,
+  dynamic client registration, PKCE, consent, and revocation only after the
+  token-scoped tool contract and confused-deputy tests pass.
+- Add organization membership with `owner`, `admin`, `member`, and `restricted`
+  roles, invitations, and explicit project/environment/node grants. Platform
+  administration remains a separate role and cannot be inferred from
+  organization ownership.
+- Add in-app, signed webhook, external SMTP, and Slack-compatible notification
+  adapters over transactional outbox facts. Notification delivery is
+  deduplicated, retryable, rate-limited, and never an operation authority.
+- Add tenant-scoped alert policies over authoritative workload health,
+  certificate expiry, backup status, node availability, operation latency, and
+  resource signals. Alert evaluation has bounded missing-data and recovery
+  semantics and emits notifications without mutating the monitored resource.
+- Add tenant-scoped audit queries, retention, signed export, and correlation
+  across REST, CLI, MCP, Flow, node commands, and provider resources.
+- Add capability-gated one-shot exec before interactive terminal support.
+  Interactive sessions use short-lived grants, bounded input/output, idle and
+  total timeouts, explicit cancellation, command/session audit, and the outbound
+  node protocol; Cloud does not expose or proxy node SSH credentials.
+- Keep destructive MCP and terminal capabilities disabled by default and make
+  their policy explicit in validated A3S ACL.
+
+### Exit gate
+
+- The same command exposed through more than one of REST, CLI, web, and MCP
+  produces the same idempotency identity, authorization result, Operation,
+  audit record, and documented error shape.
+- Revoking a token, membership, invitation, OAuth grant, or resource grant takes
+  effect on the next request and stream reconnect. A denied caller cannot infer
+  a protected resource's existence from status, timing, events, or tool lists.
+- A read-only MCP client cannot discover or invoke mutation tools. A
+  project-scoped client cannot act on another project even when it guesses an
+  identifier or supplies a forged organization context.
+- Notification retry and provider outage create one logical notification and
+  never change deployment state. Payloads and audit exports pass secret
+  redaction fixtures.
+- Alert firing, recovery, stale data, evaluator restart, and duplicate metric
+  samples produce one bounded incident timeline without hiding an unknown
+  state as healthy.
+- A clean supported Linux host installs, enrolls, upgrades, rotates identity,
+  drains, and removes the node through documented CLI/API operations without
+  opening an inbound control-plane port or transferring SSH credentials.
+- Disconnect, process death, command replay, and node loss terminate or recover
+  exec and terminal sessions without leaving an unbounded process, open grant,
+  live child command, or unaudited output stream.
+
+## 12. Milestone A0: hosted Agent, MCP, and Skill assets
 
 ### Goal
 
@@ -353,7 +584,7 @@ generic asset metadata platform.
 - Database constraints, parsers, API schemas, and UI contain no compatibility
   asset kinds.
 
-## 11. Milestone S0: databases, volumes, and backups
+## 13. Milestone S0: databases, volumes, and backups
 
 ### Goal
 
@@ -366,13 +597,24 @@ provider state in workload metadata.
 - Define a typed volume-provider port. Start with node-local single-writer
   volumes; add a Ceph RBD or equivalent provider only with durable fencing and
   attach/detach observations.
+- Deliver providers in evidence order: node-local PersistentVolume and
+  PostgreSQL first, Redis and MySQL next, and MongoDB only after its backup,
+  restore, upgrade, and failure semantics have dedicated real-provider gates.
 - Add engine/version contracts, volume creation and attachment, retain/delete
-  policy, database-specific readiness, credential rotation, and maintenance
-  operations.
+  policy, database-specific readiness, secret-reference credentials, credential
+  rotation, version policy, and bounded maintenance operations.
 - Run backup and restore through Flow with Runtime Tasks where execution is
   required; store verified backup artifacts in S3-compatible storage.
-- Add restore drills, retention, point-in-time metadata where supported, and
-  explicit unsupported-capability errors.
+- Support manual, scheduled, and pre-change backups through one Backup
+  Operation. Provider webhooks may request a backup but never bypass policy,
+  quotas, retention, or idempotency.
+- Add checksummed manifests, encryption, retention, corruption and missing-part
+  detection, restore into an isolated target, promotion as an explicit command,
+  point-in-time metadata where supported, and explicit
+  unsupported-capability errors.
+- Enable only the Compose volume and stateful-service fields that map exactly to
+  verified S0 resources. An imported database becomes a ManagedDatabase or a
+  clearly user-managed Workload; it is never inferred from an image name.
 - Add database, volume, backup, and restore views to the web application.
 
 ### Exit gate
@@ -384,23 +626,45 @@ provider state in workload metadata.
   is fenced before attaching the volume to the new node.
 - A backup is successful only after digest verification, and an automated drill
   restores it into an isolated target and passes an engine query.
+- Backup cancellation, destination outage, credential rotation, retention
+  pruning, corrupt manifests, and partial restore all terminate truthfully
+  without deleting the last verified recovery point.
 - Deleting a workload obeys volume retention policy; no implicit cascade loses
   retained data.
 
-## 12. Milestone H0: multi-node and production hardening
+## 14. Milestone H0: multi-node, replicas, and production hardening
 
 ### Goal
 
 Scale the proven semantics rather than replace them with a new control path.
+One desired replica must retain one durable identity across rescheduling,
+reconciliation, process death, and provider recovery.
 
 ### Work
 
-- Add placement constraints, capacity accounting, anti-affinity, drain and
+- Add desired replica count, durable replica identity, per-replica generation,
+  placement constraints, capacity accounting, anti-affinity, drain and
   evacuation, maintenance windows, and node pools.
+- Extend rolling update policy with explicit surge and unavailable bounds.
+  Route projection contains only healthy replicas of the exact desired
+  revision, and old replicas remain eligible until replacement health and
+  Gateway acknowledgement are both proven.
 - Support dedicated or replicated Gateway placement through the same snapshot
-  protocol.
+  protocol, complete target-set publication, and exact acknowledgement model.
+- Add measured autoscaling policy with min/max replicas, stabilization,
+  cooldown, and scale-rate bounds. The autoscaler changes desired replica count
+  through the same idempotent command path; it never creates provider resources
+  or edits projections directly.
+- Define provider-neutral service-network and egress requirements before adding
+  an overlay. Private networking becomes available only with identity,
+  isolation, partition, and recovery evidence across real nodes.
 - Add highly available control-plane roles, leader/lease contention tests,
   backup/restore for control-plane PostgreSQL, and disaster runbooks.
+- Add versioned control-plane export/import manifests for tenant-owned desired
+  state, provenance, audit metadata, and referenced artifacts. Secret values are
+  re-encrypted for the destination through an explicit migration ceremony;
+  node identities and live provider observations are reconciled, never copied
+  as proof of current state.
 - Deploy NATS JetStream for replicated event consumers, OpenTelemetry Collector
   for telemetry routing, and PgBouncer only if measured database connection
   pressure crosses the documented capacity threshold.
@@ -412,15 +676,45 @@ Scale the proven semantics rather than replace them with a new control path.
 ### Exit gate
 
 - Concurrent reconcilers never advance one aggregate twice or schedule two
-  units for a single desired generation.
+  provider units for one replica generation.
+- Scaling from one replica to many and back routes only to healthy exact-revision
+  targets, respects surge/unavailable bounds, and leaves no duplicate or
+  untracked provider units after crash and replay.
+- Autoscaling remains within configured bounds under stale, missing, duplicated,
+  and bursty metrics; a metrics outage preserves a safe desired count rather
+  than oscillating or scaling to zero.
 - Draining a node admits no new work and produces a visible, policy-compliant
   outcome for every existing stateless and stateful unit.
+- A stateful move is rejected until the volume provider proves the prior writer
+  fenced. Stateless evacuation retains replica identity and converges through
+  the ordinary scheduler and Runtime path.
 - Control-plane process loss, NATS loss when configured, node partition, and
   PostgreSQL failover have documented and tested recovery behavior.
 - A restore into a clean control plane reconstructs desired state, Flow runs,
   operations, assets, and node reconciliation without inventing provider state.
+- Export/import between supported versions preserves tenant ownership,
+  immutable digests, retention policy, and audit correlation, rejects tampering
+  and missing artifacts, and requires nodes and external providers to prove
+  their state again.
 
-## 13. Independent timeout and cancellation model
+## 15. Product boundaries and optional extensions
+
+The following capabilities are useful integrations but are not allowed to
+expand the Cloud core or delay its critical path:
+
+| Capability | Decision |
+| --- | --- |
+| Edge caching, HTTP/3, Brotli, and purge | Implement transport and cache mechanics in A3S Gateway. Cloud may add versioned route cache policy after E0 and must project exact applied policy. |
+| Built-in mail server | Keep outside Cloud. Use external SMTP for notifications and treat a user-deployed mail stack as an ordinary workload, or create a separately owned A3S Mail product with its own security and operations model. |
+| Native desktop application | Do not create a separate client feature set. Keep web responsive/PWA-capable and consider a thin shell only after C0 interface parity and demonstrated offline or local-host needs. |
+| Commercial billing and managed-cloud plans | Keep in a separately deployed service/profile that consumes public usage and entitlement contracts. Billing cannot enter scheduling, deployment, or domain aggregates. |
+| Development tunnels | Allow an optional, explicitly non-production C0 adapter with expiring credentials and visible routing state. Tunnels are never the production ingress or node-control path. |
+| Additional Runtime providers | Add containerd, A3S Box, or cloud compute only through Runtime conformance plus Cloud deployment, recovery, logs, routing, cancellation, and cleanup gates. |
+
+These boundaries are revisited only with an operator use case and an owning
+domain. Feature breadth alone is not sufficient evidence.
+
+## 16. Independent timeout and cancellation model
 
 Timeouts are typed policy owned by the step that can act on expiry. They are
 not subtractions from one model-call-style global timer.
@@ -439,13 +733,13 @@ not subtractions from one model-call-style global timer.
 | Log stream | idle and retention policies | reconnect or truncate with an explicit gap |
 | Cleanup | bounded synchronous wait plus reconcile deadline | expose pending cleanup |
 
-All policies use an injected monotonic clock in tests and validated HCL in
+All policies use an injected monotonic clock in tests and validated A3S ACL in
 production. A parent Operation cannot report success or cancellation while it
 still owns live child steps. If remote cleanup outlives the foreground request,
 the Operation projection must show `cleanup_pending` until reconciliation
 proves the resource stopped or records an operator-visible orphan.
 
-## 14. Verification matrix
+## 17. Verification matrix
 
 ### Test levels
 
@@ -457,11 +751,16 @@ proves the resource stopped or records an operator-visible orphan.
 | Protocol | Golden versioned payloads, backward-read policy, malformed and replay cases |
 | Runtime | Exported conformance suite plus real Docker Task and Service execution |
 | Integration | Real Flow PostgreSQL store, Event relay, registry, Gateway, object/Git storage |
+| Build | Real source provider, isolated builder, registry, cache, provenance, cancellation, and credential-boundary evidence |
+| Project import | Golden detection/Compose plans, unsupported input, webhook disorder, preview cleanup, and monorepo affected-set evidence |
+| Interfaces | REST/web/CLI/MCP contract parity, scope equivalence, revocation, redaction, and terminal lifetime evidence |
+| Stateful | Real volume fencing, engine readiness, backup corruption, restore query, credential rotation, and retention evidence |
+| Scale | Real multi-node placement, replica identity, Gateway target sets, drain, partition, autoscaling, and failover evidence |
 | End to end | Real Linux node enrollment through TLS route, logs, update, rollback |
 | Recovery | Process kill and network fault at every durable boundary |
 | Security | Tenant isolation, certificate revocation, secret redaction, Git/path/SSRF tests |
 
-### Mandatory crash points
+### Mandatory E0 crash points
 
 The release suite kills a process after each of these transitions and verifies
 eventual convergence:
@@ -473,7 +772,8 @@ eventual convergence:
 5. node result persistence before server acknowledgement;
 6. health success before deployment projection update;
 7. Gateway reload before acknowledgement;
-8. activation before old-revision cleanup.
+8. activation before old-revision cleanup;
+9. Secret version commit before workload restart command.
 
 For every case, the assertions are the same: one desired generation, at most
 one live provider unit for that generation, no false success, a terminal or
@@ -491,13 +791,34 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
 | 7 | Gateway reload before acknowledgement | In progress | Route-less Gateway validate/reload, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering pass. PostgreSQL API tests prove exact route activation and replay. The real route-bearing gate is blocked by the A3S Gateway 1.0.11 parser stack overflow; process-death injection remains |
 | 8 | Activation before old-revision cleanup | Planned for E0 | Rolling update and rollback cleanup are not implemented |
+| 9 | Secret version commit before workload restart command | Planned for E0 | Secret references, encrypted storage, rotation, and Runtime injection are not implemented |
 
 The real-provider commands and PostgreSQL isolation contract are documented in
 the repository README. The integration test creates and removes a unique
 database, so a failed assertion cannot truncate or leave fixture rows in the
 development database.
 
-## 15. Next implementation backlog
+### Post-E0 mandatory crash points
+
+Later gates extend the same fault-injection discipline:
+
+| # | Durable boundary | Owning gate | Required outcome |
+| ---: | --- | --- | --- |
+| 10 | Source revision commit before build run creation | `G0` | Reconciliation starts one build for the accepted commit and recipe |
+| 11 | OCI push before artifact and provenance projection | `G0` | The pushed digest is adopted exactly once or explicitly garbage-collected |
+| 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
+| 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
+| 14 | Remote exec start before session acknowledgement | `C0` | Reconnect adopts or terminates the exact bounded process and expires its grant |
+| 15 | Backup object upload before manifest commit | `S0` | Reconciliation verifies and adopts the object or records and removes an orphan; no false successful backup exists |
+| 16 | Volume detach before replacement attach | `S0`/`H0` | A replacement writer remains blocked until durable fencing evidence exists |
+| 17 | Replica provider create before placement projection | `H0` | Restart adopts one provider unit for the replica generation and does not consume an extra replica slot |
+
+Each owning milestone must add its row to the current-evidence table when the
+real fault gate passes. Planned rows are not release evidence.
+
+## 18. Delivery sequence and next backlog
+
+### 18.1 Immediate E0 backlog
 
 D0 is closed. E0's route desired-state and versioned complete snapshot transport
 are verified through the PostgreSQL/Fleet boundary. The remaining changes should
@@ -505,16 +826,57 @@ land as vertical, independently verified slices:
 
 1. Fix and release A3S Gateway route ACL validation, then add certificate
    policy, a local deterministic test CA, and a real TLS fixture.
-2. Ordered stdout/stderr chunk ingestion with cursor resume, bounded buffering,
+2. Tenant-scoped encrypted Secret resources, Runtime injection, rotation,
+   revocation, end-to-end redaction, and the restart-after-version-commit
+   recovery gate.
+3. Ordered stdout/stderr chunk ingestion with cursor resume, bounded buffering,
    checksummed object storage, redaction, retention, and explicit gaps.
-3. One-node update orchestration that keeps the prior healthy revision until
+4. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
-4. Manual rollback through the same immutable revision and operation path.
-5. Web route, certificate, log, update-diff, rollback, and terminal-operation
+5. Manual rollback through the same immutable revision and operation path.
+6. Web route, certificate, log, update-diff, rollback, and terminal-operation
    surfaces backed only by authoritative projections.
-6. Crash gates for Gateway reload before acknowledgement and activation before
-   old-revision cleanup, followed by the clean-host end-to-end release run.
+7. Crash gates for Gateway reload before acknowledgement, activation before
+   old-revision cleanup, and Secret version before workload restart, followed by
+   the clean-host end-to-end release run.
 
-Hosted assets, stateful services, and multi-node work remain out of scope until
-E0 passes. This keeps every merged surface usable or a tested prerequisite for
-the release loop.
+No post-E0 product surface is marked available before this list passes. Contract
+design and isolated prototypes may proceed, but they cannot create production
+tables, routes, providers, or user-visible claims that bypass E0.
+
+### 18.2 Post-E0 delivery lanes
+
+Once E0 passes, work may proceed in parallel only along these owned lanes:
+
+| Lane | Dependency | Ordered delivery |
+| --- | --- | --- |
+| Source delivery | `E0` | `G0` source/recipe contracts -> real GitHub and BuildKit gate -> provenance and build UI |
+| Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
+| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
+| A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
+| Stateful platform | `E0` | `S0` local volume -> PostgreSQL -> backup/restore -> additional engines and remote volume provider |
+| Production scale | `P0`, `C0`, `A0`, and `S0` single-node contracts | `H0` replicas -> multi-node placement/drain -> Gateway replication -> HA -> measured autoscaling |
+
+The lane table expresses dependency, not a promise of equal staffing or calendar
+dates. The next slice is always the smallest vertical behavior that can pass a
+real exit gate.
+
+### 18.3 Milestone definition of done
+
+A milestone is complete only when all of the following are true:
+
+- Its domain invariants, application commands/queries, PostgreSQL schema,
+  provider adapters, transport contracts, web and applicable CLI/MCP surfaces
+  land together.
+- Every mutation has tenant scope, idempotency, audit, timeout, cancellation,
+  retry, and cleanup semantics with documented errors.
+- Real-provider happy path, failure, process-death, replay, corruption, and
+  cleanup gates pass from a clean environment.
+- Security fixtures cover secret handling, path and URL validation, SSRF,
+  authorization, revocation, and cross-tenant identifiers relevant to the
+  milestone.
+- Formatting, checks, tests, Clippy, documentation, migrations, upgrade and
+  rollback policy, operational dashboards, and runbooks pass from their owning
+  workspace.
+- README capability claims, roadmap state, examples, and the current-evidence
+  tables describe only the behavior proven by those gates.

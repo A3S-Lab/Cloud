@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
-    WorkloadRevisionId,
+    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, GatewaySnapshot, NodeGatewayAck};
 use chrono::{Duration, Utc};
@@ -79,7 +79,10 @@ fn route_activates_only_for_the_exact_gateway_publication() {
         .apply_gateway_acknowledgement(&applied)
         .expect("apply exact acknowledgement");
     assert_eq!(route.state, RouteState::Active);
-    assert_eq!(route.activated_at, Some(applied.acknowledged_at));
+    assert_eq!(
+        route.activated_at,
+        Some(canonical_timestamp(applied.acknowledged_at))
+    );
 }
 
 #[test]

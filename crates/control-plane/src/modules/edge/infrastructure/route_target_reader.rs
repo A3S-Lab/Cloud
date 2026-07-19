@@ -92,11 +92,7 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
         })?;
         let observation = self
             .observations
-            .latest_runtime_observation(
-                node_id,
-                &format!("workload:{}", workload.id),
-                revision.generation,
-            )
+            .latest_runtime_observation(node_id, &revision.runtime_unit_id(), revision.generation)
             .await?
             .ok_or_else(|| {
                 RepositoryError::Conflict("route target has no current Runtime observation".into())

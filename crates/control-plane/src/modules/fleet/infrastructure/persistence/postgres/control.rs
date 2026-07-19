@@ -16,7 +16,7 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
+    canonical_timestamp, IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
@@ -359,6 +359,8 @@ pub(super) async fn lease(
     now: DateTime<Utc>,
     leased_until: DateTime<Utc>,
 ) -> Result<NodeCommandLeaseResponse, RepositoryError> {
+    let now = canonical_timestamp(now);
+    let leased_until = canonical_timestamp(leased_until);
     request.validate().map_err(RepositoryError::Conflict)?;
     if lease_id.is_nil() || leased_until <= now {
         return Err(RepositoryError::Conflict(
@@ -448,9 +450,10 @@ pub(super) async fn lease(
 
 pub(super) async fn acknowledge(
     executor: &PostgresExecutor,
-    acknowledgement: NodeCommandAck,
+    mut acknowledgement: NodeCommandAck,
     _received_at: DateTime<Utc>,
 ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
+    acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

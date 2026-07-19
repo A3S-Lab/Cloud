@@ -1,5 +1,5 @@
 use crate::modules::identity::domain::value_objects::OrganizationName;
-use crate::modules::shared_kernel::domain::OrganizationId;
+use crate::modules::shared_kernel::domain::{canonical_timestamp, OrganizationId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +13,7 @@ pub struct Organization {
 
 impl Organization {
     pub fn create(id: OrganizationId, name: OrganizationName, created_at: DateTime<Utc>) -> Self {
+        let created_at = canonical_timestamp(created_at);
         Self {
             id,
             name,

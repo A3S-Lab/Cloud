@@ -134,7 +134,7 @@ pub async fn exercise_deployment_flow(
     let (observation, acknowledgement, observed_at) = if docker_tests_enabled() {
         let state_directory = tempfile::tempdir()?;
         let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-            socket: "unix:///var/run/docker.sock".into(),
+            socket: docker_socket(),
             namespace: format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]),
             operation_timeout_ms: 30_000,
         })?);
@@ -319,6 +319,7 @@ pub async fn exercise_deployment_flow(
             outcome: NodeCommandOutcome::Succeeded {
                 result: Box::new(NodeCommandResult::RuntimeInspected {
                     inspection: RuntimeInspection::NotFound {
+                        schema: RuntimeInspection::SCHEMA.into(),
                         unit_id: request.spec.unit_id.clone(),
                         last_generation: Some(request.spec.generation),
                     },
@@ -587,7 +588,7 @@ pub async fn exercise_dispatched_cancellation(
 
     let state_directory = tempfile::tempdir()?;
     let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-        socket: "unix:///var/run/docker.sock".into(),
+        socket: docker_socket(),
         namespace: format!(
             "cloud-cancel-{}",
             &Uuid::now_v7().simple().to_string()[..12]
@@ -710,7 +711,7 @@ pub async fn exercise_dispatched_cancellation(
         OperationStatus::Cancelled
     );
     match runtime_client.inspect(&expected_spec.unit_id).await? {
-        RuntimeInspection::Found { observation } => {
+        RuntimeInspection::Found { observation, .. } => {
             assert_eq!(observation.state, RuntimeUnitState::Stopped)
         }
         RuntimeInspection::NotFound { .. } => {}
@@ -822,7 +823,7 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
         NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
             NodeCommandResult::RuntimeApplied { observation } => Some(observation.as_ref().clone()),
             NodeCommandResult::RuntimeStopped {
-                inspection: RuntimeInspection::Found { observation },
+                inspection: RuntimeInspection::Found { observation, .. },
             } => Some(observation.as_ref().clone()),
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
@@ -874,7 +875,7 @@ async fn ready_node(
         .await?;
     let capabilities = runtime_capabilities();
     let stored_capabilities = NodeCapabilities::new(
-        capabilities.provider_id.clone(),
+        capabilities.provider_id.to_string(),
         capabilities.provider_build.clone(),
         serde_json::to_value(&capabilities)?,
     )?;
@@ -964,7 +965,8 @@ fn healthy_observation(
 fn runtime_capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "integration-runtime".into(),
+        provider_id: a3s_runtime::ProviderId::parse("integration-runtime")
+            .expect("valid integration provider ID"),
         provider_build: "integration-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
@@ -993,4 +995,9 @@ fn field_uuid(value: &Value, field: &str) -> Result<Uuid, Box<dyn std::error::Er
 
 fn docker_tests_enabled() -> bool {
     std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() == Ok("1")
+}
+
+fn docker_socket() -> String {
+    std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
+        .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
 }

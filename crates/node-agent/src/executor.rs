@@ -86,7 +86,7 @@ impl CommandExecutor {
                 generation,
             } => {
                 let inspection = self.runtime.inspect(unit_id).await?;
-                if let RuntimeInspection::Found { observation } = &inspection {
+                if let RuntimeInspection::Found { observation, .. } = &inspection {
                     if observation.generation != *generation {
                         return Err((if observation.generation > *generation {
                             RuntimeError::StaleGeneration {
@@ -193,7 +193,9 @@ fn rejected(code: &str, message: &str) -> NodeCommandOutcome {
 fn runtime_failure(error: RuntimeError) -> NodeCommandOutcome {
     let (status, code, retryable) = match error {
         RuntimeError::InvalidRequest(_) => (FailureStatus::Rejected, "invalid_request", false),
-        RuntimeError::NotFound { .. } => (FailureStatus::Rejected, "not_found", false),
+        RuntimeError::NotFound { .. } | RuntimeError::RequestNotFound { .. } => {
+            (FailureStatus::Rejected, "not_found", false)
+        }
         RuntimeError::RequestConflict { .. } => {
             (FailureStatus::Rejected, "request_conflict", false)
         }
@@ -317,6 +319,7 @@ mod tests {
                 ))
             } else {
                 Ok(RuntimeInspection::NotFound {
+                    schema: RuntimeInspection::SCHEMA.into(),
                     unit_id: unit_id.into(),
                     last_generation: Some(1),
                 })

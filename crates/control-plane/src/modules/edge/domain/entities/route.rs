@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::{RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
-    WorkloadRevisionId,
+    canonical_timestamp, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use chrono::{DateTime, Utc};
@@ -77,6 +77,7 @@ impl Route {
         upstream: UpstreamEndpoint,
         created_at: DateTime<Utc>,
     ) -> Self {
+        let created_at = canonical_timestamp(created_at);
         Self {
             id,
             organization_id,
@@ -108,6 +109,7 @@ impl Route {
         snapshot_digest: String,
         staged_at: DateTime<Utc>,
     ) -> Result<(), String> {
+        let staged_at = canonical_timestamp(staged_at);
         if self.state != RouteState::Pending
             || self.gateway_revision.is_some()
             || self.gateway_command_id.is_some()
@@ -133,6 +135,7 @@ impl Route {
         acknowledgement: &NodeGatewayAck,
     ) -> Result<(), String> {
         acknowledgement.validate()?;
+        let acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
         if acknowledgement.node_id != self.gateway_node_id.as_uuid()
             || Some(acknowledgement.command_id) != self.gateway_command_id.map(|id| id.as_uuid())
             || Some(acknowledgement.revision) != self.gateway_revision
@@ -142,7 +145,7 @@ impl Route {
                 "Gateway acknowledgement does not match the staged route publication".into(),
             );
         }
-        self.ensure_time(acknowledgement.acknowledged_at)?;
+        self.ensure_time(acknowledged_at)?;
         let next_state = match acknowledgement.state {
             GatewayAckState::Applied => RouteState::Active,
             GatewayAckState::Rejected => RouteState::Rejected,
@@ -157,10 +160,9 @@ impl Route {
         }
         self.state = next_state;
         self.failure = acknowledgement.message.clone();
-        self.activated_at =
-            (next_state == RouteState::Active).then_some(acknowledgement.acknowledged_at);
+        self.activated_at = (next_state == RouteState::Active).then_some(acknowledged_at);
         self.aggregate_version += 1;
-        self.updated_at = acknowledgement.acknowledged_at;
+        self.updated_at = acknowledged_at;
         Ok(())
     }
 

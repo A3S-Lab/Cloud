@@ -1,5 +1,7 @@
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
-use crate::modules::shared_kernel::domain::{EnrollmentTokenId, OrganizationId};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, EnrollmentTokenId, OrganizationId,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +30,8 @@ impl EnrollmentToken {
     ) -> Result<Self, String> {
         let name = name.into().trim().to_owned();
         let name_key = normalize_name(&name)?;
+        let created_at = canonical_timestamp(created_at);
+        let expires_at = canonical_timestamp(expires_at);
         if expires_at <= created_at || expires_at > created_at + chrono::Duration::hours(24) {
             return Err("enrollment token lifetime must be positive and at most 24 hours".into());
         }

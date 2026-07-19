@@ -15,7 +15,7 @@
   <a href="#configuration">Configuration</a> •
   <a href="#platform-model">Platform Model</a> •
   <a href="#architecture">Architecture</a> •
-  <a href="#mvp-roadmap">MVP Roadmap</a> •
+  <a href="#delivery-roadmap">Delivery Roadmap</a> •
   <a href="#development">Development</a>
 </p>
 
@@ -97,7 +97,7 @@ API command
   organization, project, and environment, and inspect desired revisions,
   observed Runtime state, health, cancellation, and live operation progress
 
-### MVP capability matrix
+### Delivery capability matrix
 
 | Area | Capability | State |
 | --- | --- | --- |
@@ -105,8 +105,14 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | Route ownership, healthy target resolution, complete snapshot publication, and exact acknowledgement projection are complete; routed Gateway validation, TLS, logs, update, rollback, and crash recovery remain | In progress |
-| Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned |
+| Reachability | Route ownership, healthy target resolution, complete snapshot publication, and exact acknowledgement projection are complete; routed Gateway validation, TLS, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
+| Secrets | Tenant-scoped encrypted workload and provider references, rotation, Runtime injection, and end-to-end redaction | Planned (`E0`) |
+| Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
+| Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
+| Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
+| Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
+| Stateful platform | Databases, volumes, verified backup/restore, and stateful Compose mappings | Planned (`S0`) |
+| Production scale | Replicas, multi-node placement, Gateway target sets, HA, and measured autoscaling | Planned (`H0`) |
 
 ## Quick Start
 
@@ -132,7 +138,7 @@ docker compose \
 export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/a3s_cloud"
 export A3S_CLOUD_BOOTSTRAP_TOKEN="replace-with-at-least-32-random-characters"
 
-cargo run -p a3s-cloud-control-plane -- config/cloud.hcl
+cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ```
 
 The default configuration listens on `127.0.0.1:8080` and uses the in-memory
@@ -180,7 +186,7 @@ origin, then sign in with the API token created during bootstrap.
 
 ## Configuration
 
-Cloud validates a closed HCL configuration at startup. Unknown fields and
+Cloud validates a closed A3S ACL configuration at startup. Unknown fields and
 unsafe timing relationships fail before the API or worker starts. The shipped
 deployment and Edge policies are split across independent boundaries:
 
@@ -210,8 +216,8 @@ desired state first; Flow, node command, Runtime, health, and cleanup deadlines
 then advance independently. A mutable image tag is resolved before scheduling
 and the resulting workload revision remains digest-addressable on replay.
 
-See [`config/cloud.hcl`](config/cloud.hcl) and
-[`config/node.example.hcl`](config/node.example.hcl) for the complete control
+See [`config/cloud.acl`](config/cloud.acl) and
+[`config/node.example.acl`](config/node.example.acl) for the complete control
 plane and node-agent profiles.
 
 ## Platform Model
@@ -310,7 +316,7 @@ proven or a terminal failure is recorded.
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
 | A3S Gateway | HTTPS, ACME, routing, health, and atomic configuration reload |
-| A3S ACL | Closed HCL product configuration and validated manifests |
+| A3S ACL | Closed product configuration and validated manifests |
 
 Business modules follow four DDD layers. Domain code remains independent of
 A3S Boot, SQL, HTTP, Runtime, Flow, Event, and provider SDKs; infrastructure
@@ -319,7 +325,7 @@ adapters implement typed ports owned by the inner layers.
 See [Technical Architecture](docs/architecture.md) for the node protocol,
 security model, consistency boundaries, and failure recovery.
 
-## MVP Roadmap
+## Delivery Roadmap
 
 | Gate | Outcome | State |
 | --- | --- | --- |
@@ -327,13 +333,29 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state and exact activation projection are verified; routed Gateway/TLS, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| E0 — Reachable service | Edge desired state and exact activation projection are verified; routed Gateway/TLS, secrets, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
+| P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
+| C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
+| S0 — Stateful platform | Explicit databases and volumes with fencing, backup, restore, and retention | Planned |
+| H0 — Production scale | Durable replicas, multi-node placement, Gateway replication, HA, and measured autoscaling | Planned |
 
-The MVP target is a single control plane, one Linux node, Docker-backed
-stateless workloads, and a repeatable end-to-end deployment on a clean host. The
-exit gate includes crash injection at each durable boundary, recovery without
-duplicate provider resources, and rollback to the previous healthy revision.
+The first usable release remains E0: one control plane, one Linux node,
+Docker-backed stateless workloads, and a repeatable end-to-end deployment on a
+clean host. Its exit gate includes crash injection at each durable boundary,
+recovery without duplicate provider resources, and rollback to the previous
+healthy revision.
+
+After E0, G0 source delivery, C0 control surfaces, and S0 stateful foundations
+may advance as independent lanes. P0 builds on G0, A0 reuses the same build and
+deployment path, and H0 scales only the single-node semantics proven by the
+earlier gates.
+
+Cloud intentionally does not own a built-in mail server, a separate native
+desktop feature set, or commercial billing. A3S Gateway owns edge transport,
+TLS, compression, and cache mechanics; Cloud owns versioned desired policy and
+exact applied-state projection.
 
 See the [Development Plan](docs/development-plan.md) for milestone order and
 acceptance criteria.
@@ -346,8 +368,8 @@ Cloud is an app-local Rust workspace inside the A3S monorepo:
 Cloud/
 ├── Cargo.toml
 ├── config/
-│   ├── cloud.hcl
-│   └── node.example.hcl
+│   ├── cloud.acl
+│   └── node.example.acl
 ├── deploy/                 # local infrastructure profiles
 ├── migrations/
 ├── crates/
@@ -370,6 +392,39 @@ cargo clippy --workspace --all-targets -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
+### Certify the Runtime boundary
+
+Run real-provider certification only on a dedicated Linux or A3S OS runner.
+Prepare clean `apps/cloud` and `crates/runtime` worktrees directly through Git
+at the exact 40-character commits. Cloud pins its compatible Runtime commit in
+`tools/runtime-conformance/runtime-revision`. Then run the isolated gate from
+the Cloud worktree. The default suite certifies the Docker provider without
+restarting or reconfiguring the host Docker daemon:
+
+```bash
+sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
+  --source-root /var/tmp/a3s-runtime-tests/release-candidate \
+  --cloud-sha "$CLOUD_SHA"
+```
+
+After the provider suite passes, run the Cloud consumer recovery gate with its
+pinned PostgreSQL and NATS services:
+
+```bash
+sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
+  --source-root /var/tmp/a3s-runtime-tests/release-candidate \
+  --cloud-sha "$CLOUD_SHA" \
+  --suite cloud
+```
+
+The provider suite covers Base, Recovery, Networking, Mounts, Health,
+Resources, Logs, and Security. The Cloud suite covers persisted projections,
+the command journal, restart, JetStream redelivery, reconciliation, log
+transport, cancellation, failed-update preservation, and cleanup. Both suites
+require zero provider and host inventory drift. See
+[`tools/runtime-conformance/README.md`](tools/runtime-conformance/README.md) for
+the pinned images, safety model, and evidence contract.
+
 The PostgreSQL integration test treats the supplied URL as an administration
 connection, creates a uniquely named database for the run, and force-removes it
 after success, ordinary failure, or assertion panic. It never migrates or
@@ -387,7 +442,10 @@ Run the remaining real-provider gates explicitly:
 
 ```bash
 A3S_CLOUD_TEST_DOCKER=1 \
-cargo test -p a3s-cloud-node-agent --test docker_conformance -- --nocapture
+cargo test -p a3s-cloud-node-agent \
+  --test docker_conformance \
+  real_docker_passes_all_advertised_runtime_profiles \
+  -- --ignored --exact --nocapture --test-threads=1
 
 A3S_CLOUD_TEST_DOCKER=1 \
 cargo test -p a3s-cloud-control-plane --test docker_deployment -- --nocapture

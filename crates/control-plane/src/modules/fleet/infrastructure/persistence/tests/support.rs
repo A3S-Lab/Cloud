@@ -5,7 +5,7 @@ pub(super) fn capabilities(build: &str) -> NodeCapabilities {
         "docker",
         build,
         json!({
-            "schema": "a3s.runtime.capabilities.v2",
+            "schema": "a3s.runtime.capabilities.v3",
             "provider_id": "docker",
             "provider_build": build
         }),
@@ -16,7 +16,7 @@ pub(super) fn capabilities(build: &str) -> NodeCapabilities {
 pub(super) fn runtime_capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: "docker".into(),
+        provider_id: a3s_runtime::ProviderId::parse("docker").expect("valid Docker provider ID"),
         provider_build: "observation-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
@@ -192,6 +192,7 @@ pub(super) fn inspected_ack(
         outcome: NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeInspected {
                 inspection: a3s_runtime::contract::RuntimeInspection::NotFound {
+                    schema: a3s_runtime::contract::RuntimeInspection::SCHEMA.into(),
                     unit_id: unit_id.clone(),
                     last_generation: Some(*generation),
                 },
