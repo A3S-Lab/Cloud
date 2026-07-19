@@ -23,7 +23,7 @@ impl IDomainOwnershipVerifier for LocalDomainOwnershipVerifier {
                 "local domain ownership challenge is invalid".into(),
             ));
         }
-        if request.expected_value.as_bytes().len() != request.presented_proof.as_bytes().len()
+        if request.expected_value.len() != request.presented_proof.len()
             || !bool::from(
                 request
                     .expected_value

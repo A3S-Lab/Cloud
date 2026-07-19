@@ -29,6 +29,8 @@ distributes committed facts after the corresponding database transaction.
 | Node | Enrolled Linux execution target running the A3S Cloud node agent. |
 | Observation | Node-reported fact about the current provider resource and health. |
 | Route | Domain/path mapping from A3S Gateway to one healthy workload revision. |
+| Domain claim | Tenant-scoped proof that an exact or one-label wildcard DNS pattern may be routed. |
+| Gateway certificate | Public certificate lifecycle bound to one node, claim set, Gateway revision, command, and snapshot digest. |
 | Managed database | Stateful platform service with an engine contract, persistent volume, backup policy, and lifecycle. It is not an Asset. |
 | Persistent volume | Node/provider-backed durable storage with explicit attachment, retention, and backup state. |
 | Backup | Immutable, verified snapshot descriptor stored outside the source volume. |
@@ -121,15 +123,19 @@ engines while preserving the stricter Asset domain.
 
 ### 3.7 Edge routing
 
-The implemented slice owns hostname/path rules and the desired A3S Gateway
+The implemented slice owns hostname/path rules, exact and one-label wildcard
+domain claims, managed certificate public state, and the desired A3S Gateway
 configuration revision. It resolves a route only from a healthy active workload
-revision, validates the real routed snapshot with A3S Gateway 1.0.12, and does
-not mark it active until the gateway acknowledges the exact complete snapshot.
-Domain claims, certificate policy, and TLS issuance remain E0 work.
+revision covered by verified claims, compiles one HTTPS-only snapshot, and does
+not mark the route or certificate ready until the Gateway acknowledges that
+exact complete snapshot. The node generates and retains the private key; the
+control plane sees only a CSR and public certificate material.
 
 Primary domain records:
 
 - `Route`
+- `DomainClaim`
+- `GatewayCertificate`
 - `GatewayScopeState`
 - `GatewayPublication`
 
@@ -249,8 +255,31 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A gateway scope has at most one pending complete snapshot.
 - Route, publication, Fleet command, and acknowledgement bind the same node,
   command ID, revision, snapshot digest, and original correlation ID.
+- Every published route references verified, same-tenant claims that cover its
+  canonical hostname and one certificate owned by the target node.
 - Only the exact `applied` acknowledgement activates a route; a rejected
   publication cannot produce false activation.
+
+### Domain claim
+
+- A claim belongs to one organization, project, and environment.
+- Exact patterns cover only the exact hostname. A wildcard such as
+  `*.example.com` covers one label such as `api.example.com`, never the apex or
+  a deeper name.
+- Only a verified claim can authorize route and certificate publication.
+- Verification and rejection are terminal from `pending`; only a verified claim
+  can be revoked.
+
+### Gateway certificate
+
+- A certificate binds one node, a sorted nonempty claim set, the complete
+  Gateway revision and command, its snapshot digest, and one sorted SAN set.
+- Snapshot schema v2 digests the certificate request with the ACL; a legacy
+  snapshot cannot carry certificate intent.
+- PostgreSQL may store the CSR digest and public certificate chain, but never
+  the private key or plaintext key material.
+- `ready` requires valid issued material and the exact applied Gateway
+  acknowledgement. A rejected reload cannot make a certificate ready.
 
 ### Secret
 
@@ -340,6 +369,23 @@ pending -> publishing -> active
 stores the staged route as `publishing` with its complete Gateway publication.
 `active` and `rejected` require an exact terminal Gateway acknowledgement.
 
+### Domain claim state
+
+```text
+pending -> verified -> revoked
+       \-> rejected
+```
+
+### Gateway certificate state
+
+```text
+provisioning -> issued -> ready -> revoked
+            \-> failed
+```
+
+The node may replay the same CSR after interruption. The control plane returns
+the same public material for the same CSR digest and rejects a conflicting CSR.
+
 ## 7. Data ownership
 
 | Fact | Authoritative owner |
@@ -353,7 +399,9 @@ stores the staged route as `publishing` with its complete Gateway publication.
 | Provider resource and live health | Node agent plus Runtime provider |
 | Last accepted observation | PostgreSQL fleet/deployment projection |
 | Route desired state, Gateway scope, and publication identity | PostgreSQL Edge tables |
+| Domain claims and Gateway certificate public material | PostgreSQL Edge tables |
 | Gateway active config | A3S Gateway, keyed by config revision |
+| Gateway private key and CSR files | Node-local managed certificate directory |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
@@ -377,6 +425,10 @@ deployment.deployment.requested
 deployment.deployment.succeeded
 deployment.deployment.failed
 edge.route.publication-staged
+edge.domain-claim.created
+edge.domain-claim.verified
+edge.domain-claim.rejected
+edge.domain-claim.revoked
 secret.version.created
 data.database.provisioned
 data.backup.completed

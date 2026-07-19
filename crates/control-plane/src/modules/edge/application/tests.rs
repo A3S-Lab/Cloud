@@ -156,6 +156,7 @@ fn context() -> CqrsContext {
     CqrsContext::new(ModuleRef::new())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn command(
     organization_id: OrganizationId,
     project_id: ProjectId,

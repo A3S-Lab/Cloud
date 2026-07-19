@@ -453,6 +453,7 @@ async fn issue_certificate(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn staged(
     fixture: &EdgeFixture,
     revision: u64,

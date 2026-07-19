@@ -489,8 +489,6 @@ fn sanitize_message(message: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
-    use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[derive(Default)]
@@ -614,136 +612,8 @@ mod tests {
             1
         );
     }
-
-    #[tokio::test]
-    async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() {
-        let Ok(binary) = std::env::var("A3S_CLOUD_TEST_GATEWAY_BIN") else {
-            return;
-        };
-        let directory = tempfile::tempdir().expect("real Gateway test directory");
-        let (traffic_port, management_port) = unused_ports();
-        let token = "a3s-cloud-gateway-integration-token";
-        let bootstrap = gateway_acl(traffic_port, management_port, 0);
-        let config_path = directory.path().join("gateway.acl");
-        std::fs::write(&config_path, &bootstrap).expect("write Gateway bootstrap config");
-        let mut gateway = Command::new(binary)
-            .arg("--config")
-            .arg(&config_path)
-            .env("A3S_GATEWAY_ADMIN_TOKEN", token)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("start A3S Gateway");
-
-        let result = async {
-            let base_url = format!("http://127.0.0.1:{management_port}/api/gateway");
-            wait_for_gateway(&base_url, token, &mut gateway).await?;
-            let control = Arc::new(GatewayManagementClient::new(
-                url::Url::parse(&base_url)?,
-                token.into(),
-                Duration::from_secs(2),
-                Duration::from_secs(2),
-                Duration::from_secs(5),
-            )?);
-            let installer = DurableGatewaySnapshotInstaller::new(
-                directory.path().join("installed.json"),
-                control,
-            );
-            let first =
-                GatewaySnapshot::new(1, None, gateway_acl(traffic_port, management_port, 1))?;
-            if installer.install(&first).await? != GatewaySnapshotInstallOutcome::Applied {
-                return Err("real Gateway did not apply the first snapshot".into());
-            }
-            let second =
-                GatewaySnapshot::new(2, Some(1), gateway_acl(traffic_port, management_port, 2))?;
-            if installer.install(&second).await? != GatewaySnapshotInstallOutcome::Applied {
-                return Err("real Gateway did not apply the second snapshot".into());
-            }
-            let invalid = GatewaySnapshot::new(3, Some(2), invalid_gateway_acl(management_port))?;
-            if !matches!(
-                installer.install(&invalid).await?,
-                GatewaySnapshotInstallOutcome::Rejected { .. }
-            ) {
-                return Err("real Gateway accepted invalid ACL".into());
-            }
-            let installed = installer
-                .read_installed()
-                .await?
-                .ok_or("real Gateway test has no durable snapshot")?;
-            if installed.snapshot.revision != 2 {
-                return Err("rejected real Gateway reload changed durable state".into());
-            }
-            Ok::<(), Box<dyn std::error::Error>>(())
-        }
-        .await;
-        let _ = gateway.kill();
-        let _ = gateway.wait();
-        result.expect("real A3S Gateway snapshot integration");
-    }
-
-    fn unused_ports() -> (u16, u16) {
-        let traffic = TcpListener::bind("127.0.0.1:0").expect("bind traffic port");
-        let management = TcpListener::bind("127.0.0.1:0").expect("bind management port");
-        let ports = (
-            traffic.local_addr().expect("traffic address").port(),
-            management.local_addr().expect("management address").port(),
-        );
-        drop((traffic, management));
-        ports
-    }
-
-    fn gateway_acl(traffic_port: u16, management_port: u16, revision: u64) -> String {
-        format!(
-            r#"# revision {revision}
-entrypoints "web" {{ address = "127.0.0.1:{traffic_port}" }}
-
-management {{
-  enabled = true
-  address = "127.0.0.1:{management_port}"
-  path_prefix = "/api/gateway"
-  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  allowed_ips = ["127.0.0.1"]
-}}
-"#
-        )
-    }
-
-    fn invalid_gateway_acl(management_port: u16) -> String {
-        format!(
-            r#"entrypoints "web" {{ address = "invalid-address" }}
-
-management {{
-  enabled = true
-  address = "127.0.0.1:{management_port}"
-  path_prefix = "/api/gateway"
-  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  allowed_ips = ["127.0.0.1"]
-}}
-"#
-        )
-    }
-
-    async fn wait_for_gateway(
-        base_url: &str,
-        token: &str,
-        child: &mut std::process::Child,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = reqwest::Client::new();
-        for _ in 0..100 {
-            if child.try_wait()?.is_some() {
-                return Err("A3S Gateway exited before its management API was ready".into());
-            }
-            if client
-                .get(format!("{base_url}/version"))
-                .bearer_auth(token)
-                .send()
-                .await
-                .is_ok_and(|response| response.status().is_success())
-            {
-                return Ok(());
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        Err("A3S Gateway management API did not become ready".into())
-    }
 }
+
+#[cfg(test)]
+#[path = "gateway_remote_tests.rs"]
+mod remote_tests;
