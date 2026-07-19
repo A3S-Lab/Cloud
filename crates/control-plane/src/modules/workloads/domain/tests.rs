@@ -20,6 +20,7 @@ fn template(digest_character: char) -> ServiceTemplate {
             working_directory: None,
             environment: BTreeMap::new(),
         },
+        secrets: Vec::new(),
         resources: ServiceResources {
             cpu_millis: 250,
             memory_bytes: 64 * 1024 * 1024,
@@ -50,6 +51,7 @@ fn requested_template(uri: &str, expected_digest: Option<String>) -> RequestedSe
             expected_digest,
         },
         process: template.process,
+        secrets: template.secrets,
         resources: template.resources,
         ports: template.ports,
         health: template.health,

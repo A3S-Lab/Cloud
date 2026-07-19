@@ -2,11 +2,15 @@ use super::{CreateWorkloadDeployment, CreateWorkloadDeploymentResult};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
+use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
+    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName, WorkloadId,
+    WorkloadRevisionId,
 };
-use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
+use crate::modules::workloads::domain::entities::{
+    Deployment, RequestedServiceTemplate, Workload, WorkloadRevision,
+};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
@@ -17,16 +21,19 @@ use std::sync::Arc;
 pub struct CreateWorkloadDeploymentHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    secrets: Arc<dyn ISecretRepository>,
 }
 
 impl CreateWorkloadDeploymentHandler {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
+        secrets: Arc<dyn ISecretRepository>,
     ) -> Self {
         Self {
             environments,
             workloads,
+            secrets,
         }
     }
 }
@@ -42,6 +49,7 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
     > {
         let environments = Arc::clone(&self.environments);
         let workloads = Arc::clone(&self.workloads);
+        let secrets = Arc::clone(&self.secrets);
         Box::pin(async move {
             match environments
                 .find(
@@ -65,6 +73,17 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             };
             if let Err(error) = command.template.validate_request() {
                 return Ok(Err(ApplicationError::Invalid(error)));
+            }
+            if let Err(error) = validate_secret_bindings(
+                secrets.as_ref(),
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+                &command.template,
+            )
+            .await
+            {
+                return Ok(Err(error));
             }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
@@ -145,4 +164,43 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             Ok(Ok(CreateWorkloadDeploymentResult { bundle }))
         })
     }
+}
+
+async fn validate_secret_bindings(
+    secrets: &dyn ISecretRepository,
+    organization_id: crate::modules::shared_kernel::domain::OrganizationId,
+    project_id: crate::modules::shared_kernel::domain::ProjectId,
+    environment_id: crate::modules::shared_kernel::domain::EnvironmentId,
+    template: &RequestedServiceTemplate,
+) -> ApplicationResult<()> {
+    for binding in &template.secrets {
+        let secret = secrets
+            .find(organization_id, binding.secret_id)
+            .await
+            .map_err(binding_repository_error)?;
+        if secret.project_id != project_id || secret.environment_id != environment_id {
+            return Err(invalid_binding());
+        }
+        let version = secrets
+            .find_version(organization_id, binding.secret_id, binding.version)
+            .await
+            .map_err(binding_repository_error)?;
+        if !version.is_materializable(&secret) {
+            return Err(invalid_binding());
+        }
+    }
+    Ok(())
+}
+
+fn binding_repository_error(error: RepositoryError) -> ApplicationError {
+    match error {
+        RepositoryError::NotFound => invalid_binding(),
+        other => other.into(),
+    }
+}
+
+fn invalid_binding() -> ApplicationError {
+    ApplicationError::Invalid(
+        "workload Secret binding does not reference an active version in this environment".into(),
+    )
 }

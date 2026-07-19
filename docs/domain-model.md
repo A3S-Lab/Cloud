@@ -141,9 +141,12 @@ Primary domain records:
 
 ### 3.8 Secrets
 
-Owns secret identities, encrypted versions, bindings, key rotation, and access
-audit. Only secret references cross application boundaries. Plaintext must not
-enter domain events, Flow history, Runtime specs, logs, or API responses.
+Owns secret identities, encrypted versions, key rotation, materialization
+authorization, and access audit. An immutable workload revision binds an exact
+Secret version to a typed environment-variable or absolute-file target. Only
+canonical references cross persistent application and Runtime boundaries.
+Plaintext must not enter desired-state rows, domain events, Flow history,
+Runtime state, Fleet commands, logs, or API responses.
 
 Primary aggregate:
 
@@ -232,7 +235,11 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A revision pins a resolved source revision and artifact digest.
 - At most one revision is active, but previous healthy revisions remain
   available for rollback until retention removes them.
-- Secret and Skill bindings reference immutable versions.
+- Secret and Skill bindings reference immutable versions and are part of the
+  immutable revision template.
+- Each Secret binding has a unique name and target and selects either an
+  environment variable or an absolute file path plus mode. It must reference
+  an active version in the workload's organization, project, and environment.
 
 ### Deployment
 
@@ -288,6 +295,16 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Updating a secret creates a new version; it never mutates ciphertext in place.
 - Deletion is blocked while a live workload revision references the version,
   unless an explicit force workflow records the impact.
+- Durable workload, Runtime, Fleet, Flow, event, label, and API state carries
+  only the canonical workload-revision, Secret-ID, and version reference.
+- Materialization is authorized only for the authenticated node assigned to the
+  exact bound revision while it is converging, or while it remains the current
+  active revision of a running workload. Tenant scope and active Secret/version
+  state are revalidated before decryption.
+- Node material responses are short-lived and non-cacheable. Environment
+  material exists only at Docker container creation; file material is written
+  atomically beneath a Linux tmpfs root, bind-mounted read-only at the requested
+  path, and removed when the provider resource is retired.
 
 ### Managed database, volume, and backup
 
@@ -403,6 +420,9 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Domain claims and Gateway certificate public material | PostgreSQL Edge tables |
 | Gateway active config | A3S Gateway, keyed by config revision |
 | Gateway private key and CSR files | Node-local managed certificate directory |
+| Secret identity and encrypted immutable versions | PostgreSQL Secret tables |
+| Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
+| Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
 | Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |

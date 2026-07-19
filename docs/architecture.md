@@ -319,6 +319,17 @@ Provider labels also bind resources to unit ID, generation, and spec digest so
 the journal can be reconstructed after partial disk loss. SSH remains an
 explicit break-glass operator action, never the control protocol.
 
+Workload revisions bind Secrets as typed immutable
+`secret_id + version + target` records. Runtime specs and Fleet commands carry
+only canonical `a3s-cloud-secret://` references. When Docker must create or
+restart a container, the driver resolves those references through the existing
+authenticated node-control mTLS client. The control plane authorizes the exact
+revision, assigned node, tenant scope, deployment state, Secret state, and
+version before decrypting. Environment material is passed directly into the
+Docker create boundary; file material is written only beneath the configured
+Linux tmpfs root and mounted read-only. Runtime state files, command journals,
+Flow input, events, and provider labels never receive the plaintext.
+
 ## 8. Gateway and edge publication
 
 For the first vertical slice, A3S Gateway runs on the workload node. The Edge
@@ -414,8 +425,9 @@ immutable inputs; they are not deployed alone.
 - Secret mutation idempotency rows store only the Secret ID and immutable
   version number, then reload authoritative records. Domain events and API
   responses contain metadata but no key ID, ciphertext, or plaintext.
-- A node receives only the secret versions needed for a leased generation,
-  encrypted to the node identity with a short validity period.
+- A node receives only the exact versions referenced by a revision currently
+  assigned to it, inside its authenticated mTLS session and a short-lived,
+  non-cacheable material response.
 - Plaintext secrets are excluded from Runtime specs, events, Flow payloads,
   command journals, logs, traces, and API responses.
 - Build network access is deny-by-default and separately configurable from a

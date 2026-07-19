@@ -32,12 +32,14 @@ name = "a3s-cloud-contracts"
 version = "0.1.0"
 dependencies = [
  "a3s-runtime",
+ "base64",
  "chrono",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -111,6 +113,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

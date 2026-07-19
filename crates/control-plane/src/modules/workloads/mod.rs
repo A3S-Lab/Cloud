@@ -12,8 +12,8 @@ pub use application::{
 };
 pub use domain::entities::{
     Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
-    RequestedServiceTemplate, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
-    Workload, WorkloadDesiredState, WorkloadRevision,
+    RequestedServiceTemplate, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
+    ServiceResources, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadStopRequested,

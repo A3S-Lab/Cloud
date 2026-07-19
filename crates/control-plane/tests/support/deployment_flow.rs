@@ -137,6 +137,7 @@ pub async fn exercise_deployment_flow(
             socket: docker_socket(),
             namespace: format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]),
             operation_timeout_ms: 30_000,
+            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
         })?);
         driver.bind_node(node_id.as_uuid()).await?;
         let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
@@ -594,6 +595,7 @@ pub async fn exercise_dispatched_cancellation(
             &Uuid::now_v7().simple().to_string()[..12]
         ),
         operation_timeout_ms: 30_000,
+        secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
     })?);
     driver.bind_node(node_id.as_uuid()).await?;
     let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(

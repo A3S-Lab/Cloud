@@ -1,9 +1,10 @@
 use crate::modules::workloads::domain::entities::{
-    HttpHealthCheck, OciArtifactReference, RequestedServiceTemplate, ServicePort, ServiceProcess,
-    ServiceResources,
+    HttpHealthCheck, OciArtifactReference, RequestedServiceTemplate, SecretBinding,
+    SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources,
 };
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -18,9 +19,27 @@ pub struct ServiceTemplateRequest {
     pub artifact: OciArtifactRequest,
     #[serde(default)]
     pub process: ServiceProcessRequest,
+    #[serde(default)]
+    pub secrets: Vec<SecretBindingRequest>,
     pub resources: ServiceResourcesRequest,
     pub ports: Vec<ServicePortRequest>,
     pub health: HttpHealthCheckRequest,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SecretBindingRequest {
+    pub name: String,
+    pub secret_id: Uuid,
+    pub version: u64,
+    pub target: SecretBindingTargetRequest,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SecretBindingTargetRequest {
+    Environment { variable: String },
+    File { path: String, mode: u32 },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -83,6 +102,25 @@ impl ServiceTemplateRequest {
                 working_directory: self.process.working_directory,
                 environment: self.process.environment,
             },
+            secrets: self
+                .secrets
+                .into_iter()
+                .map(|binding| SecretBinding {
+                    name: binding.name,
+                    secret_id: crate::modules::shared_kernel::domain::SecretId::from_uuid(
+                        binding.secret_id,
+                    ),
+                    version: binding.version,
+                    target: match binding.target {
+                        SecretBindingTargetRequest::Environment { variable } => {
+                            SecretBindingTarget::Environment { variable }
+                        }
+                        SecretBindingTargetRequest::File { path, mode } => {
+                            SecretBindingTarget::File { path, mode }
+                        }
+                    },
+                })
+                .collect(),
             resources: ServiceResources {
                 cpu_millis: self.resources.cpu_millis,
                 memory_bytes: self.resources.memory_bytes,

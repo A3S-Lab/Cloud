@@ -188,6 +188,9 @@ pub async fn build_application(
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&log_chunks),
             Arc::clone(&certificate_authority),
+            Arc::clone(&workloads),
+            Arc::clone(&secrets),
+            Arc::clone(&key_encryption),
             chrono_duration(config.edge.certificate_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             chrono_duration(config.fleet.certificate_ttl_ms)
@@ -355,6 +358,7 @@ fn build_application_with_health(
     let domain_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let create_workloads = Arc::clone(&workloads);
+    let workload_secrets = Arc::clone(&secrets);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
     let list_workloads = Arc::clone(&workloads);
@@ -479,7 +483,11 @@ fn build_application_with_health(
                     RevokeSecretVersionHandler::new(revoke_secret_versions),
                 )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
-                    CreateWorkloadDeploymentHandler::new(workload_environments, create_workloads),
+                    CreateWorkloadDeploymentHandler::new(
+                        workload_environments,
+                        create_workloads,
+                        workload_secrets,
+                    ),
                 )
                 .command_handler::<crate::modules::workloads::CancelDeployment, _>(
                     CancelDeploymentHandler::new(cancel_workloads),

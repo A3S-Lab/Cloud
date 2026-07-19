@@ -29,6 +29,7 @@ pub struct DockerConfig {
     pub socket: String,
     pub namespace: String,
     pub operation_timeout_ms: u64,
+    pub secret_memory_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +84,15 @@ impl NodeAgentConfig {
         let node = one_block(&document, "node")?;
         validate_block(node, &["name", "state_dir"])?;
         let docker = one_block(&document, "docker")?;
-        validate_block(docker, &["socket", "namespace", "operation_timeout_ms"])?;
+        validate_block(
+            docker,
+            &[
+                "socket",
+                "namespace",
+                "operation_timeout_ms",
+                "secret_memory_dir",
+            ],
+        )?;
         let gateway = one_block(&document, "gateway")?;
         validate_block(
             gateway,
@@ -129,6 +138,7 @@ impl NodeAgentConfig {
                 socket: string(docker, "socket")?,
                 namespace: string(docker, "namespace")?,
                 operation_timeout_ms: integer(docker, "operation_timeout_ms")?,
+                secret_memory_dir: PathBuf::from(string(docker, "secret_memory_dir")?),
             },
             gateway: GatewayControlConfig {
                 management_url: endpoint(
@@ -227,18 +237,24 @@ impl NodeAgentConfig {
                 "docker.socket must be an absolute unix:// socket path".into(),
             ));
         }
-        if self.docker.namespace.is_empty()
-            || self.docker.namespace.len() > 63
-            || !self.docker.namespace.bytes().all(|byte| {
-                byte.is_ascii_lowercase()
-                    || byte.is_ascii_digit()
-                    || matches!(byte, b'-' | b'_' | b'.')
-            })
+        if !valid_docker_namespace(&self.docker.namespace)
             || self.docker.operation_timeout_ms == 0
             || self.docker.operation_timeout_ms > 900_000
         {
             return Err(ConfigError::Invalid(
                 "docker namespace or operation timeout is invalid".into(),
+            ));
+        }
+        validate_path("docker.secret_memory_dir", &self.docker.secret_memory_dir)?;
+        if !self.docker.secret_memory_dir.is_absolute()
+            || self
+                .docker
+                .secret_memory_dir
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err(ConfigError::Invalid(
+                "docker.secret_memory_dir must be an absolute normalized path".into(),
             ));
         }
         if !self
@@ -449,6 +465,15 @@ fn valid_env_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
+pub(crate) fn valid_docker_namespace(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 63
+        && !matches!(value, "." | "..")
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,6 +501,7 @@ docker {
   socket = "unix:///var/run/docker.sock"
   namespace = "a3s-cloud"
   operation_timeout_ms = 120000
+  secret_memory_dir = "/dev/shm/a3s-cloud/secrets"
 }
 
 gateway {
@@ -531,5 +557,8 @@ gateway {
             "  name = \"worker-1\"\n  provider = \"docker\"",
         );
         assert!(NodeAgentConfig::parse(&raw_provider).is_err());
+        let parent_namespace =
+            CONFIG.replace("  namespace = \"a3s-cloud\"", "  namespace = \"..\"");
+        assert!(NodeAgentConfig::parse(&parent_namespace).is_err());
     }
 }

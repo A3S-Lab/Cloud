@@ -490,11 +490,11 @@ fn is_sha256(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::{NodeCommandMetadata, NodeCommandResult};
+    use a3s_cloud_contracts::{CloudSecretReference, NodeCommandMetadata, NodeCommandResult};
     use a3s_runtime::contract::{
         ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
         RuntimeApplyRequest, RuntimeInspection, RuntimeNetworkSpec, RuntimeProcessSpec,
-        RuntimeUnitClass, RuntimeUnitSpec,
+        RuntimeUnitClass, RuntimeUnitSpec, SecretReference, SecretTarget,
     };
     use chrono::Duration;
     use std::collections::BTreeMap;
@@ -732,5 +732,41 @@ mod tests {
             ))
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn command_journal_persists_only_secret_references() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let node_id = Uuid::now_v7();
+        let mut envelope = apply_envelope(
+            node_id,
+            Uuid::now_v7(),
+            1,
+            Uuid::now_v7(),
+            "secret-reference-apply",
+            'a',
+        );
+        let reference =
+            CloudSecretReference::new(Uuid::now_v7(), Uuid::now_v7(), 3).expect("reference");
+        let NodeCommandPayload::RuntimeApply { request } = &mut envelope.payload else {
+            panic!("apply envelope payload");
+        };
+        request.spec.secrets.push(SecretReference {
+            name: "api-token".into(),
+            reference: reference.to_string(),
+            target: SecretTarget::Environment {
+                variable: "API_TOKEN".into(),
+            },
+        });
+        envelope.payload_digest = envelope.payload.digest().expect("payload digest");
+        envelope.validate().expect("Secret reference envelope");
+
+        let journal = FileCommandJournal::new(directory.path(), node_id).expect("journal");
+        journal.begin(envelope).await.expect("persist command");
+        let persisted = tokio::fs::read_to_string(directory.path().join(JOURNAL_FILE))
+            .await
+            .expect("journal JSON");
+        assert!(persisted.contains(&reference.to_string()));
+        assert!(!persisted.contains("materialized-at-docker"));
     }
 }

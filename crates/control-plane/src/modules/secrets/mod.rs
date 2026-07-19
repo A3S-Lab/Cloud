@@ -5,8 +5,9 @@ pub mod presentation;
 
 pub use application::{
     CreateSecret, CreateSecretHandler, GetSecret, GetSecretHandler, ListSecrets,
-    ListSecretsHandler, RevokeSecretVersion, RevokeSecretVersionHandler, RotateSecret,
-    RotateSecretHandler, SecretDetails, SecretMutationResult, SecretPlaintext, SecretVersionResult,
+    ListSecretsHandler, ResolveSecretMaterial, ResolveSecretMaterialHandler, RevokeSecretVersion,
+    RevokeSecretVersionHandler, RotateSecret, RotateSecretHandler, SecretDetails,
+    SecretMutationResult, SecretPlaintext, SecretVersionResult,
 };
 pub use domain::{
     CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,

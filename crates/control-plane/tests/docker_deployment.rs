@@ -59,6 +59,7 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
         socket: docker_socket(),
         namespace,
         operation_timeout_ms: 30_000,
+        secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
     })?);
     let capabilities = RuntimeDriver::capabilities(driver.as_ref()).await?;
 
@@ -486,6 +487,7 @@ fn busybox_template(command: Vec<String>, args: Vec<String>) -> ServiceTemplate 
             working_directory: None,
             environment: BTreeMap::new(),
         },
+        secrets: Vec::new(),
         resources: ServiceResources {
             cpu_millis: 100,
             memory_bytes: 32 * 1024 * 1024,

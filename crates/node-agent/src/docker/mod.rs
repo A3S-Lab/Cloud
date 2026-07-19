@@ -2,8 +2,9 @@ mod container;
 mod health;
 mod image;
 mod logs;
+mod secrets;
 
-use crate::{DockerConfig, NodeRuntimeBinding};
+use crate::{DockerConfig, NodeRuntimeBinding, NodeSecretTransport};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
     RuntimeCapabilities, RuntimeExecRequest, RuntimeExecResult, RuntimeFeature, RuntimeInspection,
@@ -14,7 +15,8 @@ use a3s_runtime::{ProviderId, RuntimeDriver, RuntimeError, RuntimeResult, Runtim
 use async_trait::async_trait;
 use bollard::errors::Error as DockerError;
 use bollard::{Docker, API_DEFAULT_VERSION};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -28,6 +30,8 @@ pub struct DockerRuntimeDriver {
     pub(super) namespace: String,
     pub(super) operation_timeout: Duration,
     pub(super) node_id: RwLock<Option<Uuid>>,
+    pub(super) secret_transport: RwLock<Option<Arc<dyn NodeSecretTransport>>>,
+    pub(super) secret_memory_dir: PathBuf,
     pub(super) health_client: reqwest::Client,
 }
 
@@ -40,6 +44,21 @@ impl DockerRuntimeDriver {
         if !Path::new(socket).is_absolute() {
             return Err(RuntimeError::InvalidRequest(
                 "Docker socket path must be absolute".into(),
+            ));
+        }
+        if !crate::config::valid_docker_namespace(&config.namespace) {
+            return Err(RuntimeError::InvalidRequest(
+                "Docker namespace is invalid".into(),
+            ));
+        }
+        if !config.secret_memory_dir.is_absolute()
+            || config
+                .secret_memory_dir
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err(RuntimeError::InvalidRequest(
+                "Docker Secret memory directory must be an absolute normalized path".into(),
             ));
         }
         let timeout_seconds = config.operation_timeout_ms.div_ceil(1_000).max(1);
@@ -57,6 +76,8 @@ impl DockerRuntimeDriver {
             namespace: config.namespace.clone(),
             operation_timeout: Duration::from_millis(config.operation_timeout_ms),
             node_id: RwLock::new(None),
+            secret_transport: RwLock::new(None),
+            secret_memory_dir: config.secret_memory_dir.join(&config.namespace),
             health_client,
         })
     }
@@ -110,6 +131,25 @@ impl NodeRuntimeBinding for DockerRuntimeDriver {
             }
         }
     }
+
+    async fn bind_secret_transport(
+        &self,
+        transport: Arc<dyn NodeSecretTransport>,
+    ) -> RuntimeResult<()> {
+        let mut current = self.secret_transport.write().await;
+        match current.as_ref() {
+            Some(existing) if !Arc::ptr_eq(existing, &transport) => {
+                Err(RuntimeError::RequestConflict {
+                    request_id: "docker-secret-transport-binding".into(),
+                })
+            }
+            Some(_) => Ok(()),
+            None => {
+                *current = Some(transport);
+                Ok(())
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -148,6 +188,7 @@ impl RuntimeDriver for DockerRuntimeDriver {
                 RuntimeFeature::Stop,
                 RuntimeFeature::Remove,
                 RuntimeFeature::Logs,
+                RuntimeFeature::SecretReferences,
             ],
         };
         capabilities.validate().map_err(RuntimeError::Protocol)?;

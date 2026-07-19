@@ -4,6 +4,7 @@ mod error;
 mod gateway;
 mod observation;
 mod runtime_endpoint;
+mod secret;
 #[cfg(test)]
 mod tests;
 
@@ -27,6 +28,7 @@ pub use observation::{
     RuntimeObservationReport,
 };
 pub use runtime_endpoint::RuntimeServiceEndpoint;
+pub use secret::{CloudSecretReference, NodeSecretMaterialRequest, NodeSecretMaterialResponse};
 
 pub(crate) fn validate_single_line(label: &str, value: &str, max: usize) -> Result<(), String> {
     if value.trim().is_empty()
