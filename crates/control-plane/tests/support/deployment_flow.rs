@@ -1285,6 +1285,7 @@ fn runtime_capabilities() -> RuntimeCapabilities {
             RuntimeFeature::DurableIdentity,
             RuntimeFeature::Stop,
             RuntimeFeature::Remove,
+            RuntimeFeature::SecretReferences,
         ],
     }
 }
