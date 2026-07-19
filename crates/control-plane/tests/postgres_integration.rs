@@ -486,7 +486,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(encrypted_secret_rows, 2);
     let safe_secret_idempotency = database
         .fetch_one_as(sql_query::<i64>(
-            "select count(*) from idempotency_records where idempotency_key like 'secret-database-url%' and jsonb_object_length(response) = 2 and response ->> 'secret_id' is not null and response ->> 'version' is not null and response::text not like '%ciphertext%' and response::text not like '%key_id%'",
+            "select count(*) from idempotency_records where idempotency_key like 'secret-database-url%' and (select count(*) from jsonb_object_keys(response)) = 2 and response ->> 'secret_id' is not null and response ->> 'version' is not null and response::text not like '%ciphertext%' and response::text not like '%key_id%'",
         ))
         .await?;
     assert_eq!(safe_secret_idempotency, 3);
