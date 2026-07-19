@@ -81,7 +81,10 @@ The isolated runner's `--suite cloud` path additionally sets
 `A3S_CLOUD_TEST_SECRET_MEMORY_DIR` to a run-specific directory beneath
 `/dev/shm`, verifies that the directory is tmpfs-backed, and bind-mounts the
 same absolute path into the nested Docker provider. The PostgreSQL integration
-gate then:
+gate compiles as the ordinary CI user and runs only its test binary as root,
+matching the isolated release runner. This makes the tmpfs source root-owned so
+the root workload can read its `0400` file while the container remains
+unprivileged with every capability dropped. The gate then:
 
 - authorizes and decrypts an active Secret version through the production
   application handler;

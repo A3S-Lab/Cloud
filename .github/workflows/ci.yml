@@ -247,10 +247,20 @@ jobs:
           A3S_CLOUD_TEST_SECRET_MEMORY_DIR: /dev/shm/a3s-cloud/ci-secret-logs
         run: |
           install -d -m 0700 "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR"
-          cargo test -p a3s-cloud-control-plane --test postgres_integration --locked \
+          cargo test -p a3s-cloud-control-plane --test postgres_integration --locked --no-run
+          test_binary=$(find target/debug/deps -maxdepth 1 -type f \
+            -name 'postgres_integration-*' -perm -111 -print -quit)
+          [[ -n $test_binary ]]
+          sudo env \
+            A3S_CLOUD_TEST_DOCKER="$A3S_CLOUD_TEST_DOCKER" \
+            A3S_CLOUD_TEST_DOCKER_SOCKET="$A3S_CLOUD_TEST_DOCKER_SOCKET" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" \
+            RUST_BACKTRACE=1 \
+            "$test_binary" \
             postgres_foundation_is_migrated_atomic_and_idempotent \
-            -- --exact --nocapture --test-threads=1
-          [[ -z $(find "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" -type f -print -quit) ]]
+            --exact --nocapture --test-threads=1
+          [[ -z $(sudo find "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" -type f -print -quit) ]]
 
       - name: Stop Secret and log fixtures
         if: always()
@@ -265,7 +275,7 @@ jobs:
           [[ -z $managed_containers ]] ||
             docker rm --force $managed_containers || true
           docker rm --force a3s-cloud-secret-log-postgres || true
-          rm -rf /dev/shm/a3s-cloud/ci-secret-logs
+          sudo rm -rf /dev/shm/a3s-cloud/ci-secret-logs
 
   repository-policy:
     name: Repository policy

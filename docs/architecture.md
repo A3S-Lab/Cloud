@@ -372,7 +372,9 @@ The Linux Secret/log acceptance path binds one active encrypted PostgreSQL
 Secret version to both an environment variable and a `0400` file. The workload
 proves both values agree without embedding plaintext in its Runtime spec,
 emits the value on real stdout and stderr, and verifies that only redaction
-markers leave the Docker driver. It then writes the sanitized batch through the
+markers leave the Docker driver. The node-side fixture runs as root, matching
+the isolated release runner, while the workload container stays unprivileged
+with every capability dropped. It then writes the sanitized batch through the
 production PostgreSQL metadata repository and immutable filesystem object
 adapter, reconstructs both adapters and the handler, verifies exact replay, and
 queries the same sanitized records through the tenant-authorized REST API. The
