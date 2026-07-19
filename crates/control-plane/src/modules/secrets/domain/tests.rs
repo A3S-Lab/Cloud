@@ -47,17 +47,24 @@ fn rotations_are_immutable_monotonic_and_context_bound() {
 fn revocation_is_idempotent_and_blocks_materialization() {
     let (mut secret, mut version) = secret();
     let revoked_at = secret.created_at + Duration::seconds(1);
-    version.revoke(revoked_at).expect("revoke version");
-    let aggregate_version = version.aggregate_version;
-    version
-        .revoke(revoked_at)
+    secret
+        .revoke_version(&mut version, revoked_at)
+        .expect("revoke version");
+    let version_aggregate = version.aggregate_version;
+    let secret_aggregate = secret.aggregate_version;
+    secret
+        .revoke_version(&mut version, revoked_at)
         .expect("replay version revocation");
-    assert_eq!(version.aggregate_version, aggregate_version);
+    assert_eq!(version.aggregate_version, version_aggregate);
+    assert_eq!(secret.aggregate_version, secret_aggregate);
     assert!(!version.is_materializable(&secret));
 
-    secret.revoke(revoked_at).expect("revoke Secret");
+    let secret_revoked_at = revoked_at + Duration::seconds(1);
+    secret.revoke(secret_revoked_at).expect("revoke Secret");
     let aggregate_version = secret.aggregate_version;
-    secret.revoke(revoked_at).expect("replay Secret revocation");
+    secret
+        .revoke(secret_revoked_at)
+        .expect("replay Secret revocation");
     assert_eq!(secret.aggregate_version, aggregate_version);
     assert!(secret.rotate(encrypted("rejected"), revoked_at).is_err());
 }
@@ -68,4 +75,18 @@ fn debug_output_never_contains_ciphertext() {
     let debug = format!("{version:?} {:?}", version.encrypted_value);
     assert!(!debug.contains("v1.nonce.one"));
     assert!(debug.contains("<redacted-ciphertext>"));
+}
+
+#[test]
+fn domain_events_contain_references_but_never_encrypted_material() {
+    let (secret, version) = secret();
+    let event =
+        SecretChanged::created(&secret, &version, uuid::Uuid::now_v7()).expect("Secret event");
+    let encoded = serde_json::to_string(&event.payload).expect("event JSON");
+    assert!(encoded.contains(&secret.id.to_string()));
+    assert!(encoded.contains("\"version\":1"));
+    assert!(!encoded.contains(version.encrypted_value.key_id()));
+    assert!(!encoded.contains(version.encrypted_value.ciphertext()));
+    assert!(!encoded.contains("key_id"));
+    assert!(!encoded.contains("ciphertext"));
 }

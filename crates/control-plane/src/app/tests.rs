@@ -11,12 +11,17 @@ use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::projects::InMemoryProjectsRepository;
+use crate::modules::secrets::{
+    EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
+};
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use chrono::Utc;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+mod secret_tests;
 
 const BOOTSTRAP_TOKEN: &str = "test-bootstrap-credential-0123456789abcdef";
 const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -26,6 +31,37 @@ const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccc
 struct TestCertificateAuthority;
 
 struct TestLogChunkStore;
+
+struct TestSecretEncryption;
+
+#[async_trait::async_trait]
+impl ISecretEncryptionService for TestSecretEncryption {
+    async fn encrypt(
+        &self,
+        plaintext: &[u8],
+        context: &[u8],
+    ) -> std::result::Result<EncryptedSecretValue, SecretEncryptionError> {
+        let mut digest = Sha256::new();
+        digest.update(context);
+        digest.update(plaintext);
+        EncryptedSecretValue::new("test:sha256", format!("v1:{:x}", digest.finalize()))
+            .map_err(SecretEncryptionError::Rejected)
+    }
+
+    async fn decrypt(
+        &self,
+        _value: &EncryptedSecretValue,
+        _context: &[u8],
+    ) -> std::result::Result<Vec<u8>, SecretEncryptionError> {
+        Err(SecretEncryptionError::Rejected(
+            "test encryption does not materialize values".into(),
+        ))
+    }
+
+    async fn health(&self) -> std::result::Result<bool, SecretEncryptionError> {
+        Ok(true)
+    }
+}
 
 #[async_trait::async_trait]
 impl crate::modules::fleet::domain::services::ILogChunkStore for TestLogChunkStore {
@@ -217,6 +253,18 @@ fn build_test_application(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
 ) -> Result<BootApplication> {
+    build_test_application_with_secrets(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+    )
+}
+
+fn build_test_application_with_secrets(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
@@ -245,6 +293,8 @@ fn build_test_application(
             environments: projects,
             workloads: workload_port,
             routes,
+            secrets,
+            secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,
             domain_verifier: Arc::new(LocalDomainOwnershipVerifier),

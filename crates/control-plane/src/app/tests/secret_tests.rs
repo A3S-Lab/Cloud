@@ -1,0 +1,163 @@
+use super::*;
+use crate::modules::secrets::ISecretRepository;
+
+#[tokio::test]
+async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let secrets = Arc::new(InMemorySecretRepository::new());
+    let app = build_test_application_with_secrets(identity, projects, Arc::clone(&secrets))?;
+    let organization = bootstrap_organization(&app, "secret-bootstrap", "Acme").await?;
+    let project = create_project(&app, &organization, "secret-project", "Cloud").await?;
+    let environments_path =
+        format!("/api/v1/organizations/{organization}/projects/{project}/environments");
+    let environment = app
+        .call(post_json(
+            &environments_path,
+            "secret-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+    create_api_token(
+        &app,
+        &organization,
+        "secret-limited-token",
+        "project-only",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::PROJECT_WRITE],
+        None,
+    )
+    .await?;
+
+    let list_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/secrets"
+    );
+    let first_plaintext = "postgres://user:first-secret@database";
+    let forbidden = app
+        .call(post_json_as(
+            &list_path,
+            "secret-forbidden",
+            json!({"name": "Database URL", "value": first_plaintext}),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    assert_eq!(forbidden.status(), 403);
+
+    let create_request = || {
+        post_json(
+            &list_path,
+            "secret-create",
+            json!({"name": "Database URL", "value": first_plaintext}),
+        )
+    };
+    let created = app.call(create_request()).await?;
+    let replayed = app.call(create_request()).await?;
+    assert_eq!(created.status(), 201);
+    assert_eq!(replayed.status(), 200);
+    let created_json = response_json(&created)?;
+    let replayed_json = response_json(&replayed)?;
+    assert_eq!(created_json["data"]["id"], replayed_json["data"]["id"]);
+    assert_eq!(replayed_json["data"]["replayed"], true);
+    assert_eq!(created_json["data"]["currentVersion"], 1);
+    assert_eq!(created_json["data"]["version"]["version"], 1);
+    assert_response_hides_secret_material(&created, &[first_plaintext]);
+
+    let changed = app
+        .call(post_json(
+            &list_path,
+            "secret-create",
+            json!({"name": "Database URL", "value": "different"}),
+        ))
+        .await?;
+    assert_eq!(changed.status(), 409);
+
+    let secret_id = created_json["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("Secret response has no ID".into()))?;
+    let versions_path =
+        format!("/api/v1/organizations/{organization}/secrets/{secret_id}/versions");
+    let second_plaintext = "postgres://user:rotated-secret@database";
+    let rotate_request = || {
+        post_json(
+            &versions_path,
+            "secret-rotate",
+            json!({"value": second_plaintext}),
+        )
+    };
+    let rotated = app.call(rotate_request()).await?;
+    let rotate_replay = app.call(rotate_request()).await?;
+    assert_eq!(rotated.status(), 201);
+    assert_eq!(rotate_replay.status(), 200);
+    assert_eq!(response_json(&rotated)?["data"]["currentVersion"], 2);
+    assert_eq!(response_json(&rotated)?["data"]["version"]["version"], 2);
+    assert_response_hides_secret_material(&rotated, &[first_plaintext, second_plaintext]);
+
+    let revoke_path = format!("{versions_path}/1/revoke");
+    let revoked = app
+        .call(post_json(&revoke_path, "secret-revoke-v1", json!({})))
+        .await?;
+    let revoke_replay = app
+        .call(post_json(&revoke_path, "secret-revoke-v1", json!({})))
+        .await?;
+    assert_eq!(revoked.status(), 200);
+    assert_eq!(
+        response_json(&revoked)?["data"]["version"]["state"],
+        "revoked"
+    );
+    assert_eq!(response_json(&revoke_replay)?["data"]["replayed"], true);
+
+    let listed = app.call(get_as(&list_path, ADMIN_TOKEN)).await?;
+    assert_eq!(listed.status(), 200);
+    assert_eq!(response_json(&listed)?["data"][0]["currentVersion"], 2);
+    let details_path = format!("/api/v1/organizations/{organization}/secrets/{secret_id}");
+    let details = app.call(get_as(&details_path, ADMIN_TOKEN)).await?;
+    let details_json = response_json(&details)?;
+    assert_eq!(
+        details_json["data"]["versions"].as_array().map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(details_json["data"]["versions"][0]["state"], "revoked");
+    assert_eq!(details_json["data"]["versions"][1]["state"], "active");
+    assert_response_hides_secret_material(&details, &[first_plaintext, second_plaintext]);
+
+    let events = secrets.outbox_events().await;
+    assert_eq!(events.len(), 3);
+    let events_json =
+        serde_json::to_string(&events).map_err(|error| BootError::Internal(error.to_string()))?;
+    assert!(!events_json.contains(first_plaintext));
+    assert!(!events_json.contains(second_plaintext));
+    assert!(!events_json.contains("ciphertext"));
+    assert!(!events_json.contains("key_id"));
+    assert_eq!(secrets.idempotency_references().await.len(), 3);
+    let first_version = secrets
+        .find_version(
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                Uuid::parse_str(&organization)
+                    .map_err(|error| BootError::Internal(error.to_string()))?,
+            ),
+            crate::modules::shared_kernel::domain::SecretId::from_uuid(
+                Uuid::parse_str(secret_id)
+                    .map_err(|error| BootError::Internal(error.to_string()))?,
+            ),
+            1,
+        )
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    assert!(!first_version
+        .encrypted_value
+        .ciphertext()
+        .contains(first_plaintext));
+    Ok(())
+}
+
+fn assert_response_hides_secret_material(response: &BootResponse, plaintexts: &[&str]) {
+    let body = String::from_utf8_lossy(response.body());
+    for plaintext in plaintexts {
+        assert!(!body.contains(plaintext));
+    }
+    assert!(!body.contains("ciphertext"));
+    assert!(!body.contains("keyId"));
+    assert!(!body.contains("encryptedValue"));
+}

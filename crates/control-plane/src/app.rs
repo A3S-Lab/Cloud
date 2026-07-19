@@ -44,7 +44,11 @@ use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, ListEnvironmentsHandler, ListProjectsHandler,
     PostgresProjectsRepository, ProjectsModule,
 };
-use crate::modules::secrets::domain::ISecretEncryptionService;
+use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
+use crate::modules::secrets::{
+    CreateSecretHandler, GetSecretHandler, ListSecretsHandler, PostgresSecretRepository,
+    RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
+};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::IOciArtifactResolver;
@@ -125,6 +129,8 @@ pub async fn build_application(
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository;
+    let secrets: Arc<dyn ISecretRepository> =
+        Arc::new(PostgresSecretRepository::new(executor.clone()));
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
         SecurityProfile::Production => Arc::new(UnavailableDomainOwnershipVerifier),
@@ -264,6 +270,8 @@ pub async fn build_application(
             environments: projects,
             workloads,
             routes,
+            secrets,
+            secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
             domain_verifier,
@@ -301,6 +309,8 @@ struct ApplicationDependencies {
     environments: Arc<dyn IEnvironmentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     routes: Arc<dyn IEdgeRepository>,
+    secrets: Arc<dyn ISecretRepository>,
+    secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
     domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
@@ -325,6 +335,8 @@ fn build_application_with_health(
         environments,
         workloads,
         routes,
+        secrets,
+        secret_encryption,
         route_targets,
         route_commands,
         domain_verifier,
@@ -341,6 +353,7 @@ fn build_application_with_health(
     let environment_projects = Arc::clone(&projects);
     let workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
+    let secret_environments = Arc::clone(&environments);
     let create_workloads = Arc::clone(&workloads);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
@@ -374,6 +387,13 @@ fn build_application_with_health(
     let list_gateway_certificates = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
+    let create_secrets = Arc::clone(&secrets);
+    let rotate_secrets = Arc::clone(&secrets);
+    let revoke_secret_versions = Arc::clone(&secrets);
+    let list_secrets = Arc::clone(&secrets);
+    let get_secrets = secrets;
+    let create_secret_encryption = Arc::clone(&secret_encryption);
+    let rotate_secret_encryption = secret_encryption;
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
     let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
@@ -445,6 +465,19 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
                 )
+                .command_handler::<crate::modules::secrets::CreateSecret, _>(
+                    CreateSecretHandler::new(
+                        secret_environments,
+                        create_secrets,
+                        create_secret_encryption,
+                    ),
+                )
+                .command_handler::<crate::modules::secrets::RotateSecret, _>(
+                    RotateSecretHandler::new(rotate_secrets, rotate_secret_encryption),
+                )
+                .command_handler::<crate::modules::secrets::RevokeSecretVersion, _>(
+                    RevokeSecretVersionHandler::new(revoke_secret_versions),
+                )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(workload_environments, create_workloads),
                 )
@@ -507,6 +540,12 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::projects::ListEnvironments, _>(
                     ListEnvironmentsHandler::new(query_environments),
                 )
+                .query_handler::<crate::modules::secrets::ListSecrets, _>(ListSecretsHandler::new(
+                    list_secrets,
+                ))
+                .query_handler::<crate::modules::secrets::GetSecret, _>(GetSecretHandler::new(
+                    get_secrets,
+                ))
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),
                 )
@@ -557,6 +596,7 @@ fn build_application_with_health(
         )
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
+        .import(SecretsModule)
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

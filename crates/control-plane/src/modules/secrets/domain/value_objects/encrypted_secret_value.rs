@@ -1,8 +1,6 @@
 use crate::modules::shared_kernel::domain::{OrganizationId, SecretId};
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct EncryptedSecretValue {
     key_id: String,
     ciphertext: String,

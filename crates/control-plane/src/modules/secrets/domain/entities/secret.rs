@@ -53,7 +53,7 @@ impl SecretVersionState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Secret {
     pub id: SecretId,
     pub organization_id: OrganizationId,
@@ -96,6 +96,7 @@ impl Secret {
             revoked_at: None,
         };
         let version = SecretVersion::create(id, 1, encrypted_value, created_at)?;
+        secret.validate()?;
         Ok((secret, version))
     }
 
@@ -104,6 +105,7 @@ impl Secret {
         encrypted_value: EncryptedSecretValue,
         created_at: DateTime<Utc>,
     ) -> Result<SecretVersion, String> {
+        self.validate()?;
         if self.state != SecretState::Active {
             return Err("revoked Secret cannot create another version".into());
         }
@@ -124,6 +126,7 @@ impl Secret {
     }
 
     pub fn revoke(&mut self, revoked_at: DateTime<Utc>) -> Result<(), String> {
+        self.validate()?;
         let revoked_at = canonical_timestamp(revoked_at);
         self.ensure_time(revoked_at)?;
         if self.state == SecretState::Revoked {
@@ -139,6 +142,64 @@ impl Secret {
         Ok(())
     }
 
+    pub fn revoke_version(
+        &mut self,
+        version: &mut SecretVersion,
+        revoked_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        self.validate()?;
+        version.validate()?;
+        if version.secret_id != self.id {
+            return Err("Secret version does not belong to the Secret".into());
+        }
+        if version.state == SecretVersionState::Revoked {
+            return Ok(());
+        }
+        if self.state != SecretState::Active {
+            return Err("revoked Secret cannot change a version".into());
+        }
+        let revoked_at = canonical_timestamp(revoked_at);
+        self.ensure_time(revoked_at)?;
+        let next_aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Secret aggregate version overflowed".to_owned())?;
+        version.revoke(revoked_at)?;
+        self.aggregate_version = next_aggregate_version;
+        self.updated_at = revoked_at;
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        validate_identity(
+            self.id,
+            self.organization_id,
+            self.project_id,
+            self.environment_id,
+        )?;
+        if self.current_version == 0
+            || self.aggregate_version == 0
+            || self.current_version > self.aggregate_version
+            || self.created_at != canonical_timestamp(self.created_at)
+            || self.updated_at != canonical_timestamp(self.updated_at)
+            || self.updated_at < self.created_at
+        {
+            return Err("Secret counters or timestamps are invalid".into());
+        }
+        let state_is_valid = match self.state {
+            SecretState::Active => self.revoked_at.is_none(),
+            SecretState::Revoked => self.revoked_at.is_some_and(|revoked_at| {
+                revoked_at == self.updated_at
+                    && revoked_at >= self.created_at
+                    && revoked_at == canonical_timestamp(revoked_at)
+            }),
+        };
+        if !state_is_valid {
+            return Err("Secret state transition is inconsistent".into());
+        }
+        Ok(())
+    }
+
     fn ensure_time(&self, at: DateTime<Utc>) -> Result<(), String> {
         if at < self.updated_at {
             return Err("Secret transition time regressed".into());
@@ -147,7 +208,7 @@ impl Secret {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SecretVersion {
     pub secret_id: SecretId,
     pub version: u64,
@@ -184,7 +245,7 @@ impl SecretVersion {
             return Err("Secret version identity is invalid".into());
         }
         encrypted_value.validate()?;
-        Ok(Self {
+        let value = Self {
             secret_id,
             version,
             encrypted_value,
@@ -192,10 +253,13 @@ impl SecretVersion {
             aggregate_version: 1,
             created_at: canonical_timestamp(created_at),
             revoked_at: None,
-        })
+        };
+        value.validate()?;
+        Ok(value)
     }
 
-    pub fn revoke(&mut self, revoked_at: DateTime<Utc>) -> Result<(), String> {
+    fn revoke(&mut self, revoked_at: DateTime<Utc>) -> Result<(), String> {
+        self.validate()?;
         let revoked_at = canonical_timestamp(revoked_at);
         if revoked_at < self.created_at {
             return Err("Secret version transition time regressed".into());
@@ -209,6 +273,27 @@ impl SecretVersion {
             .ok_or_else(|| "Secret version aggregate overflowed".to_owned())?;
         self.state = SecretVersionState::Revoked;
         self.revoked_at = Some(revoked_at);
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.secret_id.as_uuid().is_nil()
+            || self.version == 0
+            || self.aggregate_version == 0
+            || self.created_at != canonical_timestamp(self.created_at)
+        {
+            return Err("Secret version identity or timestamps are invalid".into());
+        }
+        self.encrypted_value.validate()?;
+        let state_is_valid = match self.state {
+            SecretVersionState::Active => self.revoked_at.is_none(),
+            SecretVersionState::Revoked => self.revoked_at.is_some_and(|revoked_at| {
+                revoked_at >= self.created_at && revoked_at == canonical_timestamp(revoked_at)
+            }),
+        };
+        if !state_is_valid {
+            return Err("Secret version state transition is inconsistent".into());
+        }
         Ok(())
     }
 

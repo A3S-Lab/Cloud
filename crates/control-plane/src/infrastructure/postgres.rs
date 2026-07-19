@@ -157,6 +157,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/012_edge_tls.sql"
             )),
         ),
+        Migration::new(
+            "013",
+            "encrypted Secret resources",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/013_secrets.sql"
+            )),
+        ),
     ]
 }
 

@@ -5,13 +5,15 @@
 R0 through D0 are implemented and verified. E0 now has durable Edge route
 ownership, exact and wildcard domain claims, managed Gateway certificate
 provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
-acknowledgement projection. PostgreSQL and offline gates pass, and a dedicated
-remote Gateway job exercises the real managed-TLS path. Later E0 sections
-remain the accepted design until their exit gates pass. A3S Cloud ships as a
-Rust modular monolith, a separate Linux node agent, and a React web application.
-The first release still requires production DNS/CA integration, renewal, logs,
-update, rollback, web, crash, and clean-host gates before multi-node scheduling
-or hosted assets begin.
+acknowledgement projection. It also has tenant-scoped Secret identities,
+immutable encrypted versions, rotation and version revocation APIs, and
+metadata-only events and idempotency records. PostgreSQL and offline gates pass,
+and a dedicated remote Gateway job exercises the real managed-TLS path. Later
+E0 sections remain the accepted design until their exit gates pass. A3S Cloud
+ships as a Rust modular monolith, a separate Linux node agent, and a React web
+application. The first release still requires production DNS/CA integration,
+renewal, Secret binding and Runtime injection, logs, update, rollback, web,
+crash, and clean-host gates before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -403,10 +405,15 @@ immutable inputs; they are not deployed alone.
 
 ## 10. Secrets and security
 
-- Every tenant-owned row includes `organization_id`; repository methods require
+- Every tenant-owned aggregate row includes `organization_id`; child rows are
+  reachable only through tenant-bound foreign keys. Repository methods require
   tenant context and cross-tenant references fail before persistence.
-- Secret versions use envelope encryption. Ciphertext, key ID, and metadata are
-  stored separately from access policy.
+- Secret versions use authenticated provider encryption with a key identifier.
+  Ciphertext, key ID, and metadata are stored separately from access policy;
+  production Transit/KMS providers own their internal key hierarchy.
+- Secret mutation idempotency rows store only the Secret ID and immutable
+  version number, then reload authoritative records. Domain events and API
+  responses contain metadata but no key ID, ciphertext, or plaintext.
 - A node receives only the secret versions needed for a leased generation,
   encrypted to the node identity with a short validity period.
 - Plaintext secrets are excluded from Runtime specs, events, Flow payloads,
@@ -439,6 +446,17 @@ Errors include HTTP `code`, stable business `statusCode`, safe `details`,
 `requestId`, and `timestamp`, and are documented in OpenAPI. Queries use cursor
 pagination. Operation updates use resumable SSE with an event sequence; the UI
 always reloads the authoritative projection after reconnecting.
+
+Secret mutations require the `secret:write` scope. The initial resource API is:
+
+- `POST /organizations/{organization}/projects/{project}/environments/{environment}/secrets`
+- `POST /organizations/{organization}/secrets/{secret}/versions`
+- `POST /organizations/{organization}/secrets/{secret}/versions/{version}/revoke`
+- `GET /organizations/{organization}/projects/{project}/environments/{environment}/secrets`
+- `GET /organizations/{organization}/secrets/{secret}`
+
+Mutation bodies accept a plaintext `value`, but request debugging redacts it
+and every response returns version metadata only.
 
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
