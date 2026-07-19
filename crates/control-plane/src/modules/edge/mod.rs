@@ -7,8 +7,9 @@ pub use application::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, GetDomainClaim,
     GetDomainClaimHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
     ListGatewayCertificates, ListGatewayCertificatesHandler, ListRoutes, ListRoutesHandler,
-    PublishRoute, PublishRouteHandler, PublishRouteResult, VerifyDomainClaim,
-    VerifyDomainClaimHandler, VerifyDomainClaimResult,
+    PublishRoute, PublishRouteHandler, PublishRouteResult, SignGatewayCertificate,
+    SignGatewayCertificateHandler, VerifyDomainClaim, VerifyDomainClaimHandler,
+    VerifyDomainClaimResult,
 };
 pub use domain::repositories::{
     CreateDomainClaimWrite, EdgeRoutePublicationResult, IEdgeRepository, TransitionDomainClaim,
@@ -27,7 +28,8 @@ pub use domain::{
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
     EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
-    UnavailableDomainOwnershipVerifier, WorkloadRouteTargetReader,
+    GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    UnavailableDomainOwnershipVerifier, UnavailableGatewayCertificateAuthority,
+    WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

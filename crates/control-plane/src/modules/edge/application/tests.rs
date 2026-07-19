@@ -1,10 +1,13 @@
-use super::{PublishRoute, PublishRouteHandler};
+use super::{
+    PublishRoute, PublishRouteHandler, SignGatewayCertificate, SignGatewayCertificateHandler,
+};
 use crate::modules::edge::domain::events::DomainClaimChanged;
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, IEdgeRepository, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::services::{
-    GatewayCommandDispatch, IGatewayCommandQueue, IRouteTargetReader, RouteTarget,
+    GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayCommandDispatch,
+    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, RouteTarget,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
@@ -19,9 +22,11 @@ use crate::modules::shared_kernel::domain::{
     RepositoryError, WorkloadId, WorkloadRevisionId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
-use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
+use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateSigningRequest, NodeGatewayAck};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
+use sha2::Digest;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -71,6 +76,50 @@ impl IRouteTargetReader for UnavailableTargetReader {
 #[derive(Default)]
 struct RecordingGatewayQueue {
     commands: Mutex<Vec<GatewayPublication>>,
+}
+
+struct RecordingGatewayCertificateAuthority {
+    calls: AtomicUsize,
+    unavailable: bool,
+}
+
+#[async_trait]
+impl IGatewayCertificateAuthority for RecordingGatewayCertificateAuthority {
+    async fn issue(
+        &self,
+        request: GatewayCertificateIssueRequest,
+    ) -> Result<GatewayCertificateMaterial, GatewayCertificateAuthorityError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.unavailable {
+            return Err(GatewayCertificateAuthorityError::Unavailable(
+                "test provider unavailable".into(),
+            ));
+        }
+        Ok(GatewayCertificateMaterial {
+            serial_number: request.certificate_id.to_string(),
+            fingerprint: format!(
+                "sha256:{:x}",
+                sha2::Sha256::digest(request.csr_pem.as_bytes())
+            ),
+            certificate_pem: "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n"
+                .into(),
+            ca_bundle_pem: "-----BEGIN CERTIFICATE-----\ndGVzdC1jYQ==\n-----END CERTIFICATE-----\n"
+                .into(),
+            issued_at: request.issued_at,
+            expires_at: request.expires_at,
+        })
+    }
+
+    async fn revoke(
+        &self,
+        _certificate: &GatewayCertificate,
+    ) -> Result<(), GatewayCertificateAuthorityError> {
+        Ok(())
+    }
+
+    async fn health(&self) -> Result<bool, GatewayCertificateAuthorityError> {
+        Ok(!self.unavailable)
+    }
 }
 
 #[async_trait]
@@ -210,6 +259,60 @@ async fn record_issued_certificate(
     edge.transition_gateway_certificate(issued, expected_version)
         .await
         .expect("persist issued certificate");
+}
+
+async fn stage_certificate(
+    routes: Arc<InMemoryEdgeRepository>,
+    node_id: NodeId,
+    hostname: &str,
+    key: &str,
+    now: chrono::DateTime<Utc>,
+) -> crate::modules::edge::domain::repositories::EdgeRoutePublicationResult {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let revision_id = WorkloadRevisionId::new();
+    let domain_claim_id = verified_claim(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        hostname,
+        now,
+    )
+    .await;
+    PublishRouteHandler::new(
+        routes,
+        Arc::new(FixedTargetReader {
+            target: RouteTarget {
+                workload_id: WorkloadId::new(),
+                workload_revision_id: revision_id,
+                node_id,
+                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            },
+        }),
+        Arc::new(RecordingGatewayQueue::default()),
+        compiler(),
+        Duration::minutes(3),
+    )
+    .expect("publish handler")
+    .execute(
+        command(
+            organization_id,
+            project_id,
+            environment_id,
+            revision_id,
+            domain_claim_id,
+            hostname,
+            key,
+            now,
+        ),
+        context(),
+    )
+    .await
+    .expect("command bus")
+    .expect("stage Gateway certificate")
+    .publication
 }
 
 #[tokio::test]
@@ -414,4 +517,147 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         .publication
         .acl
         .contains("Host(`web.example.com`)"));
+}
+
+#[tokio::test]
+async fn signs_each_gateway_certificate_once_for_the_authenticated_node_and_csr() {
+    let routes = Arc::new(InMemoryEdgeRepository::new());
+    let node_id = NodeId::new();
+    let now = Utc::now();
+    let staged = stage_certificate(
+        Arc::clone(&routes),
+        node_id,
+        "api.example.com",
+        "sign-certificate",
+        now,
+    )
+    .await;
+    let authority = Arc::new(RecordingGatewayCertificateAuthority {
+        calls: AtomicUsize::new(0),
+        unavailable: false,
+    });
+    let repository: Arc<dyn IEdgeRepository> = routes.clone();
+    let certificate_authority: Arc<dyn IGatewayCertificateAuthority> = authority.clone();
+    let handler =
+        SignGatewayCertificateHandler::new(repository, certificate_authority, Duration::days(30))
+            .expect("signing handler");
+    let request = GatewayCertificateSigningRequest {
+        schema: GatewayCertificateSigningRequest::SCHEMA.into(),
+        certificate_id: staged.certificate.id.as_uuid(),
+        node_id: node_id.as_uuid(),
+        csr_pem:
+            "-----BEGIN CERTIFICATE REQUEST-----\ndGVzdA==\n-----END CERTIFICATE REQUEST-----\n"
+                .into(),
+        requested_at: now + Duration::milliseconds(1),
+    };
+    let command = SignGatewayCertificate {
+        authenticated_node_id: node_id,
+        request: request.clone(),
+        received_at: now + Duration::seconds(1),
+    };
+    let issued = handler
+        .execute(command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect("issue certificate");
+    assert_eq!(issued.dns_names, vec!["api.example.com"]);
+    assert!(!issued.certificate_pem.contains("PRIVATE KEY"));
+    let replay = handler
+        .execute(
+            SignGatewayCertificate {
+                received_at: now + Duration::seconds(2),
+                ..command
+            },
+            context(),
+        )
+        .await
+        .expect("command bus")
+        .expect("replay certificate");
+    assert_eq!(replay, issued);
+    assert_eq!(authority.calls.load(Ordering::SeqCst), 1);
+
+    let conflicting = handler
+        .execute(
+            SignGatewayCertificate {
+                authenticated_node_id: node_id,
+                request: GatewayCertificateSigningRequest {
+                    csr_pem: "-----BEGIN CERTIFICATE REQUEST-----\nY29uZmxpY3Q=\n-----END CERTIFICATE REQUEST-----\n".into(),
+                    ..request
+                },
+                received_at: now + Duration::seconds(3),
+            },
+            context(),
+        )
+        .await
+        .expect("command bus")
+        .expect_err("different CSR must conflict");
+    assert!(matches!(
+        conflicting,
+        crate::modules::shared_kernel::application::ApplicationError::Conflict(_)
+    ));
+    assert_eq!(authority.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn records_gateway_certificate_authority_failure_without_provider_details() {
+    let routes = Arc::new(InMemoryEdgeRepository::new());
+    let node_id = NodeId::new();
+    let now = Utc::now();
+    let staged = stage_certificate(
+        Arc::clone(&routes),
+        node_id,
+        "failed.example.com",
+        "failed-signing",
+        now,
+    )
+    .await;
+    let repository: Arc<dyn IEdgeRepository> = routes.clone();
+    let handler = SignGatewayCertificateHandler::new(
+        repository,
+        Arc::new(RecordingGatewayCertificateAuthority {
+            calls: AtomicUsize::new(0),
+            unavailable: true,
+        }),
+        Duration::days(30),
+    )
+    .expect("signing handler");
+    let result = handler
+        .execute(
+            SignGatewayCertificate {
+                authenticated_node_id: node_id,
+                request: GatewayCertificateSigningRequest {
+                    schema: GatewayCertificateSigningRequest::SCHEMA.into(),
+                    certificate_id: staged.certificate.id.as_uuid(),
+                    node_id: node_id.as_uuid(),
+                    csr_pem: "-----BEGIN CERTIFICATE REQUEST-----\nZmFpbA==\n-----END CERTIFICATE REQUEST-----\n".into(),
+                    requested_at: now + Duration::milliseconds(1),
+                },
+                received_at: now + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .expect("command bus")
+        .expect_err("unavailable authority");
+    assert!(matches!(
+        result,
+        crate::modules::shared_kernel::application::ApplicationError::Internal(_)
+    ));
+    let stored = routes
+        .find_gateway_certificate(node_id, staged.certificate.id)
+        .await
+        .expect("failed certificate");
+    assert_eq!(
+        stored.state,
+        crate::modules::edge::domain::GatewayCertificateState::Failed
+    );
+    assert_eq!(
+        stored.failure.as_deref(),
+        Some("Gateway certificate authority was unavailable")
+    );
+    assert!(!stored
+        .failure
+        .as_deref()
+        .unwrap_or_default()
+        .contains("test provider"));
 }

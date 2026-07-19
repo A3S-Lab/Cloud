@@ -6,6 +6,7 @@ mod control_plane;
 mod docker;
 mod executor;
 mod gateway;
+mod gateway_certificate;
 mod identity;
 mod journal;
 mod state_file;
@@ -14,7 +15,10 @@ pub use config::{
     ConfigError, ControlPlaneConfig, DockerConfig, GatewayControlConfig, NodeAgentConfig,
     NodeConfig,
 };
-pub use control_plane::{NodeControlClient, NodeControlClientError, NodeControlTransport};
+pub use control_plane::{
+    GatewayCertificateSigningTransport, NodeControlClient, NodeControlClientError,
+    NodeControlTransport,
+};
 pub use docker::DockerRuntimeDriver;
 pub use executor::{CommandExecutionError, CommandExecutor};
 pub use gateway::{

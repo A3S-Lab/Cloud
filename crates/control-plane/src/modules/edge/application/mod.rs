@@ -3,8 +3,8 @@ pub mod queries;
 
 pub use commands::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, PublishRoute,
-    PublishRouteHandler, PublishRouteResult, VerifyDomainClaim, VerifyDomainClaimHandler,
-    VerifyDomainClaimResult,
+    PublishRouteHandler, PublishRouteResult, SignGatewayCertificate, SignGatewayCertificateHandler,
+    VerifyDomainClaim, VerifyDomainClaimHandler, VerifyDomainClaimResult,
 };
 pub use queries::{
     GetDomainClaim, GetDomainClaimHandler, GetRoute, GetRouteHandler, ListDomainClaims,

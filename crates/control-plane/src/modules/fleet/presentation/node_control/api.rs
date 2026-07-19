@@ -1,4 +1,7 @@
 use super::error::NodeControlHttpError;
+use crate::modules::edge::application::{SignGatewayCertificate, SignGatewayCertificateHandler};
+use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::services::IGatewayCertificateAuthority;
 use crate::modules::fleet::application::IGatewayAcknowledgementProjector;
 use crate::modules::fleet::application::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, LeaseNodeCommands,
@@ -11,9 +14,10 @@ use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkSt
 use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId, RepositoryError};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
-    NodeCertificate as NodeCertificateContract, NodeCertificateRotationRequest,
-    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
-    NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch, NodeObservationBatch,
+    GatewayCertificateSigningRequest, NodeCertificate as NodeCertificateContract,
+    NodeCertificateRotationRequest, NodeCertificateRotationResponse, NodeCommandAck,
+    NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch,
+    NodeObservationBatch,
 };
 use axum::body::to_bytes;
 use axum::extract::{Extension, Path, Request, State};
@@ -48,6 +52,7 @@ struct NodeControlApiInner {
     observations: RecordNodeObservationsHandler,
     logs: RecordNodeLogChunksHandler,
     gateway: RecordGatewayAcknowledgementHandler,
+    sign_gateway_certificate: SignGatewayCertificateHandler,
     rotate_certificate: RotateNodeCertificateHandler,
     certificate_rotation_window: Duration,
     maximum_body_bytes: usize,
@@ -60,8 +65,11 @@ impl NodeControlApi {
         nodes: Arc<dyn INodeRepository>,
         commands: Arc<dyn INodeControlRepository>,
         gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
+        gateway_certificates: Arc<dyn IEdgeRepository>,
+        gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         logs: Arc<dyn ILogChunkStore>,
         certificate_authority: Arc<dyn ICertificateAuthority>,
+        gateway_certificate_ttl: Duration,
         certificate_ttl: Duration,
         certificate_rotation_window: Duration,
         lease_duration: Duration,
@@ -95,6 +103,11 @@ impl NodeControlApi {
                 observations: RecordNodeObservationsHandler::new(Arc::clone(&commands)),
                 logs: RecordNodeLogChunksHandler::new(Arc::clone(&commands), logs),
                 gateway: RecordGatewayAcknowledgementHandler::new(commands, gateway_projector),
+                sign_gateway_certificate: SignGatewayCertificateHandler::new(
+                    gateway_certificates,
+                    gateway_certificate_authority,
+                    gateway_certificate_ttl,
+                )?,
                 rotate_certificate,
                 certificate_rotation_window,
                 maximum_body_bytes,
@@ -113,6 +126,10 @@ impl NodeControlApi {
             .route("/v1/node-control/observations", post(record_observations))
             .route("/v1/node-control/log-chunks", post(record_log_chunks))
             .route("/v1/node-control/gateway-acks", post(record_gateway_ack))
+            .route(
+                "/v1/node-control/gateway-certificates:sign",
+                post(sign_gateway_certificate),
+            )
             .route(
                 "/v1/node-control/certificate:rotate",
                 post(rotate_certificate),
@@ -352,6 +369,31 @@ async fn record_gateway_ack(
             RecordGatewayAcknowledgement {
                 authenticated_node_id: node_id,
                 acknowledgement,
+                received_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    json_response(request_id, StatusCode::OK, &result)
+}
+
+async fn sign_gateway_certificate(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node_id = api.authenticate(request_id, &peer).await?;
+    let request: GatewayCertificateSigningRequest = api.body(request_id, request).await?;
+    let result = api
+        .inner
+        .sign_gateway_certificate
+        .execute(
+            SignGatewayCertificate {
+                authenticated_node_id: node_id,
+                request,
                 received_at: Utc::now(),
             },
             context(),

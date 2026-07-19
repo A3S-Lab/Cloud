@@ -36,6 +36,7 @@ pub struct GatewayControlConfig {
     pub management_url: Url,
     pub auth_token_env: String,
     pub state_file: PathBuf,
+    pub certificate_directory: PathBuf,
     pub connect_timeout_ms: u64,
     pub validation_timeout_ms: u64,
     pub reload_timeout_ms: u64,
@@ -90,6 +91,7 @@ impl NodeAgentConfig {
                 "management_url",
                 "auth_token_env",
                 "state_file",
+                "certificate_directory",
                 "connect_timeout_ms",
                 "validation_timeout_ms",
                 "reload_timeout_ms",
@@ -137,6 +139,7 @@ impl NodeAgentConfig {
                 )?,
                 auth_token_env: string(gateway, "auth_token_env")?,
                 state_file: PathBuf::from(string(gateway, "state_file")?),
+                certificate_directory: PathBuf::from(string(gateway, "certificate_directory")?),
                 connect_timeout_ms: integer(gateway, "connect_timeout_ms")?,
                 validation_timeout_ms: integer(gateway, "validation_timeout_ms")?,
                 reload_timeout_ms: integer(gateway, "reload_timeout_ms")?,
@@ -159,11 +162,28 @@ impl NodeAgentConfig {
         )?;
         validate_path("node.state_dir", &self.node.state_dir)?;
         validate_path("gateway.state_file", &self.gateway.state_file)?;
+        validate_path(
+            "gateway.certificate_directory",
+            &self.gateway.certificate_directory,
+        )?;
         if self.gateway.state_file == self.node.state_dir
             || !self.gateway.state_file.starts_with(&self.node.state_dir)
         {
             return Err(ConfigError::Invalid(
                 "gateway.state_file must be a file below node.state_dir".into(),
+            ));
+        }
+        if !self.gateway.certificate_directory.is_absolute()
+            || self
+                .gateway
+                .certificate_directory
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+            || self.gateway.certificate_directory == self.gateway.state_file
+        {
+            return Err(ConfigError::Invalid(
+                "gateway.certificate_directory must be an absolute normalized directory distinct from gateway.state_file"
+                    .into(),
             ));
         }
         if self.node.name.trim().is_empty()
@@ -462,6 +482,7 @@ gateway {
   management_url = "http://127.0.0.1:9090/api/gateway"
   auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
   state_file = ".a3s/cloud/node/gateway-snapshot.json"
+  certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
   connect_timeout_ms = 5000
   validation_timeout_ms = 10000
   reload_timeout_ms = 30000
@@ -475,6 +496,10 @@ gateway {
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.docker.namespace, "a3s-cloud");
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
+        assert_eq!(
+            config.gateway.certificate_directory,
+            Path::new("/var/lib/a3s-cloud/gateway/certificates")
+        );
     }
 
     #[test]

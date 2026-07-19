@@ -1,5 +1,9 @@
+use crate::gateway_certificate::{
+    GatewayCertificateProvisioningError, NodeGatewayCertificateProvisioner,
+    SystemGatewayCertificateClock,
+};
 use crate::state_file::{self, SecureStateError};
-use crate::NodeAgentConfig;
+use crate::{GatewayCertificateSigningTransport, NodeAgentConfig};
 use a3s_cloud_contracts::GatewaySnapshot;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -70,11 +74,16 @@ trait GatewayControl: Send + Sync {
 pub struct DurableGatewaySnapshotInstaller {
     state_file: PathBuf,
     control: Arc<dyn GatewayControl>,
+    certificates: Option<Arc<NodeGatewayCertificateProvisioner>>,
     installation: Mutex<()>,
 }
 
 impl DurableGatewaySnapshotInstaller {
-    pub fn from_config(config: &NodeAgentConfig) -> Result<Self, GatewaySnapshotInstallError> {
+    pub fn from_config(
+        config: &NodeAgentConfig,
+        node_id: uuid::Uuid,
+        transport: Arc<dyn GatewayCertificateSigningTransport>,
+    ) -> Result<Self, GatewaySnapshotInstallError> {
         let token = config
             .gateway_auth_token()
             .map_err(|error| GatewaySnapshotInstallError::InvalidState(error.to_string()))?;
@@ -85,13 +94,41 @@ impl DurableGatewaySnapshotInstaller {
             Duration::from_millis(config.gateway.validation_timeout_ms),
             Duration::from_millis(config.gateway.reload_timeout_ms),
         )?);
-        Ok(Self::new(config.gateway.state_file.clone(), control))
+        let certificates = Arc::new(
+            NodeGatewayCertificateProvisioner::new(
+                config.gateway.certificate_directory.clone(),
+                node_id,
+                transport,
+                Arc::new(SystemGatewayCertificateClock),
+            )
+            .map_err(map_certificate_error)?,
+        );
+        Ok(Self::new_with_certificates(
+            config.gateway.state_file.clone(),
+            control,
+            certificates,
+        ))
     }
 
+    #[cfg(test)]
     fn new(state_file: PathBuf, control: Arc<dyn GatewayControl>) -> Self {
         Self {
             state_file,
             control,
+            certificates: None,
+            installation: Mutex::new(()),
+        }
+    }
+
+    fn new_with_certificates(
+        state_file: PathBuf,
+        control: Arc<dyn GatewayControl>,
+        certificates: Arc<NodeGatewayCertificateProvisioner>,
+    ) -> Self {
+        Self {
+            state_file,
+            control,
+            certificates: Some(certificates),
             installation: Mutex::new(()),
         }
     }
@@ -171,6 +208,32 @@ impl DurableGatewaySnapshotInstaller {
             }
         }
     }
+
+    async fn provision_certificate(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<Option<GatewaySnapshotInstallOutcome>, GatewaySnapshotInstallError> {
+        let Some(request) = snapshot.certificate_request.as_ref() else {
+            return Ok(None);
+        };
+        let Some(certificates) = self.certificates.as_ref() else {
+            return Ok(Some(GatewaySnapshotInstallOutcome::Rejected {
+                message: "Gateway certificate provisioner is not configured".into(),
+            }));
+        };
+        match certificates.provision(request).await {
+            Ok(()) => Ok(None),
+            Err(GatewayCertificateProvisioningError::Invalid(message)) => {
+                Ok(Some(GatewaySnapshotInstallOutcome::Rejected {
+                    message: sanitize_message(
+                        &message,
+                        "Gateway certificate provisioning was rejected",
+                    ),
+                }))
+            }
+            Err(error) => Err(map_certificate_error(error)),
+        }
+    }
 }
 
 #[async_trait]
@@ -191,6 +254,9 @@ impl GatewaySnapshotInstaller for DurableGatewaySnapshotInstaller {
                 && installed.snapshot.snapshot_digest == snapshot.snapshot_digest
                 && installed.snapshot.acl == snapshot.acl
         }) {
+            if let Some(outcome) = self.provision_certificate(snapshot).await? {
+                return Ok(outcome);
+            }
             return Ok(GatewaySnapshotInstallOutcome::Applied);
         }
         let installed_revision = installed.as_ref().map(|state| state.snapshot.revision);
@@ -207,6 +273,9 @@ impl GatewaySnapshotInstaller for DurableGatewaySnapshotInstaller {
             return Ok(GatewaySnapshotInstallOutcome::Rejected {
                 message: "Gateway snapshot revision does not advance the installed revision".into(),
             });
+        }
+        if let Some(outcome) = self.provision_certificate(snapshot).await? {
+            return Ok(outcome);
         }
         if let Some(outcome) = Self::call_control(self.control.validate(&snapshot.acl).await)? {
             return Ok(outcome);
@@ -370,6 +439,29 @@ fn map_state_error(error: SecureStateError) -> GatewaySnapshotInstallError {
     match error {
         SecureStateError::Invalid(message) => GatewaySnapshotInstallError::InvalidState(message),
         SecureStateError::Storage(message) => GatewaySnapshotInstallError::Storage(message),
+    }
+}
+
+fn map_certificate_error(
+    error: GatewayCertificateProvisioningError,
+) -> GatewaySnapshotInstallError {
+    match error {
+        GatewayCertificateProvisioningError::Invalid(message) => {
+            GatewaySnapshotInstallError::InvalidState(message)
+        }
+        GatewayCertificateProvisioningError::Storage(message) => {
+            GatewaySnapshotInstallError::Storage(message)
+        }
+        GatewayCertificateProvisioningError::ControlPlane(error) if error.retryable() => {
+            GatewaySnapshotInstallError::Unavailable(
+                "Gateway certificate signing request could not complete".into(),
+            )
+        }
+        GatewayCertificateProvisioningError::ControlPlane(_) => {
+            GatewaySnapshotInstallError::Protocol(
+                "Gateway certificate signing request was rejected".into(),
+            )
+        }
     }
 }
 
