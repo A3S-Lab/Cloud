@@ -68,7 +68,7 @@ pub async fn exercise_edge_api(
     let domain_claim_id = field_str(&created_claim["data"], "id")?.to_owned();
     let proof = field_str(&created_claim["data"], "challengeValue")?.to_owned();
     let verify_path = format!(
-        "/api/v1/organizations/{}/domain-claims/{}:verify",
+        "/api/v1/organizations/{}/domain-claims/{}/verify",
         fixture.organization_id, domain_claim_id
     );
     let verified_claim = app

@@ -56,7 +56,7 @@ pub fn domain_claim_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
             },
         )?
         .post(
-            "/{organization_id}/domain-claims/{claim_id}:verify",
+            "/{organization_id}/domain-claims/{claim_id}/verify",
             move |request: BootRequest| {
                 let bus = Arc::clone(&verify_bus);
                 async move {
