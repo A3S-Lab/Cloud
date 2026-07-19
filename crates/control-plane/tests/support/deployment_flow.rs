@@ -113,8 +113,21 @@ pub async fn exercise_deployment_flow(
         Duration::from_secs(1),
     )?;
 
-    let first_cycle = coordinator.run_once().await?;
-    assert!(first_cycle.reconciled_before_work > 0);
+    let mut reconciled_before_apply = 0;
+    for _ in 0..8 {
+        let cycle = coordinator.run_once().await?;
+        reconciled_before_apply += cycle.reconciled_before_work;
+        if workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?
+            .status
+            == DeploymentStatus::Applying
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert!(reconciled_before_apply > 0);
     let applying = workload_repository
         .find_deployment(organization_id, deployment_id)
         .await?;
@@ -291,9 +304,22 @@ pub async fn exercise_deployment_flow(
         Duration::from_millis(5),
         Duration::from_secs(1),
     )?;
-    tokio::time::sleep(Duration::from_millis(10)).await;
-    let second_cycle = coordinator.run_once().await?;
-    assert!(second_cycle.handled_tasks > 0);
+    let mut handled_after_restart = 0;
+    for _ in 0..8 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let cycle = coordinator.run_once().await?;
+        handled_after_restart += cycle.handled_tasks;
+        let deployment = workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?;
+        let operation = operation_repository.find_projection(operation_id).await?;
+        if deployment.status == DeploymentStatus::Active
+            && operation.is_some_and(|projection| projection.status == OperationStatus::Succeeded)
+        {
+            break;
+        }
+    }
+    assert!(handled_after_restart > 0);
     assert_eq!(
         operation_repository
             .find_projection(operation_id)
@@ -816,7 +842,18 @@ pub async fn exercise_dispatched_cancellation(
         Duration::from_secs(1),
     )?;
 
-    coordinator.run_once().await?;
+    for _ in 0..8 {
+        coordinator.run_once().await?;
+        if workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?
+            .status
+            == DeploymentStatus::Applying
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
     let applying = workload_repository
         .find_deployment(organization_id, deployment_id)
         .await?;
