@@ -9,6 +9,7 @@ import type {
   CancelDeploymentResult,
   StopWorkloadResult,
   Workload,
+  WorkloadLogStreamFilter,
 } from '../types/api';
 
 export class CloudApiError extends Error {
@@ -107,6 +108,23 @@ export class CloudApi {
 
   operationStreamUrl(organizationId: string): string {
     return `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}/operations/stream`;
+  }
+
+  workloadLogStreamUrl(
+    organizationId: string,
+    workloadId: string,
+    revisionId: string,
+    stream?: WorkloadLogStreamFilter
+  ): string {
+    const query = new URLSearchParams({ limit: '16' });
+    if (stream) {
+      query.set('stream', stream);
+    }
+    return (
+      `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}` +
+      `/workloads/${encodeURIComponent(workloadId)}` +
+      `/revisions/${encodeURIComponent(revisionId)}/logs/stream?${query.toString()}`
+    );
   }
 
   private async get<T>(path: string, signal?: AbortSignal): Promise<T> {

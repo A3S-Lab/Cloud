@@ -170,3 +170,36 @@ export interface Workload {
   createdAt: string;
   updatedAt: string;
 }
+
+export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
+export type WorkloadLogRecordKind = 'data' | 'gap';
+export type WorkloadLogGapReason =
+  | 'missing'
+  | 'corrupt'
+  | 'retained'
+  | 'compacted'
+  | 'provider_cursor_lost'
+  | 'provider_disconnected';
+
+export interface WorkloadLogRecord {
+  kind: WorkloadLogRecordKind;
+  sourceCursor: string | null;
+  sequence: number;
+  observedAtMs: number | null;
+  stream: WorkloadLogStreamFilter | null;
+  data: string | null;
+  gapReason: WorkloadLogGapReason | null;
+  fromSequence: number | null;
+  throughSequence: number | null;
+  compactedChunks: number | null;
+}
+
+export interface WorkloadLogsPage {
+  workloadId: string;
+  revisionId: string;
+  nodeId: string | null;
+  unitId: string;
+  generation: number;
+  records: WorkloadLogRecord[];
+  nextCursor: string | null;
+}

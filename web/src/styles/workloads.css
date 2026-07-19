@@ -1,3 +1,194 @@
+.live-log-panel {
+  margin-top: 28px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.live-log-heading {
+  display: flex;
+  padding: 20px 22px 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.live-log-heading h2 {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  gap: 9px;
+  font-size: 19px;
+  letter-spacing: -0.025em;
+}
+
+.live-log-toolbar,
+.log-stream-state,
+.log-filter {
+  display: flex;
+  align-items: center;
+}
+
+.live-log-toolbar {
+  gap: 12px;
+}
+
+.log-stream-state {
+  gap: 6px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.log-stream-state.live {
+  color: var(--accent);
+}
+
+.log-stream-state.retrying {
+  color: var(--warning);
+}
+
+.log-filter {
+  margin: 0;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(7, 11, 8, 0.52);
+}
+
+.log-filter button {
+  height: 27px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--faint);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.log-filter button:hover:not(:disabled),
+.log-filter button.selected {
+  color: var(--text);
+  background: rgba(184, 243, 107, 0.08);
+}
+
+.log-filter button.selected {
+  color: var(--accent);
+}
+
+.log-filter button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.live-log-meta {
+  display: flex;
+  padding: 9px 22px;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(38, 53, 43, 0.72);
+  color: var(--faint);
+  background: rgba(6, 10, 7, 0.24);
+  font-size: 10px;
+}
+
+.live-log-viewport {
+  height: 320px;
+  overflow: auto;
+  color: #c8d5cc;
+  background:
+    linear-gradient(rgba(6, 10, 7, 0.88), rgba(6, 10, 7, 0.96)),
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(184, 243, 107, 0.025) 24px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.live-log-empty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--faint);
+}
+
+.live-log-record {
+  display: grid;
+  min-height: 27px;
+  padding: 4px 14px;
+  grid-template-columns: 68px 94px 50px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border-bottom: 1px solid rgba(38, 53, 43, 0.34);
+}
+
+.live-log-record.stderr {
+  background: rgba(240, 123, 115, 0.035);
+}
+
+.live-log-sequence,
+.live-log-record time {
+  color: #63756a;
+}
+
+.live-log-stream {
+  color: var(--info);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.live-log-record.stderr .live-log-stream {
+  color: #ffaaa4;
+}
+
+.live-log-record pre {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.live-log-gap {
+  display: flex;
+  min-height: 30px;
+  padding: 5px 14px;
+  align-items: center;
+  gap: 14px;
+  border-block: 1px solid rgba(243, 200, 107, 0.12);
+  color: var(--warning);
+  background: rgba(243, 200, 107, 0.045);
+}
+
+.live-log-gap span {
+  min-width: 68px;
+  color: #8e7d58;
+}
+
+.live-log-gap strong {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.live-log-error {
+  display: flex;
+  min-height: 34px;
+  padding: 8px 14px;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(240, 123, 115, 0.16);
+  color: #ffaaa4;
+  background: rgba(240, 123, 115, 0.045);
+  font-size: 11px;
+}
+
 .workload-section {
   margin-top: 28px;
 }
@@ -341,6 +532,25 @@
   .workload-row > span:nth-last-child(-n + 2) {
     display: none;
   }
+
+  .live-log-heading,
+  .live-log-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .live-log-toolbar {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .live-log-record {
+    grid-template-columns: 60px 50px minmax(0, 1fr);
+  }
+
+  .live-log-record time {
+    display: none;
+  }
 }
 
 @media (max-width: 560px) {
@@ -382,5 +592,24 @@
 
   .signin-card {
     padding: 28px 22px;
+  }
+
+  .live-log-heading {
+    padding-inline: 15px;
+  }
+
+  .live-log-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .live-log-record {
+    padding-inline: 10px;
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .live-log-stream {
+    display: none;
   }
 }

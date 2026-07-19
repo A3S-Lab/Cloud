@@ -15,19 +15,20 @@ through a typed filesystem or S3-compatible adapter, indexes metadata in
 PostgreSQL, and exposes tenant-scoped cursor queries with explicit
 provider/missing/corrupt gaps. Typed Runtime cursor-loss and source-disconnect
 boundaries are persisted and replayed by the node, stored atomically with batch
-headers in PostgreSQL, and merged into the same sequence pages. A bounded
-control-plane worker removes object bodies after the configured receipt age
-while durable `retained` tombstones preserve every cursor position. An
-independently configured bounded worker later replaces old per-chunk tombstones
-with coalesced durable sequence ranges, and queries expose those ranges as
-explicit `compacted` gaps. A dedicated digest-pinned MinIO CI job defines the
-real S3-compatible lifecycle gate, and a separate remote Gateway job exercises
-the real managed-TLS path. Later E0 sections remain the accepted design until
-their exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate
-Linux node agent, and a React web application. The first release still requires
-production DNS/CA integration and renewal, full Secret/log Linux, Docker, and
-PostgreSQL crash certification, update, rollback, live web logs, and clean-host
-gates before multi-node scheduling or hosted assets begin.
+headers in PostgreSQL, and merged into the same sequence pages and bounded
+resumable SSE feed. A bounded control-plane worker removes object bodies after
+the configured receipt age while durable `retained` tombstones preserve every
+cursor position. An independently configured bounded worker later replaces old
+per-chunk tombstones with coalesced durable sequence ranges, and queries expose
+those ranges as explicit `compacted` gaps. A dedicated digest-pinned MinIO CI
+job defines the real S3-compatible lifecycle gate, and a separate remote
+Gateway job exercises the real managed-TLS path. Later E0 sections remain the
+accepted design until their exit gates pass. A3S Cloud ships as a Rust modular
+monolith, a separate Linux node agent, and a React web application. The first
+release still requires production DNS/CA integration and renewal, full
+Secret/log Linux, Docker, and PostgreSQL crash certification, update, rollback,
+the remaining web timeline, and clean-host gates before multi-node scheduling
+or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -565,12 +566,26 @@ under a stream filter. Once old tombstones are compacted, the query returns a
 the number of compacted chunks. Its source cursor, observation time, and stream
 are null; paging advances to the terminal sequence. Compacted ranges remain
 visible under a stream filter because their original stream metadata no longer
-exists. This is a snapshot query; bounded live fan-out and the web log stream
-remain E0 work.
+exists.
+
+Live reads use:
+
+- `GET /organizations/{organization}/workloads/{workload}/revisions/{revision}/logs/stream`
+
+The controller validates ownership with the same query before opening SSE.
+Each one-second poll requests at most 16 records, and the encoder truncates only
+at an ordered record boundary so one event never exceeds 8 MiB of JSON.
+`records` event IDs are the terminal `v1:<sequence>`; `Last-Event-ID` resumes
+strictly after that position, and idle feeds send keepalives every 15 polls.
+Query or object-storage failure terminates the feed instead of fabricating a
+gap. The React client reconnects with bounded backoff, deduplicates replayed
+sequences, resets when the revision or stream filter changes, and retains at
+most 500 records in memory.
 
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
-health, route, and operation states remain visually distinct.
+health, route, operation, log data, and explicit log gaps remain visually
+distinct.
 
 ## 12. Observability and audit
 
@@ -653,9 +668,9 @@ bounded worker compacts aged tombstones into coalesced sequence ranges while
 preserving batch replay and durable sequence watermarks. Provider cursor loss
 and source disconnects use typed Runtime errors, durable node replay, and
 ordered PostgreSQL gap metadata without creating object bodies. Full crash
-certification and live fan-out are still planned. Loki or ClickHouse is
-introduced only when product requirements demand global text search at a
-volume that the chunk index cannot serve.
+certification is still planned. Loki or ClickHouse is introduced only when
+product requirements demand global text search at a volume that the chunk
+index cannot serve.
 
 ### 14.2 Middleware deliberately not selected
 

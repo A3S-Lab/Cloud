@@ -1,3 +1,4 @@
+use super::workload_log_stream::workload_log_stream;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
@@ -19,6 +20,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
     let get_workload_bus = Arc::clone(&bus);
     let get_deployment_bus = Arc::clone(&bus);
     let get_logs_bus = Arc::clone(&bus);
+    let stream_logs_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .get(
@@ -127,6 +129,45 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                     }
                 }
             },
+        )?
+        .sse(
+            "/{organization_id}/workloads/{workload_id}/revisions/{revision_id}/logs/stream",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&stream_logs_bus);
+                async move {
+                    let parameters: WorkloadLiveLogsQuery = request.query()?;
+                    if parameters.limit == 0 || parameters.limit > MAX_LIVE_LOG_RECORDS {
+                        return Err(BootError::BadRequest(format!(
+                            "live workload log limit must be between 1 and {MAX_LIVE_LOG_RECORDS}"
+                        )));
+                    }
+                    let after_sequence = match request
+                        .header("last-event-id")
+                        .filter(|event_id| !event_id.is_empty())
+                    {
+                        Some(event_id) => decode_cursor(Some(event_id))?,
+                        None => decode_cursor(parameters.cursor.as_deref())?,
+                    };
+                    workload_log_stream(
+                        bus,
+                        GetWorkloadLogs {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            workload_id: WorkloadId::from_uuid(
+                                request.param_as::<Uuid>("workload_id")?,
+                            ),
+                            revision_id: WorkloadRevisionId::from_uuid(
+                                request.param_as::<Uuid>("revision_id")?,
+                            ),
+                            after_sequence,
+                            limit: parameters.limit,
+                            stream: parameters.stream.map(Into::into),
+                        },
+                    )
+                    .await
+                }
+            },
         )
 }
 
@@ -135,6 +176,15 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
 struct WorkloadLogsQuery {
     cursor: Option<String>,
     #[serde(default = "default_log_limit")]
+    limit: u16,
+    stream: Option<WorkloadLogStreamQuery>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkloadLiveLogsQuery {
+    cursor: Option<String>,
+    #[serde(default = "default_live_log_limit")]
     limit: u16,
     stream: Option<WorkloadLogStreamQuery>,
 }
@@ -157,6 +207,12 @@ impl From<WorkloadLogStreamQuery> for RuntimeLogStream {
 
 const fn default_log_limit() -> u16 {
     100
+}
+
+const MAX_LIVE_LOG_RECORDS: u16 = 16;
+
+const fn default_live_log_limit() -> u16 {
+    MAX_LIVE_LOG_RECORDS
 }
 
 fn decode_cursor(cursor: Option<&str>) -> Result<Option<u64>> {

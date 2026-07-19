@@ -363,6 +363,12 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Provider gaps are returned in the same ordered page as chunks and compaction
   ranges with reason `provider_cursor_lost` or `provider_disconnected`. Their
   stream is unknown, so filters never hide them; the source cursor is nullable.
+- Live delivery reads the same tenant-authorized ordered projection in batches
+  of at most 16 records. An SSE event is capped at 8 MiB and binds its terminal
+  sequence to both `id` and `nextCursor`; reconnect resumes from
+  `Last-Event-ID`.
+- The web log window is transient, deduplicates sequence replay, and retains at
+  most 500 records. It creates no second durable cursor or log-body store.
 - Organization, workload, and revision ownership are checked before metadata is
   read. An object that is absent or fails verification produces an ordered
   `missing` or `corrupt` gap; storage transport failure is not disguised as a

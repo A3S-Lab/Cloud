@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudApi } from '../../lib/api';
 import type { Environment, Operation, Organization, Project } from '../../types/api';
 import type { DeploymentStatus, Workload } from '../../types/api';
+import { LiveLogPanel } from '../logs/live-log-panel';
 import { type StreamState, useOperationStream } from '../operations/use-operation-stream';
 
 interface CloudConsoleProps {
@@ -159,6 +160,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const selectedEnvironment = environments.find((item) => item.id === environmentId);
   const selectedWorkload = workloads.find((item) => item.id === workloadId);
   const latestDeployment = selectedWorkload?.deployments[0];
+  const logRevision =
+    selectedWorkload?.activeRevision ?? latestDeployment?.revision ?? selectedWorkload?.desiredRevision;
   const observedRuntime = latestDeployment?.observedRuntime;
   const activeOperations = operations.filter((operation) => !isTerminal(operation.status)).length;
   const cancellationNotice = deploymentCancellationNotice(latestDeployment?.status);
@@ -427,6 +430,14 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
             </p>
           </article>
         </section>
+
+        <LiveLogPanel
+          api={api}
+          organizationId={organizationId || null}
+          workloadId={selectedWorkload?.id ?? null}
+          revisionId={logRevision?.id ?? null}
+          generation={logRevision?.generation ?? null}
+        />
 
         <section className='workload-section' aria-label='Workloads'>
           <div className='section-heading'>

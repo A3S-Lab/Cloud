@@ -159,6 +159,45 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
         .call(get_as(format!("{logs_path}&cursor=untrusted"), ADMIN_TOKEN))
         .await?;
     assert_eq!(invalid_cursor.status(), 400);
+    let live_logs_path = format!(
+        "/api/v1/organizations/{organization}/workloads/{workload_id}/revisions/{revision_id}/logs/stream?limit=16&stream=stdout"
+    );
+    let live_logs = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!("{live_logs_path}&cursor=untrusted"),
+            )
+            .with_header("accept", "text/event-stream")
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+            .with_header("last-event-id", "v1:4"),
+        )
+        .await?;
+    assert_eq!(live_logs.status(), 200);
+    assert!(live_logs.is_streaming());
+    assert!(live_logs.is_event_stream());
+    let invalid_live_cursor = app
+        .call(
+            BootRequest::new(HttpMethod::Get, live_logs_path.clone())
+                .with_header("accept", "text/event-stream")
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+                .with_header("last-event-id", "untrusted"),
+        )
+        .await?;
+    assert_eq!(invalid_live_cursor.status(), 400);
+    let oversized_live_page = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!(
+                    "/api/v1/organizations/{organization}/workloads/{workload_id}/revisions/{revision_id}/logs/stream?limit=17"
+                ),
+            )
+            .with_header("accept", "text/event-stream")
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+        )
+        .await?;
+    assert_eq!(oversized_live_page.status(), 400);
     let missing_version = app
         .call(workload_request("secret-workload-missing", 3))
         .await?;
