@@ -706,6 +706,7 @@ async fn exercise_observation_control(
         .await?
         .is_empty());
     let mut log_conflict = log_batch.clone();
+    log_conflict.payload_digest = format!("sha256:{}", "4".repeat(64));
     log_conflict.chunks[0].checksum = format!("sha256:{}", "1".repeat(64));
     assert!(matches!(
         nodes
