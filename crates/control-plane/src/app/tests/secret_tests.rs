@@ -94,6 +94,58 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
     assert_eq!(response_json(&rotated)?["data"]["version"]["version"], 2);
     assert_response_hides_secret_material(&rotated, &[first_plaintext, second_plaintext]);
 
+    let workloads_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/workloads"
+    );
+    let workload_request = |key: &str, version: u64| {
+        post_json(
+            &workloads_path,
+            key,
+            json!({
+                "name": format!("api-v{version}"),
+                "template": {
+                    "artifact": {
+                        "uri": "oci://registry.example/cloud/api:stable",
+                        "expectedDigest": null
+                    },
+                    "process": {},
+                    "secrets": [{
+                        "name": "database-url",
+                        "secretId": secret_id,
+                        "version": version,
+                        "target": {
+                            "kind": "environment",
+                            "variable": "DATABASE_URL"
+                        }
+                    }],
+                    "resources": {
+                        "cpuMillis": 100,
+                        "memoryBytes": 33554432,
+                        "pids": 32,
+                        "ephemeralStorageBytes": null
+                    },
+                    "ports": [{"name": "http", "containerPort": 8080}],
+                    "health": {
+                        "portName": "http",
+                        "path": "/health",
+                        "intervalMs": 1000,
+                        "timeoutMs": 500,
+                        "healthyThreshold": 1,
+                        "unhealthyThreshold": 3,
+                        "stabilizationWindowMs": 1000
+                    }
+                }
+            }),
+        )
+    };
+    let bound_workload = app.call(workload_request("secret-workload-v2", 2)).await?;
+    assert_eq!(bound_workload.status(), 202);
+    assert_response_hides_secret_material(&bound_workload, &[first_plaintext, second_plaintext]);
+    let missing_version = app
+        .call(workload_request("secret-workload-missing", 3))
+        .await?;
+    assert_eq!(missing_version.status(), 422);
+
     let revoke_path = format!("{versions_path}/1/revoke");
     let revoked = app
         .call(post_json(&revoke_path, "secret-revoke-v1", json!({})))
@@ -107,6 +159,10 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
         "revoked"
     );
     assert_eq!(response_json(&revoke_replay)?["data"]["replayed"], true);
+    let revoked_binding = app
+        .call(workload_request("secret-workload-revoked", 1))
+        .await?;
+    assert_eq!(revoked_binding.status(), 422);
 
     let listed = app.call(get_as(&list_path, ADMIN_TOKEN)).await?;
     assert_eq!(listed.status(), 200);

@@ -11,5 +11,8 @@ pub use commands::{
 };
 pub(crate) use encryption::encryption_error;
 pub use plaintext::SecretPlaintext;
-pub use queries::{GetSecret, GetSecretHandler, ListSecrets, ListSecretsHandler};
+pub use queries::{
+    GetSecret, GetSecretHandler, ListSecrets, ListSecretsHandler, ResolveSecretMaterial,
+    ResolveSecretMaterialHandler,
+};
 pub use result::{SecretDetails, SecretMutationResult, SecretVersionResult};

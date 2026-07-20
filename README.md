@@ -89,7 +89,9 @@ API command
   Gateway node
 - **Encrypted Secret Resources**: Create tenant-scoped Secret identities,
   rotate immutable encrypted versions through local AES-GCM or Vault Transit,
-  revoke individual versions, and return metadata-only API and event payloads
+  bind exact versions to workload environment/file targets, materialize only
+  for the assigned node over mTLS, and inject at the Docker boundary without
+  placing plaintext in desired state, Runtime state, commands, or events
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
@@ -113,7 +115,7 @@ API command
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
-| Secrets | Encrypted tenant-scoped resources, immutable rotation, version revocation, metadata-only APIs/events, and reference-only idempotency are implemented; workload binding, node delivery, Runtime injection, and full redaction scans remain | In progress (`E0`) |
+| Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -221,11 +223,32 @@ deployment and Edge policies are split across independent boundaries:
 | `gateway.connect_timeout_ms` | Connection timeout for the node-local Gateway management API |
 | `gateway.validation_timeout_ms` | Independent deadline for validating one complete snapshot |
 | `gateway.reload_timeout_ms` | Independent deadline for transactionally reloading one snapshot |
+| `docker.secret_memory_dir` | Linux tmpfs root used only for transient Docker file-Secret bind mounts |
 
 These timers do not consume one shared request budget. API acceptance commits
 desired state first; Flow, node command, Runtime, health, and cleanup deadlines
 then advance independently. A mutable image tag is resolved before scheduling
 and the resulting workload revision remains digest-addressable on replay.
+
+Workload templates bind immutable Secret versions without accepting inline
+material. Each binding names an exact `secretId` and positive `version`, then
+selects either an environment variable or an absolute file target:
+
+```json
+{
+  "name": "database-url",
+  "secretId": "01900000-0000-7000-8000-000000000001",
+  "version": 2,
+  "target": {
+    "kind": "environment",
+    "variable": "DATABASE_URL"
+  }
+}
+```
+
+File targets use `{"kind":"file","path":"/run/secrets/key","mode":256}`.
+The Linux node-agent rejects file materialization unless
+`docker.secret_memory_dir` is backed by tmpfs.
 
 See [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) for the complete control
@@ -344,7 +367,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, routed Gateway validation, exact activation projection, and encrypted Secret resource/version APIs are implemented; production certificate automation, Secret binding/injection, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, routed Gateway validation, exact activation projection, and encrypted Secret resources with workload-to-Docker injection are implemented; production certificate automation, Secret restart/crash acceptance, logs, update, rollback, and web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |

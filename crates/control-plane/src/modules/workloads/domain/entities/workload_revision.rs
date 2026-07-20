@@ -1,3 +1,4 @@
+use super::SecretBinding;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, WorkloadId, WorkloadRevisionId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -128,6 +129,8 @@ pub struct HttpHealthCheck {
 pub struct ServiceTemplate<A = OciArtifact> {
     pub artifact: A,
     pub process: ServiceProcess,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets: Vec<SecretBinding>,
     pub resources: ServiceResources,
     pub ports: Vec<ServicePort>,
     pub health: HttpHealthCheck,
@@ -175,6 +178,7 @@ impl RequestedServiceTemplate {
         let resolved = ServiceTemplate {
             artifact,
             process: self.process,
+            secrets: self.secrets,
             resources: self.resources,
             ports: self.ports,
             health: self.health,
@@ -187,6 +191,7 @@ impl RequestedServiceTemplate {
 fn validate_template_body<A>(template: &ServiceTemplate<A>) -> Result<(), String> {
     let ServiceTemplate {
         process,
+        secrets,
         resources,
         ports,
         health,
@@ -204,6 +209,24 @@ fn validate_template_body<A>(template: &ServiceTemplate<A>) -> Result<(), String
         })
     {
         return Err("service process configuration is invalid".into());
+    }
+    if secrets.len() > 128 {
+        return Err("service Secret binding count exceeds 128".into());
+    }
+    let mut secret_names = std::collections::BTreeSet::new();
+    let mut secret_targets = std::collections::BTreeSet::new();
+    for secret in secrets {
+        secret.validate()?;
+        if !secret_names.insert(&secret.name) || !secret_targets.insert(secret.target_key()) {
+            return Err("service Secret binding names and targets must be unique".into());
+        }
+        if matches!(
+            &secret.target,
+            super::SecretBindingTarget::Environment { variable }
+                if process.environment.contains_key(variable)
+        ) {
+            return Err("service environment and Secret targets must not overlap".into());
+        }
     }
     if resources.cpu_millis == 0
         || resources.memory_bytes == 0
@@ -369,6 +392,7 @@ impl WorkloadRevision {
         let request = RequestedServiceTemplate {
             artifact: OciArtifactReference::from(&template.artifact),
             process: template.process.clone(),
+            secrets: template.secrets.clone(),
             resources: template.resources.clone(),
             ports: template.ports.clone(),
             health: template.health.clone(),

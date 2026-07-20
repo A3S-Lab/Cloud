@@ -1,13 +1,15 @@
 use crate::{
     ControlPlaneConfig, EnrolledNodeIdentity, FileNodeIdentityStore, IdentityStoreError,
-    PendingNodeIdentity,
+    NodeSecretTransport, PendingNodeIdentity, SecretMaterial,
 };
 use a3s_cloud_contracts::{
-    ApiErrorResponse, GatewayCertificateSigningRequest, GatewayCertificateSigningResponse,
-    NodeCertificateRotationRequest, NodeCertificateRotationResponse, NodeCommandAck,
-    NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
-    NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt, NodeProtocolError,
+    ApiErrorResponse, CloudSecretReference, GatewayCertificateSigningRequest,
+    GatewayCertificateSigningResponse, NodeCertificateRotationRequest,
+    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
+    NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeEnrollmentResponse, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatch,
+    NodeObservationReceipt, NodeProtocolError, NodeSecretMaterialRequest,
+    NodeSecretMaterialResponse,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -17,6 +19,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use url::Url;
+use zeroize::Zeroizing;
 
 #[derive(Clone)]
 pub struct NodeControlClient {
@@ -330,6 +333,34 @@ impl NodeControlClient {
         Ok(receipt)
     }
 
+    pub async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        let request = NodeSecretMaterialRequest::new(self.node_id, reference)
+            .map_err(NodeControlClientError::Invalid)?;
+        let response: NodeSecretMaterialResponse = self
+            .send(
+                self.client
+                    .post(self.endpoint("v1/node-control/secrets:materialize")?)
+                    .timeout(self.request_timeout)
+                    .json(&request),
+            )
+            .await?;
+        response
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if response.node_id != self.node_id || response.reference != reference {
+            return Err(NodeControlClientError::Invalid(
+                "Secret material response changed its node or reference identity".into(),
+            ));
+        }
+        let value = response
+            .decode_at(Utc::now())
+            .map_err(NodeControlClientError::Invalid)?;
+        SecretMaterial::new(value).map_err(NodeControlClientError::Invalid)
+    }
+
     async fn send<T>(&self, request: RequestBuilder) -> Result<T, NodeControlClientError>
     where
         T: DeserializeOwned,
@@ -476,6 +507,16 @@ impl GatewayCertificateSigningTransport for NodeControlClient {
 }
 
 #[async_trait]
+impl NodeSecretTransport for NodeControlClient {
+    async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        NodeControlClient::resolve_secret(self, reference).await
+    }
+}
+
+#[async_trait]
 impl NodeControlTransport for ReloadableNodeControlClient {
     async fn lease(
         &self,
@@ -534,6 +575,16 @@ impl GatewayCertificateSigningTransport for ReloadableNodeControlClient {
             .await
             .sign_gateway_certificate(request)
             .await
+    }
+}
+
+#[async_trait]
+impl NodeSecretTransport for ReloadableNodeControlClient {
+    async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        self.inner.read().await.resolve_secret(reference).await
     }
 }
 
@@ -598,7 +649,7 @@ where
             "node-control response exceeds {maximum_bytes} bytes"
         )));
     }
-    let mut body = Vec::new();
+    let mut body = Zeroizing::new(Vec::new());
     while let Some(chunk) = response.chunk().await.map_err(transport_error)? {
         let next = body.len().checked_add(chunk.len()).ok_or_else(|| {
             NodeControlClientError::Invalid("node-control response size overflowed".into())

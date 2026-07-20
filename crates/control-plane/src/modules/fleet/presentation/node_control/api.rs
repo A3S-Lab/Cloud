@@ -11,17 +11,23 @@ use crate::modules::fleet::application::{
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
+use crate::modules::secrets::application::{ResolveSecretMaterial, ResolveSecretMaterialHandler};
+use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId, RepositoryError};
-use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     GatewayCertificateSigningRequest, NodeCertificate as NodeCertificateContract,
     NodeCertificateRotationRequest, NodeCertificateRotationResponse, NodeCommandAck,
     NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch,
-    NodeObservationBatch,
+    NodeObservationBatch, NodeSecretMaterialRequest, NodeSecretMaterialResponse,
 };
 use axum::body::to_bytes;
 use axum::extract::{Extension, Path, Request, State};
-use axum::http::{header::CONTENT_LENGTH, header::CONTENT_TYPE, HeaderValue, StatusCode};
+use axum::http::{
+    header::CACHE_CONTROL, header::CONTENT_LENGTH, header::CONTENT_TYPE, header::PRAGMA,
+    HeaderValue, StatusCode,
+};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
@@ -34,6 +40,8 @@ use std::error::Error as _;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use uuid::Uuid;
+
+const SECRET_MATERIAL_TTL: Duration = Duration::seconds(30);
 
 #[derive(Clone)]
 pub(super) struct PeerCertificate {
@@ -54,6 +62,7 @@ struct NodeControlApiInner {
     gateway: RecordGatewayAcknowledgementHandler,
     sign_gateway_certificate: SignGatewayCertificateHandler,
     rotate_certificate: RotateNodeCertificateHandler,
+    resolve_secret_material: ResolveSecretMaterialHandler,
     certificate_rotation_window: Duration,
     maximum_body_bytes: usize,
     body_timeout: StdDuration,
@@ -69,6 +78,9 @@ impl NodeControlApi {
         gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         logs: Arc<dyn ILogChunkStore>,
         certificate_authority: Arc<dyn ICertificateAuthority>,
+        workloads: Arc<dyn IWorkloadRepository>,
+        secrets: Arc<dyn ISecretRepository>,
+        secret_encryption: Arc<dyn ISecretEncryptionService>,
         gateway_certificate_ttl: Duration,
         certificate_ttl: Duration,
         certificate_rotation_window: Duration,
@@ -109,6 +121,11 @@ impl NodeControlApi {
                     gateway_certificate_ttl,
                 )?,
                 rotate_certificate,
+                resolve_secret_material: ResolveSecretMaterialHandler::new(
+                    workloads,
+                    secrets,
+                    secret_encryption,
+                ),
                 certificate_rotation_window,
                 maximum_body_bytes,
                 body_timeout,
@@ -125,6 +142,10 @@ impl NodeControlApi {
             )
             .route("/v1/node-control/observations", post(record_observations))
             .route("/v1/node-control/log-chunks", post(record_log_chunks))
+            .route(
+                "/v1/node-control/secrets:materialize",
+                post(materialize_secret),
+            )
             .route("/v1/node-control/gateway-acks", post(record_gateway_ack))
             .route(
                 "/v1/node-control/gateway-certificates:sign",
@@ -175,11 +196,20 @@ impl NodeControlApi {
         request_id: Uuid,
         peer: &PeerCertificate,
     ) -> Result<NodeId, NodeControlHttpError> {
+        self.authenticate_node(request_id, peer)
+            .await
+            .map(|node| node.id)
+    }
+
+    async fn authenticate_node(
+        &self,
+        request_id: Uuid,
+        peer: &PeerCertificate,
+    ) -> Result<crate::modules::fleet::domain::entities::Node, NodeControlHttpError> {
         self.inner
             .nodes
             .authenticate_certificate(&peer.fingerprint, Utc::now())
             .await
-            .map(|node| node.id)
             .map_err(|error| match error {
                 RepositoryError::NotFound => NodeControlHttpError::unauthenticated(request_id),
                 other => {
@@ -228,6 +258,59 @@ impl NodeControlApi {
             NodeControlHttpError::invalid(request_id, format!("invalid JSON body: {error}"))
         })
     }
+}
+
+async fn materialize_secret(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node = api.authenticate_node(request_id, &peer).await?;
+    let request: NodeSecretMaterialRequest = api.body(request_id, request).await?;
+    request
+        .validate()
+        .map_err(|error| NodeControlHttpError::invalid(request_id, error))?;
+    if request.node_id != node.id.as_uuid() {
+        return Err(NodeControlHttpError::from_application(
+            request_id,
+            crate::modules::shared_kernel::application::ApplicationError::Forbidden(
+                "Secret material request does not belong to this node".into(),
+            ),
+        ));
+    }
+    let reference = request.reference;
+    let plaintext = api
+        .inner
+        .resolve_secret_material
+        .execute(
+            ResolveSecretMaterial {
+                organization_id: node.organization_id,
+                authenticated_node_id: node.id,
+                reference,
+            },
+            context(),
+        )
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    let issued_at = Utc::now();
+    let response = NodeSecretMaterialResponse::new(
+        node.id.as_uuid(),
+        reference,
+        plaintext.as_bytes(),
+        issued_at,
+        issued_at + SECRET_MATERIAL_TTL,
+    )
+    .map_err(|error| NodeControlHttpError::internal(request_id, error))?;
+    let mut response = json_response(request_id, StatusCode::OK, &response)?;
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .insert(PRAGMA, HeaderValue::from_static("no-cache"));
+    Ok(response)
 }
 
 async fn lease_commands(

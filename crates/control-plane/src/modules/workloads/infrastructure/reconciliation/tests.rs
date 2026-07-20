@@ -378,6 +378,7 @@ fn service_template() -> ServiceTemplate {
             working_directory: None,
             environment: BTreeMap::new(),
         },
+        secrets: Vec::new(),
         resources: ServiceResources {
             cpu_millis: 100,
             memory_bytes: 32 * 1024 * 1024,

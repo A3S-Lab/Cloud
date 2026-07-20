@@ -397,6 +397,7 @@ pub(crate) async fn connect_driver(
         socket: docker_socket(),
         namespace: namespace.into(),
         operation_timeout_ms: 30_000,
+        secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
     })?;
     driver.bind_node(node_id).await?;
     Ok(driver)

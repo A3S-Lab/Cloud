@@ -1,8 +1,9 @@
 use crate::modules::workloads::domain::entities::WorkloadRevision;
+use a3s_cloud_contracts::CloudSecretReference;
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
     RuntimeHealthCheck, RuntimeNetworkSpec, RuntimePort, RuntimeProcessSpec, RuntimeUnitClass,
-    RuntimeUnitSpec, TransportProtocol,
+    RuntimeUnitSpec, SecretReference, SecretTarget, TransportProtocol,
 };
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
@@ -24,7 +25,36 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
             environment: template.process.environment.clone(),
         },
         mounts: Vec::new(),
-        secrets: Vec::new(),
+        secrets: template
+            .secrets
+            .iter()
+            .map(|binding| {
+                let reference = CloudSecretReference::new(
+                    revision.id.as_uuid(),
+                    binding.secret_id.as_uuid(),
+                    binding.version,
+                )?;
+                let target = match &binding.target {
+                    crate::modules::workloads::domain::entities::SecretBindingTarget::Environment {
+                        variable,
+                    } => SecretTarget::Environment {
+                        variable: variable.clone(),
+                    },
+                    crate::modules::workloads::domain::entities::SecretBindingTarget::File {
+                        path,
+                        mode,
+                    } => SecretTarget::File {
+                        path: path.clone(),
+                        mode: *mode,
+                    },
+                };
+                Ok(SecretReference {
+                    name: binding.name.clone(),
+                    reference: reference.to_string(),
+                    target,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
         network: RuntimeNetworkSpec {
             mode: NetworkMode::Service,
             ports: template
@@ -68,10 +98,10 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::shared_kernel::domain::{WorkloadId, WorkloadRevisionId};
+    use crate::modules::shared_kernel::domain::{SecretId, WorkloadId, WorkloadRevisionId};
     use crate::modules::workloads::domain::entities::{
-        HttpHealthCheck, OciArtifact, ServicePort, ServiceProcess, ServiceResources,
-        ServiceTemplate,
+        HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
+        ServiceProcess, ServiceResources, ServiceTemplate,
     };
     use chrono::Utc;
     use std::collections::BTreeMap;
@@ -79,8 +109,10 @@ mod tests {
     #[test]
     fn projects_digest_bound_service_without_provider_fields() {
         let digest = format!("sha256:{}", "a".repeat(64));
+        let revision_id = WorkloadRevisionId::new();
+        let secret_id = SecretId::new();
         let revision = WorkloadRevision::create(
-            WorkloadRevisionId::new(),
+            revision_id,
             WorkloadId::new(),
             3,
             ServiceTemplate {
@@ -95,6 +127,14 @@ mod tests {
                     working_directory: None,
                     environment: BTreeMap::new(),
                 },
+                secrets: vec![SecretBinding {
+                    name: "api-token".into(),
+                    secret_id,
+                    version: 4,
+                    target: SecretBindingTarget::Environment {
+                        variable: "API_TOKEN".into(),
+                    },
+                }],
                 resources: ServiceResources {
                     cpu_millis: 250,
                     memory_bytes: 64 * 1024 * 1024,
@@ -127,7 +167,12 @@ mod tests {
         assert_eq!(spec.artifact.digest, digest);
         assert_eq!(spec.class, RuntimeUnitClass::Service);
         assert!(spec.health.is_some());
-        assert!(spec.secrets.is_empty());
+        assert_eq!(spec.secrets.len(), 1);
+        assert_eq!(
+            CloudSecretReference::parse(&spec.secrets[0].reference).expect("Secret reference"),
+            CloudSecretReference::new(revision_id.as_uuid(), secret_id.as_uuid(), 4)
+                .expect("expected Secret reference")
+        );
         assert!(spec.mounts.is_empty());
     }
 }

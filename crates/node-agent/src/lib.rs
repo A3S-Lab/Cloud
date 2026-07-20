@@ -9,6 +9,7 @@ mod gateway;
 mod gateway_certificate;
 mod identity;
 mod journal;
+mod secret;
 mod state_file;
 
 pub use config::{
@@ -30,6 +31,7 @@ pub use identity::{
     PendingNodeIdentity,
 };
 pub use journal::{CommandJournalError, FileCommandJournal, JournalDecision};
+pub use secret::{NodeSecretTransport, SecretMaterial};
 
 use a3s_runtime::ProviderId;
 

@@ -4,7 +4,7 @@ use crate::{
     CommandExecutionError, CommandExecutor, CommandJournalError, DurableGatewaySnapshotInstaller,
     EnrolledNodeIdentity, FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
     GatewaySnapshotInstaller, IdentityStoreError, NodeAgentConfig, NodeControlClient,
-    NodeControlClientError, NodeControlTransport, NodeIdentityState,
+    NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
@@ -59,6 +59,11 @@ pub async fn run_node_agent(
             certificate_transport,
         )?);
     runtime.binding.bind_node(identity.response.node_id).await?;
+    let secret_transport: Arc<dyn NodeSecretTransport> = transport.clone();
+    runtime
+        .binding
+        .bind_secret_transport(secret_transport)
+        .await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(
         session_transport,
@@ -83,6 +88,11 @@ pub async fn run_node_agent(
 #[async_trait]
 pub trait NodeRuntimeBinding: Send + Sync {
     async fn bind_node(&self, node_id: uuid::Uuid) -> RuntimeResult<()>;
+
+    async fn bind_secret_transport(
+        &self,
+        transport: Arc<dyn NodeSecretTransport>,
+    ) -> RuntimeResult<()>;
 }
 
 pub struct NodeRuntimeProvider {

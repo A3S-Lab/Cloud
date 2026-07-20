@@ -6,8 +6,9 @@ pub struct SecretPlaintext(Vec<u8>);
 
 impl SecretPlaintext {
     pub fn new(value: impl Into<Vec<u8>>) -> Result<Self, String> {
-        let value = value.into();
+        let mut value = value.into();
         if value.is_empty() || value.len() > 1024 * 1024 {
+            value.zeroize();
             return Err("Secret value must contain between 1 byte and 1 MiB".into());
         }
         Ok(Self(value))

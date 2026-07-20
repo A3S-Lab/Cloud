@@ -212,6 +212,7 @@ pub(super) fn requested_deployment_bundle(
             expected_digest: None,
         },
         process: resolved.process,
+        secrets: resolved.secrets,
         resources: resolved.resources,
         ports: resolved.ports,
         health: resolved.health,
@@ -424,6 +425,7 @@ pub(super) fn template(digest_character: char) -> ServiceTemplate {
             working_directory: None,
             environment: BTreeMap::new(),
         },
+        secrets: Vec::new(),
         resources: ServiceResources {
             cpu_millis: 100,
             memory_bytes: 32 * 1024 * 1024,

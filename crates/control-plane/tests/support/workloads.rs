@@ -393,6 +393,7 @@ fn template(digest_character: char) -> ServiceTemplate {
             working_directory: None,
             environment: BTreeMap::new(),
         },
+        secrets: Vec::new(),
         resources: ServiceResources {
             cpu_millis: 250,
             memory_bytes: 64 * 1024 * 1024,

@@ -11,9 +11,11 @@ use crate::modules::fleet::domain::services::{ICertificateAuthority, NodeCertifi
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LocalLogChunkStore};
+use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
 };
+use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCertificateRotationRequest,
@@ -78,6 +80,14 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         ),
         log_store,
         authority.clone(),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(
+            crate::modules::fleet::infrastructure::LocalKeyEncryptionService::load_or_create(
+                directory.path().join("secret-key"),
+            )
+            .expect("Secret encryption"),
+        ),
         Duration::days(30),
         Duration::hours(1),
         Duration::milliseconds(250),

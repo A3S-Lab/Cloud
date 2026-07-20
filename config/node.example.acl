@@ -20,6 +20,7 @@ docker {
   socket = "unix:///var/run/docker.sock"
   namespace = "a3s-cloud"
   operation_timeout_ms = 120000
+  secret_memory_dir = "/dev/shm/a3s-cloud/secrets"
 }
 
 gateway {

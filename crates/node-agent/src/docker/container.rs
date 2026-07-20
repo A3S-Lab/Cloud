@@ -1,4 +1,5 @@
 use super::health::host_port;
+use super::secrets::MaterializedSecrets;
 use super::{docker_error, is_status, DockerRuntimeDriver};
 use a3s_cloud_contracts::RuntimeServiceEndpoint;
 use a3s_runtime::contract::{
@@ -12,7 +13,7 @@ use bollard::container::{
     StartContainerOptions, StopContainerOptions,
 };
 use bollard::models::{
-    ContainerInspectResponse, HealthConfig, HostConfig, PortBinding,
+    ContainerInspectResponse, HealthConfig, HostConfig, Mount, MountTypeEnum, PortBinding,
     RestartPolicy as DockerRestartPolicy, RestartPolicyNameEnum,
 };
 use chrono::DateTime;
@@ -40,9 +41,30 @@ impl DockerRuntimeDriver {
         let provider_build = self.provider_build().await?;
         let image = self.ensure_image(&spec.artifact).await?;
         let mut container = self.find_container(node_id, spec, &spec_digest).await?;
+        let materialized = if !spec.secrets.is_empty()
+            && container
+                .as_ref()
+                .is_none_or(|container| should_start(spec, container))
+        {
+            Some(self.materialize_secrets(spec, &spec_digest).await?)
+        } else {
+            None
+        };
         if container.is_none() {
             let name = container_name(&self.namespace, spec, &spec_digest);
-            let config = self.container_config(node_id, spec, &spec_digest, image)?;
+            let config = match self.container_config(
+                node_id,
+                spec,
+                &spec_digest,
+                image,
+                materialized.as_ref(),
+            ) {
+                Ok(config) => config,
+                Err(error) => {
+                    self.cleanup_secret_directory(&spec_digest).await?;
+                    return Err(error);
+                }
+            };
             match self
                 .docker
                 .create_container(
@@ -65,15 +87,20 @@ impl DockerRuntimeDriver {
                 Err(error) if is_status(&error, 409) => {
                     container = self.find_container(node_id, spec, &spec_digest).await?;
                     if container.is_none() {
+                        self.cleanup_secret_directory(&spec_digest).await?;
                         return Err(RuntimeError::ProviderUnavailable(
                             "Docker container name conflicted without a matching managed resource"
                                 .into(),
                         ));
                     }
                 }
-                Err(error) => return Err(docker_error(error)),
+                Err(error) => {
+                    self.cleanup_secret_directory(&spec_digest).await?;
+                    return Err(docker_error(error));
+                }
             }
         }
+        drop(materialized);
         let mut container = container.ok_or_else(|| {
             RuntimeError::Protocol("Docker apply lost the provider resource identity".into())
         })?;
@@ -301,6 +328,12 @@ impl DockerRuntimeDriver {
         container: &ContainerInspectResponse,
     ) -> RuntimeResult<()> {
         let id = container_id(container)?;
+        let spec_digest = container
+            .config
+            .as_ref()
+            .and_then(|config| config.labels.as_ref())
+            .and_then(|labels| labels.get(SPEC_DIGEST_LABEL))
+            .cloned();
         match self
             .docker
             .stop_container(&id, Some(StopContainerOptions { t: 1 }))
@@ -322,10 +355,14 @@ impl DockerRuntimeDriver {
             )
             .await
         {
-            Ok(()) => Ok(()),
-            Err(error) if is_status(&error, 404) => Ok(()),
-            Err(error) => Err(docker_error(error)),
+            Ok(()) => {}
+            Err(error) if is_status(&error, 404) => {}
+            Err(error) => return Err(docker_error(error)),
+        };
+        if let Some(spec_digest) = spec_digest {
+            self.cleanup_secret_directory(&spec_digest).await?;
         }
+        Ok(())
     }
 
     async fn managed_unit_container_ids(
@@ -415,6 +452,7 @@ impl DockerRuntimeDriver {
         spec: &RuntimeUnitSpec,
         spec_digest: &str,
         image: String,
+        materialized: Option<&MaterializedSecrets>,
     ) -> RuntimeResult<Config<String>> {
         let labels = managed_labels(&self.namespace, node_id, spec, spec_digest);
         let mut exposed_ports = HashMap::new();
@@ -458,10 +496,32 @@ impl DockerRuntimeDriver {
                 }
             }
         }
+        let mut environment = spec
+            .process
+            .environment
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>();
+        let mut secret_mounts = Vec::new();
         if !spec.secrets.is_empty() {
-            return Err(RuntimeError::UnsupportedCapabilities(vec![
-                "feature:SecretReferences".into(),
-            ]));
+            let materialized = materialized.ok_or_else(|| {
+                RuntimeError::Protocol("Docker Secret references were not materialized".into())
+            })?;
+            for (variable, value) in materialized.environment() {
+                let value = std::str::from_utf8(value).map_err(|_| {
+                    RuntimeError::InvalidRequest(
+                        "Docker Secret environment value is not UTF-8".into(),
+                    )
+                })?;
+                environment.push(format!("{variable}={value}"));
+            }
+            secret_mounts.extend(materialized.files().map(|(source, target)| Mount {
+                target: Some(target.into()),
+                source: Some(source.to_string_lossy().into_owned()),
+                typ: Some(MountTypeEnum::BIND),
+                read_only: Some(true),
+                ..Default::default()
+            }));
         }
         let (entrypoint, command) = if spec.process.command.is_empty() {
             (
@@ -478,13 +538,7 @@ impl DockerRuntimeDriver {
             image: Some(image),
             entrypoint,
             cmd: command,
-            env: Some(
-                spec.process
-                    .environment
-                    .iter()
-                    .map(|(key, value)| format!("{key}={value}"))
-                    .collect(),
-            ),
+            env: Some(environment),
             working_dir: spec.process.working_directory.clone(),
             labels: Some(labels),
             exposed_ports: (!exposed_ports.is_empty()).then_some(exposed_ports),
@@ -506,6 +560,7 @@ impl DockerRuntimeDriver {
                 restart_policy: Some(restart_policy(&spec.restart)),
                 binds: (!binds.is_empty()).then_some(binds),
                 tmpfs: (!tmpfs.is_empty()).then_some(tmpfs),
+                mounts: (!secret_mounts.is_empty()).then_some(secret_mounts),
                 init: Some(true),
                 privileged: Some(false),
                 cap_drop: Some(vec!["ALL".into()]),
