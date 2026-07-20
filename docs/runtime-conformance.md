@@ -53,6 +53,12 @@ evidence to exclude the value, while logs contain only `[REDACTED]`. A caller
 retry and provider restart must retain one provider container and one `0400`
 material file; removal must delete the generation directory.
 
+Mounts certification keeps a named-volume Service running across a distinct
+caller request and an isolated provider restart. Each phase must re-adopt the
+same container and the same single Docker volume. A separate read-only Task
+then verifies the exact pre-restart token and write denial before the Service
+and volume are removed explicitly.
+
 When developing on a dedicated Docker host that cannot safely restart its
 daemon, the following non-certifying probe exercises only the advertised
 optional behavior and still enforces cleanup and inventory equality:

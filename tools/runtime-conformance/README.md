@@ -70,6 +70,12 @@ redaction, then retries and restarts the provider while preserving one
 container and one material file. Removal must delete the generation's material
 directory.
 
+The Mounts profile keeps a named-volume Service running across a distinct
+caller request and isolated provider restart. It requires the same single
+container and volume identity after each operation, then mounts that volume
+into a separate read-only Task to verify the exact token and write denial. The
+Service and named volume must both be removed explicitly.
+
 The `Docker provider conformance` GitHub Actions workflow runs this provider
 gate on relevant pull requests and merges to `main`, every night, and on manual
 dispatch. It uses a disposable Ubuntu runner, checks every host prerequisite
