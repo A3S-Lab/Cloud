@@ -360,8 +360,12 @@ mod tests {
     };
     use async_trait::async_trait;
     use std::collections::BTreeMap;
+    #[cfg(unix)]
+    use std::os::unix::net::UnixListener;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    #[cfg(unix)]
+    use tempfile::TempDir;
 
     struct FixedSecretTransport {
         calls: AtomicUsize,
@@ -379,15 +383,10 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn environment_material_is_resolved_only_inside_the_docker_driver() {
-        let driver = DockerRuntimeDriver::connect(&DockerConfig {
-            socket: "unix:///var/run/docker.sock".into(),
-            namespace: "secret-unit-test".into(),
-            operation_timeout_ms: 1_000,
-            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
-        })
-        .expect("Docker driver");
+        let (_socket_directory, _socket, driver) = test_driver("secret-unit-test");
         let transport = Arc::new(FixedSecretTransport {
             calls: AtomicUsize::new(0),
         });
@@ -429,15 +428,10 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn environment_material_rejects_nul_bytes() {
-        let driver = DockerRuntimeDriver::connect(&DockerConfig {
-            socket: "unix:///var/run/docker.sock".into(),
-            namespace: "secret-nul-test".into(),
-            operation_timeout_ms: 1_000,
-            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
-        })
-        .expect("Docker driver");
+        let (_socket_directory, _socket, driver) = test_driver("secret-nul-test");
         let binding: Arc<dyn NodeSecretTransport> = Arc::new(NulSecretTransport);
         driver
             .bind_secret_transport(binding)
@@ -470,15 +464,10 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn log_redaction_fails_closed_when_secret_authorization_is_rejected() {
-        let driver = DockerRuntimeDriver::connect(&DockerConfig {
-            socket: "unix:///var/run/docker.sock".into(),
-            namespace: "secret-log-redaction-test".into(),
-            operation_timeout_ms: 1_000,
-            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
-        })
-        .expect("Docker driver");
+        let (_socket_directory, _socket, driver) = test_driver("secret-log-redaction-test");
         let binding: Arc<dyn NodeSecretTransport> = Arc::new(RejectedSecretTransport);
         driver
             .bind_secret_transport(binding)
@@ -500,13 +489,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let namespace = format!("secret-file-test-{}", Uuid::now_v7().simple());
-        let driver = DockerRuntimeDriver::connect(&DockerConfig {
-            socket: "unix:///var/run/docker.sock".into(),
-            namespace,
-            operation_timeout_ms: 1_000,
-            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
-        })
-        .expect("Docker driver");
+        let (_socket_directory, _socket, driver) = test_driver(namespace);
         let binding: Arc<dyn NodeSecretTransport> = Arc::new(FixedSecretTransport {
             calls: AtomicUsize::new(0),
         });
@@ -549,6 +532,21 @@ mod tests {
         tokio::fs::remove_dir_all(&driver.secret_memory_dir)
             .await
             .expect("Secret test root cleanup");
+    }
+
+    #[cfg(unix)]
+    fn test_driver(namespace: impl Into<String>) -> (TempDir, UnixListener, DockerRuntimeDriver) {
+        let socket_directory = tempfile::tempdir().expect("Docker test socket directory");
+        let socket_path = socket_directory.path().join("docker.sock");
+        let socket = UnixListener::bind(&socket_path).expect("bind Docker test socket");
+        let driver = DockerRuntimeDriver::connect(&DockerConfig {
+            socket: format!("unix://{}", socket_path.display()),
+            namespace: namespace.into(),
+            operation_timeout_ms: 1_000,
+            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
+        })
+        .expect("Docker driver");
+        (socket_directory, socket, driver)
     }
 
     fn runtime_spec(reference: String) -> RuntimeUnitSpec {

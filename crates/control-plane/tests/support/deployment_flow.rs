@@ -146,7 +146,7 @@ pub async fn exercise_deployment_flow(
             },
             Uuid::now_v7(),
             now,
-            now + ChronoDuration::seconds(1),
+            now + ChronoDuration::seconds(10),
         )
         .await?;
     let command = lease
