@@ -52,6 +52,50 @@ impl GatewaySnapshotCompiler {
         certificate_id: GatewayCertificateId,
         routes: &[Route],
     ) -> Result<GatewaySnapshot, String> {
+        self.compile_snapshot(
+            node_id,
+            revision,
+            expected_revision,
+            Some(certificate_id),
+            routes,
+            true,
+        )
+    }
+
+    pub fn compile_certificate_convergence(
+        &self,
+        node_id: NodeId,
+        revision: u64,
+        expected_revision: Option<u64>,
+        certificate_id: Option<GatewayCertificateId>,
+        routes: &[Route],
+    ) -> Result<GatewaySnapshot, String> {
+        if routes.is_empty() != certificate_id.is_none() {
+            return Err(
+                "Gateway certificate convergence requires one certificate for non-empty routes"
+                    .into(),
+            );
+        }
+        self.compile_snapshot(
+            node_id,
+            revision,
+            expected_revision,
+            certificate_id,
+            routes,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn compile_snapshot(
+        &self,
+        node_id: NodeId,
+        revision: u64,
+        expected_revision: Option<u64>,
+        certificate_id: Option<GatewayCertificateId>,
+        routes: &[Route],
+        require_pending_route: bool,
+    ) -> Result<GatewaySnapshot, String> {
         let mut routes = routes.iter().collect::<Vec<_>>();
         routes.sort_by(|left, right| {
             (left.hostname.as_str(), left.path_prefix.as_str(), left.id).cmp(&(
@@ -67,7 +111,12 @@ impl GatewaySnapshotCompiler {
             if route.gateway_node_id != node_id {
                 return Err("complete Gateway snapshot contains a route from another scope".into());
             }
-            if !matches!(route.state, RouteState::Pending | RouteState::Active) {
+            let state_is_eligible = if require_pending_route {
+                matches!(route.state, RouteState::Pending | RouteState::Active)
+            } else {
+                route.state == RouteState::Active
+            };
+            if !state_is_eligible {
                 return Err("complete Gateway snapshot contains an ineligible route state".into());
             }
             if !ownership.insert((route.hostname.as_str(), route.path_prefix.as_str())) {
@@ -87,39 +136,46 @@ impl GatewaySnapshotCompiler {
             dns_names.insert(pattern.as_str().to_owned());
             if route.state == RouteState::Pending {
                 pending_routes += 1;
-                if route.gateway_certificate_id != Some(certificate_id) {
+                if route.gateway_certificate_id != certificate_id {
                     return Err(
                         "pending Gateway route does not reference the snapshot certificate".into(),
                     );
                 }
             }
         }
-        if pending_routes == 0 {
+        if require_pending_route && pending_routes == 0 {
             return Err("complete Gateway publication must contain a pending route".into());
         }
 
-        let certificate_root =
-            Path::new(&self.config.certificate_directory).join(certificate_id.to_string());
-        let certificate_file = certificate_root
-            .join("certificate.pem")
-            .to_string_lossy()
-            .into_owned();
-        let private_key_file = certificate_root
-            .join("private-key.pem")
-            .to_string_lossy()
-            .into_owned();
-        let certificate_request = GatewayCertificateRequest::new(
-            certificate_id.as_uuid(),
-            dns_names.into_iter().collect(),
-            certificate_file,
-            private_key_file,
-        )?;
-        let mut acl = format!(
-            "# a3s-cloud complete Gateway snapshot {revision}\nentrypoints \"a3s-cloud-https\" {{\n  address = {}\n  tls {{\n    cert_file = {}\n    key_file = {}\n    min_version = \"1.2\"\n  }}\n}}\n\n",
-            acl_string(&self.config.entrypoint_address),
-            acl_string(&certificate_request.certificate_file),
-            acl_string(&certificate_request.private_key_file),
-        );
+        let certificate_request = certificate_id
+            .map(|certificate_id| {
+                let certificate_root =
+                    Path::new(&self.config.certificate_directory).join(certificate_id.to_string());
+                let certificate_file = certificate_root
+                    .join("certificate.pem")
+                    .to_string_lossy()
+                    .into_owned();
+                let private_key_file = certificate_root
+                    .join("private-key.pem")
+                    .to_string_lossy()
+                    .into_owned();
+                GatewayCertificateRequest::new(
+                    certificate_id.as_uuid(),
+                    dns_names.into_iter().collect(),
+                    certificate_file,
+                    private_key_file,
+                )
+            })
+            .transpose()?;
+        let mut acl = format!("# a3s-cloud complete Gateway snapshot {revision}\n");
+        if let Some(certificate_request) = &certificate_request {
+            acl.push_str(&format!(
+                "entrypoints \"a3s-cloud-https\" {{\n  address = {}\n  tls {{\n    cert_file = {}\n    key_file = {}\n    min_version = \"1.2\"\n  }}\n}}\n\n",
+                acl_string(&self.config.entrypoint_address),
+                acl_string(&certificate_request.certificate_file),
+                acl_string(&certificate_request.private_key_file),
+            ));
+        }
         for route in &routes {
             let name = format!("route-{}", route.id.as_uuid().simple());
             acl.push_str(&format!(
@@ -139,12 +195,7 @@ impl GatewaySnapshotCompiler {
             acl_string(&self.config.management_path_prefix),
             acl_string(&self.config.management_auth_token_env),
         ));
-        GatewaySnapshot::new_with_certificate(
-            revision,
-            expected_revision,
-            acl,
-            Some(certificate_request),
-        )
+        GatewaySnapshot::new_with_certificate(revision, expected_revision, acl, certificate_request)
     }
 }
 
@@ -260,6 +311,51 @@ mod tests {
             .acl
             .contains("Host(`api.example.com`) && PathPrefix(`/v1`)"));
         assert!(forward.acl.contains("http://127.0.0.1:49152/"));
+    }
+
+    #[test]
+    fn compiles_certificate_convergence_without_mutating_active_routes() {
+        let node_id = NodeId::new();
+        let certificate_id = GatewayCertificateId::new();
+        let mut active = route(node_id, "api.example.com", "/", 49152);
+        let previous_certificate_id = active.gateway_certificate_id.expect("previous certificate");
+        active.state = RouteState::Active;
+
+        let snapshot = compiler()
+            .compile_certificate_convergence(
+                node_id,
+                2,
+                Some(1),
+                Some(certificate_id),
+                std::slice::from_ref(&active),
+            )
+            .expect("certificate convergence snapshot");
+
+        assert_eq!(
+            active.gateway_certificate_id,
+            Some(previous_certificate_id),
+            "the replacement is not authoritative before acknowledgement"
+        );
+        assert_eq!(
+            snapshot
+                .certificate_request
+                .as_ref()
+                .map(|request| request.certificate_id),
+            Some(certificate_id.as_uuid())
+        );
+        assert!(snapshot.acl.contains("api.example.com"));
+    }
+
+    #[test]
+    fn compiles_route_less_revocation_snapshot_without_a_certificate() {
+        let node_id = NodeId::new();
+        let snapshot = compiler()
+            .compile_certificate_convergence(node_id, 2, Some(1), None, &[])
+            .expect("route-less revocation snapshot");
+
+        assert!(snapshot.certificate_request.is_none());
+        assert!(!snapshot.acl.contains("entrypoints \"a3s-cloud-https\""));
+        assert!(snapshot.acl.contains("management {"));
     }
 
     #[test]

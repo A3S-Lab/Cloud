@@ -33,6 +33,8 @@ use uuid::Uuid;
 mod cancellation_support;
 #[path = "support/deployment_flow.rs"]
 mod deployment_flow_support;
+#[path = "support/edge_certificate_lifecycle.rs"]
+mod edge_certificate_lifecycle_support;
 #[path = "support/edge.rs"]
 mod edge_support;
 #[path = "support/fleet.rs"]
@@ -102,6 +104,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists secret_rotation_restarts cascade;
              drop table if exists secret_versions cascade;
              drop table if exists secrets cascade;
+             drop table if exists gateway_certificate_convergences cascade;
              drop table if exists gateway_route_cutovers cascade;
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
@@ -147,7 +150,20 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 19);
+    assert_eq!(applied, 20);
+    let route_ownership_predicate = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
+        ))
+        .await?;
+    assert!(route_ownership_predicate.contains("'publishing'"));
+    assert!(route_ownership_predicate.contains("'active'"));
+    let permanent_route_ownership = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conname = 'routes_gateway_node_id_hostname_path_prefix_key'",
+        ))
+        .await?;
+    assert_eq!(permanent_route_ownership, 0);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -319,6 +335,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "020",
+                "Gateway certificate convergence",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/020_gateway_certificate_convergence.sql"
+                )),
+            ),
+            Migration::new(
+                "021",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

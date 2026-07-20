@@ -1,6 +1,7 @@
 use crate::modules::edge::domain::{
-    DomainClaim, GatewayCertificate, GatewayPublication, GatewayRouteCutover,
-    GatewayRouteCutoverState, GatewayScopeState, Route,
+    DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
+    GatewayCertificateConvergenceState, GatewayPublication, GatewayRouteCutover,
+    GatewayRouteCutoverState, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
@@ -29,6 +30,69 @@ pub struct StageGatewayRouteCutover {
     pub expected_scope_version: u64,
     pub idempotency: IdempotencyRequest,
     pub event: DomainEventEnvelope,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageGatewayCertificateConvergence {
+    pub convergence: GatewayCertificateConvergence,
+    pub certificate: Option<GatewayCertificate>,
+    pub publication: GatewayPublication,
+    pub expected_scope_version: u64,
+    pub event: DomainEventEnvelope,
+}
+
+impl StageGatewayCertificateConvergence {
+    pub fn validate(&self) -> Result<(), String> {
+        self.convergence.validate()?;
+        let convergence = &self.convergence;
+        let publication = &self.publication;
+        if convergence.state != GatewayCertificateConvergenceState::Pending
+            || publication.state != crate::modules::edge::domain::GatewayPublicationState::Pending
+            || convergence.node_id != publication.node_id
+            || convergence.gateway_revision != publication.revision
+            || convergence.gateway_command_id != publication.command_id
+            || convergence.snapshot_digest != publication.snapshot_digest
+            || publication.expected_revision.is_none()
+            || self.event.organization_id != convergence.organization_id.as_uuid()
+            || self.event.aggregate_id
+                != convergence
+                    .replacement_certificate_id
+                    .unwrap_or(convergence.previous_certificate_id)
+                    .as_uuid()
+            || self.event.correlation_id != publication.command_correlation_id
+        {
+            return Err(
+                "Gateway certificate convergence and complete publication are inconsistent".into(),
+            );
+        }
+        match (
+            convergence.replacement_certificate_id,
+            publication.certificate_request.as_ref(),
+            self.certificate.as_ref(),
+        ) {
+            (Some(certificate_id), Some(request), Some(certificate))
+                if request.certificate_id == certificate_id.as_uuid()
+                    && certificate.id == certificate_id
+                    && certificate.organization_id == convergence.organization_id
+                    && certificate.node_id == convergence.node_id
+                    && certificate.gateway_revision == convergence.gateway_revision
+                    && certificate.gateway_command_id == convergence.gateway_command_id
+                    && certificate.snapshot_digest == convergence.snapshot_digest
+                    && certificate.request == *request
+                    && certificate.state
+                        == crate::modules::edge::domain::GatewayCertificateState::Provisioning
+                    && certificate.csr_digest.is_none()
+                    && certificate.material.is_none() => {}
+            (None, None, None) => {}
+            _ => {
+                return Err(
+                    "Gateway certificate convergence replacement material is inconsistent".into(),
+                )
+            }
+        }
+        publication.snapshot()?;
+        Ok(())
+    }
 }
 
 impl StageGatewayRouteCutover {
@@ -129,6 +193,52 @@ pub struct GatewayRouteCutoverResult {
     pub replayed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayCertificateConvergenceResult {
+    pub convergence: GatewayCertificateConvergence,
+    pub certificate: Option<GatewayCertificate>,
+    pub publication: GatewayPublication,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayCertificateRouteStatus {
+    pub route: Route,
+    pub domain_claim_state: DomainClaimState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayCertificateConvergenceTarget {
+    pub scope: GatewayScopeState,
+    pub certificate: GatewayCertificate,
+    pub routes: Vec<GatewayCertificateRouteStatus>,
+}
+
+impl GatewayCertificateConvergenceTarget {
+    pub fn validate(&self) -> Result<(), String> {
+        let installed_revision = self
+            .scope
+            .installed_revision
+            .ok_or_else(|| "Gateway certificate convergence target is not installed".to_string())?;
+        if self.routes.is_empty()
+            || self.certificate.node_id != self.scope.node_id
+            || self.certificate.gateway_revision != installed_revision
+            || !matches!(
+                self.certificate.state,
+                crate::modules::edge::domain::GatewayCertificateState::Ready
+                    | crate::modules::edge::domain::GatewayCertificateState::Revoked
+            )
+            || self.routes.iter().any(|status| {
+                status.route.gateway_node_id != self.scope.node_id
+                    || status.route.organization_id != self.certificate.organization_id
+                    || status.route.state != RouteState::Active
+            })
+        {
+            return Err("Gateway certificate convergence target is inconsistent".into());
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 pub trait IEdgeRepository: Send + Sync {
     async fn replay_domain_claim_write(
@@ -182,6 +292,33 @@ pub trait IEdgeRepository: Send + Sync {
         &self,
         bundle: StageGatewayRouteCutover,
     ) -> Result<GatewayRouteCutoverResult, RepositoryError>;
+
+    async fn gateway_certificate_convergence_targets(
+        &self,
+        renew_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError>;
+
+    async fn pending_gateway_certificate_convergences(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateConvergenceResult>, RepositoryError>;
+
+    async fn stage_gateway_certificate_convergence(
+        &self,
+        bundle: StageGatewayCertificateConvergence,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError>;
+
+    async fn find_gateway_certificate_convergence(
+        &self,
+        node_id: NodeId,
+        gateway_revision: u64,
+    ) -> Result<Option<GatewayCertificateConvergence>, RepositoryError>;
+
+    async fn obsolete_gateway_certificates(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificate>, RepositoryError>;
 
     async fn find_gateway_route_cutover(
         &self,

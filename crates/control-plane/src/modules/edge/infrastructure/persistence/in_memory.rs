@@ -1,9 +1,12 @@
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
+    GatewayCertificateConvergenceTarget, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRouteCutover, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
-    DomainClaim, DomainClaimState, GatewayCertificate, GatewayPublication, GatewayPublicationState,
+    DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
+    GatewayCertificateConvergenceState, GatewayPublication, GatewayPublicationState,
     GatewayRouteCutover, GatewayRouteCutoverState, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
@@ -15,6 +18,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::RwLock;
+
+mod certificate_convergence;
 
 #[derive(Default)]
 pub struct InMemoryEdgeRepository {
@@ -30,6 +35,7 @@ struct State {
     ownership: BTreeMap<(NodeId, String, String), RouteId>,
     publications: BTreeMap<(NodeId, u64), GatewayPublication>,
     certificates: BTreeMap<GatewayCertificateId, GatewayCertificate>,
+    certificate_convergences: BTreeMap<(NodeId, u64), GatewayCertificateConvergence>,
     cutovers: BTreeMap<DeploymentId, GatewayRouteCutover>,
     commands: BTreeMap<(NodeId, NodeCommandId), u64>,
     idempotency: BTreeMap<(String, String), (String, EdgeRoutePublicationResult)>,
@@ -448,6 +454,52 @@ impl IEdgeRepository for InMemoryEdgeRepository {
         Ok(result)
     }
 
+    async fn gateway_certificate_convergence_targets(
+        &self,
+        renew_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
+        let state = self.state.read().await;
+        certificate_convergence::targets(&state, renew_before, limit)
+    }
+
+    async fn pending_gateway_certificate_convergences(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateConvergenceResult>, RepositoryError> {
+        let state = self.state.read().await;
+        certificate_convergence::pending(&state, limit)
+    }
+
+    async fn stage_gateway_certificate_convergence(
+        &self,
+        bundle: StageGatewayCertificateConvergence,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+        let mut state = self.state.write().await;
+        certificate_convergence::stage(&mut state, bundle)
+    }
+
+    async fn find_gateway_certificate_convergence(
+        &self,
+        node_id: NodeId,
+        gateway_revision: u64,
+    ) -> Result<Option<GatewayCertificateConvergence>, RepositoryError> {
+        let state = self.state.read().await;
+        Ok(certificate_convergence::find(
+            &state,
+            node_id,
+            gateway_revision,
+        ))
+    }
+
+    async fn obsolete_gateway_certificates(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificate>, RepositoryError> {
+        let state = self.state.read().await;
+        certificate_convergence::obsolete(&state, limit)
+    }
+
     async fn find_gateway_route_cutover(
         &self,
         organization_id: OrganizationId,
@@ -594,20 +646,43 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             })
             .map(|certificate| certificate.id)
             .collect::<Vec<_>>();
-        if certificate_ids.len() != 1 {
+        let convergence_key = (node_id, revision);
+        let mut convergence = state
+            .certificate_convergences
+            .get(&convergence_key)
+            .cloned();
+        let expected_certificate_id = match &convergence {
+            Some(convergence) => convergence.replacement_certificate_id,
+            None if certificate_ids.len() == 1 => Some(certificate_ids[0]),
+            None => {
+                return Err(RepositoryError::Storage(
+                    "Gateway publication must have exactly one staged certificate".into(),
+                ))
+            }
+        };
+        if certificate_ids.len() != usize::from(expected_certificate_id.is_some())
+            || certificate_ids.first().copied() != expected_certificate_id
+        {
             return Err(RepositoryError::Storage(
-                "Gateway publication must have exactly one staged certificate".into(),
+                "Gateway publication has inconsistent staged certificate material".into(),
             ));
         }
-        let certificate_id = certificate_ids[0];
-        let mut certificate = state
-            .certificates
-            .get(&certificate_id)
-            .cloned()
-            .ok_or_else(|| RepositoryError::Storage("staged certificate disappeared".into()))?;
-        certificate
-            .apply_gateway_acknowledgement(&acknowledgement)
-            .map_err(RepositoryError::Conflict)?;
+        let mut certificate = expected_certificate_id
+            .map(|certificate_id| {
+                state
+                    .certificates
+                    .get(&certificate_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage("staged certificate disappeared".into())
+                    })
+            })
+            .transpose()?;
+        if let Some(certificate) = &mut certificate {
+            certificate
+                .apply_gateway_acknowledgement(&acknowledgement)
+                .map_err(RepositoryError::Conflict)?;
+        }
         let route_ids = state
             .routes
             .values()
@@ -627,12 +702,25 @@ impl IEdgeRepository for InMemoryEdgeRepository {
                     && cutover.gateway_command_id == command_id
             })
             .map(|cutover| cutover.deployment_id);
-        if route_ids.is_empty() == cutover_id.is_none() {
+        let publication_kinds = usize::from(!route_ids.is_empty())
+            + usize::from(cutover_id.is_some())
+            + usize::from(convergence.is_some());
+        if publication_kinds != 1 {
             return Err(RepositoryError::Storage(
                 "Gateway publication must select one route publication kind".into(),
             ));
         }
-        if let Some(cutover_id) = cutover_id {
+        if let Some(convergence) = &mut convergence {
+            convergence
+                .acknowledge(&acknowledgement)
+                .map_err(RepositoryError::Conflict)?;
+            if convergence.state == GatewayCertificateConvergenceState::Applied {
+                certificate_convergence::apply(&mut state, convergence, &acknowledgement)?;
+            }
+            state
+                .certificate_convergences
+                .insert(convergence_key, convergence.clone());
+        } else if let Some(cutover_id) = cutover_id {
             let mut cutover = state
                 .cutovers
                 .get(&cutover_id)
@@ -650,17 +738,50 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             state.cutovers.insert(cutover_id, cutover);
         } else {
             for route_id in route_ids {
-                state
-                    .routes
-                    .get_mut(&route_id)
-                    .ok_or_else(|| RepositoryError::Storage("staged route disappeared".into()))?
-                    .apply_gateway_acknowledgement(&acknowledgement)
-                    .map_err(RepositoryError::Conflict)?;
+                let ownership = {
+                    let route = state.routes.get_mut(&route_id).ok_or_else(|| {
+                        RepositoryError::Storage("staged route disappeared".into())
+                    })?;
+                    route
+                        .apply_gateway_acknowledgement(&acknowledgement)
+                        .map_err(RepositoryError::Conflict)?;
+                    (route.state == RouteState::Rejected).then(|| {
+                        (
+                            route.gateway_node_id,
+                            route.hostname.as_str().to_owned(),
+                            route.path_prefix.as_str().to_owned(),
+                        )
+                    })
+                };
+                if let Some(ownership) = ownership {
+                    state.ownership.remove(&ownership);
+                }
             }
         }
-        state.certificates.insert(certificate_id, certificate);
+        if let Some(certificate) = certificate {
+            state.certificates.insert(certificate.id, certificate);
+        }
         state.publications.insert((node_id, revision), publication);
         if acknowledgement.state == GatewayAckState::Applied {
+            if let Some(certificate_id) = expected_certificate_id {
+                certificate_convergence::bind_active_routes(
+                    &mut state,
+                    node_id,
+                    revision,
+                    command_id,
+                    &acknowledgement.snapshot_digest,
+                    certificate_id,
+                    acknowledgement.acknowledged_at,
+                )?;
+            } else if state
+                .routes
+                .values()
+                .any(|route| route.gateway_node_id == node_id && route.state == RouteState::Active)
+            {
+                return Err(RepositoryError::Storage(
+                    "certificate-free Gateway snapshot retained active routes".into(),
+                ));
+            }
             let scope = state.scopes.get_mut(&node_id).ok_or_else(|| {
                 RepositoryError::Storage("Gateway scope disappeared during acknowledgement".into())
             })?;

@@ -90,6 +90,7 @@ edge {
   certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
+  certificate_reconciliation_interval_ms = 60000
   upstream_request_timeout_ms = 30000
   command_ttl_ms = 180000
 }

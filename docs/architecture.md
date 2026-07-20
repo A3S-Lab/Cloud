@@ -4,8 +4,9 @@
 
 R0 through D0 are implemented and verified. E0 now has durable Edge route
 ownership, exact and wildcard domain claims, managed Gateway certificate
-provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
-acknowledgement projection. It also has tenant-scoped Secret identities,
+provisioning, HTTPS-only snapshot compilation, Fleet dispatch, exact
+acknowledgement projection, and injected-time renewal/revocation convergence
+with delayed provider-serial revocation. It also has tenant-scoped Secret identities,
 immutable encrypted versions, rotation and version revocation APIs, and
 metadata-only events and idempotency records, typed workload bindings, and late
 Docker environment/file injection plus authenticated registry pulls. Committed
@@ -57,10 +58,9 @@ operation cleanup. Production now performs bounded DNS TXT ownership
 verification through the host resolver. Later E0 sections remain the accepted
 design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
 a separate Linux node agent, and a React web application. The first release
-still requires renewal/revocation convergence, the remaining Gateway
-acknowledgement process-death gate, provider death during a Secret-rotation
-apply, and clean-host gates before multi-node scheduling or hosted assets
-begin.
+still requires the remaining Gateway acknowledgement process-death gate,
+provider death during a Secret-rotation apply, and clean-host gates before
+multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -556,7 +556,10 @@ swap against the previous installed revision. Fleet persists a Gateway
 acknowledgement before projecting it into Edge. Only an `applied`
 acknowledgement matching the exact node, command, revision, and digest moves a
 route from `publishing` to `active`; rejection is terminal and replay is
-idempotent.
+idempotent. Rejected direct publications and revoked-claim convergence release
+their hostname/path ownership only after they are no longer reachable, so a
+later verified claim can publish the same tuple without weakening uniqueness
+for `publishing` or `active` routes.
 
 Routed workload updates use a separate `GatewayRouteCutover` record because the
 candidate is healthy but is not yet the active workload revision. Staging
@@ -605,12 +608,36 @@ provider failures, and bounds each successful Vault response to 2 MiB.
 Transport, timeout, HTTP 429, and server failures leave the certificate
 `provisioning` so the node can retry its same persisted CSR; invalid or
 policy-rejected responses remain terminal.
+
+The worker/all process roles run `GatewayCertificateReconciler` with
+`run_once(now)` as the injected-time seam. Each cycle first redispatches durable
+pending publications, then scans installed scopes at
+`now + certificate_renewal_window_ms`. Renewal, provider-certificate
+revocation, revoked domain ownership, and projection drift stage a separate
+`GatewayCertificateConvergence` record with deterministic node/revision
+command and certificate identities. Staging does not mutate active route rows.
+A matching rejected acknowledgement preserves the previous installed
+certificate and routes. A matching applied acknowledgement atomically binds
+every retained route to the replacement certificate, rejects revoked-claim
+routes, and advances the installed scope revision. When no verified routes
+remain, the complete management-only snapshot intentionally carries no
+certificate request.
+
+Provider revocation is a later retryable phase. A ready certificate is selected
+only after a newer revision is installed and no active route references it.
+The provider serial is revoked first, then the public certificate projection is
+marked `revoked`; provider or projection failure leaves the certificate
+eligible for another idempotent attempt. The REST command
+`POST /api/v1/organizations/{organization_id}/domain-claims/{claim_id}/revoke`
+is idempotent under `route:write`, emits `edge.domain-claim.revoked`, and never
+removes reachability before the exact route-less or filtered snapshot
+acknowledgement.
+
 Production configuration requires Vault for node PKI, Gateway PKI, and Transit
 and fails startup closed without valid credentials or provider names. A
 dedicated Ubuntu CI job installs A3S Gateway 1.0.12 and proves the
 node-generated key, managed chain, exact reload, trusted DNS/SNI HTTPS request,
-and durable revision against a loopback upstream. Automated renewal and
-revocation-driven route convergence remain E0 work.
+and durable revision against a loopback upstream.
 
 ## 9. Source, build, and asset hosting
 

@@ -1,5 +1,7 @@
 mod in_memory;
 mod postgres;
+mod postgres_acknowledgement;
+mod postgres_certificate_convergence;
 mod postgres_cutovers;
 mod postgres_tls;
 

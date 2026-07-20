@@ -6,10 +6,11 @@ use crate::modules::edge::domain::services::{
 use crate::modules::edge::{
     CreateDomainClaimHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
     EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler,
-    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
-    PublishRouteHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    GatewayCertificateReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, PostgresEdgeRepository, PublishRouteHandler,
+    RevokeDomainClaimHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
     WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
@@ -178,6 +179,17 @@ pub async fn build_application(
         certificate_directory: config.edge.certificate_directory.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
+    let gateway_certificate_reconciler = GatewayCertificateReconciler::new(
+        Arc::clone(&routes),
+        Arc::clone(&route_commands),
+        Arc::clone(&gateway_certificate_authority),
+        deployment_route_compiler.clone(),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
         EdgeDeploymentRouteUpdater::new(
             Arc::clone(&routes),
@@ -364,6 +376,7 @@ pub async fn build_application(
         application,
         ControlPlaneWorkers::new(
             run_operations.then_some(operation_coordinator),
+            run_operations.then_some(gateway_certificate_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
             run_operations.then_some(workload_reconciler),
             run_operations.then_some(log_retention_worker),
@@ -460,6 +473,7 @@ fn build_application_with_health(
     let gateway_commands = node_control;
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
+    let revoke_domain_claims = Arc::clone(&routes);
     let publish_routes = Arc::clone(&routes);
     let list_domain_claims = Arc::clone(&routes);
     let get_domain_claims = Arc::clone(&routes);
@@ -585,6 +599,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::edge::VerifyDomainClaim, _>(
                     VerifyDomainClaimHandler::new(verify_domain_claims, domain_verifier),
+                )
+                .command_handler::<crate::modules::edge::RevokeDomainClaim, _>(
+                    RevokeDomainClaimHandler::new(revoke_domain_claims),
                 )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
