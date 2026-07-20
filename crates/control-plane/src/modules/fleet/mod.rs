@@ -19,5 +19,6 @@ pub use infrastructure::{
     LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore,
     PostgresNodeRepository, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
+pub(crate) use infrastructure::{S3LogChunkStore, S3LogChunkStoreOptions};
 pub(crate) use presentation::NodeControlApi;
 pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};

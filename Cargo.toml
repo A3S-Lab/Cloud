@@ -42,6 +42,7 @@ hyper = { version = "1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio"] }
 http-body-util = "0.1"
 libc = "0.2"
+object_store = { version = "=0.12.4", default-features = false, features = ["aws"] }
 rcgen = { version = "0.13.2", features = ["x509-parser"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }

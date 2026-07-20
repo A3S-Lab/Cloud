@@ -112,6 +112,79 @@ jobs:
               gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
               -- --ignored --exact --nocapture --test-threads=1
 
+  s3-compatible-logs:
+    name: S3-compatible logs
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install Rust 1.85.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+
+      - name: Start pinned MinIO
+        run: |
+          docker run --detach --rm \
+            --name a3s-cloud-minio \
+            --publish 127.0.0.1:9000:9000 \
+            --env MINIO_ROOT_USER=a3s-cloud-test \
+            --env MINIO_ROOT_PASSWORD=a3s-cloud-test-secret \
+            quay.io/minio/minio@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
+            server /data --address :9000
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs a3s-cloud-minio
+          exit 1
+
+      - name: Create disposable log bucket
+        run: |
+          docker run --rm --network host \
+            --env MC_HOST_local=http://a3s-cloud-test:a3s-cloud-test-secret@127.0.0.1:9000 \
+            quay.io/minio/mc@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3 \
+            mb --ignore-existing local/a3s-cloud-ci
+
+      - name: Exercise immutable S3 log lifecycle
+        env:
+          A3S_CLOUD_TEST_S3_ACCESS_KEY_ID: a3s-cloud-test
+          A3S_CLOUD_TEST_S3_BUCKET: a3s-cloud-ci
+          A3S_CLOUD_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          A3S_CLOUD_TEST_S3_REGION: us-east-1
+          A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY: a3s-cloud-test-secret
+        run: |
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::fleet::infrastructure::s3_log_chunk_store::tests::real_s3_compatible_store_preserves_immutable_log_semantics \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Stop MinIO
+        if: always()
+        run: docker rm --force a3s-cloud-minio || true
+
   repository-policy:
     name: Repository policy
     runs-on: ubuntu-24.04
