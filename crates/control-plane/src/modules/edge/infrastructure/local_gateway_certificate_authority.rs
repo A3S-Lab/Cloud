@@ -180,36 +180,6 @@ impl IGatewayCertificateAuthority for LocalGatewayCertificateAuthority {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct UnavailableGatewayCertificateAuthority;
-
-#[async_trait]
-impl IGatewayCertificateAuthority for UnavailableGatewayCertificateAuthority {
-    async fn issue(
-        &self,
-        _request: GatewayCertificateIssueRequest,
-    ) -> Result<GatewayCertificateMaterial, GatewayCertificateAuthorityError> {
-        Err(unavailable_provider())
-    }
-
-    async fn revoke(
-        &self,
-        _certificate: &GatewayCertificate,
-    ) -> Result<(), GatewayCertificateAuthorityError> {
-        Err(unavailable_provider())
-    }
-
-    async fn health(&self) -> Result<bool, GatewayCertificateAuthorityError> {
-        Err(unavailable_provider())
-    }
-}
-
-fn unavailable_provider() -> GatewayCertificateAuthorityError {
-    GatewayCertificateAuthorityError::Unavailable(
-        "a production Gateway certificate provider is not configured".into(),
-    )
-}
-
 fn create_ca_material(root: &Path) -> Result<(String, KeyPair), GatewayCertificateAuthorityError> {
     let private_key = KeyPair::generate().map_err(|error| {
         GatewayCertificateAuthorityError::Unavailable(format!(
@@ -415,17 +385,5 @@ mod tests {
         let reopened =
             LocalGatewayCertificateAuthority::load_or_create(directory.path()).expect("reopen CA");
         assert_eq!(reopened.certificate_pem, material.ca_bundle_pem);
-    }
-
-    #[tokio::test]
-    async fn production_provider_fails_closed() {
-        let error = UnavailableGatewayCertificateAuthority
-            .health()
-            .await
-            .expect_err("production provider must be unavailable");
-        assert!(matches!(
-            error,
-            GatewayCertificateAuthorityError::Unavailable(_)
-        ));
     }
 }

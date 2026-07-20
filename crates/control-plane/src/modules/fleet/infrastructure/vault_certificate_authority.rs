@@ -1,4 +1,4 @@
-use super::vault_client::{VaultClient, VaultClientError};
+use crate::infrastructure::{VaultClient, VaultClientError};
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{
     CertificateAuthorityError, ICertificateAuthority, NodeCertificateRequest,

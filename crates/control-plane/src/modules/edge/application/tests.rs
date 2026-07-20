@@ -30,7 +30,7 @@ use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateSigningRequest, Nod
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use sha2::Digest;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -105,7 +105,7 @@ struct RecordingGatewayQueue {
 
 struct RecordingGatewayCertificateAuthority {
     calls: AtomicUsize,
-    unavailable: bool,
+    unavailable: AtomicBool,
 }
 
 #[async_trait]
@@ -115,7 +115,7 @@ impl IGatewayCertificateAuthority for RecordingGatewayCertificateAuthority {
         request: GatewayCertificateIssueRequest,
     ) -> Result<GatewayCertificateMaterial, GatewayCertificateAuthorityError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        if self.unavailable {
+        if self.unavailable.load(Ordering::SeqCst) {
             return Err(GatewayCertificateAuthorityError::Unavailable(
                 "test provider unavailable".into(),
             ));
@@ -143,7 +143,7 @@ impl IGatewayCertificateAuthority for RecordingGatewayCertificateAuthority {
     }
 
     async fn health(&self) -> Result<bool, GatewayCertificateAuthorityError> {
-        Ok(!self.unavailable)
+        Ok(!self.unavailable.load(Ordering::SeqCst))
     }
 }
 
@@ -658,7 +658,7 @@ async fn signs_each_gateway_certificate_once_for_the_authenticated_node_and_csr(
     .await;
     let authority = Arc::new(RecordingGatewayCertificateAuthority {
         calls: AtomicUsize::new(0),
-        unavailable: false,
+        unavailable: AtomicBool::new(false),
     });
     let repository: Arc<dyn IEdgeRepository> = routes.clone();
     let certificate_authority: Arc<dyn IGatewayCertificateAuthority> = authority.clone();
@@ -723,7 +723,7 @@ async fn signs_each_gateway_certificate_once_for_the_authenticated_node_and_csr(
 }
 
 #[tokio::test]
-async fn records_gateway_certificate_authority_failure_without_provider_details() {
+async fn keeps_unavailable_gateway_certificate_authority_retryable_without_provider_details() {
     let routes = Arc::new(InMemoryEdgeRepository::new());
     let node_id = NodeId::new();
     let now = Utc::now();
@@ -736,30 +736,28 @@ async fn records_gateway_certificate_authority_failure_without_provider_details(
     )
     .await;
     let repository: Arc<dyn IEdgeRepository> = routes.clone();
-    let handler = SignGatewayCertificateHandler::new(
-        repository,
-        Arc::new(RecordingGatewayCertificateAuthority {
-            calls: AtomicUsize::new(0),
-            unavailable: true,
-        }),
-        Duration::days(30),
-    )
-    .expect("signing handler");
+    let authority = Arc::new(RecordingGatewayCertificateAuthority {
+        calls: AtomicUsize::new(0),
+        unavailable: AtomicBool::new(true),
+    });
+    let handler =
+        SignGatewayCertificateHandler::new(repository, authority.clone(), Duration::days(30))
+            .expect("signing handler");
+    let command = SignGatewayCertificate {
+        authenticated_node_id: node_id,
+        request: GatewayCertificateSigningRequest {
+            schema: GatewayCertificateSigningRequest::SCHEMA.into(),
+            certificate_id: staged.certificate.id.as_uuid(),
+            node_id: node_id.as_uuid(),
+            csr_pem:
+                "-----BEGIN CERTIFICATE REQUEST-----\nZmFpbA==\n-----END CERTIFICATE REQUEST-----\n"
+                    .into(),
+            requested_at: now + Duration::milliseconds(1),
+        },
+        received_at: now + Duration::seconds(1),
+    };
     let result = handler
-        .execute(
-            SignGatewayCertificate {
-                authenticated_node_id: node_id,
-                request: GatewayCertificateSigningRequest {
-                    schema: GatewayCertificateSigningRequest::SCHEMA.into(),
-                    certificate_id: staged.certificate.id.as_uuid(),
-                    node_id: node_id.as_uuid(),
-                    csr_pem: "-----BEGIN CERTIFICATE REQUEST-----\nZmFpbA==\n-----END CERTIFICATE REQUEST-----\n".into(),
-                    requested_at: now + Duration::milliseconds(1),
-                },
-                received_at: now + Duration::seconds(1),
-            },
-            context(),
-        )
+        .execute(command.clone(), context())
         .await
         .expect("command bus")
         .expect_err("unavailable authority");
@@ -770,18 +768,23 @@ async fn records_gateway_certificate_authority_failure_without_provider_details(
     let stored = routes
         .find_gateway_certificate(node_id, staged.certificate.id)
         .await
-        .expect("failed certificate");
+        .expect("pending certificate");
     assert_eq!(
         stored.state,
-        crate::modules::edge::domain::GatewayCertificateState::Failed
+        crate::modules::edge::domain::GatewayCertificateState::Provisioning
     );
+    assert_eq!(stored.failure, None);
     assert_eq!(
-        stored.failure.as_deref(),
-        Some("Gateway certificate authority was unavailable")
+        stored.aggregate_version,
+        staged.certificate.aggregate_version
     );
-    assert!(!stored
-        .failure
-        .as_deref()
-        .unwrap_or_default()
-        .contains("test provider"));
+
+    authority.unavailable.store(false, Ordering::SeqCst);
+    let issued = handler
+        .execute(command, context())
+        .await
+        .expect("command bus")
+        .expect("retry Gateway certificate signing");
+    assert_eq!(issued.serial_number, staged.certificate.id.to_string());
+    assert_eq!(authority.calls.load(Ordering::SeqCst), 2);
 }

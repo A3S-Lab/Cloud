@@ -1,5 +1,6 @@
 mod flow;
 mod postgres;
+mod vault_client;
 
 pub use flow::{
     connect_flow, FlowCoordinatorError, FlowCoordinatorReport, FlowInfrastructure,
@@ -12,3 +13,4 @@ pub(crate) use postgres::{
     is_unique_violation, lock_idempotency_key, require_one_row, store_idempotency, store_outbox,
     transaction_error, PostgresPersistenceError,
 };
+pub(crate) use vault_client::{VaultClient, VaultClientError};

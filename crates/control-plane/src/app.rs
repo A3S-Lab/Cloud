@@ -9,7 +9,7 @@ use crate::modules::edge::{
     GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler,
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListRoutesHandler,
     LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
-    PublishRouteHandler, UnavailableGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    PublishRouteHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
     WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
@@ -121,8 +121,11 @@ pub async fn build_application(
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
-    let (certificate_authority, key_encryption) = security_providers(&config)?;
-    let gateway_certificate_authority = gateway_certificate_authority(&config)?;
+    let vault_credentials = config.vault_credentials()?;
+    let (certificate_authority, key_encryption) =
+        security_providers(&config, vault_credentials.as_ref())?;
+    let gateway_certificate_authority =
+        gateway_certificate_authority(&config, vault_credentials.as_ref())?;
     let log_chunks = log_chunk_store(&config)?;
     let bootstrap_credential = BootstrapCredential::new(&config.bootstrap_token()?)
         .map_err(ControlPlaneStartupError::Auth)?;
@@ -842,8 +845,8 @@ type SecurityProviders = (
 
 fn security_providers(
     config: &CloudConfig,
+    credentials: Option<&(String, String)>,
 ) -> std::result::Result<SecurityProviders, ControlPlaneStartupError> {
-    let credentials = config.vault_credentials()?;
     let timeout = Duration::from_millis(config.security.vault_timeout_ms);
     let certificate_authority: Arc<dyn ICertificateAuthority> =
         match config.security.certificate_authority {
@@ -865,7 +868,7 @@ fn security_providers(
                 Arc::new(authority)
             }
             SecurityProviderKind::Vault => {
-                let (address, token) = credentials.as_ref().ok_or_else(|| {
+                let (address, token) = credentials.ok_or_else(|| {
                     ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
                 })?;
                 Arc::new(
@@ -888,7 +891,7 @@ fn security_providers(
             .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
         ),
         SecurityProviderKind::Vault => {
-            let (address, token) = credentials.as_ref().ok_or_else(|| {
+            let (address, token) = credentials.ok_or_else(|| {
                 ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
             })?;
             Arc::new(
@@ -908,15 +911,30 @@ fn security_providers(
 
 fn gateway_certificate_authority(
     config: &CloudConfig,
+    credentials: Option<&(String, String)>,
 ) -> std::result::Result<Arc<dyn IGatewayCertificateAuthority>, ControlPlaneStartupError> {
-    match config.security.profile {
-        SecurityProfile::Development => Ok(Arc::new(
+    match config.security.gateway_certificate_authority {
+        SecurityProviderKind::Local => Ok(Arc::new(
             LocalGatewayCertificateAuthority::load_or_create(
                 std::path::Path::new(&config.security.state_dir).join("gateway-ca"),
             )
-            .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+            .map_err(|error| ControlPlaneStartupError::Edge(error.to_string()))?,
         )),
-        SecurityProfile::Production => Ok(Arc::new(UnavailableGatewayCertificateAuthority)),
+        SecurityProviderKind::Vault => {
+            let (address, token) = credentials.ok_or_else(|| {
+                ControlPlaneStartupError::Edge("Vault credentials were not resolved".into())
+            })?;
+            Ok(Arc::new(
+                VaultGatewayCertificateAuthority::new(
+                    address,
+                    token,
+                    config.security.vault_gateway_pki_mount.clone(),
+                    config.security.vault_gateway_pki_role.clone(),
+                    Duration::from_millis(config.security.vault_timeout_ms),
+                )
+                .map_err(|error| ControlPlaneStartupError::Edge(error.to_string()))?,
+            ))
+        }
     }
 }
 

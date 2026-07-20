@@ -6,7 +6,6 @@ use a3s_cloud_contracts::{
 use chrono::{DateTime, Utc};
 use rcgen::{
     CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, KeyPair, SanType,
-    SerialNumber,
 };
 use rustls::client::danger::ServerCertVerifier;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
@@ -396,33 +395,12 @@ fn verify_certificate(
             "Gateway certificate is invalid: {error}"
         ))
     })?;
-    let expected_sans = request
-        .dns_names
-        .iter()
-        .map(|dns_name| {
-            dns_name
-                .as_str()
-                .try_into()
-                .map(SanType::DnsName)
-                .map_err(|error| {
-                    GatewayCertificateProvisioningError::Invalid(format!(
-                        "Gateway certificate DNS name is invalid: {error}"
-                    ))
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let expected_serial = SerialNumber::from_slice(request.certificate_id.as_bytes()).to_string();
-    if params.subject_alt_names != expected_sans
+    if !matches!(params.is_ca, rcgen::IsCa::NoCa | rcgen::IsCa::ExplicitNoCa)
+        || !has_exact_dns_names(&params.subject_alt_names, &request.dns_names)
         || params.extended_key_usages != vec![ExtendedKeyUsagePurpose::ServerAuth]
-        || params
-            .serial_number
-            .as_ref()
-            .map(ToString::to_string)
-            .as_deref()
-            != Some(expected_serial.as_str())
     {
         return Err(GatewayCertificateProvisioningError::Invalid(
-            "Gateway certificate SAN, usage, or serial identity is invalid".into(),
+            "Gateway certificate SAN or usage identity is invalid".into(),
         ));
     }
     if let (Some(issued_at), Some(expires_at)) = (issued_at, expires_at) {
@@ -439,6 +417,25 @@ fn verify_certificate(
         private_key_pem,
     )?;
     verify_chain_and_dns(request, leaf, authority, issued_at)
+}
+
+fn has_exact_dns_names(subject_alt_names: &[SanType], expected: &[String]) -> bool {
+    if subject_alt_names.len() != expected.len() {
+        return false;
+    }
+    let mut actual = Vec::with_capacity(subject_alt_names.len());
+    for subject_alt_name in subject_alt_names {
+        let SanType::DnsName(dns_name) = subject_alt_name else {
+            return false;
+        };
+        actual.push(dns_name.as_str());
+    }
+    actual.sort_unstable();
+    actual
+        .iter()
+        .copied()
+        .zip(expected.iter().map(String::as_str))
+        .all(|(actual, expected)| actual == expected)
 }
 
 fn verify_private_key(
@@ -645,6 +642,7 @@ mod tests {
     use chrono::TimeZone;
     use rcgen::{
         BasicConstraints, Certificate, CertificateSigningRequestParams, IsCa, KeyUsagePurpose,
+        SerialNumber,
     };
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -707,7 +705,7 @@ mod tests {
             }
             let mut csr = CertificateSigningRequestParams::from_pem(&request.csr_pem)
                 .map_err(|error| NodeControlClientError::Invalid(error.to_string()))?;
-            let serial = SerialNumber::from_slice(request.certificate_id.as_bytes());
+            let serial = SerialNumber::from_slice(b"provider-serial");
             csr.params.serial_number = Some(serial.clone());
             csr.params.is_ca = IsCa::NoCa;
             csr.params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
@@ -715,6 +713,7 @@ mod tests {
             csr.params.subject_alt_names = self
                 .dns_names
                 .iter()
+                .rev()
                 .map(|dns_name| {
                     dns_name
                         .as_str()

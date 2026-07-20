@@ -95,7 +95,7 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. The production Gateway CA, renewal/revocation convergence, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. Renewal/revocation convergence, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain |
 
 The MVP is not complete until E0 passes. D0 verification alone does not imply
 public reachability, production log retention, immutable update, or rollback
@@ -321,8 +321,14 @@ Complete the first user-visible release loop.
   verification through the host's asynchronous system DNS resolver, fails
   startup closed without resolver configuration, sanitizes provider failures,
   and leaves absent or stale proofs pending and retryable.
-- Add the production Gateway certificate authority adapter, then automate
-  renewal and revocation-driven route convergence under an injected clock.
+- Implemented: production selects a dedicated Vault Gateway PKI provider,
+  mount, and role, sends only the node-generated CSR and desired server
+  identity, validates the returned leaf/serial/validity/CA bundle, and revokes
+  by the provider serial through the bounded shared Vault client. Temporary
+  transport, rate-limit, and server failures leave the same persisted CSR
+  retryable.
+- Automate renewal and revocation-driven route convergence under an injected
+  clock.
 - Implemented: tenant-scoped Secret identities, immutable encrypted versions,
   local AES-GCM and Vault Transit providers, create/rotate/version-revoke REST
   commands, metadata-only queries and events, and idempotency records that
@@ -970,10 +976,15 @@ The remaining changes should land as vertical, independently verified slices:
    rejects incorrect caller proofs before lookup, keeps absent or stale DNS
    evidence pending without consuming the idempotency key, and sanitizes
    resolver failures.
-5. The production Gateway CA, certificate renewal/revocation convergence,
-   provider death during a Secret-rotation apply, crash gates for Gateway reload
-   before acknowledgement and activation before old-revision cleanup, followed
-   by the clean-host end-to-end release run.
+5. Implemented on 2026-07-20: production requires a distinct Vault Gateway PKI
+   provider/mount/role, signs only node-generated CSRs, validates the exact
+   server identity and provider-owned certificate metadata before persistence,
+   revokes by the real serial, sanitizes provider failures, and keeps temporary
+   provider outages retryable.
+6. Certificate renewal/revocation convergence, provider death during a
+   Secret-rotation apply, crash gates for Gateway reload before acknowledgement
+   and activation before old-revision cleanup, followed by the clean-host
+   end-to-end release run.
 
 No post-E0 product surface is marked available before this list passes. Contract
 design and isolated prototypes may proceed, but they cannot create production

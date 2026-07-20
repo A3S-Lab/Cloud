@@ -57,10 +57,10 @@ operation cleanup. Production now performs bounded DNS TXT ownership
 verification through the host resolver. Later E0 sections remain the accepted
 design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
 a separate Linux node agent, and a React web application. The first release
-still requires a production Gateway CA, renewal/revocation convergence, the
-remaining Gateway acknowledgement process-death gate, provider death during a
-Secret-rotation apply, and clean-host gates before multi-node scheduling or
-hosted assets begin.
+still requires renewal/revocation convergence, the remaining Gateway
+acknowledgement process-death gate, provider death during a Secret-rotation
+apply, and clean-host gates before multi-node scheduling or hosted assets
+begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -593,11 +593,23 @@ Gateway validation and reload.
 Gateway certificates move from `provisioning` to `issued`, then become `ready`
 only after the exact applied Gateway acknowledgement; provisioning may fail and
 a ready certificate may be revoked. The development Gateway CA is separate from
-the Fleet/node CA and overrides CSR SANs with the desired set. Production
-issuance fails closed until its certificate provider exists. A dedicated Ubuntu
-CI job installs A3S Gateway 1.0.12 and proves the node-generated key, managed
-chain, exact reload, trusted DNS/SNI HTTPS request, and durable revision against
-a loopback upstream. The production Gateway CA, automated renewal, and
+the Fleet/node CA and overrides CSR SANs with the desired set. Production uses
+an independently selected Vault Gateway PKI provider, mount, and role over the
+same bounded HTTPS/token client used by node PKI and Transit. The request sends
+only the CSR, requested DNS set, and lifetime; Vault returns the public leaf, CA
+bundle, and provider serial. The private key remains on the node. The adapter
+accepts only one non-CA ServerAuth leaf with the exact requested DNS set, a
+matching provider serial, bounded actual validity, and a CA-only bundle. It
+records actual certificate validity, revokes by that provider serial, sanitizes
+provider failures, and bounds each successful Vault response to 2 MiB.
+Transport, timeout, HTTP 429, and server failures leave the certificate
+`provisioning` so the node can retry its same persisted CSR; invalid or
+policy-rejected responses remain terminal.
+Production configuration requires Vault for node PKI, Gateway PKI, and Transit
+and fails startup closed without valid credentials or provider names. A
+dedicated Ubuntu CI job installs A3S Gateway 1.0.12 and proves the
+node-generated key, managed chain, exact reload, trusted DNS/SNI HTTPS request,
+and durable revision against a loopback upstream. Automated renewal and
 revocation-driven route convergence remain E0 work.
 
 ## 9. Source, build, and asset hosting
@@ -795,7 +807,7 @@ provided by the middleware below rather than reimplemented in A3S Cloud.
 | Workload persistent volumes | Node-local, single-writer volume provider | Ceph RBD or another fenced attach/detach provider | Required for stateful services; multi-node failover is forbidden without fencing evidence |
 | Secret key encryption | Development-only local key provider | OpenBao/Vault Transit or a cloud KMS/HSM-backed key provider | A production profile may not keep the master key as a plain environment variable |
 | Node certificate authority | Development intermediate CA | OpenBao/Vault PKI, step-ca, or an HSM/KMS-backed intermediate | Required from node enrollment; root material stays outside the control-plane database |
-| Gateway certificate authority | Separate development Gateway CA | ACME or an external PKI/KMS-backed issuer | Node private keys never enter the control plane; production issuance fails closed until configured |
+| Gateway certificate authority | Separate development Gateway CA | Dedicated Vault PKI mount and server-only role | Node private keys never enter the control plane; production validates the returned SANs, usage, serial, validity, and CA bundle before persistence |
 | Metrics and traces | Structured logs plus local OpenTelemetry export | OpenTelemetry Collector, Prometheus-compatible metrics storage, and Tempo/Jaeger when trace retention is enabled | Required before production support; backends remain replaceable |
 | Durable log search | PostgreSQL metadata plus S3 chunk objects | Loki or ClickHouse only when cross-node ad-hoc search/retention measurements justify it | Do not put high-volume log bodies in PostgreSQL |
 | Cache and distributed rate limits | Bounded in-process cache | Redis only when multiple API replicas need shared ephemeral counters/cache | Optional; never an authority for deployments, sessions, or operations |

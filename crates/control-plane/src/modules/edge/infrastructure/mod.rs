@@ -6,13 +6,13 @@ mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 pub mod persistence;
 mod route_target_reader;
+mod vault_gateway_certificate_authority;
 
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
 pub use gateway_acknowledgement_projector::EdgeGatewayAcknowledgementProjector;
 pub use gateway_command_queue::FleetGatewayCommandQueue;
 pub use gateway_snapshot_compiler::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig};
-pub use local_gateway_certificate_authority::{
-    LocalGatewayCertificateAuthority, UnavailableGatewayCertificateAuthority,
-};
+pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use route_target_reader::WorkloadRouteTargetReader;
+pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;

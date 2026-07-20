@@ -11,7 +11,6 @@ mod s3_log_chunk_store;
 #[cfg(test)]
 mod security_provider_tests;
 mod vault_certificate_authority;
-mod vault_client;
 mod vault_key_encryption;
 
 pub use local_certificate_authority::LocalCertificateAuthority;

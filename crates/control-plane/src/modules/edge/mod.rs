@@ -31,6 +31,6 @@ pub use infrastructure::{
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
     FleetGatewayCommandQueue, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    UnavailableGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;
