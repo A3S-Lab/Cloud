@@ -397,9 +397,11 @@ fn sanitize_message(message: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread::{self, JoinHandle};
 
     #[derive(Default)]
     struct FakeGatewayControl {
@@ -530,8 +532,10 @@ mod tests {
         };
         let directory = tempfile::tempdir().expect("real Gateway test directory");
         let (traffic_port, management_port) = unused_ports();
+        let first_backend = HttpFixture::start("revision-one");
+        let second_backend = HttpFixture::start("revision-two");
         let token = "a3s-cloud-gateway-integration-token";
-        let bootstrap = gateway_acl(traffic_port, management_port, 0);
+        let bootstrap = gateway_acl(traffic_port, management_port, 0, None);
         let config_path = directory.path().join("gateway.acl");
         std::fs::write(&config_path, &bootstrap).expect("write Gateway bootstrap config");
         let mut gateway = Command::new(binary)
@@ -557,16 +561,29 @@ mod tests {
                 directory.path().join("installed.json"),
                 control,
             );
-            let first =
-                GatewaySnapshot::new(1, None, gateway_acl(traffic_port, management_port, 1))?;
+            let first = GatewaySnapshot::new(
+                1,
+                None,
+                gateway_acl(traffic_port, management_port, 1, Some(first_backend.port())),
+            )?;
             if installer.install(&first).await? != GatewaySnapshotInstallOutcome::Applied {
                 return Err("real Gateway did not apply the first snapshot".into());
             }
-            let second =
-                GatewaySnapshot::new(2, Some(1), gateway_acl(traffic_port, management_port, 2))?;
+            wait_for_routed_body(traffic_port, "revision-one").await?;
+            let second = GatewaySnapshot::new(
+                2,
+                Some(1),
+                gateway_acl(
+                    traffic_port,
+                    management_port,
+                    2,
+                    Some(second_backend.port()),
+                ),
+            )?;
             if installer.install(&second).await? != GatewaySnapshotInstallOutcome::Applied {
                 return Err("real Gateway did not apply the second snapshot".into());
             }
+            wait_for_routed_body(traffic_port, "revision-two").await?;
             let invalid = GatewaySnapshot::new(3, Some(2), invalid_gateway_acl(management_port))?;
             if !matches!(
                 installer.install(&invalid).await?,
@@ -574,6 +591,7 @@ mod tests {
             ) {
                 return Err("real Gateway accepted invalid ACL".into());
             }
+            wait_for_routed_body(traffic_port, "revision-two").await?;
             let installed = installer
                 .read_installed()
                 .await?
@@ -600,10 +618,35 @@ mod tests {
         ports
     }
 
-    fn gateway_acl(traffic_port: u16, management_port: u16, revision: u64) -> String {
+    fn gateway_acl(
+        traffic_port: u16,
+        management_port: u16,
+        revision: u64,
+        backend_port: Option<u16>,
+    ) -> String {
+        let route = backend_port.map_or_else(String::new, |backend_port| {
+            format!(
+                r#"
+routers "route-cloud" {{
+  rule = "Host(`api.example.com`) && PathPrefix(`/v1`)"
+  service = "route-cloud"
+  entrypoints = ["a3s-cloud-http"]
+}}
+
+services "route-cloud" {{
+  load_balancer {{
+    strategy = "round-robin"
+    request_timeout = "30s"
+    servers = [{{ url = "http://127.0.0.1:{backend_port}/" }}]
+  }}
+}}
+"#
+            )
+        });
         format!(
             r#"# revision {revision}
-entrypoints "web" {{ address = "127.0.0.1:{traffic_port}" }}
+entrypoints "a3s-cloud-http" {{ address = "127.0.0.1:{traffic_port}" }}
+{route}
 
 management {{
   enabled = true
@@ -614,6 +657,86 @@ management {{
 }}
 "#
         )
+    }
+
+    async fn wait_for_routed_body(
+        traffic_port: u16,
+        expected: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+        for _ in 0..100 {
+            if let Ok(response) = client
+                .get(format!("http://127.0.0.1:{traffic_port}/v1/health"))
+                .header(reqwest::header::HOST, "api.example.com")
+                .send()
+                .await
+            {
+                if response.status().is_success()
+                    && response.text().await.is_ok_and(|body| body == expected)
+                {
+                    return Ok(());
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        Err(format!("A3S Gateway did not route to expected backend {expected:?}").into())
+    }
+
+    struct HttpFixture {
+        port: u16,
+        stop: Arc<AtomicBool>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl HttpFixture {
+        fn start(body: &'static str) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind HTTP fixture");
+            listener
+                .set_nonblocking(true)
+                .expect("make HTTP fixture nonblocking");
+            let port = listener.local_addr().expect("HTTP fixture address").port();
+            let stop = Arc::new(AtomicBool::new(false));
+            let thread_stop = stop.clone();
+            let thread = thread::spawn(move || {
+                while !thread_stop.load(Ordering::SeqCst) {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+                            let mut request = [0_u8; 8 * 1024];
+                            let _ = stream.read(&mut request);
+                            let response = format!(
+                                "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                                body.len()
+                            );
+                            let _ = stream.write_all(response.as_bytes());
+                            let _ = stream.flush();
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+            Self {
+                port,
+                stop,
+                thread: Some(thread),
+            }
+        }
+
+        fn port(&self) -> u16 {
+            self.port
+        }
+    }
+
+    impl Drop for HttpFixture {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
+        }
     }
 
     fn invalid_gateway_acl(management_port: u16) -> String {
