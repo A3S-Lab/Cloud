@@ -143,6 +143,7 @@ API command
 
 - Rust 1.85 or later
 - PostgreSQL 17 or a compatible supported release
+- A3S Gateway 1.0.12 or later
 - Bun and Node.js 22 or later for the web console
 - Docker for the first node Runtime provider and real deployment gates
 - NATS JetStream only when the NATS event provider is enabled
