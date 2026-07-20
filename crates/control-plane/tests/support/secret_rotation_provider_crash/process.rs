@@ -381,12 +381,15 @@ pub(super) async fn restart_isolated_provider(provider_socket: &str) -> TestResu
         control.restart_container(&target, Some(RestartContainerOptions { t: 10 })),
     )
     .await??;
-    let provider = connect_provider(provider_socket)?;
     for _ in 0..120 {
-        if matches!(
-            tokio::time::timeout(Duration::from_secs(1), provider.version()).await,
-            Ok(Ok(_))
-        ) {
+        let provider_ready = match connect_provider(provider_socket) {
+            Ok(provider) => matches!(
+                tokio::time::timeout(Duration::from_secs(1), provider.version()).await,
+                Ok(Ok(_))
+            ),
+            Err(_) => false,
+        };
+        if provider_ready {
             let after = control.inspect_container(&target, None).await?;
             let after_pid = after
                 .state
