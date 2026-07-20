@@ -2,8 +2,9 @@ use super::in_memory::project_heartbeat;
 use super::InMemoryNodeRepository;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogChunkMetadata, NodeLogChunkQuery,
-    NodeLogChunkReceiptDraft, RuntimeObservationRecord,
+    ILogRetentionRepository, INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
+    NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogRetentionTarget,
+    RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -45,6 +46,8 @@ pub(super) struct StoredLogBatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StoredLogChunkReceipt {
     draft: NodeLogChunkReceiptDraft,
+    received_at: DateTime<Utc>,
+    retained_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -513,13 +516,35 @@ impl INodeControlRepository for InMemoryNodeRepository {
         Ok(gateway_receipt(&acknowledgement, false))
     }
 
+    async fn replay_log_batch(
+        &self,
+        mut batch: NodeLogBatchReplay,
+    ) -> Result<Option<NodeLogChunkReceipt>, RepositoryError> {
+        batch.sent_at = canonical_timestamp(batch.sent_at);
+        batch.validate().map_err(RepositoryError::Conflict)?;
+        let state = self.state.read().await;
+        let Some(existing) = state.log_batches.get(&batch.batch_id) else {
+            return Ok(None);
+        };
+        if existing.draft.node_id != batch.node_id
+            || existing.draft.payload_digest != batch.payload_digest
+            || existing.draft.sent_at != batch.sent_at
+            || existing.draft.chunks.len() != usize::from(batch.chunk_count)
+        {
+            return Err(RepositoryError::Conflict(
+                "log batch ID was reused with different content".into(),
+            ));
+        }
+        Ok(Some(batch.receipt()))
+    }
+
     async fn record_log_chunks(
         &self,
         mut batch: NodeLogBatchReceiptDraft,
         received_at: DateTime<Utc>,
     ) -> Result<NodeLogChunkReceipt, RepositoryError> {
         batch.sent_at = canonical_timestamp(batch.sent_at);
-        let _received_at = canonical_timestamp(received_at);
+        let received_at = canonical_timestamp(received_at);
         batch.validate().map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
         let node = state
@@ -580,6 +605,8 @@ impl INodeControlRepository for InMemoryNodeRepository {
                 ))
                 .or_insert_with(|| StoredLogChunkReceipt {
                     draft: chunk.clone(),
+                    received_at,
+                    retained_at: None,
                 });
         }
         state.log_batches.insert(
@@ -604,7 +631,9 @@ impl INodeControlRepository for InMemoryNodeRepository {
                 *node_id == query.node_id
                     && unit_id == &query.unit_id
                     && *generation == query.generation
-                    && *sequence > query.after_sequence
+                    && query
+                        .after_sequence
+                        .is_none_or(|after_sequence| *sequence > after_sequence)
                     && query.stream.is_none_or(|stream| {
                         stored.draft.stream
                             == match stream {
@@ -617,10 +646,97 @@ impl INodeControlRepository for InMemoryNodeRepository {
             .map(|(_, stored)| {
                 stored
                     .draft
-                    .metadata(query.node_id)
+                    .metadata(query.node_id, stored.retained_at)
                     .map_err(RepositoryError::Storage)
             })
             .collect()
+    }
+}
+
+#[async_trait]
+impl ILogRetentionRepository for InMemoryNodeRepository {
+    async fn list_log_chunks_for_retention(
+        &self,
+        received_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<NodeLogRetentionTarget>, RepositoryError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "log retention query limit must be between 1 and 10000".into(),
+            ));
+        }
+        let received_before = canonical_timestamp(received_before);
+        let state = self.state.read().await;
+        let mut targets = state
+            .log_chunks
+            .iter()
+            .filter(|(_, stored)| {
+                stored.retained_at.is_none() && stored.received_at < received_before
+            })
+            .map(
+                |((node_id, unit_id, generation, sequence), stored)| NodeLogRetentionTarget {
+                    node_id: *node_id,
+                    unit_id: unit_id.clone(),
+                    generation: *generation,
+                    sequence: *sequence,
+                    object_key: stored.draft.object_key.clone(),
+                    received_at: stored.received_at,
+                },
+            )
+            .collect::<Vec<_>>();
+        targets.sort_by(|left, right| {
+            (
+                left.received_at,
+                left.node_id,
+                left.unit_id.as_str(),
+                left.generation,
+                left.sequence,
+            )
+                .cmp(&(
+                    right.received_at,
+                    right.node_id,
+                    right.unit_id.as_str(),
+                    right.generation,
+                    right.sequence,
+                ))
+        });
+        targets.truncate(limit);
+        Ok(targets)
+    }
+
+    async fn mark_log_chunk_retained(
+        &self,
+        target: &NodeLogRetentionTarget,
+        retained_at: DateTime<Utc>,
+    ) -> Result<bool, RepositoryError> {
+        target.validate().map_err(RepositoryError::Conflict)?;
+        let retained_at = canonical_timestamp(retained_at);
+        if retained_at < target.received_at {
+            return Err(RepositoryError::Conflict(
+                "log retention timestamp precedes receipt".into(),
+            ));
+        }
+        let mut state = self.state.write().await;
+        let Some(stored) = state.log_chunks.get_mut(&(
+            target.node_id,
+            target.unit_id.clone(),
+            target.generation,
+            target.sequence,
+        )) else {
+            return Ok(false);
+        };
+        if stored.draft.object_key != target.object_key
+            || stored.received_at != canonical_timestamp(target.received_at)
+        {
+            return Err(RepositoryError::Conflict(
+                "log retention target changed before commit".into(),
+            ));
+        }
+        if stored.retained_at.is_some() {
+            return Ok(false);
+        }
+        stored.retained_at = Some(retained_at);
+        Ok(true)
     }
 }
 

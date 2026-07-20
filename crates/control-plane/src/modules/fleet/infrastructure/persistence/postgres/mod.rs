@@ -7,10 +7,11 @@ mod rows;
 
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeCertificateRotationCompletion,
-    NodeCertificateRotationDraft, NodeCertificateRotationReservation, NodeEnrollmentDraft,
-    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeStateChange, RuntimeObservationRecord,
+    ILogRetentionRepository, INodeControlRepository, INodeRepository,
+    NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
+    NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
+    NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
+    NodeLogChunkQuery, NodeLogRetentionTarget, NodeStateChange, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
@@ -277,10 +278,36 @@ impl INodeControlRepository for PostgresNodeRepository {
         control::record_log_chunks(&self.executor, batch, received_at).await
     }
 
+    async fn replay_log_batch(
+        &self,
+        batch: NodeLogBatchReplay,
+    ) -> Result<Option<NodeLogChunkReceipt>, RepositoryError> {
+        control::replay_log_batch(&self.executor, batch).await
+    }
+
     async fn list_log_chunks(
         &self,
         query: NodeLogChunkQuery,
     ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError> {
         control::list_log_chunks(&self.executor, query).await
+    }
+}
+
+#[async_trait]
+impl ILogRetentionRepository for PostgresNodeRepository {
+    async fn list_log_chunks_for_retention(
+        &self,
+        received_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<NodeLogRetentionTarget>, RepositoryError> {
+        control::list_log_chunks_for_retention(&self.executor, received_before, limit).await
+    }
+
+    async fn mark_log_chunk_retained(
+        &self,
+        target: &NodeLogRetentionTarget,
+        retained_at: DateTime<Utc>,
+    ) -> Result<bool, RepositoryError> {
+        control::mark_log_chunk_retained(&self.executor, target, retained_at).await
     }
 }

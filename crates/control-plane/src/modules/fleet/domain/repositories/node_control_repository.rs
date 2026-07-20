@@ -19,6 +19,15 @@ pub struct NodeLogBatchReceiptDraft {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeLogBatchReplay {
+    pub batch_id: Uuid,
+    pub node_id: NodeId,
+    pub payload_digest: String,
+    pub sent_at: DateTime<Utc>,
+    pub chunk_count: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeLogChunkReceiptDraft {
     pub unit_id: String,
     pub generation: u64,
@@ -35,7 +44,7 @@ pub struct NodeLogChunkQuery {
     pub node_id: NodeId,
     pub unit_id: String,
     pub generation: u64,
-    pub after_sequence: u64,
+    pub after_sequence: Option<u64>,
     pub limit: usize,
     pub stream: Option<RuntimeLogStream>,
 }
@@ -51,6 +60,7 @@ pub struct NodeLogChunkMetadata {
     pub stream: RuntimeLogStream,
     pub checksum: String,
     pub object_key: String,
+    pub retained_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +101,30 @@ impl NodeLogBatchReceiptDraft {
     }
 }
 
+impl NodeLogBatchReplay {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.batch_id.is_nil()
+            || self.node_id.as_uuid().is_nil()
+            || !is_sha256(&self.payload_digest)
+            || self.chunk_count == 0
+            || self.chunk_count > 256
+        {
+            return Err("log batch replay identity is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn receipt(&self) -> NodeLogChunkReceipt {
+        NodeLogChunkReceipt {
+            schema: NodeLogChunkReceipt::SCHEMA.into(),
+            batch_id: self.batch_id,
+            node_id: self.node_id.as_uuid(),
+            accepted_chunks: self.chunk_count,
+            replayed: true,
+        }
+    }
+}
+
 impl NodeLogChunkReceiptDraft {
     fn validate(&self) -> Result<(), String> {
         if self.unit_id.is_empty()
@@ -110,7 +144,11 @@ impl NodeLogChunkReceiptDraft {
         Ok(())
     }
 
-    pub fn metadata(&self, node_id: NodeId) -> Result<NodeLogChunkMetadata, String> {
+    pub fn metadata(
+        &self,
+        node_id: NodeId,
+        retained_at: Option<DateTime<Utc>>,
+    ) -> Result<NodeLogChunkMetadata, String> {
         self.validate()?;
         let stream = match self.stream.as_str() {
             "stdout" => RuntimeLogStream::Stdout,
@@ -127,6 +165,7 @@ impl NodeLogChunkReceiptDraft {
             stream,
             checksum: self.checksum.clone(),
             object_key: self.object_key.clone(),
+            retained_at,
         })
     }
 }
@@ -204,6 +243,11 @@ pub trait INodeControlRepository: Send + Sync {
         acknowledgement: NodeGatewayAck,
         received_at: DateTime<Utc>,
     ) -> Result<NodeGatewayAckReceipt, RepositoryError>;
+
+    async fn replay_log_batch(
+        &self,
+        batch: NodeLogBatchReplay,
+    ) -> Result<Option<NodeLogChunkReceipt>, RepositoryError>;
 
     async fn record_log_chunks(
         &self,

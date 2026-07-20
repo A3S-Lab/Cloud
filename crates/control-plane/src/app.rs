@@ -12,14 +12,16 @@ use crate::modules::edge::{
     UnavailableDomainOwnershipVerifier, UnavailableGatewayCertificateAuthority,
     VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::{
+    ILogRetentionRepository, INodeControlRepository, INodeRepository,
+};
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
     EnrollNodeHandler, FleetModule, GetNodeHandler, IGatewayAcknowledgementProjector,
     IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodesHandler,
-    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, NodeControlApi,
-    NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
+    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, LogRetentionWorker,
+    NodeControlApi, NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
     RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
     VaultCertificateAuthority, VaultKeyEncryptionService,
 };
@@ -123,6 +125,7 @@ pub async fn build_application(
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
+    let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository;
@@ -255,6 +258,14 @@ pub async fn build_application(
     .map_err(ControlPlaneStartupError::Outbox)?;
     let run_operations = matches!(config.server.role, ProcessRole::All | ProcessRole::Worker);
     let run_relay = matches!(config.server.role, ProcessRole::All | ProcessRole::Relay);
+    let log_retention_worker = LogRetentionWorker::new(
+        log_retention_repository,
+        Arc::clone(&log_chunks),
+        Duration::from_millis(config.logs.retention_ms),
+        Duration::from_millis(config.logs.retention_poll_ms),
+        config.logs.retention_batch_size,
+    )
+    .map_err(ControlPlaneStartupError::LogStorage)?;
     let workload_reconciler = WorkloadRuntimeReconciler::new(
         workload_targets,
         workload_runtime_control,
@@ -300,6 +311,7 @@ pub async fn build_application(
         application,
         run_operations.then_some(operation_coordinator),
         run_operations.then_some(workload_reconciler),
+        run_operations.then_some(log_retention_worker),
         run_relay.then_some(outbox_relay),
         node_control_server,
     ))

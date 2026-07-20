@@ -115,6 +115,13 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                 .flatten();
             let mut records = Vec::with_capacity(chunks.len());
             for chunk in chunks {
+                if chunk.retained_at.is_some() {
+                    records.push(WorkloadLogRecord::Gap {
+                        metadata: chunk,
+                        reason: WorkloadLogGapReason::Retained,
+                    });
+                    continue;
+                }
                 let object = match objects.get(&chunk.object_key, &chunk.checksum).await {
                     Ok(object) => object,
                     Err(LogChunkStoreError::Unavailable(_)) => {

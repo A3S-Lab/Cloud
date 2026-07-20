@@ -8,8 +8,8 @@ use a3s_cloud_control_plane::modules::fleet::domain::entities::{
     NodeCertificate, NodeCommandDraft,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft,
-    NodeLogChunkQuery, NodeLogChunkReceiptDraft,
+    ILogRetentionRepository, INodeControlRepository, INodeRepository, NodeHeartbeatUpdate,
+    NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery, NodeLogChunkReceiptDraft,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::services::{
     CertificateAuthorityError, ICertificateAuthority, NodeCertificateRequest,
@@ -682,7 +682,7 @@ async fn exercise_observation_control(
             node_id,
             unit_id: "postgres-service".into(),
             generation: 1,
-            after_sequence: 0,
+            after_sequence: None,
             limit: 2,
             stream: Some(RuntimeLogStream::Stdout),
         })
@@ -690,18 +690,19 @@ async fn exercise_observation_control(
     assert_eq!(stored_logs.len(), 1);
     assert_eq!(stored_logs[0].sequence, 1);
     assert_eq!(stored_logs[0].object_key, log_batch.chunks[0].object_key);
+    assert_eq!(stored_logs[0].retained_at, None);
     assert!(nodes
         .list_log_chunks(NodeLogChunkQuery {
             node_id,
             unit_id: "postgres-service".into(),
             generation: 1,
-            after_sequence: 1,
+            after_sequence: Some(1),
             limit: 2,
             stream: None,
         })
         .await?
         .is_empty());
-    let mut log_conflict = log_batch;
+    let mut log_conflict = log_batch.clone();
     log_conflict.chunks[0].checksum = format!("sha256:{}", "1".repeat(64));
     assert!(matches!(
         nodes
@@ -709,6 +710,55 @@ async fn exercise_observation_control(
             .await,
         Err(RepositoryError::Conflict(_))
     ));
+    let retention_targets = nodes
+        .list_log_chunks_for_retention(observed_at + Duration::seconds(5), 2)
+        .await?;
+    assert_eq!(retention_targets.len(), 1);
+    assert_eq!(
+        retention_targets[0].object_key,
+        log_batch.chunks[0].object_key
+    );
+    assert!(
+        nodes
+            .mark_log_chunk_retained(&retention_targets[0], observed_at + Duration::seconds(7))
+            .await?
+    );
+    assert!(
+        !nodes
+            .mark_log_chunk_retained(&retention_targets[0], observed_at + Duration::seconds(8))
+            .await?
+    );
+    let retained_logs = nodes
+        .list_log_chunks(NodeLogChunkQuery {
+            node_id,
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: None,
+        })
+        .await?;
+    assert_eq!(
+        retained_logs[0].retained_at,
+        Some(
+            (observed_at + Duration::seconds(7))
+                .with_nanosecond(
+                    ((observed_at + Duration::seconds(7)).nanosecond() / 1_000) * 1_000
+                )
+                .expect("canonical retention timestamp")
+        )
+    );
+    let replay = nodes
+        .replay_log_batch(NodeLogBatchReplay {
+            batch_id: log_batch.batch_id,
+            node_id,
+            payload_digest: log_batch.payload_digest.clone(),
+            sent_at: log_batch.sent_at,
+            chunk_count: 1,
+        })
+        .await?
+        .expect("stored log batch replay");
+    assert!(replay.replayed);
 
     let database = Database::new(PostgresDialect, executor.clone());
     assert_eq!(

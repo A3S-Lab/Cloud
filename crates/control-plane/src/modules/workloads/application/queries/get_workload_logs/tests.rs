@@ -1,8 +1,8 @@
 use super::{GetWorkloadLogs, GetWorkloadLogsHandler};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogChunkMetadata, NodeLogChunkQuery,
-    RuntimeObservationRecord,
+    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
+    NodeLogChunkQuery, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
@@ -122,6 +122,13 @@ impl INodeControlRepository for LogMetadataRepository {
         unexpected()
     }
 
+    async fn replay_log_batch(
+        &self,
+        _batch: NodeLogBatchReplay,
+    ) -> Result<Option<NodeLogChunkReceipt>, RepositoryError> {
+        unexpected()
+    }
+
     async fn list_log_chunks(
         &self,
         query: NodeLogChunkQuery,
@@ -135,7 +142,9 @@ impl INodeControlRepository for LogMetadataRepository {
                 chunk.node_id == query.node_id
                     && chunk.unit_id == query.unit_id
                     && chunk.generation == query.generation
-                    && chunk.sequence > query.after_sequence
+                    && query
+                        .after_sequence
+                        .is_none_or(|after_sequence| chunk.sequence > after_sequence)
                     && query.stream.is_none_or(|stream| stream == chunk.stream)
             })
             .take(query.limit)
@@ -146,6 +155,7 @@ impl INodeControlRepository for LogMetadataRepository {
 
 struct QueryLogStore {
     objects: RwLock<BTreeMap<String, RetrievedLogChunk>>,
+    calls: AtomicUsize,
 }
 
 #[async_trait]
@@ -167,6 +177,7 @@ impl ILogChunkStore for QueryLogStore {
         object_key: &str,
         _expected_checksum: &str,
     ) -> Result<RetrievedLogChunk, LogChunkStoreError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .objects
             .read()
@@ -222,11 +233,12 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
             ("object-1".into(), RetrievedLogChunk::Missing),
             ("object-2".into(), RetrievedLogChunk::Corrupt),
         ])),
+        calls: AtomicUsize::new(0),
     });
     let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata.clone(), objects);
 
     let first = handler
-        .execute(query(&seeded, seeded.organization_id, 0, 2), context())
+        .execute(query(&seeded, seeded.organization_id, None, 2), context())
         .await
         .expect("framework result")
         .expect("first log page");
@@ -245,7 +257,10 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
     ));
 
     let second = handler
-        .execute(query(&seeded, seeded.organization_id, 2, 2), context())
+        .execute(
+            query(&seeded, seeded.organization_id, Some(2), 2),
+            context(),
+        )
         .await
         .expect("framework result")
         .expect("second log page");
@@ -260,6 +275,37 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
 }
 
 #[tokio::test]
+async fn retained_sequence_zero_is_an_explicit_gap_without_an_object_read() {
+    let seeded = seed_workload().await;
+    let report = report(&seeded.unit_id, 0);
+    let mut retained = metadata(seeded.node_id, "retained-object".into(), &report);
+    retained.retained_at = Some(Utc::now());
+    let metadata = Arc::new(LogMetadataRepository {
+        chunks: vec![retained],
+        calls: AtomicUsize::new(0),
+    });
+    let objects = Arc::new(QueryLogStore {
+        objects: RwLock::new(BTreeMap::new()),
+        calls: AtomicUsize::new(0),
+    });
+    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata, objects.clone());
+
+    let page = handler
+        .execute(query(&seeded, seeded.organization_id, None, 10), context())
+        .await
+        .expect("framework result")
+        .expect("retained log page");
+    assert!(matches!(
+        &page.records[..],
+        [WorkloadLogRecord::Gap {
+            reason: WorkloadLogGapReason::Retained,
+            metadata,
+        }] if metadata.sequence == 0
+    ));
+    assert_eq!(objects.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn workload_log_query_does_not_cross_the_organization_boundary() {
     let seeded = seed_workload().await;
     let metadata = Arc::new(LogMetadataRepository {
@@ -271,10 +317,11 @@ async fn workload_log_query_does_not_cross_the_organization_boundary() {
         metadata.clone(),
         Arc::new(QueryLogStore {
             objects: RwLock::new(BTreeMap::new()),
+            calls: AtomicUsize::new(0),
         }),
     );
     let result = handler
-        .execute(query(&seeded, OrganizationId::new(), 0, 10), context())
+        .execute(query(&seeded, OrganizationId::new(), None, 10), context())
         .await
         .expect("framework result");
     assert!(matches!(result, Err(ApplicationError::NotFound(_))));
@@ -284,7 +331,7 @@ async fn workload_log_query_does_not_cross_the_organization_boundary() {
 fn query(
     seeded: &SeededWorkload,
     organization_id: OrganizationId,
-    after_sequence: u64,
+    after_sequence: Option<u64>,
     limit: u16,
 ) -> GetWorkloadLogs {
     GetWorkloadLogs {
@@ -329,6 +376,7 @@ fn metadata(
         stream: report.chunk.stream,
         checksum: report.checksum.clone(),
         object_key,
+        retained_at: None,
     }
 }
 

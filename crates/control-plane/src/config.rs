@@ -112,6 +112,13 @@ pub struct RegistryConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogsConfig {
+    pub retention_ms: u64,
+    pub retention_poll_ms: u64,
+    pub retention_batch_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeConfig {
     pub entrypoint_address: String,
     pub management_address: String,
@@ -195,6 +202,7 @@ pub struct CloudConfig {
     pub operations: OperationsConfig,
     pub deployments: DeploymentsConfig,
     pub registry: RegistryConfig,
+    pub logs: LogsConfig,
     pub edge: EdgeConfig,
     pub fleet: FleetConfig,
     pub security: SecurityConfig,
@@ -268,6 +276,11 @@ impl CloudConfig {
         )?;
         let registry = one_block(&document, "registry")?;
         validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
+        let logs = one_block(&document, "logs")?;
+        validate_block(
+            logs,
+            &["retention_ms", "retention_poll_ms", "retention_batch_size"],
+        )?;
         let edge = one_block(&document, "edge")?;
         validate_block(
             edge,
@@ -365,6 +378,11 @@ impl CloudConfig {
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
+            },
+            logs: LogsConfig {
+                retention_ms: integer(logs, "retention_ms")?,
+                retention_poll_ms: integer(logs, "retention_poll_ms")?,
+                retention_batch_size: integer(logs, "retention_batch_size")?,
             },
             edge: EdgeConfig {
                 entrypoint_address: string(edge, "entrypoint_address")?,
@@ -543,6 +561,18 @@ impl CloudConfig {
         if unique_registry_hosts.len() != self.registry.insecure_hosts.len() {
             return Err(ConfigError::Invalid(
                 "registry.insecure_hosts cannot contain duplicates".into(),
+            ));
+        }
+        if !(60_000..=315_576_000_000).contains(&self.logs.retention_ms)
+            || self.logs.retention_poll_ms == 0
+            || self.logs.retention_poll_ms > 86_400_000
+            || self.logs.retention_poll_ms > self.logs.retention_ms
+            || self.logs.retention_batch_size == 0
+            || self.logs.retention_batch_size > 10_000
+        {
+            return Err(ConfigError::Invalid(
+                "logs retention must be 1 minute to 10 years with a bounded poll interval and batch of 1 to 10000"
+                    .into(),
             ));
         }
         let entrypoint = self
@@ -733,6 +763,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "deployments",
         "edge",
         "fleet",
+        "logs",
         "node_control",
         "operations",
         "postgres",
@@ -908,6 +939,11 @@ registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:5000"]
 }
+logs {
+  retention_ms = 604800000
+  retention_poll_ms = 60000
+  retention_batch_size = 256
+}
 edge {
   entrypoint_address = "0.0.0.0:8081"
   management_address = "127.0.0.1:9090"
@@ -950,6 +986,7 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
 
@@ -965,6 +1002,7 @@ security {
             8080
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.logs.retention_ms, 604_800_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
 
@@ -981,6 +1019,10 @@ security {
         .is_err());
         assert!(CloudConfig::parse(
             &VALID.replace("profile = \"development\"", "profile = \"production\"")
+        )
+        .is_err());
+        assert!(CloudConfig::parse(
+            &VALID.replace("retention_poll_ms = 60000", "retention_poll_ms = 604800001")
         )
         .is_err());
     }

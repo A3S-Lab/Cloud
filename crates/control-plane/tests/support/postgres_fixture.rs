@@ -215,6 +215,11 @@ pub(super) fn config() -> CloudConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
         },
+        logs: LogsConfig {
+            retention_ms: 60_000,
+            retention_poll_ms: 1_000,
+            retention_batch_size: 16,
+        },
         edge: EdgeConfig {
             entrypoint_address: "0.0.0.0:8081".into(),
             management_address: "127.0.0.1:9090".into(),

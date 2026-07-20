@@ -165,6 +165,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/013_secrets.sql"
             )),
         ),
+        Migration::new(
+            "014",
+            "durable log retention tombstones",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/014_log_retention.sql"
+            )),
+        ),
     ]
 }
 

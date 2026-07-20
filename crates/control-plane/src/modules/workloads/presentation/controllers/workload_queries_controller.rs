@@ -159,14 +159,15 @@ const fn default_log_limit() -> u16 {
     100
 }
 
-fn decode_cursor(cursor: Option<&str>) -> Result<u64> {
+fn decode_cursor(cursor: Option<&str>) -> Result<Option<u64>> {
     let Some(cursor) = cursor else {
-        return Ok(0);
+        return Ok(None);
     };
     cursor
         .strip_prefix("v1:")
         .filter(|sequence| !sequence.is_empty())
         .and_then(|sequence| sequence.parse::<u64>().ok())
+        .map(Some)
         .ok_or_else(|| BootError::BadRequest("invalid workload log cursor".into()))
 }
 

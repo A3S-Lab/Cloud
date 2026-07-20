@@ -58,6 +58,12 @@ registry {
   insecure_hosts = ["127.0.0.1:50020"]
 }
 
+logs {
+  retention_ms = 604800000
+  retention_poll_ms = 60000
+  retention_batch_size = 256
+}
+
 edge {
   entrypoint_address = "0.0.0.0:8081"
   management_address = "127.0.0.1:9090"
