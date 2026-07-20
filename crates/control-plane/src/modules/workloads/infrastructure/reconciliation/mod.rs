@@ -487,10 +487,7 @@ impl WorkloadRuntimeReconciler {
                     "reload concurrently inserted Runtime command",
                 ))?
                 .ok_or_else(|| {
-                    format!(
-                        "Runtime command {} conflicted without a persisted command",
-                        command_id
-                    )
+                    format!("Runtime command {command_id} conflicted without a persisted command")
                 })
                 .and_then(|command| {
                     validate_expected_payload(&command, expected)?;
