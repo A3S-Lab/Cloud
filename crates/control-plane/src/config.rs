@@ -164,6 +164,7 @@ pub struct EdgeConfig {
     pub certificate_directory: String,
     pub certificate_ttl_ms: u64,
     pub certificate_renewal_window_ms: u64,
+    pub certificate_reconciliation_interval_ms: u64,
     pub upstream_request_timeout_ms: u64,
     pub command_ttl_ms: u64,
 }
@@ -354,6 +355,7 @@ impl CloudConfig {
                 "certificate_directory",
                 "certificate_ttl_ms",
                 "certificate_renewal_window_ms",
+                "certificate_reconciliation_interval_ms",
                 "upstream_request_timeout_ms",
                 "command_ttl_ms",
             ],
@@ -478,6 +480,10 @@ impl CloudConfig {
                 certificate_directory: string(edge, "certificate_directory")?,
                 certificate_ttl_ms: integer(edge, "certificate_ttl_ms")?,
                 certificate_renewal_window_ms: integer(edge, "certificate_renewal_window_ms")?,
+                certificate_reconciliation_interval_ms: integer(
+                    edge,
+                    "certificate_reconciliation_interval_ms",
+                )?,
                 upstream_request_timeout_ms: integer(edge, "upstream_request_timeout_ms")?,
                 command_ttl_ms: integer(edge, "command_ttl_ms")?,
             },
@@ -751,6 +757,9 @@ impl CloudConfig {
             || !(3_600_000..=34_300_800_000).contains(&self.edge.certificate_ttl_ms)
             || self.edge.certificate_renewal_window_ms == 0
             || self.edge.certificate_renewal_window_ms >= self.edge.certificate_ttl_ms
+            || self.edge.certificate_reconciliation_interval_ms == 0
+            || self.edge.certificate_reconciliation_interval_ms
+                > self.edge.certificate_renewal_window_ms
             || self.edge.upstream_request_timeout_ms == 0
             || self.edge.upstream_request_timeout_ms > 3_600_000
             || self.edge.command_ttl_ms == 0
@@ -1223,6 +1232,7 @@ edge {
   certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
+  certificate_reconciliation_interval_ms = 60000
   upstream_request_timeout_ms = 30000
   command_ttl_ms = 180000
 }
@@ -1306,6 +1316,11 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "domain_verification_timeout_ms = 5000",
             "domain_verification_timeout_ms = 60001"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "certificate_reconciliation_interval_ms = 60000",
+            "certificate_reconciliation_interval_ms = 604800001"
         ))
         .is_err());
         assert!(CloudConfig::parse(

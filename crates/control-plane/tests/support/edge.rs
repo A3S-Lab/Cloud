@@ -224,6 +224,62 @@ pub async fn exercise_edge_api(
     assert_eq!(active_body["data"]["state"], "active");
     assert!(active_body["data"]["activatedAt"].is_string());
     assert_eq!(routes.active_routes(node_id).await?.len(), 1);
+
+    let removable_claim = app
+        .call(post_json(
+            &domain_collection_path,
+            "edge-api-removable-domain-claim",
+            json!({"pattern": "removable.integration.example"}),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(removable_claim.status(), 201);
+    let removable_claim = response_json(&removable_claim)?;
+    let removable_claim_id = field_str(&removable_claim["data"], "id")?.to_owned();
+    let removable_proof = field_str(&removable_claim["data"], "challengeValue")?.to_owned();
+    let removable_verify_path = format!(
+        "/api/v1/organizations/{}/domain-claims/{removable_claim_id}/verify",
+        fixture.organization_id
+    );
+    let removable_verified = app
+        .call(post_json(
+            &removable_verify_path,
+            "edge-api-removable-domain-verification",
+            json!({"proof": removable_proof}),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(removable_verified.status(), 202);
+    let removable_revoke_path = format!(
+        "/api/v1/organizations/{}/domain-claims/{removable_claim_id}/revoke",
+        fixture.organization_id
+    );
+    let removable_revoked = app
+        .call(post_json(
+            &removable_revoke_path,
+            "edge-api-removable-domain-revocation",
+            json!({"reason": "customer removed ownership"}),
+            fixture.token,
+        ))
+        .await?;
+    let removable_replay = app
+        .call(post_json(
+            &removable_revoke_path,
+            "edge-api-removable-domain-revocation",
+            json!({"reason": "customer removed ownership"}),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(removable_revoked.status(), 202);
+    assert_eq!(removable_replay.status(), 202);
+    assert_eq!(
+        response_json(&removable_revoked)?["data"]["state"],
+        "revoked"
+    );
+    assert_eq!(
+        response_json(&removable_replay)?["data"]["state"],
+        "revoked"
+    );
     Ok(())
 }
 
@@ -472,10 +528,12 @@ pub async fn exercise_edge(
             *route
         );
     }
-    issue_certificate(
+    let cutover_issued_at = cutover.publication.command_issued_at + Duration::milliseconds(1);
+    issue_certificate_until(
         &repository,
         &cutover.certificate,
-        cutover.publication.command_issued_at + Duration::milliseconds(1),
+        cutover_issued_at,
+        cutover_issued_at + Duration::days(6),
     )
     .await?;
     let applied = cutover_acknowledgement(&cutover.cutover, GatewayAckState::Applied);
@@ -498,6 +556,16 @@ pub async fn exercise_edge(
         assert_eq!(active.workload_revision_id, fixture.candidate_revision_id);
         assert_eq!(active.upstream.as_str(), "http://127.0.0.1:49153/");
     }
+    super::edge_certificate_lifecycle_support::exercise(
+        executor,
+        super::edge_certificate_lifecycle_support::GatewayCertificateLifecycleScenario {
+            organization_id: fixture.organization_id,
+            node_id: fixture.node_id,
+            domain_claim,
+            started_at: now + Duration::seconds(8),
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -551,6 +619,15 @@ async fn issue_certificate(
     certificate: &GatewayCertificate,
     now: chrono::DateTime<Utc>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    issue_certificate_until(repository, certificate, now, now + Duration::days(30)).await
+}
+
+async fn issue_certificate_until(
+    repository: &dyn IEdgeRepository,
+    certificate: &GatewayCertificate,
+    now: chrono::DateTime<Utc>,
+    expires_at: chrono::DateTime<Utc>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut issued = certificate.clone();
     let expected_version = issued.aggregate_version;
     issued.record_issued(
@@ -563,7 +640,7 @@ async fn issue_certificate(
             ca_bundle_pem: "-----BEGIN CERTIFICATE-----\ndGVzdC1jYQ==\n-----END CERTIFICATE-----\n"
                 .into(),
             issued_at: now,
-            expires_at: now + Duration::days(30),
+            expires_at,
         },
         now,
     )?;

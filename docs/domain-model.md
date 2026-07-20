@@ -146,6 +146,7 @@ Primary domain records:
 - `GatewayScopeState`
 - `GatewayPublication`
 - `GatewayRouteCutover`
+- `GatewayCertificateConvergence`
 
 ### 3.8 Secrets
 
@@ -335,6 +336,26 @@ tables directly. Audit records are append-only and separate from event delivery.
   the private key or plaintext key material.
 - `ready` requires valid issued material and the exact applied Gateway
   acknowledgement. A rejected reload cannot make a certificate ready.
+- A ready certificate becomes obsolete only after a newer Gateway revision is
+  installed and no active route references it. Provider revocation must
+  succeed before the public projection moves to `revoked`; failure remains
+  retryable.
+
+### Gateway certificate convergence
+
+- A convergence binds one node/revision/command/digest to the previous
+  installed certificate, an optional replacement certificate, and
+  aggregate-versioned retained and rejected route sets.
+- Reasons are renewal, revoked domain ownership, provider-certificate
+  revocation, or projection repair. Every active route must appear exactly once
+  in the retained or rejected set at staging.
+- Staging never changes active route rows. An exact rejected acknowledgement
+  leaves the old routes and certificate authoritative. An exact applied
+  acknowledgement atomically binds retained routes to the replacement,
+  rejects revoked-claim routes, and advances the installed revision.
+- A convergence whose routes are all rejected has no replacement certificate
+  or certificate request; its complete snapshot retains only the Gateway
+  management endpoint.
 
 ### Secret
 
@@ -556,6 +577,17 @@ provisioning -> issued -> ready -> revoked
 The node may replay the same CSR after interruption. The control plane returns
 the same public material for the same CSR digest and rejects a conflicting CSR.
 
+### Gateway certificate convergence state
+
+```text
+pending -> applied
+       \-> rejected
+```
+
+The terminal outcome must match the exact node, command, revision, digest, and
+acknowledgement time. A rejected convergence does not advance the installed
+Gateway revision.
+
 ## 7. Data ownership
 
 | Fact | Authoritative owner |
@@ -570,6 +602,7 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Last accepted observation | PostgreSQL fleet/deployment projection |
 | Route desired state, Gateway scope, and publication identity | PostgreSQL Edge tables |
 | Pending/applied/rejected Gateway route cutover and candidate route projections | PostgreSQL Edge tables |
+| Pending/applied/rejected Gateway certificate convergence and versioned route classification | PostgreSQL Edge tables |
 | Domain claims and Gateway certificate public material | PostgreSQL Edge tables |
 | Gateway active config | A3S Gateway, keyed by config revision |
 | Gateway private key and CSR files | Node-local managed certificate directory |

@@ -1,6 +1,7 @@
 use super::{
-    PublishRoute, PublishRouteHandler, SignGatewayCertificate, SignGatewayCertificateHandler,
-    VerifyDomainClaim, VerifyDomainClaimHandler,
+    PublishRoute, PublishRouteHandler, RevokeDomainClaim, RevokeDomainClaimHandler,
+    SignGatewayCertificate, SignGatewayCertificateHandler, VerifyDomainClaim,
+    VerifyDomainClaimHandler,
 };
 use crate::modules::edge::domain::events::DomainClaimChanged;
 use crate::modules::edge::domain::repositories::{
@@ -437,6 +438,89 @@ async fn unobserved_domain_proof_remains_pending_and_retryable_with_the_same_key
     assert!(replay.replayed);
     assert_eq!(replay.claim, verified.claim);
     assert_eq!(verifier.calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn revokes_a_verified_domain_claim_idempotently_with_a_bounded_reason() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let now = Utc::now();
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let claim_id = verified_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "revoke.example.com",
+        now,
+    )
+    .await;
+    let repository: Arc<dyn IEdgeRepository> = edge.clone();
+    let handler = RevokeDomainClaimHandler::new(repository);
+    let command = RevokeDomainClaim {
+        organization_id,
+        claim_id,
+        reason: "  customer request\nconfirmed  ".into(),
+        idempotency_key: "revoke-domain".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: now + Duration::seconds(1),
+    };
+
+    let revoked = handler
+        .execute(command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect("revoke domain claim");
+    assert!(!revoked.replayed);
+    assert_eq!(revoked.claim.state, DomainClaimState::Revoked);
+    assert_eq!(
+        revoked.claim.failure.as_deref(),
+        Some("customer request confirmed")
+    );
+    assert_eq!(
+        edge.outbox_events()
+            .await
+            .last()
+            .expect("revocation event")
+            .event_key,
+        "edge.domain-claim.revoked"
+    );
+
+    let replay = handler
+        .execute(command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect("replay revocation");
+    assert!(replay.replayed);
+    assert_eq!(replay.claim, revoked.claim);
+
+    let conflict = handler
+        .execute(
+            RevokeDomainClaim {
+                reason: "different reason".into(),
+                ..command.clone()
+            },
+            context(),
+        )
+        .await
+        .expect("command bus")
+        .expect_err("same key must bind one reason");
+    assert!(matches!(conflict, ApplicationError::Conflict(_)));
+
+    let invalid = handler
+        .execute(
+            RevokeDomainClaim {
+                idempotency_key: "invalid-reason".into(),
+                reason: " \n ".into(),
+                ..command
+            },
+            context(),
+        )
+        .await
+        .expect("command bus")
+        .expect_err("empty reason");
+    assert!(matches!(invalid, ApplicationError::Invalid(_)));
 }
 
 #[tokio::test]

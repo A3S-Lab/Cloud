@@ -213,6 +213,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/019_deployment_retirement.sql"
             )),
         ),
+        Migration::new(
+            "020",
+            "Gateway certificate convergence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/020_gateway_certificate_convergence.sql"
+            )),
+        ),
     ]
 }
 

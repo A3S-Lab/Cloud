@@ -229,6 +229,7 @@ fn config() -> CloudConfig {
             certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
             certificate_ttl_ms: 2_592_000_000,
             certificate_renewal_window_ms: 604_800_000,
+            certificate_reconciliation_interval_ms: 60_000,
             upstream_request_timeout_ms: 30_000,
             command_ttl_ms: 10_000,
         },

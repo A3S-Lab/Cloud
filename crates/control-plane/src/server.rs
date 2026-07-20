@@ -1,4 +1,5 @@
 use crate::infrastructure::FlowOperationCoordinator;
+use crate::modules::edge::GatewayCertificateReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::workloads::{SecretRotationRestartReconciler, WorkloadRuntimeReconciler};
@@ -12,6 +13,7 @@ pub struct ControlPlane {
 
 pub(crate) struct ControlPlaneWorkers {
     operation_coordinator: Option<FlowOperationCoordinator>,
+    gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
@@ -21,8 +23,10 @@ pub(crate) struct ControlPlaneWorkers {
 }
 
 impl ControlPlaneWorkers {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         operation_coordinator: Option<FlowOperationCoordinator>,
+        gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
@@ -32,6 +36,7 @@ impl ControlPlaneWorkers {
     ) -> Self {
         Self {
             operation_coordinator,
+            gateway_certificate_reconciler,
             secret_rotation_restart_reconciler,
             workload_reconciler,
             log_retention_worker,
@@ -67,6 +72,9 @@ impl ControlPlane {
         let (failure_sender, mut failure_receiver) =
             tokio::sync::mpsc::unbounded_channel::<BootError>();
         let mut workers = Vec::new();
+        if let Some(reconciler) = self.workers.gateway_certificate_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
         if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }

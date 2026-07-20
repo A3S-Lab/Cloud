@@ -1,11 +1,12 @@
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, require_one_row, store_idempotency, store_outbox, transaction_error,
-    PostgresPersistenceError,
+    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
+    require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
+    GatewayCertificateConvergenceTarget, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRouteCutover, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
@@ -13,11 +14,11 @@ use crate::modules::edge::domain::{
     RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
-    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
-    WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotentWrite,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
-use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateRequest, NodeGatewayAck};
+use a3s_cloud_contracts::{GatewayCertificateRequest, NodeGatewayAck};
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
 };
@@ -25,13 +26,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use super::postgres_cutovers;
-use super::postgres_tls::{
-    self as tls, insert_certificate, update_certificate, CertificateRow, SELECT_CERTIFICATES,
-};
+use super::postgres_tls::{self as tls, insert_certificate};
+use super::{postgres_certificate_convergence, postgres_cutovers};
 
 pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
-const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request from gateway_publications";
+pub(super) const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request from gateway_publications";
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {
@@ -139,7 +138,7 @@ impl RouteRow {
     }
 }
 
-struct PublicationRow {
+pub(super) struct PublicationRow {
     node_id: Uuid,
     revision: u64,
     expected_revision: Option<u64>,
@@ -176,7 +175,7 @@ impl FromRow for PublicationRow {
 }
 
 impl PublicationRow {
-    fn publication(self) -> Result<GatewayPublication, RepositoryError> {
+    pub(super) fn publication(self) -> Result<GatewayPublication, RepositoryError> {
         let certificate_request = self
             .certificate_request
             .map(serde_json::from_value::<GatewayCertificateRequest>)
@@ -449,6 +448,44 @@ impl IEdgeRepository for PostgresEdgeRepository {
         postgres_cutovers::stage(&self.executor, bundle).await
     }
 
+    async fn gateway_certificate_convergence_targets(
+        &self,
+        renew_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
+        postgres_certificate_convergence::targets(&self.executor, renew_before, limit).await
+    }
+
+    async fn pending_gateway_certificate_convergences(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateConvergenceResult>, RepositoryError> {
+        postgres_certificate_convergence::pending(&self.executor, limit).await
+    }
+
+    async fn stage_gateway_certificate_convergence(
+        &self,
+        bundle: StageGatewayCertificateConvergence,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+        postgres_certificate_convergence::stage(&self.executor, bundle).await
+    }
+
+    async fn find_gateway_certificate_convergence(
+        &self,
+        node_id: NodeId,
+        gateway_revision: u64,
+    ) -> Result<Option<crate::modules::edge::domain::GatewayCertificateConvergence>, RepositoryError>
+    {
+        postgres_certificate_convergence::find(&self.executor, node_id, gateway_revision).await
+    }
+
+    async fn obsolete_gateway_certificates(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificate>, RepositoryError> {
+        postgres_certificate_convergence::obsolete_certificates(&self.executor, limit).await
+    }
+
     async fn find_gateway_route_cutover(
         &self,
         organization_id: OrganizationId,
@@ -524,178 +561,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
         acknowledgement: &NodeGatewayAck,
         received_at: DateTime<Utc>,
     ) -> Result<bool, RepositoryError> {
-        let mut acknowledgement = acknowledgement.clone();
-        acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
-        let received_at = canonical_timestamp(received_at);
-        acknowledgement
-            .validate()
-            .map_err(RepositoryError::Conflict)?;
-        if received_at < acknowledgement.acknowledged_at {
-            return Err(RepositoryError::Conflict(
-                "Gateway acknowledgement receipt predates its node timestamp".into(),
-            ));
-        }
-        self.executor
-            .transaction(move |transaction| {
-                Box::pin(async move {
-                    let row = fetch_optional::<PublicationRow, _>(
-                        transaction,
-                        sql_query::<PublicationRow>(SELECT_PUBLICATIONS)
-                            .append(" where node_id = ")
-                            .bind(acknowledgement.node_id)
-                            .append(" and command_id = ")
-                            .bind(acknowledgement.command_id)
-                            .append(" for update"),
-                    )
-                    .await?;
-                    let Some(row) = row else {
-                        return Ok(false);
-                    };
-                    let mut publication = row.publication()?;
-                    let was_pending = publication.state == GatewayPublicationState::Pending;
-                    publication
-                        .acknowledge(&acknowledgement)
-                        .map_err(RepositoryError::Conflict)?;
-                    if !was_pending {
-                        return Ok(true);
-                    }
-                    let mut certificate = fetch_optional::<CertificateRow, _>(
-                        transaction,
-                        sql_query::<CertificateRow>(SELECT_CERTIFICATES)
-                            .append(" where node_id = ")
-                            .bind(acknowledgement.node_id)
-                            .append(" and gateway_revision = ")
-                            .bind(acknowledgement.revision)
-                            .append(" and gateway_command_id = ")
-                            .bind(acknowledgement.command_id)
-                            .append(" for update"),
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        PostgresPersistenceError::Invariant(
-                            "Gateway publication has no staged certificate".into(),
-                        )
-                    })?
-                    .certificate()?;
-                    let certificate_version = certificate.aggregate_version;
-                    certificate
-                        .apply_gateway_acknowledgement(&acknowledgement)
-                        .map_err(RepositoryError::Conflict)?;
-                    let rows = fetch_all::<RouteRow, _>(
-                        transaction,
-                        sql_query::<RouteRow>(SELECT_ROUTES)
-                            .append(" where gateway_node_id = ")
-                            .bind(acknowledgement.node_id)
-                            .append(" and gateway_revision = ")
-                            .bind(acknowledgement.revision)
-                            .append(" and gateway_command_id = ")
-                            .bind(acknowledgement.command_id)
-                            .append(" for update"),
-                    )
-                    .await?;
-                    let mut cutover = postgres_cutovers::lock_by_gateway_identity(
-                        transaction,
-                        acknowledgement.node_id,
-                        acknowledgement.revision,
-                        acknowledgement.command_id,
-                    )
-                    .await?;
-                    if rows.is_empty() == cutover.is_none() {
-                        return Err(PostgresPersistenceError::Invariant(
-                            "Gateway publication must select one route publication kind".into(),
-                        ));
-                    }
-                    let mut routes = rows
-                        .into_iter()
-                        .map(RouteRow::route)
-                        .collect::<Result<Vec<_>, _>>()?;
-                    if let Some(cutover) = &mut cutover {
-                        cutover
-                            .acknowledge(&acknowledgement)
-                            .map_err(RepositoryError::Conflict)?;
-                    } else {
-                        for route in &mut routes {
-                            route
-                                .apply_gateway_acknowledgement(&acknowledgement)
-                                .map_err(RepositoryError::Conflict)?;
-                        }
-                    }
-                    require_one_row(
-                        "Gateway publication acknowledgement",
-                        execute(
-                            transaction,
-                            sql_query::<()>("update gateway_publications set state = ")
-                                .bind(publication.state.as_str())
-                                .append(", failure = ")
-                                .bind(publication.failure.as_deref())
-                                .append(", acknowledged_at = ")
-                                .bind(publication.acknowledged_at)
-                                .append(" where node_id = ")
-                                .bind(publication.node_id.as_uuid())
-                                .append(" and revision = ")
-                                .bind(publication.revision)
-                                .append(" and state = 'pending'"),
-                        )
-                        .await?,
-                    )?;
-                    update_certificate(transaction, &certificate, certificate_version).await?;
-                    if let Some(cutover) = cutover {
-                        postgres_cutovers::persist_acknowledgement(transaction, &cutover).await?;
-                    } else {
-                        for route in routes {
-                            let expected_version =
-                                route.aggregate_version.checked_sub(1).ok_or_else(|| {
-                                    PostgresPersistenceError::Invariant(
-                                        "route acknowledgement version underflowed".into(),
-                                    )
-                                })?;
-                            require_one_row(
-                                "route Gateway acknowledgement",
-                                execute(
-                                    transaction,
-                                    sql_query::<()>("update routes set state = ")
-                                        .bind(route.state.as_str())
-                                        .append(", failure = ")
-                                        .bind(route.failure.as_deref())
-                                        .append(", aggregate_version = ")
-                                        .bind(route.aggregate_version)
-                                        .append(", updated_at = ")
-                                        .bind(route.updated_at)
-                                        .append(", activated_at = ")
-                                        .bind(route.activated_at)
-                                        .append(" where id = ")
-                                        .bind(route.id.as_uuid())
-                                        .append(" and aggregate_version = ")
-                                        .bind(expected_version),
-                                )
-                                .await?,
-                            )?;
-                        }
-                    }
-                    if acknowledgement.state == GatewayAckState::Applied {
-                        require_one_row(
-                            "installed Gateway scope revision",
-                            execute(
-                                transaction,
-                                sql_query::<()>(
-                                    "update gateway_scopes set installed_revision = ",
-                                )
-                                .bind(acknowledgement.revision)
-                                .append(", aggregate_version = aggregate_version + 1, updated_at = ")
-                                .bind(acknowledgement.acknowledged_at)
-                                .append(" where node_id = ")
-                                .bind(acknowledgement.node_id)
-                                .append(" and installed_revision is not distinct from ")
-                                .bind(publication.expected_revision),
-                            )
-                            .await?,
-                        )?;
-                    }
-                    Ok(true)
-                })
-            })
-            .await
-            .map_err(transaction_error)
+        super::postgres_acknowledgement::project(&self.executor, acknowledgement, received_at).await
     }
 }
 
@@ -820,7 +686,7 @@ fn map_insert(
     }
 }
 
-async fn query_routes(
+pub(super) async fn query_routes(
     executor: &PostgresExecutor,
     query: a3s_orm::SqlQuery<RouteRow>,
 ) -> Result<Vec<Route>, RepositoryError> {

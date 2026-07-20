@@ -364,12 +364,19 @@ async fn serializes_complete_snapshots_and_projects_exact_acknowledgements() {
     assert_eq!(scope.installed_revision, None);
     assert_eq!(scope.aggregate_version, 1);
 
-    let mut second = staged(node_id, 2, None, "web.example.com", "/", "second");
+    let mut second = staged(
+        node_id,
+        2,
+        None,
+        "api.example.com",
+        "/v1",
+        "republish-rejected",
+    );
     second.expected_scope_version = 1;
     let second = repository
         .stage_route_publication(second)
         .await
-        .expect("stage after rejection");
+        .expect("republish ownership released by rejection");
     issue(
         &repository,
         &second.certificate,

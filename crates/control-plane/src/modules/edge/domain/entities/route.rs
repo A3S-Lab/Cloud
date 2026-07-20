@@ -219,6 +219,70 @@ impl Route {
         Ok(())
     }
 
+    pub fn bind_gateway_certificate(
+        &mut self,
+        revision: u64,
+        command_id: NodeCommandId,
+        snapshot_digest: String,
+        certificate_id: GatewayCertificateId,
+        bound_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let bound_at = canonical_timestamp(bound_at);
+        if self.state != RouteState::Active
+            || self.failure.is_some()
+            || self.activated_at.is_none()
+            || self.domain_claim_id.is_none()
+            || self.domain_pattern.is_none()
+            || revision == 0
+            || !valid_sha256(&snapshot_digest)
+        {
+            return Err("only a complete active TLS route can bind a Gateway certificate".into());
+        }
+        self.ensure_time(bound_at)?;
+        if self.gateway_revision == Some(revision)
+            && self.gateway_command_id == Some(command_id)
+            && self.snapshot_digest.as_deref() == Some(snapshot_digest.as_str())
+            && self.gateway_certificate_id == Some(certificate_id)
+        {
+            return Ok(false);
+        }
+        self.gateway_revision = Some(revision);
+        self.gateway_command_id = Some(command_id);
+        self.snapshot_digest = Some(snapshot_digest);
+        self.gateway_certificate_id = Some(certificate_id);
+        self.aggregate_version += 1;
+        self.updated_at = bound_at;
+        Ok(true)
+    }
+
+    pub fn reject_for_domain_revocation(
+        &mut self,
+        revision: u64,
+        command_id: NodeCommandId,
+        snapshot_digest: String,
+        rejected_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let rejected_at = canonical_timestamp(rejected_at);
+        if self.state != RouteState::Active
+            || self.failure.is_some()
+            || self.activated_at.is_none()
+            || revision == 0
+            || !valid_sha256(&snapshot_digest)
+        {
+            return Err("only an active route can converge revoked domain ownership".into());
+        }
+        self.ensure_time(rejected_at)?;
+        self.state = RouteState::Rejected;
+        self.gateway_revision = Some(revision);
+        self.gateway_command_id = Some(command_id);
+        self.snapshot_digest = Some(snapshot_digest);
+        self.failure = Some("domain ownership is no longer verified".into());
+        self.aggregate_version += 1;
+        self.updated_at = rejected_at;
+        self.activated_at = None;
+        Ok(())
+    }
+
     fn ensure_time(&self, at: DateTime<Utc>) -> Result<(), String> {
         if at < self.updated_at {
             return Err("route transition time regressed".into());
