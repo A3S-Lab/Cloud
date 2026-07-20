@@ -95,7 +95,7 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, forced reload-before-acknowledgement recovery against A3S Gateway 1.0.12, exact acknowledgement activation, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment and Runtime receipt replay, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. Activation-before-cleanup process death and clean-host release gates remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, forced reload-before-acknowledgement recovery against A3S Gateway 1.0.12, exact acknowledgement activation, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment and Runtime receipt replay, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, activation-before-retirement process-death recovery, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. The clean-host release gate remains |
 
 The MVP is not complete until E0 passes. D0 verification alone does not imply
 public reachability, production log retention, immutable update, or rollback
@@ -445,6 +445,13 @@ Complete the first user-visible release loop.
   revision, and durable stopped-or-absent evidence completes the operation.
   Reconciliation adopts staged cutovers and retirement commands after
   coordinator recovery.
+- Implemented: the PostgreSQL recovery gate holds retirement command access
+  closed while a child Flow process durably activates the candidate into
+  `retiring`, proves no cleanup command committed, and sends `SIGKILL`. A
+  reconstructed coordinator replays activation, dispatches one deterministic
+  previous-revision stop, and completes only from stopped-or-absent evidence.
+  The probe passes in both the Linux Secret/log job and the isolated real-Docker
+  Cloud consumer suite.
 - Implemented: `POST
   /api/v1/organizations/{organization_id}/workloads/{workload_id}/rollback`
   accepts only an older, successfully activated revision of the same active
@@ -488,7 +495,9 @@ Complete the first user-visible release loop.
   compacting a log chunk create explicit ordered gaps; log bodies never enter
   PostgreSQL, NATS, or Flow history.
 - Updating from image A to B and rolling back to A passes through real Runtime,
-  health, and Gateway paths.
+  health, and Gateway paths. Process death after candidate activation but before
+  retirement dispatch reconstructs to one cleanup command and no false terminal
+  success.
 - The full scenario runs from a clean machine in CI and on a separately managed
   Linux host; screenshots or mocks are not release evidence.
 
@@ -929,7 +938,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
 | 7 | Gateway reload before acknowledgement | Verified | `installed_a3s_gateway_recovers_reload_after_agent_process_death` durably begins the node command, reloads A3S Gateway 1.0.12, proves the new listener is live with no installed-state or acknowledgement projection, sends `SIGKILL`, reconstructs the executor, redelivers the same command under a new lease, persists one exact applied acknowledgement, and proves a second restart performs no third reload |
-| 8 | Activation before old-revision cleanup | Implemented slice; release process-death gate remains | Control-plane and routed-update tests reconstruct the coordinator after activation, adopt the deterministic retirement command, and require durable stopped-or-absent evidence before terminal `active`; the real Docker A→failed B→distinct C→cloned A scenario stops A after C activates and stops C only after the rollback activates. A clean-host process kill at this exact boundary remains required before E0 release |
+| 8 | Activation before old-revision cleanup | Verified | `activation_before_retirement_crash_probe` runs inside the PostgreSQL/Linux and isolated Cloud consumer gates: the parent prevents retirement command access, a child durably selects the candidate as `retiring`, the parent proves no cleanup command exists and sends `SIGKILL`, and a reconstructed coordinator emits one deterministic stop and requires stopped-or-absent evidence before terminal `active` |
 | 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 
 The real-provider commands and PostgreSQL isolation contract are documented in
@@ -1013,8 +1022,12 @@ remaining changes should land as vertical, independently verified slices:
    restarts the labeled provider, kills the child agent, and proves
    reconstructed exact-container reattachment, receipt completion/replay,
    Secret file/log safety, plaintext exclusion, and cleanup.
-9. Process death after activation but before old-revision cleanup, followed by
-   the clean-host end-to-end release run.
+9. Implemented on 2026-07-20: the PostgreSQL/Linux and isolated Cloud consumer
+   gates block retirement command access, let a child durably select the new
+   revision as `retiring`, prove no cleanup command committed, send `SIGKILL`,
+   and require reconstructed Flow to emit one deterministic stop and finish only
+   from stopped-or-absent evidence.
+10. Run the clean-host end-to-end release gate.
 
 No post-E0 product surface is marked available before this list passes. Contract
 design and isolated prototypes may proceed, but they cannot create production

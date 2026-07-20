@@ -59,8 +59,8 @@ operation cleanup. Production now performs bounded DNS TXT ownership
 verification through the host resolver. Later E0 sections remain the accepted
 design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
 a separate Linux node agent, and a React web application. The first release
-still requires process death after activation but before old-revision cleanup
-and clean-host gates before multi-node scheduling or hosted assets begin.
+still requires the clean-host end-to-end release gate before multi-node
+scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -364,6 +364,16 @@ revision is active. A failed update leaves the prior healthy revision selected.
 If the coordinator restarts after activation, it adopts or replays the
 deterministic retirement command and finishes only from durable Runtime
 stopped-or-absent evidence.
+
+The PostgreSQL crash gate makes that boundary a real process failure. Its parent
+holds retirement command access closed while a child reconstructs Flow and
+atomically selects the candidate revision as `retiring`. After proving the
+workload points at the candidate and no retirement command exists, the parent
+sends `SIGKILL`. A fresh coordinator replays the completed activation, enqueues
+one deterministic stop for the previous immutable Runtime, and reaches
+terminal `active` only after stopped-or-absent evidence. The same probe passes
+inside both the Linux Secret/log gate and the isolated real-Docker Cloud
+consumer gate.
 
 ## 7. Node agent and control protocol
 

@@ -133,8 +133,9 @@ API command
   it through the same health, Gateway cutover, activation, and retirement path
 - **Convergent Recovery**: Reattach after provider creation, recover a lost
   provider at the same generation, preserve the prior healthy revision on a
-  failed or rejected update, resume retirement after activation, and drive
-  cancellation through bounded cleanup
+  failed or rejected update, survive process death after activation but before
+  retirement dispatch, resume the deterministic cleanup, and drive cancellation
+  through bounded cleanup
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
@@ -151,7 +152,7 @@ API command
 | Runtime prerequisite | General Task and Service lifecycle with provider capability matching | Complete |
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
-| Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, recovery, one-node immutable replacement, and manual rollback with deterministic previous-revision retirement | Complete (`E0` update and rollback slice) |
+| Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, recovery, one-node immutable replacement, and manual rollback with deterministic previous-revision retirement, including real process death after activation but before retirement dispatch | Complete (`E0` update and rollback slice) |
 | Reachability | Route ownership, production DNS TXT ownership verification and explicit revocation, a Vault-backed production Gateway PKI adapter, managed TLS provisioning, automated renewal/revocation convergence, delayed obsolete-serial revocation, routed Gateway validation, complete snapshot publication, reload-before-acknowledgement process-death recovery, exact acknowledgement projection, and byte-preserving routed update and rollback cutover | Complete (`E0` slice) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, provider-and-agent-death recovery during rotated apply with exact container reattachment and receipt replay, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
@@ -644,7 +645,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed TLS mechanics, automated certificate renewal/revocation convergence, forced reload-before-acknowledgement recovery, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; activation-before-cleanup process death and clean-host release gates remain | In progress |
+| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed TLS mechanics, automated certificate renewal/revocation convergence, forced reload-before-acknowledgement recovery, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, activation-before-retirement process-death recovery, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; the clean-host release gate remains | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -741,7 +742,11 @@ rollback, and Secret-rotation restart recovery after the committed version
 boundary. The real Docker update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the
-rollback is selected. The rotation restart case races reconstructed workers,
+rollback is selected. The PostgreSQL recovery case blocks retirement dispatch,
+lets a child Flow process durably select the rotated revision, proves no stop
+command committed, sends `SIGKILL`, then reconstructs the coordinator and
+requires one deterministic previous-revision stop before terminal activation.
+The rotation restart case races reconstructed workers,
 derives one new revision with the pinned artifact unchanged, reconstructs Flow
 after the reference-only Runtime result, and scans the restart/checkpoint,
 desired-state, Flow, Fleet, event, audit, log, digest, and API surfaces for
