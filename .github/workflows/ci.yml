@@ -457,12 +457,24 @@ jobs:
       - name: Install dependencies
         run: |
           for attempt in 1 2 3; do
-            if bun install --frozen-lockfile; then
+            cache_dir="$RUNNER_TEMP/a3s-cloud-bun-cache-$attempt"
+            rm -rf node_modules "$cache_dir"
+            install_args=(
+              --frozen-lockfile
+              --backend=copyfile
+              --cache-dir="$cache_dir"
+              --network-concurrency=8
+            )
+            if [[ $attempt -eq 3 ]]; then
+              install_args+=(--force --no-cache)
+            fi
+            if timeout --signal=TERM --kill-after=10s 180s \
+              bun install "${install_args[@]}"; then
+              rm -rf "$cache_dir"
               break
             fi
             [[ $attempt -lt 3 ]] || exit 1
-            rm -rf node_modules
-            bun pm cache rm
+            rm -rf node_modules "$cache_dir"
             sleep $((attempt * 5))
           done
 
