@@ -59,9 +59,8 @@ operation cleanup. Production now performs bounded DNS TXT ownership
 verification through the host resolver. Later E0 sections remain the accepted
 design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
 a separate Linux node agent, and a React web application. The first release
-still requires provider death during a Secret-rotation apply, process death
-after activation but before old-revision cleanup, and clean-host gates before
-multi-node scheduling or hosted assets begin.
+still requires process death after activation but before old-revision cleanup
+and clean-host gates before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -447,6 +446,18 @@ workload remains. Advisory locking and unique event/workload records make
 concurrent workers and post-commit process loss converge to one deployment.
 The later operation reconciler cannot dispatch a Runtime command until that
 transaction is visible, so the Secret version is necessarily durable first.
+
+The isolated Cloud consumer gate exercises the rotated Runtime apply across
+both provider and agent process death. A child durably reserves the exact
+Runtime request, creates the healthy Docker container with materialized Secret
+bindings, and pauses before completing the pending receipt. The parent verifies
+the receipt and provider identity, restarts only the labeled isolated Docker
+provider, proves the same container remains, and sends `SIGKILL` to the child.
+A reconstructed Runtime client rebinds the same node and Secret transport,
+reattaches the exact container, completes and locally replays the original
+receipt, verifies `0400` file material and fully redacted logs, then removes the
+container and tmpfs material. Runtime receipts, command state, and provider
+labels remain reference-only throughout.
 
 Successful Runtime apply/remove completions are also projected from the command
 journal into restart-safe active log targets. A separate node-agent loop reads

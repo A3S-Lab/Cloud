@@ -371,12 +371,7 @@ async fn real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_th
             .status,
         DeploymentStatus::Active
     );
-    match RuntimeDriver::inspect(driver.as_ref(), &first_record).await? {
-        RuntimeInspection::Found { observation, .. } => {
-            assert_eq!(observation.state, RuntimeUnitState::Stopped)
-        }
-        RuntimeInspection::NotFound { .. } => {}
-    }
+    assert_retired(&runtime_state, driver.as_ref(), &first_record).await?;
     let third_record = runtime_state.load(&third_observation.unit_id).await?;
     match RuntimeDriver::inspect(driver.as_ref(), &third_record).await? {
         RuntimeInspection::Found { observation, .. } => {
@@ -532,12 +527,7 @@ async fn real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_th
             .status,
         DeploymentStatus::Active
     );
-    match RuntimeDriver::inspect(driver.as_ref(), &third_record).await? {
-        RuntimeInspection::Found { observation, .. } => {
-            assert_eq!(observation.state, RuntimeUnitState::Stopped)
-        }
-        RuntimeInspection::NotFound { .. } => {}
-    }
+    assert_retired(&runtime_state, driver.as_ref(), &third_record).await?;
     match RuntimeDriver::inspect(driver.as_ref(), &rollback_record).await? {
         RuntimeInspection::Found { observation, .. } => {
             assert_eq!(observation.state, RuntimeUnitState::Running);
@@ -820,6 +810,25 @@ async fn remove_record(
         },
     )
     .await?;
+    Ok(())
+}
+
+async fn assert_retired(
+    state: &Arc<dyn RuntimeStateStore>,
+    driver: &DockerRuntimeDriver,
+    record: &a3s_runtime::RuntimeUnitRecord,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let durable = state.load(&record.spec.unit_id).await?;
+    assert_eq!(durable.observation.state, RuntimeUnitState::Stopped);
+    if let RuntimeInspection::Found { observation, .. } =
+        RuntimeDriver::inspect(driver, &durable).await?
+    {
+        assert!(
+            observation.state.is_terminal(),
+            "retired Docker container remained {:?}",
+            observation.state
+        );
+    }
     Ok(())
 }
 

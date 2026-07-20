@@ -8,6 +8,8 @@ on:
       - .github/workflows/docker-conformance.yml
       - Cargo.lock
       - Cargo.toml
+      - crates/contracts/**
+      - crates/control-plane/**
       - crates/node-agent/**
       - tools/runtime-conformance/**
   pull_request:
@@ -15,6 +17,8 @@ on:
       - .github/workflows/docker-conformance.yml
       - Cargo.lock
       - Cargo.toml
+      - crates/contracts/**
+      - crates/control-plane/**
       - crates/node-agent/**
       - tools/runtime-conformance/**
   schedule:
@@ -29,10 +33,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  docker-provider:
-    name: Real Docker provider
+  docker-certification:
+    name: ${{ matrix.suite == 'provider' && 'Real Docker provider' || 'Cloud consumer recovery' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - provider
+          - cloud
     defaults:
       run:
         shell: bash
@@ -76,11 +86,13 @@ jobs:
           docker info >/dev/null
           sudo docker info >/dev/null
 
-      - name: Pull pinned provider fixtures
+      - name: Pull pinned certification fixtures
         run: |
           images=(
             "docker@sha256:66d292e5c26bd33a6f6f61cacb880de2186339a524ecba1ce098dbbaceed6515"
             "registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+            "postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+            "nats@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00"
           )
           for image in "${images[@]}"; do
             docker pull "$image"
@@ -89,7 +101,8 @@ jobs:
 
       - name: Run isolated Docker Runtime certification
         env:
-          EVIDENCE_DIR: ${{ runner.temp }}/a3s-docker-provider-evidence
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-docker-${{ matrix.suite }}-evidence
+          RUNTIME_SUITE: ${{ matrix.suite }}
           RUNTIME_REVISION: ${{ steps.runtime_revision.outputs.revision }}
         run: |
           cloud_revision=$(git -C apps/cloud rev-parse HEAD)
@@ -108,6 +121,7 @@ jobs:
               --runtime-sha "$RUNTIME_REVISION" \
               --evidence-dir "$EVIDENCE_DIR" \
               --cargo "$cargo_bin" \
+              --suite "$RUNTIME_SUITE" \
               --ttl-seconds 3000
           gate_status=$?
           set -e
@@ -119,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-provider-conformance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/a3s-docker-provider-evidence
+          name: docker-${{ matrix.suite }}-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-docker-${{ matrix.suite }}-evidence
           if-no-files-found: warn
           retention-days: 14

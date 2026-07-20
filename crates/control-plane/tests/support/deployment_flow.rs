@@ -540,14 +540,14 @@ pub async fn exercise_deployment_flow(
     })
 }
 
-struct PostgresSecretTransport {
+pub(super) struct PostgresSecretTransport {
     handler: ResolveSecretMaterialHandler,
     organization_id: OrganizationId,
     node_id: NodeId,
 }
 
 impl PostgresSecretTransport {
-    fn new(
+    pub(super) fn new(
         executor: &PostgresExecutor,
         workloads: Arc<dyn IWorkloadRepository>,
         organization_id: OrganizationId,
@@ -613,7 +613,7 @@ fn secret_application_error(error: ApplicationError) -> NodeControlClientError {
     }
 }
 
-fn assert_tree_excludes_plaintext(
+pub(super) fn assert_tree_excludes_plaintext(
     root: &Path,
     sensitive_plaintexts: &[&str],
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -641,7 +641,7 @@ fn assert_tree_excludes_plaintext(
     Ok(())
 }
 
-fn assert_secret_file_modes(
+pub(super) fn assert_secret_file_modes(
     root: &Path,
     expected: &[u32],
 ) -> Result<(), Box<dyn std::error::Error>> {
