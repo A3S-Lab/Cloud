@@ -3,8 +3,10 @@ use crate::modules::fleet::domain::entities::{
     EnrollmentToken, NodeCertificate, NodeCertificateMaterial, NodeCommandDraft,
 };
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeCertificateRotationCompletion,
-    NodeCertificateRotationDraft, NodeEnrollmentDraft, NodeHeartbeatUpdate, NodeStateChange,
+    ILogRetentionRepository, INodeControlRepository, INodeRepository,
+    NodeCertificateRotationCompletion, NodeCertificateRotationDraft, NodeEnrollmentDraft,
+    NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery,
+    NodeLogChunkReceiptDraft, NodeStateChange,
 };
 use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeAvailability, NodeCapabilities, NodeName, NodeState,
@@ -389,6 +391,116 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
     gateway_conflict.state = GatewayAckState::Rejected;
     assert!(repository
         .record_gateway_acknowledgement(gateway_conflict, observed_at + Duration::seconds(3),)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn log_tombstone_compaction_is_bounded_coalesced_and_replay_safe() {
+    let repository = InMemoryNodeRepository::new();
+    let now = Utc::now();
+    let (node_id, _) = command_node(&repository, now).await;
+    let batch = NodeLogBatchReceiptDraft {
+        batch_id: Uuid::now_v7(),
+        node_id,
+        payload_digest: format!("sha256:{}", "1".repeat(64)),
+        sent_at: now,
+        chunks: (0..=2)
+            .map(|sequence| NodeLogChunkReceiptDraft {
+                unit_id: "service-logs".into(),
+                generation: 1,
+                cursor: format!("cursor:{sequence}"),
+                sequence,
+                observed_at_ms: sequence,
+                stream: "stdout".into(),
+                checksum: format!("sha256:{}", "2".repeat(64)),
+                object_key: format!("logs/{node_id}/{sequence}.json"),
+            })
+            .collect(),
+    };
+    assert!(
+        !repository
+            .record_log_chunks(batch.clone(), now)
+            .await
+            .expect("record log batch")
+            .replayed
+    );
+    let targets = repository
+        .list_log_chunks_for_retention(now + Duration::seconds(1), 10)
+        .await
+        .expect("list log retention targets");
+    assert_eq!(targets.len(), 3);
+    for target in &targets {
+        assert!(repository
+            .mark_log_chunk_retained(target, now + Duration::seconds(1))
+            .await
+            .expect("mark log chunk retained"));
+    }
+
+    for through_sequence in 0_u64..=2 {
+        let result = repository
+            .compact_log_tombstones(now + Duration::seconds(2), now + Duration::seconds(3), 1)
+            .await
+            .expect("compact one bounded tombstone");
+        assert_eq!(result.compacted_tombstones, 1);
+        assert_eq!(result.created_ranges, 1);
+        let ranges = repository
+            .list_log_compaction_ranges(NodeLogChunkQuery {
+                node_id,
+                unit_id: "service-logs".into(),
+                generation: 1,
+                after_sequence: None,
+                limit: 10,
+                stream: Some(a3s_runtime::contract::RuntimeLogStream::Stderr),
+            })
+            .await
+            .expect("list stream-independent compaction ranges");
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].first_sequence, 0);
+        assert_eq!(ranges[0].through_sequence, through_sequence);
+    }
+
+    let clipped = repository
+        .list_log_compaction_ranges(NodeLogChunkQuery {
+            node_id,
+            unit_id: "service-logs".into(),
+            generation: 1,
+            after_sequence: Some(1),
+            limit: 10,
+            stream: None,
+        })
+        .await
+        .expect("clip a compaction range after its cursor");
+    assert_eq!(clipped.len(), 1);
+    assert_eq!(clipped[0].first_sequence, 2);
+    assert_eq!(clipped[0].through_sequence, 2);
+    assert!(
+        repository
+            .replay_log_batch(NodeLogBatchReplay {
+                batch_id: batch.batch_id,
+                node_id,
+                payload_digest: batch.payload_digest.clone(),
+                sent_at: batch.sent_at,
+                chunk_count: 3,
+            })
+            .await
+            .expect("replay compacted batch")
+            .expect("durable batch header")
+            .replayed
+    );
+    assert!(
+        repository
+            .record_log_chunks(batch.clone(), now + Duration::seconds(10))
+            .await
+            .expect("record exact compacted batch replay")
+            .replayed
+    );
+
+    let mut regressed = batch;
+    regressed.batch_id = Uuid::now_v7();
+    regressed.chunks.truncate(1);
+    assert!(repository
+        .record_log_chunks(regressed, now + Duration::seconds(11))
         .await
         .is_err());
 }

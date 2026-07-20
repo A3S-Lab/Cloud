@@ -20,10 +20,11 @@ use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
     EnrollNodeHandler, FleetModule, GetNodeHandler, IGatewayAcknowledgementProjector,
     IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodesHandler,
-    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, LogRetentionWorker,
-    NodeControlApi, NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
-    RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
-    S3LogChunkStore, S3LogChunkStoreOptions, VaultCertificateAuthority, VaultKeyEncryptionService,
+    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, LogCompactionWorker,
+    LogRetentionWorker, NodeControlApi, NodeControlServer, PostgresNodeRepository,
+    RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
+    RotateNodeCertificateHandler, S3LogChunkStore, S3LogChunkStoreOptions,
+    VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::identity::domain::repositories::IApiTokenRepository;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
@@ -259,11 +260,18 @@ pub async fn build_application(
     let run_operations = matches!(config.server.role, ProcessRole::All | ProcessRole::Worker);
     let run_relay = matches!(config.server.role, ProcessRole::All | ProcessRole::Relay);
     let log_retention_worker = LogRetentionWorker::new(
-        log_retention_repository,
+        Arc::clone(&log_retention_repository),
         Arc::clone(&log_chunks),
         Duration::from_millis(config.logs.retention_ms),
         Duration::from_millis(config.logs.retention_poll_ms),
         config.logs.retention_batch_size,
+    )
+    .map_err(ControlPlaneStartupError::LogStorage)?;
+    let log_compaction_worker = LogCompactionWorker::new(
+        log_retention_repository,
+        Duration::from_millis(config.logs.tombstone_retention_ms),
+        Duration::from_millis(config.logs.tombstone_compaction_poll_ms),
+        config.logs.tombstone_compaction_batch_size,
     )
     .map_err(ControlPlaneStartupError::LogStorage)?;
     let workload_reconciler = WorkloadRuntimeReconciler::new(
@@ -312,6 +320,7 @@ pub async fn build_application(
         run_operations.then_some(operation_coordinator),
         run_operations.then_some(workload_reconciler),
         run_operations.then_some(log_retention_worker),
+        run_operations.then_some(log_compaction_worker),
         run_relay.then_some(outbox_relay),
         node_control_server,
     ))

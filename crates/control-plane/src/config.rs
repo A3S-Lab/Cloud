@@ -149,6 +149,9 @@ pub struct LogsConfig {
     pub retention_ms: u64,
     pub retention_poll_ms: u64,
     pub retention_batch_size: usize,
+    pub tombstone_retention_ms: u64,
+    pub tombstone_compaction_poll_ms: u64,
+    pub tombstone_compaction_batch_size: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -330,6 +333,9 @@ impl CloudConfig {
                 "retention_ms",
                 "retention_poll_ms",
                 "retention_batch_size",
+                "tombstone_retention_ms",
+                "tombstone_compaction_poll_ms",
+                "tombstone_compaction_batch_size",
             ],
         )?;
         let edge = one_block(&document, "edge")?;
@@ -451,6 +457,9 @@ impl CloudConfig {
                 retention_ms: integer(logs, "retention_ms")?,
                 retention_poll_ms: integer(logs, "retention_poll_ms")?,
                 retention_batch_size: integer(logs, "retention_batch_size")?,
+                tombstone_retention_ms: integer(logs, "tombstone_retention_ms")?,
+                tombstone_compaction_poll_ms: integer(logs, "tombstone_compaction_poll_ms")?,
+                tombstone_compaction_batch_size: integer(logs, "tombstone_compaction_batch_size")?,
             },
             edge: EdgeConfig {
                 entrypoint_address: string(edge, "entrypoint_address")?,
@@ -640,6 +649,18 @@ impl CloudConfig {
         {
             return Err(ConfigError::Invalid(
                 "logs retention must be 1 minute to 10 years with a bounded poll interval and batch of 1 to 10000"
+                    .into(),
+            ));
+        }
+        if !(60_000..=315_576_000_000).contains(&self.logs.tombstone_retention_ms)
+            || self.logs.tombstone_compaction_poll_ms == 0
+            || self.logs.tombstone_compaction_poll_ms > 86_400_000
+            || self.logs.tombstone_compaction_poll_ms > self.logs.tombstone_retention_ms
+            || self.logs.tombstone_compaction_batch_size == 0
+            || self.logs.tombstone_compaction_batch_size > 10_000
+        {
+            return Err(ConfigError::Invalid(
+                "logs tombstones must be retained for 1 minute to 10 years before compaction with a bounded poll interval and batch of 1 to 10000"
                     .into(),
             ));
         }
@@ -1161,6 +1182,9 @@ logs {
   retention_ms = 604800000
   retention_poll_ms = 60000
   retention_batch_size = 256
+  tombstone_retention_ms = 2592000000
+  tombstone_compaction_poll_ms = 3600000
+  tombstone_compaction_batch_size = 1000
 }
 edge {
   entrypoint_address = "0.0.0.0:8081"
@@ -1206,6 +1230,7 @@ security {
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
+        assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
 
@@ -1243,6 +1268,11 @@ security {
         assert!(CloudConfig::parse(
             &VALID.replace("retention_poll_ms = 60000", "retention_poll_ms = 604800001")
         )
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "tombstone_compaction_poll_ms = 3600000",
+            "tombstone_compaction_poll_ms = 2592000001"
+        ))
         .is_err());
         assert!(CloudConfig::parse(&VALID.replace(
             "s3_endpoint = \"\"",

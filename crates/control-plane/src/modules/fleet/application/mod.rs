@@ -1,6 +1,7 @@
 mod certificate;
 pub mod commands;
 mod gateway_acknowledgement_projector;
+mod log_compaction;
 mod log_retention;
 pub mod queries;
 
@@ -15,6 +16,7 @@ pub use commands::{
     RotateNodeCertificate, RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };
 pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
+pub use log_compaction::LogCompactionWorker;
 pub use log_retention::LogRetentionWorker;
 pub use queries::{GetNode, GetNodeHandler, ListNodes, ListNodesHandler, NodeQueryResult};
 

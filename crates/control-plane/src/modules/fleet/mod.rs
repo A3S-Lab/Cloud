@@ -9,11 +9,11 @@ pub use application::{
     EnqueueNodeCommandHandler, EnqueueNodeCommandResult, EnrollNode, EnrollNodeHandler,
     EnrollNodeResult, GetNode, GetNodeHandler, IGatewayAcknowledgementProjector,
     IssueEnrollmentToken, IssueEnrollmentTokenHandler, IssueEnrollmentTokenResult,
-    LeaseNodeCommands, LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogRetentionWorker,
-    NodeQueryResult, RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,
-    RecordNodeLogChunks, RecordNodeLogChunksHandler, RecordNodeObservations,
-    RecordNodeObservationsHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
-    RotateNodeCertificateResult,
+    LeaseNodeCommands, LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogCompactionWorker,
+    LogRetentionWorker, NodeQueryResult, RecordGatewayAcknowledgement,
+    RecordGatewayAcknowledgementHandler, RecordNodeLogChunks, RecordNodeLogChunksHandler,
+    RecordNodeObservations, RecordNodeObservationsHandler, RotateNodeCertificate,
+    RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };
 pub use infrastructure::{
     LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore,

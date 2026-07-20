@@ -15,15 +15,17 @@ through a typed filesystem or S3-compatible adapter, indexes metadata in
 PostgreSQL, and exposes tenant-scoped cursor queries with explicit
 missing/corrupt gaps. A bounded control-plane worker removes object bodies after
 the configured receipt age while durable `retained` tombstones preserve every
-cursor position. A dedicated digest-pinned MinIO CI job defines the real
-S3-compatible lifecycle gate, and a separate remote Gateway job exercises the
-real managed-TLS path. Later E0 sections remain the accepted design until their
-exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux
-node agent, and a React web application. The first release still requires
-production DNS/CA integration and renewal, full Secret/log Linux, Docker, and
-PostgreSQL crash certification, tombstone compaction, provider cursor-loss
-recovery, update, rollback, live web logs, and clean-host gates before
-multi-node scheduling or hosted assets begin.
+cursor position. An independently configured bounded worker later replaces old
+per-chunk tombstones with coalesced durable sequence ranges, and queries expose
+those ranges as explicit `compacted` gaps. A dedicated digest-pinned MinIO CI
+job defines the real S3-compatible lifecycle gate, and a separate remote
+Gateway job exercises the real managed-TLS path. Later E0 sections remain the
+accepted design until their exit gates pass. A3S Cloud ships as a Rust modular
+monolith, a separate Linux node agent, and a React web application. The first
+release still requires production DNS/CA integration and renewal, full
+Secret/log Linux, Docker, and PostgreSQL crash certification, provider
+cursor-loss recovery, update, rollback, live web logs, and clean-host gates
+before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -363,8 +365,19 @@ metadata row. A deletion failure leaves active metadata for retry; a metadata
 commit interruption repeats the idempotent deletion on the next scan. Multiple
 workers may inspect the same row safely. Persisted batch replays are recognized
 before object writes, so an acknowledged retained batch cannot recreate its
-body. Tombstone metadata remains queryable until a future bounded compaction
-policy is implemented.
+body.
+
+An independent `all`/`worker` loop selects at most the configured number of
+tombstones whose durable `retained_at` predates the tombstone retention cutoff.
+One PostgreSQL transaction locks eligible rows with `SKIP LOCKED`, deletes their
+batch memberships and per-chunk metadata, and inserts continuous sequence-range
+markers. Adjacent markers for one node, unit, and generation are coalesced
+across cycles. Batch headers and payload digests remain durable for exact replay,
+and the maximum live-or-compacted sequence is a durable watermark that rejects
+an unseen non-advancing sequence. Queries surface each marker as an explicit
+`compacted` gap. Original provider cursors, observation times, and stream values
+are intentionally discarded, so stream-filtered queries conservatively include
+compacted ranges.
 
 The S3-compatible adapter uses conditional create for every immutable object.
 An exact replay compares the existing bytes and returns the original logical
@@ -530,8 +543,13 @@ rejects non-files and symbolic links. Deleted and invalid objects remain
 visible as ordered `missing` and `corrupt` gap records. A row whose body was
 removed by the configured retention worker remains visible as a `retained` gap
 without an object-store read. Object-storage unavailability is an error rather
-than a fabricated gap. This is a snapshot query; bounded live fan-out and the
-web log stream remain E0 work.
+than a fabricated gap. Once old tombstones are compacted, the query returns a
+`compacted` gap with inclusive `fromSequence` and `throughSequence` bounds plus
+the number of compacted chunks. Its source cursor, observation time, and stream
+are null; paging advances to the terminal sequence. Compacted ranges remain
+visible under a stream filter because their original stream metadata no longer
+exists. This is a snapshot query; bounded live fan-out and the web log stream
+remain E0 work.
 
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
@@ -613,10 +631,12 @@ corrupt objects without putting log bodies in PostgreSQL. The retention worker
 deletes expired bodies first and then records durable `retained_at` tombstones,
 so snapshot queries never silently skip old positions. The production profile
 requires HTTPS S3-compatible storage, and the dedicated CI job provisions
-digest-pinned MinIO to exercise the immutable object lifecycle. Bounded
-tombstone compaction, full crash certification, and live fan-out are still
-planned. Loki or ClickHouse is introduced only when product requirements demand
-global text search at a volume that the chunk index cannot serve.
+digest-pinned MinIO to exercise the immutable object lifecycle. A separate
+bounded worker compacts aged tombstones into coalesced sequence ranges while
+preserving batch replay and durable sequence watermarks. Full crash
+certification and live fan-out are still planned. Loki or ClickHouse is
+introduced only when product requirements demand global text search at a
+volume that the chunk index cannot serve.
 
 ### 14.2 Middleware deliberately not selected
 

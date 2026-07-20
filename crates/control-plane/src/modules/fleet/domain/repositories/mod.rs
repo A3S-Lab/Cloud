@@ -2,7 +2,10 @@ mod log_retention_repository;
 mod node_control_repository;
 mod node_repository;
 
-pub use log_retention_repository::{ILogRetentionRepository, NodeLogRetentionTarget};
+pub use log_retention_repository::{
+    ILogRetentionRepository, NodeLogCompactionRange, NodeLogCompactionResult,
+    NodeLogRetentionTarget,
+};
 pub use node_control_repository::{
     INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
     NodeLogChunkQuery, NodeLogChunkReceiptDraft, RuntimeObservationRecord,

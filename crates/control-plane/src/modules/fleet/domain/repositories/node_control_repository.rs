@@ -1,4 +1,5 @@
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
+use crate::modules::fleet::domain::repositories::NodeLogCompactionRange;
 use crate::modules::shared_kernel::domain::{IdempotentWrite, NodeId, RepositoryError};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeGatewayAck,
@@ -85,6 +86,7 @@ impl NodeLogBatchReceiptDraft {
         }
         let mut identities = std::collections::BTreeSet::new();
         let mut cursors = std::collections::BTreeSet::new();
+        let mut last_sequences = std::collections::BTreeMap::new();
         for chunk in &self.chunks {
             chunk.validate()?;
             if !identities.insert((chunk.unit_id.as_str(), chunk.generation, chunk.sequence))
@@ -95,6 +97,13 @@ impl NodeLogBatchReceiptDraft {
                 ))
             {
                 return Err("log receipt batch contains duplicate sequence or cursor".into());
+            }
+            let identity = (chunk.unit_id.as_str(), chunk.generation);
+            if last_sequences
+                .insert(identity, chunk.sequence)
+                .is_some_and(|sequence| sequence >= chunk.sequence)
+            {
+                return Err("log receipt batch sequences must strictly advance".into());
             }
         }
         Ok(())
@@ -259,4 +268,9 @@ pub trait INodeControlRepository: Send + Sync {
         &self,
         query: NodeLogChunkQuery,
     ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError>;
+
+    async fn list_log_compaction_ranges(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogCompactionRange>, RepositoryError>;
 }

@@ -1,6 +1,6 @@
 use super::GetWorkloadLogs;
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, NodeLogChunkMetadata, NodeLogChunkQuery,
+    INodeControlRepository, NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogCompactionRange,
 };
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk,
@@ -92,29 +92,51 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                 }));
             };
             let fetch_limit = usize::from(query.limit) + 1;
-            let mut chunks = match metadata
-                .list_log_chunks(NodeLogChunkQuery {
-                    node_id,
-                    unit_id: unit_id.clone(),
-                    generation: revision.generation,
-                    after_sequence: query.after_sequence,
-                    limit: fetch_limit,
-                    stream: query.stream,
-                })
-                .await
-            {
+            let metadata_query = NodeLogChunkQuery {
+                node_id,
+                unit_id: unit_id.clone(),
+                generation: revision.generation,
+                after_sequence: query.after_sequence,
+                limit: fetch_limit,
+                stream: query.stream,
+            };
+            let mut chunks = match metadata.list_log_chunks(metadata_query.clone()).await {
                 Ok(chunks) => chunks,
                 Err(error) => return Ok(Err(error.into())),
             };
-            let has_more = chunks.len() > usize::from(query.limit);
+            let ranges = match metadata.list_log_compaction_ranges(metadata_query).await {
+                Ok(ranges) => ranges,
+                Err(error) => return Ok(Err(error.into())),
+            };
+            let source_has_more =
+                chunks.len() > usize::from(query.limit) || ranges.len() > usize::from(query.limit);
+            chunks.retain(|chunk| {
+                !ranges.iter().any(|range| {
+                    (range.first_sequence..=range.through_sequence).contains(&chunk.sequence)
+                })
+            });
+            let mut stored = chunks
+                .into_iter()
+                .map(StoredLogRecord::Chunk)
+                .chain(ranges.into_iter().map(StoredLogRecord::Compacted))
+                .collect::<Vec<_>>();
+            stored.sort_by_key(|record| record.first_sequence());
+            let has_more = source_has_more || stored.len() > usize::from(query.limit);
             if has_more {
-                chunks.truncate(usize::from(query.limit));
+                stored.truncate(usize::from(query.limit));
             }
             let next_after_sequence = has_more
-                .then(|| chunks.last().map(|chunk| chunk.sequence))
+                .then(|| stored.last().map(StoredLogRecord::through_sequence))
                 .flatten();
-            let mut records = Vec::with_capacity(chunks.len());
-            for chunk in chunks {
+            let mut records = Vec::with_capacity(stored.len());
+            for stored in stored {
+                let chunk = match stored {
+                    StoredLogRecord::Chunk(chunk) => chunk,
+                    StoredLogRecord::Compacted(range) => {
+                        records.push(WorkloadLogRecord::CompactedGap { range });
+                        continue;
+                    }
+                };
                 if chunk.retained_at.is_some() {
                     records.push(WorkloadLogRecord::Gap {
                         metadata: chunk,
@@ -170,6 +192,27 @@ fn report_matches(report: &NodeLogChunkReport, metadata: &NodeLogChunkMetadata) 
         && report.chunk.observed_at_ms == metadata.observed_at_ms
         && report.chunk.stream == metadata.stream
         && report.checksum == metadata.checksum
+}
+
+enum StoredLogRecord {
+    Chunk(NodeLogChunkMetadata),
+    Compacted(NodeLogCompactionRange),
+}
+
+impl StoredLogRecord {
+    const fn first_sequence(&self) -> u64 {
+        match self {
+            Self::Chunk(chunk) => chunk.sequence,
+            Self::Compacted(range) => range.first_sequence,
+        }
+    }
+
+    const fn through_sequence(&self) -> u64 {
+        match self {
+            Self::Chunk(chunk) => chunk.sequence,
+            Self::Compacted(range) => range.through_sequence,
+        }
+    }
 }
 
 fn logs_not_found() -> ApplicationError {

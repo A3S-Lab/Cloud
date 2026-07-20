@@ -52,6 +52,25 @@ struct LogRetentionRow {
     received_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LogCompactionCandidateRow {
+    node_id: Uuid,
+    unit_id: String,
+    generation: u64,
+    sequence: u64,
+    retained_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LogCompactionRangeRow {
+    node_id: Uuid,
+    unit_id: String,
+    generation: u64,
+    first_sequence: u64,
+    through_sequence: u64,
+    compacted_at: DateTime<Utc>,
+}
+
 impl FromRow for LogRetentionRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
@@ -61,6 +80,31 @@ impl FromRow for LogRetentionRow {
             sequence: decode(row, 3)?,
             object_key: decode(row, 4)?,
             received_at: decode(row, 5)?,
+        })
+    }
+}
+
+impl FromRow for LogCompactionCandidateRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            node_id: decode(row, 0)?,
+            unit_id: decode(row, 1)?,
+            generation: decode(row, 2)?,
+            sequence: decode(row, 3)?,
+            retained_at: decode(row, 4)?,
+        })
+    }
+}
+
+impl FromRow for LogCompactionRangeRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            node_id: decode(row, 0)?,
+            unit_id: decode(row, 1)?,
+            generation: decode(row, 2)?,
+            first_sequence: decode(row, 3)?,
+            through_sequence: decode(row, 4)?,
+            compacted_at: decode(row, 5)?,
         })
     }
 }
@@ -126,6 +170,23 @@ impl LogRetentionRow {
             .validate()
             .map_err(PostgresPersistenceError::Invariant)?;
         Ok(target)
+    }
+}
+
+impl LogCompactionRangeRow {
+    fn range(self) -> Result<NodeLogCompactionRange, PostgresPersistenceError> {
+        let range = NodeLogCompactionRange {
+            node_id: NodeId::from_uuid(self.node_id),
+            unit_id: self.unit_id,
+            generation: self.generation,
+            first_sequence: self.first_sequence,
+            through_sequence: self.through_sequence,
+            compacted_at: self.compacted_at,
+        };
+        range
+            .validate()
+            .map_err(PostgresPersistenceError::Invariant)?;
+        Ok(range)
     }
 }
 
@@ -291,12 +352,6 @@ pub(in super::super) async fn record_log_chunks(
                                 )
                             })?,
                         )
-                        || stored_log_chunks_for_batch(transaction, batch.batch_id).await?
-                            != batch
-                                .chunks
-                                .iter()
-                                .map(LogChunkRow::from)
-                                .collect::<Vec<_>>()
                     {
                         return Err(RepositoryError::Conflict(
                             "log batch ID was reused with different content".into(),
@@ -357,6 +412,20 @@ pub(in super::super) async fn record_log_chunks(
                             .into());
                         }
                     } else {
+                        if maximum_log_sequence(
+                            transaction,
+                            batch.node_id,
+                            &chunk.unit_id,
+                            chunk.generation,
+                        )
+                        .await?
+                        .is_some_and(|sequence| chunk.sequence <= sequence)
+                        {
+                            return Err(RepositoryError::Conflict(
+                                "log sequence did not advance beyond durable history".into(),
+                            )
+                            .into());
+                        }
                         if fetch_optional::<u64, _>(
                             transaction,
                             sql_query::<u64>(
@@ -527,6 +596,53 @@ pub(in super::super) async fn list_log_chunks(
         .map_err(transaction_error)
 }
 
+pub(in super::super) async fn list_log_compaction_ranges(
+    executor: &PostgresExecutor,
+    query: NodeLogChunkQuery,
+) -> Result<Vec<NodeLogCompactionRange>, RepositoryError> {
+    query.validate().map_err(RepositoryError::Conflict)?;
+    let limit = i64::try_from(query.limit)
+        .map_err(|_| RepositoryError::Conflict("log compaction query limit is invalid".into()))?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let mut statement = sql_query::<LogCompactionRangeRow>(
+                    "select node_id, unit_id, generation, first_sequence, through_sequence, compacted_at from node_log_compaction_ranges where node_id = ",
+                )
+                .bind(query.node_id.as_uuid())
+                .append(" and unit_id = ")
+                .bind(query.unit_id.as_str())
+                .append(" and generation = ")
+                .bind(query.generation);
+                if let Some(after_sequence) = query.after_sequence {
+                    statement = statement
+                        .append(" and through_sequence > ")
+                        .bind(after_sequence);
+                }
+                let rows = fetch_all(
+                    transaction,
+                    statement
+                        .append(" order by first_sequence limit ")
+                        .bind(limit),
+                )
+                .await?;
+                rows.into_iter()
+                    .map(|row| {
+                        row.range()?
+                            .clipped_after(query.after_sequence)
+                            .ok_or_else(|| {
+                                PostgresPersistenceError::Invariant(
+                                    "log compaction query returned a range before its cursor".into(),
+                                )
+                            })
+                    })
+                    .collect()
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
 pub(in super::super) async fn list_log_chunks_for_retention(
     executor: &PostgresExecutor,
     received_before: DateTime<Utc>,
@@ -610,19 +726,238 @@ pub(in super::super) async fn mark_log_chunk_retained(
         .map_err(transaction_error)
 }
 
-async fn stored_log_chunks_for_batch(
+pub(in super::super) async fn compact_log_tombstones(
+    executor: &PostgresExecutor,
+    retained_before: DateTime<Utc>,
+    compacted_at: DateTime<Utc>,
+    limit: usize,
+) -> Result<NodeLogCompactionResult, RepositoryError> {
+    if limit == 0 || limit > 10_000 {
+        return Err(RepositoryError::Conflict(
+            "log compaction limit must be between 1 and 10000".into(),
+        ));
+    }
+    let retained_before = canonical_timestamp(retained_before);
+    let compacted_at = canonical_timestamp(compacted_at);
+    if compacted_at < retained_before {
+        return Err(RepositoryError::Conflict(
+            "log compaction timestamp precedes its cutoff".into(),
+        ));
+    }
+    let limit = i64::try_from(limit)
+        .map_err(|_| RepositoryError::Conflict("log compaction limit is invalid".into()))?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let candidates = fetch_all(
+                    transaction,
+                    sql_query::<LogCompactionCandidateRow>(
+                        "select node_id, unit_id, generation, sequence, retained_at from node_log_chunks where retained_at is not null and retained_at < ",
+                    )
+                    .bind(retained_before)
+                    .append(
+                        " order by retained_at, node_id, unit_id, generation, sequence limit ",
+                    )
+                    .bind(limit)
+                    .append(" for update skip locked"),
+                )
+                .await?;
+                let ranges = compacted_ranges(&candidates, compacted_at)?;
+                let created_ranges = ranges.len();
+                for candidate in &candidates {
+                    execute(
+                        transaction,
+                        sql_query::<()>(
+                            "delete from node_log_batch_chunks where node_id = ",
+                        )
+                        .bind(candidate.node_id)
+                        .append(" and unit_id = ")
+                        .bind(candidate.unit_id.as_str())
+                        .append(" and generation = ")
+                        .bind(candidate.generation)
+                        .append(" and sequence = ")
+                        .bind(candidate.sequence),
+                    )
+                    .await?;
+                    require_one_row(
+                        "log tombstone",
+                        execute(
+                            transaction,
+                            sql_query::<()>("delete from node_log_chunks where node_id = ")
+                                .bind(candidate.node_id)
+                                .append(" and unit_id = ")
+                                .bind(candidate.unit_id.as_str())
+                                .append(" and generation = ")
+                                .bind(candidate.generation)
+                                .append(" and sequence = ")
+                                .bind(candidate.sequence)
+                                .append(" and retained_at = ")
+                                .bind(canonical_timestamp(candidate.retained_at)),
+                        )
+                        .await?,
+                    )?;
+                }
+                for range in ranges {
+                    merge_compaction_range(transaction, range).await?;
+                }
+                Ok(NodeLogCompactionResult {
+                    compacted_tombstones: candidates.len(),
+                    created_ranges,
+                })
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
+fn compacted_ranges(
+    candidates: &[LogCompactionCandidateRow],
+    compacted_at: DateTime<Utc>,
+) -> Result<Vec<NodeLogCompactionRange>, PostgresPersistenceError> {
+    let mut ranges = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        if candidate.retained_at > compacted_at {
+            return Err(PostgresPersistenceError::Invariant(
+                "log tombstone was compacted before retention".into(),
+            ));
+        }
+        ranges.push(NodeLogCompactionRange {
+            node_id: NodeId::from_uuid(candidate.node_id),
+            unit_id: candidate.unit_id.clone(),
+            generation: candidate.generation,
+            first_sequence: candidate.sequence,
+            through_sequence: candidate.sequence,
+            compacted_at,
+        });
+    }
+    NodeLogCompactionRange::coalesce(ranges).map_err(PostgresPersistenceError::Invariant)
+}
+
+async fn merge_compaction_range(
     transaction: &a3s_orm::PostgresTransaction,
-    batch_id: Uuid,
-) -> Result<Vec<LogChunkRow>, PostgresPersistenceError> {
-    fetch_all(
-        transaction,
-        sql_query::<LogChunkRow>(
-            "select chunks.unit_id, chunks.generation, chunks.cursor_value, chunks.sequence, chunks.observed_at_ms, chunks.stream, chunks.checksum, chunks.object_key from node_log_batch_chunks as members join node_log_chunks as chunks on chunks.node_id = members.node_id and chunks.unit_id = members.unit_id and chunks.generation = members.generation and chunks.sequence = members.sequence where members.batch_id = ",
+    range: NodeLogCompactionRange,
+) -> Result<(), PostgresPersistenceError> {
+    let mut adjacent_from = range.first_sequence.saturating_sub(1);
+    let mut adjacent_through = range.through_sequence.saturating_add(1);
+    let mut existing_ranges = Vec::new();
+    let mut existing_starts = std::collections::BTreeSet::new();
+    loop {
+        let rows = fetch_all(
+            transaction,
+            sql_query::<LogCompactionRangeRow>(
+                "select node_id, unit_id, generation, first_sequence, through_sequence, compacted_at from node_log_compaction_ranges where node_id = ",
+            )
+            .bind(range.node_id.as_uuid())
+            .append(" and unit_id = ")
+            .bind(range.unit_id.as_str())
+            .append(" and generation = ")
+            .bind(range.generation)
+            .append(" and through_sequence >= ")
+            .bind(adjacent_from)
+            .append(" and first_sequence <= ")
+            .bind(adjacent_through)
+            .append(" order by first_sequence for update"),
         )
-        .bind(batch_id)
-        .append(" order by members.ordinal"),
+        .await?;
+        let mut expanded = false;
+        for row in rows {
+            let existing = row.range()?;
+            if existing_starts.insert(existing.first_sequence) {
+                adjacent_from = adjacent_from.min(existing.first_sequence.saturating_sub(1));
+                adjacent_through =
+                    adjacent_through.max(existing.through_sequence.saturating_add(1));
+                existing_ranges.push(existing);
+                expanded = true;
+            }
+        }
+        if !expanded {
+            break;
+        }
+    }
+    for existing in &existing_ranges {
+        require_one_row(
+            "existing log compaction range",
+            execute(
+                transaction,
+                sql_query::<()>("delete from node_log_compaction_ranges where node_id = ")
+                    .bind(existing.node_id.as_uuid())
+                    .append(" and unit_id = ")
+                    .bind(existing.unit_id.as_str())
+                    .append(" and generation = ")
+                    .bind(existing.generation)
+                    .append(" and first_sequence = ")
+                    .bind(existing.first_sequence),
+            )
+            .await?,
+        )?;
+    }
+    let mut combined = existing_ranges;
+    combined.push(range);
+    let mut merged =
+        NodeLogCompactionRange::coalesce(combined).map_err(PostgresPersistenceError::Invariant)?;
+    if merged.len() != 1 {
+        return Err(PostgresPersistenceError::Invariant(
+            "adjacent log compaction ranges did not coalesce".into(),
+        ));
+    }
+    let range = merged.pop().ok_or_else(|| {
+        PostgresPersistenceError::Invariant("log compaction range disappeared".into())
+    })?;
+    require_one_row(
+        "log compaction range",
+        execute(
+            transaction,
+            sql_query::<()>(
+                "insert into node_log_compaction_ranges (id, node_id, unit_id, generation, first_sequence, through_sequence, compacted_at) values (",
+            )
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(range.node_id.as_uuid())
+            .append(", ")
+            .bind(range.unit_id.as_str())
+            .append(", ")
+            .bind(range.generation)
+            .append(", ")
+            .bind(range.first_sequence)
+            .append(", ")
+            .bind(range.through_sequence)
+            .append(", ")
+            .bind(range.compacted_at)
+            .append(")"),
+        )
+        .await?,
+    )?;
+    Ok(())
+}
+
+async fn maximum_log_sequence(
+    transaction: &a3s_orm::PostgresTransaction,
+    node_id: NodeId,
+    unit_id: &str,
+    generation: u64,
+) -> Result<Option<u64>, PostgresPersistenceError> {
+    Ok(fetch_optional::<Option<u64>, _>(
+        transaction,
+        sql_query::<Option<u64>>(
+            "select max(sequence) from (select sequence from node_log_chunks where node_id = ",
+        )
+        .bind(node_id.as_uuid())
+        .append(" and unit_id = ")
+        .bind(unit_id)
+        .append(" and generation = ")
+        .bind(generation)
+        .append(
+            " union all select through_sequence as sequence from node_log_compaction_ranges where node_id = ",
+        )
+        .bind(node_id.as_uuid())
+        .append(" and unit_id = ")
+        .bind(unit_id)
+        .append(" and generation = ")
+        .bind(generation)
+        .append(") as durable_log_history"),
     )
-    .await
+    .await?
+    .flatten())
 }
 
 const fn gateway_state(state: GatewayAckState) -> &'static str {

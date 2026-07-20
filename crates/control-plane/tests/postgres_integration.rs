@@ -97,6 +97,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists gateway_publications cascade;
              drop table if exists gateway_scopes cascade;
              drop table if exists node_gateway_acknowledgements cascade;
+             drop table if exists node_log_compaction_ranges cascade;
              drop table if exists node_log_batch_chunks cascade;
              drop table if exists node_log_chunks cascade;
              drop table if exists node_log_batches cascade;
@@ -131,7 +132,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 14);
+    assert_eq!(applied, 15);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -263,6 +264,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "015",
+                "bounded log tombstone compaction",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/015_log_tombstone_compaction.sql"
+                )),
+            ),
+            Migration::new(
+                "016",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

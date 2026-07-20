@@ -214,6 +214,9 @@ fn config() -> CloudConfig {
             retention_ms: 60_000,
             retention_poll_ms: 1_000,
             retention_batch_size: 16,
+            tombstone_retention_ms: 300_000,
+            tombstone_compaction_poll_ms: 10_000,
+            tombstone_compaction_batch_size: 64,
         },
         edge: EdgeConfig {
             entrypoint_address: "0.0.0.0:8081".into(),
