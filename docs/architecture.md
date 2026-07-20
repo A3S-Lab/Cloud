@@ -6,10 +6,10 @@ R0 through D0 are implemented and verified. E0 now has durable Edge route
 ownership, exact and wildcard domain claims, managed Gateway certificate
 provisioning, HTTPS-only snapshot compilation, Fleet dispatch, exact
 acknowledgement projection, and injected-time renewal/revocation convergence
-with delayed provider-serial revocation. It also has tenant-scoped Secret identities,
-immutable encrypted versions, rotation and version revocation APIs, and
-metadata-only events and idempotency records, typed workload bindings, and late
-Docker environment/file injection plus authenticated registry pulls. Committed
+with delayed provider-serial revocation. It also has tenant-scoped Secret
+identities, immutable encrypted versions, rotation and version revocation APIs,
+and metadata-only events and idempotency records, typed workload bindings, and
+late Docker environment/file injection plus authenticated registry pulls. Committed
 rotation events now drive an idempotent worker that derives a new resolved
 revision for each affected active workload, advances only matching Secret
 references, and atomically records the deployment operation, causal event, and
@@ -32,14 +32,15 @@ cursor position. An independently configured bounded worker later replaces old
 per-chunk tombstones with coalesced durable sequence ranges, and queries expose
 those ranges as explicit `compacted` gaps. A dedicated digest-pinned MinIO CI
 job defines the real S3-compatible lifecycle gate, and a separate remote
-Gateway job exercises the real managed-TLS path. The Linux acceptance gate also
-captures real Docker stdout/stderr after redaction, persists immutable
-filesystem objects and PostgreSQL metadata, kills a child control plane after
-object publication but before receipt persistence, adopts the exact object
-after restart, corrupts a non-secret record, and reads its ordered `corrupt` gap
-through the REST API. The Docker gate also preserves an exact log cursor across
-provider restart, while the pinned-MinIO gate verifies deliberate corruption
-and immutable repair rejection. The one-node update slice now commits complete
+Gateway job exercises managed TLS plus a forced reload-before-acknowledgement
+agent crash. The Linux acceptance gate also captures real Docker stdout/stderr
+after redaction, persists immutable filesystem objects and PostgreSQL metadata,
+kills a child control plane after object publication but before receipt
+persistence, adopts the exact object after restart, corrupts a non-secret
+record, and reads its ordered `corrupt` gap through the REST API. The Docker
+gate also preserves an exact log cursor across provider restart, while the
+pinned-MinIO gate verifies deliberate corruption and immutable repair
+rejection. The one-node update slice now commits complete
 immutable replacement templates, runs candidates on the previous Runtime node,
 gates routed cutover on health plus an exact Gateway acknowledgement, and
 recovers deterministic old-revision retirement after activation. Unhealthy,
@@ -58,8 +59,8 @@ operation cleanup. Production now performs bounded DNS TXT ownership
 verification through the host resolver. Later E0 sections remain the accepted
 design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
 a separate Linux node agent, and a React web application. The first release
-still requires the remaining Gateway acknowledgement process-death gate,
-provider death during a Secret-rotation apply, and clean-host gates before
+still requires provider death during a Secret-rotation apply, process death
+after activation but before old-revision cleanup, and clean-host gates before
 multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
@@ -593,6 +594,15 @@ managed directory, keeps the key at mode `0600`, reuses the pair after
 interruption, and atomically writes the verified certificate chain before
 Gateway validation and reload.
 
+The node command journal is committed before Gateway mutation. The dedicated
+real-process crash gate pauses immediately after A3S Gateway accepts the reload,
+verifies that the new listener is live while neither installer state nor an
+acknowledgement exists, and sends `SIGKILL` to the child agent. A reconstructed
+executor rebinds the same command ID to a new lease, repeats the reload
+idempotently, persists the exact installed revision and applied Gateway
+acknowledgement, then survives another reconstruction without a third reload.
+Only the simulated command-ack receipt advances the durable journal cursor.
+
 Gateway certificates move from `provisioning` to `issued`, then become `ready`
 only after the exact applied Gateway acknowledgement; provisioning may fail and
 a ready certificate may be revoked. The development Gateway CA is separate from
@@ -637,7 +647,8 @@ Production configuration requires Vault for node PKI, Gateway PKI, and Transit
 and fails startup closed without valid credentials or provider names. A
 dedicated Ubuntu CI job installs A3S Gateway 1.0.12 and proves the
 node-generated key, managed chain, exact reload, trusted DNS/SNI HTTPS request,
-and durable revision against a loopback upstream.
+durable revision against a loopback upstream, and forced process-death recovery
+at the reload-before-acknowledgement boundary.
 
 ## 9. Source, build, and asset hosting
 
