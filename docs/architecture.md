@@ -33,14 +33,18 @@ those ranges as explicit `compacted` gaps. A dedicated digest-pinned MinIO CI
 job defines the real S3-compatible lifecycle gate, and a separate remote
 Gateway job exercises the real managed-TLS path. The Linux acceptance gate also
 captures real Docker stdout/stderr after redaction, persists immutable
-filesystem objects and PostgreSQL metadata, reconstructs the adapters for exact
-batch replay, and reads the sanitized records through the REST API. Later E0
-sections remain the accepted design until their exit gates pass. A3S Cloud
-ships as a Rust modular monolith, a separate Linux node agent, and a React web
-application. The first release still requires production DNS/CA integration
-and renewal, the remaining Gateway/log process-death and corruption
-certification, update, rollback, the remaining web timeline, and clean-host
-gates before multi-node scheduling or hosted assets begin.
+filesystem objects and PostgreSQL metadata, kills a child control plane after
+object publication but before receipt persistence, adopts the exact object
+after restart, corrupts a non-secret record, and reads its ordered `corrupt` gap
+through the REST API. The Docker gate also preserves an exact log cursor across
+provider restart, while the pinned-MinIO gate verifies deliberate corruption
+and immutable repair rejection. Later E0 sections remain the accepted design
+until their exit gates pass. A3S Cloud ships as a Rust modular monolith, a
+separate Linux node agent, and a React web application. The first release still
+requires production DNS/CA integration and renewal, Gateway acknowledgement
+crash recovery, provider death during a Secret-rotation apply, update,
+rollback, the remaining web timeline, and clean-host gates before multi-node
+scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -412,14 +416,20 @@ The workload proves both injected values agree without embedding plaintext in
 its Runtime spec, emits the value on real stdout and stderr, and verifies that
 only redaction markers leave the Docker driver. The node-side fixture runs as
 root, matching the isolated release runner, while the workload container stays
-unprivileged with every capability dropped. It then writes the sanitized batch
-through the production PostgreSQL metadata repository and immutable filesystem
-object adapter, reconstructs both adapters and the handler, verifies exact
-replay, and queries the same sanitized records through the tenant-authorized
-REST API. The gate scans control-plane rows, Flow history, node state, and
-durable log objects for both Secret plaintexts and requires its run-specific
-tmpfs Secret root to contain no files after cleanup. This is success-path
-acceptance, not provider or control-plane process-death injection.
+unprivileged with every capability dropped. A child test process writes part of
+the sanitized batch through the production immutable filesystem adapter and
+exits immediately after the synced object publication, before PostgreSQL
+receipt persistence. The parent proves no batch or chunk metadata committed,
+reconstructs the repository/store/handler boundary, adopts every exact object,
+and receives one non-replayed receipt followed by an exact replay. It then
+overwrites only the non-secret recovery marker, requires replay to leave the
+accepted immutable object untouched, and queries the same position as an
+ordered `corrupt` gap through the tenant-authorized REST API while both
+redacted Secret records remain readable. The gate scans control-plane rows,
+Flow history, node state, and durable log objects for both Secret plaintexts
+and requires its run-specific tmpfs Secret root to contain no files after
+cleanup. The separate real Docker recovery profile retains the pre-restart log
+cursor across isolated provider process death.
 
 The node validates the discontinuity's exact unit, generation, and requested
 cursor, assigns the next monotonic Cloud sequence, and includes the gap in the
@@ -724,15 +734,17 @@ corrupt objects without putting log bodies in PostgreSQL. The retention worker
 deletes expired bodies first and then records durable `retained_at` tombstones,
 so snapshot queries never silently skip old positions. The production profile
 requires HTTPS S3-compatible storage, and the dedicated CI job provisions
-digest-pinned MinIO to exercise the immutable object lifecycle. A separate
-bounded worker compacts aged tombstones into coalesced sequence ranges while
-preserving batch replay and durable sequence watermarks. Provider cursor loss
-and source disconnects use typed Runtime errors, durable node replay, and
-ordered PostgreSQL gap metadata without creating object bodies. Full crash and
-corruption certification is still planned; the real Docker Secret/log success
-path and exact durable batch replay are covered independently. Loki or
-ClickHouse is introduced only when product requirements demand global text
-search at a volume that the chunk index cannot serve.
+digest-pinned MinIO to exercise conditional create, exact replay, verified
+read, deliberate corruption, immutable repair rejection, and idempotent
+deletion. A separate bounded worker compacts aged tombstones into coalesced
+sequence ranges while preserving batch replay and durable sequence watermarks.
+Provider cursor loss and source disconnects use typed Runtime errors, durable
+node replay, and ordered PostgreSQL gap metadata without creating object
+bodies. Real Docker provider restart, control-plane object-before-receipt
+process death, filesystem REST corruption projection, and real MinIO
+corruption are certified independently. Loki or ClickHouse is introduced only
+when product requirements demand global text search at a volume that the chunk
+index cannot serve.
 
 ### 14.2 Middleware deliberately not selected
 

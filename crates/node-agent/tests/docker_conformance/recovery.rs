@@ -1,11 +1,15 @@
 use super::fixture::{connect_driver, found, require, resource_id, DockerConformanceFixture};
 use super::specs;
-use a3s_runtime::contract::{RuntimeInspection, RuntimeUnitState};
+use a3s_runtime::contract::{
+    RuntimeInspection, RuntimeLogChunk, RuntimeLogQuery, RuntimeUnitState,
+};
 use a3s_runtime::{RuntimeClient, RuntimeDriver, RuntimeError, RuntimeResult, RuntimeStateStore};
 use bollard::container::{Config, CreateContainerOptions, RemoveContainerOptions};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+const PROVIDER_RESTART_LOG_MARKER: &str = "provider-restart-log";
 
 impl DockerConformanceFixture {
     pub(crate) async fn run_recovery(&self, client: &dyn RuntimeClient) -> RuntimeResult<()> {
@@ -18,7 +22,7 @@ impl DockerConformanceFixture {
     async fn create_before_ack_client_and_provider_restart(&self) -> RuntimeResult<()> {
         let spec = specs::service_spec(
             specs::unit_id(&self.namespace, "recovery-ack"),
-            "exec sleep 300",
+            "printf 'provider-restart-log\\n'; exec sleep 300",
         );
         let apply = specs::apply("recovery-create-before-ack", spec.clone());
         let reservation = self.store.reserve_apply(&apply, now_ms()).await?;
@@ -34,6 +38,16 @@ impl DockerConformanceFixture {
             resource_id(&reattached)? == original_resource,
             "client restart did not reattach the create-before-ack Docker resource",
         )?;
+        let before_restart_logs = wait_for_provider_restart_log(&restarted_client, &spec).await?;
+        let (before_restart_cursor, before_restart_sequence) = before_restart_logs
+            .iter()
+            .find(|chunk| chunk.data.contains(PROVIDER_RESTART_LOG_MARKER))
+            .map(|chunk| (chunk.cursor.clone(), chunk.sequence))
+            .ok_or_else(|| {
+                RuntimeError::Protocol(
+                    "Docker provider restart fixture omitted its pre-restart log cursor".into(),
+                )
+            })?;
 
         self.restart_provider().await?;
         let restarted_driver = Arc::new(connect_driver(&self.namespace, self.node_id).await?);
@@ -67,6 +81,30 @@ impl DockerConformanceFixture {
             inspected.state == RuntimeUnitState::Running
                 && resource_id(&inspected)? == original_resource,
             "Runtime did not converge after Docker provider restart",
+        )?;
+        let after_restart_logs =
+            wait_for_provider_restart_log(&provider_restarted_client, &spec).await?;
+        require(
+            after_restart_logs
+                .iter()
+                .any(|chunk| chunk.cursor == before_restart_cursor),
+            "Docker provider restart lost the durable pre-restart log cursor",
+        )?;
+        let resumed = provider_restarted_client
+            .logs(&RuntimeLogQuery {
+                schema: RuntimeLogQuery::SCHEMA.into(),
+                unit_id: spec.unit_id.clone(),
+                generation: spec.generation,
+                cursor: Some(before_restart_cursor.clone()),
+                limit: 32,
+                stream: None,
+            })
+            .await?;
+        require(
+            resumed.iter().all(|chunk| {
+                chunk.cursor != before_restart_cursor && chunk.sequence > before_restart_sequence
+            }),
+            "Docker provider restart replayed or reordered the requested log cursor",
         )?;
         provider_restarted_client
             .remove(&specs::action("recovery-restart-remove", &spec))
@@ -194,6 +232,33 @@ impl DockerConformanceFixture {
             .await?;
         Ok(())
     }
+}
+
+async fn wait_for_provider_restart_log(
+    client: &dyn RuntimeClient,
+    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+) -> RuntimeResult<Vec<RuntimeLogChunk>> {
+    let query = RuntimeLogQuery {
+        schema: RuntimeLogQuery::SCHEMA.into(),
+        unit_id: spec.unit_id.clone(),
+        generation: spec.generation,
+        cursor: None,
+        limit: 32,
+        stream: None,
+    };
+    for _ in 0..60 {
+        let chunks = client.logs(&query).await?;
+        if chunks
+            .iter()
+            .any(|chunk| chunk.data.contains(PROVIDER_RESTART_LOG_MARKER))
+        {
+            return Ok(chunks);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    Err(RuntimeError::Protocol(
+        "Docker provider restart fixture emitted no recoverable log marker".into(),
+    ))
 }
 
 fn now_ms() -> u64 {

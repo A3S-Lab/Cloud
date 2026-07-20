@@ -1,22 +1,18 @@
-use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
+use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     CloudSecretReference, DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest,
-    NodeCommandOutcome, NodeCommandResult, NodeHeartbeat, NodeLogChunkBatch, NodeLogChunkReport,
-    NodeObservationBatch, RuntimeObservationReport, RuntimeServiceEndpoint,
+    NodeCommandOutcome, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
+    RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::fleet::domain::entities::EnrollmentToken;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
 };
-use a3s_cloud_control_plane::modules::fleet::domain::services::ILogChunkStore;
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName,
 };
-use a3s_cloud_control_plane::modules::fleet::{
-    LocalKeyEncryptionService, LocalLogChunkStore, PostgresNodeRepository, RecordNodeLogChunks,
-    RecordNodeLogChunksHandler,
-};
+use a3s_cloud_control_plane::modules::fleet::{LocalKeyEncryptionService, PostgresNodeRepository};
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationReconciler, OperationStatus,
     PostgresOperationRepository, ReconcileOperationsHandler,
@@ -44,8 +40,8 @@ use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeActionRequest,
     RuntimeCapabilities, RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation,
-    RuntimeHealthState, RuntimeInspection, RuntimeLogQuery, RuntimeLogStream, RuntimeObservation,
-    RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, TransportProtocol,
+    RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
+    TransportProtocol,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
@@ -53,12 +49,20 @@ use a3s_runtime::{
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
+
+#[path = "deployment_flow/cancellation.rs"]
+mod cancellation;
+#[path = "deployment_flow/log_recovery.rs"]
+mod log_recovery;
+
+pub use cancellation::{exercise_dispatched_cancellation, exercise_pre_dispatch_cancellation};
+use log_recovery::persist_redacted_docker_logs;
+pub use log_recovery::{run_log_object_publish_crash_probe, LogRecoveryFixture};
 
 #[derive(Clone)]
 pub struct DeploymentFlowFixture {
@@ -66,6 +70,7 @@ pub struct DeploymentFlowFixture {
     pub agent_instance_id: Uuid,
     pub capabilities: RuntimeCapabilities,
     pub after_sequence: u64,
+    pub log_recovery: Option<LogRecoveryFixture>,
 }
 
 pub async fn exercise_deployment_flow(
@@ -168,6 +173,7 @@ pub async fn exercise_deployment_flow(
     let mut docker_runtime: Option<Arc<dyn RuntimeClient>> = None;
     let mut docker_state_directory = None;
     let mut docker_secret_directory = None;
+    let mut log_recovery = None;
     let (observation, acknowledgement, observed_at) = if docker_tests_enabled() {
         let state_directory = tempfile::tempdir()?;
         let namespace = format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]);
@@ -222,15 +228,18 @@ pub async fn exercise_deployment_flow(
             }
             outcome => return Err(format!("Docker Runtime apply failed: {outcome:?}").into()),
         };
-        persist_redacted_docker_logs(
-            executor,
-            node_id,
-            Arc::clone(&runtime),
-            &request.spec,
-            security_state_dir,
-            sensitive_plaintexts,
-        )
-        .await?;
+        log_recovery = Some(
+            persist_redacted_docker_logs(
+                postgres_url,
+                executor,
+                node_id,
+                Arc::clone(&runtime),
+                &request.spec,
+                security_state_dir,
+                sensitive_plaintexts,
+            )
+            .await?,
+        );
         let observed_at = acknowledgement.completed_at;
         docker_runtime = Some(runtime);
         docker_state_directory = Some(state_directory);
@@ -525,6 +534,7 @@ pub async fn exercise_deployment_flow(
         agent_instance_id,
         capabilities,
         after_sequence: recovery_command.sequence,
+        log_recovery,
     })
 }
 
@@ -601,156 +611,6 @@ fn secret_application_error(error: ApplicationError) -> NodeControlClientError {
     }
 }
 
-async fn persist_redacted_docker_logs(
-    executor: &PostgresExecutor,
-    node_id: NodeId,
-    runtime: Arc<dyn RuntimeClient>,
-    spec: &RuntimeUnitSpec,
-    security_state_dir: &Path,
-    sensitive_plaintexts: &[&str],
-) -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(
-        spec.secrets
-            .iter()
-            .filter(|secret| !matches!(
-                secret.target,
-                a3s_runtime::contract::SecretTarget::RegistryCredential
-            ))
-            .count(),
-        2
-    );
-    let query = RuntimeLogQuery {
-        schema: RuntimeLogQuery::SCHEMA.into(),
-        unit_id: spec.unit_id.clone(),
-        generation: spec.generation,
-        cursor: None,
-        limit: 32,
-        stream: None,
-    };
-    let mut chunks = Vec::new();
-    for attempt in 0..20 {
-        chunks = runtime.logs(&query).await?;
-        let stdout_ready = chunks.iter().any(|chunk| {
-            chunk.stream == RuntimeLogStream::Stdout && chunk.data.contains("env-secret=[REDACTED]")
-        });
-        let stderr_ready = chunks.iter().any(|chunk| {
-            chunk.stream == RuntimeLogStream::Stderr
-                && chunk.data.contains("file-secret=[REDACTED]")
-        });
-        if stdout_ready && stderr_ready {
-            break;
-        }
-        if attempt < 19 {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-    }
-    if chunks.iter().any(|chunk| {
-        sensitive_plaintexts
-            .iter()
-            .any(|plaintext| chunk.data.contains(plaintext))
-    }) || !chunks.iter().any(|chunk| {
-        chunk.stream == RuntimeLogStream::Stdout && chunk.data.contains("env-secret=[REDACTED]")
-    }) || !chunks.iter().any(|chunk| {
-        chunk.stream == RuntimeLogStream::Stderr && chunk.data.contains("file-secret=[REDACTED]")
-    }) {
-        return Err(
-            std::io::Error::other("real Docker Secret logs were not completely redacted").into(),
-        );
-    }
-
-    let batch = NodeLogChunkBatch {
-        schema: NodeLogChunkBatch::SCHEMA.into(),
-        batch_id: Uuid::now_v7(),
-        node_id: node_id.as_uuid(),
-        sent_at: Utc::now(),
-        chunks: chunks
-            .into_iter()
-            .map(|chunk| NodeLogChunkReport {
-                unit_id: spec.unit_id.clone(),
-                generation: spec.generation,
-                checksum: format!("sha256:{:x}", Sha256::digest(chunk.data.as_bytes())),
-                chunk,
-            })
-            .collect(),
-        gaps: Vec::new(),
-    };
-    batch.validate()?;
-
-    let first = record_log_batch(executor, security_state_dir, node_id, batch.clone()).await?;
-    assert!(!first.replayed);
-    assert_eq!(usize::from(first.accepted_chunks), batch.chunks.len());
-
-    // Recreate the handler, repository, and object-store adapter to model a
-    // control-plane restart after the batch receipt became durable.
-    let replay = record_log_batch(executor, security_state_dir, node_id, batch).await?;
-    assert!(replay.replayed);
-    assert_eq!(replay.accepted_chunks, first.accepted_chunks);
-    assert_log_objects_redacted(&security_state_dir.join("logs"), sensitive_plaintexts)?;
-    Ok(())
-}
-
-async fn record_log_batch(
-    executor: &PostgresExecutor,
-    security_state_dir: &Path,
-    node_id: NodeId,
-    batch: NodeLogChunkBatch,
-) -> Result<a3s_cloud_contracts::NodeLogChunkReceipt, Box<dyn std::error::Error>> {
-    let nodes: Arc<dyn INodeControlRepository> =
-        Arc::new(PostgresNodeRepository::new(executor.clone()));
-    let objects: Arc<dyn ILogChunkStore> =
-        Arc::new(LocalLogChunkStore::new(security_state_dir.join("logs"))?);
-    RecordNodeLogChunksHandler::new(nodes, objects)
-        .execute(
-            RecordNodeLogChunks {
-                authenticated_node_id: node_id,
-                batch,
-                received_at: Utc::now(),
-            },
-            context(),
-        )
-        .await?
-        .map_err(|error| {
-            std::io::Error::other(format!("could not persist real Docker log batch: {error}"))
-                .into()
-        })
-}
-
-fn assert_log_objects_redacted(
-    root: &Path,
-    sensitive_plaintexts: &[&str],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let marker = b"[REDACTED]";
-    let mut directories = vec![root.to_path_buf()];
-    let mut found_marker = false;
-    while let Some(directory) = directories.pop() {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if file_type.is_dir() {
-                directories.push(entry.path());
-            } else if file_type.is_file() {
-                let body = std::fs::read(entry.path())?;
-                if sensitive_plaintexts.iter().any(|plaintext| {
-                    let secret = plaintext.as_bytes();
-                    !secret.is_empty() && body.windows(secret.len()).any(|window| window == secret)
-                }) {
-                    return Err(std::io::Error::other(
-                        "plaintext Secret reached the durable log object store",
-                    )
-                    .into());
-                }
-                found_marker |= body.windows(marker.len()).any(|window| window == marker);
-            }
-        }
-    }
-    if !found_marker {
-        return Err(
-            std::io::Error::other("durable log objects contain no redaction evidence").into(),
-        );
-    }
-    Ok(())
-}
-
 fn assert_tree_excludes_plaintext(
     root: &Path,
     sensitive_plaintexts: &[&str],
@@ -800,323 +660,6 @@ fn assert_secret_file_modes(
     }
     modes.sort_unstable();
     assert_eq!(modes, expected);
-    Ok(())
-}
-
-pub async fn exercise_pre_dispatch_cancellation(
-    executor: &PostgresExecutor,
-    postgres_url: &str,
-    organization_uuid: Uuid,
-    response: &Value,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let organization_id = OrganizationId::from_uuid(organization_uuid);
-    let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
-    let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
-    let runtime = DeploymentFlowRuntime::new(
-        workload_repository.clone(),
-        test_artifact_resolver(),
-        node_repository.clone(),
-        node_repository,
-        ChronoDuration::seconds(5),
-        DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
-    )?;
-    let flow = FlowInfrastructure::connect(postgres_url, Arc::new(runtime)).await?;
-    let operation_repository: Arc<dyn IOperationRepository> =
-        Arc::new(PostgresOperationRepository::new(executor.clone()));
-    let operation_id = OperationId::from_uuid(field_uuid(response, "operationId")?);
-    let deployment_id = DeploymentId::from_uuid(field_uuid(response, "deploymentId")?);
-    let reconciler = OperationReconciler::new(
-        Arc::new(ReconcileOperationsHandler::new(
-            operation_repository.clone(),
-            Arc::new(FlowOperationEngine::new(flow.engine())),
-        )),
-        Duration::from_millis(5),
-        100,
-    );
-    let coordinator = FlowOperationCoordinator::new(
-        reconciler,
-        &flow,
-        Duration::from_millis(5),
-        Duration::from_secs(1),
-    )?;
-
-    for _ in 0..5 {
-        coordinator.run_once().await?;
-        let deployment = workload_repository
-            .find_deployment(organization_id, deployment_id)
-            .await?;
-        if deployment.status == DeploymentStatus::Cancelled {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
-
-    let cancelled = workload_repository
-        .find_deployment(organization_id, deployment_id)
-        .await?;
-    assert_eq!(cancelled.status, DeploymentStatus::Cancelled);
-    assert!(cancelled.node_id.is_none());
-    assert!(cancelled.command_id.is_none());
-    assert!(cancelled.cleanup_command_id.is_none());
-    assert!(cancelled.cancelled_at.is_some());
-    assert_eq!(
-        operation_repository
-            .find_projection(operation_id)
-            .await?
-            .ok_or("cancelled deployment operation has no projection")?
-            .status,
-        OperationStatus::Cancelled
-    );
-    Ok(())
-}
-
-pub async fn exercise_dispatched_cancellation(
-    executor: &PostgresExecutor,
-    postgres_url: &str,
-    organization_uuid: Uuid,
-    response: &Value,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if !docker_tests_enabled() {
-        return Ok(());
-    }
-
-    let organization_id = OrganizationId::from_uuid(organization_uuid);
-    let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
-    let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
-    Database::new(PostgresDialect, executor.clone())
-        .execute(
-            sql_query::<()>(
-                "update nodes set state = 'draining', aggregate_version = aggregate_version + 1 where organization_id = ",
-            )
-            .bind(organization_uuid)
-            .append(" and state = 'ready'"),
-        )
-        .await?;
-    let (node_id, agent_instance_id, capabilities) =
-        ready_node(&node_repository, organization_id).await?;
-    let runtime = DeploymentFlowRuntime::new(
-        workload_repository.clone(),
-        test_artifact_resolver(),
-        node_repository.clone(),
-        node_repository.clone(),
-        ChronoDuration::seconds(5),
-        DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
-    )?;
-    let flow = FlowInfrastructure::connect(postgres_url, Arc::new(runtime)).await?;
-    let operation_repository: Arc<dyn IOperationRepository> =
-        Arc::new(PostgresOperationRepository::new(executor.clone()));
-    let operation_id = OperationId::from_uuid(field_uuid(response, "operationId")?);
-    let deployment_id = DeploymentId::from_uuid(field_uuid(response, "deploymentId")?);
-    let reconciler = OperationReconciler::new(
-        Arc::new(ReconcileOperationsHandler::new(
-            operation_repository.clone(),
-            Arc::new(FlowOperationEngine::new(flow.engine())),
-        )),
-        Duration::from_millis(5),
-        100,
-    );
-    let coordinator = FlowOperationCoordinator::new(
-        reconciler,
-        &flow,
-        Duration::from_millis(5),
-        Duration::from_secs(1),
-    )?;
-
-    for _ in 0..8 {
-        coordinator.run_once().await?;
-        if workload_repository
-            .find_deployment(organization_id, deployment_id)
-            .await?
-            .status
-            == DeploymentStatus::Applying
-        {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
-    let applying = workload_repository
-        .find_deployment(organization_id, deployment_id)
-        .await?;
-    assert_eq!(applying.status, DeploymentStatus::Applying);
-    let apply_command_id = applying
-        .command_id
-        .ok_or("deployment has no apply command")?;
-    let apply_lease = node_repository
-        .lease_commands(
-            &NodeCommandLeaseRequest {
-                schema: NodeCommandLeaseRequest::SCHEMA.into(),
-                node_id: node_id.as_uuid(),
-                agent_instance_id,
-                after_sequence: 0,
-                max_commands: 10,
-                wait_ms: 0,
-            },
-            Uuid::now_v7(),
-            Utc::now(),
-            Utc::now() + ChronoDuration::seconds(10),
-        )
-        .await?;
-    let apply_command = apply_lease
-        .commands
-        .into_iter()
-        .find(|command| command.command_id == apply_command_id.as_uuid())
-        .ok_or("deployment apply command was not leased")?;
-    let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request } = &apply_command.payload
-    else {
-        return Err("deployment command is not Runtime apply".into());
-    };
-    let expected_spec = request.spec.clone();
-
-    let state_directory = tempfile::tempdir()?;
-    let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-        socket: docker_socket(),
-        namespace: format!(
-            "cloud-cancel-{}",
-            &Uuid::now_v7().simple().to_string()[..12]
-        ),
-        operation_timeout_ms: 30_000,
-        secret_memory_dir: docker_secret_memory_dir(),
-    })?);
-    driver.bind_node(node_id.as_uuid()).await?;
-    let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
-        state_directory.path().join("runtime"),
-    ));
-    let runtime_driver: Arc<dyn RuntimeDriver> = driver;
-    let runtime_client: Arc<dyn RuntimeClient> =
-        Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-    let command_executor = CommandExecutor::runtime_only(
-        FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
-        runtime_client.clone(),
-    );
-    let apply_acknowledgement = command_executor.execute(apply_command.clone()).await?;
-    persist_command_result(
-        &node_repository,
-        node_id,
-        agent_instance_id,
-        capabilities.clone(),
-        apply_acknowledgement,
-    )
-    .await?;
-
-    let mut cancelling = workload_repository
-        .find_deployment(organization_id, deployment_id)
-        .await?;
-    let expected_version = cancelling.aggregate_version;
-    let cancellation_at = Utc::now().max(cancelling.updated_at);
-    cancelling.request_cancellation(cancellation_at)?;
-    let cancellation_event =
-        DeploymentCancellationRequested::envelope(&cancelling, Uuid::now_v7())?;
-    workload_repository
-        .request_deployment_cancellation(RequestDeploymentCancellationBundle {
-            deployment: cancelling,
-            expected_version,
-            idempotency: IdempotencyRequest::new(
-                format!("test.deployment.{deployment_id}.cancellation"),
-                "cancel-after-runtime-apply",
-                deployment_id.to_string().as_bytes(),
-            )?,
-            event: cancellation_event,
-        })
-        .await?;
-
-    let mut cleanup_command_id = None;
-    for _ in 0..5 {
-        tokio::time::sleep(Duration::from_millis(6)).await;
-        coordinator.run_once().await?;
-        let deployment = workload_repository
-            .find_deployment(organization_id, deployment_id)
-            .await?;
-        if deployment.status == DeploymentStatus::CleanupPending {
-            cleanup_command_id = deployment.cleanup_command_id;
-            break;
-        }
-    }
-    let cleanup_command_id = cleanup_command_id.ok_or("cleanup command was not persisted")?;
-    let cleanup_lease = node_repository
-        .lease_commands(
-            &NodeCommandLeaseRequest {
-                schema: NodeCommandLeaseRequest::SCHEMA.into(),
-                node_id: node_id.as_uuid(),
-                agent_instance_id,
-                after_sequence: apply_command.sequence,
-                max_commands: 10,
-                wait_ms: 0,
-            },
-            Uuid::now_v7(),
-            Utc::now(),
-            Utc::now() + ChronoDuration::seconds(10),
-        )
-        .await?;
-    let cleanup_command = cleanup_lease
-        .commands
-        .into_iter()
-        .find(|command| command.command_id == cleanup_command_id.as_uuid())
-        .ok_or("Runtime stop command was not leased")?;
-    assert!(matches!(
-        &cleanup_command.payload,
-        a3s_cloud_contracts::NodeCommandPayload::RuntimeStop { .. }
-    ));
-    let cleanup_acknowledgement = command_executor.execute(cleanup_command).await?;
-    persist_command_result(
-        &node_repository,
-        node_id,
-        agent_instance_id,
-        capabilities,
-        cleanup_acknowledgement,
-    )
-    .await?;
-
-    for _ in 0..5 {
-        tokio::time::sleep(Duration::from_millis(6)).await;
-        coordinator.run_once().await?;
-        let deployment = workload_repository
-            .find_deployment(organization_id, deployment_id)
-            .await?;
-        if deployment.status == DeploymentStatus::Cancelled {
-            break;
-        }
-    }
-
-    let cancelled = workload_repository
-        .find_deployment(organization_id, deployment_id)
-        .await?;
-    assert_eq!(cancelled.status, DeploymentStatus::Cancelled);
-    assert_eq!(cancelled.command_id, Some(apply_command_id));
-    assert_eq!(cancelled.cleanup_command_id, Some(cleanup_command_id));
-    assert!(cancelled.cancelled_at.is_some());
-    assert_eq!(
-        operation_repository
-            .find_projection(operation_id)
-            .await?
-            .ok_or("cancelled deployment operation has no projection")?
-            .status,
-        OperationStatus::Cancelled
-    );
-    match runtime_client.inspect(&expected_spec.unit_id).await? {
-        RuntimeInspection::Found { observation, .. } => {
-            assert_eq!(observation.state, RuntimeUnitState::Stopped)
-        }
-        RuntimeInspection::NotFound { .. } => {}
-    }
-    assert_eq!(
-        Database::new(PostgresDialect, executor.clone())
-            .fetch_one_as(
-                sql_query::<i64>("select count(*) from node_commands where correlation_id = ")
-                    .bind(operation_id.as_uuid())
-                    .append(" and acknowledgement is not null"),
-            )
-            .await?,
-        2
-    );
-    runtime_client
-        .remove(&RuntimeActionRequest {
-            schema: RuntimeActionRequest::SCHEMA.into(),
-            request_id: format!("integration-cleanup-{}", Uuid::now_v7()),
-            unit_id: expected_spec.unit_id,
-            generation: expected_spec.generation,
-            deadline_at_ms: None,
-        })
-        .await?;
     Ok(())
 }
 

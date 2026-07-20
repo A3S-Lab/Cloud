@@ -354,6 +354,10 @@ tables directly. Audit records are append-only and separate from event delivery.
   idempotent, while different bytes at the same derived object key are a
   conflict; reads revalidate the bounded body, report schema, and expected
   checksum.
+- An exact object published before a lost control-plane process but without a
+  PostgreSQL receipt is adopted by batch retry. Once the receipt exists, replay
+  returns that receipt and never overwrites an object that later fails
+  verification; the ordered query exposes corruption instead.
 - Development may use the filesystem adapter. The production security profile
   requires HTTPS S3-compatible storage selected through typed ACL, with
   credential values supplied only through named environment variables.

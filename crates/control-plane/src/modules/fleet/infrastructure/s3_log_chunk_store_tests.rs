@@ -160,6 +160,27 @@ async fn real_s3_compatible_store_preserves_immutable_log_semantics() {
             .expect("read real S3 log object"),
         RetrievedLogChunk::Found(report("real-s3"))
     );
+    let path = store
+        .object_path(&first.object_key)
+        .expect("real S3 object path");
+    store
+        .objects
+        .put(&path, b"{\"corrupt\":true}".as_slice().into())
+        .await
+        .expect("corrupt real S3 log object");
+    assert_eq!(
+        store
+            .get(&first.object_key, &report("real-s3").checksum)
+            .await
+            .expect("read corrupt real S3 log object"),
+        RetrievedLogChunk::Corrupt
+    );
+    assert!(matches!(
+        store
+            .put(Uuid::now_v7(), node_id, 0, &report("real-s3"))
+            .await,
+        Err(LogChunkStoreError::Conflict(_))
+    ));
     store
         .remove(&first.object_key)
         .await

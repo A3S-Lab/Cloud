@@ -99,8 +99,12 @@ reconciliation, cancellation, and cleanup path. It also binds a run-specific
 tmpfs Secret directory into the nested provider and exercises real
 PostgreSQL-backed Secret authorization/decryption, Docker environment and
 `0400` file injection, provider-boundary stdout/stderr redaction, immutable
-filesystem log objects, PostgreSQL metadata, reconstructed-adapter exact batch
-replay, REST readback, and post-test Secret-file cleanup. The suite then runs
+filesystem log objects, a child control-plane exit after object publication but
+before PostgreSQL receipt, reconstructed-adapter orphan adoption and exact
+batch replay, deliberate non-secret object corruption, ordered REST gap
+readback, and post-test Secret-file cleanup. The provider suite independently
+requires a pre-restart Docker log cursor to survive and resume after isolated
+daemon replacement. The Cloud suite then runs
 `permanently_unhealthy_real_docker_update_preserves_healthy_revision` against
 the real isolated Docker provider.
 
