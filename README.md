@@ -87,6 +87,9 @@ API command
   bind certificate intent into the complete snapshot digest, issue only public
   certificate material over node mTLS, and keep generated private keys on the
   Gateway node
+- **Encrypted Secret Resources**: Create tenant-scoped Secret identities,
+  rotate immutable encrypted versions through local AES-GCM or Vault Transit,
+  revoke individual versions, and return metadata-only API and event payloads
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
@@ -110,7 +113,7 @@ API command
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
-| Secrets | Tenant-scoped encrypted workload and provider references, rotation, Runtime injection, and end-to-end redaction | Planned (`E0`) |
+| Secrets | Encrypted tenant-scoped resources, immutable rotation, version revocation, metadata-only APIs/events, and reference-only idempotency are implemented; workload binding, node delivery, Runtime injection, and full redaction scans remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -341,7 +344,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, routed Gateway validation, and exact activation projection are implemented; production certificate automation, secrets, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, routed Gateway validation, exact activation projection, and encrypted Secret resource/version APIs are implemented; production certificate automation, Secret binding/injection, logs, update, rollback, web timeline, and crash-recovery acceptance remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |

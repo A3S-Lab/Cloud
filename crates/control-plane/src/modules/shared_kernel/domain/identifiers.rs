@@ -53,3 +53,4 @@ identifier!(DeploymentId);
 identifier!(RouteId);
 identifier!(DomainClaimId);
 identifier!(GatewayCertificateId);
+identifier!(SecretId);

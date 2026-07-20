@@ -86,6 +86,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists secret_versions cascade;
+             drop table if exists secrets cascade;
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
@@ -129,7 +131,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 12);
+    assert_eq!(applied, 13);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -245,6 +247,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "013",
+                "encrypted Secret resources",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/013_secrets.sql"
+                )),
+            ),
+            Migration::new(
+                "014",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -391,6 +401,93 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     assert_eq!(cross_tenant.status(), 404);
 
+    let secrets_path = format!(
+        "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/secrets"
+    );
+    let first_secret_value = "postgres://cloud:first-secret@database";
+    let create_secret = || {
+        post_json(
+            &secrets_path,
+            "secret-database-url",
+            json!({"name": "Database URL", "value": first_secret_value}),
+        )
+    };
+    let secret = app.call(create_secret()).await?;
+    let secret_replay = app.call(create_secret()).await?;
+    assert_eq!(secret.status(), 201);
+    assert_eq!(secret_replay.status(), 200);
+    assert_eq!(response_id(&secret)?, response_id(&secret_replay)?);
+    assert!(!String::from_utf8_lossy(secret.body()).contains(first_secret_value));
+    let secret_id = response_id(&secret)?;
+    let secret_versions_path =
+        format!("/api/v1/organizations/{organization_id}/secrets/{secret_id}/versions");
+    let second_secret_value = "postgres://cloud:rotated-secret@database";
+    let rotated_secret = app
+        .call(post_json(
+            &secret_versions_path,
+            "secret-database-url-rotate",
+            json!({"value": second_secret_value}),
+        ))
+        .await?;
+    assert_eq!(rotated_secret.status(), 201);
+    assert_eq!(response_json(&rotated_secret)?["data"]["currentVersion"], 2);
+    assert!(!String::from_utf8_lossy(rotated_secret.body()).contains(second_secret_value));
+    let revoked_secret_version = app
+        .call(post_json(
+            format!("{secret_versions_path}/1/revoke"),
+            "secret-database-url-revoke-v1",
+            json!({}),
+        ))
+        .await?;
+    assert_eq!(revoked_secret_version.status(), 200);
+    assert_eq!(
+        response_json(&revoked_secret_version)?["data"]["version"]["state"],
+        "revoked"
+    );
+    let leaked_secret_rows = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from secret_versions where ciphertext like ")
+                .bind(format!("%{first_secret_value}%"))
+                .append(" or ciphertext like ")
+                .bind(format!("%{second_secret_value}%")),
+        )
+        .await?;
+    assert_eq!(leaked_secret_rows, 0);
+    let encrypted_secret_rows = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from secret_versions where key_id like 'local:sha256:%' and octet_length(ciphertext) > 32",
+        ))
+        .await?;
+    assert_eq!(encrypted_secret_rows, 2);
+    let safe_secret_idempotency = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from idempotency_records where idempotency_key like 'secret-database-url%' and jsonb_object_length(response) = 2 and response ->> 'secret_id' is not null and response ->> 'version' is not null and response::text not like '%ciphertext%' and response::text not like '%key_id%'",
+        ))
+        .await?;
+    assert_eq!(safe_secret_idempotency, 3);
+    let safe_secret_events = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from outbox_events where event_key like 'secret.%' and payload::text not like '%ciphertext%' and payload::text not like '%key_id%'",
+        ))
+        .await?;
+    assert_eq!(safe_secret_events, 3);
+    let leaked_secret_metadata = database
+        .fetch_one_as(
+            sql_query::<i64>(
+                "select (select count(*) from outbox_events where payload::text like ",
+            )
+            .bind(format!("%{first_secret_value}%"))
+            .append(" or payload::text like ")
+            .bind(format!("%{second_secret_value}%"))
+            .append(") + (select count(*) from idempotency_records where response::text like ")
+            .bind(format!("%{first_secret_value}%"))
+            .append(" or response::text like ")
+            .bind(format!("%{second_secret_value}%"))
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(leaked_secret_metadata, 0);
+
     let token_path = format!("/api/v1/organizations/{organization_id}/api-tokens");
     let project_token = app
         .call(post_json(
@@ -485,8 +582,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 8);
-    assert_eq!(idempotency_records, 7);
+    assert_eq!(outbox_events, 11);
+    assert_eq!(idempotency_records, 10);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(

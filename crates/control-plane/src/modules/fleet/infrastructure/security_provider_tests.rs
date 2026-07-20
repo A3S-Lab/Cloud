@@ -1,5 +1,5 @@
 use super::{LocalKeyEncryptionService, VaultCertificateAuthority, VaultKeyEncryptionService};
-use crate::modules::fleet::domain::services::{EncryptedValue, IKeyEncryptionService};
+use crate::modules::secrets::domain::{EncryptedSecretValue, ISecretEncryptionService};
 use std::time::Duration;
 
 #[tokio::test]
@@ -11,7 +11,7 @@ async fn local_key_encryption_is_persistent_authenticated_and_context_bound() {
         .encrypt(b"node credential", b"node:one")
         .await
         .expect("encrypt");
-    assert!(!encrypted.ciphertext.contains("node credential"));
+    assert!(!encrypted.ciphertext().contains("node credential"));
     assert_eq!(
         service
             .decrypt(&encrypted, b"node:one")
@@ -29,15 +29,13 @@ async fn local_key_encryption_is_persistent_authenticated_and_context_bound() {
             .expect("decrypt after reopen"),
         b"node credential"
     );
-    let mut tampered = encrypted;
-    tampered.ciphertext.push('x');
+    let tampered =
+        EncryptedSecretValue::new(encrypted.key_id(), format!("{}x", encrypted.ciphertext()))
+            .expect("tampered encrypted value");
     assert!(reopened.decrypt(&tampered, b"node:one").await.is_err());
     assert!(reopened
         .decrypt(
-            &EncryptedValue {
-                key_id: "different".into(),
-                ciphertext: tampered.ciphertext,
-            },
+            &EncryptedSecretValue::new("different", tampered.ciphertext(),).expect("different key"),
             b"node:one"
         )
         .await

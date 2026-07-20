@@ -283,7 +283,8 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 ### Secret
 
-- Secret payloads use envelope encryption with a key identifier.
+- Secret payloads use authenticated provider encryption with a key identifier;
+  production Transit/KMS providers own their internal key hierarchy.
 - Updating a secret creates a new version; it never mutates ciphertext in place.
 - Deletion is blocked while a live workload revision references the version,
   unless an explicit force workflow records the impact.
@@ -429,7 +430,9 @@ edge.domain-claim.created
 edge.domain-claim.verified
 edge.domain-claim.rejected
 edge.domain-claim.revoked
+secret.secret.created
 secret.version.created
+secret.version.revoked
 data.database.provisioned
 data.backup.completed
 ```
