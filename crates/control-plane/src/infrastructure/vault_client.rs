@@ -5,15 +5,16 @@ use std::time::Duration;
 use url::Url;
 
 const MAX_ERROR_BODY: usize = 16 * 1024;
+const MAX_RESPONSE_BODY: usize = 2 * 1024 * 1024;
 
 #[derive(Clone)]
-pub(super) struct VaultClient {
+pub(crate) struct VaultClient {
     address: Url,
     client: reqwest::Client,
 }
 
 impl VaultClient {
-    pub(super) fn new(
+    pub(crate) fn new(
         address: &str,
         token: &str,
         timeout: Duration,
@@ -22,6 +23,8 @@ impl VaultClient {
             .map_err(|error| VaultClientError::Configuration(error.to_string()))?;
         if address.scheme() != "https"
             || address.host_str().is_none()
+            || !address.username().is_empty()
+            || address.password().is_some()
             || address.query().is_some()
             || address.fragment().is_some()
         {
@@ -52,13 +55,14 @@ impl VaultClient {
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .https_only(true)
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(timeout)
             .build()
             .map_err(|error| VaultClientError::Configuration(error.to_string()))?;
         Ok(Self { address, client })
     }
 
-    pub(super) async fn post<Input, Output>(
+    pub(crate) async fn post<Input, Output>(
         &self,
         path: &str,
         input: &Input,
@@ -77,19 +81,23 @@ impl VaultClient {
             .map_err(|error| VaultClientError::Unavailable(error.to_string()))?;
         let status = response.status();
         if !status.is_success() {
+            if is_transient_status(status) {
+                return Err(VaultClientError::Unavailable(format!(
+                    "Vault returned transient status {status}"
+                )));
+            }
             return Err(VaultClientError::Rejected(format!(
                 "Vault returned {status}: {}",
                 bounded_body(response).await
             )));
         }
-        response
-            .json::<VaultEnvelope<Output>>()
-            .await
+        let bytes = bounded_response(response).await?;
+        serde_json::from_slice::<VaultEnvelope<Output>>(&bytes)
             .map(|envelope| envelope.data)
             .map_err(|error| VaultClientError::Rejected(format!("invalid Vault response: {error}")))
     }
 
-    pub(super) async fn health(&self) -> Result<bool, VaultClientError> {
+    pub(crate) async fn health(&self) -> Result<bool, VaultClientError> {
         let response = self
             .client
             .get(self.endpoint("sys/health")?)
@@ -112,7 +120,7 @@ struct VaultEnvelope<T> {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(super) enum VaultClientError {
+pub(crate) enum VaultClientError {
     #[error("invalid Vault configuration: {0}")]
     Configuration(String),
     #[error("Vault rejected the request: {0}")]
@@ -142,10 +150,55 @@ fn validate_path(path: &str) -> Result<(), VaultClientError> {
     Ok(())
 }
 
+fn is_transient_status(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 408 | 429) || status.is_server_error()
+}
+
 async fn bounded_body(response: reqwest::Response) -> String {
-    match response.bytes().await {
-        Ok(bytes) if bytes.len() <= MAX_ERROR_BODY => String::from_utf8_lossy(&bytes).into_owned(),
-        Ok(_) => "response body exceeded 16 KiB".into(),
-        Err(error) => format!("could not read response body: {error}"),
+    let mut response = response;
+    let mut bytes = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) if bytes.len().saturating_add(chunk.len()) <= MAX_ERROR_BODY => {
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok(Some(_)) => return "response body exceeded 16 KiB".into(),
+            Ok(None) => return String::from_utf8_lossy(&bytes).into_owned(),
+            Err(error) => return format!("could not read response body: {error}"),
+        }
+    }
+}
+
+async fn bounded_response(mut response: reqwest::Response) -> Result<Vec<u8>, VaultClientError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| VaultClientError::Unavailable(error.to_string()))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BODY {
+            return Err(VaultClientError::Rejected(
+                "Vault response body exceeded 2 MiB".into(),
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_only_timeout_rate_limit_and_server_statuses_as_transient() {
+        assert!(!is_transient_status(reqwest::StatusCode::BAD_REQUEST));
+        assert!(!is_transient_status(reqwest::StatusCode::FORBIDDEN));
+        assert!(is_transient_status(reqwest::StatusCode::REQUEST_TIMEOUT));
+        assert!(is_transient_status(reqwest::StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_transient_status(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+        ));
+        assert!(is_transient_status(reqwest::StatusCode::BAD_GATEWAY));
     }
 }

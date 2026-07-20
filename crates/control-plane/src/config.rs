@@ -219,11 +219,14 @@ pub struct SecurityConfig {
     pub profile: SecurityProfile,
     pub state_dir: String,
     pub certificate_authority: SecurityProviderKind,
+    pub gateway_certificate_authority: SecurityProviderKind,
     pub key_encryption: SecurityProviderKind,
     pub vault_address_env: String,
     pub vault_token_env: String,
     pub vault_pki_mount: String,
     pub vault_pki_role: String,
+    pub vault_gateway_pki_mount: String,
+    pub vault_gateway_pki_role: String,
     pub vault_transit_mount: String,
     pub vault_transit_key: String,
     pub vault_timeout_ms: u64,
@@ -374,11 +377,14 @@ impl CloudConfig {
                 "profile",
                 "state_dir",
                 "certificate_authority",
+                "gateway_certificate_authority",
                 "key_encryption",
                 "vault_address_env",
                 "vault_token_env",
                 "vault_pki_mount",
                 "vault_pki_role",
+                "vault_gateway_pki_mount",
+                "vault_gateway_pki_role",
                 "vault_transit_mount",
                 "vault_transit_key",
                 "vault_timeout_ms",
@@ -490,6 +496,10 @@ impl CloudConfig {
                     "certificate_authority",
                     &string(security, "certificate_authority")?,
                 )?,
+                gateway_certificate_authority: SecurityProviderKind::parse(
+                    "gateway_certificate_authority",
+                    &string(security, "gateway_certificate_authority")?,
+                )?,
                 key_encryption: SecurityProviderKind::parse(
                     "key_encryption",
                     &string(security, "key_encryption")?,
@@ -498,6 +508,8 @@ impl CloudConfig {
                 vault_token_env: string(security, "vault_token_env")?,
                 vault_pki_mount: string(security, "vault_pki_mount")?,
                 vault_pki_role: string(security, "vault_pki_role")?,
+                vault_gateway_pki_mount: string(security, "vault_gateway_pki_mount")?,
+                vault_gateway_pki_role: string(security, "vault_gateway_pki_role")?,
                 vault_transit_mount: string(security, "vault_transit_mount")?,
                 vault_transit_key: string(security, "vault_transit_key")?,
                 vault_timeout_ms: integer(security, "vault_timeout_ms")?,
@@ -782,6 +794,14 @@ impl CloudConfig {
         for (label, value) in [
             ("vault_pki_mount", &self.security.vault_pki_mount),
             ("vault_pki_role", &self.security.vault_pki_role),
+            (
+                "vault_gateway_pki_mount",
+                &self.security.vault_gateway_pki_mount,
+            ),
+            (
+                "vault_gateway_pki_role",
+                &self.security.vault_gateway_pki_role,
+            ),
             ("vault_transit_mount", &self.security.vault_transit_mount),
             ("vault_transit_key", &self.security.vault_transit_key),
         ] {
@@ -796,10 +816,12 @@ impl CloudConfig {
         }
         if self.security.profile == SecurityProfile::Production
             && (self.security.certificate_authority != SecurityProviderKind::Vault
+                || self.security.gateway_certificate_authority != SecurityProviderKind::Vault
                 || self.security.key_encryption != SecurityProviderKind::Vault)
         {
             return Err(ConfigError::Invalid(
-                "production security requires external Vault PKI and Transit providers".into(),
+                "production security requires external Vault node PKI, Gateway PKI, and Transit providers"
+                    .into(),
             ));
         }
         if self.security.profile == SecurityProfile::Production
@@ -865,6 +887,7 @@ impl CloudConfig {
 
     pub fn vault_credentials(&self) -> Result<Option<(String, String)>, ConfigError> {
         if self.security.certificate_authority != SecurityProviderKind::Vault
+            && self.security.gateway_certificate_authority != SecurityProviderKind::Vault
             && self.security.key_encryption != SecurityProviderKind::Vault
         {
             return Ok(None);
@@ -1215,11 +1238,14 @@ security {
   profile = "development"
   state_dir = ".a3s/cloud/security"
   certificate_authority = "local"
+  gateway_certificate_authority = "local"
   key_encryption = "local"
   vault_address_env = "A3S_CLOUD_VAULT_ADDR"
   vault_token_env = "A3S_CLOUD_VAULT_TOKEN"
   vault_pki_mount = "pki"
   vault_pki_role = "a3s-cloud-node"
+  vault_gateway_pki_mount = "gateway-pki"
+  vault_gateway_pki_role = "a3s-cloud-gateway"
   vault_transit_mount = "transit"
   vault_transit_key = "a3s-cloud"
   vault_timeout_ms = 5000
@@ -1239,6 +1265,10 @@ security {
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
         assert_eq!(config.edge.domain_verification_timeout_ms, 5_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
+        assert_eq!(
+            config.security.gateway_certificate_authority,
+            SecurityProviderKind::Local
+        );
     }
 
     #[test]
@@ -1314,12 +1344,21 @@ security {
         let production_s3 = VALID
             .replace("profile = \"development\"", "profile = \"production\"")
             .replace(
-                "certificate_authority = \"local\"",
-                "certificate_authority = \"vault\"",
+                "  gateway_certificate_authority = \"local\"",
+                "  gateway_certificate_authority = \"vault\"",
+            )
+            .replace(
+                "  certificate_authority = \"local\"",
+                "  certificate_authority = \"vault\"",
             )
             .replace("key_encryption = \"local\"", "key_encryption = \"vault\"")
             .replace("storage_provider = \"local\"", "storage_provider = \"s3\"");
         assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(&production_s3.replace(
+            "gateway_certificate_authority = \"vault\"",
+            "gateway_certificate_authority = \"local\""
+        ))
+        .is_err());
         assert!(CloudConfig::parse(
             &production_s3
                 .replace(

@@ -93,6 +93,9 @@ impl CommandHandler<SignGatewayCertificate> for SignGatewayCertificateHandler {
                 .await
             {
                 Ok(material) => material,
+                Err(error @ GatewayCertificateAuthorityError::Unavailable(_)) => {
+                    return Ok(Err(authority_error(&error)));
+                }
                 Err(error) => {
                     let application_error = authority_error(&error);
                     let mut failed = certificate;

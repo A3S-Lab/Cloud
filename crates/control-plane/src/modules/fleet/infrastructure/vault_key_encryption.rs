@@ -1,4 +1,4 @@
-use super::vault_client::{VaultClient, VaultClientError};
+use crate::infrastructure::{VaultClient, VaultClientError};
 use crate::modules::secrets::domain::{
     EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
 };

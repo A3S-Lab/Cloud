@@ -85,8 +85,10 @@ API command
   acknowledged
 - **Managed Gateway TLS**: Verify exact or one-label wildcard domain claims,
   use bounded system-DNS TXT ownership checks in production, bind certificate
-  intent into the complete snapshot digest, issue only public certificate
-  material over node mTLS, and keep generated private keys on the Gateway node
+  intent into the complete snapshot digest, support Vault signing and
+  serial-based provider revocation through a dedicated Gateway PKI role, issue
+  only public material over node mTLS, and keep generated private keys on the
+  Gateway node
 - **Encrypted Secret Resources**: Create tenant-scoped Secret identities,
   rotate immutable encrypted versions through local AES-GCM or Vault Transit,
   bind exact versions to workload environment, file, or registry-credential
@@ -146,7 +148,7 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, recovery, one-node immutable replacement, and manual rollback with deterministic previous-revision retirement | Complete (`E0` update and rollback slice) |
-| Reachability | Route ownership, production DNS TXT ownership verification, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, exact acknowledgement projection, and byte-preserving routed update and rollback cutover are implemented; the production Gateway CA, renewal/revocation convergence, and the remaining process-death gates remain | In progress (`E0`) |
+| Reachability | Route ownership, production DNS TXT ownership verification, a Vault-backed production Gateway PKI adapter, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, exact acknowledgement projection, and byte-preserving routed update and rollback cutover are implemented; automated renewal/revocation convergence and the remaining process-death gates remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
@@ -394,6 +396,15 @@ deployment and Edge policies are split across independent boundaries:
 | `logs.tombstone_retention_ms` | Age from durable `retained_at` before an individual log tombstone becomes eligible for range compaction; 1 minute through 10 years |
 | `logs.tombstone_compaction_poll_ms` | Independent tombstone-compaction interval; no longer than the tombstone retention age or 24 hours |
 | `logs.tombstone_compaction_batch_size` | Maximum tombstones replaced in one atomic compaction transaction; 1 through 10,000 |
+| `security.certificate_authority` | Node identity PKI provider: `local` or `vault`; production requires `vault` |
+| `security.gateway_certificate_authority` | Independent Gateway server-certificate provider: `local` or `vault`; production requires `vault` |
+| `security.key_encryption` | Secret encryption provider: `local` or Vault Transit; production requires `vault` |
+| `security.vault_address_env` | Environment-variable name carrying the absolute HTTPS Vault origin |
+| `security.vault_token_env` | Environment-variable name carrying the Vault token; never an ACL credential value |
+| `security.vault_pki_mount` / `security.vault_pki_role` | Vault PKI mount and role dedicated to node identities |
+| `security.vault_gateway_pki_mount` / `security.vault_gateway_pki_role` | Separate Vault PKI mount and server-only role for Gateway CSRs |
+| `security.vault_transit_mount` / `security.vault_transit_key` | Vault Transit mount and key for Secret encryption |
+| `security.vault_timeout_ms` | Shared bounded Vault request timeout; 1 through 60,000 milliseconds |
 | `logs.poll_interval_ms` | Independent node-agent interval for polling active Runtime log targets |
 | `logs.max_batch_chunks` | Maximum chunk and provider-gap records in one durable upload batch; closed at 256 |
 | `logs.max_batch_bytes` | Maximum log-data bytes in one durable upload batch; closed at 16 MiB |
@@ -628,7 +639,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; the production Gateway CA, certificate renewal/revocation convergence, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain | In progress |
+| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification, a Vault-backed production Gateway PKI adapter, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; certificate renewal/revocation convergence, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -798,9 +809,10 @@ router/service snapshot passes that gate. The final Gateway command is also a
 dedicated CI job: it generates a private key and CSR on the node, provisions the
 managed certificate, reloads the exact HTTPS snapshot, trusts the fixture CA,
 and reaches a loopback upstream through DNS/SNI. The production profile now
-performs bounded ownership verification through the system DNS resolver. A
-production Gateway certificate authority plus automated renewal and
-revocation-driven route convergence remain E0 work.
+performs bounded ownership verification through the system DNS resolver and
+uses a dedicated Vault PKI mount/role to sign node-generated Gateway CSRs and
+revoke the resulting provider serial. Automated renewal and revocation-driven
+route convergence remain E0 work.
 
 The final S3 command must target a disposable bucket controlled by the test
 operator. The dedicated CI job creates a fresh bucket in digest-pinned MinIO,
