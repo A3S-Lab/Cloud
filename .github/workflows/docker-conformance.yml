@@ -94,16 +94,21 @@ jobs:
         run: |
           cloud_revision=$(git -C apps/cloud rev-parse HEAD)
           cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
           mkdir -p "$EVIDENCE_DIR"
 
           set +e
-          sudo apps/cloud/tools/runtime-conformance/run_isolated_docker_gate.sh \
-            --source-root "$GITHUB_WORKSPACE" \
-            --cloud-sha "$cloud_revision" \
-            --runtime-sha "$RUNTIME_REVISION" \
-            --evidence-dir "$EVIDENCE_DIR" \
-            --cargo "$cargo_bin" \
-            --ttl-seconds 3000
+          sudo env \
+            CARGO_HOME="$cargo_home" \
+            RUSTUP_HOME="$rustup_home" \
+            apps/cloud/tools/runtime-conformance/run_isolated_docker_gate.sh \
+              --source-root "$GITHUB_WORKSPACE" \
+              --cloud-sha "$cloud_revision" \
+              --runtime-sha "$RUNTIME_REVISION" \
+              --evidence-dir "$EVIDENCE_DIR" \
+              --cargo "$cargo_bin" \
+              --ttl-seconds 3000
           gate_status=$?
           set -e
 
