@@ -95,7 +95,7 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, forced reload-before-acknowledgement recovery against A3S Gateway 1.0.12, exact acknowledgement activation, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. Provider-death Secret-rotation apply, activation-before-cleanup process death, and clean-host release gates remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, forced reload-before-acknowledgement recovery against A3S Gateway 1.0.12, exact acknowledgement activation, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment and Runtime receipt replay, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. Activation-before-cleanup process death and clean-host release gates remain |
 
 The MVP is not complete until E0 passes. D0 verification alone does not imply
 public reachability, production log retention, immutable update, or rollback
@@ -367,6 +367,13 @@ Complete the first user-visible release loop.
   operation across a second Flow reconstruction, and scans desired state,
   Runtime/Fleet state, Flow history, restart/checkpoint rows, events, logs,
   audit, API responses, and revision digests for plaintext.
+- Implemented: the isolated Cloud consumer gate pauses a child after the real
+  rotated Docker apply creates a healthy container but before its Runtime
+  receipt completes, verifies the pending receipt and exact provider identity,
+  restarts the labeled Docker provider, kills the child agent, and reconstructs
+  Runtime to reattach the same container and complete and replay the exact
+  receipt. It then verifies `0400` Secret material, log redaction, durable-state
+  plaintext exclusion, and complete container/tmpfs cleanup.
 - Verify ordinary HTTP, streaming responses, and WebSocket upgrade through the
   same acknowledged Gateway revision. Advanced caching and transport tuning are
   not part of E0.
@@ -467,8 +474,9 @@ Complete the first user-visible release loop.
   clock preserves the prior valid certificate until the replacement is proven.
 - Workload secret create, bind, rotate, revoke, restart, and authorization
   fixtures pass with encrypted PostgreSQL state and real Runtime injection;
-  plaintext scans of database rows, events, Flow history, logs, and API payloads
-  find no secret value.
+  provider and agent death during the rotated apply reattach one exact resource
+  and receipt, and plaintext scans of database rows, events, Flow history, logs,
+  and API payloads find no secret value.
 - A failed Gateway reload cannot mark the route or deployment active.
 - Losing the Gateway acknowledgement and restarting either process converges
   without duplicating or partially applying routes.
@@ -917,7 +925,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 1 | Aggregate commit before outbox publish | Verified | `postgres_foundation_is_migrated_atomic_and_idempotent` commits the outbox with state, injects lost publish acknowledgements for local and real NATS providers, and proves one logical event after retry |
 | 2 | Deployment commit before Flow run creation | Verified | The PostgreSQL integration gate accepts deployment intent before Flow work, then concurrent operation reconciliation creates one run and replay leaves one history |
 | 3 | Command lease before node receipt | Verified | Fleet persistence and node-agent journal tests redeliver the same command ID, reject conflicts and sequence gaps, and execute Runtime once |
-| 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container |
+| 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container; the Secret-rotation consumer gate additionally restarts the isolated provider and kills the applying child while the exact Runtime receipt is pending, then reconstructs and reattaches the same container without duplicate material |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
 | 7 | Gateway reload before acknowledgement | Verified | `installed_a3s_gateway_recovers_reload_after_agent_process_death` durably begins the node command, reloads A3S Gateway 1.0.12, proves the new listener is live with no installed-state or acknowledgement projection, sends `SIGKILL`, reconstructs the executor, redelivers the same command under a new lease, persists one exact applied acknowledgement, and proves a second restart performs no third reload |
@@ -960,7 +968,9 @@ cursor-loss/source-disconnect recovery, real provider restart cursor
 continuity, control-plane
 object-before-receipt process-death recovery, exact route cutover, deterministic
 previous-revision retirement, and filesystem/MinIO corruption certification.
-The remaining changes should land as vertical, independently verified slices:
+Provider and agent process death during a rotated Secret apply now also
+reattaches the exact container and completes the original Runtime receipt. The
+remaining changes should land as vertical, independently verified slices:
 
 1. Implemented on 2026-07-20: one-node update orchestration keeps the prior
    healthy revision and byte-identical route rows until Runtime health and the
@@ -998,9 +1008,13 @@ The remaining changes should land as vertical, independently verified slices:
    installed-state or acknowledgement completion, sends `SIGKILL`, and proves
    reconstructed redelivery produces one exact applied acknowledgement. A
    second reconstruction replays the outcome without another reload.
-8. Provider death during a Secret-rotation apply, process death after
-   activation but before old-revision cleanup, followed by the clean-host
-   end-to-end release run.
+8. Implemented on 2026-07-20: the isolated Cloud consumer gate pauses after a
+   healthy rotated Docker resource is created with a pending Runtime receipt,
+   restarts the labeled provider, kills the child agent, and proves
+   reconstructed exact-container reattachment, receipt completion/replay,
+   Secret file/log safety, plaintext exclusion, and cleanup.
+9. Process death after activation but before old-revision cleanup, followed by
+   the clean-host end-to-end release run.
 
 No post-E0 product surface is marked available before this list passes. Contract
 design and isolated prototypes may proceed, but they cannot create production

@@ -152,6 +152,10 @@ unprivileged with every capability dropped. The gate then:
 - injects it into a real Docker environment variable and `0400` file without
   placing plaintext in the Runtime command;
 - emits it on stdout and stderr and requires provider-boundary redaction;
+- pauses a child after the real rotated Docker apply creates a healthy
+  container but before its Runtime receipt completes, restarts the labeled
+  isolated provider, kills the child agent, reconstructs Runtime, and requires
+  exact-container reattachment plus completion and replay of that same receipt;
 - starts a child handler that exits after a synced immutable object publication
   but before PostgreSQL receipt persistence, proves no batch metadata committed,
   then reconstructs the handler/repository/store and adopts the exact objects
@@ -175,5 +179,8 @@ derived revision and Runtime apply command, then reconstructs Flow after the
 reference-only result and verifies terminal activation plus final plaintext
 scans. The digest-pinned MinIO gate overwrites a real accepted object and
 requires verified reads to return corruption while immutable replay refuses to
-replace it. Provider process death during the separate rotated workload apply
-and rollback apply remain part of the final E0 recovery matrix.
+replace it. The rotated workload gate now proves provider and agent process
+death preserve one exact Docker resource, one completed Runtime receipt, `0400`
+Secret material, redacted logs, and complete cleanup. E0 remains in progress
+for process death after activation but before old-revision cleanup and the
+clean-host end-to-end release run.
