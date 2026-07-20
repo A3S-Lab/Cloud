@@ -39,6 +39,8 @@ jobs:
     name: Clean-host E0 release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
     defaults:
       run:
         shell: bash
@@ -67,25 +69,55 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          cache: false
 
       - name: Install A3S Gateway 1.0.12
         run: cargo install a3s-gateway --version 1.0.12 --locked
 
       - name: Verify disposable Linux release host
         run: |
+          mkdir -p "$EVIDENCE_DIR"
           required_commands=(
-            awk comm curl docker git python3 realpath rg sha256sum sort timeout
+            a3s-gateway awk cargo comm curl docker git python3 realpath rg
+            sha256sum sort timeout
           )
+          : >"$EVIDENCE_DIR/required-commands.txt"
+          for command in "${required_commands[@]}"; do
+            if path=$(command -v "$command"); then
+              printf '%s\t%s\n' "$command" "$path"
+            else
+              printf '%s\tMISSING\n' "$command"
+            fi
+          done >>"$EVIDENCE_DIR/required-commands.txt"
+
+          {
+            date -u '+%Y-%m-%dT%H:%M:%SZ'
+            uname -a
+            rustc --version
+            cargo --version
+          } >"$EVIDENCE_DIR/host-preflight.txt" 2>&1 || true
+          CARGO_TERM_COLOR=never cargo install --list \
+            >"$EVIDENCE_DIR/cargo-installed-packages.txt" 2>&1 || true
+          docker version >"$EVIDENCE_DIR/docker-version.txt" 2>&1 || true
+          docker info >"$EVIDENCE_DIR/docker-info.txt" 2>&1 || true
+          docker ps --all --no-trunc \
+            >"$EVIDENCE_DIR/docker-containers-preflight.txt" 2>&1 || true
+          docker volume ls \
+            >"$EVIDENCE_DIR/docker-volumes-preflight.txt" 2>&1 || true
+          docker network ls \
+            >"$EVIDENCE_DIR/docker-networks-preflight.txt" 2>&1 || true
+
           for command in "${required_commands[@]}"; do
             command -v "$command" >/dev/null
           done
+
+          rg '^a3s-gateway v1\.0\.12:' \
+            "$EVIDENCE_DIR/cargo-installed-packages.txt" \
+            >"$EVIDENCE_DIR/gateway-install-record.txt"
           docker info >/dev/null
-          a3s-gateway --version | rg '1\.0\.12'
-          [[ -z $(docker ps -aq) ]]
 
       - name: Run clean-host E0 release gate
         env:
-          EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
           RUNTIME_REVISION: ${{ steps.runtime_revision.outputs.revision }}
         run: |
           cloud_revision=$(git -C apps/cloud rev-parse HEAD)

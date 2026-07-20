@@ -183,9 +183,6 @@ if [[ $gateway_bin != */* ]]; then
     gateway_bin=$(command -v "$gateway_bin" || true)
 fi
 [[ -x $gateway_bin ]] || die "A3S Gateway executable is unavailable: $gateway_bin"
-gateway_version=$("$gateway_bin" --version)
-[[ $gateway_version == *"$GATEWAY_VERSION"* ]] ||
-    die "A3S Gateway $GATEWAY_VERSION is required, got $gateway_version"
 docker info >/dev/null 2>&1 || die "the host Docker daemon is unavailable"
 
 for port in "${ports[@]}"; do
@@ -390,7 +387,6 @@ printf '%s\n' "$runtime_sha" >"$evidence/runtime.sha"
 printf '%s\n' "$POSTGRES_IMAGE" >"$evidence/postgres-image.txt"
 printf '%s\n' "$REGISTRY_IMAGE" >"$evidence/registry-image.txt"
 printf '%s\n' "$WORKLOAD_IMAGE" >"$evidence/source-workload-image.txt"
-printf '%s\n' "$gateway_version" >"$evidence/gateway-version.txt"
 printf '%s\n' "$namespace" >"$evidence/docker-namespace.txt"
 git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-before.txt"
 git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-before.txt"
@@ -520,6 +516,22 @@ for attempt in $(seq 1 120); do
     [[ $attempt -ne 120 ]] || die "A3S Gateway readiness timed out"
     sleep 0.25
 done
+gateway_version=$(
+    python3 - "$evidence/gateway-ready.json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+version = payload.get("version")
+if not isinstance(version, str):
+    raise SystemExit("A3S Gateway version response omitted a string version")
+print(version)
+PY
+)
+[[ $gateway_version == "$GATEWAY_VERSION" ]] ||
+    die "A3S Gateway $GATEWAY_VERSION is required, got $gateway_version"
+printf '%s\n' "$gateway_version" >"$evidence/gateway-version.txt"
 
 cat >"$config_dir/cloud.acl" <<ACL
 server {
