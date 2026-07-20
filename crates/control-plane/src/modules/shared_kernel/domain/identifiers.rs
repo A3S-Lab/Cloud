@@ -54,3 +54,4 @@ identifier!(RouteId);
 identifier!(DomainClaimId);
 identifier!(GatewayCertificateId);
 identifier!(SecretId);
+identifier!(SourceRevisionId);

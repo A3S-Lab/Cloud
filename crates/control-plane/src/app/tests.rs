@@ -14,6 +14,7 @@ use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
+use crate::modules::sources::InMemorySourceRevisionRepository;
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use chrono::Utc;
@@ -23,12 +24,14 @@ use uuid::Uuid;
 
 mod platform_tests;
 mod secret_tests;
+mod source_tests;
 mod workload_tests;
 
 const BOOTSTRAP_TOKEN: &str = "test-bootstrap-credential-0123456789abcdef";
 const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const PROJECT_TOKEN: &str = "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const SOURCE_TOKEN: &str = "a3s_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 struct TestCertificateAuthority;
 
@@ -319,6 +322,36 @@ fn build_test_application_with_repositories(
     secrets: Arc<InMemorySecretRepository>,
     workloads: Arc<InMemoryWorkloadRepository>,
 ) -> Result<BootApplication> {
+    build_test_application_with_all_repositories(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        Arc::new(InMemorySourceRevisionRepository::new()),
+    )
+}
+
+fn build_test_application_with_sources(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_all_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        sources,
+    )
+}
+
+fn build_test_application_with_all_repositories(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -347,6 +380,7 @@ fn build_test_application_with_repositories(
             workloads: workload_port,
             routes,
             secrets,
+            sources,
             secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,

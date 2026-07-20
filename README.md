@@ -142,6 +142,11 @@ API command
   then prove bootstrap, enrollment, digest-pinned deployment, managed TLS,
   ordered resumable logs, immutable update, cloned rollback, durable stop, and
   exact source and host cleanup without credential leakage
+- **Immutable External Source Contracts**: Accept an already resolved full
+  GitHub commit under a canonical repository identity, bind it to a path-safe
+  versioned Dockerfile recipe and canonical digest, reserve webhook delivery
+  identities against the exact repository and commit, and persist the
+  tenant-scoped revision, idempotency result, and outbox fact atomically
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
@@ -164,7 +169,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
+| Source delivery | Canonical GitHub repository identities, full immutable commit IDs, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, idempotent acceptance, and webhook source-identity deduplication are implemented; GitHub App resolution, isolated builds, OCI publication, provenance, and push-to-deploy remain | In progress (`G0` contract slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -229,6 +234,54 @@ curl --request POST http://127.0.0.1:8080/api/v1/bootstrap \
 Subsequent API requests use
 `Authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}`. Every mutation also requires a
 stable `idempotency-key` header.
+
+### Accept a resolved external source revision
+
+The first G0 contract accepts an already resolved full Git commit. It does not
+resolve a branch or run a build yet:
+
+```text
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions
+```
+
+```bash
+curl --request POST \
+  "http://127.0.0.1:8080/api/v1/organizations/${A3S_CLOUD_ORGANIZATION_ID}/projects/${A3S_CLOUD_PROJECT_ID}/environments/${A3S_CLOUD_ENVIRONMENT_ID}/source-revisions" \
+  --header "authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}" \
+  --header "content-type: application/json" \
+  --header "idempotency-key: source-cloud-main-1" \
+  --data '{
+    "repository": {
+      "provider": "github",
+      "url": "https://github.com/A3S-Lab/Cloud.git"
+    },
+    "commitSha": "0123456789abcdef0123456789abcdef01234567",
+    "recipe": {
+      "schema": "a3s.cloud.build-recipe.v1",
+      "kind": "dockerfile",
+      "contextPath": ".",
+      "dockerfilePath": "Dockerfile",
+      "target": null,
+      "platforms": ["linux/amd64"]
+    },
+    "webhookDeliveryId": null
+  }'
+```
+
+The mutation requires `source:write`. A new immutable source revision returns
+`201`; an exact idempotency replay or canonical duplicate returns `200` with
+the original identity. Repository locators must use exact `https://github.com`
+owner/repository syntax without user information, ports, query strings,
+fragments, or encoded path bytes. Commit IDs must be complete 40- or 64-digit
+hexadecimal values. Recipe paths are relative POSIX paths and may not escape
+the checkout. Credential values and references are intentionally absent from
+the revision, idempotency response, and `source.revision.accepted` event.
+
+List accepted revisions with:
+
+```text
+GET /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions
+```
 
 ### Update an active workload
 
@@ -653,7 +706,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract implemented) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |

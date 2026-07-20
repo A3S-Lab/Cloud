@@ -13,6 +13,7 @@ impl ApiTokenScope {
     pub const WORKLOAD_WRITE: &'static str = "workload:write";
     pub const ROUTE_WRITE: &'static str = "route:write";
     pub const SECRET_WRITE: &'static str = "secret:write";
+    pub const SOURCE_WRITE: &'static str = "source:write";
 
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
@@ -48,6 +49,7 @@ impl ApiTokenScope {
             Self::WORKLOAD_WRITE,
             Self::ROUTE_WRITE,
             Self::SECRET_WRITE,
+            Self::SOURCE_WRITE,
         ]
         .into_iter()
         .map(|scope| Self(scope.to_owned()))

@@ -221,6 +221,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/020_gateway_certificate_convergence.sql"
             )),
         ),
+        Migration::new(
+            "021",
+            "external source revisions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/021_external_source_revisions.sql"
+            )),
+        ),
     ]
 }
 

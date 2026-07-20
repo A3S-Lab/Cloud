@@ -7,6 +7,7 @@ mod platform;
 pub mod projects;
 pub mod secrets;
 pub mod shared_kernel;
+pub mod sources;
 pub mod workloads;
 
 pub use platform::PlatformModule;

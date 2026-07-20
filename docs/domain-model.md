@@ -69,7 +69,21 @@ Primary aggregates:
 - `Project`
 - `Environment`
 
-### 3.3 Asset hosting
+### 3.3 External sources
+
+Owns immutable external application source revisions accepted after provider
+resolution. It deliberately does not own hosted A3S assets, mutable provider
+refs, repository credentials, build execution, artifacts, or deployments.
+
+Primary aggregate:
+
+- `ExternalSourceRevision`
+
+The initial provider is GitHub. Provider adapters may resolve convenient refs,
+but the aggregate accepts only a canonical repository identity, a full commit
+object ID, and an explicit versioned build recipe.
+
+### 3.4 Asset hosting
 
 Owns hosted assets, repositories, revisions, releases, and asset-scoped access.
 It deliberately excludes Issues, pull requests, stars, watches, wikis, generic
@@ -90,7 +104,7 @@ An Agent or MCP release may be deployed after it resolves to a digest-pinned OCI
 artifact. A Skill release is a distributable bundle and may be bound to an
 Agent workload, but it is never deployed independently.
 
-### 3.4 Artifacts
+### 3.5 Artifacts
 
 Owns immutable artifact metadata, provenance, checksums, signatures, and
 registry locations. Blob bytes live in an OCI registry or S3-compatible object
@@ -100,7 +114,7 @@ Primary aggregate:
 
 - `Artifact`
 
-### 3.5 Fleet
+### 3.6 Fleet
 
 Owns enrollment, node identity, capabilities, scheduling eligibility, drain,
 revocation, last accepted observation, and authenticated bounded log ingestion
@@ -112,7 +126,7 @@ Primary aggregate:
 
 - `Node`
 
-### 3.6 Workloads and deployments
+### 3.7 Workloads and deployments
 
 Owns desired service state, immutable workload revisions, placement intent,
 deployments, active revision selection, update, stop, and rollback.
@@ -128,7 +142,7 @@ engines while preserving the stricter Asset domain. Workloads also owns the
 tenant-authorized query that maps one exact revision and assigned deployment to
 ordered Fleet log metadata; it does not become the owner of log bodies.
 
-### 3.7 Edge routing
+### 3.8 Edge routing
 
 The implemented slice owns hostname/path rules, exact and one-label wildcard
 domain claims, managed certificate public state, and the desired A3S Gateway
@@ -148,7 +162,7 @@ Primary domain records:
 - `GatewayRouteCutover`
 - `GatewayCertificateConvergence`
 
-### 3.8 Secrets
+### 3.9 Secrets
 
 Owns secret identities, encrypted versions, key rotation, materialization
 authorization, and access audit. An immutable workload revision binds an exact
@@ -162,7 +176,7 @@ Primary aggregate:
 
 - `Secret`
 
-### 3.9 Data services and storage
+### 3.10 Data services and storage
 
 Owns managed database intent, persistent volume identity, attachment policy,
 backup schedules, backup records, and restore operations. Databases and volumes
@@ -180,7 +194,7 @@ The first stateless deployment slice does not implement this context. Its
 boundary is defined now so stateful behavior is not later hidden in workload
 metadata or provider-specific JSON.
 
-### 3.10 Operations and audit
+### 3.11 Operations and audit
 
 Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
@@ -201,6 +215,22 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Environment names are unique within one project.
 - Environment deletion requires all workloads to reach a terminal stopped or
   explicitly orphaned state.
+
+### External source revision
+
+- A revision belongs to exactly one organization, project, and environment.
+- The repository identity is canonical and provider-qualified. The initial
+  contract accepts only exact HTTPS GitHub owner/repository locators.
+- A revision pins a full Git commit object ID. A branch or tag is never stored
+  as execution authority and is never resolved again by reconciliation.
+- The versioned build recipe is explicit, path-safe, platform-ordered, and
+  bound by a canonical SHA-256 digest.
+- The same environment, repository, commit, and recipe digest identify one
+  logical revision. HTTP replay and canonical duplicates return that revision.
+- A webhook delivery identity is bound to the repository-plus-commit digest.
+  Reusing it for another source identity conflicts atomically.
+- Credential values and references do not enter the revision, its idempotency
+  response, or its domain event.
 
 ### Asset
 
@@ -488,6 +518,11 @@ Branches, tags, and image tags may be convenient request inputs. A resolver
 must turn them into a commit SHA or OCI digest and store the resolved value in a
 new workload revision. Reconciliation never resolves a mutable reference again.
 
+The implemented first G0 contract persists `ExternalSourceRevision` before a
+build exists. Its REST boundary accepts only an already resolved full Git
+object ID and `a3s.cloud.build-recipe.v1`; provider ref resolution and
+source-to-artifact execution remain later G0 operations.
+
 ## 6. State models
 
 ### Asset state
@@ -593,6 +628,7 @@ Gateway revision.
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
+| External source revision, recipe digest, and webhook source-identity reservation | PostgreSQL Sources tables |
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |
@@ -626,6 +662,7 @@ carry a versioned envelope:
 ```text
 identity.organization.created
 project.environment.created
+source.revision.accepted
 asset.asset.created
 asset.release.published
 artifact.artifact.registered
