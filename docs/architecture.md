@@ -61,10 +61,14 @@ the exact clean Cloud and pinned Runtime revisions, starts pinned PostgreSQL and
 registry fixtures, A3S Gateway 1.0.12, the control plane, and one outbound
 Docker node, then certifies bootstrap through A→B→cloned-A TLS cutover, ordered
 resumable logs, durable stop, source cleanliness, host-inventory equality, and
-credential-safe cleanup. This closes the first release. Later milestone
-sections remain accepted design until their own exit gates pass. A3S Cloud
-ships as a Rust modular monolith, a separate Linux node agent, and a React web
-application.
+credential-safe cleanup. This closes the first release. The first G0 contract
+slice now adds a Sources context with canonical GitHub repository identities,
+full immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic
+webhook source-identity reservation, PostgreSQL persistence, and tenant-scoped
+REST acceptance/query. GitHub ref resolution and build execution are not yet
+implemented. Unimplemented portions of later milestone sections remain
+accepted design until their own exit gates pass. A3S Cloud ships as a Rust
+modular monolith, a separate Linux node agent, and a React web application.
 
 The following decisions are fixed for the first architecture:
 
@@ -267,6 +271,7 @@ inside the same transaction.
 | --- | --- | --- |
 | Identity | create organization, manage membership/token | password/identity provider, audit |
 | Projects | create project/environment, request deletion | operation coordinator |
+| Sources | accept immutable external source revision | provider source resolver, build coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
 | Artifacts | register, verify, sign, retain artifact | OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
@@ -688,6 +693,17 @@ External Git inputs resolve a branch or tag once, then build the pinned commit
 with a Runtime Task. OCI inputs resolve a tag once and deploy only the manifest
 digest. Build cache keys include source digest, recipe digest, builder digest,
 platform, and declared inputs.
+
+The implemented contract boundary is earlier than resolution and execution.
+`POST .../source-revisions` accepts an already resolved full Git object ID,
+normalizes an exact GitHub HTTPS locator, validates
+`a3s.cloud.build-recipe.v1`, computes its canonical digest, and atomically
+stores the environment-owned revision, idempotency response, optional webhook
+repository-plus-commit reservation, and `source.revision.accepted` outbox fact.
+Natural identity is environment, repository, commit, and recipe digest. No
+credential reference is durable source-revision state. The GitHub App adapter,
+signed webhook ingress, ref-race protection, policy evaluation, and BuildKit
+operation remain subsequent G0 boundaries.
 
 Hosted assets follow a separate publication chain:
 

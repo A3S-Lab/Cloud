@@ -8,7 +8,7 @@ pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     ApiTokenId, DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId,
     GatewayCertificateId, NodeCertificateId, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ProjectId, RouteId, SecretId, WorkloadId, WorkloadRevisionId,
+    ProjectId, RouteId, SecretId, SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

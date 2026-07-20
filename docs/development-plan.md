@@ -515,6 +515,34 @@ Complete the first user-visible release loop.
 Build a pinned external Git commit into a verifiable OCI artifact and deploy it
 through the proven loop.
 
+### Current implementation
+
+The first independently testable G0 slice is implemented:
+
+- A dedicated Sources bounded context accepts and lists tenant-, project-, and
+  environment-scoped `ExternalSourceRevision` aggregates.
+- GitHub repository locators fail closed unless they use exact HTTPS
+  owner/repository syntax without user information, ports, queries, fragments,
+  encoded path bytes, or extra path segments. Accepted locators normalize to
+  one lowercase repository identity.
+- Source revisions pin a full lowercase 40- or 64-hex Git object ID and a
+  versioned `a3s.cloud.build-recipe.v1` Dockerfile recipe. Relative checkout
+  paths, optional targets, and supported Linux platforms are validated and
+  canonicalized before the recipe digest is calculated.
+- HTTP idempotency, natural source-revision deduplication, the
+  `source.revision.accepted` outbox fact, and PostgreSQL persistence commit in
+  one transaction. A GitHub delivery ID is reserved against the immutable
+  repository-plus-commit digest, so a changed delivery payload conflicts while
+  later monorepo fan-out may still attach more than one recipe.
+- The REST mutation requires `source:write`; list and mutation paths enforce
+  the organization/project/environment hierarchy. Source revisions, events,
+  and idempotency responses contain no credential value or reference.
+
+This slice is a persistence and API contract, not the G0 integration gate.
+GitHub App credentials, signed webhook intake, repository policy, ref
+resolution, checkout, BuildKit execution, artifact publication, provenance,
+deployment handoff, build operations/logs, and web surfaces remain required.
+
 ### Work
 
 - Add Git credential references, repository allow/deny policy, ref resolution,

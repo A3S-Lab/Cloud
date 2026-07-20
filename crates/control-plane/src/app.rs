@@ -53,6 +53,11 @@ use crate::modules::secrets::{
     CreateSecretHandler, GetSecretHandler, ListSecretsHandler, PostgresSecretRepository,
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
+use crate::modules::sources::domain::ISourceRevisionRepository;
+use crate::modules::sources::{
+    AcceptExternalSourceRevisionHandler, ListSourceRevisionsHandler,
+    PostgresSourceRevisionRepository, SourcesModule,
+};
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
@@ -147,6 +152,8 @@ pub async fn build_application(
     let routes: Arc<dyn IEdgeRepository> = edge_repository;
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let sources: Arc<dyn ISourceRevisionRepository> =
+        Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
         SecurityProfile::Production => Arc::new(
@@ -350,6 +357,7 @@ pub async fn build_application(
             workloads,
             routes,
             secrets,
+            sources,
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
@@ -395,6 +403,7 @@ struct ApplicationDependencies {
     workloads: Arc<dyn IWorkloadRepository>,
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
+    sources: Arc<dyn ISourceRevisionRepository>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
@@ -421,6 +430,7 @@ fn build_application_with_health(
         workloads,
         routes,
         secrets,
+        sources,
         secret_encryption,
         route_targets,
         route_commands,
@@ -439,6 +449,8 @@ fn build_application_with_health(
     let workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
+    let source_environments = Arc::clone(&environments);
+    let source_query_environments = Arc::clone(&environments);
     let create_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
@@ -485,6 +497,8 @@ fn build_application_with_health(
     let revoke_secret_versions = Arc::clone(&secrets);
     let list_secrets = Arc::clone(&secrets);
     let get_secrets = secrets;
+    let accept_sources = Arc::clone(&sources);
+    let list_sources = sources;
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
@@ -572,6 +586,9 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::secrets::RevokeSecretVersion, _>(
                     RevokeSecretVersionHandler::new(revoke_secret_versions),
                 )
+                .command_handler::<crate::modules::sources::AcceptExternalSourceRevision, _>(
+                    AcceptExternalSourceRevisionHandler::new(source_environments, accept_sources),
+                )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(
                         workload_environments,
@@ -656,6 +673,9 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::secrets::GetSecret, _>(GetSecretHandler::new(
                     get_secrets,
                 ))
+                .query_handler::<crate::modules::sources::ListSourceRevisions, _>(
+                    ListSourceRevisionsHandler::new(source_query_environments, list_sources),
+                )
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),
                 )
@@ -714,6 +734,7 @@ fn build_application_with_health(
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
         .import(SecretsModule)
+        .import(SourcesModule)
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

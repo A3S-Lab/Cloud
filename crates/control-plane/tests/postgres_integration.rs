@@ -120,6 +120,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists source_webhook_deliveries cascade;
+             drop table if exists external_source_revisions cascade;
              drop table if exists secret_rotation_reconciliations cascade;
              drop table if exists secret_rotation_restarts cascade;
              drop table if exists secret_versions cascade;
@@ -170,7 +172,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 20);
+    assert_eq!(applied, 21);
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -363,6 +365,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "021",
+                "external source revisions",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/021_external_source_revisions.sql"
+                )),
+            ),
+            Migration::new(
+                "022",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -508,6 +518,98 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(cross_tenant.status(), 404);
+
+    let source_path = format!(
+        "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions"
+    );
+    let source_request = |repository: &str, commit_sha: &str| {
+        json!({
+            "repository": {
+                "provider": "github",
+                "url": repository
+            },
+            "commitSha": commit_sha,
+            "recipe": {
+                "schema": "a3s.cloud.build-recipe.v1",
+                "kind": "dockerfile",
+                "contextPath": "./services/api",
+                "dockerfilePath": "Dockerfile",
+                "target": "release",
+                "platforms": ["linux/arm64", "linux/amd64"]
+            },
+            "webhookDeliveryId": "postgres-delivery-a"
+        })
+    };
+    let commit_a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let source = app
+        .call(post_json(
+            &source_path,
+            "source-revision-a",
+            source_request("https://github.com/A3S-Lab/Cloud.git", commit_a),
+        ))
+        .await?;
+    let source_replay = app
+        .call(post_json(
+            &source_path,
+            "source-revision-a",
+            source_request("https://github.com/A3S-Lab/Cloud.git", commit_a),
+        ))
+        .await?;
+    let source_canonical_duplicate = app
+        .call(post_json(
+            &source_path,
+            "source-revision-a-canonical",
+            source_request(
+                "https://GITHUB.com/a3s-lab/cloud/",
+                &commit_a.to_uppercase(),
+            ),
+        ))
+        .await?;
+    assert_eq!(source.status(), 201);
+    assert_eq!(source_replay.status(), 200);
+    assert_eq!(source_canonical_duplicate.status(), 200);
+    assert_eq!(response_id(&source)?, response_id(&source_replay)?);
+    assert_eq!(
+        response_id(&source)?,
+        response_id(&source_canonical_duplicate)?
+    );
+    let moved_delivery = app
+        .call(post_json(
+            &source_path,
+            "source-revision-moved-delivery",
+            source_request(
+                "https://github.com/a3s-lab/cloud",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            ),
+        ))
+        .await?;
+    assert_eq!(moved_delivery.status(), 409);
+    let listed_sources = app.call(get_as(&source_path, ADMIN_TOKEN)).await?;
+    assert_eq!(listed_sources.status(), 200);
+    assert_eq!(
+        response_json(&listed_sources)?["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    let source_rows = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from external_source_revisions",
+        ))
+        .await?;
+    let delivery_rows = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from source_webhook_deliveries",
+        ))
+        .await?;
+    let source_events = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from outbox_events where event_key = 'source.revision.accepted'",
+        ))
+        .await?;
+    assert_eq!(source_rows, 1);
+    assert_eq!(delivery_rows, 1);
+    assert_eq!(source_events, 1);
 
     let secrets_path = format!(
         "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/secrets"
@@ -717,8 +819,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 12);
-    assert_eq!(idempotency_records, 11);
+    assert_eq!(outbox_events, 13);
+    assert_eq!(idempotency_records, 13);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
