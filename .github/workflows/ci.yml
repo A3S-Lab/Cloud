@@ -114,6 +114,84 @@ jobs:
             modules::sources::infrastructure::git_source_checkout::tests::real_github_checkout_materializes_the_resolved_commit_without_git_metadata \
             -- --ignored --exact --nocapture --test-threads=1
 
+  rootless-buildkit:
+    name: Rootless BuildKit OCI output
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install Rust 1.85.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+
+      - name: Start digest-pinned rootless BuildKit on an ephemeral loopback endpoint
+        run: |
+          buildkit_image=docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b
+          docker pull "$buildkit_image"
+          docker run --detach --rm --privileged \
+            --name a3s-cloud-buildkit \
+            --publish 127.0.0.1:12340:1234 \
+            "$buildkit_image" \
+            --addr tcp://0.0.0.0:1234
+          [[ $(docker inspect --format '{{.Config.User}}' a3s-cloud-buildkit) == 1000:1000 ]]
+          docker cp a3s-cloud-buildkit:/usr/bin/buildctl "$RUNNER_TEMP/buildctl"
+          chmod 0700 "$RUNNER_TEMP/buildctl"
+          buildctl_version=$("$RUNNER_TEMP/buildctl" --version)
+          [[ $buildctl_version == *"v0.31.2"* ]]
+          ready=false
+          for attempt in $(seq 1 90); do
+            if "$RUNNER_TEMP/buildctl" \
+              --addr tcp://127.0.0.1:12340 debug workers >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ $ready != true ]]; then
+            docker logs a3s-cloud-buildkit
+            exit 1
+          fi
+          [[ $(docker exec a3s-cloud-buildkit id -u) == 1000 ]]
+
+      - name: Build and validate a real OCI image layout
+        env:
+          A3S_CLOUD_TEST_BUILDCTL: ${{ runner.temp }}/buildctl
+          A3S_CLOUD_TEST_BUILDKIT_ADDRESS: tcp://127.0.0.1:12340
+        run: |
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::artifacts::infrastructure::buildkit_build_service::tests::real_rootless_buildkit_builds_and_validates_oci_layout \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Stop rootless BuildKit
+        if: always()
+        run: |
+          docker logs a3s-cloud-buildkit || true
+          docker rm --force a3s-cloud-buildkit || true
+          rm -f "$RUNNER_TEMP/buildctl"
+
   gateway-managed-tls:
     name: Gateway managed TLS
     runs-on: ubuntu-24.04
