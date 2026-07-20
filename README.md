@@ -169,7 +169,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, and webhook source-identity deduplication are implemented; GitHub App/private-repository authentication, signed webhook intake, isolated builds, OCI publication, provenance, and push-to-deploy remain | In progress (`G0` public-resolution slice) |
+| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, webhook source-identity deduplication, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented; GitHub App/private-repository authentication, signed webhook intake, isolated BuildKit execution, OCI publication, provenance, and push-to-deploy remain | In progress (`G0` secure-checkout slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -239,7 +239,7 @@ stable `idempotency-key` header.
 
 The current G0 API resolves one typed reference from an explicitly allowed
 public GitHub repository, then accepts only the verified immutable commit. It
-does not check out or build the repository yet:
+does not launch a checkout or build operation from the request yet:
 
 ```text
 POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions
@@ -286,7 +286,16 @@ replay returns the accepted revision before contacting GitHub, so later ref
 movement cannot change it. Recipe paths are relative POSIX paths and may not
 escape the checkout. Credential values and references are intentionally absent
 from the revision, idempotency response, and `source.revision.accepted` event.
-GitHub App credentials and private-repository access remain a later G0 slice.
+The separate provider-neutral checkout port now fetches only an accepted full
+commit into a bounded staging directory with an empty Git home, disabled
+redirects, credential helpers, hooks, unsafe protocols, and submodule
+recursion. It verifies the detached commit and tree, rejects unsupported
+gitlinks and symlinks that escape the source root, removes `.git`, and commits
+an immutable credential-free SHA-256 content receipt. Reusing a checkout ID
+revalidates that content; another repository or commit conflicts. The real
+GitHub CI gate resolves `main`, materializes that exact commit, and verifies
+metadata-free replay. Build-operation wiring, GitHub App credentials, and
+private-repository access remain later G0 slices.
 
 List accepted revisions with:
 
@@ -720,7 +729,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract and public GitHub ref resolution implemented) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, public GitHub ref resolution, and secure exact-commit checkout implemented) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |

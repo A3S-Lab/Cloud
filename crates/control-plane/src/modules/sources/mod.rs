@@ -13,5 +13,5 @@ pub use application::queries::list_source_revisions::{
 pub use infrastructure::persistence::{
     InMemorySourceRevisionRepository, PostgresSourceRevisionRepository,
 };
-pub use infrastructure::GithubSourceResolver;
+pub use infrastructure::{GitSourceCheckout, GithubSourceResolver};
 pub use presentation::SourcesModule;

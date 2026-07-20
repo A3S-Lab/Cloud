@@ -13,8 +13,8 @@ pub use repositories::{
     AcceptSourceRevision, ISourceRevisionRepository, WebhookDeliveryReservation,
 };
 pub use services::{
-    ISourceResolver, ResolvedSource, SourceRepositoryPolicy, SourceResolutionError,
-    SourceResolutionRequest,
+    CheckedOutSource, ISourceCheckout, ISourceResolver, ResolvedSource, SourceCheckoutError,
+    SourceCheckoutRequest, SourceRepositoryPolicy, SourceResolutionError, SourceResolutionRequest,
 };
 pub use value_objects::{
     BuildPlatform, BuildRecipe, GitCommitSha, GitProvider, GitReference, GitRepository,

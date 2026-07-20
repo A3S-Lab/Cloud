@@ -108,6 +108,12 @@ jobs:
             modules::sources::infrastructure::github_source_resolver::tests::real_github_resolves_a_public_branch_then_confirms_the_pinned_commit \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Materialize the resolved commit through the secure checkout boundary
+        run: |
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::sources::infrastructure::git_source_checkout::tests::real_github_checkout_materializes_the_resolved_commit_without_git_metadata \
+            -- --ignored --exact --nocapture --test-threads=1
+
   gateway-managed-tls:
     name: Gateway managed TLS
     runs-on: ubuntu-24.04
@@ -451,12 +457,24 @@ jobs:
       - name: Install dependencies
         run: |
           for attempt in 1 2 3; do
-            if bun install --frozen-lockfile; then
+            cache_dir="$RUNNER_TEMP/a3s-cloud-bun-cache-$attempt"
+            rm -rf node_modules "$cache_dir"
+            install_args=(
+              --frozen-lockfile
+              --backend=copyfile
+              --cache-dir="$cache_dir"
+              --network-concurrency=8
+            )
+            if [[ $attempt -eq 3 ]]; then
+              install_args+=(--force --no-cache)
+            fi
+            if timeout --signal=TERM --kill-after=10s 180s \
+              bun install "${install_args[@]}"; then
+              rm -rf "$cache_dir"
               break
             fi
             [[ $attempt -lt 3 ]] || exit 1
-            rm -rf node_modules
-            bun pm cache rm
+            rm -rf node_modules "$cache_dir"
             sleep $((attempt * 5))
           done
 

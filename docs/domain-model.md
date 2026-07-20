@@ -236,6 +236,10 @@ tables directly. Audit records are append-only and separate from event delivery.
   Reusing it for another source identity conflicts atomically.
 - Credential values and references do not enter the revision, its idempotency
   response, or its domain event.
+- Checkout is a separate provider-neutral service over the accepted canonical
+  repository and full commit. One checkout ID is immutable, replay revalidates
+  its credential-free content digest, unsupported gitlinks and escaping
+  symlinks fail closed, and Git metadata is never part of the build context.
 
 ### Asset
 
@@ -528,7 +532,10 @@ The implemented G0 boundary persists `ExternalSourceRevision` before a build
 exists. Its REST boundary enforces exact repository policy, resolves a typed
 public GitHub branch, tag, or full commit through a provider-neutral port, and
 accepts the resulting immutable object ID with
-`a3s.cloud.build-recipe.v1`. GitHub App/private-repository authentication and
+`a3s.cloud.build-recipe.v1`. The implemented secure checkout port materializes
+that exact public commit under bounded isolated Git configuration, removes
+`.git`, and records an immutable filesystem digest for replay. GitHub
+App/private-repository authentication, build-operation integration, and
 source-to-artifact execution remain later G0 operations.
 
 ## 6. State models
