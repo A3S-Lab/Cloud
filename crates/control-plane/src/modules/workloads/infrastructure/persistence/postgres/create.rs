@@ -13,37 +13,39 @@ pub(super) async fn deployment(
     request: CreateDeploymentBundle,
 ) -> Result<DeploymentBundle, RepositoryError> {
     executor
-        .transaction(move |transaction| {
-            Box::pin(async move {
-                if let Some(replay) =
-                    idempotency_replay::<DeploymentBundle>(transaction, &request.idempotency)
-                        .await?
-                {
-                    let mut response = replay.value;
-                    response.replayed = true;
-                    return Ok(response);
-                }
-                validate(&request)?;
-                let workload = lock_or_insert_workload(transaction, &request.workload).await?;
-                require_next_generation(transaction, &request).await?;
-                insert_revision(transaction, &request).await?;
-                insert_operation(transaction, &request).await?;
-                insert_deployment(transaction, &request).await?;
-
-                let response = DeploymentBundle {
-                    workload,
-                    revision: request.revision,
-                    deployment: request.deployment,
-                    operation: request.operation,
-                    replayed: false,
-                };
-                store_outbox(transaction, &request.event).await?;
-                store_idempotency(transaction, &request.idempotency, &response).await?;
-                Ok(response)
-            })
-        })
+        .transaction(move |transaction| Box::pin(deployment_in_transaction(transaction, request)))
         .await
         .map_err(transaction_error)
+}
+
+pub(super) async fn deployment_in_transaction(
+    transaction: &PostgresTransaction,
+    request: CreateDeploymentBundle,
+) -> Result<DeploymentBundle, PostgresPersistenceError> {
+    if let Some(replay) =
+        idempotency_replay::<DeploymentBundle>(transaction, &request.idempotency).await?
+    {
+        let mut response = replay.value;
+        response.replayed = true;
+        return Ok(response);
+    }
+    validate(&request)?;
+    let workload = lock_or_insert_workload(transaction, &request.workload).await?;
+    require_next_generation(transaction, &request).await?;
+    insert_revision(transaction, &request).await?;
+    insert_operation(transaction, &request).await?;
+    insert_deployment(transaction, &request).await?;
+
+    let response = DeploymentBundle {
+        workload,
+        revision: request.revision,
+        deployment: request.deployment,
+        operation: request.operation,
+        replayed: false,
+    };
+    store_outbox(transaction, &request.event).await?;
+    store_idempotency(transaction, &request.idempotency, &response).await?;
+    Ok(response)
 }
 
 fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceError> {

@@ -189,6 +189,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/016_provider_log_gaps.sql"
             )),
         ),
+        Migration::new(
+            "017",
+            "Secret rotation workload restarts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/017_secret_rotation_restarts.sql"
+            )),
+        ),
     ]
 }
 

@@ -1,5 +1,7 @@
 use super::SecretBinding;
-use crate::modules::shared_kernel::domain::{canonical_timestamp, WorkloadId, WorkloadRevisionId};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, SecretId, WorkloadId, WorkloadRevisionId,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -464,6 +466,42 @@ impl WorkloadRevision {
         self.template
             .as_ref()
             .ok_or_else(|| "workload revision has not resolved its OCI artifact".into())
+    }
+
+    pub fn restart_for_secret_rotation(
+        &self,
+        id: WorkloadRevisionId,
+        generation: u64,
+        secret_id: SecretId,
+        version: u64,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        if id == self.id
+            || generation <= self.generation
+            || version == 0
+            || created_at < self.created_at
+        {
+            return Err("Secret rotation revision identity or ordering is invalid".into());
+        }
+        let mut template = self.resolved_template()?.clone();
+        let mut advanced = false;
+        for binding in template
+            .secrets
+            .iter_mut()
+            .filter(|binding| binding.secret_id == secret_id)
+        {
+            if binding.version > version {
+                return Err("Secret rotation cannot regress a workload binding".into());
+            }
+            if binding.version < version {
+                binding.version = version;
+                advanced = true;
+            }
+        }
+        if !advanced {
+            return Err("workload revision has no older binding for this Secret".into());
+        }
+        Self::create(id, self.workload_id, generation, template, created_at)
     }
 
     pub fn runtime_unit_id(&self) -> String {

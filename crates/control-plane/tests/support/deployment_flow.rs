@@ -60,6 +60,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+#[derive(Clone)]
+pub struct DeploymentFlowFixture {
+    pub node_id: NodeId,
+    pub agent_instance_id: Uuid,
+    pub capabilities: RuntimeCapabilities,
+    pub after_sequence: u64,
+}
+
 pub async fn exercise_deployment_flow(
     executor: &PostgresExecutor,
     postgres_url: &str,
@@ -67,7 +75,7 @@ pub async fn exercise_deployment_flow(
     response: &Value,
     security_state_dir: &Path,
     sensitive_plaintexts: &[&str],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<DeploymentFlowFixture, Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
@@ -512,7 +520,12 @@ pub async fn exercise_deployment_flow(
         }
     }
     drop(docker_state_directory);
-    Ok(())
+    Ok(DeploymentFlowFixture {
+        node_id,
+        agent_instance_id,
+        capabilities,
+        after_sequence: recovery_command.sequence,
+    })
 }
 
 struct PostgresSecretTransport {
@@ -1165,7 +1178,7 @@ impl IOciArtifactResolver for ExpectedDigestArtifactResolver {
     }
 }
 
-async fn persist_command_result(
+pub(super) async fn persist_command_result(
     repository: &Arc<PostgresNodeRepository>,
     node_id: NodeId,
     agent_instance_id: Uuid,
@@ -1301,7 +1314,7 @@ async fn ready_node(
     Ok((reservation.node.id, agent_instance_id, capabilities))
 }
 
-fn healthy_observation(
+pub(super) fn healthy_observation(
     spec: &a3s_runtime::contract::RuntimeUnitSpec,
 ) -> Result<RuntimeObservation, String> {
     let now_ms = u64::try_from(Utc::now().timestamp_millis())

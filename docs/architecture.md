@@ -8,7 +8,11 @@ provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
 acknowledgement projection. It also has tenant-scoped Secret identities,
 immutable encrypted versions, rotation and version revocation APIs, and
 metadata-only events and idempotency records, typed workload bindings, and late
-Docker environment/file injection plus authenticated registry pulls. A
+Docker environment/file injection plus authenticated registry pulls. Committed
+rotation events now drive an idempotent worker that derives a new resolved
+revision for each affected active workload, advances only matching Secret
+references, and atomically records the deployment operation, causal event, and
+restart checkpoint. A
 dedicated Linux acceptance gate now uses real PostgreSQL
 authorization/decryption and Docker to prove active-version environment and
 `0400` tmpfs-file injection, and uses a separate encrypted credential to pull
@@ -34,9 +38,9 @@ batch replay, and reads the sanitized records through the REST API. Later E0
 sections remain the accepted design until their exit gates pass. A3S Cloud
 ships as a Rust modular monolith, a separate Linux node agent, and a React web
 application. The first release still requires production DNS/CA integration
-and renewal, Secret/log process-death and corruption certification, automatic
-Secret restart orchestration, update, rollback, the remaining web timeline,
-and clean-host gates before multi-node scheduling or hosted assets begin.
+and renewal, the remaining Gateway/log process-death and corruption
+certification, update, rollback, the remaining web timeline, and clean-host
+gates before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -362,6 +366,23 @@ receives pull authentication. Registry credentials never become container
 environment, files, or log-redaction inputs. Runtime state files, command
 journals, Flow input, events, and provider labels never receive the plaintext.
 
+Rotation restart orchestration begins only from the committed
+`secret.version.created` outbox row. A worker locks that event, reloads the
+authoritative current version, and ignores an unavailable version or an older
+event superseded before work began. It selects only active revisions of
+running workloads in the Secret's project and environment. A workload with a
+nonterminal deployment is deferred. Otherwise the worker clones the resolved
+template, keeps the exact OCI artifact digest and every unrelated field,
+advances all bindings for that Secret, and creates the next immutable
+generation. The revision, deployment, `cloud.deployment` operation,
+`workload.deployment.requested` event whose `causation_id` is the Secret event,
+idempotency record, and per-workload restart record commit in one PostgreSQL
+transaction. A terminal event checkpoint is written only when no affected
+workload remains. Advisory locking and unique event/workload records make
+concurrent workers and post-commit process loss converge to one deployment.
+The later operation reconciler cannot dispatch a Runtime command until that
+transaction is visible, so the Secret version is necessarily durable first.
+
 Successful Runtime apply/remove completions are also projected from the command
 journal into restart-safe active log targets. A separate node-agent loop reads
 ordered provider chunks after the durable cursor, persists at most one pending
@@ -535,6 +556,9 @@ immutable inputs; they are not deployed alone.
 - Secret mutation idempotency rows store only the Secret ID and immutable
   version number, then reload authoritative records. Domain events and API
   responses contain metadata but no key ID, ciphertext, or plaintext.
+- Rotation restart rows, derived templates, operation inputs, causal events,
+  and reconciliation checkpoints contain only Secret/revision/version
+  references. The restart worker never invokes a decryption provider.
 - A node receives only the exact versions referenced by a revision currently
   assigned to it, inside its authenticated mTLS session and a short-lived,
   non-cacheable material response.

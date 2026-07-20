@@ -1,7 +1,7 @@
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
+    ProjectId, RepositoryError, SecretId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, OciArtifact, Workload, WorkloadRevision,
@@ -9,6 +9,7 @@ use crate::modules::workloads::domain::entities::{
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct CreateDeploymentBundle {
@@ -58,6 +59,63 @@ pub struct ActiveRuntimeTarget {
     pub workload: Workload,
     pub revision: WorkloadRevision,
     pub deployment: Deployment,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretRotation {
+    pub event_id: Uuid,
+    pub correlation_id: Uuid,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub secret_id: SecretId,
+    pub version: u64,
+    pub occurred_at: DateTime<Utc>,
+}
+
+impl SecretRotation {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.event_id.is_nil()
+            || self.correlation_id.is_nil()
+            || self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.secret_id.as_uuid().is_nil()
+            || self.version == 0
+        {
+            return Err("Secret rotation identity is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretRotationCompletion {
+    Scheduled,
+    NoTargets,
+    Superseded,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretRotationReconciliation {
+    pub scheduled: Vec<DeploymentBundle>,
+    pub completion: Option<SecretRotationCompletion>,
+}
+
+#[async_trait]
+pub trait ISecretRotationRestartRepository: Send + Sync {
+    async fn pending_secret_rotations(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<SecretRotation>, RepositoryError>;
+
+    async fn reconcile_secret_rotation(
+        &self,
+        rotation: SecretRotation,
+        workload_limit: usize,
+        reconciled_at: DateTime<Utc>,
+    ) -> Result<SecretRotationReconciliation, RepositoryError>;
 }
 
 #[async_trait]

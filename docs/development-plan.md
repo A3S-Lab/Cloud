@@ -95,7 +95,7 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, expanded durable-state plaintext scans, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, configurable body retention, bounded tombstone compaction, resumable live web delivery, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, Secret restart orchestration, process-death/corruption gates, final crash-path plaintext scans, update, rollback, and the remaining web surfaces remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, configurable body retention, bounded tombstone compaction, resumable live web delivery, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, the remaining Gateway/log process-death and corruption gates, update, rollback, and the remaining web surfaces remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -342,10 +342,15 @@ Complete the first user-visible release loop.
   separate encrypted credential again only at Docker pull, and scans desired
   state, Runtime/Fleet state, Flow history, events, logs, audit, and API
   responses for both plaintext Secrets.
-- Add automatic restart orchestration, then pass the
-  restart-after-version-commit process-death gate and its final crash-path
-  plaintext scans. Plaintext must never enter desired-state rows, Runtime
-  state, Flow history, events, logs, audit, API responses, or revision digests.
+- Implemented: a worker consumes only committed `secret.version.created`
+  events, advances matching bindings on active running workloads in a new
+  resolved revision while preserving the pinned artifact, defers competing
+  deployments, and atomically records the deployment operation, causal event,
+  and unique restart/checkpoint rows. The PostgreSQL gate races reconstructed
+  workers after the version commit, proves one Runtime command and terminal
+  operation across a second Flow reconstruction, and scans desired state,
+  Runtime/Fleet state, Flow history, restart/checkpoint rows, events, logs,
+  audit, API responses, and revision digests for plaintext.
 - Verify ordinary HTTP, streaming responses, and WebSocket upgrade through the
   same acknowledged Gateway revision. Advanced caching and transport tuning are
   not part of E0.
@@ -864,7 +869,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
 | 7 | Gateway reload before acknowledgement | In progress | Route-bearing Gateway validate/reload, managed certificate provisioning, real HTTPS, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering are covered with A3S Gateway 1.0.12. PostgreSQL API tests prove exact route activation and replay; process-death injection remains |
 | 8 | Activation before old-revision cleanup | Planned for E0 | Rolling update and rollback cleanup are not implemented |
-| 9 | Secret version commit before workload restart command | In progress | Encrypted storage, rotation/revocation, typed workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, reference-only Runtime/Fleet state, and real PostgreSQL/Linux Docker environment/`0400` file injection with stdout/stderr redaction evidence are implemented. Automatic restart orchestration and process-death injection remain |
+| 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 
 The real-provider commands and PostgreSQL isolation contract are documented in
 the repository README. The integration test creates and removes a unique
@@ -900,22 +905,18 @@ PostgreSQL, Fleet, node/Runtime, and Gateway boundaries, including typed
 provider cursor-loss/source-disconnect recovery. The remaining changes should
 land as vertical, independently verified slices:
 
-1. Extend the implemented private-registry and durable-state plaintext
-   acceptance with automatic restart orchestration, final crash-path scans,
-   and the restart-after-version-commit process-death gate.
-2. Complete production log acceptance after the implemented S3-compatible
+1. Complete production log acceptance after the implemented S3-compatible
    adapter, pinned-MinIO lifecycle gate, bounded tombstone compaction, typed
    provider-gap recovery, and real redacted filesystem/PostgreSQL replay:
    pass provider/control-plane process-death and corruption gates.
-3. One-node update orchestration that keeps the prior healthy revision until
+2. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
-4. Manual rollback through the same immutable revision and operation path.
-5. Web route, certificate, update-diff, rollback, and terminal-operation
+3. Manual rollback through the same immutable revision and operation path.
+4. Web route, certificate, update-diff, rollback, and terminal-operation
    surfaces backed only by authoritative projections.
-6. Production DNS/CA adapters, certificate renewal/revocation, crash gates for
-   Gateway reload before acknowledgement, activation before old-revision
-   cleanup, and Secret version before workload restart, followed by the
-   clean-host end-to-end release run.
+5. Production DNS/CA adapters, certificate renewal/revocation, crash gates for
+   Gateway reload before acknowledgement and activation before old-revision
+   cleanup, followed by the clean-host end-to-end release run.
 
 No post-E0 product surface is marked available before this list passes. Contract
 design and isolated prototypes may proceed, but they cannot create production

@@ -52,6 +52,7 @@ use crate::modules::secrets::{
     CreateSecretHandler, GetSecretHandler, ListSecretsHandler, PostgresSecretRepository,
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
+use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::IOciArtifactResolver;
@@ -59,11 +60,12 @@ use crate::modules::workloads::{
     CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
     IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresWorkloadRepository, StopWorkloadHandler, WorkloadRuntimeReconciler, WorkloadsModule,
+    PostgresWorkloadRepository, SecretRotationRestartReconciler, StopWorkloadHandler,
+    WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
-use crate::server::ControlPlane;
+use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
     config::{
         EventProviderKind, LogStorageProviderKind, ProcessRole, SecurityProfile,
@@ -104,6 +106,8 @@ pub enum ControlPlaneStartupError {
     NodeControl(String),
     #[error("could not initialize OCI registry access: {0}")]
     Registry(String),
+    #[error("could not initialize Secret rotation restart reconciliation: {0}")]
+    SecretRestart(String),
     #[error(transparent)]
     Framework(#[from] BootError),
 }
@@ -129,7 +133,8 @@ pub async fn build_application(
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
-    let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository;
+    let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository.clone();
+    let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> = workload_repository;
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository;
@@ -284,6 +289,13 @@ pub async fn build_application(
         100,
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
+    let secret_rotation_restart_reconciler = SecretRotationRestartReconciler::new(
+        secret_rotation_restarts,
+        Duration::from_millis(config.deployments.reconcile_interval_ms),
+        100,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::SecretRestart)?;
     let application = build_application_with_health(
         config,
         ApplicationDependencies {
@@ -318,12 +330,15 @@ pub async fn build_application(
     )?;
     Ok(ControlPlane::new(
         application,
-        run_operations.then_some(operation_coordinator),
-        run_operations.then_some(workload_reconciler),
-        run_operations.then_some(log_retention_worker),
-        run_operations.then_some(log_compaction_worker),
-        run_relay.then_some(outbox_relay),
-        node_control_server,
+        ControlPlaneWorkers::new(
+            run_operations.then_some(operation_coordinator),
+            run_operations.then_some(secret_rotation_restart_reconciler),
+            run_operations.then_some(workload_reconciler),
+            run_operations.then_some(log_retention_worker),
+            run_operations.then_some(log_compaction_worker),
+            run_relay.then_some(outbox_relay),
+            node_control_server,
+        ),
     ))
 }
 
