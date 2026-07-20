@@ -3,13 +3,21 @@ use super::*;
 const COMMIT_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-fn source_request(repository_url: &str, commit_sha: &str, delivery_id: &str) -> Value {
+fn source_request(
+    repository_url: &str,
+    reference_kind: &str,
+    reference_value: &str,
+    delivery_id: &str,
+) -> Value {
     json!({
         "repository": {
             "provider": "github",
             "url": repository_url
         },
-        "commitSha": commit_sha,
+        "reference": {
+            "kind": reference_kind,
+            "value": reference_value
+        },
         "recipe": {
             "schema": "a3s.cloud.build-recipe.v1",
             "kind": "dockerfile",
@@ -50,7 +58,8 @@ async fn external_source_revisions_are_canonical_immutable_and_delivery_deduplic
             "accept-source-a",
             source_request(
                 "https://github.com/A3S-Lab/Cloud.git",
-                COMMIT_A,
+                "branch",
+                "main",
                 "delivery-a",
             ),
         ))
@@ -66,6 +75,7 @@ async fn external_source_revisions_are_canonical_immutable_and_delivery_deduplic
         "github:github.com/a3s-lab/cloud"
     );
     assert_eq!(first_body["data"]["commitSha"], COMMIT_A);
+    assert!(first_body["data"].get("reference").is_none());
     assert_eq!(
         first_body["data"]["recipe"]["platforms"],
         json!(["linux/amd64", "linux/arm64"])
@@ -82,7 +92,8 @@ async fn external_source_revisions_are_canonical_immutable_and_delivery_deduplic
             "accept-source-a-canonical-duplicate",
             source_request(
                 "https://GITHUB.com/a3s-lab/cloud/",
-                &COMMIT_A.to_ascii_uppercase(),
+                "branch",
+                "main",
                 "delivery-a",
             ),
         ))
@@ -96,7 +107,12 @@ async fn external_source_revisions_are_canonical_immutable_and_delivery_deduplic
         .call(post_json(
             &path,
             "accept-source-b-reused-delivery",
-            source_request("https://github.com/a3s-lab/cloud", COMMIT_B, "delivery-a"),
+            source_request(
+                "https://github.com/a3s-lab/cloud",
+                "commit",
+                COMMIT_B,
+                "delivery-a",
+            ),
         ))
         .await?;
     assert_eq!(moved_delivery.status(), 409);
@@ -106,7 +122,12 @@ async fn external_source_revisions_are_canonical_immutable_and_delivery_deduplic
         .call(post_json(
             &path,
             "accept-source-a",
-            source_request("https://github.com/a3s-lab/cloud", COMMIT_B, "delivery-b"),
+            source_request(
+                "https://github.com/a3s-lab/cloud",
+                "commit",
+                COMMIT_B,
+                "delivery-b",
+            ),
         ))
         .await?;
     assert_eq!(idempotency_conflict.status(), 409);
@@ -163,7 +184,8 @@ async fn source_revision_inputs_and_tenant_ownership_fail_closed() -> Result<()>
             "source-denied-scope",
             source_request(
                 "https://github.com/a3s-lab/cloud",
-                COMMIT_A,
+                "branch",
+                "main",
                 "delivery-denied-scope",
             ),
             PROJECT_TOKEN,
@@ -187,7 +209,8 @@ async fn source_revision_inputs_and_tenant_ownership_fail_closed() -> Result<()>
             "source-allowed-scope",
             source_request(
                 "https://github.com/a3s-lab/cloud",
-                COMMIT_A,
+                "branch",
+                "main",
                 "delivery-allowed-scope",
             ),
             SOURCE_TOKEN,
@@ -219,11 +242,39 @@ async fn source_revision_inputs_and_tenant_ownership_fail_closed() -> Result<()>
             .call(post_json(
                 &path,
                 key,
-                source_request(repository, COMMIT_A, key),
+                source_request(repository, "branch", "main", key),
             ))
             .await?;
         assert_eq!(response.status(), 422, "{repository}");
     }
+
+    let repository_denied = app
+        .call(post_json(
+            &path,
+            "source-repository-denied",
+            source_request(
+                "https://github.com/a3s-lab/runtime",
+                "branch",
+                "main",
+                "delivery-repository-denied",
+            ),
+        ))
+        .await?;
+    assert_eq!(repository_denied.status(), 403);
+
+    let unsafe_reference = app
+        .call(post_json(
+            &path,
+            "source-unsafe-reference",
+            source_request(
+                "https://github.com/a3s-lab/cloud",
+                "branch",
+                "refs/heads/main",
+                "delivery-unsafe-reference",
+            ),
+        ))
+        .await?;
+    assert_eq!(unsafe_reference.status(), 422);
 
     let traversal = app
         .call(post_json(
@@ -234,7 +285,10 @@ async fn source_revision_inputs_and_tenant_ownership_fail_closed() -> Result<()>
                     "provider": "github",
                     "url": "https://github.com/a3s-lab/cloud"
                 },
-                "commitSha": COMMIT_A,
+                "reference": {
+                    "kind": "branch",
+                    "value": "main"
+                },
                 "recipe": {
                     "schema": "a3s.cloud.build-recipe.v1",
                     "kind": "dockerfile",
@@ -258,11 +312,94 @@ async fn source_revision_inputs_and_tenant_ownership_fail_closed() -> Result<()>
             "source-missing-environment",
             source_request(
                 "https://github.com/a3s-lab/cloud",
-                COMMIT_A,
+                "branch",
+                "main",
                 "delivery-missing-environment",
             ),
         ))
         .await?;
     assert_eq!(wrong_environment.status(), 404);
+    Ok(())
+}
+
+#[tokio::test]
+async fn idempotency_replay_never_resolves_an_accepted_moving_branch_again() -> Result<()> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct MovingResolver {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl ISourceResolver for MovingResolver {
+        async fn resolve(
+            &self,
+            request: &SourceResolutionRequest,
+        ) -> std::result::Result<ResolvedSource, SourceResolutionError> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst);
+            let commit = if call == 0 { COMMIT_A } else { COMMIT_B };
+            Ok(ResolvedSource {
+                repository: request.repository.clone(),
+                commit_sha: crate::modules::sources::domain::GitCommitSha::parse(commit)
+                    .map_err(SourceResolutionError::Protocol)?,
+            })
+        }
+    }
+
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let sources = Arc::new(InMemorySourceRevisionRepository::new());
+    let resolver = Arc::new(MovingResolver {
+        calls: AtomicUsize::new(0),
+    });
+    let app = build_test_application_with_source_resolver(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        sources,
+        resolver.clone(),
+    )?;
+    let organization = bootstrap_organization(&app, "moving-source-org", "Acme").await?;
+    let project = create_project(&app, &organization, "moving-source-project", "Cloud").await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "moving-source-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    let path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{}/source-revisions",
+        response_id(&environment)?
+    );
+    let mut body = source_request(
+        "https://github.com/a3s-lab/cloud",
+        "branch",
+        "main",
+        "delivery-moving-main",
+    );
+    body["webhookDeliveryId"] = Value::Null;
+
+    let accepted = app
+        .call(post_json(&path, "moving-main", body.clone()))
+        .await?;
+    assert_eq!(accepted.status(), 201);
+    assert_eq!(response_json(&accepted)?["data"]["commitSha"], COMMIT_A);
+
+    let replayed = app
+        .call(post_json(&path, "moving-main", body.clone()))
+        .await?;
+    assert_eq!(replayed.status(), 200);
+    assert_eq!(
+        response_json(&replayed)?["data"]["id"],
+        response_json(&accepted)?["data"]["id"]
+    );
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
+
+    let moved = app.call(post_json(&path, "moving-main-new", body)).await?;
+    assert_eq!(moved.status(), 201);
+    assert_eq!(response_json(&moved)?["data"]["commitSha"], COMMIT_B);
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 2);
     Ok(())
 }

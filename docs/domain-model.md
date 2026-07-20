@@ -220,9 +220,14 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 - A revision belongs to exactly one organization, project, and environment.
 - The repository identity is canonical and provider-qualified. The initial
-  contract accepts only exact HTTPS GitHub owner/repository locators.
+  provider accepts only exact HTTPS GitHub owner/repository locators permitted
+  by the configured allow/deny policy.
 - A revision pins a full Git commit object ID. A branch or tag is never stored
   as execution authority and is never resolved again by reconciliation.
+- A typed branch, tag, or full commit input is resolved through the source
+  provider exactly once for a new idempotent request. Replay returns the
+  already accepted revision without contacting the provider, so later ref
+  movement cannot alter the pinned commit.
 - The versioned build recipe is explicit, path-safe, platform-ordered, and
   bound by a canonical SHA-256 digest.
 - The same environment, repository, commit, and recipe digest identify one
@@ -516,11 +521,14 @@ WorkloadSource
 
 Branches, tags, and image tags may be convenient request inputs. A resolver
 must turn them into a commit SHA or OCI digest and store the resolved value in a
-new workload revision. Reconciliation never resolves a mutable reference again.
+new immutable source or workload revision. Reconciliation never resolves a
+mutable reference again.
 
-The implemented first G0 contract persists `ExternalSourceRevision` before a
-build exists. Its REST boundary accepts only an already resolved full Git
-object ID and `a3s.cloud.build-recipe.v1`; provider ref resolution and
+The implemented G0 boundary persists `ExternalSourceRevision` before a build
+exists. Its REST boundary enforces exact repository policy, resolves a typed
+public GitHub branch, tag, or full commit through a provider-neutral port, and
+accepts the resulting immutable object ID with
+`a3s.cloud.build-recipe.v1`. GitHub App/private-repository authentication and
 source-to-artifact execution remain later G0 operations.
 
 ## 6. State models

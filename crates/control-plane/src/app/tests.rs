@@ -2,7 +2,7 @@ use super::*;
 use crate::config::{
     AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
     LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
-    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
+    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
@@ -13,6 +13,9 @@ use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
+};
+use crate::modules::sources::domain::{
+    GitReference, ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
 };
 use crate::modules::sources::InMemorySourceRevisionRepository;
 use crate::modules::workloads::InMemoryWorkloadRepository;
@@ -38,6 +41,33 @@ struct TestCertificateAuthority;
 struct TestLogChunkStore;
 
 struct TestSecretEncryption;
+
+struct TestSourceResolver;
+
+#[async_trait::async_trait]
+impl ISourceResolver for TestSourceResolver {
+    async fn resolve(
+        &self,
+        request: &SourceResolutionRequest,
+    ) -> std::result::Result<ResolvedSource, SourceResolutionError> {
+        let commit_sha = match &request.reference {
+            GitReference::Commit(commit_sha) => commit_sha.clone(),
+            GitReference::Branch(value) if value == "main" => {
+                crate::modules::sources::domain::GitCommitSha::parse("a".repeat(40))
+                    .map_err(SourceResolutionError::Protocol)?
+            }
+            GitReference::Tag(value) if value == "v1.0.0" => {
+                crate::modules::sources::domain::GitCommitSha::parse("b".repeat(40))
+                    .map_err(SourceResolutionError::Protocol)?
+            }
+            _ => return Err(SourceResolutionError::Unavailable),
+        };
+        Ok(ResolvedSource {
+            repository: request.repository.clone(),
+            commit_sha,
+        })
+    }
+}
 
 #[async_trait::async_trait]
 impl ISecretEncryptionService for TestSecretEncryption {
@@ -201,6 +231,11 @@ fn config() -> CloudConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
         },
+        sources: SourcesConfig {
+            github_request_timeout_ms: 10_000,
+            allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],
+            denied_repositories: Vec::new(),
+        },
         logs: LogsConfig {
             storage_provider: crate::config::LogStorageProviderKind::Local,
             s3_endpoint: String::new(),
@@ -352,6 +387,24 @@ fn build_test_application_with_all_repositories(
     workloads: Arc<InMemoryWorkloadRepository>,
     sources: Arc<InMemorySourceRevisionRepository>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_resolver(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        Arc::new(TestSourceResolver),
+    )
+}
+
+fn build_test_application_with_source_resolver(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -381,6 +434,7 @@ fn build_test_application_with_all_repositories(
             routes,
             secrets,
             sources,
+            source_resolver,
             secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,

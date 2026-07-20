@@ -517,7 +517,7 @@ through the proven loop.
 
 ### Current implementation
 
-The first independently testable G0 slice is implemented:
+The first two independently testable G0 slices are implemented:
 
 - A dedicated Sources bounded context accepts and lists tenant-, project-, and
   environment-scoped `ExternalSourceRevision` aggregates.
@@ -537,17 +537,32 @@ The first independently testable G0 slice is implemented:
 - The REST mutation requires `source:write`; list and mutation paths enforce
   the organization/project/environment hierarchy. Source revisions, events,
   and idempotency responses contain no credential value or reference.
+- The mutation accepts a typed branch, tag, or full commit and resolves it
+  through a provider-neutral source port. The public GitHub adapter uses a
+  fixed HTTPS origin, disables redirects, confirms the exact repository,
+  requires an exact ref response, peels annotated tags with a bounded chain,
+  and verifies the returned full commit.
+- Closed A3S ACL configuration supplies an exact nonempty repository allowlist
+  and a denylist with deny precedence. Policy is evaluated before provider
+  access.
+- The idempotency digest binds the mutable ref request, while replay is checked
+  before provider access. A moved ref therefore cannot alter an accepted
+  revision or trigger a second resolution for the same request.
+- Unit/API tests cover policy, URL/ref confusion, annotated tags, provider
+  identity mismatch, and moving-ref replay. A dedicated CI job resolves the
+  real public `A3S-Lab/Cloud` branch and then confirms the pinned commit.
 
-This slice is a persistence and API contract, not the G0 integration gate.
-GitHub App credentials, signed webhook intake, repository policy, ref
-resolution, checkout, BuildKit execution, artifact publication, provenance,
-deployment handoff, build operations/logs, and web surfaces remain required.
+These slices establish persistence and public resolution, not the G0
+integration gate. GitHub App credentials and private-repository access, signed
+webhook intake, checkout, BuildKit execution, artifact publication,
+provenance, deployment handoff, build operations/logs, and web surfaces remain
+required.
 
 ### Work
 
-- Add Git credential references, repository allow/deny policy, ref resolution,
-  webhook deduplication, and immutable source revisions.
-- Start with a GitHub App provider behind a provider-neutral source port.
+- Add GitHub App credential references and signed webhook intake without
+  changing the provider-neutral source port or immutable revision.
+- Complete private-repository resolution with a real GitHub App gate.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Define a typed build recipe and run builds as isolated Runtime Tasks with
@@ -1080,7 +1095,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> real GitHub and BuildKit gate -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> GitHub App and real BuildKit gate -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

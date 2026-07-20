@@ -53,10 +53,12 @@ use crate::modules::secrets::{
     CreateSecretHandler, GetSecretHandler, ListSecretsHandler, PostgresSecretRepository,
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
-use crate::modules::sources::domain::ISourceRevisionRepository;
+use crate::modules::sources::domain::{
+    ISourceResolver, ISourceRevisionRepository, SourceRepositoryPolicy,
+};
 use crate::modules::sources::{
-    AcceptExternalSourceRevisionHandler, ListSourceRevisionsHandler,
-    PostgresSourceRevisionRepository, SourcesModule,
+    GithubSourceResolver, ListSourceRevisionsHandler, PostgresSourceRevisionRepository,
+    ResolveExternalSourceRevisionHandler, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -115,6 +117,8 @@ pub enum ControlPlaneStartupError {
     NodeControl(String),
     #[error("could not initialize OCI registry access: {0}")]
     Registry(String),
+    #[error("could not initialize source provider access: {0}")]
+    Sources(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -123,6 +127,20 @@ pub enum ControlPlaneStartupError {
 
 pub async fn build_application(
     config: CloudConfig,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    let source_resolver: Arc<dyn ISourceResolver> = Arc::new(
+        GithubSourceResolver::new(Duration::from_millis(
+            config.sources.github_request_timeout_ms,
+        ))
+        .map_err(ControlPlaneStartupError::Sources)?,
+    );
+    build_application_with_source_resolver(config, source_resolver).await
+}
+
+#[doc(hidden)]
+pub async fn build_application_with_source_resolver(
+    config: CloudConfig,
+    source_resolver: Arc<dyn ISourceResolver>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
@@ -358,6 +376,7 @@ pub async fn build_application(
             routes,
             secrets,
             sources,
+            source_resolver,
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
@@ -404,6 +423,7 @@ struct ApplicationDependencies {
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
@@ -431,6 +451,7 @@ fn build_application_with_health(
         routes,
         secrets,
         sources,
+        source_resolver,
         secret_encryption,
         route_targets,
         route_commands,
@@ -499,6 +520,13 @@ fn build_application_with_health(
     let get_secrets = secrets;
     let accept_sources = Arc::clone(&sources);
     let list_sources = sources;
+    let source_policy = Arc::new(
+        SourceRepositoryPolicy::github(
+            &config.sources.allowed_repositories,
+            &config.sources.denied_repositories,
+        )
+        .map_err(BootError::Internal)?,
+    );
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
@@ -586,8 +614,13 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::secrets::RevokeSecretVersion, _>(
                     RevokeSecretVersionHandler::new(revoke_secret_versions),
                 )
-                .command_handler::<crate::modules::sources::AcceptExternalSourceRevision, _>(
-                    AcceptExternalSourceRevisionHandler::new(source_environments, accept_sources),
+                .command_handler::<crate::modules::sources::ResolveExternalSourceRevision, _>(
+                    ResolveExternalSourceRevisionHandler::new(
+                        source_environments,
+                        accept_sources,
+                        source_resolver,
+                        source_policy,
+                    ),
                 )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(

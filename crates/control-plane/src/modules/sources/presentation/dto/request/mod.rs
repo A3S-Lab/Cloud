@@ -1,3 +1,3 @@
-mod accept_source_revision_request;
+mod resolve_source_revision_request;
 
-pub use accept_source_revision_request::AcceptSourceRevisionRequest;
+pub use resolve_source_revision_request::ResolveSourceRevisionRequest;

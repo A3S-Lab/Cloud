@@ -45,6 +45,58 @@ fn commit_ids_are_full_and_canonical() {
 }
 
 #[test]
+fn git_references_are_typed_and_closed() {
+    let branch =
+        GitReference::parse("branch", "feature/source-resolution").expect("safe branch reference");
+    assert_eq!(branch.kind(), "branch");
+    assert_eq!(branch.value(), "feature/source-resolution");
+    assert_eq!(
+        GitReference::parse("commit", COMMIT.to_ascii_uppercase())
+            .expect("commit reference")
+            .value(),
+        COMMIT
+    );
+
+    for unsafe_reference in [
+        "",
+        "refs/heads/main",
+        "../main",
+        "feature//main",
+        ".hidden",
+        "release.lock",
+        "main%2fother",
+        "main?token=secret",
+    ] {
+        assert!(
+            GitReference::parse("branch", unsafe_reference).is_err(),
+            "{unsafe_reference}"
+        );
+    }
+    assert!(GitReference::parse("pull_request", "main").is_err());
+}
+
+#[test]
+fn repository_policy_is_allowlisted_and_deny_wins() {
+    let cloud = GitRepository::parse(GitProvider::Github, "https://github.com/a3s-lab/cloud")
+        .expect("Cloud repository");
+    let runtime = GitRepository::parse(GitProvider::Github, "https://github.com/a3s-lab/runtime")
+        .expect("Runtime repository");
+    let policy = SourceRepositoryPolicy::github(
+        &[
+            "https://github.com/A3S-Lab/Cloud.git".into(),
+            "https://github.com/a3s-lab/runtime".into(),
+        ],
+        &["https://github.com/A3S-Lab/Runtime.git".into()],
+    )
+    .expect("source repository policy");
+
+    assert!(policy.allows(&cloud));
+    assert!(!policy.allows(&runtime));
+    assert!(policy.require(&runtime).is_err());
+    assert!(SourceRepositoryPolicy::github(&[], &[]).is_err());
+}
+
+#[test]
 fn dockerfile_recipe_is_path_safe_ordered_and_digest_stable() {
     let first = BuildRecipe::dockerfile(
         BuildRecipe::SCHEMA,

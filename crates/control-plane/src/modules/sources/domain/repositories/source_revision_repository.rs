@@ -25,6 +25,11 @@ pub struct AcceptSourceRevision {
 
 #[async_trait]
 pub trait ISourceRevisionRepository: Send + Sync {
+    async fn replay_acceptance(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalSourceRevision>, RepositoryError>;
+
     async fn accept(
         &self,
         request: AcceptSourceRevision,

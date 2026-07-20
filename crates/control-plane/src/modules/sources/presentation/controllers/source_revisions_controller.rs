@@ -1,11 +1,11 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
-use crate::modules::sources::application::commands::accept_external_source_revision::{
-    AcceptExternalSourceRevision, DockerfileBuildRecipeInput,
+use crate::modules::sources::application::commands::resolve_external_source_revision::{
+    DockerfileBuildRecipeInput, ResolveExternalSourceRevision,
 };
 use crate::modules::sources::presentation::dto::{
-    AcceptSourceRevisionRequest, SourceRevisionResponse,
+    ResolveSourceRevisionRequest, SourceRevisionResponse,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -25,7 +25,7 @@ pub fn source_revisions_controller(bus: Arc<CommandBus>) -> Result<ControllerDef
             move |request: BootRequest| {
                 let bus = Arc::clone(&bus);
                 async move {
-                    let body: AcceptSourceRevisionRequest = request.json_with_content_type()?;
+                    let body: ResolveSourceRevisionRequest = request.json_with_content_type()?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
@@ -33,13 +33,14 @@ pub fn source_revisions_controller(bus: Arc<CommandBus>) -> Result<ControllerDef
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
-                        .execute(AcceptExternalSourceRevision {
+                        .execute(ResolveExternalSourceRevision {
                             organization_id,
                             project_id,
                             environment_id,
                             repository_provider: body.repository.provider,
                             repository_url: body.repository.url,
-                            commit_sha: body.commit_sha,
+                            reference_kind: body.reference.kind,
+                            reference_value: body.reference.value,
                             recipe: DockerfileBuildRecipeInput {
                                 schema: body.recipe.schema,
                                 kind: body.recipe.kind,

@@ -215,6 +215,11 @@ pub(super) fn config() -> CloudConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
         },
+        sources: SourcesConfig {
+            github_request_timeout_ms: 10_000,
+            allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],
+            denied_repositories: Vec::new(),
+        },
         logs: LogsConfig {
             storage_provider: a3s_cloud_control_plane::config::LogStorageProviderKind::Local,
             s3_endpoint: String::new(),

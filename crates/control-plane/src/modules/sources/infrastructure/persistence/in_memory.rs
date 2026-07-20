@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    SourceRevisionId,
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, ExternalSourceRevision, ISourceRevisionRepository,
@@ -45,6 +46,24 @@ impl InMemorySourceRevisionRepository {
 
 #[async_trait]
 impl ISourceRevisionRepository for InMemorySourceRevisionRepository {
+    async fn replay_acceptance(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalSourceRevision>, RepositoryError> {
+        let state = self.state.read().await;
+        let key = (
+            idempotency.storage_key().0.to_owned(),
+            idempotency.storage_key().1.to_owned(),
+        );
+        let Some((digest, revision)) = state.idempotency.get(&key) else {
+            return Ok(None);
+        };
+        if digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        Ok(Some(revision.clone()))
+    }
+
     async fn accept(
         &self,
         request: AcceptSourceRevision,

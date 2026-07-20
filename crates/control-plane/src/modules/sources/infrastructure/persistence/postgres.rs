@@ -3,7 +3,8 @@ use crate::infrastructure::{
     store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    SourceRevisionId,
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
@@ -64,6 +65,32 @@ impl PostgresSourceRevisionRepository {
 
 #[async_trait]
 impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
+    async fn replay_acceptance(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalSourceRevision>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let replay =
+                        idempotency_replay::<ExternalSourceRevision>(transaction, &idempotency)
+                            .await?;
+                    replay
+                        .map(|replay| {
+                            replay.value.validate().map_err(|error| {
+                                PostgresPersistenceError::Invariant(format!(
+                                    "stored source idempotency response is invalid: {error}"
+                                ))
+                            })
+                        })
+                        .transpose()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn accept(
         &self,
         request: AcceptSourceRevision,

@@ -595,6 +595,12 @@ registry {
   insecure_hosts = ["127.0.0.1:$registry_port"]
 }
 
+sources {
+  github_request_timeout_ms = 10000
+  allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
+  denied_repositories = []
+}
+
 logs {
   storage_provider = "local"
   s3_endpoint = ""

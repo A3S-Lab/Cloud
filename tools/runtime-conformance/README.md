@@ -113,6 +113,12 @@ It then clones A's resolved template into a new generation, activates that
 rollback, and requires the deterministic stop for C before the rollback becomes
 terminal.
 
+The Cloud suite's network namespace intentionally has no public-network route.
+For its PostgreSQL fixture only, the runner injects a deterministic source
+resolver that accepts typed full commit references and rejects branch and tag
+references. The dedicated GitHub source-resolution and Linux Secret/log CI jobs
+retain the production GitHub adapter and provide its live-provider evidence.
+
 The dedicated `Linux Secret and logs` CI job runs the same PostgreSQL test with
 an additional digest-pinned registry fixture that requires HTTP basic
 authentication. It proves anonymous access fails, removes the local workload
