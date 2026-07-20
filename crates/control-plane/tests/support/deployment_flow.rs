@@ -131,14 +131,7 @@ pub async fn exercise_deployment_flow(
     let applying = workload_repository
         .find_deployment(organization_id, deployment_id)
         .await?;
-    if applying.status != DeploymentStatus::Applying {
-        let history = flow.engine().history(&operation_id.to_string()).await?;
-        return Err(format!(
-            "deployment remained {} before Runtime dispatch; Flow history: {history:#?}",
-            applying.status.as_str()
-        )
-        .into());
-    }
+    assert_eq!(applying.status, DeploymentStatus::Applying);
     let command_id = applying.command_id.ok_or("deployment has no command")?;
     let now = Utc::now();
     let lease = node_repository
@@ -1371,7 +1364,10 @@ fn runtime_capabilities() -> RuntimeCapabilities {
             .expect("valid integration provider ID"),
         provider_build: "integration-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
-        artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
+        artifact_media_types: vec![
+            "application/vnd.oci.image.manifest.v1+json".into(),
+            "application/vnd.docker.distribution.manifest.v2+json".into(),
+        ],
         isolation_levels: vec![IsolationLevel::Container],
         network_modes: vec![NetworkMode::Service],
         mount_kinds: Vec::new(),
