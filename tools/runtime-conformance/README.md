@@ -63,6 +63,13 @@ Docker `RuntimeDriver`: it runs the mandatory Base and Recovery profiles and
 every profile advertised by the driver (Networking, Mounts, Health, Resources,
 Logs, and Security).
 
+The `Docker provider conformance` GitHub Actions workflow runs this provider
+gate on relevant pull requests and merges to `main`, every night, and on manual
+dispatch. It uses a disposable Ubuntu runner, checks every host prerequisite
+before starting, and uploads the complete evidence directory even when the gate
+fails. Missing Docker, loop-device, socket, or restart-target prerequisites
+fail the job rather than converting certification into a skipped test.
+
 Run the Cloud consumer gate explicitly after the provider gate passes:
 
 ```bash
