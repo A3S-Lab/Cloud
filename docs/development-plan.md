@@ -517,7 +517,7 @@ through the proven loop.
 
 ### Current implementation
 
-The first two independently testable G0 slices are implemented:
+The first three independently testable G0 slices are implemented:
 
 - A dedicated Sources bounded context accepts and lists tenant-, project-, and
   environment-scoped `ExternalSourceRevision` aggregates.
@@ -551,12 +551,25 @@ The first two independently testable G0 slices are implemented:
 - Unit/API tests cover policy, URL/ref confusion, annotated tags, provider
   identity mismatch, and moving-ref replay. A dedicated CI job resolves the
   real public `A3S-Lab/Cloud` branch and then confirms the pinned commit.
+- A provider-neutral checkout port accepts only the canonical repository, full
+  accepted commit, and immutable checkout ID. The Git adapter uses a fresh
+  bounded staging directory and isolated empty Git home, disables redirects,
+  credential helpers, hooks, unsafe protocols, tags, and submodule recursion,
+  and fetches the full object ID rather than a mutable ref.
+- Checkout verifies the detached commit and tree, rejects unsupported modes,
+  gitlinks, unsafe paths, and symlinks that escape the source root, removes
+  `.git`, and atomically publishes a credential-free receipt containing the Git
+  tree and deterministic SHA-256 filesystem digest. Replay recomputes the
+  digest, conflicting source identity fails, and failed staging is removed.
+- Unit tests cover moving-branch pinning, immutable replay, tampering, limits,
+  gitlinks, and escaping symlinks. The public GitHub CI job also materializes
+  the just-resolved commit and verifies metadata-free replay.
 
-These slices establish persistence and public resolution, not the G0
-integration gate. GitHub App credentials and private-repository access, signed
-webhook intake, checkout, BuildKit execution, artifact publication,
-provenance, deployment handoff, build operations/logs, and web surfaces remain
-required.
+These slices establish persistence, public resolution, and secure public
+checkout, not the G0 integration gate. GitHub App credentials and
+private-repository access, signed webhook intake, build-operation checkout
+orchestration, BuildKit execution, artifact publication, provenance,
+deployment handoff, build operations/logs, and web surfaces remain required.
 
 ### Work
 

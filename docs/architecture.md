@@ -67,8 +67,11 @@ allow/deny policy, provider-neutral public branch/tag/commit resolution, full
 immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic webhook
 source-identity reservation, PostgreSQL persistence, and tenant-scoped REST
 acceptance/query. GitHub App/private-repository authentication, signed webhook
-ingress, checkout, and build execution are not yet implemented. Unimplemented
-portions of later milestone sections remain
+ingress, and build execution are not yet implemented. A provider-neutral
+checkout port and Git adapter now fetch an accepted public commit under
+isolated Git configuration, reject unsafe tree entries, strip `.git`, and
+commit an immutable content receipt; the build coordinator does not invoke
+that boundary yet. Unimplemented portions of later milestone sections remain
 accepted design until their own exit gates pass. A3S Cloud ships as a Rust
 modular monolith, a separate Linux node agent, and a React web application.
 
@@ -709,8 +712,24 @@ revision, idempotency response, optional webhook repository-plus-commit
 reservation, and `source.revision.accepted` outbox fact. Natural identity is
 environment, repository, commit, and recipe digest. Mutable ref names and
 credential references are not durable source-revision state. GitHub App and
-private-repository authentication, signed webhook ingress, checkout, and the
-BuildKit operation remain subsequent G0 boundaries.
+private-repository authentication, signed webhook ingress, and the BuildKit
+operation remain subsequent G0 boundaries.
+
+The provider-neutral source-checkout port accepts only a canonical repository,
+one full commit object ID, and an immutable checkout ID. Its Git adapter uses a
+fresh staging directory and empty Git home, disables system/global
+configuration, redirects, credential helpers, hooks, unsafe protocols, tags,
+and recursive submodules, and fetches the accepted object ID directly. It
+requires the detached `HEAD` and tree to match, bounds file count, content
+bytes, command output, and total time, rejects unsupported Git tree modes,
+gitlinks, unsafe paths, and symlinks that escape the checkout root, then
+removes `.git`. Atomic publication records the repository, commit, Git tree,
+and a deterministic SHA-256 filesystem digest without credentials. Replaying
+the same checkout ID recomputes that digest; another source identity conflicts
+and mutated content fails integrity validation. The dedicated public GitHub CI
+gate resolves a branch and exercises this exact checkout and replay boundary.
+It does not yet start a build operation or establish private-repository
+evidence.
 
 Hosted assets follow a separate publication chain:
 

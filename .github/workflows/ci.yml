@@ -108,6 +108,12 @@ jobs:
             modules::sources::infrastructure::github_source_resolver::tests::real_github_resolves_a_public_branch_then_confirms_the_pinned_commit \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Materialize the resolved commit through the secure checkout boundary
+        run: |
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::sources::infrastructure::git_source_checkout::tests::real_github_checkout_materializes_the_resolved_commit_without_git_metadata \
+            -- --ignored --exact --nocapture --test-threads=1
+
   gateway-managed-tls:
     name: Gateway managed TLS
     runs-on: ubuntu-24.04
