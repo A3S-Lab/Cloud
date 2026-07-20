@@ -17,13 +17,14 @@ pub struct DockerfileBuildRecipeInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct AcceptExternalSourceRevision {
+pub struct ResolveExternalSourceRevision {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub repository_provider: String,
     pub repository_url: String,
-    pub commit_sha: String,
+    pub reference_kind: String,
+    pub reference_value: String,
     pub recipe: DockerfileBuildRecipeInput,
     pub webhook_delivery_id: Option<String>,
     pub idempotency_key: String,
@@ -31,12 +32,12 @@ pub struct AcceptExternalSourceRevision {
     pub accepted_at: DateTime<Utc>,
 }
 
-impl Command for AcceptExternalSourceRevision {
-    type Output = ApplicationResult<AcceptExternalSourceRevisionResult>;
+impl Command for ResolveExternalSourceRevision {
+    type Output = ApplicationResult<ResolveExternalSourceRevisionResult>;
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct AcceptExternalSourceRevisionResult {
+pub struct ResolveExternalSourceRevisionResult {
     pub revision: ExternalSourceRevision,
     pub replayed: bool,
 }

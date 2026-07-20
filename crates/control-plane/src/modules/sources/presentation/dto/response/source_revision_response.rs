@@ -1,4 +1,4 @@
-use crate::modules::sources::application::commands::accept_external_source_revision::AcceptExternalSourceRevisionResult;
+use crate::modules::sources::application::commands::resolve_external_source_revision::ResolveExternalSourceRevisionResult;
 use crate::modules::sources::domain::ExternalSourceRevision;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -41,7 +41,7 @@ pub struct BuildRecipeResponse {
 }
 
 impl SourceRevisionResponse {
-    pub fn from_result(result: AcceptExternalSourceRevisionResult) -> Self {
+    pub fn from_result(result: ResolveExternalSourceRevisionResult) -> Self {
         Self::new(result.revision, Some(result.replayed))
     }
 

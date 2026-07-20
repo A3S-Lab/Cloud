@@ -1,1 +1,1 @@
-pub mod accept_external_source_revision;
+pub mod resolve_external_source_revision;

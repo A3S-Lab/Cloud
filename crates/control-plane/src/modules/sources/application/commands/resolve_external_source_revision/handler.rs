@@ -1,46 +1,55 @@
 use super::{
-    AcceptExternalSourceRevision, AcceptExternalSourceRevisionResult, DockerfileBuildRecipeInput,
+    DockerfileBuildRecipeInput, ResolveExternalSourceRevision, ResolveExternalSourceRevisionResult,
 };
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, SourceRevisionId};
 use crate::modules::sources::domain::{
-    AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
-    GitRepository, ISourceRevisionRepository, NewExternalSourceRevision, SourceRevisionAccepted,
+    AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitProvider, GitReference,
+    GitRepository, ISourceResolver, ISourceRevisionRepository, NewExternalSourceRevision,
+    SourceRepositoryPolicy, SourceResolutionError, SourceResolutionRequest, SourceRevisionAccepted,
     WebhookDeliveryId, WebhookDeliveryReservation,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use serde::Serialize;
 use std::sync::Arc;
 
-pub struct AcceptExternalSourceRevisionHandler {
+pub struct ResolveExternalSourceRevisionHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
+    resolver: Arc<dyn ISourceResolver>,
+    policy: Arc<SourceRepositoryPolicy>,
 }
 
-impl AcceptExternalSourceRevisionHandler {
+impl ResolveExternalSourceRevisionHandler {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         sources: Arc<dyn ISourceRevisionRepository>,
+        resolver: Arc<dyn ISourceResolver>,
+        policy: Arc<SourceRepositoryPolicy>,
     ) -> Self {
         Self {
             environments,
             sources,
+            resolver,
+            policy,
         }
     }
 }
 
-impl CommandHandler<AcceptExternalSourceRevision> for AcceptExternalSourceRevisionHandler {
+impl CommandHandler<ResolveExternalSourceRevision> for ResolveExternalSourceRevisionHandler {
     fn execute(
         &self,
-        command: AcceptExternalSourceRevision,
+        command: ResolveExternalSourceRevision,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<
         'static,
-        a3s_boot::Result<ApplicationResult<AcceptExternalSourceRevisionResult>>,
+        a3s_boot::Result<ApplicationResult<ResolveExternalSourceRevisionResult>>,
     > {
         let environments = Arc::clone(&self.environments);
         let sources = Arc::clone(&self.sources);
+        let resolver = Arc::clone(&self.resolver);
+        let policy = Arc::clone(&self.policy);
         Box::pin(async move {
             match environments
                 .find(
@@ -66,10 +75,14 @@ impl CommandHandler<AcceptExternalSourceRevision> for AcceptExternalSourceRevisi
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let commit_sha = match GitCommitSha::parse(command.commit_sha) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
+            if let Err(error) = policy.require(&repository) {
+                return Ok(Err(ApplicationError::Forbidden(error)));
+            }
+            let reference =
+                match GitReference::parse(&command.reference_kind, command.reference_value) {
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
             let DockerfileBuildRecipeInput {
                 schema,
                 kind,
@@ -96,12 +109,12 @@ impl CommandHandler<AcceptExternalSourceRevision> for AcceptExternalSourceRevisi
                 },
                 None => None,
             };
-            let canonical = serde_json::to_vec(&CanonicalAcceptance {
+            let canonical = serde_json::to_vec(&CanonicalResolution {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
                 environment_id: command.environment_id,
                 repository_identity: repository.identity(),
-                commit_sha: commit_sha.as_str(),
+                reference: &reference,
                 recipe: &recipe,
                 webhook_delivery_id: webhook_delivery_id.as_ref().map(WebhookDeliveryId::as_str),
             })
@@ -117,13 +130,38 @@ impl CommandHandler<AcceptExternalSourceRevision> for AcceptExternalSourceRevisi
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            match sources.replay_acceptance(&idempotency).await {
+                Ok(Some(revision)) => {
+                    return Ok(Ok(ResolveExternalSourceRevisionResult {
+                        revision,
+                        replayed: true,
+                    }))
+                }
+                Ok(None) => {}
+                Err(error) => return Ok(Err(error.into())),
+            }
+            let resolved = match resolver
+                .resolve(&SourceResolutionRequest {
+                    repository: repository.clone(),
+                    reference,
+                })
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(resolution_error(error))),
+            };
+            if resolved.repository != repository {
+                return Ok(Err(ApplicationError::Internal(
+                    "source resolver returned a different repository identity".into(),
+                )));
+            }
             let revision = ExternalSourceRevision::accept(NewExternalSourceRevision {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
                 environment_id: command.environment_id,
                 id: SourceRevisionId::new(),
-                repository,
-                commit_sha,
+                repository: resolved.repository,
+                commit_sha: resolved.commit_sha,
                 recipe,
                 accepted_at: command.accepted_at,
             })
@@ -150,7 +188,7 @@ impl CommandHandler<AcceptExternalSourceRevision> for AcceptExternalSourceRevisi
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
-            Ok(Ok(AcceptExternalSourceRevisionResult {
+            Ok(Ok(ResolveExternalSourceRevisionResult {
                 revision: result.value,
                 replayed: result.replayed,
             }))
@@ -160,12 +198,22 @@ impl CommandHandler<AcceptExternalSourceRevision> for AcceptExternalSourceRevisi
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CanonicalAcceptance<'a> {
+struct CanonicalResolution<'a> {
     organization_id: crate::modules::shared_kernel::domain::OrganizationId,
     project_id: crate::modules::shared_kernel::domain::ProjectId,
     environment_id: crate::modules::shared_kernel::domain::EnvironmentId,
     repository_identity: &'a str,
-    commit_sha: &'a str,
+    reference: &'a GitReference,
     recipe: &'a BuildRecipe,
     webhook_delivery_id: Option<&'a str>,
+}
+
+fn resolution_error(error: SourceResolutionError) -> ApplicationError {
+    match error {
+        SourceResolutionError::Unavailable => {
+            ApplicationError::NotFound("source repository or reference is unavailable".into())
+        }
+        SourceResolutionError::ProviderUnavailable(message)
+        | SourceResolutionError::Protocol(message) => ApplicationError::Internal(message),
+    }
 }

@@ -70,6 +70,44 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --locked
 
+  github-source-resolution:
+    name: GitHub source resolution
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install Rust 1.85.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+
+      - name: Resolve a public branch and confirm its pinned commit
+        run: |
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::sources::infrastructure::github_source_resolver::tests::real_github_resolves_a_public_branch_then_confirms_the_pinned_commit \
+            -- --ignored --exact --nocapture --test-threads=1
+
   gateway-managed-tls:
     name: Gateway managed TLS
     runs-on: ubuntu-24.04

@@ -81,6 +81,11 @@ impl GitRepository {
         &self.identity
     }
 
+    pub fn owner_and_name(&self) -> Option<(&str, &str)> {
+        let path = self.canonical_url.strip_prefix("https://github.com/")?;
+        path.split_once('/')
+    }
+
     pub fn source_identity_digest(&self, commit_sha: &GitCommitSha) -> String {
         let mut digest = Sha256::new();
         digest.update(self.identity.as_bytes());

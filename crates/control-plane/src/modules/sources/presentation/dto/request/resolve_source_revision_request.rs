@@ -2,9 +2,9 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AcceptSourceRevisionRequest {
+pub struct ResolveSourceRevisionRequest {
     pub repository: GitRepositoryRequest,
-    pub commit_sha: String,
+    pub reference: GitReferenceRequest,
     pub recipe: DockerfileBuildRecipeRequest,
     pub webhook_delivery_id: Option<String>,
 }
@@ -14,6 +14,13 @@ pub struct AcceptSourceRevisionRequest {
 pub struct GitRepositoryRequest {
     pub provider: String,
     pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitReferenceRequest {
+    pub kind: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

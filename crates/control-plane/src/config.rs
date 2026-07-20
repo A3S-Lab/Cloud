@@ -1,3 +1,4 @@
+use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
@@ -110,6 +111,13 @@ pub struct DeploymentsConfig {
 pub struct RegistryConfig {
     pub request_timeout_ms: u64,
     pub insecure_hosts: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourcesConfig {
+    pub github_request_timeout_ms: u64,
+    pub allowed_repositories: Vec<String>,
+    pub denied_repositories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -243,6 +251,7 @@ pub struct CloudConfig {
     pub operations: OperationsConfig,
     pub deployments: DeploymentsConfig,
     pub registry: RegistryConfig,
+    pub sources: SourcesConfig,
     pub logs: LogsConfig,
     pub edge: EdgeConfig,
     pub fleet: FleetConfig,
@@ -317,6 +326,15 @@ impl CloudConfig {
         )?;
         let registry = one_block(&document, "registry")?;
         validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
+        let sources = one_block(&document, "sources")?;
+        validate_block(
+            sources,
+            &[
+                "github_request_timeout_ms",
+                "allowed_repositories",
+                "denied_repositories",
+            ],
+        )?;
         let logs = one_block(&document, "logs")?;
         validate_block(
             logs,
@@ -445,6 +463,11 @@ impl CloudConfig {
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
+            },
+            sources: SourcesConfig {
+                github_request_timeout_ms: integer(sources, "github_request_timeout_ms")?,
+                allowed_repositories: string_list(sources, "allowed_repositories")?,
+                denied_repositories: string_list(sources, "denied_repositories")?,
             },
             logs: LogsConfig {
                 storage_provider: LogStorageProviderKind::parse(&string(
@@ -661,6 +684,29 @@ impl CloudConfig {
                 "registry.insecure_hosts cannot contain duplicates".into(),
             ));
         }
+        if self.sources.github_request_timeout_ms == 0
+            || self.sources.github_request_timeout_ms > 60_000
+            || self.sources.allowed_repositories.len() > 256
+            || self.sources.denied_repositories.len() > 256
+        {
+            return Err(ConfigError::Invalid(
+                "sources requires a 1-60000 ms GitHub request timeout and at most 256 exact allowlisted and denied repositories"
+                    .into(),
+            ));
+        }
+        SourceRepositoryPolicy::github(
+            &self.sources.allowed_repositories,
+            &self.sources.denied_repositories,
+        )
+        .map_err(|error| ConfigError::Invalid(format!("sources policy is invalid: {error}")))?;
+        validate_unique_repositories(
+            "sources.allowed_repositories",
+            &self.sources.allowed_repositories,
+        )?;
+        validate_unique_repositories(
+            "sources.denied_repositories",
+            &self.sources.denied_repositories,
+        )?;
         if !(60_000..=315_576_000_000).contains(&self.logs.retention_ms)
             || self.logs.retention_poll_ms == 0
             || self.logs.retention_poll_ms > 86_400_000
@@ -973,6 +1019,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "registry",
         "security",
         "server",
+        "sources",
     ];
     if document
         .blocks
@@ -982,6 +1029,23 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         return Err(ConfigError::Invalid(
             "config contains an unsupported root block".into(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_unique_repositories(label: &str, values: &[String]) -> Result<(), ConfigError> {
+    let identities = values
+        .iter()
+        .map(|value| {
+            GitRepository::parse(GitProvider::Github, value)
+                .map(|repository| repository.identity().to_owned())
+                .map_err(|error| ConfigError::Invalid(format!("{label} is invalid: {error}")))
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if identities.len() != values.len() {
+        return Err(ConfigError::Invalid(format!(
+            "{label} cannot contain canonical duplicates"
+        )));
     }
     Ok(())
 }
@@ -1201,6 +1265,11 @@ registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:5000"]
 }
+sources {
+  github_request_timeout_ms = 10000
+  allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
+  denied_repositories = []
+}
 logs {
   storage_provider = "local"
   s3_endpoint = ""
@@ -1270,6 +1339,7 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.sources.allowed_repositories.len(), 1);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
@@ -1293,6 +1363,7 @@ security {
             8080
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.sources.github_request_timeout_ms, 10_000);
         assert_eq!(config.logs.retention_ms, 604_800_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
@@ -1344,6 +1415,16 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "s3_bucket = \"a3s-cloud-logs\"",
             "s3_bucket = \"Invalid_Bucket\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "allowed_repositories = [\"https://github.com/A3S-Lab/Cloud\"]",
+            "allowed_repositories = []"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "allowed_repositories = [\"https://github.com/A3S-Lab/Cloud\"]",
+            "allowed_repositories = [\"https://github.com.evil.example/A3S-Lab/Cloud\"]"
         ))
         .is_err());
 

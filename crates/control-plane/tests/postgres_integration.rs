@@ -2,7 +2,7 @@ use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_cloud_control_plane::config::{
     AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
     LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
-    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
+    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::integration_events::{
@@ -528,7 +528,10 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 "provider": "github",
                 "url": repository
             },
-            "commitSha": commit_sha,
+            "reference": {
+                "kind": "commit",
+                "value": commit_sha
+            },
             "recipe": {
                 "schema": "a3s.cloud.build-recipe.v1",
                 "kind": "dockerfile",
@@ -540,7 +543,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "webhookDeliveryId": "postgres-delivery-a"
         })
     };
-    let commit_a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let commit_a = "7b7c8152cc148688b403a489a9866731b2e92063";
     let source = app
         .call(post_json(
             &source_path,
@@ -579,7 +582,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "source-revision-moved-delivery",
             source_request(
                 "https://github.com/a3s-lab/cloud",
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "52b6a42b75f7e8405ddb2cab1c8f9c4285302a57",
             ),
         ))
         .await?;

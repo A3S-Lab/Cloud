@@ -61,12 +61,14 @@ the exact clean Cloud and pinned Runtime revisions, starts pinned PostgreSQL and
 registry fixtures, A3S Gateway 1.0.12, the control plane, and one outbound
 Docker node, then certifies bootstrap through A→B→cloned-A TLS cutover, ordered
 resumable logs, durable stop, source cleanliness, host-inventory equality, and
-credential-safe cleanup. This closes the first release. The first G0 contract
-slice now adds a Sources context with canonical GitHub repository identities,
-full immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic
-webhook source-identity reservation, PostgreSQL persistence, and tenant-scoped
-REST acceptance/query. GitHub ref resolution and build execution are not yet
-implemented. Unimplemented portions of later milestone sections remain
+credential-safe cleanup. This closes the first release. The current G0 slices
+add a Sources context with canonical GitHub repository identities, an exact
+allow/deny policy, provider-neutral public branch/tag/commit resolution, full
+immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic webhook
+source-identity reservation, PostgreSQL persistence, and tenant-scoped REST
+acceptance/query. GitHub App/private-repository authentication, signed webhook
+ingress, checkout, and build execution are not yet implemented. Unimplemented
+portions of later milestone sections remain
 accepted design until their own exit gates pass. A3S Cloud ships as a Rust
 modular monolith, a separate Linux node agent, and a React web application.
 
@@ -271,7 +273,7 @@ inside the same transaction.
 | --- | --- | --- |
 | Identity | create organization, manage membership/token | password/identity provider, audit |
 | Projects | create project/environment, request deletion | operation coordinator |
-| Sources | accept immutable external source revision | provider source resolver, build coordinator |
+| Sources | resolve and accept immutable external source revision | provider source resolver, build coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
 | Artifacts | register, verify, sign, retain artifact | OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
@@ -694,16 +696,21 @@ with a Runtime Task. OCI inputs resolve a tag once and deploy only the manifest
 digest. Build cache keys include source digest, recipe digest, builder digest,
 platform, and declared inputs.
 
-The implemented contract boundary is earlier than resolution and execution.
-`POST .../source-revisions` accepts an already resolved full Git object ID,
-normalizes an exact GitHub HTTPS locator, validates
-`a3s.cloud.build-recipe.v1`, computes its canonical digest, and atomically
-stores the environment-owned revision, idempotency response, optional webhook
-repository-plus-commit reservation, and `source.revision.accepted` outbox fact.
-Natural identity is environment, repository, commit, and recipe digest. No
-credential reference is durable source-revision state. The GitHub App adapter,
-signed webhook ingress, ref-race protection, policy evaluation, and BuildKit
-operation remain subsequent G0 boundaries.
+`POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
+normalizes an exact GitHub HTTPS locator, enforces the configured exact
+allow/deny policy, and resolves the reference through a provider-neutral port.
+The public GitHub adapter uses only the fixed HTTPS API origin, disables
+redirects, confirms the response repository identity, requires exact ref
+echoing, bounds annotated-tag peeling, and verifies full commit IDs. The
+application checks for an idempotent response before contacting the provider;
+after one resolution it validates `a3s.cloud.build-recipe.v1`, computes the
+canonical digest, and atomically stores the environment-owned immutable
+revision, idempotency response, optional webhook repository-plus-commit
+reservation, and `source.revision.accepted` outbox fact. Natural identity is
+environment, repository, commit, and recipe digest. Mutable ref names and
+credential references are not durable source-revision state. GitHub App and
+private-repository authentication, signed webhook ingress, checkout, and the
+BuildKit operation remain subsequent G0 boundaries.
 
 Hosted assets follow a separate publication chain:
 
