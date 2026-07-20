@@ -35,7 +35,7 @@ use chrono::{Duration, Utc};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use sha2::{Digest, Sha256};
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration as StdDuration;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -61,6 +61,9 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let identity_store = FileNodeIdentityStore::new(directory.path().join("node-identity"));
     let (organization_id, enrolled_identity) =
         enroll_node(Arc::clone(&nodes), Arc::clone(&authority), &identity_store).await;
+    let rotation_now = Arc::new(RwLock::new(Utc::now()));
+    let rotation_clock = Arc::clone(&rotation_now);
+    let rotation_replay_window = Duration::milliseconds(250);
     let enrollment = enrolled_identity.response.clone();
     let agent_instance_id = enrolled_identity.agent_instance_id;
     let node_id = enrollment.node_id;
@@ -90,14 +93,17 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         ),
         Duration::days(30),
         Duration::hours(1),
-        Duration::milliseconds(250),
+        rotation_replay_window,
         Duration::seconds(30),
         StdDuration::from_millis(100),
         StdDuration::from_millis(5),
         1024 * 1024,
         StdDuration::from_millis(50),
     )
-    .expect("node-control API");
+    .expect("node-control API")
+    .with_rotation_clock(Arc::new(move || {
+        *rotation_clock.read().expect("rotation test clock")
+    }));
     let address = unused_address();
     let config = NodeControlConfig {
         host: address.ip().to_string(),
@@ -625,7 +631,8 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .expect("replacement certificate lease response");
     assert_eq!(replacement_lease.status(), reqwest::StatusCode::OK);
 
-    tokio::time::sleep(StdDuration::from_millis(275)).await;
+    *rotation_now.write().expect("rotation test clock") +=
+        rotation_replay_window + Duration::milliseconds(1);
     let expired_replay = reqwest::Client::builder()
         .add_root_certificate(
             reqwest::Certificate::from_pem(&ca).expect("server root for old replay client"),
