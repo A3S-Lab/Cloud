@@ -101,6 +101,11 @@ unprivileged with every capability dropped. The gate then:
 
 - authorizes and decrypts an active Secret version through the production
   application handler;
+- in the dedicated Linux CI form, binds a separate encrypted registry
+  credential, proves anonymous access is rejected, resolves the manifest
+  through the production credential-aware control-plane resolver, removes the
+  cached fixture image, and pulls its digest from the authenticated private
+  registry;
 - injects it into a real Docker environment variable and `0400` file without
   placing plaintext in the Runtime command;
 - emits it on stdout and stderr and requires provider-boundary redaction;
@@ -108,8 +113,9 @@ unprivileged with every capability dropped. The gate then:
   metadata, reconstructs the handler/repository/store, and verifies exact
   replay;
 - reads the sanitized records through the tenant-authorized REST endpoint; and
-- scans the durable log objects for plaintext and requires the post-test tmpfs
-  directory to contain no Secret files.
+- scans control-plane rows, Flow history, node state, and durable log objects
+  for plaintext and requires the post-test tmpfs directory to contain no
+  Secret files.
 
 This gate proves the real success path and durable replay boundary. It does not
 claim provider or control-plane process-death injection, object corruption, or

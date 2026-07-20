@@ -158,7 +158,8 @@ pub async fn build_application(
             Duration::from_millis(config.registry.request_timeout_ms),
             config.registry.insecure_hosts.clone(),
         )
-        .map_err(ControlPlaneStartupError::Registry)?,
+        .map_err(ControlPlaneStartupError::Registry)?
+        .with_registry_secret_material(Arc::clone(&secrets), Arc::clone(&key_encryption)),
     );
     let deployment_flow_config = DeploymentFlowConfig::from_milliseconds(
         config.deployments.command_ttl_ms,

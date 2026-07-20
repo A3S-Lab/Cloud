@@ -10,7 +10,10 @@ use super::types::{
 use super::DeploymentFlowRuntime;
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId};
-use crate::modules::workloads::domain::entities::{DeploymentStatus, WorkloadRevision};
+use crate::modules::workloads::domain::entities::{
+    DeploymentStatus, SecretBindingTarget, WorkloadRevision,
+};
+use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
 use crate::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload};
 use a3s_flow::{FlowError, StepInvocation};
@@ -109,9 +112,10 @@ async fn resolve(
         .map_err(|error| flow_error("could not load workload revision", error))?;
     validate_revision_identity(&input, &revision)?;
     if revision.template.is_none() {
+        let registry_credential = registry_credential_reference(runtime, &input, &revision).await?;
         let artifact = runtime
             .artifacts
-            .resolve(&revision.request.artifact)
+            .resolve(&revision.request.artifact, registry_credential.as_ref())
             .await
             .map_err(|error| flow_error("could not resolve OCI artifact", error))?;
         revision = runtime
@@ -140,6 +144,47 @@ async fn resolve(
         spec,
         convergence_deadline,
     })))
+}
+
+async fn registry_credential_reference(
+    runtime: &DeploymentFlowRuntime,
+    input: &DeploymentFlowInput,
+    revision: &WorkloadRevision,
+) -> a3s_flow::Result<Option<OciRegistryCredentialReference>> {
+    let Some(binding) = revision
+        .request
+        .secrets
+        .iter()
+        .find(|binding| matches!(binding.target, SecretBindingTarget::RegistryCredential))
+    else {
+        return Ok(None);
+    };
+    let workload = runtime
+        .workloads
+        .find_workload(input.organization_id, input.workload_id)
+        .await
+        .map_err(|error| {
+            flow_error(
+                "could not load workload for OCI registry authentication",
+                error,
+            )
+        })?;
+    if workload.id != revision.workload_id || workload.organization_id != input.organization_id {
+        return Err(FlowError::Runtime(
+            "OCI registry credential does not belong to the deployment workload".into(),
+        ));
+    }
+    let reference = OciRegistryCredentialReference {
+        organization_id: input.organization_id,
+        project_id: workload.project_id,
+        environment_id: workload.environment_id,
+        secret_id: binding.secret_id,
+        version: binding.version,
+    };
+    reference
+        .validate()
+        .map_err(|error| flow_error("could not bind OCI registry credential", error))?;
+    Ok(Some(reference))
 }
 
 async fn schedule(

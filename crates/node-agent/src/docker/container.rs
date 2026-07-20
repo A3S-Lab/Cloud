@@ -5,7 +5,8 @@ use a3s_cloud_contracts::RuntimeServiceEndpoint;
 use a3s_runtime::contract::{
     HealthProbe, NetworkMode, RestartPolicy, RuntimeActionRequest, RuntimeEvidence, RuntimeFailure,
     RuntimeHealthObservation, RuntimeInspection, RuntimeMountSource, RuntimeObservation,
-    RuntimeRemoval, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, TransportProtocol,
+    RuntimeRemoval, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, SecretTarget,
+    TransportProtocol,
 };
 use a3s_runtime::{RuntimeError, RuntimeResult, RuntimeUnitRecord};
 use bollard::container::{
@@ -39,9 +40,13 @@ impl DockerRuntimeDriver {
         let node_id = self.bound_node_id().await?;
         let spec_digest = spec.digest().map_err(RuntimeError::InvalidRequest)?;
         let provider_build = self.provider_build().await?;
-        let image = self.ensure_image(&spec.artifact).await?;
+        let image = self.ensure_image(spec).await?;
         let mut container = self.find_container(node_id, spec, &spec_digest).await?;
-        let materialized = if !spec.secrets.is_empty()
+        let has_container_secrets = spec
+            .secrets
+            .iter()
+            .any(|secret| !matches!(secret.target, SecretTarget::RegistryCredential));
+        let materialized = if has_container_secrets
             && container
                 .as_ref()
                 .is_none_or(|container| should_start(spec, container))

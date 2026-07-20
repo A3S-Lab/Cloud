@@ -11,12 +11,12 @@ use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnrollmentTokenId, EnvironmentId, IdempotencyRequest, OperationId,
-    OrganizationId, ProjectId, ResourceName, WorkloadId, WorkloadRevisionId,
+    OrganizationId, ProjectId, ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
-    RequestedServiceTemplate, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
-    Workload, WorkloadDesiredState, WorkloadRevision,
+    RequestedServiceTemplate, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
+    ServiceResources, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{DeploymentRequested, WorkloadStopRequested};
 use crate::modules::workloads::domain::repositories::{
@@ -126,6 +126,71 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
     assert_eq!(
         revision.resolved_template()?.artifact.digest,
         runtime_artifact.digest
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn resolving_step_lends_only_the_bound_registry_secret_reference_to_the_resolver(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let secret_id = SecretId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    ready_node(&nodes, organization_id, base).await?;
+    let resolver = Arc::new(MovingArtifactResolver::new(format!(
+        "sha256:{}",
+        "3".repeat(64)
+    )));
+    let runtime = DeploymentFlowRuntime::new(
+        workloads.clone(),
+        resolver.clone(),
+        nodes.clone(),
+        nodes,
+        Duration::seconds(5),
+        DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 1, 10_000, 5_000, 1, 10_000)?,
+    )?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let bundle = requested_deployment_bundle_with_secrets(
+        Workload::create(
+            WorkloadId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            ResourceName::parse("private registry fixture")?,
+            base,
+        ),
+        base,
+        "private-registry-reference",
+        vec![SecretBinding {
+            name: "registry".into(),
+            secret_id,
+            version: 7,
+            target: SecretBindingTarget::RegistryCredential,
+        }],
+    )?;
+    let operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+
+    engine
+        .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
+        .await?;
+
+    assert_eq!(resolver.calls(), 1);
+    assert_eq!(
+        resolver.registry_credential(),
+        Some(
+            crate::modules::workloads::domain::services::OciRegistryCredentialReference {
+                organization_id,
+                project_id,
+                environment_id,
+                secret_id,
+                version: 7,
+            }
+        )
     );
     Ok(())
 }

@@ -469,12 +469,35 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         response_json(&revoked_secret_version)?["data"]["version"]["state"],
         "revoked"
     );
+    let registry_username = std::env::var("A3S_CLOUD_TEST_REGISTRY_USERNAME")
+        .unwrap_or_else(|_| "registry-user".into());
+    let registry_password = std::env::var("A3S_CLOUD_TEST_REGISTRY_PASSWORD")
+        .unwrap_or_else(|_| "registry-password".into());
+    let registry_credential_value = json!({
+        "schema": "a3s.cloud.registry-credential.v1",
+        "username": registry_username,
+        "password": registry_password,
+    })
+    .to_string();
+    let registry_secret = app
+        .call(post_json(
+            &secrets_path,
+            "secret-registry-credential",
+            json!({"name": "Registry credential", "value": registry_credential_value}),
+        ))
+        .await?;
+    assert_eq!(registry_secret.status(), 201);
+    assert!(!String::from_utf8_lossy(registry_secret.body())
+        .contains(registry_credential_value.as_str()));
+    let registry_secret_id = response_id(&registry_secret)?;
     let leaked_secret_rows = database
         .fetch_one_as(
             sql_query::<i64>("select count(*) from secret_versions where ciphertext like ")
                 .bind(format!("%{first_secret_value}%"))
                 .append(" or ciphertext like ")
-                .bind(format!("%{second_secret_value}%")),
+                .bind(format!("%{second_secret_value}%"))
+                .append(" or ciphertext like ")
+                .bind(format!("%{registry_credential_value}%")),
         )
         .await?;
     assert_eq!(leaked_secret_rows, 0);
@@ -483,7 +506,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "select count(*) from secret_versions where key_id like 'local:sha256:%' and octet_length(ciphertext) > 32",
         ))
         .await?;
-    assert_eq!(encrypted_secret_rows, 2);
+    assert_eq!(encrypted_secret_rows, 3);
     let safe_secret_idempotency = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from idempotency_records where idempotency_key like 'secret-database-url%' and (select count(*) from jsonb_object_keys(response)) = 2 and response ->> 'secret_id' is not null and response ->> 'version' is not null and response::text not like '%ciphertext%' and response::text not like '%key_id%'",
@@ -495,7 +518,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "select count(*) from outbox_events where event_key like 'secret.%' and payload::text not like '%ciphertext%' and payload::text not like '%key_id%'",
         ))
         .await?;
-    assert_eq!(safe_secret_events, 3);
+    assert_eq!(safe_secret_events, 4);
     let leaked_secret_metadata = database
         .fetch_one_as(
             sql_query::<i64>(
@@ -504,10 +527,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .bind(format!("%{first_secret_value}%"))
             .append(" or payload::text like ")
             .bind(format!("%{second_secret_value}%"))
+            .append(" or payload::text like ")
+            .bind(format!("%{registry_credential_value}%"))
             .append(") + (select count(*) from idempotency_records where response::text like ")
             .bind(format!("%{first_secret_value}%"))
             .append(" or response::text like ")
             .bind(format!("%{second_secret_value}%"))
+            .append(" or response::text like ")
+            .bind(format!("%{registry_credential_value}%"))
             .append(")"),
         )
         .await?;
@@ -607,8 +634,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 11);
-    assert_eq!(idempotency_records, 10);
+    assert_eq!(outbox_events, 12);
+    assert_eq!(idempotency_records, 11);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
@@ -870,12 +897,56 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let workload_path = format!(
         "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/workloads"
     );
+    let private_registry_artifact = std::env::var("A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT").ok();
+    let artifact_uri = private_registry_artifact.as_deref().unwrap_or(
+        "oci://docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+    );
+    let artifact_digest = artifact_uri
+        .rsplit_once('@')
+        .map(|(_, digest)| digest)
+        .filter(|digest| {
+            digest.len() == 71
+                && digest.starts_with("sha256:")
+                && digest[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .ok_or("workload fixture artifact is not digest-pinned")?;
+    let mut workload_secrets = vec![
+        json!({
+            "name": "database-url-environment",
+            "secretId": secret_id,
+            "version": 2,
+            "target": {
+                "kind": "environment",
+                "variable": "DATABASE_URL"
+            }
+        }),
+        json!({
+            "name": "database-url-file",
+            "secretId": secret_id,
+            "version": 2,
+            "target": {
+                "kind": "file",
+                "path": "/run/secrets/database-url",
+                "mode": 256
+            }
+        }),
+    ];
+    if private_registry_artifact.is_some() {
+        workload_secrets.push(json!({
+            "name": "registry-credential",
+            "secretId": registry_secret_id,
+            "version": 1,
+            "target": {
+                "kind": "registry_credential"
+            }
+        }));
+    }
     let workload_body = json!({
         "name": "API fixture",
         "template": {
             "artifact": {
-                "uri": "oci://docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
-                "expectedDigest": "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
+                "uri": artifact_uri,
+                "expectedDigest": artifact_digest
             },
             "process": {
                 "command": ["/bin/sh"],
@@ -883,27 +954,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 "workingDirectory": null,
                 "environment": {}
             },
-            "secrets": [
-                {
-                    "name": "database-url-environment",
-                    "secretId": secret_id,
-                    "version": 2,
-                    "target": {
-                        "kind": "environment",
-                        "variable": "DATABASE_URL"
-                    }
-                },
-                {
-                    "name": "database-url-file",
-                    "secretId": secret_id,
-                    "version": 2,
-                    "target": {
-                        "kind": "file",
-                        "path": "/run/secrets/database-url",
-                        "mode": 256
-                    }
-                }
-            ],
+            "secrets": workload_secrets,
             "resources": {
                 "cpuMillis": 250,
                 "memoryBytes": 67108864,
@@ -952,15 +1003,57 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     assert_eq!(changed_workload.status(), 409);
 
+    let sensitive_plaintexts = [
+        second_secret_value,
+        registry_credential_value.as_str(),
+        registry_password.as_str(),
+    ];
     deployment_flow_support::exercise_deployment_flow(
         &executor,
         &url,
         Uuid::parse_str(&organization_id)?,
         &response_json(&created_workload)?["data"],
         security_directory.path(),
-        second_secret_value,
+        &sensitive_plaintexts,
     )
     .await?;
+    for plaintext in sensitive_plaintexts {
+        let durable_leaks = database
+            .fetch_one_as(
+                sql_query::<i64>("with needle as (select ")
+                    .bind(format!("%{plaintext}%"))
+                    .append(
+                        "::text as value) select
+                         (select count(*) from workload_revisions, needle
+                            where template_request::text like needle.value
+                               or coalesce(template::text, '') like needle.value)
+                       + (select count(*) from operation_requests, needle
+                            where input::text like needle.value)
+                       + (select count(*) from operation_projections, needle
+                            where coalesce(output::text, '') like needle.value
+                               or coalesce(error, '') like needle.value)
+                       + (select count(*) from a3s_flow.flow_events, needle
+                            where event_json like needle.value)
+                       + (select count(*) from node_commands, needle
+                            where payload::text like needle.value
+                               or coalesce(acknowledgement::text, '') like needle.value)
+                       + (select count(*) from runtime_observations, needle
+                            where observation::text like needle.value)
+                       + (select count(*) from outbox_events, needle
+                            where payload::text like needle.value
+                               or coalesce(last_error, '') like needle.value)
+                       + (select count(*) from audit_records, needle
+                            where details::text like needle.value)
+                       + (select count(*) from idempotency_records, needle
+                            where response::text like needle.value)",
+                    ),
+            )
+            .await?;
+        assert_eq!(
+            durable_leaks, 0,
+            "plaintext Secret reached durable control-plane state"
+        );
+    }
 
     let created_workload_body = response_json(&created_workload)?;
     let workload_id = created_workload_body["data"]["workloadId"]
@@ -988,6 +1081,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         let persisted_logs_body = String::from_utf8_lossy(persisted_logs.body());
         assert!(!persisted_logs_body.contains(first_secret_value));
         assert!(!persisted_logs_body.contains(second_secret_value));
+        assert!(!persisted_logs_body.contains(registry_credential_value.as_str()));
+        assert!(!persisted_logs_body.contains(registry_password.as_str()));
         let persisted_logs_json = response_json(&persisted_logs)?;
         let records = persisted_logs_json["data"]["records"]
             .as_array()

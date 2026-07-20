@@ -36,6 +36,9 @@ impl IOciArtifactResolver for UnusedArtifactResolver {
     async fn resolve(
         &self,
         _reference: &crate::modules::workloads::domain::entities::OciArtifactReference,
+        _registry_credential: Option<
+            &crate::modules::workloads::domain::services::OciRegistryCredentialReference,
+        >,
     ) -> Result<OciArtifact, OciArtifactResolutionError> {
         Err(OciArtifactResolutionError::Registry(
             "resolved deployment fixture unexpectedly called the OCI resolver".into(),
@@ -46,6 +49,8 @@ impl IOciArtifactResolver for UnusedArtifactResolver {
 pub(super) struct MovingArtifactResolver {
     digest: RwLock<String>,
     calls: AtomicUsize,
+    registry_credential:
+        RwLock<Option<crate::modules::workloads::domain::services::OciRegistryCredentialReference>>,
 }
 
 impl MovingArtifactResolver {
@@ -53,6 +58,7 @@ impl MovingArtifactResolver {
         Self {
             digest: RwLock::new(digest),
             calls: AtomicUsize::new(0),
+            registry_credential: RwLock::new(None),
         }
     }
 
@@ -63,6 +69,15 @@ impl MovingArtifactResolver {
     pub(super) fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
+
+    pub(super) fn registry_credential(
+        &self,
+    ) -> Option<crate::modules::workloads::domain::services::OciRegistryCredentialReference> {
+        *self
+            .registry_credential
+            .read()
+            .expect("moving resolver credential lock")
+    }
 }
 
 #[async_trait]
@@ -70,8 +85,14 @@ impl IOciArtifactResolver for MovingArtifactResolver {
     async fn resolve(
         &self,
         reference: &OciArtifactReference,
+        registry_credential: Option<
+            &crate::modules::workloads::domain::services::OciRegistryCredentialReference,
+        >,
     ) -> Result<OciArtifact, OciArtifactResolutionError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        *self.registry_credential.write().map_err(|_| {
+            OciArtifactResolutionError::Registry("resolver credential lock poisoned".into())
+        })? = registry_credential.copied();
         let digest = self
             .digest
             .read()
@@ -205,6 +226,15 @@ pub(super) fn requested_deployment_bundle(
     requested_at: chrono::DateTime<Utc>,
     idempotency_key: &str,
 ) -> Result<CreateDeploymentBundle, Box<dyn std::error::Error>> {
+    requested_deployment_bundle_with_secrets(workload, requested_at, idempotency_key, Vec::new())
+}
+
+pub(super) fn requested_deployment_bundle_with_secrets(
+    workload: Workload,
+    requested_at: chrono::DateTime<Utc>,
+    idempotency_key: &str,
+    secrets: Vec<crate::modules::workloads::domain::entities::SecretBinding>,
+) -> Result<CreateDeploymentBundle, Box<dyn std::error::Error>> {
     let resolved = template('a');
     let request = RequestedServiceTemplate {
         artifact: OciArtifactReference {
@@ -212,7 +242,7 @@ pub(super) fn requested_deployment_bundle(
             expected_digest: None,
         },
         process: resolved.process,
-        secrets: resolved.secrets,
+        secrets,
         resources: resolved.resources,
         ports: resolved.ports,
         health: resolved.health,

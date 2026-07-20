@@ -36,7 +36,12 @@ impl DockerRuntimeDriver {
         &self,
         spec: &RuntimeUnitSpec,
     ) -> RuntimeResult<Vec<SecretMaterial>> {
-        if spec.secrets.is_empty() {
+        let bindings = spec
+            .secrets
+            .iter()
+            .filter(|secret| !matches!(secret.target, SecretTarget::RegistryCredential))
+            .collect::<Vec<_>>();
+        if bindings.is_empty() {
             return Ok(Vec::new());
         }
         let transport = self.secret_transport.read().await.clone().ok_or_else(|| {
@@ -44,8 +49,8 @@ impl DockerRuntimeDriver {
                 "Docker Secret material transport is not bound".into(),
             )
         })?;
-        let mut materials = Vec::with_capacity(spec.secrets.len());
-        for secret in &spec.secrets {
+        let mut materials = Vec::with_capacity(bindings.len());
+        for secret in bindings {
             let reference = CloudSecretReference::parse(&secret.reference).map_err(|_| {
                 RuntimeError::InvalidRequest(
                     "Docker log redaction Secret reference is invalid".into(),
@@ -66,6 +71,16 @@ impl DockerRuntimeDriver {
         spec: &RuntimeUnitSpec,
         spec_digest: &str,
     ) -> RuntimeResult<MaterializedSecrets> {
+        if !spec
+            .secrets
+            .iter()
+            .any(|secret| !matches!(secret.target, SecretTarget::RegistryCredential))
+        {
+            return Ok(MaterializedSecrets {
+                environment: Vec::new(),
+                files: Vec::new(),
+            });
+        }
         let transport = self.secret_transport.read().await.clone().ok_or_else(|| {
             RuntimeError::ProviderUnavailable(
                 "Docker Secret material transport is not bound".into(),
@@ -83,6 +98,9 @@ impl DockerRuntimeDriver {
         let mut environment = Vec::new();
         let mut files = Vec::new();
         for (index, secret) in spec.secrets.iter().enumerate() {
+            if matches!(secret.target, SecretTarget::RegistryCredential) {
+                continue;
+            }
             let reference = match CloudSecretReference::parse(&secret.reference) {
                 Ok(reference) => reference,
                 Err(error) => {
@@ -146,6 +164,14 @@ impl DockerRuntimeDriver {
                             return Err(error);
                         }
                     }
+                }
+                SecretTarget::RegistryCredential => {
+                    return self
+                        .materialization_error(
+                            directory.as_deref(),
+                            "Docker registry credentials cannot target a container",
+                        )
+                        .await
                 }
             }
         }
@@ -342,7 +368,7 @@ async fn ensure_memory_backed(_path: &Path) -> RuntimeResult<()> {
     ]))
 }
 
-fn secret_transport_error(error: NodeControlClientError) -> RuntimeError {
+pub(super) fn secret_transport_error(error: NodeControlClientError) -> RuntimeError {
     if error.retryable() {
         RuntimeError::ProviderUnavailable("Cloud Secret material is temporarily unavailable".into())
     } else {
@@ -383,6 +409,25 @@ mod tests {
         }
     }
 
+    struct RegistrySecretTransport {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl NodeSecretTransport for RegistrySecretTransport {
+        async fn resolve_secret(
+            &self,
+            _reference: CloudSecretReference,
+        ) -> Result<SecretMaterial, NodeControlClientError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            SecretMaterial::new(
+                br#"{"schema":"a3s.cloud.registry-credential.v1","username":"registry-user","password":"registry-password"}"#
+                    .to_vec(),
+            )
+            .map_err(NodeControlClientError::Invalid)
+        }
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn environment_material_is_resolved_only_inside_the_docker_driver() {
@@ -413,6 +458,51 @@ mod tests {
         assert!(!serde_json::to_string(&spec)
             .expect("Runtime spec JSON")
             .contains("materialized-at-docker"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn registry_credentials_are_resolved_only_for_the_image_pull_boundary() {
+        let (_socket_directory, _socket, driver) = test_driver("registry-secret-unit-test");
+        let transport = Arc::new(RegistrySecretTransport {
+            calls: AtomicUsize::new(0),
+        });
+        let binding: Arc<dyn NodeSecretTransport> = transport.clone();
+        driver
+            .bind_secret_transport(binding)
+            .await
+            .expect("Secret transport");
+        let mut spec = runtime_spec(
+            CloudSecretReference::new(Uuid::now_v7(), Uuid::now_v7(), 2)
+                .expect("reference")
+                .to_string(),
+        );
+        spec.secrets[0].target = SecretTarget::RegistryCredential;
+        let materialized = driver
+            .materialize_secrets(&spec, &format!("sha256:{}", "b".repeat(64)))
+            .await
+            .expect("container materialization");
+        assert_eq!(materialized.environment().count(), 0);
+        assert_eq!(materialized.files().count(), 0);
+        assert!(driver
+            .resolve_log_redaction_materials(&spec)
+            .await
+            .expect("redaction material")
+            .is_empty());
+        assert_eq!(transport.calls.load(Ordering::SeqCst), 0);
+
+        let credential = driver
+            .resolve_registry_credentials(&spec, "registry.example:5443")
+            .await
+            .expect("registry credential")
+            .expect("bound registry credential");
+        assert_eq!(credential.username.as_deref(), Some("registry-user"));
+        assert_eq!(credential.password.as_deref(), Some("registry-password"));
+        assert_eq!(
+            credential.serveraddress.as_deref(),
+            Some("registry.example:5443")
+        );
+        assert_eq!(transport.calls.load(Ordering::SeqCst), 1);
     }
 
     struct NulSecretTransport;

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum SecretBindingTarget {
     Environment { variable: String },
     File { path: String, mode: u32 },
+    RegistryCredential,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +34,7 @@ impl SecretBinding {
                     return Err("Secret file target is invalid".into());
                 }
             }
+            SecretBindingTarget::RegistryCredential => {}
         }
         Ok(())
     }
@@ -41,6 +43,7 @@ impl SecretBinding {
         match &self.target {
             SecretBindingTarget::Environment { variable } => format!("environment:{variable}"),
             SecretBindingTarget::File { path, .. } => format!("file:{path}"),
+            SecretBindingTarget::RegistryCredential => "registry_credential".into(),
         }
     }
 }
@@ -77,7 +80,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_typed_environment_and_file_targets() {
+    fn validates_typed_environment_file_and_registry_targets() {
         let secret_id = SecretId::new();
         SecretBinding {
             name: "database-password".into(),
@@ -100,6 +103,14 @@ mod tests {
         }
         .validate()
         .expect("file binding");
+        SecretBinding {
+            name: "registry".into(),
+            secret_id,
+            version: 4,
+            target: SecretBindingTarget::RegistryCredential,
+        }
+        .validate()
+        .expect("registry credential binding");
         assert!(SecretBinding {
             name: "escape".into(),
             secret_id,

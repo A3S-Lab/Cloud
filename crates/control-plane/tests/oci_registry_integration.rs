@@ -38,18 +38,21 @@ async fn real_registry_resolves_tags_and_preserves_digest_addressability(
         expected_digest: None,
     };
 
-    let first = resolver.resolve(&tagged).await?;
+    let first = resolver.resolve(&tagged, None).await?;
     assert_eq!(first.digest, first_digest);
     let second_digest = push_fixture(&client, &base, &repository, "stable", b"second").await?;
     assert_ne!(first_digest, second_digest);
-    let second = resolver.resolve(&tagged).await?;
+    let second = resolver.resolve(&tagged, None).await?;
     assert_eq!(second.digest, second_digest);
 
     let immutable = OciArtifactReference {
         uri: format!("oci://{authority}/{repository}@{first_digest}"),
         expected_digest: Some(first_digest.clone()),
     };
-    assert_eq!(resolver.resolve(&immutable).await?.digest, first_digest);
+    assert_eq!(
+        resolver.resolve(&immutable, None).await?.digest,
+        first_digest
+    );
     Ok(())
 }
 

@@ -526,6 +526,9 @@ impl IOciArtifactResolver for UnusedArtifactResolver {
     async fn resolve(
         &self,
         _reference: &OciArtifactReference,
+        _registry_credential: Option<
+            &a3s_cloud_control_plane::modules::workloads::OciRegistryCredentialReference,
+        >,
     ) -> Result<OciArtifact, OciArtifactResolutionError> {
         Err(OciArtifactResolutionError::Registry(
             "resolved Docker fixture unexpectedly called the OCI resolver".into(),
