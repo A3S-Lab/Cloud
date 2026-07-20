@@ -218,14 +218,12 @@ ttl_pid=""
 cleanup_failed=0
 gate_completed=0
 mkdir -p "$evidence" "$provider_root" "$data_dir" "$socket_dir" "$target_dir" "$registry_data"
-if [[ $suite == cloud ]]; then
-    secret_memory_dir=/dev/shm/a3s-cloud/$run_id
-    mkdir -p "$secret_memory_dir"
-    chmod 700 "$secret_memory_dir"
-    [[ $(findmnt -rn -T "$secret_memory_dir" -o FSTYPE) == tmpfs ]] ||
-        die "Cloud Secret material directory is not tmpfs-backed"
-    provider_secret_mount=(--mount "type=bind,source=$secret_memory_dir,target=$secret_memory_dir")
-fi
+secret_memory_dir=/dev/shm/a3s-cloud/$run_id
+mkdir -p "$secret_memory_dir"
+chmod 700 "$secret_memory_dir"
+[[ $(findmnt -rn -T "$secret_memory_dir" -o FSTYPE) == tmpfs ]] ||
+    die "Cloud Secret material directory is not tmpfs-backed"
+provider_secret_mount=(--mount "type=bind,source=$secret_memory_dir,target=$secret_memory_dir")
 exec > >(tee -a "$evidence/runner.log") 2>&1
 
 log() {
@@ -645,6 +643,7 @@ if [[ $suite == provider ]]; then
             A3S_CLOUD_TEST_DOCKER=1 \
             A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
             A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
+            A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
             CARGO_TARGET_DIR="$target_dir" \
             "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
                 -p a3s-cloud-node-agent \

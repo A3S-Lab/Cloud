@@ -13,7 +13,9 @@ impl DockerConformanceFixture {
             .await?;
         self.verify_hostile_identity_is_not_a_provider_name(client)
             .await?;
-        self.verify_metadata_tamper_fails_closed(client).await
+        self.verify_metadata_tamper_fails_closed(client).await?;
+        self.verify_secret_nondisclosure_retry_and_recovery(client)
+            .await
     }
 
     async fn verify_digest_namespace_and_least_privilege(

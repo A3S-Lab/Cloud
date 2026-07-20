@@ -1,4 +1,4 @@
-use super::specs;
+use super::{secrets::conformance_secret_transport, specs};
 use a3s_cloud_node_agent::{DockerConfig, DockerRuntimeDriver, NodeRuntimeBinding};
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
 use a3s_runtime::{
@@ -15,14 +15,16 @@ use bollard::volume::{ListVolumesOptions, RemoveVolumeOptions};
 use bollard::{Docker, API_DEFAULT_VERSION};
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
 const PROVIDER_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 const NAMESPACE_LABEL: &str = "a3s.cloud.namespace";
+const NODE_LABEL: &str = "a3s.cloud.node-id";
 const RESTART_TARGET_LABEL: &str = "a3s.runtime.conformance.provider";
+const UNIT_LABEL: &str = "a3s.runtime.unit-id";
 
 pub(crate) struct DockerConformanceFixture {
     pub(crate) namespace: String,
@@ -58,31 +60,11 @@ impl DockerConformanceFixture {
     }
 
     pub(crate) async fn namespace_container_ids(&self) -> RuntimeResult<Vec<String>> {
-        let mut filters = HashMap::new();
-        filters.insert(
-            "label".to_owned(),
+        self.container_ids(
             vec![format!("{NAMESPACE_LABEL}={}", self.namespace)],
-        );
-        let containers = self
-            .docker_call(
-                "list namespace containers",
-                self.docker.list_containers(Some(ListContainersOptions {
-                    all: true,
-                    filters,
-                    ..Default::default()
-                })),
-            )
-            .await?;
-        let mut ids = containers
-            .into_iter()
-            .map(|container| {
-                container.id.ok_or_else(|| {
-                    RuntimeError::Protocol("Docker container inventory omitted its ID".into())
-                })
-            })
-            .collect::<RuntimeResult<Vec<_>>>()?;
-        ids.sort_unstable();
-        Ok(ids)
+            "list namespace containers",
+        )
+        .await
     }
 
     pub(crate) async fn namespace_volume_names(&self) -> RuntimeResult<Vec<String>> {
@@ -104,6 +86,47 @@ impl DockerConformanceFixture {
             .collect::<Vec<_>>();
         names.sort_unstable();
         Ok(names)
+    }
+
+    pub(crate) async fn unit_container_ids(&self, unit_id: &str) -> RuntimeResult<Vec<String>> {
+        self.container_ids(
+            vec![
+                format!("{NAMESPACE_LABEL}={}", self.namespace),
+                format!("{NODE_LABEL}={}", self.node_id),
+                format!("{UNIT_LABEL}={unit_id}"),
+            ],
+            "list unit containers",
+        )
+        .await
+    }
+
+    async fn container_ids(
+        &self,
+        labels: Vec<String>,
+        operation: &'static str,
+    ) -> RuntimeResult<Vec<String>> {
+        let mut filters = HashMap::new();
+        filters.insert("label".to_owned(), labels);
+        let containers = self
+            .docker_call(
+                operation,
+                self.docker.list_containers(Some(ListContainersOptions {
+                    all: true,
+                    filters,
+                    ..Default::default()
+                })),
+            )
+            .await?;
+        let mut ids = containers
+            .into_iter()
+            .map(|container| {
+                container.id.ok_or_else(|| {
+                    RuntimeError::Protocol("Docker container inventory omitted its ID".into())
+                })
+            })
+            .collect::<RuntimeResult<Vec<_>>>()?;
+        ids.sort_unstable();
+        Ok(ids)
     }
 
     pub(crate) async fn docker_call<T, F>(
@@ -194,6 +217,21 @@ impl DockerConformanceFixture {
         Err(RuntimeError::ProviderUnavailable(
             "isolated Docker provider did not become ready after restart".into(),
         ))
+    }
+
+    pub(crate) fn secret_generation_directory(&self, spec_digest: &str) -> RuntimeResult<PathBuf> {
+        let digest = spec_digest
+            .strip_prefix("sha256:")
+            .filter(|value| {
+                value.len() == 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+            .ok_or_else(|| {
+                RuntimeError::Protocol("Docker Secret conformance digest is invalid".into())
+            })?;
+        Ok(secret_memory_root().join(&self.namespace).join(digest))
     }
 
     async fn remove_fixture_container(&self, id: &str) -> RuntimeResult<()> {
@@ -397,15 +435,24 @@ pub(crate) async fn connect_driver(
         socket: docker_socket(),
         namespace: namespace.into(),
         operation_timeout_ms: 30_000,
-        secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
+        secret_memory_dir: secret_memory_root(),
     })?;
     driver.bind_node(node_id).await?;
+    driver
+        .bind_secret_transport(conformance_secret_transport())
+        .await?;
     Ok(driver)
 }
 
 fn docker_socket() -> String {
     std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
         .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
+}
+
+fn secret_memory_root() -> PathBuf {
+    std::env::var_os("A3S_CLOUD_TEST_SECRET_MEMORY_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/dev/shm/a3s-cloud/test-secrets"))
 }
 
 fn connect_provider_docker() -> RuntimeResult<Docker> {

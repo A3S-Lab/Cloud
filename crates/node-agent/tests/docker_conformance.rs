@@ -12,6 +12,8 @@ mod networking;
 mod recovery;
 #[path = "docker_conformance/resources.rs"]
 mod resources;
+#[path = "docker_conformance/secrets.rs"]
+mod secrets;
 #[path = "docker_conformance/security.rs"]
 mod security;
 #[path = "docker_conformance/specs.rs"]

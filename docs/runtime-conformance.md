@@ -11,6 +11,7 @@ Run the gate only on a dedicated Linux provider runner:
 export A3S_CLOUD_TEST_DOCKER=1
 export A3S_CLOUD_TEST_DOCKER_SOCKET=unix:///run/a3s-runtime-provider/docker.sock
 export A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER=a3s-runtime-provider
+export A3S_CLOUD_TEST_SECRET_MEMORY_DIR=/dev/shm/a3s-cloud/runtime-provider
 
 cargo test -p a3s-cloud-node-agent \
   --test docker_conformance \
@@ -28,6 +29,10 @@ label:
 a3s.runtime.conformance.provider=true
 ```
 
+`A3S_CLOUD_TEST_SECRET_MEMORY_DIR` must be a private tmpfs directory mounted
+into that container at the same absolute path. The isolated runner creates and
+validates this mount automatically.
+
 Never point the restart target at shared infrastructure. A runner that uses
 the host Docker daemon must be disposable and own the daemon restart outside
 the test process.
@@ -39,6 +44,14 @@ inspection and workload-visible behavior checks. The fixture uses a unique
 namespace, enforces bounded Docker operations, removes only namespace-owned
 containers and volumes, and requires the canonical post-cleanup inventory to
 equal its baseline.
+
+Because Docker advertises `SecretReferences`, Security certification also uses
+a run-specific tmpfs directory shared with the isolated provider. A file Secret
+is resolved only inside the driver and echoed by the workload. The gate requires
+the Runtime spec, Docker inspection, Runtime inspection, and Runtime observation
+evidence to exclude the value, while logs contain only `[REDACTED]`. A caller
+retry and provider restart must retain one provider container and one `0400`
+material file; removal must delete the generation directory.
 
 When developing on a dedicated Docker host that cannot safely restart its
 daemon, the following non-certifying probe exercises only the advertised
