@@ -13,6 +13,8 @@ host inventories before and after the gate. Its provider uses:
 
 - a digest-pinned Docker-in-Docker image and registry image;
 - a 4 GiB loopback ext4 data disk and a private Unix socket;
+- a run-specific tmpfs Secret directory mounted at the same absolute path in
+  the provider daemon;
 - 2 CPUs, 4 GiB of memory, and 2,048 PIDs;
 - a dedicated network-keeper container, so provider restart preserves the
   network namespace used for loopback port probes;
@@ -61,7 +63,12 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
 Omitting `--suite` selects `--suite provider`. This is the release gate for the
 Docker `RuntimeDriver`: it runs the mandatory Base and Recovery profiles and
 every profile advertised by the driver (Networking, Mounts, Health, Resources,
-Logs, and Security).
+Logs, and Security). The Security profile resolves a file Secret only inside
+the driver, proves its value is absent from Runtime specs, provider inspection,
+Runtime inspection, and Runtime observation evidence, requires exact log
+redaction, then retries and restarts the provider while preserving one
+container and one material file. Removal must delete the generation's material
+directory.
 
 The `Docker provider conformance` GitHub Actions workflow runs this provider
 gate on relevant pull requests and merges to `main`, every night, and on manual

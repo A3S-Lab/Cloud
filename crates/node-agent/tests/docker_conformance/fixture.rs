@@ -1,5 +1,9 @@
 use super::specs;
-use a3s_cloud_node_agent::{DockerConfig, DockerRuntimeDriver, NodeRuntimeBinding};
+use a3s_cloud_contracts::CloudSecretReference;
+use a3s_cloud_node_agent::{
+    DockerConfig, DockerRuntimeDriver, NodeControlClientError, NodeRuntimeBinding,
+    NodeSecretTransport, SecretMaterial,
+};
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
 use a3s_runtime::{
     runtime_profile_requirements, FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient,
@@ -15,7 +19,7 @@ use bollard::volume::{ListVolumesOptions, RemoveVolumeOptions};
 use bollard::{Docker, API_DEFAULT_VERSION};
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -194,6 +198,21 @@ impl DockerConformanceFixture {
         Err(RuntimeError::ProviderUnavailable(
             "isolated Docker provider did not become ready after restart".into(),
         ))
+    }
+
+    pub(crate) fn secret_generation_directory(&self, spec_digest: &str) -> RuntimeResult<PathBuf> {
+        let digest = spec_digest
+            .strip_prefix("sha256:")
+            .filter(|value| {
+                value.len() == 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+            .ok_or_else(|| {
+                RuntimeError::Protocol("Docker Secret conformance digest is invalid".into())
+            })?;
+        Ok(secret_memory_root().join(&self.namespace).join(digest))
     }
 
     async fn remove_fixture_container(&self, id: &str) -> RuntimeResult<()> {
@@ -397,15 +416,43 @@ pub(crate) async fn connect_driver(
         socket: docker_socket(),
         namespace: namespace.into(),
         operation_timeout_ms: 30_000,
-        secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
+        secret_memory_dir: secret_memory_root(),
     })?;
     driver.bind_node(node_id).await?;
+    let secret_transport: Arc<dyn NodeSecretTransport> = Arc::new(ConformanceSecretTransport);
+    driver.bind_secret_transport(secret_transport).await?;
     Ok(driver)
+}
+
+pub(crate) fn conformance_secret_value(reference: CloudSecretReference) -> String {
+    format!(
+        "a3s-runtime-conformance-secret-{}",
+        reference.secret_id.simple()
+    )
+}
+
+struct ConformanceSecretTransport;
+
+#[async_trait]
+impl NodeSecretTransport for ConformanceSecretTransport {
+    async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        SecretMaterial::new(conformance_secret_value(reference).into_bytes())
+            .map_err(NodeControlClientError::Invalid)
+    }
 }
 
 fn docker_socket() -> String {
     std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
         .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
+}
+
+fn secret_memory_root() -> PathBuf {
+    std::env::var_os("A3S_CLOUD_TEST_SECRET_MEMORY_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/dev/shm/a3s-cloud/test-secrets"))
 }
 
 fn connect_provider_docker() -> RuntimeResult<Docker> {
