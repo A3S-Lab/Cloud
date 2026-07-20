@@ -150,7 +150,7 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, recovery, one-node immutable replacement, and manual rollback with deterministic previous-revision retirement | Complete (`E0` update and rollback slice) |
-| Reachability | Route ownership, production DNS TXT ownership verification and explicit revocation, a Vault-backed production Gateway PKI adapter, managed TLS provisioning, automated renewal/revocation convergence, delayed obsolete-serial revocation, routed Gateway validation, complete snapshot publication, exact acknowledgement projection, and byte-preserving routed update and rollback cutover are implemented; the remaining process-death gates remain | In progress (`E0`) |
+| Reachability | Route ownership, production DNS TXT ownership verification and explicit revocation, a Vault-backed production Gateway PKI adapter, managed TLS provisioning, automated renewal/revocation convergence, delayed obsolete-serial revocation, routed Gateway validation, complete snapshot publication, reload-before-acknowledgement process-death recovery, exact acknowledgement projection, and byte-preserving routed update and rollback cutover | Complete (`E0` slice) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
@@ -642,7 +642,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed TLS mechanics, automated certificate renewal/revocation convergence, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain | In progress |
+| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed TLS mechanics, automated certificate renewal/revocation convergence, forced reload-before-acknowledgement recovery, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; provider-death Secret-rotation apply, activation-before-cleanup process death, and clean-host release gates remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -795,6 +795,11 @@ cargo test -p a3s-cloud-node-agent --lib \
   gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
   -- --ignored --exact --nocapture --test-threads=1
 
+A3S_CLOUD_TEST_GATEWAY_BIN="$(command -v a3s-gateway)" \
+cargo test -p a3s-cloud-node-agent --lib \
+  gateway::reload_crash_tests::installed_a3s_gateway_recovers_reload_after_agent_process_death \
+  -- --ignored --exact --nocapture --test-threads=1
+
 A3S_CLOUD_TEST_S3_ENDPOINT="http://127.0.0.1:9000" \
 A3S_CLOUD_TEST_S3_REGION="us-east-1" \
 A3S_CLOUD_TEST_S3_BUCKET="a3s-cloud-disposable-test" \
@@ -808,19 +813,25 @@ cargo test -p a3s-cloud-control-plane --lib --locked \
 The first Gateway command verifies route-less snapshot transport and node-local
 CAS. The second is the real route-bearing compiler gate. A3S Gateway 1.0.12
 fixes the ACL recursion defect present in 1.0.11, and the generated
-router/service snapshot passes that gate. The final Gateway command is also a
-dedicated CI job: it generates a private key and CSR on the node, provisions the
-managed certificate, reloads the exact HTTPS snapshot, trusts the fixture CA,
-and reaches a loopback upstream through DNS/SNI. The production profile now
-performs bounded ownership verification through the system DNS resolver and
-uses a dedicated Vault PKI mount/role to sign node-generated Gateway CSRs and
-revoke the resulting provider serial. The worker now redispatches pending
-certificate commands, renews within the configured window, filters routes whose
-claims were explicitly revoked, and applies route/certificate changes only for
-the exact Gateway acknowledgement. Rejected replacement snapshots leave the
-previous certificate and active routes authoritative; successful convergence
-retries provider revocation until each unreferenced old serial is durably
-marked revoked.
+router/service snapshot passes that gate. The third command generates a private
+key and CSR on the node, provisions the managed certificate, reloads the exact
+HTTPS snapshot, trusts the fixture CA, and reaches a loopback upstream through
+DNS/SNI. The fourth command durably begins the Gateway command, reloads the real
+process, forces `SIGKILL` before installer-state or acknowledgement completion,
+then reconstructs the agent. Redelivery repeats one idempotent reload, persists
+the exact installed revision and applied acknowledgement, and a second restart
+replays that outcome without another reload. Both real Gateway paths run in the
+dedicated CI job.
+
+The production profile performs bounded ownership verification through the
+system DNS resolver and uses a dedicated Vault PKI mount/role to sign
+node-generated Gateway CSRs and revoke the resulting provider serial. The
+worker redispatches pending certificate commands, renews within the configured
+window, filters routes whose claims were explicitly revoked, and applies
+route/certificate changes only for the exact Gateway acknowledgement. Rejected
+replacement snapshots leave the previous certificate and active routes
+authoritative; successful convergence retries provider revocation until each
+unreferenced old serial is durably marked revoked.
 
 The final S3 command must target a disposable bucket controlled by the test
 operator. The dedicated CI job creates a fresh bucket in digest-pinned MinIO,

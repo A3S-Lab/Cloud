@@ -105,11 +105,15 @@ jobs:
       - name: Install A3S Gateway 1.0.12
         run: cargo install a3s-gateway --version 1.0.12 --locked
 
-      - name: Serve an exact managed TLS snapshot
+      - name: Serve and recover exact Gateway snapshots
         run: |
           A3S_CLOUD_TEST_GATEWAY_BIN=$(command -v a3s-gateway) \
             cargo test -p a3s-cloud-node-agent --lib --locked \
               gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
+              -- --ignored --exact --nocapture --test-threads=1
+          A3S_CLOUD_TEST_GATEWAY_BIN=$(command -v a3s-gateway) \
+            cargo test -p a3s-cloud-node-agent --lib --locked \
+              gateway::reload_crash_tests::installed_a3s_gateway_recovers_reload_after_agent_process_death \
               -- --ignored --exact --nocapture --test-threads=1
 
   s3-compatible-logs:

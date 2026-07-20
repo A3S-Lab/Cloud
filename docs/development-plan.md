@@ -95,7 +95,7 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. The remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, forced reload-before-acknowledgement recovery against A3S Gateway 1.0.12, exact acknowledgement activation, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. Provider-death Secret-rotation apply, activation-before-cleanup process death, and clean-host release gates remain |
 
 The MVP is not complete until E0 passes. D0 verification alone does not imply
 public reachability, production log retention, immutable update, or rollback
@@ -920,7 +920,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
-| 7 | Gateway reload before acknowledgement | In progress | Route-bearing Gateway validate/reload, managed certificate provisioning, real HTTPS, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering are covered with A3S Gateway 1.0.12. PostgreSQL API tests prove exact route activation and replay; process-death injection remains |
+| 7 | Gateway reload before acknowledgement | Verified | `installed_a3s_gateway_recovers_reload_after_agent_process_death` durably begins the node command, reloads A3S Gateway 1.0.12, proves the new listener is live with no installed-state or acknowledgement projection, sends `SIGKILL`, reconstructs the executor, redelivers the same command under a new lease, persists one exact applied acknowledgement, and proves a second restart performs no third reload |
 | 8 | Activation before old-revision cleanup | Implemented slice; release process-death gate remains | Control-plane and routed-update tests reconstruct the coordinator after activation, adopt the deterministic retirement command, and require durable stopped-or-absent evidence before terminal `active`; the real Docker A→failed B→distinct C→cloned A scenario stops A after C activates and stops C only after the rollback activates. A clean-host process kill at this exact boundary remains required before E0 release |
 | 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 
@@ -993,9 +993,14 @@ The remaining changes should land as vertical, independently verified slices:
    the isolated PostgreSQL acceptance scenario cover rejected and applied
    renewal, pre-ack route preservation, revoked-claim removal, and obsolete
    serial retry.
-7. Provider death during a Secret-rotation apply, the remaining crash gates for
-   Gateway reload before acknowledgement and activation before old-revision
-   cleanup, followed by the clean-host end-to-end release run.
+7. Implemented on 2026-07-20: the dedicated A3S Gateway 1.0.12 job durably
+   begins a snapshot command, pauses after the real reload but before local
+   installed-state or acknowledgement completion, sends `SIGKILL`, and proves
+   reconstructed redelivery produces one exact applied acknowledgement. A
+   second reconstruction replays the outcome without another reload.
+8. Provider death during a Secret-rotation apply, process death after
+   activation but before old-revision cleanup, followed by the clean-host
+   end-to-end release run.
 
 No post-E0 product surface is marked available before this list passes. Contract
 design and isolated prototypes may proceed, but they cannot create production

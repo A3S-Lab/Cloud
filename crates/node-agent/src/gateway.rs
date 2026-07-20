@@ -617,3 +617,7 @@ mod tests {
 #[cfg(test)]
 #[path = "gateway_remote_tests.rs"]
 mod remote_tests;
+
+#[cfg(test)]
+#[path = "gateway_reload_crash_tests.rs"]
+mod reload_crash_tests;
