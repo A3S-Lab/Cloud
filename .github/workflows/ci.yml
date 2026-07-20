@@ -148,6 +148,24 @@ jobs:
           toolchain: 1.85.0
           cache: false
 
+      - name: Permit RootlessKit user namespaces on the Ubuntu runner
+        run: |
+          if [[ ! -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]] ||
+            [[ $(< /proc/sys/kernel/apparmor_restrict_unprivileged_userns) != 1 ]]; then
+            exit 0
+          fi
+          cat <<'EOF' | sudo tee /etc/apparmor.d/usr.bin.rootlesskit >/dev/null
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          /usr/bin/rootlesskit flags=(unconfined) {
+            userns,
+
+            include if exists <local/usr.bin.rootlesskit>
+          }
+          EOF
+          sudo apparmor_parser --replace /etc/apparmor.d/usr.bin.rootlesskit
+
       - name: Start digest-pinned rootless BuildKit on an ephemeral loopback endpoint
         run: |
           buildkit_image=docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b
