@@ -91,6 +91,14 @@ replay, REST readback, and post-test Secret-file cleanup. The suite then runs
 `permanently_unhealthy_real_docker_update_preserves_healthy_revision` against
 the real isolated Docker provider.
 
+The dedicated `Linux Secret and logs` CI job runs the same PostgreSQL test with
+an additional digest-pinned registry fixture that requires HTTP basic
+authentication. It proves anonymous access fails, removes the local workload
+image after publishing it, requires the production control-plane resolver to
+decrypt the exact bound credential for manifest authentication, and requires
+the node to resolve the same encrypted reference before Docker can pull the
+exact private digest.
+
 Without `--registry-data`, the runner copies the pinned multi-platform BusyBox
 OCI index from Docker Hub into a temporary registry and retries transient copy
 failures three times. For an offline or rate-limited runner, pass a persistent

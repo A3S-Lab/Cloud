@@ -47,6 +47,9 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
                         path: path.clone(),
                         mode: *mode,
                     },
+                    crate::modules::workloads::domain::entities::SecretBindingTarget::RegistryCredential => {
+                        SecretTarget::RegistryCredential
+                    }
                 };
                 Ok(SecretReference {
                     name: binding.name.clone(),
@@ -127,14 +130,22 @@ mod tests {
                     working_directory: None,
                     environment: BTreeMap::new(),
                 },
-                secrets: vec![SecretBinding {
-                    name: "api-token".into(),
-                    secret_id,
-                    version: 4,
-                    target: SecretBindingTarget::Environment {
-                        variable: "API_TOKEN".into(),
+                secrets: vec![
+                    SecretBinding {
+                        name: "api-token".into(),
+                        secret_id,
+                        version: 4,
+                        target: SecretBindingTarget::Environment {
+                            variable: "API_TOKEN".into(),
+                        },
                     },
-                }],
+                    SecretBinding {
+                        name: "registry".into(),
+                        secret_id,
+                        version: 5,
+                        target: SecretBindingTarget::RegistryCredential,
+                    },
+                ],
                 resources: ServiceResources {
                     cpu_millis: 250,
                     memory_bytes: 64 * 1024 * 1024,
@@ -167,12 +178,13 @@ mod tests {
         assert_eq!(spec.artifact.digest, digest);
         assert_eq!(spec.class, RuntimeUnitClass::Service);
         assert!(spec.health.is_some());
-        assert_eq!(spec.secrets.len(), 1);
+        assert_eq!(spec.secrets.len(), 2);
         assert_eq!(
             CloudSecretReference::parse(&spec.secrets[0].reference).expect("Secret reference"),
             CloudSecretReference::new(revision_id.as_uuid(), secret_id.as_uuid(), 4)
                 .expect("expected Secret reference")
         );
+        assert_eq!(spec.secrets[1].target, SecretTarget::RegistryCredential);
         assert!(spec.mounts.is_empty());
     }
 }

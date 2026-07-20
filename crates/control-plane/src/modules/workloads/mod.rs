@@ -24,7 +24,9 @@ pub use domain::repositories::{
     IWorkloadRuntimeTargetRepository, RequestDeploymentCancellationBundle,
     RequestWorkloadStopBundle, WorkloadStopBundle,
 };
-pub use domain::services::{IOciArtifactResolver, OciArtifactResolutionError};
+pub use domain::services::{
+    IOciArtifactResolver, OciArtifactResolutionError, OciRegistryCredentialReference,
+};
 pub use infrastructure::{
     DeploymentFlowConfig, DeploymentFlowRuntime, IWorkloadRuntimeControl,
     InMemoryWorkloadRepository, OciRegistryArtifactResolver, PostgresWorkloadRepository,

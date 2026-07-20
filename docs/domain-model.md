@@ -149,10 +149,11 @@ Primary domain records:
 
 Owns secret identities, encrypted versions, key rotation, materialization
 authorization, and access audit. An immutable workload revision binds an exact
-Secret version to a typed environment-variable or absolute-file target. Only
-canonical references cross persistent application and Runtime boundaries.
-Plaintext must not enter desired-state rows, domain events, Flow history,
-Runtime state, Fleet commands, logs, or API responses.
+Secret version to a typed environment-variable, absolute-file, or artifact
+registry-credential target. Only canonical references cross persistent
+application and Runtime boundaries. Plaintext must not enter desired-state
+rows, domain events, Flow history, Runtime state, Fleet commands, logs, or API
+responses.
 
 Primary aggregate:
 
@@ -243,9 +244,10 @@ tables directly. Audit records are append-only and separate from event delivery.
   available for rollback until retention removes them.
 - Secret and Skill bindings reference immutable versions and are part of the
   immutable revision template.
-- Each Secret binding has a unique name and target and selects either an
-  environment variable or an absolute file path plus mode. It must reference
-  an active version in the workload's organization, project, and environment.
+- Each Secret binding has a unique name and target and selects an environment
+  variable, an absolute file path plus mode, or the artifact registry
+  credential. It must reference an active version in the workload's
+  organization, project, and environment.
 
 ### Deployment
 
@@ -303,14 +305,21 @@ tables directly. Audit records are append-only and separate from event delivery.
   unless an explicit force workflow records the impact.
 - Durable workload, Runtime, Fleet, Flow, event, label, and API state carries
   only the canonical workload-revision, Secret-ID, and version reference.
-- Materialization is authorized only for the authenticated node assigned to the
-  exact bound revision while it is converging, or while it remains the current
-  active revision of a running workload. Tenant scope and active Secret/version
-  state are revalidated before decryption.
+- Node materialization is authorized only for the authenticated node assigned
+  to the exact bound revision while it is converging, or while it remains the
+  current active revision of a running workload. The authoritative artifact
+  resolver may also materialize an exact registry-credential binding
+  transiently after an authentication challenge. Both paths revalidate tenant
+  scope and active Secret/version state before decryption; the artifact path
+  additionally revalidates project and environment scope.
 - Node material responses are short-lived and non-cacheable. Environment
   material exists only at Docker container creation; file material is written
   atomically beneath a Linux tmpfs root, bind-mounted read-only at the requested
-  path, and removed when the provider resource is retired.
+  path, and removed when the provider resource is retired. Registry credential
+  material exists only while the control plane answers a manifest
+  authentication challenge or Docker constructs an authenticated pull for the
+  exact artifact registry, and is never projected into the container or
+  durable workflow state.
 
 ### Workload log
 

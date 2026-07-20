@@ -40,6 +40,7 @@ pub struct SecretBindingRequest {
 pub enum SecretBindingTargetRequest {
     Environment { variable: String },
     File { path: String, mode: u32 },
+    RegistryCredential,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -117,6 +118,9 @@ impl ServiceTemplateRequest {
                         }
                         SecretBindingTargetRequest::File { path, mode } => {
                             SecretBindingTarget::File { path, mode }
+                        }
+                        SecretBindingTargetRequest::RegistryCredential => {
+                            SecretBindingTarget::RegistryCredential
                         }
                     },
                 })

@@ -8,9 +8,12 @@ provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
 acknowledgement projection. It also has tenant-scoped Secret identities,
 immutable encrypted versions, rotation and version revocation APIs, and
 metadata-only events and idempotency records, typed workload bindings, and late
-Docker environment/file injection. A dedicated Linux acceptance gate now uses
-real PostgreSQL authorization/decryption and Docker to prove active-version
-environment and `0400` tmpfs-file injection. The first-node log slice now
+Docker environment/file injection plus authenticated registry pulls. A
+dedicated Linux acceptance gate now uses real PostgreSQL
+authorization/decryption and Docker to prove active-version environment and
+`0400` tmpfs-file injection, and uses a separate encrypted credential to pull
+an uncached digest from a registry that rejects anonymous access. The
+first-node log slice now
 projects active Runtime targets durably, persists bounded batches before mTLS
 upload, redacts bound Secret values at the Docker boundary, stores verified
 chunk objects through a typed filesystem or S3-compatible adapter, indexes
@@ -341,14 +344,23 @@ explicit break-glass operator action, never the control protocol.
 
 Workload revisions bind Secrets as typed immutable
 `secret_id + version + target` records. Runtime specs and Fleet commands carry
-only canonical `a3s-cloud-secret://` references. When Docker must create or
-restart a container, the driver resolves those references through the existing
-authenticated node-control mTLS client. The control plane authorizes the exact
-revision, assigned node, tenant scope, deployment state, Secret state, and
-version before decrypting. Environment material is passed directly into the
-Docker create boundary; file material is written only beneath the configured
-Linux tmpfs root and mounted read-only. Runtime state files, command journals,
-Flow input, events, and provider labels never receive the plaintext.
+only canonical `a3s-cloud-secret://` references. During authoritative artifact
+resolution, the control plane performs an anonymous manifest request first. A
+Basic or Bearer challenge causes it to reload the exact bound Secret version,
+revalidate tenant/project/environment and active-version scope, decrypt only
+for the request, and discard the redacted, zeroizing credential afterward.
+Only the resolved digest and original reference are persisted. When Docker
+must create or restart a container, the driver resolves references through the
+existing authenticated node-control mTLS client. The control plane authorizes
+the exact revision, assigned node, tenant scope, deployment state, Secret
+state, and version before node-boundary decryption. Environment material is
+passed directly into the Docker create boundary; file material is written only
+beneath the configured Linux tmpfs root and mounted read-only. The node
+resolves a registry credential only when the digest-pinned artifact is absent
+locally, and derives its registry address from that artifact before Docker
+receives pull authentication. Registry credentials never become container
+environment, files, or log-redaction inputs. Runtime state files, command
+journals, Flow input, events, and provider labels never receive the plaintext.
 
 Successful Runtime apply/remove completions are also projected from the command
 journal into restart-safe active log targets. A separate node-agent loop reads
@@ -369,18 +381,24 @@ absent, including an explicit Docker 404 during the read, returns
 retryable and never become gaps.
 
 The Linux Secret/log acceptance path binds one active encrypted PostgreSQL
-Secret version to both an environment variable and a `0400` file. The workload
-proves both values agree without embedding plaintext in its Runtime spec,
-emits the value on real stdout and stderr, and verifies that only redaction
-markers leave the Docker driver. The node-side fixture runs as root, matching
-the isolated release runner, while the workload container stays unprivileged
-with every capability dropped. It then writes the sanitized batch through the
-production PostgreSQL metadata repository and immutable filesystem object
-adapter, reconstructs both adapters and the handler, verifies exact replay, and
-queries the same sanitized records through the tenant-authorized REST API. The
-gate scans those durable log objects for the bound plaintext and requires its
-run-specific tmpfs Secret root to contain no files after cleanup. This is
-success-path acceptance, not provider or control-plane process-death injection.
+Secret version to both an environment variable and a `0400` file, plus a
+separate encrypted credential to an authenticated private registry. It proves
+anonymous registry access fails, resolves the exact digest through the
+credential-aware production control-plane resolver, removes the cached fixture
+image, and pulls the private digest through the production node Secret
+materialization path.
+The workload proves both injected values agree without embedding plaintext in
+its Runtime spec, emits the value on real stdout and stderr, and verifies that
+only redaction markers leave the Docker driver. The node-side fixture runs as
+root, matching the isolated release runner, while the workload container stays
+unprivileged with every capability dropped. It then writes the sanitized batch
+through the production PostgreSQL metadata repository and immutable filesystem
+object adapter, reconstructs both adapters and the handler, verifies exact
+replay, and queries the same sanitized records through the tenant-authorized
+REST API. The gate scans control-plane rows, Flow history, node state, and
+durable log objects for both Secret plaintexts and requires its run-specific
+tmpfs Secret root to contain no files after cleanup. This is success-path
+acceptance, not provider or control-plane process-death injection.
 
 The node validates the discontinuity's exact unit, generation, and requested
 cursor, assigns the next monotonic Cloud sequence, and includes the gap in the

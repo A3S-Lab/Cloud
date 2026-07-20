@@ -3,6 +3,7 @@
 mod api;
 mod event;
 mod node;
+mod registry_credential;
 
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
@@ -18,3 +19,4 @@ pub use node::{
     NodeProtocolError, NodeProtocolErrorCode, NodeSecretMaterialRequest,
     NodeSecretMaterialResponse, RuntimeObservationReport, RuntimeServiceEndpoint,
 };
+pub use registry_credential::RegistryCredentialMaterial;

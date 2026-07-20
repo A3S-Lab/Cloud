@@ -2,6 +2,7 @@ mod container;
 mod health;
 mod image;
 mod logs;
+mod registry_credentials;
 mod secrets;
 
 use crate::{DockerConfig, NodeRuntimeBinding, NodeSecretTransport};
