@@ -299,15 +299,15 @@ impl FileCommandJournal {
                 envelope.sequence, journal.last_received_sequence
             )));
         }
-        if let Some(current) = journal.aggregate_generations.get(&envelope.aggregate_id) {
-            if envelope.generation < current.generation {
-                return Err(CommandJournalError::Conflict(format!(
-                    "command generation {} regresses durable generation {}",
-                    envelope.generation, current.generation
-                )));
-            }
-        }
         if let Some(state_digest) = state_mutation_digest(&envelope.payload)? {
+            if let Some(current) = journal.aggregate_generations.get(&envelope.aggregate_id) {
+                if envelope.generation < current.generation {
+                    return Err(CommandJournalError::Conflict(format!(
+                        "command generation {} regresses durable generation {}",
+                        envelope.generation, current.generation
+                    )));
+                }
+            }
             match journal.aggregate_generations.get(&envelope.aggregate_id) {
                 Some(current)
                     if current.generation == envelope.generation
@@ -605,6 +605,7 @@ mod tests {
         command_id: Uuid,
         sequence: u64,
         aggregate_id: Uuid,
+        generation: u64,
         request_id: &str,
         artifact: char,
     ) -> NodeCommandEnvelope {
@@ -613,7 +614,7 @@ mod tests {
         let spec = RuntimeUnitSpec {
             schema: RuntimeUnitSpec::SCHEMA.into(),
             unit_id: "service-1".into(),
-            generation: 1,
+            generation,
             class: RuntimeUnitClass::Service,
             artifact: ArtifactRef {
                 uri: format!("oci://registry.example/app@{digest}"),
@@ -822,6 +823,7 @@ mod tests {
                 Uuid::now_v7(),
                 1,
                 aggregate_id,
+                1,
                 "deployment-apply",
                 'a',
             ))
@@ -834,6 +836,7 @@ mod tests {
                     Uuid::now_v7(),
                     2,
                     aggregate_id,
+                    1,
                     "recovery-apply",
                     'a',
                 ))
@@ -847,7 +850,58 @@ mod tests {
                 Uuid::now_v7(),
                 3,
                 aggregate_id,
+                1,
                 "conflicting-apply",
+                'b',
+            ))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn older_generation_retirement_does_not_regress_desired_state() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let node_id = Uuid::now_v7();
+        let aggregate_id = Uuid::now_v7();
+        let journal = FileCommandJournal::new(directory.path(), node_id).expect("journal");
+
+        journal
+            .begin(apply_envelope(
+                node_id,
+                Uuid::now_v7(),
+                1,
+                aggregate_id,
+                3,
+                "generation-three-apply",
+                'c',
+            ))
+            .await
+            .expect("generation three apply");
+        let mut retirement = remove_envelope(node_id, Uuid::now_v7(), 2, aggregate_id);
+        let NodeCommandPayload::RuntimeRemove { request } = &retirement.payload else {
+            panic!("retirement fixture payload");
+        };
+        let mut request = request.clone();
+        request.request_id = "retire-generation-one".into();
+        retirement.payload = NodeCommandPayload::RuntimeStop { request };
+        retirement.payload_schema = retirement.payload.schema().into();
+        retirement.payload_digest = retirement.payload.digest().expect("retirement digest");
+        retirement.validate().expect("retirement command");
+        assert_eq!(
+            journal
+                .begin(retirement)
+                .await
+                .expect("retire older generation"),
+            JournalDecision::Execute
+        );
+        assert!(journal
+            .begin(apply_envelope(
+                node_id,
+                Uuid::now_v7(),
+                3,
+                aggregate_id,
+                2,
+                "regressed-generation-apply",
                 'b',
             ))
             .await
@@ -863,6 +917,7 @@ mod tests {
             Uuid::now_v7(),
             1,
             Uuid::now_v7(),
+            1,
             "secret-reference-apply",
             'a',
         );
@@ -896,7 +951,15 @@ mod tests {
         let node_id = Uuid::now_v7();
         let aggregate_id = Uuid::now_v7();
         let apply_id = Uuid::now_v7();
-        let apply = apply_envelope(node_id, apply_id, 1, aggregate_id, "log-target-apply", 'a');
+        let apply = apply_envelope(
+            node_id,
+            apply_id,
+            1,
+            aggregate_id,
+            1,
+            "log-target-apply",
+            'a',
+        );
         let journal = FileCommandJournal::new(directory.path(), node_id).expect("journal");
         journal.begin(apply.clone()).await.expect("begin apply");
         journal
