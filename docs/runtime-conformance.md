@@ -59,6 +59,11 @@ same container and the same single Docker volume. A separate read-only Task
 then verifies the exact pre-restart token and write denial before the Service
 and volume are removed explicitly.
 
+Recovery certification also captures a real Docker log cursor before the
+isolated provider restart, reconstructs the driver and client, requires the
+same provider resource and pre-restart record to remain visible, and resumes
+strictly after the exact cursor without fabricating a discontinuity.
+
 When developing on a dedicated Docker host that cannot safely restart its
 daemon, the following non-certifying probe exercises only the advertised
 optional behavior and still enforces cleanup and inventory equality:
@@ -115,19 +120,26 @@ unprivileged with every capability dropped. The gate then:
 - injects it into a real Docker environment variable and `0400` file without
   placing plaintext in the Runtime command;
 - emits it on stdout and stderr and requires provider-boundary redaction;
-- persists the sanitized batch as immutable filesystem objects plus PostgreSQL
-  metadata, reconstructs the handler/repository/store, and verifies exact
-  replay;
-- reads the sanitized records through the tenant-authorized REST endpoint; and
+- starts a child handler that exits after a synced immutable object publication
+  but before PostgreSQL receipt persistence, proves no batch metadata committed,
+  then reconstructs the handler/repository/store and adopts the exact objects
+  into one receipt;
+- corrupts only a non-secret real Docker marker after receipt, requires exact
+  replay not to repair accepted immutable content, and reads its ordered
+  `corrupt` gap plus both sanitized Secret records through the tenant-authorized
+  REST endpoint; and
 - scans control-plane rows, Flow history, node state, and durable log objects
   for plaintext and requires the post-test tmpfs directory to contain no
   Secret files.
 
-This gate proves the real provider success path and durable replay boundary.
-The PostgreSQL control-plane gate separately kills the in-memory orchestration
-boundary after a Secret rotation commit, races reconstructed restart workers,
-requires one causally linked derived revision and Runtime apply command, then
-reconstructs Flow after the reference-only result and verifies terminal
-activation plus final plaintext scans. Provider-process death during the
-rotated apply and log-object corruption remain part of the broader E0 recovery
-matrix.
+This gate proves the real provider success path, an actual control-plane
+object-before-receipt process-death boundary, exact orphan adoption, and
+filesystem corruption projection. The PostgreSQL control-plane gate separately
+kills the in-memory orchestration boundary after a Secret rotation commit,
+races reconstructed restart workers, requires one causally linked derived
+revision and Runtime apply command, then reconstructs Flow after the
+reference-only result and verifies terminal activation plus final plaintext
+scans. The digest-pinned MinIO gate overwrites a real accepted object and
+requires verified reads to return corruption while immutable replay refuses to
+replace it. Provider process death during the separate rotated workload apply
+remains part of the final E0 recovery matrix.

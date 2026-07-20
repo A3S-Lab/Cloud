@@ -46,6 +46,14 @@ mod workloads_support;
 
 use postgres_fixture::*;
 
+#[tokio::test]
+#[ignore = "private subprocess used only by the PostgreSQL log recovery acceptance gate"]
+async fn log_object_publish_crash_probe() {
+    deployment_flow_support::run_log_object_publish_crash_probe()
+        .await
+        .expect("run log object publish crash probe");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_foundation_is_migrated_atomic_and_idempotent(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -962,7 +970,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             },
             "process": {
                 "command": ["/bin/sh"],
-                "args": ["-c", "set -eu; file_value=$(cat /run/secrets/database-url); test \"$DATABASE_URL\" = \"$file_value\"; printf 'env-secret=%s\\n' \"$DATABASE_URL\"; printf 'file-secret=%s\\n' \"$file_value\" >&2; mkdir -p /www; printf 'healthy\\n' >/www/index.html; exec httpd -f -p 8080 -h /www"],
+                "args": ["-c", "set -eu; file_value=$(cat /run/secrets/database-url); test \"$DATABASE_URL\" = \"$file_value\"; printf 'env-secret=%s\\n' \"$DATABASE_URL\"; printf 'file-secret=%s\\n' \"$file_value\" >&2; printf 'log-recovery-probe\\n'; mkdir -p /www; printf 'healthy\\n' >/www/index.html; exec httpd -f -p 8080 -h /www"],
                 "workingDirectory": null,
                 "environment": {}
             },
@@ -1178,6 +1186,30 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         let records = persisted_logs_json["data"]["records"]
             .as_array()
             .ok_or("persisted workload logs response omitted records")?;
+        let log_recovery = deployment_flow_fixture
+            .log_recovery
+            .as_ref()
+            .ok_or("Docker deployment fixture omitted log recovery evidence")?;
+        let corrupt_record = records
+            .iter()
+            .find(|record| record["sequence"].as_u64() == Some(log_recovery.corrupted_sequence))
+            .ok_or("workload log response omitted the corrupted object sequence")?;
+        assert_eq!(corrupt_record["kind"], "gap");
+        assert_eq!(corrupt_record["gapReason"], "corrupt");
+        assert_eq!(corrupt_record["stream"], log_recovery.corrupted_stream);
+        assert!(corrupt_record["data"].is_null());
+        assert_eq!(
+            records
+                .iter()
+                .filter(|record| record["gapReason"] == "corrupt")
+                .count(),
+            1
+        );
+        assert!(records.iter().all(|record| {
+            !record["data"]
+                .as_str()
+                .is_some_and(|data| data.contains("log-recovery-probe"))
+        }));
         assert!(records.iter().any(|record| {
             record["stream"] == "stdout"
                 && record["data"]

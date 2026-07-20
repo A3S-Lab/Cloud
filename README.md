@@ -136,7 +136,7 @@ API command
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
-| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, a pinned-MinIO lifecycle gate, and real Docker stdout/stderr redaction with durable exact-batch replay and REST readback are implemented; provider/control-plane process-death and corruption certification remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -499,7 +499,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection and post-commit rotation restarts, the real Linux/PostgreSQL/Docker Secret/log success-path gate, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, body retention, bounded tombstone compaction, resumable live web logs, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, remaining Gateway/log process-death and corruption acceptance, update, rollback, and the remaining web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, and the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance are implemented; production certificate automation, Gateway acknowledgement crash recovery, provider-death Secret-rotation apply, update, rollback, and the remaining web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -584,12 +584,16 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
 ```
 
 The provider suite covers Base, Recovery, Networking, Mounts, Health,
-Resources, Logs, and Security. The Cloud suite covers persisted projections,
-the command journal, restart, JetStream redelivery, reconciliation, real
+Resources, Logs, and Security, including continuity of an exact pre-restart log
+cursor across isolated Docker daemon replacement. The Cloud suite covers
+persisted projections, the command journal, restart, JetStream redelivery,
+reconciliation, real
 PostgreSQL-backed Secret authorization, Docker injection, redacted log
-persistence and exact-batch replay, cancellation, failed-update preservation,
-cleanup, and Secret-rotation restart recovery after the committed version
-boundary. The restart case races reconstructed workers, derives one new
+persistence, a real child-process death after immutable object publication but
+before PostgreSQL receipt, exact orphan adoption, ordered REST corruption
+projection, cancellation, failed-update preservation, cleanup, and
+Secret-rotation restart recovery after the committed version boundary. The
+restart case races reconstructed workers, derives one new
 revision with the pinned artifact unchanged, reconstructs Flow after the
 reference-only Runtime result, and scans the restart/checkpoint, desired-state,
 Flow, Fleet, event, audit, log, digest, and API surfaces for plaintext. Its
@@ -665,9 +669,10 @@ authority providers plus automated renewal remain E0 work.
 
 The final S3 command must target a disposable bucket controlled by the test
 operator. The dedicated CI job creates a fresh bucket in digest-pinned MinIO,
-exercises conditional create, exact replay, verified read, idempotent delete,
-and readiness cleanup, then removes the provider container. No credential value
-is stored in ACL configuration.
+exercises conditional create, exact replay, verified read, deliberate object
+corruption, immutable repair rejection, idempotent delete, and readiness
+cleanup, then removes the provider container. No credential value is stored in
+ACL configuration.
 
 Run web checks from `web/`:
 
