@@ -150,21 +150,13 @@ jobs:
 
       - name: Permit RootlessKit user namespaces on the Ubuntu runner
         run: |
-          if [[ ! -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]] ||
-            [[ $(< /proc/sys/kernel/apparmor_restrict_unprivileged_userns) != 1 ]]; then
-            exit 0
+          # Required by BuildKit rootless mode on Ubuntu 24.04:
+          # https://github.com/moby/buildkit/blob/v0.31.2/docs/rootless.md#ubuntu-2404-or-later
+          restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [[ -r $restriction ]] && [[ $(< "$restriction") == 1 ]]; then
+            sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
           fi
-          cat <<'EOF' | sudo tee /etc/apparmor.d/usr.bin.rootlesskit >/dev/null
-          abi <abi/4.0>,
-          include <tunables/global>
-
-          /usr/bin/rootlesskit flags=(unconfined) {
-            userns,
-
-            include if exists <local/usr.bin.rootlesskit>
-          }
-          EOF
-          sudo apparmor_parser --replace /etc/apparmor.d/usr.bin.rootlesskit
+          [[ ! -r $restriction ]] || [[ $(< "$restriction") == 0 ]]
 
       - name: Start digest-pinned rootless BuildKit on an ephemeral loopback endpoint
         run: |
