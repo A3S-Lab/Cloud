@@ -147,6 +147,11 @@ API command
   through a provider-neutral port, pin the verified commit to a path-safe
   versioned Dockerfile recipe, and persist the tenant-scoped revision,
   idempotency result, optional delivery reservation, and outbox fact atomically
+- **Signed GitHub Delivery Inbox**: Authenticate the exact raw body of public
+  GitHub webhook requests with HMAC-SHA256, accept typed branch-push identity
+  into a durable provider-level inbox, replay the same delivery and payload,
+  and reject delivery-ID reuse with different bytes without storing the raw
+  payload or secret
 - **Validated OCI Build Boundary**: Bind one immutable build ID to a checked-out
   content digest and recipe, invoke BuildKit through an Artifact-owned typed
   port with Unix, mTLS, or explicit loopback-conformance transport, export an
@@ -175,7 +180,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, webhook source-identity deduplication, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. The Artifacts context now owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. GitHub App/private-repository authentication, signed webhook intake, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` validated-OCI-build slice) |
+| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress now authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes in a provider-level inbox without storing payloads or secrets. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Repository subscriptions, tenant fanout, GitHub App/private-repository authentication, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` signed-webhook-inbox slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -206,6 +211,7 @@ docker compose \
 
 export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/a3s_cloud"
 export A3S_CLOUD_BOOTSTRAP_TOKEN="replace-with-at-least-32-random-characters"
+export A3S_CLOUD_GITHUB_WEBHOOK_SECRET="replace-with-32-to-512-random-bytes"
 
 cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ```
@@ -308,6 +314,52 @@ List accepted revisions with:
 ```text
 GET /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions
 ```
+
+### Receive a signed GitHub webhook
+
+The provider ingress is public because GitHub cannot present an A3S bearer
+token. It authenticates the exact request bytes with the configured
+HMAC-SHA256 secret:
+
+```text
+POST /api/v1/webhooks/github
+```
+
+For a local request, sign the same file that is sent:
+
+```bash
+cat > /tmp/a3s-github-push.json <<'JSON'
+{"ref":"refs/heads/main","after":"7b7c8152cc148688b403a489a9866731b2e92063","deleted":false,"repository":{"full_name":"A3S-Lab/Cloud","html_url":"https://github.com/A3S-Lab/Cloud"},"installation":{"id":42}}
+JSON
+
+signature="$(
+  openssl dgst -sha256 \
+    -hmac "${A3S_CLOUD_GITHUB_WEBHOOK_SECRET}" \
+    -binary /tmp/a3s-github-push.json |
+    xxd -p -c 256
+)"
+
+curl --request POST http://127.0.0.1:8080/api/v1/webhooks/github \
+  --header "content-type: application/json" \
+  --header "x-github-event: push" \
+  --header "x-github-delivery: local-delivery-1" \
+  --header "x-hub-signature-256: sha256=${signature}" \
+  --data-binary @/tmp/a3s-github-push.json
+```
+
+The signature header must be `sha256=` followed by exactly 64 lowercase
+hexadecimal digits. A valid branch push returns `202`; replaying its delivery
+ID with the exact payload also returns `202`, while changing the payload under
+that ID returns `409`. Authenticated non-push, deleted, and non-branch events
+return `202` without entering the inbox. Invalid signatures return `401`,
+including requests that also carry a valid A3S bearer token, and bodies beyond
+the configured limit return `413`.
+
+This inbox records only provider, delivery ID, canonical repository,
+installation ID, branch, commit, payload digest, and receipt time. It stores
+neither raw payload nor secret and does not yet apply repository policy, map a
+repository to a tenant subscription, create a source revision or outbox event,
+or start a build or deployment.
 
 ### Update an active workload
 
@@ -454,6 +506,8 @@ deployment and Edge policies are split across independent boundaries:
 | `registry.request_timeout_ms` | Timeout for one registry request |
 | `registry.insecure_hosts` | Explicit development-only HTTP registry allowlist |
 | `sources.github_request_timeout_ms` | Bound for one public GitHub API request |
+| `sources.github_webhook_secret_env` | Uppercase environment-variable name containing the 32- to 512-byte GitHub HMAC secret; read for every request to permit rotation |
+| `sources.github_webhook_max_body_bytes` | Accepted signed webhook body limit from 1 KiB through 2 MiB |
 | `sources.allowed_repositories` | Exact HTTPS GitHub repository allowlist; it must be nonempty |
 | `sources.denied_repositories` | Exact HTTPS GitHub repository denylist; denial takes precedence |
 | `edge.entrypoint_address` | Address rendered into the complete traffic snapshot |
@@ -735,7 +789,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, public GitHub ref resolution, secure exact-commit checkout, and rootless BuildKit OCI-output validation implemented) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, public GitHub ref resolution, secure exact-commit checkout, rootless BuildKit OCI-output validation, and signed GitHub provider inbox implemented) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |

@@ -183,3 +183,49 @@ fn source_revision_event_contains_immutable_metadata_only() {
     assert!(!payload.contains("credential"));
     assert!(!payload.contains("token"));
 }
+
+#[test]
+fn signed_push_delivery_is_typed_canonical_and_digest_bound() {
+    let received_at = Utc::now();
+    let delivery = SourceWebhookDelivery::accept(NewSourceWebhookDelivery {
+        provider: GitProvider::Github,
+        delivery_id: WebhookDeliveryId::parse("delivery-123").expect("delivery ID"),
+        repository: GitRepository::parse(GitProvider::Github, "https://github.com/A3S-Lab/Cloud")
+            .expect("repository"),
+        installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+        reference: GitReference::parse("branch", "main").expect("branch"),
+        commit_sha: GitCommitSha::parse(COMMIT).expect("commit"),
+        payload_digest: format!("sha256:{}", "a".repeat(64)),
+        received_at,
+    })
+    .expect("source webhook delivery");
+    assert_eq!(
+        delivery.repository.identity(),
+        "github:github.com/a3s-lab/cloud"
+    );
+    assert_eq!(delivery.reference.value(), "main");
+    assert_eq!(delivery.installation_id.as_u64(), 42);
+
+    let mut tampered = delivery.clone();
+    tampered.payload_digest = format!("sha256:{}", "A".repeat(64));
+    assert!(SourceWebhookDelivery::restore(tampered).is_err());
+    let mut deletion_sentinel = delivery.clone();
+    deletion_sentinel.commit_sha =
+        GitCommitSha::parse("0000000000000000000000000000000000000000").expect("sentinel");
+    assert!(SourceWebhookDelivery::restore(deletion_sentinel).is_err());
+    assert!(GithubInstallationId::parse(0).is_err());
+    assert!(SourceWebhookDelivery::accept(NewSourceWebhookDelivery {
+        reference: GitReference::parse("tag", "v1").expect("tag"),
+        ..NewSourceWebhookDelivery {
+            provider: delivery.provider,
+            delivery_id: delivery.delivery_id,
+            repository: delivery.repository,
+            installation_id: delivery.installation_id,
+            reference: delivery.reference,
+            commit_sha: delivery.commit_sha,
+            payload_digest: delivery.payload_digest,
+            received_at,
+        }
+    })
+    .is_err());
+}

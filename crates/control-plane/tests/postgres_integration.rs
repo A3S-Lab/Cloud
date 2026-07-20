@@ -142,6 +142,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists source_webhook_inbox cascade;
              drop table if exists source_webhook_deliveries cascade;
              drop table if exists external_source_revisions cascade;
              drop table if exists secret_rotation_reconciliations cascade;
@@ -194,7 +195,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 21);
+    assert_eq!(applied, 22);
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -395,6 +396,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "022",
+                "source webhook inbox",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/022_source_webhook_inbox.sql"
+                )),
+            ),
+            Migration::new(
+                "023",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -410,6 +419,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
 
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
+    let _github_webhook_secret =
+        EnvironmentOverride::set(GITHUB_WEBHOOK_ENV, GITHUB_WEBHOOK_SECRET);
     let security_directory = tempfile::tempdir()?;
     let mut application_config = config();
     application_config.security.state_dir = security_directory.path().display().to_string();
@@ -536,6 +547,59 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         response_id(&environment_replay)?
     );
     let environment_id = response_id(&environment)?;
+
+    let webhook_body = serde_json::to_vec(&json!({
+        "ref": "refs/heads/main",
+        "after": "7b7c8152cc148688b403a489a9866731b2e92063",
+        "deleted": false,
+        "repository": {
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        },
+        "installation": {"id": 42}
+    }))?;
+    let webhook = app
+        .call(github_webhook_request(
+            "push",
+            "postgres-webhook-a",
+            &webhook_body,
+        ))
+        .await?;
+    let webhook_replay = app
+        .call(github_webhook_request(
+            "push",
+            "postgres-webhook-a",
+            &webhook_body,
+        ))
+        .await?;
+    assert_eq!(webhook.status(), 202);
+    assert_eq!(webhook_replay.status(), 202);
+    let changed_webhook_body = serde_json::to_vec(&json!({
+        "ref": "refs/heads/main",
+        "after": "52b6a42b75f7e8405ddb2cab1c8f9c4285302a57",
+        "deleted": false,
+        "repository": {
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        },
+        "installation": {"id": 42}
+    }))?;
+    let webhook_conflict = app
+        .call(github_webhook_request(
+            "push",
+            "postgres-webhook-a",
+            &changed_webhook_body,
+        ))
+        .await?;
+    assert_eq!(webhook_conflict.status(), 409);
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<i64>(
+                "select count(*) from source_webhook_inbox",
+            ))
+            .await?,
+        1
+    );
 
     let cross_tenant = app
         .call(post_json(

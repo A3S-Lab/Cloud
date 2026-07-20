@@ -22,6 +22,7 @@ base64.workspace = true
 chrono.workspace = true
 getrandom.workspace = true
 hickory-resolver.workspace = true
+hmac.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 http-body-util.workspace = true

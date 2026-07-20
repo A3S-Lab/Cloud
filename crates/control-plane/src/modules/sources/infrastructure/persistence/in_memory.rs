@@ -4,6 +4,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, ExternalSourceRevision, ISourceRevisionRepository,
+    ISourceWebhookRepository, SourceWebhookDelivery,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -20,6 +21,7 @@ struct State {
     revisions: BTreeMap<(OrganizationId, SourceRevisionId), ExternalSourceRevision>,
     natural_ids: BTreeMap<NaturalKey, SourceRevisionId>,
     webhook_deliveries: BTreeMap<DeliveryKey, String>,
+    webhook_inbox: BTreeMap<(String, String), SourceWebhookDelivery>,
     idempotency: BTreeMap<(String, String), (String, ExternalSourceRevision)>,
     outbox: Vec<DomainEventEnvelope>,
 }
@@ -41,6 +43,46 @@ impl InMemorySourceRevisionRepository {
 
     pub async fn outbox_events(&self) -> Vec<DomainEventEnvelope> {
         self.state.read().await.outbox.clone()
+    }
+
+    pub async fn webhook_inbox(&self) -> Vec<SourceWebhookDelivery> {
+        self.state
+            .read()
+            .await
+            .webhook_inbox
+            .values()
+            .cloned()
+            .collect()
+    }
+}
+
+#[async_trait]
+impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
+    async fn accept_delivery(
+        &self,
+        delivery: SourceWebhookDelivery,
+    ) -> Result<IdempotentWrite<SourceWebhookDelivery>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let key = (
+            delivery.provider.as_str().to_owned(),
+            delivery.delivery_id.as_str().to_owned(),
+        );
+        if let Some(existing) = state.webhook_inbox.get(&key) {
+            if !existing.same_payload_as(&delivery) {
+                return Err(RepositoryError::Conflict(
+                    "webhook delivery ID was reused with another payload".into(),
+                ));
+            }
+            return Ok(IdempotentWrite {
+                value: existing.clone(),
+                replayed: true,
+            });
+        }
+        state.webhook_inbox.insert(key, delivery.clone());
+        Ok(IdempotentWrite {
+            value: delivery,
+            replayed: false,
+        })
     }
 }
 

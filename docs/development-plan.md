@@ -517,7 +517,7 @@ through the proven loop.
 
 ### Current implementation
 
-The first four independently testable G0 slices are implemented:
+The first five independently testable G0 slices are implemented:
 
 - A dedicated Sources bounded context accepts and lists tenant-, project-, and
   environment-scoped `ExternalSourceRevision` aggregates.
@@ -551,6 +551,24 @@ The first four independently testable G0 slices are implemented:
 - Unit/API tests cover policy, URL/ref confusion, annotated tags, provider
   identity mismatch, and moving-ref replay. A dedicated CI job resolves the
   real public `A3S-Lab/Cloud` branch and then confirms the pinned commit.
+- A public `POST /api/v1/webhooks/github` provider boundary requires JSON and
+  the GitHub event, delivery, and `X-Hub-Signature-256` headers. It bounds the
+  body, reads a configured secret environment variable per request, and
+  authenticates the exact raw bytes with canonical lowercase HMAC-SHA256 before
+  interpreting provider data. Bearer authentication cannot bypass the proof.
+- Authenticated non-push, deletion, and non-branch events are acknowledged
+  without persistence. A branch push is reduced to typed provider, delivery,
+  canonical repository, installation, branch, commit, payload-digest, and
+  receipt-time fields; raw payload and secret material are never durable.
+- The PostgreSQL provider inbox atomically replays the same delivery and exact
+  payload while rejecting delivery-ID reuse with changed bytes or typed
+  identity. Unit, API, and PostgreSQL integration tests cover signature
+  authentication, payload bounds, ignored events, replay, and conflict.
+- The provider inbox intentionally has no tenant or repository-subscription
+  authority. It does not apply the source-revision allowlist, emit an outbox
+  fact, create a source revision, or start checkout, build, or deployment.
+  Existing authenticated source-revision `webhookDeliveryId` reservation
+  remains a separate mutation boundary.
 - A provider-neutral checkout port accepts only the canonical repository, full
   accepted commit, and immutable checkout ID. The Git adapter uses a fresh
   bounded staging directory and isolated empty Git home, disables redirects,
@@ -584,20 +602,25 @@ The first four independently testable G0 slices are implemented:
   scratch fixture through the production adapter, validates the OCI output,
   and replays it without reexecution.
 
-These slices establish persistence, public resolution, secure public checkout,
-and a real local-context BuildKit/OCI engine boundary, not the G0 integration
-gate. The Build service binds but does not recompute the checkout digest, and
-the rootless worker does not by itself prove deny-by-default build networking.
-GitHub App credentials and private-repository access, signed webhook intake,
+These slices establish source persistence, public resolution, authenticated
+provider ingress, secure public checkout, and a real local-context BuildKit/OCI
+engine boundary, not the G0 integration gate. The Build service binds but does
+not recompute the checkout digest, and the rootless worker does not by itself
+prove deny-by-default build networking. Tenant repository subscriptions and
+webhook fanout, GitHub App credentials and private-repository access,
 build-operation checkout replay, Runtime Task orchestration, registry
 publication, provenance, deployment handoff, build operations/logs,
 cancellation, and web surfaces remain required.
 
 ### Work
 
-- Add GitHub App credential references and signed webhook intake without
-  changing the provider-neutral source port or immutable revision.
-- Complete private-repository resolution with a real GitHub App gate.
+- Add tenant-scoped repository connections/subscriptions that bind a canonical
+  repository, GitHub installation, target environment, branch policy, and
+  explicit recipe without changing the provider-neutral source port or
+  immutable revision. Fan out an accepted provider delivery only through these
+  authoritative bindings.
+- Add GitHub App credential references and complete private-repository
+  resolution with a real GitHub App installation-token gate.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Run the implemented typed build recipe and Build service as isolated Runtime
@@ -1132,7 +1155,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> GitHub App and signed webhook -> Runtime Task plus registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App repository subscription/fanout -> Runtime Task plus registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

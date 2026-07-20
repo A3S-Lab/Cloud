@@ -1,5 +1,7 @@
+mod github_webhooks_controller;
 mod source_revision_queries_controller;
 mod source_revisions_controller;
 
+pub use github_webhooks_controller::github_webhooks_controller;
 pub use source_revision_queries_controller::source_revision_queries_controller;
 pub use source_revisions_controller::source_revisions_controller;

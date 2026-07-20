@@ -229,6 +229,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/021_external_source_revisions.sql"
             )),
         ),
+        Migration::new(
+            "022",
+            "source webhook inbox",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/022_source_webhook_inbox.sql"
+            )),
+        ),
     ]
 }
 
