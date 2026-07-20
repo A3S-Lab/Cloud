@@ -158,4 +158,15 @@ describe('CloudApi', () => {
       })
     );
   });
+
+  it('builds a scoped live-log URL without putting the token in it', () => {
+    const api = new CloudApi('a3s_secret');
+
+    const url = api.workloadLogStreamUrl('organization / one', 'workload / one', 'revision / one', 'stderr');
+
+    expect(url).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/workloads/workload%20%2F%20one/revisions/revision%20%2F%20one/logs/stream?limit=16&stream=stderr'
+    );
+    expect(url).not.toContain('a3s_secret');
+  });
 });

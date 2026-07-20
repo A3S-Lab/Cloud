@@ -95,7 +95,7 @@ Status as of 2026-07-19:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, configurable body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, update, rollback, and web remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed workload binding, assigned-node mTLS materialization, Docker environment/file injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, configurable body retention, bounded tombstone compaction, resumable live web delivery, and a pinned-MinIO lifecycle gate are implemented. Production DNS/CA adapters, renewal, real PostgreSQL/Linux Docker Secret/log certification, restart orchestration, full redaction/crash gates, update, rollback, and the remaining web surfaces remain |
 
 The MVP is not complete until E0 passes. D0 verification does not imply public
 reachability, production log retention, rolling update, or rollback support.
@@ -369,14 +369,18 @@ Complete the first user-visible release loop.
   identities, the node persists/replays provider gaps and monotonically rebases
   replacement chunks, PostgreSQL atomically stores gap membership and sequence
   watermarks, and snapshot pages expose provider gaps under every stream filter.
-- Add real Linux/Docker/PostgreSQL restart and corruption certification and
-  bounded live delivery to the web console.
+- Implemented: the authorized live-log SSE endpoint polls at most 16 ordered
+  records, caps encoded events at 8 MiB, resumes from `Last-Event-ID`, and
+  terminates on authoritative-query failure. The web console reconnects with
+  bounded backoff, retains 500 deduplicated records, filters stdout/stderr, and
+  preserves provider and compaction gaps.
+- Add real Linux/Docker/PostgreSQL restart and corruption certification.
 - Export metrics and traces through OpenTelemetry and publish the initial
   Prometheus-compatible service/node/operation dashboard contract.
 - Implement rolling update for one node, activation after health and route
   acknowledgement, a rollback window, and explicit manual rollback.
-- Complete the web deployment timeline, live logs, route/certificate state,
-  update diff, rollback action, and terminal-operation cleanup.
+- Complete the web deployment timeline, route/certificate state, update diff,
+  rollback action, and terminal-operation cleanup.
 
 ### Exit gate
 
@@ -887,11 +891,11 @@ land as vertical, independently verified slices:
 2. Complete production log acceptance after the implemented S3-compatible
    adapter, pinned-MinIO lifecycle gate, bounded tombstone compaction, and typed
    provider-gap recovery: pass real Linux/Docker/PostgreSQL crash and corruption
-   gates and add bounded live web delivery.
+   gates.
 3. One-node update orchestration that keeps the prior healthy revision until
    Runtime health and Gateway acknowledgement both succeed.
 4. Manual rollback through the same immutable revision and operation path.
-5. Web route, certificate, log, update-diff, rollback, and terminal-operation
+5. Web route, certificate, update-diff, rollback, and terminal-operation
    surfaces backed only by authoritative projections.
 6. Production DNS/CA adapters, certificate renewal/revocation, crash gates for
    Gateway reload before acknowledgement, activation before old-revision

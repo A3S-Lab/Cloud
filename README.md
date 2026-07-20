@@ -99,9 +99,9 @@ API command
   exact receipt, project typed provider cursor-loss/source-disconnect gaps,
   redact bound Secret values at the Docker log boundary, and query verified
   immutable filesystem or S3-compatible chunk objects through tenant-scoped
-  cursor pages while a configurable worker deletes expired bodies and a second
-  bounded worker compacts old tombstones into explicit sequence ranges without
-  losing replay or ordering watermarks
+  cursor pages or a bounded resumable SSE feed while a configurable worker
+  deletes expired bodies and a second bounded worker compacts old tombstones
+  into explicit sequence ranges without losing replay or ordering watermarks
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
@@ -112,7 +112,8 @@ API command
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
   organization, project, and environment, and inspect desired revisions,
-  observed Runtime state, health, cancellation, and live operation progress
+  observed Runtime state, health, cancellation, live operation progress, and
+  bounded stdout/stderr records with explicit gaps
 
 ### Delivery capability matrix
 
@@ -124,7 +125,7 @@ API command
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
-| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; full Linux/Docker/PostgreSQL crash certification and live web logs remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; full Linux/Docker/PostgreSQL crash certification remains | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -319,8 +320,21 @@ been discarded. Durable batch headers and sequence watermarks remain, so an
 exact old-batch replay returns its receipt without recreating objects and an
 unseen sequence must advance beyond all live, provider-gap, or compacted
 history. Storage unavailability and retryable Runtime/provider transport
-failure remain errors, not fabricated gaps. The endpoint is snapshot paging,
-not the still-planned live web stream.
+failure remain errors, not fabricated gaps.
+
+The live endpoint reuses the same authorization and record shape:
+
+```text
+GET /api/v1/organizations/{organizationId}/workloads/{workloadId}/revisions/{revisionId}/logs/stream?cursor=v1:42&limit=16&stream=stdout
+```
+
+It emits `records` SSE events whose `id` and `nextCursor` are the terminal
+`v1:<sequence>` included in that event. `Last-Event-ID` takes precedence on
+reconnect. Each poll reads at most 16 records, each encoded JSON event is at
+most 8 MiB, idle streams send keepalives, and storage or query failure closes
+the stream for bounded client retry. The web console retains at most the latest
+500 deduplicated records and keeps provider and compaction gaps visible under
+stdout/stderr filtering.
 
 See [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) for the complete control
@@ -439,7 +453,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, body retention, bounded tombstone compaction, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, update, rollback, and web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, body retention, bounded tombstone compaction, resumable live web logs, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, update, rollback, and the remaining web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
