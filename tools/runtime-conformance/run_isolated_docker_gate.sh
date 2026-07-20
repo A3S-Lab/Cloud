@@ -650,7 +650,7 @@ if [[ $suite == provider ]]; then
                 -p a3s-cloud-node-agent \
                 --test docker_conformance \
                 real_docker_passes_all_advertised_runtime_profiles \
-                -- --ignored --nocapture --test-threads=1 \
+                -- --ignored --exact --nocapture --test-threads=1 \
         2>&1 | tee "$evidence/cargo-test.log"
     test_status=${PIPESTATUS[0]}
     set -e
