@@ -39,8 +39,6 @@ jobs:
     name: Clean-host E0 release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
     defaults:
       run:
         shell: bash
@@ -75,6 +73,8 @@ jobs:
         run: cargo install a3s-gateway --version 1.0.12 --locked
 
       - name: Verify disposable Linux release host
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
         run: |
           mkdir -p "$EVIDENCE_DIR"
           required_commands=(
@@ -118,6 +118,7 @@ jobs:
 
       - name: Run clean-host E0 release gate
         env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
           RUNTIME_REVISION: ${{ steps.runtime_revision.outputs.revision }}
         run: |
           cloud_revision=$(git -C apps/cloud rev-parse HEAD)
