@@ -65,10 +65,8 @@ impl DockerConformanceFixture {
                 resource_id(&retry)? == first_resource,
                 "Docker Secret retry duplicated the provider resource",
             )?;
-            require(
-                self.namespace_container_ids().await? == vec![first_resource.clone()],
-                "Docker Secret retry left multiple namespace containers",
-            )?;
+            self.require_single_secret_unit_container(&spec, &first_resource, "retry")
+                .await?;
             require_single_secret_file(&secret_directory, secret_value.as_bytes()).await?;
 
             if std::env::var_os("A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER").is_some() {
@@ -81,10 +79,12 @@ impl DockerConformanceFixture {
                         && resource_id(&recovered)? == first_resource,
                     "Docker Secret provider restart did not adopt the original Service",
                 )?;
-                require(
-                    self.namespace_container_ids().await? == vec![first_resource.clone()],
-                    "Docker Secret provider restart left multiple namespace containers",
-                )?;
+                self.require_single_secret_unit_container(
+                    &spec,
+                    &first_resource,
+                    "provider restart",
+                )
+                .await?;
                 require_single_secret_file(&secret_directory, secret_value.as_bytes()).await?;
                 self.require_secret_surfaces_redacted(
                     client,
@@ -117,6 +117,22 @@ impl DockerConformanceFixture {
             std::env::var_os("A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER").is_some()
         );
         Ok(())
+    }
+
+    async fn require_single_secret_unit_container(
+        &self,
+        spec: &RuntimeUnitSpec,
+        expected: &str,
+        phase: &str,
+    ) -> RuntimeResult<()> {
+        let ids = self.unit_container_ids(&spec.unit_id).await?;
+        require(
+            ids == vec![expected.to_owned()],
+            format!(
+                "Docker Secret {phase} did not preserve one provider resource: count={}, ids={ids:?}",
+                ids.len()
+            ),
+        )
     }
 
     async fn require_secret_surfaces_redacted(

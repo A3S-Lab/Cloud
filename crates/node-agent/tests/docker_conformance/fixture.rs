@@ -26,7 +26,9 @@ use uuid::Uuid;
 
 const PROVIDER_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 const NAMESPACE_LABEL: &str = "a3s.cloud.namespace";
+const NODE_LABEL: &str = "a3s.cloud.node-id";
 const RESTART_TARGET_LABEL: &str = "a3s.runtime.conformance.provider";
+const UNIT_LABEL: &str = "a3s.runtime.unit-id";
 
 pub(crate) struct DockerConformanceFixture {
     pub(crate) namespace: String,
@@ -108,6 +110,38 @@ impl DockerConformanceFixture {
             .collect::<Vec<_>>();
         names.sort_unstable();
         Ok(names)
+    }
+
+    pub(crate) async fn unit_container_ids(&self, unit_id: &str) -> RuntimeResult<Vec<String>> {
+        let mut filters = HashMap::new();
+        filters.insert(
+            "label".to_owned(),
+            vec![
+                format!("{NAMESPACE_LABEL}={}", self.namespace),
+                format!("{NODE_LABEL}={}", self.node_id),
+                format!("{UNIT_LABEL}={unit_id}"),
+            ],
+        );
+        let containers = self
+            .docker_call(
+                "list unit containers",
+                self.docker.list_containers(Some(ListContainersOptions {
+                    all: true,
+                    filters,
+                    ..Default::default()
+                })),
+            )
+            .await?;
+        let mut ids = containers
+            .into_iter()
+            .map(|container| {
+                container.id.ok_or_else(|| {
+                    RuntimeError::Protocol("Docker unit inventory omitted its ID".into())
+                })
+            })
+            .collect::<RuntimeResult<Vec<_>>>()?;
+        ids.sort_unstable();
+        Ok(ids)
     }
 
     pub(crate) async fn docker_call<T, F>(
