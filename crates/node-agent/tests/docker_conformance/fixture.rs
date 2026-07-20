@@ -1,9 +1,5 @@
-use super::specs;
-use a3s_cloud_contracts::CloudSecretReference;
-use a3s_cloud_node_agent::{
-    DockerConfig, DockerRuntimeDriver, NodeControlClientError, NodeRuntimeBinding,
-    NodeSecretTransport, SecretMaterial,
-};
+use super::{secrets::conformance_secret_transport, specs};
+use a3s_cloud_node_agent::{DockerConfig, DockerRuntimeDriver, NodeRuntimeBinding};
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
 use a3s_runtime::{
     runtime_profile_requirements, FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient,
@@ -64,31 +60,11 @@ impl DockerConformanceFixture {
     }
 
     pub(crate) async fn namespace_container_ids(&self) -> RuntimeResult<Vec<String>> {
-        let mut filters = HashMap::new();
-        filters.insert(
-            "label".to_owned(),
+        self.container_ids(
             vec![format!("{NAMESPACE_LABEL}={}", self.namespace)],
-        );
-        let containers = self
-            .docker_call(
-                "list namespace containers",
-                self.docker.list_containers(Some(ListContainersOptions {
-                    all: true,
-                    filters,
-                    ..Default::default()
-                })),
-            )
-            .await?;
-        let mut ids = containers
-            .into_iter()
-            .map(|container| {
-                container.id.ok_or_else(|| {
-                    RuntimeError::Protocol("Docker container inventory omitted its ID".into())
-                })
-            })
-            .collect::<RuntimeResult<Vec<_>>>()?;
-        ids.sort_unstable();
-        Ok(ids)
+            "list namespace containers",
+        )
+        .await
     }
 
     pub(crate) async fn namespace_volume_names(&self) -> RuntimeResult<Vec<String>> {
@@ -113,18 +89,27 @@ impl DockerConformanceFixture {
     }
 
     pub(crate) async fn unit_container_ids(&self, unit_id: &str) -> RuntimeResult<Vec<String>> {
-        let mut filters = HashMap::new();
-        filters.insert(
-            "label".to_owned(),
+        self.container_ids(
             vec![
                 format!("{NAMESPACE_LABEL}={}", self.namespace),
                 format!("{NODE_LABEL}={}", self.node_id),
                 format!("{UNIT_LABEL}={unit_id}"),
             ],
-        );
+            "list unit containers",
+        )
+        .await
+    }
+
+    async fn container_ids(
+        &self,
+        labels: Vec<String>,
+        operation: &'static str,
+    ) -> RuntimeResult<Vec<String>> {
+        let mut filters = HashMap::new();
+        filters.insert("label".to_owned(), labels);
         let containers = self
             .docker_call(
-                "list unit containers",
+                operation,
                 self.docker.list_containers(Some(ListContainersOptions {
                     all: true,
                     filters,
@@ -136,7 +121,7 @@ impl DockerConformanceFixture {
             .into_iter()
             .map(|container| {
                 container.id.ok_or_else(|| {
-                    RuntimeError::Protocol("Docker unit inventory omitted its ID".into())
+                    RuntimeError::Protocol("Docker container inventory omitted its ID".into())
                 })
             })
             .collect::<RuntimeResult<Vec<_>>>()?;
@@ -453,29 +438,10 @@ pub(crate) async fn connect_driver(
         secret_memory_dir: secret_memory_root(),
     })?;
     driver.bind_node(node_id).await?;
-    let secret_transport: Arc<dyn NodeSecretTransport> = Arc::new(ConformanceSecretTransport);
-    driver.bind_secret_transport(secret_transport).await?;
+    driver
+        .bind_secret_transport(conformance_secret_transport())
+        .await?;
     Ok(driver)
-}
-
-pub(crate) fn conformance_secret_value(reference: CloudSecretReference) -> String {
-    format!(
-        "a3s-runtime-conformance-secret-{}",
-        reference.secret_id.simple()
-    )
-}
-
-struct ConformanceSecretTransport;
-
-#[async_trait]
-impl NodeSecretTransport for ConformanceSecretTransport {
-    async fn resolve_secret(
-        &self,
-        reference: CloudSecretReference,
-    ) -> Result<SecretMaterial, NodeControlClientError> {
-        SecretMaterial::new(conformance_secret_value(reference).into_bytes())
-            .map_err(NodeControlClientError::Invalid)
-    }
 }
 
 fn docker_socket() -> String {

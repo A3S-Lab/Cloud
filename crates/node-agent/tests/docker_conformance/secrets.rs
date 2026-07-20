@@ -1,14 +1,41 @@
-use super::fixture::{conformance_secret_value, require, resource_id, DockerConformanceFixture};
+use super::fixture::{require, resource_id, DockerConformanceFixture};
 use super::specs;
 use a3s_cloud_contracts::CloudSecretReference;
+use a3s_cloud_node_agent::{NodeControlClientError, NodeSecretTransport, SecretMaterial};
 use a3s_runtime::contract::{
     RuntimeLogQuery, RuntimeUnitSpec, RuntimeUnitState, SecretReference, SecretTarget,
 };
 use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
+use async_trait::async_trait;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use uuid::Uuid;
 use zeroize::Zeroizing;
+
+pub(crate) fn conformance_secret_transport() -> Arc<dyn NodeSecretTransport> {
+    Arc::new(ConformanceSecretTransport)
+}
+
+fn conformance_secret_value(reference: CloudSecretReference) -> String {
+    format!(
+        "a3s-runtime-conformance-secret-{}",
+        reference.secret_id.simple()
+    )
+}
+
+struct ConformanceSecretTransport;
+
+#[async_trait]
+impl NodeSecretTransport for ConformanceSecretTransport {
+    async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        SecretMaterial::new(conformance_secret_value(reference).into_bytes())
+            .map_err(NodeControlClientError::Invalid)
+    }
+}
 
 impl DockerConformanceFixture {
     pub(crate) async fn verify_secret_nondisclosure_retry_and_recovery(
