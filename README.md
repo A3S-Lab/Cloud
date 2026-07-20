@@ -91,7 +91,9 @@ API command
   rotate immutable encrypted versions through local AES-GCM or Vault Transit,
   bind exact versions to workload environment/file targets, materialize only
   for the assigned node over mTLS, and inject at the Docker boundary without
-  placing plaintext in desired state, Runtime state, commands, or events
+  placing plaintext in desired state, Runtime state, commands, or events; a
+  dedicated Linux/PostgreSQL/Docker gate exercises production authorization
+  and decryption with real environment and `0400` tmpfs-file injection
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Durable Workload Logs**: Project active Runtime targets from the command
@@ -101,7 +103,9 @@ API command
   immutable filesystem or S3-compatible chunk objects through tenant-scoped
   cursor pages or a bounded resumable SSE feed while a configurable worker
   deletes expired bodies and a second bounded worker compacts old tombstones
-  into explicit sequence ranges without losing replay or ordering watermarks
+  into explicit sequence ranges without losing replay or ordering watermarks;
+  the Linux acceptance gate persists real redacted stdout/stderr, reconstructs
+  the persistence adapters, replays the exact batch, and reads it through REST
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
@@ -124,8 +128,8 @@ API command
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
-| Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
-| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, and a dedicated pinned-MinIO lifecycle gate are implemented; full Linux/Docker/PostgreSQL crash certification remains | In progress (`E0`) |
+| Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, and a dedicated Linux/PostgreSQL/Docker gate for active-version authorization, decryption, environment injection, and `0400` tmpfs-file injection are implemented; registry credentials, automatic restart orchestration, process-crash gates, and broader plaintext scans remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, a pinned-MinIO lifecycle gate, and real Docker stdout/stderr redaction with durable exact-batch replay and REST readback are implemented; provider/control-plane process-death and corruption certification remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -453,7 +457,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, body retention, bounded tombstone compaction, resumable live web logs, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, full Secret/log crash acceptance, update, rollback, and the remaining web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, the real Linux/PostgreSQL/Docker Secret/log success-path gate, and the restart-safe filesystem/S3-compatible workload-log path with typed provider gaps, body retention, bounded tombstone compaction, resumable live web logs, and a pinned-MinIO lifecycle gate are implemented; production certificate automation, process-death/corruption acceptance, update, rollback, and the remaining web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -539,9 +543,12 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
 
 The provider suite covers Base, Recovery, Networking, Mounts, Health,
 Resources, Logs, and Security. The Cloud suite covers persisted projections,
-the command journal, restart, JetStream redelivery, reconciliation, log
-transport, cancellation, failed-update preservation, and cleanup. Both suites
-require zero provider and host inventory drift. See
+the command journal, restart, JetStream redelivery, reconciliation, real
+PostgreSQL-backed Secret authorization and Docker injection, redacted log
+persistence and exact-batch replay, cancellation, failed-update preservation,
+and cleanup. Its Secret file root is a run-specific tmpfs directory and must be
+empty after the test. Both suites require zero provider and host inventory
+drift. See
 [`tools/runtime-conformance/README.md`](tools/runtime-conformance/README.md) for
 the pinned images, safety model, and evidence contract.
 

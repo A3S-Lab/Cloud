@@ -706,6 +706,7 @@ async fn exercise_observation_control(
         .await?
         .is_empty());
     let mut log_conflict = log_batch.clone();
+    log_conflict.payload_digest = format!("sha256:{}", "4".repeat(64));
     log_conflict.chunks[0].checksum = format!("sha256:{}", "1".repeat(64));
     assert!(matches!(
         nodes
@@ -714,21 +715,26 @@ async fn exercise_observation_control(
         Err(RepositoryError::Conflict(_))
     ));
     let retention_targets = nodes
-        .list_log_chunks_for_retention(observed_at + Duration::seconds(5), 2)
+        .list_log_chunks_for_retention(observed_at + Duration::seconds(5), 10_000)
         .await?;
-    assert_eq!(retention_targets.len(), 1);
-    assert_eq!(
-        retention_targets[0].object_key,
-        log_batch.chunks[0].object_key
-    );
+    let retention_target = retention_targets
+        .iter()
+        .find(|target| {
+            target.node_id == node_id
+                && target.unit_id == "postgres-service"
+                && target.generation == 1
+                && target.sequence == 1
+        })
+        .expect("Fleet log retention target");
+    assert_eq!(retention_target.object_key, log_batch.chunks[0].object_key);
     assert!(
         nodes
-            .mark_log_chunk_retained(&retention_targets[0], observed_at + Duration::seconds(7))
+            .mark_log_chunk_retained(retention_target, observed_at + Duration::seconds(7))
             .await?
     );
     assert!(
         !nodes
-            .mark_log_chunk_retained(&retention_targets[0], observed_at + Duration::seconds(8))
+            .mark_log_chunk_retained(retention_target, observed_at + Duration::seconds(8))
             .await?
     );
     let retained_logs = nodes
