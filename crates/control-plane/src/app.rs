@@ -128,6 +128,20 @@ pub enum ControlPlaneStartupError {
 pub async fn build_application(
     config: CloudConfig,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    let source_resolver: Arc<dyn ISourceResolver> = Arc::new(
+        GithubSourceResolver::new(Duration::from_millis(
+            config.sources.github_request_timeout_ms,
+        ))
+        .map_err(ControlPlaneStartupError::Sources)?,
+    );
+    build_application_with_source_resolver(config, source_resolver).await
+}
+
+#[doc(hidden)]
+pub async fn build_application_with_source_resolver(
+    config: CloudConfig,
+    source_resolver: Arc<dyn ISourceResolver>,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
@@ -158,12 +172,6 @@ pub async fn build_application(
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let sources: Arc<dyn ISourceRevisionRepository> =
         Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
-    let source_resolver: Arc<dyn ISourceResolver> = Arc::new(
-        GithubSourceResolver::new(Duration::from_millis(
-            config.sources.github_request_timeout_ms,
-        ))
-        .map_err(ControlPlaneStartupError::Sources)?,
-    );
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
         SecurityProfile::Production => Arc::new(

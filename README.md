@@ -813,7 +813,11 @@ persistence, a real child-process death after immutable object publication but
 before PostgreSQL receipt, exact orphan adoption, ordered REST corruption
 projection, cancellation, failed-update preservation, cleanup, manual
 rollback, and Secret-rotation restart recovery after the committed version
-boundary. The real Docker update-and-rollback case deploys healthy A, proves an
+boundary. Because this suite deliberately has no public-network route, its
+PostgreSQL fixture accepts only typed full commit references through a
+deterministic test resolver; the dedicated GitHub source-resolution and Linux
+Secret/log jobs exercise the production GitHub adapter. The real Docker
+update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the
 rollback is selected. The PostgreSQL recovery case blocks retirement dispatch,

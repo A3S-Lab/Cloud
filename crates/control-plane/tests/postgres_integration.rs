@@ -1,4 +1,5 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use a3s_cloud_control_plane::app::build_application_with_source_resolver;
 use a3s_cloud_control_plane::config::{
     AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
     LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
@@ -14,6 +15,9 @@ use a3s_cloud_control_plane::modules::operations::{
     WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, OrganizationId};
+use a3s_cloud_control_plane::modules::sources::domain::{
+    GitReference, ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
+};
 use a3s_cloud_control_plane::{
     build_application, infrastructure::connect_and_migrate, CloudConfig,
 };
@@ -53,6 +57,24 @@ mod workload_rollback_support;
 mod workloads_support;
 
 use postgres_fixture::*;
+
+struct OfflineCommitSourceResolver;
+
+#[async_trait]
+impl ISourceResolver for OfflineCommitSourceResolver {
+    async fn resolve(
+        &self,
+        request: &SourceResolutionRequest,
+    ) -> Result<ResolvedSource, SourceResolutionError> {
+        let GitReference::Commit(commit_sha) = &request.reference else {
+            return Err(SourceResolutionError::Unavailable);
+        };
+        Ok(ResolvedSource {
+            repository: request.repository.clone(),
+            commit_sha: commit_sha.clone(),
+        })
+    }
+}
 
 #[tokio::test]
 #[ignore = "private subprocess used only by the activation-before-retirement crash gate"]
@@ -406,7 +428,15 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .join("node-ca/ca.pem")
         .display()
         .to_string();
-    let app = build_application(application_config).await?;
+    let app = if std::env::var("A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER").as_deref() == Ok("1") {
+        build_application_with_source_resolver(
+            application_config,
+            Arc::new(OfflineCommitSourceResolver),
+        )
+        .await?
+    } else {
+        build_application(application_config).await?
+    };
     let readiness = app
         .call(
             BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
