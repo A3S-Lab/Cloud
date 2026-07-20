@@ -28,6 +28,7 @@ use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeInspection;
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -47,6 +48,7 @@ pub async fn exercise_secret_rotation_restart(
     secret_uuid: Uuid,
     version: u64,
     node: &DeploymentFlowFixture,
+    security_state_dir: &Path,
     sensitive_plaintexts: &[&str],
 ) -> Result<SecretRotationRestartFixture, Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
@@ -266,19 +268,40 @@ pub async fn exercise_secret_rotation_restart(
         .iter()
         .all(|plaintext| !serialized_command.contains(plaintext)));
 
-    let acknowledgement = NodeCommandAck {
-        schema: NodeCommandAck::SCHEMA.into(),
-        command_id: command.command_id,
-        lease_id: command.lease_id,
-        node_id: command.node_id,
-        sequence: command.sequence,
-        payload_digest: command.payload_digest.clone(),
-        completed_at: Utc::now(),
-        outcome: NodeCommandOutcome::Succeeded {
-            result: Box::new(NodeCommandResult::RuntimeApplied {
-                observation: Box::new(healthy_observation(&request.spec)?),
-            }),
-        },
+    let provider_recovery = if std::env::var_os("A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER").is_some()
+    {
+        Some(
+            crate::secret_rotation_provider_crash_support::recover_provider_apply(
+                executor,
+                postgres_url,
+                organization_id,
+                node.node_id,
+                security_state_dir,
+                command.clone(),
+                sensitive_plaintexts,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let acknowledgement = if let Some(recovery) = provider_recovery.as_ref() {
+        recovery.acknowledgement().clone()
+    } else {
+        NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: command.command_id,
+            lease_id: command.lease_id,
+            node_id: command.node_id,
+            sequence: command.sequence,
+            payload_digest: command.payload_digest.clone(),
+            completed_at: Utc::now(),
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeApplied {
+                    observation: Box::new(healthy_observation(&request.spec)?),
+                }),
+            },
+        }
     };
     persist_command_result(
         &node_repository,
@@ -441,6 +464,10 @@ pub async fn exercise_secret_rotation_restart(
             .await?,
         1
     );
+
+    if let Some(recovery) = provider_recovery {
+        recovery.cleanup(sensitive_plaintexts).await?;
+    }
 
     Ok(SecretRotationRestartFixture {
         revision_id: target_revision_id,

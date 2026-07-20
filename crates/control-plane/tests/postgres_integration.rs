@@ -41,6 +41,8 @@ mod edge_support;
 mod fleet_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
+#[path = "support/secret_rotation_provider_crash.rs"]
+mod secret_rotation_provider_crash_support;
 #[path = "support/secret_rotation_restart.rs"]
 mod secret_rotation_restart_support;
 #[path = "support/workload_rollback.rs"]
@@ -56,6 +58,14 @@ async fn log_object_publish_crash_probe() {
     deployment_flow_support::run_log_object_publish_crash_probe()
         .await
         .expect("run log object publish crash probe");
+}
+
+#[tokio::test]
+#[ignore = "private subprocess used only by the Secret-rotation provider crash gate"]
+async fn secret_rotation_provider_crash_probe() {
+    secret_rotation_provider_crash_support::run_provider_crash_probe()
+        .await
+        .expect("run Secret-rotation provider crash probe");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1149,6 +1159,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         Uuid::parse_str(&secret_id)?,
         3,
         &deployment_flow_fixture,
+        security_directory.path(),
         &[
             second_secret_value,
             third_secret_value,

@@ -669,6 +669,7 @@ else
             RUST_BACKTRACE=1 \
             A3S_CLOUD_TEST_DOCKER=1 \
             A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
             A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
             A3S_CLOUD_TEST_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@$postgres_ip:5432/postgres" \
             A3S_CLOUD_TEST_NATS_URL="nats://$nats_ip:4222" \
