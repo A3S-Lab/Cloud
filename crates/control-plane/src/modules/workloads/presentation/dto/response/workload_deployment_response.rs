@@ -1,5 +1,6 @@
 use crate::modules::workloads::application::{
-    CreateWorkloadDeploymentResult, UpdateWorkloadDeploymentResult,
+    CreateWorkloadDeploymentResult, RollbackWorkloadDeploymentResult,
+    UpdateWorkloadDeploymentResult,
 };
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use chrono::{DateTime, Utc};
@@ -25,22 +26,30 @@ pub struct WorkloadDeploymentResponse {
     pub template_digest: Option<String>,
     pub requested_at: DateTime<Utc>,
     pub replayed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback_source_revision_id: Option<Uuid>,
 }
 
 impl From<CreateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
     fn from(result: CreateWorkloadDeploymentResult) -> Self {
-        Self::from_bundle(result.bundle)
+        Self::from_bundle(result.bundle, None)
+    }
+}
+
+impl From<RollbackWorkloadDeploymentResult> for WorkloadDeploymentResponse {
+    fn from(result: RollbackWorkloadDeploymentResult) -> Self {
+        Self::from_bundle(result.bundle, Some(result.source_revision_id.as_uuid()))
     }
 }
 
 impl From<UpdateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
     fn from(result: UpdateWorkloadDeploymentResult) -> Self {
-        Self::from_bundle(result.bundle)
+        Self::from_bundle(result.bundle, None)
     }
 }
 
 impl WorkloadDeploymentResponse {
-    fn from_bundle(bundle: DeploymentBundle) -> Self {
+    fn from_bundle(bundle: DeploymentBundle, rollback_source_revision_id: Option<Uuid>) -> Self {
         Self {
             organization_id: bundle.workload.organization_id.as_uuid(),
             project_id: bundle.workload.project_id.as_uuid(),
@@ -61,6 +70,7 @@ impl WorkloadDeploymentResponse {
             template_digest: bundle.revision.template_digest,
             requested_at: bundle.deployment.requested_at,
             replayed: bundle.replayed,
+            rollback_source_revision_id,
         }
     }
 }

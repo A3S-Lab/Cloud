@@ -105,11 +105,13 @@ batch replay, deliberate non-secret object corruption, ordered REST gap
 readback, and post-test Secret-file cleanup. The provider suite independently
 requires a pre-restart Docker log cursor to survive and resume after isolated
 daemon replacement. The Cloud suite then runs
-`real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous_revision`
+`real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_the_current_revision`
 against the real isolated Docker provider. It deploys healthy A, proves failed
-B cannot replace or stop it, activates healthy C, and requires the
+B cannot replace or stop it, activates a distinct healthy C, and requires the
 deterministic Runtime stop for A to reach durable stopped-or-absent evidence.
-Manual rollback remains outside this gate.
+It then clones A's resolved template into a new generation, activates that
+rollback, and requires the deterministic stop for C before the rollback becomes
+terminal.
 
 The dedicated `Linux Secret and logs` CI job runs the same PostgreSQL test with
 an additional digest-pinned registry fixture that requires HTTP basic

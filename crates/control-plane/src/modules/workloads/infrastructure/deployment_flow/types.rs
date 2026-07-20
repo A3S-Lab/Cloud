@@ -12,6 +12,8 @@ pub(super) struct DeploymentFlowInput {
     pub deployment_id: DeploymentId,
     pub organization_id: OrganizationId,
     pub revision_id: WorkloadRevisionId,
+    #[serde(default)]
+    pub rollback_source_revision_id: Option<WorkloadRevisionId>,
     pub workload_id: WorkloadId,
 }
 

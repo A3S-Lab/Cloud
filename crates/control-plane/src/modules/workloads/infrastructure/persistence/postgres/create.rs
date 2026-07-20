@@ -3,7 +3,7 @@ use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
     require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};
 use a3s_orm::{sql_query, PostgresExecutor, PostgresTransaction};
@@ -14,6 +14,25 @@ pub(super) async fn deployment(
 ) -> Result<DeploymentBundle, RepositoryError> {
     executor
         .transaction(move |transaction| Box::pin(deployment_in_transaction(transaction, request)))
+        .await
+        .map_err(transaction_error)
+}
+
+pub(super) async fn replay(
+    executor: &PostgresExecutor,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<DeploymentBundle>, RepositoryError> {
+    let idempotency = idempotency.clone();
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                Ok(
+                    idempotency_replay::<DeploymentBundle>(transaction, &idempotency)
+                        .await?
+                        .map(|replay| replay.value),
+                )
+            })
+        })
         .await
         .map_err(transaction_error)
 }

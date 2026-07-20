@@ -468,6 +468,24 @@ impl WorkloadRevision {
             .ok_or_else(|| "workload revision has not resolved its OCI artifact".into())
     }
 
+    pub fn rollback_as(
+        &self,
+        id: WorkloadRevisionId,
+        generation: u64,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        if id == self.id || generation <= self.generation || created_at < self.created_at {
+            return Err("rollback revision identity or ordering is invalid".into());
+        }
+        Self::create(
+            id,
+            self.workload_id,
+            generation,
+            self.resolved_template()?.clone(),
+            created_at,
+        )
+    }
+
     pub fn restart_for_secret_rotation(
         &self,
         id: WorkloadRevisionId,

@@ -60,8 +60,9 @@ use crate::modules::workloads::{
     CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
     IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresWorkloadRepository, SecretRotationRestartReconciler, StopWorkloadHandler,
-    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
+    PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler,
+    StopWorkloadHandler, UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler,
+    WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -419,6 +420,8 @@ fn build_application_with_health(
     let workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
     let update_workload_secrets = Arc::clone(&secrets);
+    let rollback_workloads = Arc::clone(&workloads);
+    let rollback_workload_secrets = Arc::clone(&secrets);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
     let list_workloads = Arc::clone(&workloads);
@@ -554,6 +557,12 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workloads::UpdateWorkloadDeployment, _>(
                     UpdateWorkloadDeploymentHandler::new(update_workloads, update_workload_secrets),
+                )
+                .command_handler::<crate::modules::workloads::RollbackWorkloadDeployment, _>(
+                    RollbackWorkloadDeploymentHandler::new(
+                        rollback_workloads,
+                        rollback_workload_secrets,
+                    ),
                 )
                 .command_handler::<crate::modules::workloads::CancelDeployment, _>(
                     CancelDeploymentHandler::new(cancel_workloads),

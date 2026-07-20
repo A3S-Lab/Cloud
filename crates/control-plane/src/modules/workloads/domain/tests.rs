@@ -260,6 +260,76 @@ fn secret_rotation_derives_a_new_resolved_revision_without_mutating_the_source()
 }
 
 #[test]
+fn rollback_clones_the_exact_resolved_template_into_a_new_generation() {
+    let workload_id = WorkloadId::new();
+    let created_at = Utc::now();
+    let source = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload_id,
+        2,
+        template('b'),
+        created_at,
+    )
+    .expect("source revision");
+    let rollback_id = WorkloadRevisionId::new();
+    let rollback = source
+        .rollback_as(rollback_id, 5, created_at + Duration::seconds(1))
+        .expect("rollback revision");
+
+    assert_eq!(rollback.id, rollback_id);
+    assert_eq!(rollback.workload_id, workload_id);
+    assert_eq!(rollback.generation, 5);
+    assert_eq!(rollback.template, source.template);
+    assert_eq!(rollback.template_digest, source.template_digest);
+    assert_eq!(
+        rollback.request.artifact.expected_digest,
+        Some(
+            source
+                .resolved_template()
+                .expect("source template")
+                .artifact
+                .digest
+                .clone()
+        )
+    );
+    assert_ne!(rollback.id, source.id);
+
+    assert!(source
+        .rollback_as(source.id, 6, created_at + Duration::seconds(2))
+        .is_err());
+    assert!(source
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            source.generation,
+            created_at + Duration::seconds(2),
+        )
+        .is_err());
+    assert!(source
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            6,
+            created_at - Duration::seconds(1)
+        )
+        .is_err());
+
+    let unresolved = WorkloadRevision::request(
+        WorkloadRevisionId::new(),
+        workload_id,
+        3,
+        requested_template("oci://registry.example/cloud/fixture:next", None),
+        created_at,
+    )
+    .expect("unresolved source");
+    assert!(unresolved
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            7,
+            created_at + Duration::seconds(2),
+        )
+        .is_err());
+}
+
+#[test]
 fn deployment_lifecycle_is_monotonic_and_activation_selects_the_revision() {
     let now = Utc::now();
     let now = now

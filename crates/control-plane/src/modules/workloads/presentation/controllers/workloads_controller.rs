@@ -4,11 +4,12 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, OrganizationId, ProjectId,
 };
 use crate::modules::workloads::application::{
-    CancelDeployment, CreateWorkloadDeployment, StopWorkload, UpdateWorkloadDeployment,
+    CancelDeployment, CreateWorkloadDeployment, RollbackWorkloadDeployment, StopWorkload,
+    UpdateWorkloadDeployment,
 };
 use crate::modules::workloads::presentation::dto::{
-    CancelDeploymentResponse, CreateWorkloadRequest, UpdateWorkloadRequest,
-    WorkloadDeploymentResponse, WorkloadStopResponse,
+    CancelDeploymentResponse, CreateWorkloadRequest, RollbackWorkloadRequest,
+    UpdateWorkloadRequest, WorkloadDeploymentResponse, WorkloadStopResponse,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -23,6 +24,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
     let cancel_bus = Arc::clone(&bus);
     let stop_bus = Arc::clone(&bus);
     let update_bus = Arc::clone(&bus);
+    let rollback_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::WORKLOAD_WRITE])?
@@ -80,6 +82,41 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             organization_id,
                             workload_id,
                             template: body.into_domain(),
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.bundle.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &WorkloadDeploymentResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/workloads/{workload_id}/rollback",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&rollback_bus);
+                async move {
+                    let body: RollbackWorkloadRequest = request.json_with_content_type()?;
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let workload_id = crate::modules::shared_kernel::domain::WorkloadId::from_uuid(
+                        request.param_as::<Uuid>("workload_id")?,
+                    );
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(RollbackWorkloadDeployment {
+                            organization_id,
+                            workload_id,
+                            source_revision_id: body.source_revision_id(),
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),

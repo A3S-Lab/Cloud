@@ -141,6 +141,21 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         Ok(response)
     }
 
+    async fn replay_deployment(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<DeploymentBundle>, RepositoryError> {
+        let state = self.state.read().await;
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some((digest, bundle)) = state.idempotency.get(&key) else {
+            return Ok(None);
+        };
+        if digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        Ok(Some(bundle.clone()))
+    }
+
     async fn request_deployment_cancellation(
         &self,
         request: RequestDeploymentCancellationBundle,
