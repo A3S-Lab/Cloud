@@ -116,6 +116,8 @@ pub struct RegistryConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcesConfig {
     pub github_request_timeout_ms: u64,
+    pub github_webhook_secret_env: String,
+    pub github_webhook_max_body_bytes: usize,
     pub allowed_repositories: Vec<String>,
     pub denied_repositories: Vec<String>,
 }
@@ -331,6 +333,8 @@ impl CloudConfig {
             sources,
             &[
                 "github_request_timeout_ms",
+                "github_webhook_secret_env",
+                "github_webhook_max_body_bytes",
                 "allowed_repositories",
                 "denied_repositories",
             ],
@@ -466,6 +470,8 @@ impl CloudConfig {
             },
             sources: SourcesConfig {
                 github_request_timeout_ms: integer(sources, "github_request_timeout_ms")?,
+                github_webhook_secret_env: string(sources, "github_webhook_secret_env")?,
+                github_webhook_max_body_bytes: integer(sources, "github_webhook_max_body_bytes")?,
                 allowed_repositories: string_list(sources, "allowed_repositories")?,
                 denied_repositories: string_list(sources, "denied_repositories")?,
             },
@@ -686,11 +692,18 @@ impl CloudConfig {
         }
         if self.sources.github_request_timeout_ms == 0
             || self.sources.github_request_timeout_ms > 60_000
+            || !(1024..=2 * 1024 * 1024).contains(&self.sources.github_webhook_max_body_bytes)
             || self.sources.allowed_repositories.len() > 256
             || self.sources.denied_repositories.len() > 256
         {
             return Err(ConfigError::Invalid(
-                "sources requires a 1-60000 ms GitHub request timeout and at most 256 exact allowlisted and denied repositories"
+                "sources requires a 1-60000 ms GitHub request timeout, a 1024-byte to 2-MiB webhook body limit, and at most 256 exact allowlisted and denied repositories"
+                    .into(),
+            ));
+        }
+        if !valid_env_name(&self.sources.github_webhook_secret_env) {
+            return Err(ConfigError::Invalid(
+                "sources.github_webhook_secret_env must be an uppercase environment variable name"
                     .into(),
             ));
         }
@@ -1267,6 +1280,8 @@ registry {
 }
 sources {
   github_request_timeout_ms = 10000
+  github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+  github_webhook_max_body_bytes = 1048576
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }
@@ -1340,6 +1355,11 @@ security {
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.sources.allowed_repositories.len(), 1);
+        assert_eq!(
+            config.sources.github_webhook_secret_env,
+            "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+        );
+        assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
@@ -1364,6 +1384,7 @@ security {
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);
+        assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
         assert_eq!(config.logs.retention_ms, 604_800_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
@@ -1425,6 +1446,16 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "allowed_repositories = [\"https://github.com/A3S-Lab/Cloud\"]",
             "allowed_repositories = [\"https://github.com.evil.example/A3S-Lab/Cloud\"]"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_webhook_secret_env = \"A3S_CLOUD_GITHUB_WEBHOOK_SECRET\"",
+            "github_webhook_secret_env = \"webhook-secret\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_webhook_max_body_bytes = 1048576",
+            "github_webhook_max_body_bytes = 1023"
         ))
         .is_err());
 

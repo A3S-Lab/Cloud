@@ -8,7 +8,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
-    GitRepository, ISourceRevisionRepository,
+    GitReference, GitRepository, GithubInstallationId, ISourceRevisionRepository,
+    ISourceWebhookRepository, SourceWebhookDelivery, WebhookDeliveryId,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
@@ -31,6 +32,34 @@ struct SourceRevisionRow {
     recipe_digest: String,
     aggregate_version: u64,
     accepted_at: DateTime<Utc>,
+}
+
+struct SourceWebhookRow {
+    provider: String,
+    delivery_id: String,
+    repository_url: String,
+    repository_identity: String,
+    installation_id: i64,
+    branch_name: String,
+    commit_sha: String,
+    payload_digest: String,
+    received_at: DateTime<Utc>,
+}
+
+impl FromRow for SourceWebhookRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            provider: decode(row, 0)?,
+            delivery_id: decode(row, 1)?,
+            repository_url: decode(row, 2)?,
+            repository_identity: decode(row, 3)?,
+            installation_id: decode(row, 4)?,
+            branch_name: decode(row, 5)?,
+            commit_sha: decode(row, 6)?,
+            payload_digest: decode(row, 7)?,
+            received_at: decode(row, 8)?,
+        })
+    }
 }
 
 impl FromRow for SourceRevisionRow {
@@ -60,6 +89,93 @@ pub struct PostgresSourceRevisionRepository {
 impl PostgresSourceRevisionRepository {
     pub const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
+    }
+}
+
+#[async_trait]
+impl ISourceWebhookRepository for PostgresSourceRevisionRepository {
+    async fn accept_delivery(
+        &self,
+        delivery: SourceWebhookDelivery,
+    ) -> Result<IdempotentWrite<SourceWebhookDelivery>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let branch_name = match &delivery.reference {
+                        GitReference::Branch(value) => value,
+                        _ => {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "source webhook delivery is not a branch push".into(),
+                            ))
+                        }
+                    };
+                    let installation_id =
+                        i64::try_from(delivery.installation_id.as_u64()).map_err(|_| {
+                            PostgresPersistenceError::Invariant(
+                                "source webhook installation ID exceeds PostgreSQL bigint".into(),
+                            )
+                        })?;
+                    let inserted = execute(
+                        transaction,
+                        sql_query::<()>(
+                            "insert into source_webhook_inbox (provider, delivery_id, repository_url, repository_identity, installation_id, branch_name, commit_sha, payload_digest, received_at) values (",
+                        )
+                        .bind(delivery.provider.as_str())
+                        .append(", ")
+                        .bind(delivery.delivery_id.as_str())
+                        .append(", ")
+                        .bind(delivery.repository.canonical_url())
+                        .append(", ")
+                        .bind(delivery.repository.identity())
+                        .append(", ")
+                        .bind(installation_id)
+                        .append(", ")
+                        .bind(branch_name.as_str())
+                        .append(", ")
+                        .bind(delivery.commit_sha.as_str())
+                        .append(", ")
+                        .bind(delivery.payload_digest.as_str())
+                        .append(", ")
+                        .bind(delivery.received_at)
+                        .append(") on conflict (provider, delivery_id) do nothing"),
+                    )
+                    .await?;
+                    if inserted > 1 {
+                        return Err(PostgresPersistenceError::Invariant(format!(
+                            "accepting source webhook delivery affected {inserted} rows"
+                        )));
+                    }
+                    let row = fetch_optional::<SourceWebhookRow, _>(
+                        transaction,
+                        sql_query::<SourceWebhookRow>(
+                            "select provider, delivery_id, repository_url, repository_identity, installation_id, branch_name, commit_sha, payload_digest, received_at from source_webhook_inbox where provider = ",
+                        )
+                        .bind(delivery.provider.as_str())
+                        .append(" and delivery_id = ")
+                        .bind(delivery.delivery_id.as_str())
+                        .append(" for update"),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        PostgresPersistenceError::Invariant(
+                            "accepted source webhook delivery could not be read".into(),
+                        )
+                    })?;
+                    let existing = map_webhook_row(row)?;
+                    if !existing.same_payload_as(&delivery) {
+                        return Err(RepositoryError::Conflict(
+                            "webhook delivery ID was reused with another payload".into(),
+                        )
+                        .into());
+                    }
+                    Ok(IdempotentWrite {
+                        value: existing,
+                        replayed: inserted == 0,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
     }
 }
 
@@ -331,6 +447,60 @@ fn map_row(row: SourceRevisionRow) -> Result<ExternalSourceRevision, PostgresPer
         recipe_digest,
         aggregate_version,
         accepted_at,
+    })
+    .map_err(PostgresPersistenceError::Invariant)
+}
+
+fn map_webhook_row(
+    row: SourceWebhookRow,
+) -> Result<SourceWebhookDelivery, PostgresPersistenceError> {
+    let provider = GitProvider::parse(&row.provider).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored source webhook provider is invalid: {error}"
+        ))
+    })?;
+    let delivery_id = WebhookDeliveryId::parse(row.delivery_id).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored source webhook delivery ID is invalid: {error}"
+        ))
+    })?;
+    let repository = GitRepository::parse(provider, &row.repository_url).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored source webhook repository is invalid: {error}"
+        ))
+    })?;
+    if repository.identity() != row.repository_identity {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored source webhook repository identity does not match its URL".into(),
+        ));
+    }
+    let installation_id = u64::try_from(row.installation_id)
+        .ok()
+        .and_then(|value| GithubInstallationId::parse(value).ok())
+        .ok_or_else(|| {
+            PostgresPersistenceError::Invariant(
+                "stored source webhook installation ID is invalid".into(),
+            )
+        })?;
+    let reference = GitReference::parse("branch", row.branch_name).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored source webhook branch is invalid: {error}"
+        ))
+    })?;
+    let commit_sha = GitCommitSha::parse(row.commit_sha).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored source webhook commit is invalid: {error}"
+        ))
+    })?;
+    SourceWebhookDelivery::restore(SourceWebhookDelivery {
+        provider,
+        delivery_id,
+        repository,
+        installation_id,
+        reference,
+        commit_sha,
+        payload_digest: row.payload_digest,
+        received_at: row.received_at,
     })
     .map_err(PostgresPersistenceError::Invariant)
 }

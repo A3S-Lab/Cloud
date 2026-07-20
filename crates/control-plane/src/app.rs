@@ -54,10 +54,12 @@ use crate::modules::secrets::{
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
 use crate::modules::sources::domain::{
-    ISourceResolver, ISourceRevisionRepository, SourceRepositoryPolicy,
+    ISourceResolver, ISourceRevisionRepository, ISourceWebhookRepository, ISourceWebhookVerifier,
+    SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
-    GithubSourceResolver, ListSourceRevisionsHandler, PostgresSourceRevisionRepository,
+    AcceptSourceWebhookDeliveryHandler, GithubSourceResolver, GithubWebhookVerifier,
+    ListSourceRevisionsHandler, PostgresSourceRevisionRepository,
     ResolveExternalSourceRevisionHandler, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -142,6 +144,13 @@ pub async fn build_application_with_source_resolver(
     config: CloudConfig,
     source_resolver: Arc<dyn ISourceResolver>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
+        GithubWebhookVerifier::new(
+            config.sources.github_webhook_secret_env.clone(),
+            config.sources.github_webhook_max_body_bytes,
+        )
+        .map_err(ControlPlaneStartupError::Sources)?,
+    );
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
@@ -170,8 +179,9 @@ pub async fn build_application_with_source_resolver(
     let routes: Arc<dyn IEdgeRepository> = edge_repository;
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
-    let sources: Arc<dyn ISourceRevisionRepository> =
-        Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
+    let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
+    let sources: Arc<dyn ISourceRevisionRepository> = source_repository.clone();
+    let source_webhooks: Arc<dyn ISourceWebhookRepository> = source_repository;
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
         SecurityProfile::Production => Arc::new(
@@ -376,7 +386,9 @@ pub async fn build_application_with_source_resolver(
             routes,
             secrets,
             sources,
+            source_webhooks,
             source_resolver,
+            source_webhook_verifier,
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
@@ -423,7 +435,9 @@ struct ApplicationDependencies {
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
+    source_webhooks: Arc<dyn ISourceWebhookRepository>,
     source_resolver: Arc<dyn ISourceResolver>,
+    source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
@@ -451,7 +465,9 @@ fn build_application_with_health(
         routes,
         secrets,
         sources,
+        source_webhooks,
         source_resolver,
+        source_webhook_verifier,
         secret_encryption,
         route_targets,
         route_commands,
@@ -520,6 +536,7 @@ fn build_application_with_health(
     let get_secrets = secrets;
     let accept_sources = Arc::clone(&sources);
     let list_sources = sources;
+    let accept_source_webhooks = source_webhooks;
     let source_policy = Arc::new(
         SourceRepositoryPolicy::github(
             &config.sources.allowed_repositories,
@@ -621,6 +638,9 @@ fn build_application_with_health(
                         source_resolver,
                         source_policy,
                     ),
+                )
+                .command_handler::<crate::modules::sources::AcceptSourceWebhookDelivery, _>(
+                    AcceptSourceWebhookDeliveryHandler::new(accept_source_webhooks),
                 )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(
@@ -767,7 +787,7 @@ fn build_application_with_health(
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
         .import(SecretsModule)
-        .import(SourcesModule)
+        .import(SourcesModule::new(source_webhook_verifier))
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

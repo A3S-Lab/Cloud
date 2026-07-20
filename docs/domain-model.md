@@ -22,6 +22,7 @@ distributes committed facts after the corresponding database transaction.
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
 | Asset release | An immutable, versioned publication of one asset revision and artifact. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
+| Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; it is not yet a tenant subscription or source revision. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Workload | Environment-scoped desired long-running service. It is not an Asset. |
 | Workload revision | Immutable desired runtime specification derived from one source. |
@@ -71,17 +72,21 @@ Primary aggregates:
 
 ### 3.3 External sources
 
-Owns immutable external application source revisions accepted after provider
-resolution. It deliberately does not own hosted A3S assets, mutable provider
-refs, repository credentials, build execution, artifacts, or deployments.
+Owns authenticated source-provider delivery facts and immutable external
+application source revisions accepted after provider resolution. It
+deliberately does not own hosted A3S assets, mutable provider refs, repository
+credentials, build execution, artifacts, or deployments.
 
-Primary aggregate:
+Primary aggregates:
 
 - `ExternalSourceRevision`
+- `SourceWebhookDelivery`
 
 The initial provider is GitHub. Provider adapters may resolve convenient refs,
 but the aggregate accepts only a canonical repository identity, a full commit
-object ID, and an explicit versioned build recipe.
+object ID, and an explicit versioned build recipe. The provider-level webhook
+inbox authenticates and deduplicates typed branch-push facts but does not infer
+tenant ownership or initiate source delivery.
 
 ### 3.4 Asset hosting
 
@@ -248,6 +253,27 @@ tables directly. Audit records are append-only and separate from event delivery.
   repository and full commit. One checkout ID is immutable, replay revalidates
   its credential-free content digest, unsupported gitlinks and escaping
   symlinks fail closed, and Git metadata is never part of the build context.
+
+### Source webhook delivery
+
+- Provider authentication covers the exact bounded raw request body. GitHub
+  uses HMAC-SHA256 with a secret read from its configured environment variable
+  for every request; an A3S bearer token is never an alternative proof.
+- Only a signed branch push becomes a delivery. Authenticated non-push,
+  deletion, and non-branch events are acknowledged without durable state.
+- A delivery records provider, bounded delivery ID, canonical repository,
+  positive installation ID, safe branch, full nonzero commit ID,
+  exact-payload SHA-256 digest, and canonical receipt time. Raw payload and
+  secret material are never stored.
+- `(provider, delivery_id)` identifies one provider fact. Replaying the exact
+  payload returns the first fact; reusing the key with another payload or typed
+  identity conflicts atomically.
+- The inbox is provider-level and does not apply an environment repository
+  policy, resolve a tenant subscription, emit an outbox fact, or create a
+  source revision, build, or deployment.
+- The provider delivery is distinct from an optional
+  `ExternalSourceRevision` webhook reservation supplied through the
+  authenticated tenant mutation.
 
 ### Asset
 
@@ -540,15 +566,19 @@ The implemented G0 boundary persists `ExternalSourceRevision` before a build
 exists. Its REST boundary enforces exact repository policy, resolves a typed
 public GitHub branch, tag, or full commit through a provider-neutral port, and
 accepts the resulting immutable object ID with
-`a3s.cloud.build-recipe.v1`. The implemented secure checkout port materializes
-that exact public commit under bounded isolated Git configuration, removes
-`.git`, and records an immutable filesystem digest for replay. The implemented
-Artifact-owned Build service can consume a caller-supplied materialized source
-and recipe through rootless BuildKit, then validate and atomically receipt a
-local OCI layout. It does not yet coordinate or revalidate the checkout,
-publish the image, record provenance, or hand a digest to Workloads. GitHub
-App/private-repository authentication and the complete source-to-artifact
-operation remain later G0 work.
+`a3s.cloud.build-recipe.v1`. A separate public GitHub endpoint now
+HMAC-authenticates exact raw requests and durably deduplicates typed branch
+pushes in a provider-level inbox. It deliberately stops before tenant
+subscription lookup or fanout. The implemented secure checkout port
+materializes an accepted public commit under bounded isolated Git
+configuration, removes `.git`, and records an immutable filesystem digest for
+replay. The implemented Artifact-owned Build service can consume a
+caller-supplied materialized source and recipe through rootless BuildKit, then
+validate and atomically receipt a local OCI layout. It does not yet coordinate
+or revalidate the checkout, publish the image, record provenance, or hand a
+digest to Workloads. Repository subscriptions, GitHub App/private-repository
+authentication, and the complete source-to-artifact operation remain later G0
+work.
 
 ## 6. State models
 
@@ -655,7 +685,8 @@ Gateway revision.
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
-| External source revision, recipe digest, and webhook source-identity reservation | PostgreSQL Sources tables |
+| Provider webhook delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
+| External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |

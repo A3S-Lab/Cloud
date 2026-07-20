@@ -17,7 +17,7 @@ use crate::modules::secrets::{
 use crate::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
 };
-use crate::modules::sources::InMemorySourceRevisionRepository;
+use crate::modules::sources::{GithubWebhookVerifier, InMemorySourceRevisionRepository};
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use chrono::Utc;
@@ -35,6 +35,7 @@ const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const PROJECT_TOKEN: &str = "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const SOURCE_TOKEN: &str = "a3s_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const GITHUB_WEBHOOK_SECRET: &str = "github-webhook-test-secret-0123456789abcdef";
 
 struct TestCertificateAuthority;
 
@@ -233,6 +234,8 @@ fn config() -> CloudConfig {
         },
         sources: SourcesConfig {
             github_request_timeout_ms: 10_000,
+            github_webhook_secret_env: "A3S_CLOUD_GITHUB_WEBHOOK_SECRET".into(),
+            github_webhook_max_body_bytes: 1024 * 1024,
             allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],
             denied_repositories: Vec::new(),
         },
@@ -423,6 +426,7 @@ fn build_test_application_with_source_resolver(
     );
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
+    let source_webhooks = sources.clone();
     build_application_with_health(
         config(),
         ApplicationDependencies {
@@ -434,7 +438,12 @@ fn build_test_application_with_source_resolver(
             routes,
             secrets,
             sources,
+            source_webhooks,
             source_resolver,
+            source_webhook_verifier: Arc::new(
+                GithubWebhookVerifier::for_test(GITHUB_WEBHOOK_SECRET, 1024 * 1024)
+                    .map_err(BootError::Internal)?,
+            ),
             secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,

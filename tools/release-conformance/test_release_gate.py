@@ -25,6 +25,8 @@ class ReleaseGateContractTests(unittest.TestCase):
         self.assertIn(
             """sources {
   github_request_timeout_ms = 10000
+  github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+  github_webhook_max_body_bytes = 1048576
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }""",

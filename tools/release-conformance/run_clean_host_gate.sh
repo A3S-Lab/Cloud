@@ -239,6 +239,7 @@ gate_completed=0
 A3S_CLOUD_BOOTSTRAP_TOKEN=""
 A3S_CLOUD_ADMIN_TOKEN=""
 A3S_CLOUD_ENROLLMENT_TOKEN=""
+A3S_CLOUD_GITHUB_WEBHOOK_SECRET=""
 A3S_GATEWAY_ADMIN_TOKEN=""
 
 terminate_process() {
@@ -340,6 +341,7 @@ scan_sensitive_evidence() {
         "$A3S_CLOUD_BOOTSTRAP_TOKEN" \
         "$A3S_CLOUD_ADMIN_TOKEN" \
         "$A3S_CLOUD_ENROLLMENT_TOKEN" \
+        "$A3S_CLOUD_GITHUB_WEBHOOK_SECRET" \
         "$A3S_GATEWAY_ADMIN_TOKEN"; do
         [[ -n $secret ]] || continue
         if grep --recursive --files-with-matches --fixed-strings \
@@ -379,9 +381,11 @@ trap 'exit 129' HUP
 A3S_CLOUD_BOOTSTRAP_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 A3S_CLOUD_ADMIN_TOKEN="a3s_$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 A3S_CLOUD_ENROLLMENT_TOKEN="a3sn_$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+A3S_CLOUD_GITHUB_WEBHOOK_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 A3S_GATEWAY_ADMIN_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 export A3S_CLOUD_BOOTSTRAP_TOKEN A3S_CLOUD_ADMIN_TOKEN
-export A3S_CLOUD_ENROLLMENT_TOKEN A3S_GATEWAY_ADMIN_TOKEN
+export A3S_CLOUD_ENROLLMENT_TOKEN A3S_CLOUD_GITHUB_WEBHOOK_SECRET
+export A3S_GATEWAY_ADMIN_TOKEN
 
 printf '%s\n' "$cloud_sha" >"$evidence/cloud.sha"
 printf '%s\n' "$runtime_sha" >"$evidence/runtime.sha"
@@ -597,6 +601,8 @@ registry {
 
 sources {
   github_request_timeout_ms = 10000
+  github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+  github_webhook_max_body_bytes = 1048576
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }

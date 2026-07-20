@@ -3,6 +3,128 @@ use super::*;
 const COMMIT_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
+#[tokio::test]
+async fn signed_github_push_is_public_bounded_and_durably_deduplicated() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let sources = Arc::new(InMemorySourceRevisionRepository::new());
+    let app = build_test_application_with_sources(identity, projects, sources.clone())?;
+    let body = github_push_payload(COMMIT_A);
+
+    let first = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-a",
+            &body,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(first.status(), 202);
+    assert_eq!(response_json(&first)?["data"]["received"], true);
+    let replay = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-a",
+            &body,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(replay.status(), 202);
+    let inbox = sources.webhook_inbox().await;
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].commit_sha.as_str(), COMMIT_A);
+    assert_eq!(inbox[0].reference.value(), "main");
+
+    let mut reformatted = body.clone();
+    reformatted.push(b'\n');
+    let raw_payload_conflict = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-a",
+            &reformatted,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(raw_payload_conflict.status(), 409);
+    assert_eq!(sources.webhook_inbox().await.len(), 1);
+
+    let changed = github_push_payload(COMMIT_B);
+    let conflict = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-a",
+            &changed,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(conflict.status(), 409);
+    assert_eq!(sources.webhook_inbox().await.len(), 1);
+
+    let invalid_signature = app
+        .call(
+            github_webhook_request(
+                "push",
+                "github-delivery-invalid",
+                &body,
+                "another-github-webhook-secret-0123456789",
+            )
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+        )
+        .await?;
+    assert_eq!(invalid_signature.status(), 401);
+    assert_eq!(sources.webhook_inbox().await.len(), 1);
+
+    let ping = app
+        .call(github_webhook_request(
+            "ping",
+            "github-delivery-ping",
+            &body,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(ping.status(), 202);
+    assert_eq!(sources.webhook_inbox().await.len(), 1);
+
+    let deleted = github_push_payload_for_reference(
+        "refs/heads/main",
+        "0000000000000000000000000000000000000000",
+        true,
+    );
+    let deleted_response = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-delete",
+            &deleted,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(deleted_response.status(), 202);
+    let tag = github_push_payload_for_reference("refs/tags/v1", COMMIT_A, false);
+    let tag_response = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-tag",
+            &tag,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(tag_response.status(), 202);
+    assert_eq!(sources.webhook_inbox().await.len(), 1);
+
+    let oversized = vec![b'x'; 1024 * 1024 + 1];
+    let too_large = app
+        .call(github_webhook_request(
+            "push",
+            "github-delivery-large",
+            &oversized,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(too_large.status(), 413);
+    assert_eq!(sources.webhook_inbox().await.len(), 1);
+    Ok(())
+}
+
 fn source_request(
     repository_url: &str,
     reference_kind: &str,
@@ -28,6 +150,46 @@ fn source_request(
         },
         "webhookDeliveryId": delivery_id
     })
+}
+
+fn github_push_payload(commit: &str) -> Vec<u8> {
+    github_push_payload_for_reference("refs/heads/main", commit, false)
+}
+
+fn github_push_payload_for_reference(git_reference: &str, commit: &str, deleted: bool) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "ref": git_reference,
+        "after": commit,
+        "deleted": deleted,
+        "repository": {
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        },
+        "installation": {"id": 42}
+    }))
+    .expect("GitHub push payload")
+}
+
+fn github_webhook_request(
+    event: &str,
+    delivery_id: &str,
+    body: &[u8],
+    secret: &str,
+) -> BootRequest {
+    BootRequest::new(HttpMethod::Post, "/api/v1/webhooks/github")
+        .with_header("content-type", "application/json")
+        .with_header("x-github-event", event)
+        .with_header("x-github-delivery", delivery_id)
+        .with_header("x-hub-signature-256", github_signature(secret, body))
+        .with_body(body.to_vec())
+}
+
+fn github_signature(secret: &str, body: &[u8]) -> String {
+    use hmac::{Hmac, Mac};
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC");
+    mac.update(body);
+    format!("sha256={:x}", mac.finalize().into_bytes())
 }
 
 #[tokio::test]

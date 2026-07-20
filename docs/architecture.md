@@ -66,15 +66,18 @@ add a Sources context with canonical GitHub repository identities, an exact
 allow/deny policy, provider-neutral public branch/tag/commit resolution, full
 immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic webhook
 source-identity reservation, PostgreSQL persistence, and tenant-scoped REST
-acceptance/query. A provider-neutral checkout port and Git adapter now fetch an
-accepted public commit under isolated Git configuration, reject unsafe tree
-entries, strip `.git`, and commit an immutable content receipt. The Artifacts
-context also owns a typed Build service whose BuildKit adapter exports and
-fully validates a local OCI image layout; a dedicated gate exercises it against
-the digest-pinned rootless BuildKit image. The build coordinator does not yet
-join those boundaries or run the client through a Runtime Task. GitHub
-App/private-repository authentication, signed webhook ingress, isolated build
-orchestration, registry publication, and provenance remain unimplemented.
+acceptance/query. A separate public GitHub ingress authenticates the exact raw
+body with HMAC-SHA256 and stores only a typed branch-push identity and payload
+digest in a durable provider-level replay inbox. A provider-neutral checkout
+port and Git adapter fetch an accepted public commit under isolated Git
+configuration, reject unsafe tree entries, strip `.git`, and commit an
+immutable content receipt. The Artifacts context also owns a typed Build
+service whose BuildKit adapter exports and fully validates a local OCI image
+layout; a dedicated gate exercises it against the digest-pinned rootless
+BuildKit image. The build coordinator does not yet join those boundaries or run
+the client through a Runtime Task. Repository subscriptions and tenant fanout,
+GitHub App/private-repository authentication, isolated build orchestration,
+registry publication, and provenance remain unimplemented.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -280,7 +283,7 @@ inside the same transaction.
 | --- | --- | --- |
 | Identity | create organization, manage membership/token | password/identity provider, audit |
 | Projects | create project/environment, request deletion | operation coordinator |
-| Sources | resolve and accept immutable external source revision | provider source resolver, build coordinator |
+| Sources | authenticate and accept provider webhook delivery; resolve and accept immutable external source revision | provider webhook verifier, source resolver, build coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
 | Artifacts | build, register, verify, sign, retain artifact | BuildKit, OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
@@ -703,6 +706,31 @@ with a Runtime Task. OCI inputs resolve a tag once and deploy only the manifest
 digest. Build cache keys include source digest, recipe digest, builder digest,
 platform, and declared inputs.
 
+`POST /api/v1/webhooks/github` is a public provider boundary. It requires JSON
+plus GitHub event, delivery, and
+`X-Hub-Signature-256` headers. The verifier rejects bodies beyond the configured
+bound, reads the configured secret environment variable for each request, and
+authenticates the exact raw bytes with HMAC-SHA256 before parsing. The accepted
+signature syntax is exactly `sha256=` plus 64 lowercase hexadecimal digits.
+Bearer authentication cannot substitute for or bypass this proof.
+
+Authenticated non-push events, deleted pushes, and non-branch refs are
+acknowledged without persistence. A branch push is reduced to the GitHub
+provider, bounded delivery ID, canonical repository identity, positive
+installation ID, safe branch, full commit object ID, exact-payload SHA-256
+digest, and canonical receipt time. The PostgreSQL inbox is keyed by provider
+and delivery ID. An exact-payload replay returns the stored fact; reusing the
+key with any changed typed identity or raw-body digest conflicts in the same
+transaction. Neither secret material nor the raw payload is stored.
+
+This inbox is deliberately provider-scoped. It does not evaluate tenant
+repository policy, identify a repository subscription, emit an integration
+event, or create a source revision, build, or deployment. Those actions require
+an explicit tenant-owned subscription and fanout boundary. It is also separate
+from the optional source-revision `webhookDeliveryId`, which remains an
+authenticated mutation-time reservation bound to one repository-plus-commit
+source identity.
+
 `POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
 normalizes an exact GitHub HTTPS locator, enforces the configured exact
 allow/deny policy, and resolves the reference through a provider-neutral port.
@@ -716,8 +744,8 @@ revision, idempotency response, optional webhook repository-plus-commit
 reservation, and `source.revision.accepted` outbox fact. Natural identity is
 environment, repository, commit, and recipe digest. Mutable ref names and
 credential references are not durable source-revision state. GitHub App and
-private-repository authentication, signed webhook ingress, and the coordinated
-BuildKit operation remain subsequent G0 boundaries.
+private-repository authentication, repository subscriptions and webhook fanout,
+and the coordinated BuildKit operation remain subsequent G0 boundaries.
 
 The provider-neutral source-checkout port accepts only a canonical repository,
 one full commit object ID, and an immutable checkout ID. Its Git adapter uses a

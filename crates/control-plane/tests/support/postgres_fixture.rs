@@ -4,6 +4,8 @@ use std::ffi::{OsStr, OsString};
 pub(super) const URL_ENV: &str = "A3S_CLOUD_INTEGRATION_POSTGRES_URL";
 pub(super) const BOOTSTRAP_ENV: &str = "A3S_CLOUD_INTEGRATION_BOOTSTRAP_TOKEN";
 pub(super) const BOOTSTRAP_TOKEN: &str = "integration-bootstrap-credential-0123456789abcdef";
+pub(super) const GITHUB_WEBHOOK_ENV: &str = "A3S_CLOUD_INTEGRATION_GITHUB_WEBHOOK_SECRET";
+pub(super) const GITHUB_WEBHOOK_SECRET: &str = "integration-github-webhook-secret-0123456789abcdef";
 pub(super) const ADMIN_TOKEN: &str =
     "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub(super) const PROJECT_TOKEN: &str =
@@ -150,6 +152,23 @@ pub(super) fn get_as(path: impl Into<String>, token: &str) -> BootRequest {
         .with_header("authorization", format!("Bearer {token}"))
 }
 
+pub(super) fn github_webhook_request(event: &str, delivery_id: &str, body: &[u8]) -> BootRequest {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(GITHUB_WEBHOOK_SECRET.as_bytes()).expect("HMAC");
+    mac.update(body);
+    BootRequest::new(HttpMethod::Post, "/api/v1/webhooks/github")
+        .with_header("content-type", "application/json")
+        .with_header("x-github-event", event)
+        .with_header("x-github-delivery", delivery_id)
+        .with_header(
+            "x-hub-signature-256",
+            format!("sha256={:x}", mac.finalize().into_bytes()),
+        )
+        .with_body(body.to_vec())
+}
+
 pub(super) fn response_json(response: &BootResponse) -> a3s_boot::Result<Value> {
     response.body_json()
 }
@@ -217,6 +236,8 @@ pub(super) fn config() -> CloudConfig {
         },
         sources: SourcesConfig {
             github_request_timeout_ms: 10_000,
+            github_webhook_secret_env: "A3S_CLOUD_INTEGRATION_GITHUB_WEBHOOK_SECRET".into(),
+            github_webhook_max_body_bytes: 1024 * 1024,
             allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],
             denied_repositories: Vec::new(),
         },

@@ -7,16 +7,22 @@ pub mod value_objects;
 #[cfg(test)]
 mod tests;
 
-pub use entities::{ExternalSourceRevision, NewExternalSourceRevision};
+pub use entities::{
+    ExternalSourceRevision, NewExternalSourceRevision, NewSourceWebhookDelivery,
+    SourceWebhookDelivery,
+};
 pub use events::SourceRevisionAccepted;
 pub use repositories::{
-    AcceptSourceRevision, ISourceRevisionRepository, WebhookDeliveryReservation,
+    AcceptSourceRevision, ISourceRevisionRepository, ISourceWebhookRepository,
+    WebhookDeliveryReservation,
 };
 pub use services::{
-    CheckedOutSource, ISourceCheckout, ISourceResolver, ResolvedSource, SourceCheckoutError,
-    SourceCheckoutRequest, SourceRepositoryPolicy, SourceResolutionError, SourceResolutionRequest,
+    CheckedOutSource, ISourceCheckout, ISourceResolver, ISourceWebhookVerifier, ResolvedSource,
+    SourceCheckoutError, SourceCheckoutRequest, SourceRepositoryPolicy, SourceResolutionError,
+    SourceResolutionRequest, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
+    VerifiedSourcePush, VerifiedSourceWebhook,
 };
 pub use value_objects::{
     BuildPlatform, BuildRecipe, GitCommitSha, GitProvider, GitReference, GitRepository,
-    WebhookDeliveryId,
+    GithubInstallationId, WebhookDeliveryId,
 };
