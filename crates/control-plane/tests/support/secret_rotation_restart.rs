@@ -312,11 +312,23 @@ pub async fn exercise_secret_rotation_restart(
     )
     .await?;
 
-    // Lose the coordinator after the restart result is durable, reconstruct it,
-    // and require the same operation to activate before issuing one deterministic
-    // stop for the previous immutable Runtime revision.
+    // Block retirement dispatch, let a child durably select the rotated
+    // revision, then kill that process before any cleanup command can commit.
     drop(coordinator);
     drop(flow);
+    crate::activation_retirement_crash_support::kill_after_activation_before_retirement(
+        executor,
+        postgres_url,
+        organization_id,
+        workload_id,
+        deployment_id,
+        operation_id,
+        target_revision_id,
+    )
+    .await?;
+
+    // A reconstructed coordinator must replay activation and issue one
+    // deterministic stop for the previous immutable Runtime revision.
     let flow = restart_flow(
         postgres_url,
         workload_repository.clone(),
@@ -476,7 +488,7 @@ pub async fn exercise_secret_rotation_restart(
     })
 }
 
-async fn restart_flow(
+pub(crate) async fn restart_flow(
     postgres_url: &str,
     workloads: Arc<PostgresWorkloadRepository>,
     nodes: Arc<PostgresNodeRepository>,

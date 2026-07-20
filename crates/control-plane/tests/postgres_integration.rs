@@ -29,6 +29,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+#[path = "support/activation_retirement_crash.rs"]
+mod activation_retirement_crash_support;
 #[path = "support/cancellation.rs"]
 mod cancellation_support;
 #[path = "support/deployment_flow.rs"]
@@ -51,6 +53,14 @@ mod workload_rollback_support;
 mod workloads_support;
 
 use postgres_fixture::*;
+
+#[tokio::test]
+#[ignore = "private subprocess used only by the activation-before-retirement crash gate"]
+async fn activation_before_retirement_crash_probe() {
+    activation_retirement_crash_support::run_activation_crash_probe()
+        .await
+        .expect("run activation-before-retirement crash probe");
+}
 
 #[tokio::test]
 #[ignore = "private subprocess used only by the PostgreSQL log recovery acceptance gate"]

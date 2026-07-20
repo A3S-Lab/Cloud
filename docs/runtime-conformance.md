@@ -122,6 +122,14 @@ real Docker health, selects D in `retiring`, and requires the deterministic stop
 for C before D becomes terminal `active`. A second lease after each retirement
 must contain no duplicate command.
 
+The PostgreSQL parent also holds retirement command access closed and resumes
+the update in a child Flow process. Once the child has durably selected the
+candidate as `retiring`, the parent verifies that no cleanup command committed
+and sends `SIGKILL`. A reconstructed coordinator must replay activation,
+dispatch one deterministic stop for the previous immutable revision, and reach
+terminal `active` only after stopped-or-absent evidence. This real process probe
+runs in both the Linux Secret/log job and the isolated Cloud consumer job.
+
 This real-provider gate certifies Runtime update, rollback, and retirement
 behavior. The routed control-plane suite separately proves that the rollback
 candidate waits for the exact Gateway acknowledgement and atomically retargets
@@ -182,5 +190,4 @@ requires verified reads to return corruption while immutable replay refuses to
 replace it. The rotated workload gate now proves provider and agent process
 death preserve one exact Docker resource, one completed Runtime receipt, `0400`
 Secret material, redacted logs, and complete cleanup. E0 remains in progress
-for process death after activation but before old-revision cleanup and the
-clean-host end-to-end release run.
+for the clean-host end-to-end release run.
