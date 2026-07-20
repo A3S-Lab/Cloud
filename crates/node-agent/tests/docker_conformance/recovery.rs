@@ -2,10 +2,7 @@ use super::fixture::{connect_driver, found, require, resource_id, DockerConforma
 use super::specs;
 use a3s_runtime::contract::{RuntimeInspection, RuntimeUnitState};
 use a3s_runtime::{RuntimeClient, RuntimeDriver, RuntimeError, RuntimeResult, RuntimeStateStore};
-use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions,
-};
-use std::collections::HashMap;
+use bollard::container::{Config, CreateContainerOptions, RemoveContainerOptions};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -121,7 +118,7 @@ impl DockerConformanceFixture {
             "same-generation recovery replay created another Docker resource",
         )?;
         require(
-            self.managed_unit_container_ids(&spec.unit_id).await?.len() == 1,
+            self.unit_container_ids(&spec.unit_id).await?.len() == 1,
             "same-generation recovery left duplicate Docker resources",
         )?;
         client
@@ -196,36 +193,6 @@ impl DockerConformanceFixture {
             .remove(&specs::action("recovery-duplicate-remove", &spec))
             .await?;
         Ok(())
-    }
-
-    async fn managed_unit_container_ids(&self, unit_id: &str) -> RuntimeResult<Vec<String>> {
-        let filters = HashMap::from([(
-            "label".to_owned(),
-            vec![
-                format!("a3s.cloud.namespace={}", self.namespace),
-                format!("a3s.runtime.unit-id={unit_id}"),
-            ],
-        )]);
-        let containers = self
-            .docker_call(
-                "list managed unit containers",
-                self.docker.list_containers(Some(ListContainersOptions {
-                    all: true,
-                    filters,
-                    ..Default::default()
-                })),
-            )
-            .await?;
-        let mut ids = containers
-            .into_iter()
-            .map(|container| {
-                container.id.ok_or_else(|| {
-                    RuntimeError::Protocol("Docker unit inventory omitted its ID".into())
-                })
-            })
-            .collect::<RuntimeResult<Vec<_>>>()?;
-        ids.sort_unstable();
-        Ok(ids)
     }
 }
 
