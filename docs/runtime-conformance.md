@@ -189,5 +189,24 @@ scans. The digest-pinned MinIO gate overwrites a real accepted object and
 requires verified reads to return corruption while immutable replay refuses to
 replace it. The rotated workload gate now proves provider and agent process
 death preserve one exact Docker resource, one completed Runtime receipt, `0400`
-Secret material, redacted logs, and complete cleanup. E0 remains in progress
-for the clean-host end-to-end release run.
+Secret material, redacted logs, and complete cleanup.
+
+## Clean-host E0 release acceptance
+
+The final E0 gate builds release-mode control-plane and node-agent binaries from
+exact clean Cloud and pinned Runtime revisions. On a disposable Linux host it
+starts digest-pinned PostgreSQL and registry fixtures, A3S Gateway 1.0.12, the
+control plane, and one real outbound Docker node, then drives:
+
+```text
+bootstrap -> enrollment -> release A -> managed TLS route -> ordered logs
+          -> resumable SSE -> release B -> cloned-A rollback -> durable stop
+```
+
+The gate requires a distinct live Docker identity for A, B, and rollback, zero
+running units after stop, clean Cloud and Runtime worktrees, empty targeted
+inventories, and exact before/after host container, volume, and network
+inventories. Cleanup removes only run-owned resources and private state, and a
+final fixed-string scan rejects evidence containing any generated credential.
+Only then does the runner write `A3S_CLOUD_CLEAN_HOST_E0_PASS`. This real
+process-level gate is now verified and closes E0.

@@ -136,6 +136,12 @@ API command
   failed or rejected update, survive process death after activation but before
   retirement dispatch, resume the deterministic cleanup, and drive cancellation
   through bounded cleanup
+- **Clean-Host E0 Certification**: Build release binaries from exact clean
+  Cloud and Runtime revisions, start pinned PostgreSQL and registry fixtures,
+  A3S Gateway 1.0.12, the control plane, and one real outbound Docker node,
+  then prove bootstrap, enrollment, digest-pinned deployment, managed TLS,
+  ordered resumable logs, immutable update, cloned rollback, durable stop, and
+  exact source and host cleanup without credential leakage
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
@@ -157,6 +163,7 @@ API command
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, provider-and-agent-death recovery during rotated apply with exact container reattachment and receipt replay, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
+| Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -645,7 +652,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed TLS mechanics, automated certificate renewal/revocation convergence, forced reload-before-acknowledgement recovery, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, activation-before-retirement process-death recovery, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; the clean-host release gate remains | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -653,16 +660,16 @@ security model, consistency boundaries, and failure recovery.
 | S0 — Stateful platform | Explicit databases and volumes with fencing, backup, restore, and retention | Planned |
 | H0 — Production scale | Durable replicas, multi-node placement, Gateway replication, HA, and measured autoscaling | Planned |
 
-The first usable release remains E0: one control plane, one Linux node,
+E0 is the first verified usable release: one control plane, one Linux node,
 Docker-backed stateless workloads, and a repeatable end-to-end deployment on a
-clean host. Its exit gate includes crash injection at each durable boundary,
-recovery without duplicate provider resources, and rollback to the previous
-healthy revision.
+clean host. Its release evidence includes crash injection at each durable
+boundary, recovery without duplicate provider resources, A→B→cloned-A routed
+cutover, durable stop, and exact cleanup back to the host baseline.
 
-After E0, G0 source delivery, C0 control surfaces, and S0 stateful foundations
-may advance as independent lanes. P0 builds on G0, A0 reuses the same build and
-deployment path, and H0 scales only the single-node semantics proven by the
-earlier gates.
+With E0 verified, G0 source delivery, C0 control surfaces, and S0 stateful
+foundations may advance as independent lanes. P0 builds on G0, A0 reuses the
+same build and deployment path, and H0 scales only the single-node semantics
+proven by the earlier gates.
 
 Cloud intentionally does not own a built-in mail server, a separate native
 desktop feature set, or commercial billing. A3S Gateway owns edge transport,
@@ -851,6 +858,27 @@ exercises conditional create, exact replay, verified read, deliberate object
 corruption, immutable repair rejection, idempotent delete, and readiness
 cleanup, then removes the provider container. No credential value is stored in
 ACL configuration.
+
+### Certify the clean-host E0 release
+
+The final E0 gate requires exact clean Cloud and pinned Runtime worktrees on a
+dedicated Linux Docker host, plus A3S Gateway 1.0.12:
+
+```bash
+runtime_revision=$(<tools/runtime-conformance/runtime-revision)
+tools/release-conformance/run_clean_host_gate.sh \
+  --source-root /var/tmp/a3s-cloud-release/release-candidate \
+  --cloud-sha "$CLOUD_SHA" \
+  --runtime-sha "$runtime_revision" \
+  --gateway "$(command -v a3s-gateway)"
+```
+
+A passing run emits `A3S_CLOUD_CLEAN_HOST_E0_PASS` only after the A→B→cloned-A
+TLS route, ordered and cursor-resumed log evidence, three distinct provider
+resources, durable stop, clean source trees, exact container/volume/network
+inventory restoration, and an empty generated-credential scan all pass. See
+[`tools/release-conformance/README.md`](tools/release-conformance/README.md)
+for host preparation and the complete evidence contract.
 
 Run web checks from `web/`:
 
