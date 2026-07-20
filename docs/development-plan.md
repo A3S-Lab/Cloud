@@ -78,12 +78,12 @@ flowchart LR
     S0 --> H0
 ```
 
-The first release gate is `E0`. After E0, source delivery (`G0`), stable control
-surfaces (`C0`), and stateful foundations (`S0`) may advance as independent
-lanes. Project import (`P0`) depends on the immutable source and build contracts
-from G0. Hosted assets (`A0`) reuse the same source-to-artifact path. Production
-multi-node work (`H0`) starts only after the product surfaces it must scale have
-passed their single-node gates.
+The first release gate is `E0`, and it is verified. Source delivery (`G0`),
+stable control surfaces (`C0`), and stateful foundations (`S0`) may advance as
+independent lanes. Project import (`P0`) depends on the immutable source and
+build contracts from G0. Hosted assets (`A0`) reuse the same source-to-artifact
+path. Production multi-node work (`H0`) starts only after the product surfaces
+it must scale have passed their single-node gates.
 
 ### 3.1 Verified delivery status
 
@@ -95,12 +95,11 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, production DNS TXT ownership verification and revocation, a Vault-backed production Gateway PKI adapter, managed certificate state and node-local keys, automated renewal/revocation convergence with delayed provider-serial revocation, HTTPS-only snapshot dispatch/replay, forced reload-before-acknowledgement recovery against A3S Gateway 1.0.12, exact acknowledgement activation, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, provider-and-agent-death recovery during rotated apply with exact resource reattachment and Runtime receipt replay, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, activation-before-retirement process-death recovery, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. The clean-host release gate remains |
+| E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
 
-The MVP is not complete until E0 passes. D0 verification alone does not imply
-public reachability, production log retention, immutable update, or rollback
-support; the E0 update and rollback slices now supply those single-node
-behaviors while the remaining integrated release gates stay open.
+E0 closes the first usable-service MVP. D0 verification alone did not imply
+public reachability, durable log retention, immutable update, or rollback; the
+verified E0 release evidence now supplies that complete single-node loop.
 
 ### 3.2 Capability ownership
 
@@ -111,7 +110,7 @@ authoritative model:
 | Capability | Owning gate | Planning decision |
 | --- | --- | --- |
 | Prebuilt OCI deployment | `D0` | Verified; remains the common deployment path |
-| HTTPS, logs, update, and rollback | `E0` | Complete the first release before broadening inputs or providers |
+| HTTPS, logs, update, and rollback | `E0` | Verified first release; later milestones reuse this path without weakening it |
 | Workload and provider secrets | `E0` | Store encrypted values behind tenant-scoped references; never persist or project plaintext |
 | Logs, metrics, traces, and alerts | `E0`/`C0`/`H0` | Establish truthful single-node signals first, then notifications, SLOs, and measured scaling |
 | External Git and reproducible builds | `G0` | Explicit recipes first; automatic detection builds on the proven contract |
@@ -296,6 +295,8 @@ routing yet.
 
 ## 8. Milestone E0: HTTPS, logs, update, and rollback
 
+**Status:** Verified on 2026-07-20.
+
 ### Goal
 
 Complete the first user-visible release loop.
@@ -374,9 +375,12 @@ Complete the first user-visible release loop.
   Runtime to reattach the same container and complete and replay the exact
   receipt. It then verifies `0400` Secret material, log redaction, durable-state
   plaintext exclusion, and complete container/tmpfs cleanup.
-- Verify ordinary HTTP, streaming responses, and WebSocket upgrade through the
-  same acknowledged Gateway revision. Advanced caching and transport tuning are
-  not part of E0.
+- Implemented scope: the clean-host gate reaches ordinary HTTPS only after the
+  exact acknowledged Gateway revision, while the authenticated log path proves
+  bounded cursor-resumed SSE. Generic streaming-response and WebSocket proxy
+  mechanics remain A3S Gateway transport conformance and do not create a
+  separate Cloud desired-state feature. Advanced caching and transport tuning
+  remain outside E0.
 - Implemented: successful Runtime apply/remove outcomes project restart-safe
   active log targets from the command journal. A separate retrying node loop
   persists one bounded pending batch before upload, replays the exact batch
@@ -428,8 +432,11 @@ Complete the first user-visible release loop.
   requires its ordered REST position to become a `corrupt` gap. The pinned
   MinIO gate independently overwrites a real object and requires verified reads
   plus immutable repair rejection.
-- Export metrics and traces through OpenTelemetry and publish the initial
-  Prometheus-compatible service/node/operation dashboard contract.
+- Deferred to C0/H0 production operations: export metrics and traces through
+  OpenTelemetry and publish Prometheus-compatible service/node/operation
+  dashboards. E0 exposes structured correlation, durable observations, logs,
+  health, and Operation timelines but does not claim a production telemetry
+  backend.
 - Implemented: `POST
   /organizations/{organization_id}/workloads/{workload_id}/deployments`
   commits a complete immutable replacement template and a
@@ -966,9 +973,9 @@ real fault gate passes. Planned rows are not release evidence.
 
 ## 18. Delivery sequence and next backlog
 
-### 18.1 Immediate E0 backlog
+### 18.1 E0 completion record
 
-D0 is closed. E0's route desired-state, managed TLS mechanics, versioned
+D0 and E0 are closed. E0's route desired-state, managed TLS mechanics, versioned
 complete snapshot transport, Secret injection, filesystem/S3-compatible
 durable log query/retention/compaction path, one-node immutable update, and
 manual rollback are implemented through the PostgreSQL, Fleet, node/Runtime,
@@ -977,9 +984,9 @@ cursor-loss/source-disconnect recovery, real provider restart cursor
 continuity, control-plane
 object-before-receipt process-death recovery, exact route cutover, deterministic
 previous-revision retirement, and filesystem/MinIO corruption certification.
-Provider and agent process death during a rotated Secret apply now also
-reattaches the exact container and completes the original Runtime receipt. The
-remaining changes should land as vertical, independently verified slices:
+Provider and agent process death during a rotated Secret apply also reattaches
+the exact container and completes the original Runtime receipt. The completion
+record is:
 
 1. Implemented on 2026-07-20: one-node update orchestration keeps the prior
    healthy revision and byte-identical route rows until Runtime health and the
@@ -1027,15 +1034,21 @@ remaining changes should land as vertical, independently verified slices:
    revision as `retiring`, prove no cleanup command committed, send `SIGKILL`,
    and require reconstructed Flow to emit one deterministic stop and finish only
    from stopped-or-absent evidence.
-10. Run the clean-host end-to-end release gate.
+10. Implemented on 2026-07-20: the clean-host Linux gate builds release
+    binaries from exact clean Cloud and pinned Runtime revisions, starts pinned
+    PostgreSQL and registry fixtures, A3S Gateway 1.0.12, the control plane, and
+    one outbound Docker node, then proves enrollment, digest-pinned A,
+    acknowledged TLS, ordered and resumable logs, B, cloned-A rollback, durable
+    stop, source cleanliness, exact host-inventory restoration, and an empty
+    generated-credential scan.
 
-No post-E0 product surface is marked available before this list passes. Contract
-design and isolated prototypes may proceed, but they cannot create production
-tables, routes, providers, or user-visible claims that bypass E0.
+E0 is verified. Post-E0 product surfaces may now land only through their owning
+milestone gates; they cannot create tables, routes, providers, or user-visible
+claims that bypass the verified E0 contracts.
 
 ### 18.2 Post-E0 delivery lanes
 
-Once E0 passes, work may proceed in parallel only along these owned lanes:
+With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |

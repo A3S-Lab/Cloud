@@ -364,21 +364,26 @@ jobs:
           path: apps/cloud
 
       - name: Validate shell syntax
-        run: bash -n tools/runtime-conformance/run_isolated_docker_gate.sh
+        run: |
+          bash -n tools/runtime-conformance/run_isolated_docker_gate.sh
+          bash -n tools/release-conformance/run_clean_host_gate.sh
 
       - name: Test OCI fixture helper
         run: python3 -m unittest discover -s tools/runtime-conformance -p 'test_*.py'
 
+      - name: Test clean-host release driver
+        run: python3 -m unittest discover -s tools/release-conformance -p 'test_*.py'
+
       - name: Enforce ACL-only product configuration
         run: |
-          forbidden_files=$(git ls-files README.md config crates deploy docs web |
+          forbidden_files=$(git ls-files README.md config crates deploy docs tools web |
             rg '\.(hcl|tf|tfvars)$' || true)
           if [[ -n $forbidden_files ]]; then
             printf '%s\n' "$forbidden_files"
             exit 1
           fi
           if rg --hidden -n -i '\bHCL\b|\.hcl\b' \
-            README.md config crates deploy docs web; then
+            README.md config crates deploy docs tools web; then
             exit 1
           fi
 

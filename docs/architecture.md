@@ -2,7 +2,7 @@
 
 ## 1. Status and decisions
 
-R0 through D0 are implemented and verified. E0 now has durable Edge route
+R0 through E0 are implemented and verified. E0 has durable Edge route
 ownership, exact and wildcard domain claims, managed Gateway certificate
 provisioning, HTTPS-only snapshot compilation, Fleet dispatch, exact
 acknowledgement projection, and injected-time renewal/revocation convergence
@@ -56,11 +56,15 @@ explicit rollback lineage. The React console consumes those authoritative
 projections for deployment history, route/certificate state, complete-template
 differences and updates, eligible rollback, and browser-local terminal
 operation cleanup. Production now performs bounded DNS TXT ownership
-verification through the host resolver. Later E0 sections remain the accepted
-design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
-a separate Linux node agent, and a React web application. The first release
-still requires the clean-host end-to-end release gate before multi-node
-scheduling or hosted assets begin.
+verification through the host resolver. The clean-host release gate now builds
+the exact clean Cloud and pinned Runtime revisions, starts pinned PostgreSQL and
+registry fixtures, A3S Gateway 1.0.12, the control plane, and one outbound
+Docker node, then certifies bootstrap through A→B→cloned-A TLS cutover, ordered
+resumable logs, durable stop, source cleanliness, host-inventory equality, and
+credential-safe cleanup. This closes the first release. Later milestone
+sections remain accepted design until their own exit gates pass. A3S Cloud
+ships as a Rust modular monolith, a separate Linux node agent, and a React web
+application.
 
 The following decisions are fixed for the first architecture:
 
@@ -923,14 +927,15 @@ branching on raw backend-name strings inside a domain module.
 
 ## 15. Deployment profiles
 
-Development runs one control-plane process, PostgreSQL, a local registry and
-object-store adapter, one node agent, Docker, and A3S Gateway. Production adds
-external KMS/PKI, S3-compatible storage, OpenTelemetry collection, and NATS
-JetStream when roles are replicated. Git builds add BuildKit and an owned OCI
-registry. Correctness must remain unchanged: all coordination uses
+The verified E0 profile runs one control-plane process, PostgreSQL, a local
+registry and object-store adapter, one node agent, Docker, and A3S Gateway.
+Production adds external KMS/PKI, S3-compatible storage, OpenTelemetry
+collection, and NATS JetStream when roles are replicated. Git builds add
+BuildKit and an owned OCI registry. Correctness must remain unchanged: all
+coordination uses
 PostgreSQL/Flow leases, idempotent commands, and observed state rather than
 process memory.
 
 Multi-node scheduling, stateful failover, provider-specific autoscaling, and
-federated control planes are later capabilities. The first release does not
-claim them through placeholder abstractions.
+federated control planes are later capabilities. The verified E0 release does
+not claim them through placeholder abstractions.

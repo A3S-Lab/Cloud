@@ -1,0 +1,141 @@
+name: E0 clean-host release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/e0-clean-host-release.yml
+      - Cargo.lock
+      - Cargo.toml
+      - README.md
+      - config/**
+      - crates/**
+      - docs/**
+      - tools/release-conformance/**
+      - tools/runtime-conformance/runtime-revision
+  pull_request:
+    paths:
+      - .github/workflows/e0-clean-host-release.yml
+      - Cargo.lock
+      - Cargo.toml
+      - README.md
+      - config/**
+      - crates/**
+      - docs/**
+      - tools/release-conformance/**
+      - tools/runtime-conformance/runtime-revision
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e0-clean-host-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-host-release:
+    name: Clean-host E0 release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        working-directory: apps/cloud
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+
+      - name: Install A3S Gateway 1.0.12
+        run: cargo install a3s-gateway --version 1.0.12 --locked
+
+      - name: Verify disposable Linux release host
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          required_commands=(
+            a3s-gateway awk cargo comm curl docker git grep python3 realpath
+            sha256sum sort timeout
+          )
+          : >"$EVIDENCE_DIR/required-commands.txt"
+          for command in "${required_commands[@]}"; do
+            if path=$(command -v "$command"); then
+              printf '%s\t%s\n' "$command" "$path"
+            else
+              printf '%s\tMISSING\n' "$command"
+            fi
+          done >>"$EVIDENCE_DIR/required-commands.txt"
+
+          {
+            date -u '+%Y-%m-%dT%H:%M:%SZ'
+            uname -a
+            rustc --version
+            cargo --version
+          } >"$EVIDENCE_DIR/host-preflight.txt" 2>&1 || true
+          CARGO_TERM_COLOR=never cargo install --list \
+            >"$EVIDENCE_DIR/cargo-installed-packages.txt" 2>&1 || true
+          docker version >"$EVIDENCE_DIR/docker-version.txt" 2>&1 || true
+          docker info >"$EVIDENCE_DIR/docker-info.txt" 2>&1 || true
+          docker ps --all --no-trunc \
+            >"$EVIDENCE_DIR/docker-containers-preflight.txt" 2>&1 || true
+          docker volume ls \
+            >"$EVIDENCE_DIR/docker-volumes-preflight.txt" 2>&1 || true
+          docker network ls \
+            >"$EVIDENCE_DIR/docker-networks-preflight.txt" 2>&1 || true
+
+          for command in "${required_commands[@]}"; do
+            command -v "$command" >/dev/null
+          done
+
+          grep -E '^a3s-gateway v1\.0\.12:' \
+            "$EVIDENCE_DIR/cargo-installed-packages.txt" \
+            >"$EVIDENCE_DIR/gateway-install-record.txt"
+          docker info >/dev/null
+
+      - name: Run clean-host E0 release gate
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
+          RUNTIME_REVISION: ${{ steps.runtime_revision.outputs.revision }}
+        run: |
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          apps/cloud/tools/release-conformance/run_clean_host_gate.sh \
+            --source-root "$GITHUB_WORKSPACE" \
+            --cloud-sha "$cloud_revision" \
+            --runtime-sha "$RUNTIME_REVISION" \
+            --gateway "$(command -v a3s-gateway)" \
+            --cargo "$(command -v cargo)" \
+            --evidence-dir "$EVIDENCE_DIR" \
+            --ttl-seconds 1800
+
+      - name: Upload clean-host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e0-clean-host-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-clean-host-e0-evidence
+          if-no-files-found: error
+          retention-days: 30
