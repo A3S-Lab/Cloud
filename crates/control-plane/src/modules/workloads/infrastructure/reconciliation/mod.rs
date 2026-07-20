@@ -519,7 +519,10 @@ fn validate_target(target: &ActiveRuntimeTarget) -> Result<(), String> {
         || target.deployment.organization_id != target.workload.organization_id
         || target.deployment.workload_id != target.workload.id
         || target.deployment.revision_id != target.revision.id
-        || target.deployment.status != DeploymentStatus::Active
+        || !matches!(
+            target.deployment.status,
+            DeploymentStatus::Retiring | DeploymentStatus::Active
+        )
         || target.deployment.node_id.is_none()
         || target.deployment.command_id.is_none()
     {

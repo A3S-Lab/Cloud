@@ -75,7 +75,7 @@ impl QueryHandler<ResolveSecretMaterial> for ResolveSecretMaterialHandler {
                         DeploymentStatus::Scheduled
                         | DeploymentStatus::Applying
                         | DeploymentStatus::Verifying => true,
-                        DeploymentStatus::Active => {
+                        DeploymentStatus::Retiring | DeploymentStatus::Active => {
                             workload.desired_state == WorkloadDesiredState::Running
                                 && workload.active_revision_id == Some(revision.id)
                         }
@@ -162,12 +162,13 @@ mod tests {
     };
     use crate::modules::secrets::infrastructure::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
-        DeploymentId, IdempotencyRequest, NodeId, OperationId, OrganizationId, ProjectId,
-        ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
+        DeploymentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
+        ProjectId, ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
-        Deployment, HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
+        Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, SecretBinding,
+        SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
+        Workload, WorkloadRevision,
     };
     use crate::modules::workloads::domain::events::DeploymentRequested;
     use crate::modules::workloads::domain::repositories::CreateDeploymentBundle;
@@ -272,7 +273,7 @@ mod tests {
             organization_id,
             OperationSubject::new("deployment", deployment.id.as_uuid())
                 .expect("operation subject"),
-            WorkflowIdentity::new("cloud.deployment", "1").expect("workflow"),
+            WorkflowIdentity::new("cloud.deployment", "2").expect("workflow"),
             serde_json::json!({}),
             now,
         );
@@ -303,7 +304,7 @@ mod tests {
             )
             .await
             .expect("resolve deployment");
-        workloads
+        let scheduled = workloads
             .assign_node(
                 deployment.id,
                 resolving.aggregate_version,
@@ -313,8 +314,11 @@ mod tests {
             .await
             .expect("assign deployment");
 
-        let handler =
-            ResolveSecretMaterialHandler::new(workloads, secrets, Arc::new(FixedEncryption));
+        let handler = ResolveSecretMaterialHandler::new(
+            workloads.clone(),
+            secrets,
+            Arc::new(FixedEncryption),
+        );
         let reference =
             CloudSecretReference::new(revision.id.as_uuid(), secret_id.as_uuid(), version.version)
                 .expect("Secret reference");
@@ -331,6 +335,50 @@ mod tests {
             .expect("query framework")
             .expect("authorized material");
         assert_eq!(plaintext.as_bytes(), b"resolved-only-at-the-node-boundary");
+
+        let applying = workloads
+            .mark_dispatched(
+                deployment.id,
+                scheduled.aggregate_version,
+                NodeCommandId::new(),
+                now + chrono::Duration::milliseconds(3),
+            )
+            .await
+            .expect("dispatch deployment");
+        let verifying = workloads
+            .mark_verifying(
+                deployment.id,
+                applying.aggregate_version,
+                now + chrono::Duration::milliseconds(4),
+            )
+            .await
+            .expect("verify deployment");
+        let (_, retiring) = workloads
+            .activate(
+                deployment.id,
+                verifying.aggregate_version,
+                true,
+                now + chrono::Duration::milliseconds(5),
+            )
+            .await
+            .expect("activate deployment before retirement");
+        assert_eq!(retiring.status, DeploymentStatus::Retiring);
+        let retiring_plaintext = handler
+            .execute(
+                ResolveSecretMaterial {
+                    organization_id,
+                    authenticated_node_id: node_id,
+                    reference,
+                },
+                CqrsContext::new(a3s_boot::ModuleRef::new()),
+            )
+            .await
+            .expect("query framework")
+            .expect("retiring active material");
+        assert_eq!(
+            retiring_plaintext.as_bytes(),
+            b"resolved-only-at-the-node-boundary"
+        );
 
         let unauthorized = handler
             .execute(

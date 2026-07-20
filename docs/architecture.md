@@ -38,11 +38,16 @@ object publication but before receipt persistence, adopts the exact object
 after restart, corrupts a non-secret record, and reads its ordered `corrupt` gap
 through the REST API. The Docker gate also preserves an exact log cursor across
 provider restart, while the pinned-MinIO gate verifies deliberate corruption
-and immutable repair rejection. Later E0 sections remain the accepted design
-until their exit gates pass. A3S Cloud ships as a Rust modular monolith, a
-separate Linux node agent, and a React web application. The first release still
-requires production DNS/CA integration and renewal, Gateway acknowledgement
-crash recovery, provider death during a Secret-rotation apply, update,
+and immutable repair rejection. The one-node update slice now commits complete
+immutable replacement templates, runs candidates on the previous Runtime node,
+gates routed cutover on health plus an exact Gateway acknowledgement, and
+recovers deterministic old-revision retirement after activation. Unhealthy,
+mismatched, and rejected outcomes preserve the previous active revision and
+route rows. Later E0 sections remain the accepted design until their exit gates
+pass. A3S Cloud ships as a Rust modular monolith, a separate Linux node agent,
+and a React web application. The first release still requires production
+DNS/CA integration and renewal, the remaining Gateway acknowledgement
+process-death gate, provider death during a Secret-rotation apply, manual
 rollback, the remaining web timeline, and clean-host gates before multi-node
 scheduling or hosted assets begin.
 
@@ -278,16 +283,31 @@ never the only way to discover unfinished desired state.
 
 A deployment follows these durable steps:
 
-1. Resolve the source to a commit SHA and/or OCI digest.
-2. Commit an immutable workload revision and queued deployment.
-3. Select a ready node whose reported Runtime capabilities satisfy the spec.
+1. Commit an immutable requested template and queued deployment.
+2. Resolve the source to a commit SHA and/or OCI digest.
+3. For an initial deployment, select a ready node whose reported Runtime
+   capabilities satisfy the spec; for an update, require the previous Runtime
+   node to remain eligible and select that same node.
 4. Lease an apply command to that node using `deployment_id` and generation.
 5. Wait for a matching Runtime observation from the node.
 6. Run the declared health check through the actual service path.
-7. Publish a complete Gateway configuration revision when a route is required.
-8. Wait for the Gateway acknowledgement of that exact revision.
-9. Atomically select the healthy deployment as active.
-10. Stop the old revision after the rollback window policy permits it.
+7. When the previous revision owns routes, stage a complete Gateway snapshot
+   and a durable `GatewayRouteCutover` without mutating the active route rows.
+8. Wait for an `applied` acknowledgement matching the exact node, command,
+   Gateway revision, and snapshot digest.
+9. Replace all affected route targets atomically and select the healthy
+   candidate as active. The deployment enters `retiring` when a previous
+   Runtime revision exists.
+10. Issue the deterministic stop command for the previous Runtime revision and
+    require durable stopped-or-absent evidence before the deployment becomes
+    terminal `active`.
+
+New deployment operations use `cloud.deployment@2`. The version 1 workflow is
+registered only to replay runs persisted before routed update semantics. At
+most one nonterminal deployment may exist for a workload. Cancellation is
+available during resolution, scheduling, and apply, but closes when the
+deployment enters `verifying`, because health-verified work may already be
+participating in a Gateway cutover.
 
 The reconciler compares database desired state with the last accepted node and
 Gateway observations. It periodically scans all nonterminal and stale records,
@@ -304,6 +324,9 @@ cleanup that still requires reconciliation.
 A deployment succeeds only when observed Runtime generation equals desired
 generation, required health is real and current, and the requested Gateway
 revision is active. A failed update leaves the prior healthy revision selected.
+If the coordinator restarts after activation, it adopts or replays the
+deterministic retirement command and finishes only from durable Runtime
+stopped-or-absent evidence.
 
 ## 7. Node agent and control protocol
 
@@ -378,7 +401,7 @@ running workloads in the Secret's project and environment. A workload with a
 nonterminal deployment is deferred. Otherwise the worker clones the resolved
 template, keeps the exact OCI artifact digest and every unrelated field,
 advances all bindings for that Secret, and creates the next immutable
-generation. The revision, deployment, `cloud.deployment` operation,
+generation. The revision, deployment, `cloud.deployment@2` operation,
 `workload.deployment.requested` event whose `causation_id` is the Secret event,
 idempotency record, and per-workload restart record commit in one PostgreSQL
 transaction. A terminal event checkpoint is written only when no affected
@@ -497,6 +520,16 @@ acknowledgement before projecting it into Edge. Only an `applied`
 acknowledgement matching the exact node, command, revision, and digest moves a
 route from `publishing` to `active`; rejection is terminal and replay is
 idempotent.
+
+Routed workload updates use a separate `GatewayRouteCutover` record because the
+candidate is healthy but is not yet the active workload revision. Staging
+stores candidate route projections and the complete publication identity while
+leaving every live route row byte-identical. A mismatched acknowledgement is
+rejected without changing the cutover, route rows, or active revision. A
+matching `rejected` acknowledgement makes only the cutover terminal and
+preserves the prior routes. A matching `applied` acknowledgement atomically
+replaces every affected route target; deployment activation may select the
+candidate only after that applied cutover is durable.
 
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route

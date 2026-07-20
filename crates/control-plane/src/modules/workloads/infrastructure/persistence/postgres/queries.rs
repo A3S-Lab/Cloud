@@ -152,7 +152,7 @@ pub(super) async fn list_active_runtime_targets(
     let identities = Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
             sql_query::<(Uuid, Uuid, Uuid, Uuid)>(
-                "select w.organization_id, w.id, w.active_revision_id, d.id from workloads w join deployments d on d.workload_id = w.id and d.revision_id = w.active_revision_id where w.desired_state = 'running' and w.active_revision_id is not null and d.status = 'active' order by w.updated_at asc, w.id asc limit ",
+                "select w.organization_id, w.id, w.active_revision_id, d.id from workloads w join deployments d on d.workload_id = w.id and d.revision_id = w.active_revision_id where w.desired_state = 'running' and w.active_revision_id is not null and d.status in ('retiring', 'active') order by w.updated_at asc, w.id asc limit ",
             )
             .bind(limit),
         )
@@ -186,8 +186,11 @@ pub(super) async fn list_active_runtime_targets(
             || revision.workload_id != workload.id
             || deployment.workload_id != workload.id
             || deployment.revision_id != revision.id
-            || deployment.status
-                != crate::modules::workloads::domain::entities::DeploymentStatus::Active
+            || !matches!(
+                deployment.status,
+                crate::modules::workloads::domain::entities::DeploymentStatus::Retiring
+                    | crate::modules::workloads::domain::entities::DeploymentStatus::Active
+            )
         {
             continue;
         }

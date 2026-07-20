@@ -13,6 +13,7 @@ pub enum DeploymentStatus {
     Scheduled,
     Applying,
     Verifying,
+    Retiring,
     Cancelling,
     CleanupPending,
     Active,
@@ -29,6 +30,7 @@ impl DeploymentStatus {
             Self::Scheduled => "scheduled",
             Self::Applying => "applying",
             Self::Verifying => "verifying",
+            Self::Retiring => "retiring",
             Self::Cancelling => "cancelling",
             Self::CleanupPending => "cleanup_pending",
             Self::Active => "active",
@@ -45,6 +47,7 @@ impl DeploymentStatus {
             "scheduled" => Ok(Self::Scheduled),
             "applying" => Ok(Self::Applying),
             "verifying" => Ok(Self::Verifying),
+            "retiring" => Ok(Self::Retiring),
             "cancelling" => Ok(Self::Cancelling),
             "cleanup_pending" => Ok(Self::CleanupPending),
             "active" => Ok(Self::Active),
@@ -73,6 +76,7 @@ pub struct Deployment {
     pub node_id: Option<NodeId>,
     pub command_id: Option<NodeCommandId>,
     pub cleanup_command_id: Option<NodeCommandId>,
+    pub retirement_command_id: Option<NodeCommandId>,
     pub status: DeploymentStatus,
     pub failure: Option<String>,
     pub aggregate_version: u64,
@@ -102,6 +106,7 @@ impl Deployment {
             node_id: None,
             command_id: None,
             cleanup_command_id: None,
+            retirement_command_id: None,
             status: DeploymentStatus::Queued,
             failure: None,
             aggregate_version: 1,
@@ -150,14 +155,63 @@ impl Deployment {
         self.transition(DeploymentStatus::Applying, DeploymentStatus::Verifying, at)
     }
 
-    pub fn activate(&mut self, at: DateTime<Utc>) -> Result<(), String> {
+    pub fn activate(&mut self, retirement_required: bool, at: DateTime<Utc>) -> Result<(), String> {
         let at = self.canonical_time(at)?;
-        if self.status == DeploymentStatus::Active {
-            return Ok(());
+        if matches!(
+            self.status,
+            DeploymentStatus::Retiring | DeploymentStatus::Active
+        ) {
+            let state_matches = match self.status {
+                DeploymentStatus::Retiring => retirement_required,
+                DeploymentStatus::Active => {
+                    retirement_required == self.retirement_command_id.is_some()
+                }
+                _ => false,
+            };
+            return if state_matches {
+                Ok(())
+            } else {
+                Err("deployment activation changed its retirement requirement".into())
+            };
         }
-        self.transition(DeploymentStatus::Verifying, DeploymentStatus::Active, at)?;
+        self.transition(
+            DeploymentStatus::Verifying,
+            if retirement_required {
+                DeploymentStatus::Retiring
+            } else {
+                DeploymentStatus::Active
+            },
+            at,
+        )?;
         self.activated_at = Some(at);
         Ok(())
+    }
+
+    pub fn dispatch_retirement(
+        &mut self,
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let at = self.canonical_time(at)?;
+        if self.status != DeploymentStatus::Retiring {
+            return Err("deployment retirement requires an activated update".into());
+        }
+        if self.retirement_command_id != Some(command_id) {
+            self.retirement_command_id = Some(command_id);
+            self.aggregate_version += 1;
+        }
+        self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn complete_retirement(&mut self, at: DateTime<Utc>) -> Result<(), String> {
+        if self.status == DeploymentStatus::Active {
+            return self.canonical_time(at).map(|_| ());
+        }
+        if self.retirement_command_id.is_none() {
+            return Err("deployment cannot complete retirement before Runtime cleanup".into());
+        }
+        self.transition(DeploymentStatus::Retiring, DeploymentStatus::Active, at)
     }
 
     pub fn fail(&mut self, reason: String, at: DateTime<Utc>) -> Result<(), String> {
@@ -183,7 +237,9 @@ impl Deployment {
             }
             return Err("failed deployment cannot change its failure reason".into());
         }
-        self.status = if self.cleanup_command_id.is_some()
+        self.status = if self.activated_at.is_some()
+            || self.retirement_command_id.is_some()
+            || self.cleanup_command_id.is_some()
             || self.command_id.is_some()
                 && matches!(
                     self.status,
@@ -227,6 +283,12 @@ impl Deployment {
         }
         if self.status.is_terminal() {
             return Err("terminal deployment cannot request cancellation".into());
+        }
+        if self.status == DeploymentStatus::Verifying {
+            return Err("health-verified deployment cannot request cancellation".into());
+        }
+        if self.activated_at.is_some() {
+            return Err("activated deployment cannot request cancellation".into());
         }
         self.status = DeploymentStatus::Cancelling;
         self.cancellation_requested_at = Some(at);

@@ -1,3 +1,4 @@
+mod legacy_workflow;
 mod steps;
 mod stop_workflow;
 #[cfg(test)]
@@ -7,14 +8,15 @@ mod workflow;
 
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
-use crate::modules::workloads::domain::services::IOciArtifactResolver;
+use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 
 pub const DEPLOYMENT_WORKFLOW_NAME: &str = "cloud.deployment";
-pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "1";
+pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "2";
+const LEGACY_DEPLOYMENT_WORKFLOW_VERSION: &str = "1";
 pub const STOP_WORKFLOW_NAME: &str = "cloud.workload.stop";
 pub const STOP_WORKFLOW_VERSION: &str = "1";
 
@@ -87,6 +89,7 @@ pub struct DeploymentFlowRuntime {
     pub(super) artifacts: Arc<dyn IOciArtifactResolver>,
     pub(super) nodes: Arc<dyn INodeRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
+    pub(super) route_updates: Arc<dyn IDeploymentRouteUpdater>,
     pub(super) heartbeat_timeout: chrono::Duration,
     pub(super) config: DeploymentFlowConfig,
 }
@@ -97,6 +100,7 @@ impl DeploymentFlowRuntime {
         artifacts: Arc<dyn IOciArtifactResolver>,
         nodes: Arc<dyn INodeRepository>,
         node_control: Arc<dyn INodeControlRepository>,
+        route_updates: Arc<dyn IDeploymentRouteUpdater>,
         heartbeat_timeout: chrono::Duration,
         config: DeploymentFlowConfig,
     ) -> Result<Self, String> {
@@ -108,6 +112,7 @@ impl DeploymentFlowRuntime {
             artifacts,
             nodes,
             node_control,
+            route_updates,
             heartbeat_timeout,
             config,
         })
@@ -126,6 +131,9 @@ impl FlowRuntime for DeploymentFlowRuntime {
         ) {
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION) => {
                 workflow::replay(&self.config, invocation)
+            }
+            (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION) => {
+                legacy_workflow::replay(&self.config, invocation)
             }
             (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => {
                 stop_workflow::replay(&self.config, invocation)

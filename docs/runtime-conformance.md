@@ -99,6 +99,31 @@ The real rotation profile removes the managed source, verifies the exact
 `source_disconnected` boundary, recreates the same generation, and then verifies
 that the old cursor yields the exact `cursor_lost` boundary.
 
+## Cloud immutable update acceptance
+
+The Cloud consumer gate runs the real one-node update scenario directly
+against the isolated Docker provider:
+
+```bash
+A3S_CLOUD_TEST_DOCKER=1 cargo test \
+  -p a3s-cloud-control-plane \
+  --test docker_deployment \
+  real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous_revision \
+  -- --exact --nocapture --test-threads=1
+```
+
+The scenario deploys healthy revision A, applies permanently unhealthy
+candidate B, and proves A remains selected, healthy, and running. It then
+applies healthy candidate C on the same node, requires C to become selected in
+`retiring`, leases the deterministic Runtime stop for A, and accepts only
+durable stopped-or-absent evidence before C becomes terminal `active`. A second
+lease must contain no duplicate retirement command.
+
+This real-provider gate certifies Runtime update and retirement behavior. The
+exact Gateway acknowledgement and byte-preserving route cutover are covered by
+the routed control-plane and PostgreSQL suites. Manual rollback through the
+same immutable deployment path is not implemented or certified yet.
+
 ## Cloud Secret and log acceptance
 
 The isolated runner's `--suite cloud` path additionally sets
@@ -134,12 +159,14 @@ unprivileged with every capability dropped. The gate then:
 
 This gate proves the real provider success path, an actual control-plane
 object-before-receipt process-death boundary, exact orphan adoption, and
-filesystem corruption projection. The PostgreSQL control-plane gate separately
-kills the in-memory orchestration boundary after a Secret rotation commit,
-races reconstructed restart workers, requires one causally linked derived
-revision and Runtime apply command, then reconstructs Flow after the
-reference-only result and verifies terminal activation plus final plaintext
-scans. The digest-pinned MinIO gate overwrites a real accepted object and
-requires verified reads to return corruption while immutable replay refuses to
-replace it. Provider process death during the separate rotated workload apply
-remains part of the final E0 recovery matrix.
+filesystem corruption projection. The Cloud consumer gate also runs the
+healthy-A, failed-B, healthy-C update and proves deterministic retirement of A.
+The PostgreSQL control-plane gate separately kills the in-memory orchestration
+boundary after a Secret rotation commit, races reconstructed restart workers,
+requires one causally linked derived revision and Runtime apply command, then
+reconstructs Flow after the reference-only result and verifies terminal
+activation plus final plaintext scans. The digest-pinned MinIO gate overwrites
+a real accepted object and requires verified reads to return corruption while
+immutable replay refuses to replace it. Provider process death during the
+separate rotated workload apply and manual rollback remain part of the final
+E0 recovery matrix.

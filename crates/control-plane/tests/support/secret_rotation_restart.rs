@@ -25,6 +25,7 @@ use a3s_cloud_control_plane::modules::workloads::{
     SecretRotationRestartReconciler,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_runtime::contract::RuntimeInspection;
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use std::sync::Arc;
@@ -289,7 +290,8 @@ pub async fn exercise_secret_rotation_restart(
     .await?;
 
     // Lose the coordinator after the restart result is durable, reconstruct it,
-    // and require the same operation to converge without another command.
+    // and require the same operation to activate before issuing one deterministic
+    // stop for the previous immutable Runtime revision.
     drop(coordinator);
     drop(flow);
     let flow = restart_flow(
@@ -299,6 +301,90 @@ pub async fn exercise_secret_rotation_restart(
     )
     .await?;
     let coordinator = build_coordinator(&flow, operation_repository.clone())?;
+    for _ in 0..12 {
+        coordinator.run_once().await?;
+        let deployment = workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?;
+        if deployment.status == DeploymentStatus::Retiring
+            && deployment.retirement_command_id.is_some()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let retiring = workload_repository
+        .find_deployment(organization_id, deployment_id)
+        .await?;
+    assert_eq!(retiring.status, DeploymentStatus::Retiring);
+    let retirement_command_id = retiring
+        .retirement_command_id
+        .ok_or("Secret rotation update has no previous Runtime retirement command")?;
+    assert_eq!(
+        workload_repository
+            .find_workload(organization_id, workload_id)
+            .await?
+            .active_revision_id,
+        Some(target_revision_id)
+    );
+    let now = Utc::now();
+    let retirement_lease = node_repository
+        .lease_commands(
+            &NodeCommandLeaseRequest {
+                schema: NodeCommandLeaseRequest::SCHEMA.into(),
+                node_id: node.node_id.as_uuid(),
+                agent_instance_id: node.agent_instance_id,
+                after_sequence: command.sequence,
+                max_commands: 10,
+                wait_ms: 0,
+            },
+            Uuid::now_v7(),
+            now,
+            now + ChronoDuration::seconds(10),
+        )
+        .await?;
+    let retirement_command = retirement_lease
+        .commands
+        .iter()
+        .find(|candidate| candidate.command_id == retirement_command_id.as_uuid())
+        .ok_or("Secret rotation previous Runtime retirement command was not leased")?;
+    let NodeCommandPayload::RuntimeStop {
+        request: retirement_request,
+    } = &retirement_command.payload
+    else {
+        return Err("Secret rotation retirement command is not Runtime stop".into());
+    };
+    let source_spec =
+        a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec(
+            &source_revision,
+        )?;
+    assert_eq!(retirement_request.unit_id, source_spec.unit_id);
+    assert_eq!(retirement_request.generation, source_spec.generation);
+    persist_command_result(
+        &node_repository,
+        node.node_id,
+        node.agent_instance_id,
+        node.capabilities.clone(),
+        NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: retirement_command.command_id,
+            lease_id: retirement_command.lease_id,
+            node_id: retirement_command.node_id,
+            sequence: retirement_command.sequence,
+            payload_digest: retirement_command.payload_digest.clone(),
+            completed_at: Utc::now(),
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeStopped {
+                    inspection: RuntimeInspection::NotFound {
+                        schema: RuntimeInspection::SCHEMA.into(),
+                        unit_id: source_spec.unit_id,
+                        last_generation: Some(source_spec.generation),
+                    },
+                }),
+            },
+        },
+    )
+    .await?;
     for _ in 0..12 {
         coordinator.run_once().await?;
         let deployment = workload_repository
@@ -345,6 +431,16 @@ pub async fn exercise_secret_rotation_restart(
             .await?,
         1
     );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from node_commands where correlation_id = ",)
+                    .bind(operation_id.as_uuid())
+                    .append(" and command_kind = 'runtime_stop'"),
+            )
+            .await?,
+        1
+    );
 
     Ok(SecretRotationRestartFixture {
         revision_id: target_revision_id,
@@ -363,6 +459,7 @@ async fn restart_flow(
         Arc::new(ResolvedRevisionOnly),
         nodes.clone(),
         nodes,
+        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;

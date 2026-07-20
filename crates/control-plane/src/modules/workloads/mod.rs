@@ -8,7 +8,8 @@ pub use application::{
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, GetWorkloadLogs,
     GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, StopWorkload, StopWorkloadHandler,
-    StopWorkloadResult, WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
+    StopWorkloadResult, UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler,
+    UpdateWorkloadDeploymentResult, WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
     WorkloadQueryResult,
 };
 pub use domain::entities::{
@@ -26,7 +27,9 @@ pub use domain::repositories::{
     SecretRotationCompletion, SecretRotationReconciliation, WorkloadStopBundle,
 };
 pub use domain::services::{
-    IOciArtifactResolver, OciArtifactResolutionError, OciRegistryCredentialReference,
+    DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
+    DeploymentRouteUpdateRequest, IDeploymentRouteUpdater, IOciArtifactResolver,
+    OciArtifactResolutionError, OciRegistryCredentialReference, UnroutedDeploymentRouteUpdater,
 };
 pub use infrastructure::{
     DeploymentFlowConfig, DeploymentFlowRuntime, IWorkloadRuntimeControl,

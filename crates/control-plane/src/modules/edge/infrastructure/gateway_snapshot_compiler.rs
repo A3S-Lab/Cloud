@@ -94,8 +94,8 @@ impl GatewaySnapshotCompiler {
                 }
             }
         }
-        if pending_routes != 1 {
-            return Err("complete Gateway publication must contain one pending route".into());
+        if pending_routes == 0 {
+            return Err("complete Gateway publication must contain a pending route".into());
         }
 
         let certificate_root =

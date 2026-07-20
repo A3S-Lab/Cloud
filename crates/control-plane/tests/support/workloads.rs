@@ -19,6 +19,8 @@ use uuid::Uuid;
 pub struct WorkloadFixture {
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
+    pub candidate_revision_id: WorkloadRevisionId,
+    pub candidate_deployment_id: DeploymentId,
     pub node_id: NodeId,
 }
 
@@ -213,6 +215,7 @@ pub async fn exercise_workloads(
         .activate(
             first_deployment_id,
             verifying.aggregate_version,
+            false,
             now + Duration::seconds(5),
         )
         .await?;
@@ -223,6 +226,7 @@ pub async fn exercise_workloads(
             .activate(
                 first_deployment_id,
                 verifying.aggregate_version,
+                false,
                 now + Duration::seconds(5),
             )
             .await?,
@@ -322,9 +326,21 @@ pub async fn exercise_workloads(
             .await?,
         0
     );
+    let candidate = request(
+        active_workload.clone(),
+        4,
+        'e',
+        "deploy-http-fixture-v4",
+        now + Duration::seconds(12),
+    )?;
+    let candidate_revision_id = candidate.revision.id;
+    let candidate_deployment_id = candidate.deployment.id;
+    repository.create_deployment(candidate).await?;
     Ok(WorkloadFixture {
         workload_id: active_workload.id,
         revision_id: first_revision_id,
+        candidate_revision_id,
+        candidate_deployment_id,
         node_id,
     })
 }
@@ -355,7 +371,7 @@ fn request(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "1")?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
         json!({
             "deploymentId": deployment.id,
             "generation": generation,

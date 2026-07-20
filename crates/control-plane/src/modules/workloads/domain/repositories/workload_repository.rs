@@ -235,8 +235,24 @@ pub trait IWorkloadRepository: Send + Sync {
         &self,
         deployment_id: DeploymentId,
         expected_version: u64,
+        retirement_required: bool,
         at: DateTime<Utc>,
     ) -> Result<(Workload, Deployment), RepositoryError>;
+
+    async fn dispatch_retirement(
+        &self,
+        deployment_id: DeploymentId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    ) -> Result<Deployment, RepositoryError>;
+
+    async fn complete_retirement(
+        &self,
+        deployment_id: DeploymentId,
+        expected_version: u64,
+        at: DateTime<Utc>,
+    ) -> Result<Deployment, RepositoryError>;
 
     async fn fail(
         &self,

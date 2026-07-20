@@ -1,11 +1,14 @@
 mod cleanup;
+mod gateway;
+mod retirement;
 
 use super::flow_error;
 use super::types::{
     ActivateStepInput, ActivateStepOutput, DeploymentFlowInput, DispatchStepInput,
     DispatchStepOutput, DispatchedRuntime, FailStepInput, FailStepOutput, ObserveStepInput,
-    ObserveStepOutput, ResolveCancellationOutput, ResolveStepOutput, ResolveStepResult,
-    ScheduleStepInput, ScheduleStepOutput, VerifyStepInput, VerifyStepOutput,
+    ObserveStepOutput, PreviousRuntime, ResolveCancellationOutput, ResolveStepOutput,
+    ResolveStepResult, RouteGate, ScheduleStepInput, ScheduleStepOutput, VerifyStepInput,
+    VerifyStepOutput,
 };
 use super::DeploymentFlowRuntime;
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
@@ -36,7 +39,22 @@ pub(super) async fn execute(
         "dispatch_runtime_apply" => encode(dispatch(runtime, invocation.input_as()?).await?),
         "observe_runtime_apply" => encode(observe(runtime, invocation.input_as()?).await?),
         "verify_runtime_health" => encode(verify(runtime, invocation.input_as()?).await?),
+        "stage_deployment_gateway" => {
+            encode(gateway::stage(runtime, invocation.input_as()?).await?)
+        }
+        "observe_deployment_gateway" => {
+            encode(gateway::observe(runtime, invocation.input_as()?).await?)
+        }
         "activate_deployment" => encode(activate(runtime, invocation.input_as()?).await?),
+        "dispatch_previous_runtime_retirement" => {
+            encode(retirement::dispatch(runtime, invocation.input_as()?).await?)
+        }
+        "observe_previous_runtime_retirement" => {
+            encode(retirement::observe(runtime, invocation.input_as()?).await?)
+        }
+        "complete_deployment_retirement" => {
+            encode(retirement::complete(runtime, invocation.input_as()?).await?)
+        }
         "dispatch_runtime_cleanup" => {
             encode(cleanup::dispatch_cleanup(runtime, invocation.input_as()?).await?)
         }
@@ -94,6 +112,7 @@ async fn resolve(
         | DeploymentStatus::Scheduled
         | DeploymentStatus::Applying
         | DeploymentStatus::Verifying
+        | DeploymentStatus::Retiring
         | DeploymentStatus::Cancelling
         | DeploymentStatus::CleanupPending
         | DeploymentStatus::Active => {}
@@ -131,6 +150,7 @@ async fn resolve(
     }
     let spec = project_runtime_spec(&revision)
         .map_err(|error| flow_error("could not project Runtime specification", error))?;
+    let previous_runtime = previous_runtime(runtime, &input, &revision).await?;
 
     let convergence_deadline = deployment
         .requested_at
@@ -143,7 +163,69 @@ async fn resolve(
         workload_id: deployment.workload_id,
         spec,
         convergence_deadline,
+        previous_runtime,
     })))
+}
+
+async fn previous_runtime(
+    runtime: &DeploymentFlowRuntime,
+    input: &DeploymentFlowInput,
+    candidate: &WorkloadRevision,
+) -> a3s_flow::Result<Option<PreviousRuntime>> {
+    let workload = runtime
+        .workloads
+        .find_workload(input.organization_id, input.workload_id)
+        .await
+        .map_err(|error| flow_error("could not load deployment workload", error))?;
+    if workload.id != candidate.workload_id || workload.organization_id != input.organization_id {
+        return Err(FlowError::Runtime(
+            "deployment workload does not own its candidate revision".into(),
+        ));
+    }
+    let Some(previous_revision_id) = workload.active_revision_id else {
+        return Ok(None);
+    };
+    if previous_revision_id == candidate.id {
+        return Err(FlowError::Runtime(
+            "deployment candidate is already the active immutable revision".into(),
+        ));
+    }
+    let previous_revision = runtime
+        .workloads
+        .find_revision(input.organization_id, previous_revision_id)
+        .await
+        .map_err(|error| flow_error("could not load previous workload revision", error))?;
+    if previous_revision.workload_id != workload.id
+        || previous_revision.generation >= candidate.generation
+    {
+        return Err(FlowError::Runtime(
+            "previous workload revision is inconsistent with the update generation".into(),
+        ));
+    }
+    let deployments = runtime
+        .workloads
+        .list_deployments(input.organization_id, workload.id)
+        .await
+        .map_err(|error| flow_error("could not load previous deployment", error))?;
+    let previous_deployment = deployments
+        .into_iter()
+        .find(|deployment| {
+            deployment.revision_id == previous_revision.id
+                && deployment.status == DeploymentStatus::Active
+        })
+        .ok_or_else(|| {
+            FlowError::Runtime("active workload revision has no active deployment".into())
+        })?;
+    let node_id = previous_deployment
+        .node_id
+        .ok_or_else(|| FlowError::Runtime("active deployment omitted its node".into()))?;
+    let spec = project_runtime_spec(&previous_revision)
+        .map_err(|error| flow_error("could not project previous Runtime specification", error))?;
+    Ok(Some(PreviousRuntime {
+        revision_id: previous_revision.id,
+        node_id,
+        spec,
+    }))
 }
 
 async fn registry_credential_reference(
@@ -211,8 +293,19 @@ async fn schedule(
             DeploymentStatus::Scheduled
                 | DeploymentStatus::Applying
                 | DeploymentStatus::Verifying
+                | DeploymentStatus::Retiring
                 | DeploymentStatus::Active
         ) {
+            if input
+                .resolved
+                .previous_runtime
+                .as_ref()
+                .is_some_and(|previous| previous.node_id != node_id)
+            {
+                return Err(FlowError::Runtime(
+                    "one-node update changed the previous Runtime node".into(),
+                ));
+            }
             return Ok(ScheduleStepOutput::Ready { node_id });
         }
     }
@@ -241,6 +334,14 @@ async fn schedule(
         .map_err(|error| flow_error("could not list deployment nodes", error))?;
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
+        if input
+            .resolved
+            .previous_runtime
+            .as_ref()
+            .is_some_and(|previous| previous.node_id != node.id)
+        {
+            continue;
+        }
         if !node.accepts_new_work_at(now, runtime.heartbeat_timeout) {
             continue;
         }
@@ -277,7 +378,11 @@ async fn schedule(
         });
     }
     Ok(ScheduleStepOutput::Pending {
-        reason: "no ready node satisfies the Runtime specification".into(),
+        reason: if input.resolved.previous_runtime.is_some() {
+            "the previous Runtime node is not ready for a one-node update".into()
+        } else {
+            "no ready node satisfies the Runtime specification".into()
+        },
         next_poll_at: next_poll(
             now,
             runtime.config.observation_poll,
@@ -313,7 +418,10 @@ async fn dispatch(
     if let Some(command_id) = deployment.command_id {
         if matches!(
             deployment.status,
-            DeploymentStatus::Applying | DeploymentStatus::Verifying | DeploymentStatus::Active
+            DeploymentStatus::Applying
+                | DeploymentStatus::Verifying
+                | DeploymentStatus::Retiring
+                | DeploymentStatus::Active
         ) {
             let command = runtime
                 .node_control
@@ -589,12 +697,41 @@ async fn activate(
     let VerifyStepOutput::Verified { verified_at } = input.verification else {
         return Ok(ActivateStepOutput::CancellationRequested);
     };
+    let mut gated_at = verified_at;
+    if let Some(routing) = &input.routing {
+        match routing {
+            RouteGate::NotRequired {
+                gated_at: route_gated_at,
+            } => gated_at = gated_at.max(*route_gated_at),
+            RouteGate::Acknowledged {
+                publication,
+                acknowledged_at,
+            } => {
+                let previous = input.resolved.previous_runtime.as_ref().ok_or_else(|| {
+                    FlowError::Runtime(
+                        "initial deployment unexpectedly required a Gateway cutover".into(),
+                    )
+                })?;
+                if publication.deployment_id != deployment.id
+                    || publication.node_id != previous.node_id
+                    || deployment.node_id != Some(publication.node_id)
+                {
+                    return Err(FlowError::Runtime(
+                        "activation Gateway acknowledgement changed deployment identity".into(),
+                    ));
+                }
+                gated_at = gated_at.max(*acknowledged_at);
+            }
+        }
+    }
+    let retirement_required = input.routing.is_some() && input.resolved.previous_runtime.is_some();
     let (_, active) = runtime
         .workloads
         .activate(
             deployment.id,
             deployment.aggregate_version,
-            verified_at.max(deployment.updated_at),
+            retirement_required,
+            gated_at.max(deployment.updated_at),
         )
         .await
         .map_err(|error| flow_error("could not activate deployment", error))?;
@@ -605,6 +742,7 @@ async fn activate(
         activated_at: active
             .activated_at
             .ok_or_else(|| FlowError::Runtime("active deployment has no activation time".into()))?,
+        retired_at: None,
     })
 }
 

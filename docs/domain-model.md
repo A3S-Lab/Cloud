@@ -31,6 +31,7 @@ distributes committed facts after the corresponding database transaction.
 | Log chunk | One ordered stdout/stderr position for a Runtime unit generation, stored as verified object bytes with authoritative metadata until body retention leaves a durable tombstone and later compaction leaves a durable sequence range. |
 | Provider log gap | One ordered, bodyless cursor-loss or source-disconnect boundary for a Runtime unit generation. |
 | Route | Domain/path mapping from A3S Gateway to one healthy workload revision. |
+| Gateway route cutover | Durable candidate route set and exact Gateway publication identity used to replace all routes for one workload update without mutating the active rows before acknowledgement. |
 | Domain claim | Tenant-scoped proof that an exact or one-label wildcard DNS pattern may be routed. |
 | Gateway certificate | Public certificate lifecycle bound to one node, claim set, Gateway revision, command, and snapshot digest. |
 | Managed database | Stateful platform service with an engine contract, persistent volume, backup policy, and lifecycle. It is not an Asset. |
@@ -144,6 +145,7 @@ Primary domain records:
 - `GatewayCertificate`
 - `GatewayScopeState`
 - `GatewayPublication`
+- `GatewayRouteCutover`
 
 ### 3.8 Secrets
 
@@ -254,10 +256,23 @@ tables directly. Audit records are append-only and separate from event delivery.
 - `deployment_id` is also the idempotent business key for its Flow run.
 - Repeating a deploy command with the same idempotency key returns the same
   deployment; a different request under that key is a conflict.
+- New operations use `cloud.deployment@2`; version 1 is executable only for
+  persisted-run compatibility.
+- A workload has at most one nonterminal deployment. An update requires an
+  active running workload and commits a complete new immutable template.
+- An update candidate is scheduled on the previous Runtime node. It cannot
+  change the active revision or routes before current-generation health
+  succeeds and any required route cutover is exactly acknowledged.
+- Cancellation closes at `verifying`. Once health is verified, the deployment
+  must converge forward or fail while preserving the prior selection.
 - Provider resource identity is recorded once and cannot change silently.
 - Success requires Runtime convergence, a real health result, and gateway
   acknowledgement when a public route is requested.
 - Failure never rewrites the previously active healthy deployment.
+- After candidate activation, `retiring` means the new revision is selected
+  while deterministic cleanup of the previous Runtime revision is still
+  required. Only durable stopped-or-absent evidence makes it terminal
+  `active`.
 
 ### Route
 
@@ -274,6 +289,20 @@ tables directly. Audit records are append-only and separate from event delivery.
   canonical hostname and one certificate owned by the target node.
 - Only the exact `applied` acknowledgement activates a route; a rejected
   publication cannot produce false activation.
+
+### Gateway route cutover
+
+- One cutover belongs to one deployment and binds the previous and candidate
+  immutable revisions, workload node, Gateway revision, deterministic command,
+  certificate, snapshot digest, and complete candidate route set.
+- Staging validates every current active route for the workload and persists
+  the candidate projections separately. The active route rows remain
+  byte-identical while the cutover is `pending`.
+- An acknowledgement must match the exact node, command, Gateway revision, and
+  snapshot digest. A mismatch cannot change either the cutover or live routes.
+- `rejected` preserves the previous routes and active workload revision.
+  `applied` atomically replaces every affected route target; candidate
+  activation requires this durable state.
 
 ### Domain claim
 
@@ -465,6 +494,19 @@ queued -> resolving -> applying -> verifying -> publishing -> succeeded
 This state is a projection of Flow history. Workload health is a separate
 projection: `unknown`, `healthy`, `degraded`, or `unavailable`.
 
+The authoritative `Deployment` aggregate uses:
+
+```text
+queued -> resolving -> scheduled -> applying -> verifying -> active
+                                                   \-> retiring -> active
+```
+
+`retiring` is required when activation supersedes a previous Runtime revision.
+Before `verifying`, cancellation may branch through `cancelling` and
+`cleanup_pending` to `cancelled`. A pre-activation failure is `failed`; a
+failure after activation or after cleanup ownership becomes ambiguous requires
+operator-visible `orphaned` state instead of false rollback or success.
+
 ### Route state
 
 ```text
@@ -475,6 +517,16 @@ pending -> publishing -> active
 `pending` exists only while constructing the aggregate. Persistence atomically
 stores the staged route as `publishing` with its complete Gateway publication.
 `active` and `rejected` require an exact terminal Gateway acknowledgement.
+
+### Gateway route cutover state
+
+```text
+pending -> applied
+       \-> rejected
+```
+
+Only `applied` changes the live route rows. Both terminal states retain their
+publication identity for replay and recovery.
 
 ### Domain claim state
 
@@ -506,6 +558,7 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Provider resource and live health | Node agent plus Runtime provider |
 | Last accepted observation | PostgreSQL fleet/deployment projection |
 | Route desired state, Gateway scope, and publication identity | PostgreSQL Edge tables |
+| Pending/applied/rejected Gateway route cutover and candidate route projections | PostgreSQL Edge tables |
 | Domain claims and Gateway certificate public material | PostgreSQL Edge tables |
 | Gateway active config | A3S Gateway, keyed by config revision |
 | Gateway private key and CSR files | Node-local managed certificate directory |
@@ -539,6 +592,7 @@ deployment.deployment.requested
 deployment.deployment.succeeded
 deployment.deployment.failed
 edge.route.publication-staged
+edge.route.cutover-staged
 edge.domain-claim.created
 edge.domain-claim.verified
 edge.domain-claim.rejected

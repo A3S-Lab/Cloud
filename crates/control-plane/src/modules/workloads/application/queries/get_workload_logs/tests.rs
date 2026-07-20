@@ -636,7 +636,7 @@ async fn seed_workload() -> SeededWorkload {
         deployment.operation_id,
         organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid()).expect("operation subject"),
-        WorkflowIdentity::new("cloud.deployment", "1").expect("workflow identity"),
+        WorkflowIdentity::new("cloud.deployment", "2").expect("workflow identity"),
         serde_json::json!({}),
         now,
     );

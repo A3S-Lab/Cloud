@@ -1,3 +1,4 @@
+use super::super::validate_secret_bindings;
 use super::{CreateWorkloadDeployment, CreateWorkloadDeploymentResult};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
@@ -5,12 +6,9 @@ use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName, WorkloadId,
-    WorkloadRevisionId,
+    DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
 };
-use crate::modules::workloads::domain::entities::{
-    Deployment, RequestedServiceTemplate, Workload, WorkloadRevision,
-};
+use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
@@ -136,7 +134,7 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
                 workload.organization_id,
                 OperationSubject::new("deployment", deployment.id.as_uuid())
                     .map_err(BootError::Internal)?,
-                WorkflowIdentity::new("cloud.deployment", "1").map_err(BootError::Internal)?,
+                WorkflowIdentity::new("cloud.deployment", "2").map_err(BootError::Internal)?,
                 serde_json::json!({
                     "deploymentId": deployment.id,
                     "organizationId": workload.organization_id,
@@ -164,43 +162,4 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             Ok(Ok(CreateWorkloadDeploymentResult { bundle }))
         })
     }
-}
-
-async fn validate_secret_bindings(
-    secrets: &dyn ISecretRepository,
-    organization_id: crate::modules::shared_kernel::domain::OrganizationId,
-    project_id: crate::modules::shared_kernel::domain::ProjectId,
-    environment_id: crate::modules::shared_kernel::domain::EnvironmentId,
-    template: &RequestedServiceTemplate,
-) -> ApplicationResult<()> {
-    for binding in &template.secrets {
-        let secret = secrets
-            .find(organization_id, binding.secret_id)
-            .await
-            .map_err(binding_repository_error)?;
-        if secret.project_id != project_id || secret.environment_id != environment_id {
-            return Err(invalid_binding());
-        }
-        let version = secrets
-            .find_version(organization_id, binding.secret_id, binding.version)
-            .await
-            .map_err(binding_repository_error)?;
-        if !version.is_materializable(&secret) {
-            return Err(invalid_binding());
-        }
-    }
-    Ok(())
-}
-
-fn binding_repository_error(error: RepositoryError) -> ApplicationError {
-    match error {
-        RepositoryError::NotFound => invalid_binding(),
-        other => other.into(),
-    }
-}
-
-fn invalid_binding() -> ApplicationError {
-    ApplicationError::Invalid(
-        "workload Secret binding does not reference an active version in this environment".into(),
-    )
 }

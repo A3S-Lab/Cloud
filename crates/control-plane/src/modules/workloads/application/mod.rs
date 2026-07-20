@@ -8,6 +8,9 @@ pub use commands::create_workload_deployment::{
     CreateWorkloadDeployment, CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult,
 };
 pub use commands::stop_workload::{StopWorkload, StopWorkloadHandler, StopWorkloadResult};
+pub use commands::update_workload_deployment::{
+    UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult,
+};
 pub use queries::{
     DeploymentQueryResult, GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler,
     GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,

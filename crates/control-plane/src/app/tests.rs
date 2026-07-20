@@ -21,7 +21,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+mod platform_tests;
 mod secret_tests;
+mod workload_tests;
 
 const BOOTSTRAP_TOKEN: &str = "test-bootstrap-credential-0123456789abcdef";
 const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -298,9 +300,22 @@ fn build_test_application_with_secrets(
     projects: Arc<InMemoryProjectsRepository>,
     secrets: Arc<InMemorySecretRepository>,
 ) -> Result<BootApplication> {
+    build_test_application_with_repositories(
+        identity,
+        projects,
+        secrets,
+        Arc::new(InMemoryWorkloadRepository::new()),
+    )
+}
+
+fn build_test_application_with_repositories(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
-    let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
     let routes: Arc<dyn IEdgeRepository> =
         Arc::new(crate::modules::edge::InMemoryEdgeRepository::new());
@@ -457,44 +472,6 @@ fn runtime_capabilities() -> Value {
         "resource_controls": ["cpu", "memory", "pids", "ephemeral_storage"],
         "features": ["durable_identity", "stop", "remove"]
     })
-}
-
-#[tokio::test]
-async fn boot_shell_exposes_wrapped_platform_and_health_responses() -> Result<()> {
-    let organizations = Arc::new(InMemoryIdentityRepository::new());
-    let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(organizations, projects)?;
-    let platform = app
-        .call(
-            BootRequest::new(HttpMethod::Get, "/api/v1/platform")
-                .with_header("accept", "application/json")
-                .with_header("x-request-id", "018f3f56-8d4a-7c2a-9f13-5ab3d245d701"),
-        )
-        .await?;
-    let body = response_json(&platform)?;
-    assert_eq!(platform.status(), 200);
-    assert_eq!(body["code"], 200);
-    assert_eq!(body["data"]["name"], "a3s-cloud");
-    assert_eq!(body["requestId"], "018f3f56-8d4a-7c2a-9f13-5ab3d245d701");
-
-    let health = app
-        .call(
-            BootRequest::new(HttpMethod::Get, "/api/v1/health/live")
-                .with_header("accept", "application/json"),
-        )
-        .await?;
-    let body = response_json(&health)?;
-    assert_eq!(body["data"]["status"], "up");
-
-    let readiness = app
-        .call(
-            BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
-                .with_header("accept", "application/json"),
-        )
-        .await?;
-    let body = response_json(&readiness)?;
-    assert_eq!(body["data"]["status"], "up");
-    Ok(())
 }
 
 #[tokio::test]

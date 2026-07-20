@@ -1,9 +1,10 @@
 use crate::modules::edge::domain::{
-    DomainClaim, GatewayCertificate, GatewayPublication, GatewayScopeState, Route,
+    DomainClaim, GatewayCertificate, GatewayPublication, GatewayRouteCutover,
+    GatewayRouteCutoverState, GatewayScopeState, Route,
 };
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, IdempotentWrite,
-    NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
+    IdempotentWrite, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, NodeGatewayAck};
 use async_trait::async_trait;
@@ -18,6 +19,50 @@ pub struct StageRoutePublication {
     pub expected_scope_version: u64,
     pub idempotency: IdempotencyRequest,
     pub event: DomainEventEnvelope,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageGatewayRouteCutover {
+    pub cutover: GatewayRouteCutover,
+    pub certificate: GatewayCertificate,
+    pub publication: GatewayPublication,
+    pub expected_scope_version: u64,
+    pub idempotency: IdempotencyRequest,
+    pub event: DomainEventEnvelope,
+}
+
+impl StageGatewayRouteCutover {
+    pub fn validate(&self) -> Result<(), String> {
+        self.cutover.validate()?;
+        let cutover = &self.cutover;
+        let certificate = &self.certificate;
+        let publication = &self.publication;
+        if cutover.state != GatewayRouteCutoverState::Pending
+            || publication.state != crate::modules::edge::domain::GatewayPublicationState::Pending
+            || cutover.node_id != publication.node_id
+            || cutover.gateway_revision != publication.revision
+            || cutover.gateway_command_id != publication.command_id
+            || cutover.snapshot_digest != publication.snapshot_digest
+            || cutover.gateway_certificate_id != certificate.id
+            || certificate.organization_id != cutover.organization_id
+            || certificate.node_id != cutover.node_id
+            || certificate.gateway_revision != cutover.gateway_revision
+            || certificate.gateway_command_id != cutover.gateway_command_id
+            || certificate.snapshot_digest != cutover.snapshot_digest
+            || publication.certificate_request.as_ref() != Some(&certificate.request)
+            || certificate.state
+                != crate::modules::edge::domain::GatewayCertificateState::Provisioning
+            || certificate.csr_digest.is_some()
+            || certificate.material.is_some()
+            || self.event.organization_id != cutover.organization_id.as_uuid()
+            || self.event.aggregate_id != cutover.deployment_id.as_uuid()
+            || self.event.correlation_id != publication.command_correlation_id
+        {
+            return Err("route cutover and complete Gateway publication are inconsistent".into());
+        }
+        publication.snapshot()?;
+        Ok(())
+    }
 }
 
 impl StageRoutePublication {
@@ -76,6 +121,14 @@ pub struct EdgeRoutePublicationResult {
     pub replayed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayRouteCutoverResult {
+    pub cutover: GatewayRouteCutover,
+    pub certificate: GatewayCertificate,
+    pub publication: GatewayPublication,
+    pub replayed: bool,
+}
+
 #[async_trait]
 pub trait IEdgeRepository: Send + Sync {
     async fn replay_domain_claim_write(
@@ -119,6 +172,22 @@ pub trait IEdgeRepository: Send + Sync {
         &self,
         bundle: StageRoutePublication,
     ) -> Result<EdgeRoutePublicationResult, RepositoryError>;
+
+    async fn replay_gateway_route_cutover(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<GatewayRouteCutoverResult>, RepositoryError>;
+
+    async fn stage_gateway_route_cutover(
+        &self,
+        bundle: StageGatewayRouteCutover,
+    ) -> Result<GatewayRouteCutoverResult, RepositoryError>;
+
+    async fn find_gateway_route_cutover(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<Option<GatewayRouteCutover>, RepositoryError>;
 
     async fn find_route(
         &self,

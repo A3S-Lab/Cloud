@@ -38,7 +38,7 @@ fn operation_request(
         operation_id,
         OrganizationId::new(),
         OperationSubject::new("deployment", Uuid::now_v7())?,
-        WorkflowIdentity::new("cloud.deployment", "1")?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
         input,
         Utc::now(),
     ))

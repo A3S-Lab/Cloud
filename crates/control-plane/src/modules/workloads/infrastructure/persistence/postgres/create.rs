@@ -31,6 +31,7 @@ pub(super) async fn deployment_in_transaction(
     }
     validate(&request)?;
     let workload = lock_or_insert_workload(transaction, &request.workload).await?;
+    require_no_nonterminal_deployment(transaction, &workload).await?;
     require_next_generation(transaction, &request).await?;
     insert_revision(transaction, &request).await?;
     insert_operation(transaction, &request).await?;
@@ -46,6 +47,28 @@ pub(super) async fn deployment_in_transaction(
     store_outbox(transaction, &request.event).await?;
     store_idempotency(transaction, &request.idempotency, &response).await?;
     Ok(response)
+}
+
+async fn require_no_nonterminal_deployment(
+    transaction: &PostgresTransaction,
+    workload: &Workload,
+) -> Result<(), PostgresPersistenceError> {
+    let existing = fetch_optional::<i32, _>(
+        transaction,
+        sql_query::<i32>("select 1 from deployments where workload_id = ")
+            .bind(workload.id.as_uuid())
+            .append(
+                " and status not in ('active', 'failed', 'orphaned', 'cancelled') limit 1 for update",
+            ),
+    )
+    .await?;
+    if existing.is_some() {
+        return Err(RepositoryError::Conflict(
+            "workload already has a nonterminal deployment".into(),
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceError> {
@@ -67,6 +90,7 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
         || deployment.node_id.is_some()
         || deployment.command_id.is_some()
         || deployment.cleanup_command_id.is_some()
+        || deployment.retirement_command_id.is_some()
         || deployment.failure.is_some()
         || deployment.activated_at.is_some()
         || deployment.cancellation_requested_at.is_some()
@@ -287,7 +311,7 @@ async fn insert_deployment(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into deployments (id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at) values (",
+            "insert into deployments (id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, retirement_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at) values (",
         )
         .bind(deployment.id.as_uuid())
         .append(", ")
@@ -304,6 +328,8 @@ async fn insert_deployment(
         .bind(deployment.command_id.map(|id| id.as_uuid()))
         .append(", ")
         .bind(deployment.cleanup_command_id.map(|id| id.as_uuid()))
+        .append(", ")
+        .bind(deployment.retirement_command_id.map(|id| id.as_uuid()))
         .append(", ")
         .bind(deployment.status.as_str())
         .append(", ")
