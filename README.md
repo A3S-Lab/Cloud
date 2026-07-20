@@ -89,11 +89,14 @@ API command
   Gateway node
 - **Encrypted Secret Resources**: Create tenant-scoped Secret identities,
   rotate immutable encrypted versions through local AES-GCM or Vault Transit,
-  bind exact versions to workload environment/file targets, materialize only
-  for the assigned node over mTLS, and inject at the Docker boundary without
-  placing plaintext in desired state, Runtime state, commands, or events; a
-  dedicated Linux/PostgreSQL/Docker gate exercises production authorization
-  and decryption with real environment and `0400` tmpfs-file injection
+  bind exact versions to workload environment, file, or registry-credential
+  targets, materialize only for an authoritative registry challenge or the
+  assigned node over mTLS, and use them at the registry, Docker create, or
+  authenticated image-pull boundary without placing plaintext in desired
+  state, Runtime state, commands, or events; a dedicated
+  Linux/PostgreSQL/Docker gate exercises production authorization and
+  decryption at both private-registry resolution and node pull, plus real
+  environment injection and `0400` tmpfs-file injection
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
 - **Durable Workload Logs**: Project active Runtime targets from the command
@@ -128,7 +131,7 @@ API command
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
 | Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
-| Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, and a dedicated Linux/PostgreSQL/Docker gate for active-version authorization, decryption, environment injection, and `0400` tmpfs-file injection are implemented; registry credentials, automatic restart orchestration, process-crash gates, and broader plaintext scans remain | In progress (`E0`) |
+| Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, and durable-state plaintext scans are implemented and exercised by a dedicated Linux/PostgreSQL/Docker gate; automatic restart orchestration and process-crash certification remain | In progress (`E0`) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, a pinned-MinIO lifecycle gate, and real Docker stdout/stderr redaction with durable exact-batch replay and REST readback are implemented; provider/control-plane process-death and corruption certification remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
@@ -270,7 +273,8 @@ and the resulting workload revision remains digest-addressable on replay.
 
 Workload templates bind immutable Secret versions without accepting inline
 material. Each binding names an exact `secretId` and positive `version`, then
-selects either an environment variable or an absolute file target:
+selects an environment variable, an absolute file, or the workload artifact's
+registry credential:
 
 ```json
 {
@@ -287,6 +291,27 @@ selects either an environment variable or an absolute file target:
 File targets use `{"kind":"file","path":"/run/secrets/key","mode":256}`.
 The Linux node-agent rejects file materialization unless
 `docker.secret_memory_dir` is backed by tmpfs.
+
+Registry targets use `{"kind":"registry_credential"}`. Their referenced Secret
+value is a closed, versioned JSON document:
+
+```json
+{
+  "schema": "a3s.cloud.registry-credential.v1",
+  "username": "registry-user",
+  "password": "registry-password-or-token"
+}
+```
+
+The registry address is derived from the artifact URI. During authoritative
+artifact resolution, the control plane first requests the manifest
+anonymously. On a Basic or Bearer authentication challenge, it reloads the
+exact bound active Secret version, revalidates its tenant and environment
+scope, decrypts it only in memory, and authenticates the manifest request. The
+resolved revision persists only the digest and Secret reference. The node
+independently resolves the same reference only when Docker must pull the
+missing digest, passes it as registry authentication, and never injects it into
+the workload container.
 
 ### Query workload logs
 
@@ -545,11 +570,14 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
 The provider suite covers Base, Recovery, Networking, Mounts, Health,
 Resources, Logs, and Security. The Cloud suite covers persisted projections,
 the command journal, restart, JetStream redelivery, reconciliation, real
-PostgreSQL-backed Secret authorization and Docker injection, redacted log
+PostgreSQL-backed Secret authorization, Docker injection, redacted log
 persistence and exact-batch replay, cancellation, failed-update preservation,
 and cleanup. Its Secret file root is a run-specific tmpfs directory and must be
-empty after the test. Both suites require zero provider and host inventory
-drift. See
+empty after the test. The dedicated Linux Secret/log CI job additionally
+provisions an authenticated private registry, removes the cached workload
+image, and certifies both production control-plane manifest resolution and the
+node registry-credential pull path. Both suites require zero provider and host
+inventory drift. See
 [`tools/runtime-conformance/README.md`](tools/runtime-conformance/README.md) for
 the pinned images, safety model, and evidence contract.
 

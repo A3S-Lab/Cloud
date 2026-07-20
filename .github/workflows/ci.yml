@@ -218,7 +218,10 @@ jobs:
         with:
           toolchain: 1.85.0
 
-      - name: Start pinned PostgreSQL and pull workload
+      - name: Start pinned PostgreSQL and private registry fixture
+        env:
+          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
+          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
         run: |
           docker run --detach --rm \
             --name a3s-cloud-secret-log-postgres \
@@ -238,6 +241,64 @@ jobs:
           done
           docker pull \
             docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          registry_image=registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          htpasswd_image=httpd:2.4.63-alpine@sha256:cc34b8bdde6ee55ea52db9819baa13ea36e4c7447eb7595db9ea720d1831851e
+          docker pull "$registry_image"
+          docker pull "$htpasswd_image"
+          auth_directory="$RUNNER_TEMP/a3s-cloud-registry-auth"
+          install -d -m 0700 "$auth_directory"
+          docker run --rm \
+            --entrypoint /usr/local/apache2/bin/htpasswd \
+            "$htpasswd_image" -Bbn \
+            "$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
+            "$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
+            >"$auth_directory/htpasswd"
+          docker run --detach --rm \
+            --name a3s-cloud-secret-log-registry \
+            --publish 127.0.0.1:50030:5000 \
+            --mount "type=bind,source=$auth_directory,target=/auth,readonly" \
+            --env REGISTRY_AUTH=htpasswd \
+            --env REGISTRY_AUTH_HTPASSWD_REALM="A3S Cloud acceptance" \
+            --env REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
+            "$registry_image"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 2 \
+              --user "$A3S_CLOUD_TEST_REGISTRY_USERNAME:$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
+              http://127.0.0.1:50030/v2/ >/dev/null; then
+              break
+            fi
+            [[ $attempt -ne 60 ]]
+            sleep 0.5
+          done
+          [[ $(curl --silent --output /dev/null --write-out '%{http_code}' \
+            http://127.0.0.1:50030/v2/) == 401 ]]
+          printf '%s' "$A3S_CLOUD_TEST_REGISTRY_PASSWORD" |
+            docker login 127.0.0.1:50030 \
+              --username "$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
+              --password-stdin
+          private_repository=127.0.0.1:50030/a3s/busybox
+          docker tag \
+            docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
+            "$private_repository:acceptance"
+          docker push "$private_repository:acceptance"
+          private_reference=
+          while IFS= read -r reference; do
+            case "$reference" in
+              "$private_repository"@sha256:*)
+                private_reference=$reference
+                break
+                ;;
+            esac
+          done < <(docker image inspect \
+            --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            "$private_repository:acceptance")
+          [[ -n $private_reference ]]
+          echo "A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT=oci://$private_reference" \
+            >>"$GITHUB_ENV"
+          image_id=$(docker image inspect \
+            --format '{{.Id}}' "$private_repository:acceptance")
+          docker image rm --force "$image_id"
+          ! docker image inspect "$private_reference" >/dev/null 2>&1
 
       - name: Exercise PostgreSQL-backed Secret injection and redacted logs
         env:
@@ -245,6 +306,8 @@ jobs:
           A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
           A3S_CLOUD_TEST_POSTGRES_URL: postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/postgres
           A3S_CLOUD_TEST_SECRET_MEMORY_DIR: /dev/shm/a3s-cloud/ci-secret-logs
+          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
+          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
         run: |
           install -d -m 0700 "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR"
           cargo test -p a3s-cloud-control-plane --test postgres_integration --locked --no-run
@@ -256,6 +319,9 @@ jobs:
             A3S_CLOUD_TEST_DOCKER_SOCKET="$A3S_CLOUD_TEST_DOCKER_SOCKET" \
             A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
             A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" \
+            A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT="$A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT" \
+            A3S_CLOUD_TEST_REGISTRY_USERNAME="$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
+            A3S_CLOUD_TEST_REGISTRY_PASSWORD="$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
             RUST_BACKTRACE=1 \
             "$test_binary" \
             postgres_foundation_is_migrated_atomic_and_idempotent \
@@ -274,7 +340,10 @@ jobs:
           done
           [[ -z $managed_containers ]] ||
             docker rm --force $managed_containers || true
+          docker rm --force a3s-cloud-secret-log-registry || true
           docker rm --force a3s-cloud-secret-log-postgres || true
+          docker logout 127.0.0.1:50030 || true
+          rm -rf "$RUNNER_TEMP/a3s-cloud-registry-auth"
           sudo rm -rf /dev/shm/a3s-cloud/ci-secret-logs
 
   repository-policy:

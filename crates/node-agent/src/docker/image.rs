@@ -1,11 +1,12 @@
 use super::{docker_error, is_status, DockerRuntimeDriver};
-use a3s_runtime::contract::ArtifactRef;
+use a3s_runtime::contract::{ArtifactRef, RuntimeUnitSpec};
 use a3s_runtime::{RuntimeError, RuntimeResult};
 use bollard::image::CreateImageOptions;
 use futures_util::StreamExt;
 
 impl DockerRuntimeDriver {
-    pub(super) async fn ensure_image(&self, artifact: &ArtifactRef) -> RuntimeResult<String> {
+    pub(super) async fn ensure_image(&self, spec: &RuntimeUnitSpec) -> RuntimeResult<String> {
+        let artifact = &spec.artifact;
         let image = image_reference(artifact)?;
         match self.docker.inspect_image(&image).await {
             Ok(inspect) => verify_repo_digest(&image, &artifact.digest, inspect.repo_digests)?,
@@ -14,7 +15,10 @@ impl DockerRuntimeDriver {
                     from_image: image.as_str(),
                     ..Default::default()
                 };
-                let mut pull = self.docker.create_image(Some(options), None, None);
+                let credentials = self
+                    .resolve_registry_credentials(spec, &registry_address(artifact)?)
+                    .await?;
+                let mut pull = self.docker.create_image(Some(options), None, credentials);
                 while let Some(progress) = pull.next().await {
                     progress.map_err(docker_error)?;
                 }
@@ -61,6 +65,22 @@ fn image_reference(artifact: &ArtifactRef) -> RuntimeResult<String> {
     Ok(image)
 }
 
+fn registry_address(artifact: &ArtifactRef) -> RuntimeResult<String> {
+    let url = url::Url::parse(&artifact.uri)
+        .map_err(|error| RuntimeError::InvalidRequest(error.to_string()))?;
+    let host = url.host().ok_or_else(|| {
+        RuntimeError::InvalidRequest("Docker artifact URI has no registry host".into())
+    })?;
+    let host = match host {
+        url::Host::Ipv6(address) => format!("[{address}]"),
+        other => other.to_string(),
+    };
+    Ok(match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    })
+}
+
 fn verify_repo_digest(
     image: &str,
     digest: &str,
@@ -101,6 +121,18 @@ mod tests {
             )))
             .expect("image reference"),
             format!("registry.example:5443/team/app@{digest}")
+        );
+        assert_eq!(
+            registry_address(&artifact(format!(
+                "oci://registry.example:5443/team/app@{digest}"
+            )))
+            .expect("registry address"),
+            "registry.example:5443"
+        );
+        assert_eq!(
+            registry_address(&artifact(format!("oci://[::1]:5443/team/app@{digest}")))
+                .expect("IPv6 registry address"),
+            "[::1]:5443"
         );
         assert!(
             image_reference(&artifact("oci://registry.example/team/app:latest".into())).is_err()

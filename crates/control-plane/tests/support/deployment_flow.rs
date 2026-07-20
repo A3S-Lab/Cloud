@@ -33,8 +33,8 @@ use a3s_cloud_control_plane::modules::workloads::{
     DeploymentCancellationRequested, DeploymentFlowConfig, DeploymentFlowRuntime, DeploymentStatus,
     IOciArtifactResolver, IWorkloadRepository, IWorkloadRuntimeControl,
     IWorkloadRuntimeTargetRepository, OciArtifact, OciArtifactReference,
-    OciArtifactResolutionError, PostgresWorkloadRepository, RequestDeploymentCancellationBundle,
-    WorkloadRuntimeReconciler,
+    OciArtifactResolutionError, OciRegistryArtifactResolver, PostgresWorkloadRepository,
+    RequestDeploymentCancellationBundle, WorkloadRuntimeReconciler,
 };
 use a3s_cloud_node_agent::{
     CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeControlClientError,
@@ -66,7 +66,7 @@ pub async fn exercise_deployment_flow(
     organization_uuid: Uuid,
     response: &Value,
     security_state_dir: &Path,
-    secret_plaintext: &str,
+    sensitive_plaintexts: &[&str],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
@@ -87,7 +87,7 @@ pub async fn exercise_deployment_flow(
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let runtime = DeploymentFlowRuntime::new(
         workloads,
-        test_artifact_resolver(),
+        deployment_artifact_resolver(executor, security_state_dir)?,
         nodes,
         node_control,
         ChronoDuration::seconds(5),
@@ -192,13 +192,17 @@ pub async fn exercise_deployment_flow(
             FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
             runtime.clone(),
         );
-        assert!(!serde_json::to_string(command)?.contains(secret_plaintext));
+        let serialized_command = serde_json::to_string(command)?;
+        assert!(sensitive_plaintexts
+            .iter()
+            .all(|plaintext| !serialized_command.contains(plaintext)));
         let acknowledgement = command_executor.execute(command.clone()).await?;
         assert_secret_file_modes(&secret_namespace_dir, &[0o400])?;
         assert_eq!(
             command_executor.execute(command.clone()).await?,
             acknowledgement
         );
+        assert_tree_excludes_plaintext(state_directory.path(), sensitive_plaintexts)?;
         let observation = match &acknowledgement.outcome {
             a3s_cloud_contracts::NodeCommandOutcome::Succeeded { result } => {
                 match result.as_ref() {
@@ -216,7 +220,7 @@ pub async fn exercise_deployment_flow(
             Arc::clone(&runtime),
             &request.spec,
             security_state_dir,
-            secret_plaintext,
+            sensitive_plaintexts,
         )
         .await?;
         let observed_at = acknowledgement.completed_at;
@@ -285,7 +289,7 @@ pub async fn exercise_deployment_flow(
     drop(flow);
     let restarted_runtime = DeploymentFlowRuntime::new(
         workload_repository.clone(),
-        test_artifact_resolver(),
+        deployment_artifact_resolver(executor, security_state_dir)?,
         node_repository.clone(),
         node_repository.clone(),
         ChronoDuration::seconds(5),
@@ -590,9 +594,18 @@ async fn persist_redacted_docker_logs(
     runtime: Arc<dyn RuntimeClient>,
     spec: &RuntimeUnitSpec,
     security_state_dir: &Path,
-    secret_plaintext: &str,
+    sensitive_plaintexts: &[&str],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(spec.secrets.len(), 2);
+    assert_eq!(
+        spec.secrets
+            .iter()
+            .filter(|secret| !matches!(
+                secret.target,
+                a3s_runtime::contract::SecretTarget::RegistryCredential
+            ))
+            .count(),
+        2
+    );
     let query = RuntimeLogQuery {
         schema: RuntimeLogQuery::SCHEMA.into(),
         unit_id: spec.unit_id.clone(),
@@ -618,17 +631,15 @@ async fn persist_redacted_docker_logs(
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
-    if chunks
-        .iter()
-        .any(|chunk| chunk.data.contains(secret_plaintext))
-        || !chunks.iter().any(|chunk| {
-            chunk.stream == RuntimeLogStream::Stdout && chunk.data.contains("env-secret=[REDACTED]")
-        })
-        || !chunks.iter().any(|chunk| {
-            chunk.stream == RuntimeLogStream::Stderr
-                && chunk.data.contains("file-secret=[REDACTED]")
-        })
-    {
+    if chunks.iter().any(|chunk| {
+        sensitive_plaintexts
+            .iter()
+            .any(|plaintext| chunk.data.contains(plaintext))
+    }) || !chunks.iter().any(|chunk| {
+        chunk.stream == RuntimeLogStream::Stdout && chunk.data.contains("env-secret=[REDACTED]")
+    }) || !chunks.iter().any(|chunk| {
+        chunk.stream == RuntimeLogStream::Stderr && chunk.data.contains("file-secret=[REDACTED]")
+    }) {
         return Err(
             std::io::Error::other("real Docker Secret logs were not completely redacted").into(),
         );
@@ -661,7 +672,7 @@ async fn persist_redacted_docker_logs(
     let replay = record_log_batch(executor, security_state_dir, node_id, batch).await?;
     assert!(replay.replayed);
     assert_eq!(replay.accepted_chunks, first.accepted_chunks);
-    assert_log_objects_redacted(&security_state_dir.join("logs"), secret_plaintext)?;
+    assert_log_objects_redacted(&security_state_dir.join("logs"), sensitive_plaintexts)?;
     Ok(())
 }
 
@@ -693,9 +704,8 @@ async fn record_log_batch(
 
 fn assert_log_objects_redacted(
     root: &Path,
-    secret_plaintext: &str,
+    sensitive_plaintexts: &[&str],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let secret = secret_plaintext.as_bytes();
     let marker = b"[REDACTED]";
     let mut directories = vec![root.to_path_buf()];
     let mut found_marker = false;
@@ -707,7 +717,10 @@ fn assert_log_objects_redacted(
                 directories.push(entry.path());
             } else if file_type.is_file() {
                 let body = std::fs::read(entry.path())?;
-                if !secret.is_empty() && body.windows(secret.len()).any(|window| window == secret) {
+                if sensitive_plaintexts.iter().any(|plaintext| {
+                    let secret = plaintext.as_bytes();
+                    !secret.is_empty() && body.windows(secret.len()).any(|window| window == secret)
+                }) {
                     return Err(std::io::Error::other(
                         "plaintext Secret reached the durable log object store",
                     )
@@ -721,6 +734,34 @@ fn assert_log_objects_redacted(
         return Err(
             std::io::Error::other("durable log objects contain no redaction evidence").into(),
         );
+    }
+    Ok(())
+}
+
+fn assert_tree_excludes_plaintext(
+    root: &Path,
+    sensitive_plaintexts: &[&str],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut directories = vec![root.to_path_buf()];
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                directories.push(entry.path());
+            } else if file_type.is_file() {
+                let body = std::fs::read(entry.path())?;
+                if sensitive_plaintexts.iter().any(|plaintext| {
+                    let secret = plaintext.as_bytes();
+                    !secret.is_empty() && body.windows(secret.len()).any(|window| window == secret)
+                }) {
+                    return Err(std::io::Error::other(
+                        "plaintext Secret reached durable node state",
+                    )
+                    .into());
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1070,6 +1111,29 @@ fn test_artifact_resolver() -> Arc<dyn IOciArtifactResolver> {
     Arc::new(ExpectedDigestArtifactResolver)
 }
 
+fn deployment_artifact_resolver(
+    executor: &PostgresExecutor,
+    security_state_dir: &Path,
+) -> Result<Arc<dyn IOciArtifactResolver>, Box<dyn std::error::Error>> {
+    let Some(uri) = std::env::var("A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT").ok() else {
+        return Ok(test_artifact_resolver());
+    };
+    let reference = OciArtifactReference {
+        uri,
+        expected_digest: None,
+    };
+    let (registry, _) = reference.registry_and_repository()?;
+    let secrets: Arc<dyn ISecretRepository> =
+        Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let encryption: Arc<dyn ISecretEncryptionService> = Arc::new(
+        LocalKeyEncryptionService::load_or_create(security_state_dir.join("key-encryption.key"))?,
+    );
+    Ok(Arc::new(
+        OciRegistryArtifactResolver::new(Duration::from_secs(10), [registry.to_owned()])?
+            .with_registry_secret_material(secrets, encryption),
+    ))
+}
+
 struct ExpectedDigestArtifactResolver;
 
 #[async_trait]
@@ -1077,6 +1141,9 @@ impl IOciArtifactResolver for ExpectedDigestArtifactResolver {
     async fn resolve(
         &self,
         reference: &OciArtifactReference,
+        _registry_credential: Option<
+            &a3s_cloud_control_plane::modules::workloads::OciRegistryCredentialReference,
+        >,
     ) -> Result<OciArtifact, OciArtifactResolutionError> {
         let digest = reference
             .expected_digest
