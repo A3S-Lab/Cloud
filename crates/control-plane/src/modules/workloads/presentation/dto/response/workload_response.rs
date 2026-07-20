@@ -1,6 +1,7 @@
 use crate::modules::operations::domain::entities::OperationProjection;
 use crate::modules::workloads::application::{DeploymentQueryResult, WorkloadQueryResult};
 use crate::modules::workloads::domain::entities::WorkloadRevision;
+use crate::modules::workloads::presentation::dto::ServiceTemplateDto;
 use a3s_runtime::contract::{RuntimeHealthState, RuntimeUnitState};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -28,6 +29,7 @@ pub struct WorkloadResponse {
 pub struct WorkloadRevisionResponse {
     pub id: Uuid,
     pub generation: u64,
+    pub requested_template: ServiceTemplateDto,
     pub artifact_source_uri: String,
     pub expected_artifact_digest: Option<String>,
     pub request_digest: String,
@@ -115,6 +117,7 @@ impl From<WorkloadQueryResult> for WorkloadResponse {
 
 impl From<WorkloadRevision> for WorkloadRevisionResponse {
     fn from(revision: WorkloadRevision) -> Self {
+        let requested_template = revision.request.clone().into();
         let (artifact_uri, artifact_digest, artifact_media_type) = revision
             .template
             .map(|template| {
@@ -128,6 +131,7 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
         Self {
             id: revision.id.as_uuid(),
             generation: revision.generation,
+            requested_template,
             artifact_source_uri: revision.request.artifact.uri,
             expected_artifact_digest: revision.request.artifact.expected_digest,
             request_digest: revision.request_digest,

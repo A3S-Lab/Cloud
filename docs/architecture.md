@@ -48,12 +48,17 @@ revision, derives a new generation from its exact resolved template, and reuses
 the version 2 deployment, cutover, and retirement workflow. PostgreSQL API
 coverage proves the durable clone and replay contract, the routed suite proves
 exact Gateway cutover, and the isolated Docker suite proves real rollback apply
-and retirement. Later E0 sections remain the accepted design until their exit
-gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux node
-agent, and a React web application. The first release still requires production
-DNS/CA integration and renewal, the remaining Gateway acknowledgement
-process-death gate, provider death during a Secret-rotation apply, the remaining
-web timeline, and clean-host gates before multi-node scheduling or hosted assets
+and retirement. Workload queries now project the complete immutable requested
+template with reference-only Secret bindings, and operation queries expose
+explicit rollback lineage. The React console consumes those authoritative
+projections for deployment history, route/certificate state, complete-template
+differences and updates, eligible rollback, and browser-local terminal
+operation cleanup. Later E0 sections remain the accepted design until their
+exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux
+node agent, and a React web application. The first release still requires
+production DNS/CA integration and renewal/revocation convergence, the remaining
+Gateway acknowledgement process-death gate, provider death during a Secret-rotation
+apply, and clean-host gates before multi-node scheduling or hosted assets
 begin.
 
 The following decisions are fixed for the first architecture:
@@ -720,7 +725,15 @@ most 500 records in memory.
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
 health, route, operation, log data, and explicit log gaps remain visually
-distinct.
+distinct. Workload list and detail polling supply complete immutable requested
+templates and exact route projections; organization polling supplies managed
+certificate projections; operation SSE remains the live progress path. Update
+dialogs retain one idempotency key for their lifetime, validate and compare the
+complete JSON template, and refresh all authoritative projections only after
+the command commits. Rollback choices are older `active` deployments with a
+persisted `activatedAt`, and operation lineage identifies the selected source
+revision. Terminal-operation cleanup changes only a browser-local dismissed-ID
+set; Flow history, operation projections, and audit records remain durable.
 
 ## 12. Observability and audit
 

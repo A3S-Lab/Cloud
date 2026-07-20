@@ -53,11 +53,68 @@ export interface Operation {
   requestedAt: string;
   updatedAt: string;
   error: string | null;
+  rollbackSourceRevisionId?: string;
+}
+
+export interface ServiceTemplate {
+  artifact: OciArtifactReference;
+  process: ServiceProcess;
+  secrets: SecretBinding[];
+  resources: ServiceResources;
+  ports: ServicePort[];
+  health: HttpHealthCheck;
+}
+
+export interface OciArtifactReference {
+  uri: string;
+  expectedDigest: string | null;
+}
+
+export interface ServiceProcess {
+  command: string[];
+  args: string[];
+  workingDirectory: string | null;
+  environment: Record<string, string>;
+}
+
+export interface SecretBinding {
+  name: string;
+  secretId: string;
+  version: number;
+  target: SecretBindingTarget;
+}
+
+export type SecretBindingTarget =
+  | { kind: 'environment'; variable: string }
+  | { kind: 'file'; path: string; mode: number }
+  | { kind: 'registry_credential' };
+
+export interface ServiceResources {
+  cpuMillis: number;
+  memoryBytes: number;
+  pids: number;
+  ephemeralStorageBytes: number | null;
+}
+
+export interface ServicePort {
+  name: string;
+  containerPort: number;
+}
+
+export interface HttpHealthCheck {
+  portName: string;
+  path: string;
+  intervalMs: number;
+  timeoutMs: number;
+  healthyThreshold: number;
+  unhealthyThreshold: number;
+  stabilizationWindowMs: number;
 }
 
 export interface WorkloadRevision {
   id: string;
   generation: number;
+  requestedTemplate: ServiceTemplate;
   artifactSourceUri: string;
   expectedArtifactDigest: string | null;
   requestDigest: string;
@@ -82,6 +139,7 @@ export type DeploymentStatus =
   | 'scheduled'
   | 'applying'
   | 'verifying'
+  | 'retiring'
   | 'cancelling'
   | 'cleanup_pending'
   | 'active'
@@ -128,6 +186,7 @@ export interface Deployment {
   nodeId: string | null;
   commandId: string | null;
   cleanupCommandId: string | null;
+  retirementCommandId: string | null;
   status: DeploymentStatus;
   failure: string | null;
   operation: DeploymentOperation | null;
@@ -156,6 +215,26 @@ export interface StopWorkloadResult {
   replayed: boolean;
 }
 
+export interface WorkloadDeploymentResult {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  workloadId: string;
+  revisionId: string;
+  deploymentId: string;
+  operationId: string;
+  generation: number;
+  status: DeploymentStatus;
+  artifactSourceUri: string;
+  expectedArtifactDigest: string | null;
+  requestDigest: string;
+  artifactDigest: string | null;
+  templateDigest: string | null;
+  requestedAt: string;
+  replayed: boolean;
+  rollbackSourceRevisionId?: string;
+}
+
 export interface Workload {
   id: string;
   organizationId: string;
@@ -169,6 +248,57 @@ export interface Workload {
   aggregateVersion: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type RouteState = 'pending' | 'publishing' | 'active' | 'rejected';
+
+export interface Route {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  gatewayNodeId: string;
+  hostname: string;
+  pathPrefix: string;
+  domainClaimId: string | null;
+  domainPattern: string | null;
+  gatewayCertificateId: string | null;
+  workloadId: string;
+  workloadRevisionId: string;
+  portName: string;
+  state: RouteState;
+  gatewayRevision: number | null;
+  gatewayCommandId: string | null;
+  snapshotDigest: string | null;
+  failure: string | null;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  activatedAt: string | null;
+}
+
+export type GatewayCertificateState = 'provisioning' | 'issued' | 'ready' | 'failed' | 'revoked';
+
+export interface GatewayCertificate {
+  id: string;
+  organizationId: string;
+  nodeId: string;
+  domainClaimIds: string[];
+  dnsNames: string[];
+  gatewayRevision: number;
+  gatewayCommandId: string;
+  snapshotDigest: string;
+  state: GatewayCertificateState;
+  serialNumber: string | null;
+  fingerprint: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  failure: string | null;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  readyAt: string | null;
+  revokedAt: string | null;
 }
 
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';

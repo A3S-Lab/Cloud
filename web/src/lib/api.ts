@@ -1,14 +1,17 @@
 import type {
   ApiEnvelope,
   ApiErrorEnvelope,
+  CancelDeploymentResult,
   Environment,
+  GatewayCertificate,
   Operation,
   Organization,
   Project,
-  Deployment,
-  CancelDeploymentResult,
+  Route,
+  ServiceTemplate,
   StopWorkloadResult,
   Workload,
+  WorkloadDeploymentResult,
   WorkloadLogStreamFilter,
 } from '../types/api';
 
@@ -66,16 +69,48 @@ export class CloudApi {
     );
   }
 
-  getWorkload(organizationId: string, workloadId: string, signal?: AbortSignal): Promise<Workload> {
+  listRoutes(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<Route[]> {
     return this.get(
-      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}`,
+      `/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/routes`,
       signal
     );
   }
 
-  getDeployment(organizationId: string, deploymentId: string, signal?: AbortSignal): Promise<Deployment> {
-    return this.get(
-      `/organizations/${encodeURIComponent(organizationId)}/deployments/${encodeURIComponent(deploymentId)}`,
+  listGatewayCertificates(organizationId: string, signal?: AbortSignal): Promise<GatewayCertificate[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/gateway-certificates`, signal);
+  }
+
+  updateWorkload(
+    organizationId: string,
+    workloadId: string,
+    template: ServiceTemplate,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/deployments`,
+      idempotencyKey,
+      { template },
+      signal
+    );
+  }
+
+  rollbackWorkload(
+    organizationId: string,
+    workloadId: string,
+    revisionId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/rollback`,
+      idempotencyKey,
+      { revisionId },
       signal
     );
   }
@@ -169,6 +204,31 @@ export class CloudApi {
         Authorization: `Bearer ${this.token}`,
         'Idempotency-Key': idempotencyKey,
       },
+      signal,
+    });
+    const payload = (await response.json()) as ApiEnvelope<T> | ApiErrorEnvelope;
+    if (!response.ok) {
+      const error = payload as ApiErrorEnvelope;
+      throw new CloudApiError(response.status, error.message, error.statusCode, error.requestId);
+    }
+    return (payload as ApiEnvelope<T>).data;
+  }
+
+  private async postJson<T>(
+    path: string,
+    idempotencyKey: string,
+    body: unknown,
+    signal?: AbortSignal
+  ): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify(body),
       signal,
     });
     const payload = (await response.json()) as ApiEnvelope<T> | ApiErrorEnvelope;

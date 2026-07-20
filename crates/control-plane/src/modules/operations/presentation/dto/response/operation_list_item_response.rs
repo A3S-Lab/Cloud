@@ -17,10 +17,18 @@ pub struct OperationListItemResponse {
     pub requested_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback_source_revision_id: Option<Uuid>,
 }
 
 impl From<OperationRecord> for OperationListItemResponse {
     fn from(record: OperationRecord) -> Self {
+        let rollback_source_revision_id = record
+            .request
+            .input
+            .get("rollbackSourceRevisionId")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok());
         let projection = record.projection;
         Self {
             id: record.request.id.as_uuid(),
@@ -38,6 +46,49 @@ impl From<OperationRecord> for OperationListItemResponse {
                 .as_ref()
                 .map_or(record.request.requested_at, |value| value.updated_at),
             error: projection.and_then(|value| value.error),
+            rollback_source_revision_id,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::operations::domain::entities::{OperationRecord, OperationRequest};
+    use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
+    use crate::modules::shared_kernel::domain::{OperationId, OrganizationId};
+    use chrono::Utc;
+
+    #[test]
+    fn exposes_only_explicit_rollback_lineage() {
+        let source_revision_id = Uuid::now_v7();
+        let rollback = response(serde_json::json!({
+            "rollbackSourceRevisionId": source_revision_id,
+        }));
+        assert_eq!(
+            serde_json::to_value(rollback).expect("serialize rollback operation")
+                ["rollbackSourceRevisionId"],
+            source_revision_id.to_string()
+        );
+
+        let ordinary = serde_json::to_value(response(serde_json::json!({})))
+            .expect("serialize ordinary operation");
+        assert!(ordinary
+            .as_object()
+            .is_some_and(|value| !value.contains_key("rollbackSourceRevisionId")));
+    }
+
+    fn response(input: serde_json::Value) -> OperationListItemResponse {
+        OperationListItemResponse::from(OperationRecord {
+            request: OperationRequest::new(
+                OperationId::new(),
+                OrganizationId::new(),
+                OperationSubject::new("deployment", Uuid::now_v7()).expect("operation subject"),
+                WorkflowIdentity::new("cloud.deployment", "2").expect("workflow identity"),
+                input,
+                Utc::now(),
+            ),
+            projection: None,
+        })
     }
 }

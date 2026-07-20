@@ -148,6 +148,26 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
     let revision_id = bound_workload_json["data"]["revisionId"]
         .as_str()
         .ok_or_else(|| BootError::Internal("workload response has no revision ID".into()))?;
+    let workload_detail = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/workloads/{workload_id}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(workload_detail.status(), 200);
+    assert_eq!(
+        response_json(&workload_detail)?["data"]["desiredRevision"]["requestedTemplate"]["secrets"],
+        json!([{
+            "name": "database-url",
+            "secretId": secret_id,
+            "version": 2,
+            "target": {
+                "kind": "environment",
+                "variable": "DATABASE_URL"
+            }
+        }])
+    );
+    assert_response_hides_secret_material(&workload_detail, &[first_plaintext, second_plaintext]);
     let logs_path = format!(
         "/api/v1/organizations/{organization}/workloads/{workload_id}/revisions/{revision_id}/logs?limit=2&stream=stdout"
     );
