@@ -1,4 +1,6 @@
-use a3s_runtime::contract::{RuntimeCapabilities, RuntimeLogChunk, RuntimeObservation};
+use a3s_runtime::contract::{
+    RuntimeCapabilities, RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeObservation,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -150,12 +152,45 @@ impl NodeLogChunkReport {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct NodeLogGapReport {
+    pub unit_id: String,
+    pub generation: u64,
+    pub cursor: Option<String>,
+    pub sequence: u64,
+    pub observed_at_ms: u64,
+    pub reason: RuntimeLogDiscontinuityReason,
+}
+
+impl NodeLogGapReport {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_single_line("Runtime unit ID", &self.unit_id, 512)?;
+        if self.generation == 0 {
+            return Err("log gap generation must be positive".into());
+        }
+        if self
+            .cursor
+            .as_ref()
+            .is_some_and(|cursor| cursor.is_empty() || cursor.len() > 1024 || cursor.contains('\0'))
+        {
+            return Err("log gap cursor is invalid".into());
+        }
+        if self.reason == RuntimeLogDiscontinuityReason::CursorLost && self.cursor.is_none() {
+            return Err("cursor-loss log gap must bind the lost cursor".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NodeLogChunkBatch {
     pub schema: String,
     pub batch_id: Uuid,
     pub node_id: Uuid,
     pub sent_at: DateTime<Utc>,
     pub chunks: Vec<NodeLogChunkReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gaps: Vec<NodeLogGapReport>,
 }
 
 impl NodeLogChunkBatch {
@@ -170,15 +205,70 @@ impl NodeLogChunkBatch {
         }
         validate_uuid("batch_id", self.batch_id)?;
         validate_uuid("node_id", self.node_id)?;
-        if self.chunks.is_empty() || self.chunks.len() > 256 {
-            return Err("node log batch must contain 1 to 256 chunks".into());
+        let record_count = self
+            .chunks
+            .len()
+            .checked_add(self.gaps.len())
+            .ok_or_else(|| "node log batch record count overflowed".to_string())?;
+        if record_count == 0 || record_count > 256 {
+            return Err("node log batch must contain 1 to 256 records".into());
         }
         let mut total_data_bytes = 0_usize;
+        let mut identities = std::collections::BTreeSet::new();
+        let mut cursors = std::collections::BTreeSet::new();
+        let mut last_chunk_sequences = std::collections::BTreeMap::new();
+        let mut chunk_targets = std::collections::BTreeSet::new();
         for chunk in &self.chunks {
             chunk.validate()?;
+            let target = (chunk.unit_id.as_str(), chunk.generation);
+            chunk_targets.insert(target);
+            if !identities.insert((
+                chunk.unit_id.as_str(),
+                chunk.generation,
+                chunk.chunk.sequence,
+            )) || !cursors.insert((
+                chunk.unit_id.as_str(),
+                chunk.generation,
+                chunk.chunk.cursor.as_str(),
+            )) || last_chunk_sequences
+                .insert(target, chunk.chunk.sequence)
+                .is_some_and(|sequence| sequence >= chunk.chunk.sequence)
+            {
+                return Err(
+                    "node log batch contains conflicting or unordered chunk identities".into(),
+                );
+            }
             total_data_bytes = total_data_bytes
                 .checked_add(chunk.chunk.data.len())
                 .ok_or_else(|| "node log batch size overflowed".to_string())?;
+        }
+        let mut gap_identities = std::collections::BTreeSet::new();
+        let mut last_gap_sequences = std::collections::BTreeMap::new();
+        for gap in &self.gaps {
+            gap.validate()?;
+            let target = (gap.unit_id.as_str(), gap.generation);
+            if chunk_targets.contains(&target) {
+                return Err("node log batch mixes chunks and gaps for one target".into());
+            }
+            let reason = match gap.reason {
+                RuntimeLogDiscontinuityReason::CursorLost => "cursor_lost",
+                RuntimeLogDiscontinuityReason::SourceDisconnected => "source_disconnected",
+            };
+            if !identities.insert((gap.unit_id.as_str(), gap.generation, gap.sequence))
+                || !gap_identities.insert((
+                    gap.unit_id.as_str(),
+                    gap.generation,
+                    gap.cursor.as_deref(),
+                    reason,
+                ))
+                || last_gap_sequences
+                    .insert(target, gap.sequence)
+                    .is_some_and(|sequence| sequence >= gap.sequence)
+            {
+                return Err(
+                    "node log batch contains conflicting or unordered gap identities".into(),
+                );
+            }
         }
         if total_data_bytes > 16 * 1024 * 1024 {
             return Err("node log batch exceeds 16 MiB".into());
@@ -201,6 +291,8 @@ pub struct NodeLogChunkReceipt {
     pub batch_id: Uuid,
     pub node_id: Uuid,
     pub accepted_chunks: u16,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub accepted_gaps: u16,
     pub replayed: bool,
 }
 
@@ -216,11 +308,16 @@ impl NodeLogChunkReceipt {
         }
         validate_uuid("batch_id", self.batch_id)?;
         validate_uuid("node_id", self.node_id)?;
-        if self.accepted_chunks == 0 || self.accepted_chunks > 256 {
-            return Err("node log receipt chunk count is invalid".into());
+        let accepted_records = usize::from(self.accepted_chunks) + usize::from(self.accepted_gaps);
+        if accepted_records == 0 || accepted_records > 256 {
+            return Err("node log receipt record count is invalid".into());
         }
         Ok(())
     }
+}
+
+const fn is_zero(value: &u16) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

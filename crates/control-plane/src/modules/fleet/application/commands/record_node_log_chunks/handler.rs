@@ -1,6 +1,7 @@
 use super::RecordNodeLogChunks;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkReceiptDraft,
+    NodeLogGapReceiptDraft,
 };
 use crate::modules::fleet::domain::services::{ILogChunkStore, LogChunkStoreError, StoredLogChunk};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -52,12 +53,21 @@ impl CommandHandler<RecordNodeLogChunks> for RecordNodeLogChunksHandler {
                     )))
                 }
             };
+            let gap_count = match u16::try_from(command.batch.gaps.len()) {
+                Ok(gap_count) => gap_count,
+                Err(_) => {
+                    return Ok(Err(ApplicationError::Invalid(
+                        "log batch gap count exceeds the protocol bound".into(),
+                    )))
+                }
+            };
             let replay = NodeLogBatchReplay {
                 batch_id: command.batch.batch_id,
                 node_id: command.authenticated_node_id,
                 payload_digest: payload_digest.clone(),
                 sent_at: command.batch.sent_at,
                 chunk_count,
+                gap_count,
             };
             match nodes.replay_log_batch(replay).await {
                 Ok(Some(receipt)) => return Ok(Ok(receipt)),
@@ -105,12 +115,26 @@ impl CommandHandler<RecordNodeLogChunks> for RecordNodeLogChunksHandler {
                 });
                 stored.push(object);
             }
+            let gaps = command
+                .batch
+                .gaps
+                .iter()
+                .map(|gap| NodeLogGapReceiptDraft {
+                    unit_id: gap.unit_id.clone(),
+                    generation: gap.generation,
+                    cursor: gap.cursor.clone(),
+                    sequence: gap.sequence,
+                    observed_at_ms: gap.observed_at_ms,
+                    reason: gap.reason,
+                })
+                .collect();
             let draft = NodeLogBatchReceiptDraft {
                 batch_id: command.batch.batch_id,
                 node_id: NodeId::from_uuid(command.batch.node_id),
                 payload_digest,
                 sent_at: command.batch.sent_at,
                 chunks: receipts,
+                gaps,
             };
             Ok(
                 match nodes.record_log_chunks(draft, command.received_at).await {

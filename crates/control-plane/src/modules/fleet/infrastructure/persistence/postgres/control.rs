@@ -4,8 +4,8 @@ mod telemetry;
 pub(super) use observations::{latest_runtime_observation, record_observations};
 pub(super) use telemetry::{
     compact_log_tombstones, list_log_chunks, list_log_chunks_for_retention,
-    list_log_compaction_ranges, mark_log_chunk_retained, record_gateway_acknowledgement,
-    record_log_chunks, replay_log_batch,
+    list_log_compaction_ranges, list_log_gaps, mark_log_chunk_retained,
+    record_gateway_acknowledgement, record_log_chunks, replay_log_batch,
 };
 
 use super::{nodes, queries};
@@ -17,7 +17,7 @@ use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
     NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange, NodeLogCompactionResult,
-    NodeLogRetentionTarget, RuntimeObservationRecord,
+    NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -29,6 +29,7 @@ use a3s_cloud_contracts::{
     NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
 };
 use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
+use a3s_runtime::contract::RuntimeLogDiscontinuityReason;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;

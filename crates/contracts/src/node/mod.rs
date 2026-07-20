@@ -24,8 +24,8 @@ pub use gateway::{
 };
 pub use observation::{
     GatewayAckState, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt,
-    RuntimeObservationReport,
+    NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch,
+    NodeObservationReceipt, RuntimeObservationReport,
 };
 pub use runtime_endpoint::RuntimeServiceEndpoint;
 pub use secret::{CloudSecretReference, NodeSecretMaterialRequest, NodeSecretMaterialResponse};

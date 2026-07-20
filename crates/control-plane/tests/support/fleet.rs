@@ -10,6 +10,7 @@ use a3s_cloud_control_plane::modules::fleet::domain::entities::{
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository, NodeHeartbeatUpdate,
     NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery, NodeLogChunkReceiptDraft,
+    NodeLogGapReceiptDraft,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::services::{
     CertificateAuthorityError, ICertificateAuthority, NodeCertificateRequest,
@@ -30,7 +31,8 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeLogStream, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
+    RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeObservation, RuntimeUnitClass,
+    RuntimeUnitState,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Timelike, Utc};
@@ -664,6 +666,7 @@ async fn exercise_observation_control(
             checksum: format!("sha256:{}", "2".repeat(64)),
             object_key: format!("nodes/{node_id}/postgres-service/1.json"),
         }],
+        gaps: Vec::new(),
     };
     assert!(
         !nodes
@@ -755,6 +758,7 @@ async fn exercise_observation_control(
             payload_digest: log_batch.payload_digest.clone(),
             sent_at: log_batch.sent_at,
             chunk_count: 1,
+            gap_count: 0,
         })
         .await?
         .expect("stored log batch replay");
@@ -798,8 +802,58 @@ async fn exercise_observation_control(
             .await?
             .replayed
     );
+    let gap_batch = NodeLogBatchReceiptDraft {
+        batch_id: Uuid::now_v7(),
+        node_id,
+        payload_digest: format!("sha256:{}", "4".repeat(64)),
+        sent_at: observed_at + Duration::seconds(11),
+        chunks: Vec::new(),
+        gaps: vec![NodeLogGapReceiptDraft {
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            cursor: Some("opaque:1".into()),
+            sequence: 2,
+            observed_at_ms: 2,
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }],
+    };
+    let gap_receipt = nodes
+        .record_log_chunks(gap_batch.clone(), observed_at + Duration::seconds(11))
+        .await?;
+    assert_eq!(gap_receipt.accepted_chunks, 0);
+    assert_eq!(gap_receipt.accepted_gaps, 1);
+    assert!(!gap_receipt.replayed);
+    let gaps = nodes
+        .list_log_gaps(NodeLogChunkQuery {
+            node_id,
+            unit_id: "postgres-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: Some(RuntimeLogStream::Stderr),
+        })
+        .await?;
+    assert_eq!(gaps.len(), 1);
+    assert_eq!(gaps[0].sequence, 2);
+    assert_eq!(gaps[0].reason, RuntimeLogDiscontinuityReason::CursorLost);
+    assert!(
+        nodes
+            .replay_log_batch(NodeLogBatchReplay {
+                batch_id: gap_batch.batch_id,
+                node_id,
+                payload_digest: gap_batch.payload_digest.clone(),
+                sent_at: gap_batch.sent_at,
+                chunk_count: 0,
+                gap_count: 1,
+            })
+            .await?
+            .expect("provider gap batch replay")
+            .replayed
+    );
     let mut reused_sequence = log_batch.clone();
     reused_sequence.batch_id = Uuid::now_v7();
+    reused_sequence.chunks[0].sequence = 2;
+    reused_sequence.chunks[0].cursor = "opaque:2".into();
     assert!(matches!(
         nodes
             .record_log_chunks(reused_sequence, observed_at + Duration::seconds(10))
@@ -814,6 +868,7 @@ async fn exercise_observation_control(
                 payload_digest: log_batch.payload_digest.clone(),
                 sent_at: log_batch.sent_at,
                 chunk_count: 1,
+                gap_count: 0,
             })
             .await?
             .expect("compacted log batch replay")
@@ -838,6 +893,24 @@ async fn exercise_observation_control(
             )
             .await?,
         0
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from node_log_gaps where node_id = ",)
+                    .bind(node_id.as_uuid())
+            )
+            .await?,
+        1
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from node_log_batch_gaps where batch_id = ",)
+                    .bind(gap_batch.batch_id)
+            )
+            .await?,
+        1
     );
     assert_eq!(
         database

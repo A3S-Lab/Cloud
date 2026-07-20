@@ -213,6 +213,9 @@ fn runtime_failure(error: RuntimeError) -> NodeCommandOutcome {
             (FailureStatus::Failed, "provider_unavailable", true)
         }
         RuntimeError::Transport(_) => (FailureStatus::Failed, "runtime_transport", true),
+        RuntimeError::LogDiscontinuity { .. } => {
+            (FailureStatus::Failed, "log_discontinuity", false)
+        }
         RuntimeError::Protocol(_) => (FailureStatus::Failed, "runtime_protocol", false),
     };
     let failure = NodeCommandFailure {

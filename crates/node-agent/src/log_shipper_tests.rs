@@ -5,8 +5,8 @@ use a3s_cloud_contracts::{
 };
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeExecRequest,
-    RuntimeExecResult, RuntimeInspection, RuntimeLogChunk, RuntimeLogStream, RuntimeObservation,
-    RuntimeRemoval,
+    RuntimeExecResult, RuntimeInspection, RuntimeLogChunk, RuntimeLogDiscontinuityReason,
+    RuntimeLogStream, RuntimeObservation, RuntimeRemoval,
 };
 use a3s_runtime::RuntimeResult;
 use async_trait::async_trait;
@@ -131,6 +131,7 @@ impl NodeControlTransport for LogTransport {
                 .lock()
                 .await
                 .unwrap_or_else(|| u16::try_from(batch.chunks.len()).expect("bounded batch")),
+            accepted_gaps: u16::try_from(batch.gaps.len()).expect("bounded gap batch"),
             replayed: self.batches.lock().await.len() > 1,
         })
     }
@@ -300,4 +301,286 @@ async fn invalid_receipt_keeps_the_pending_batch_and_does_not_advance_the_cursor
             .sequence,
         1
     );
+}
+
+#[tokio::test]
+async fn cursor_loss_is_durable_and_rebases_replacement_logs_after_the_gap() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    let targets = vec![target()];
+    let runtime = Arc::new(LogRuntime::new(vec![
+        Ok(vec![chunk(100)]),
+        Err(RuntimeError::LogDiscontinuity {
+            unit_id: "service-1".into(),
+            generation: 1,
+            cursor: Some("opaque:100".into()),
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }),
+        Ok(vec![chunk(1)]),
+    ]));
+    let transport = Arc::new(LogTransport::new(0));
+    let shipper = LogShipper::new(
+        node_id,
+        runtime,
+        transport.clone(),
+        directory.path().to_owned(),
+        config(2),
+    )
+    .expect("shipper");
+
+    assert!(shipper
+        .ship_once(&targets)
+        .await
+        .expect("initial chunk upload"));
+    assert!(shipper
+        .ship_once(&targets)
+        .await
+        .expect("cursor-loss upload"));
+    let gap_state = shipper
+        .state
+        .snapshot(targets.clone())
+        .await
+        .expect("gap state");
+    let gap_cursor = gap_state
+        .cursor("service-1", 1)
+        .expect("durable gap cursor");
+    assert_eq!(gap_cursor.cursor, None);
+    assert_eq!(gap_cursor.sequence, 101);
+    assert_eq!(
+        gap_cursor.discontinuity,
+        Some(DurableLogDiscontinuity {
+            cursor: Some("opaque:100".into()),
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        })
+    );
+
+    assert!(shipper
+        .ship_once(&targets)
+        .await
+        .expect("replacement log upload"));
+    let batches = transport.batches.lock().await.clone();
+    assert_eq!(batches.len(), 3);
+    assert!(batches[1].chunks.is_empty());
+    assert_eq!(
+        batches[1].gaps,
+        vec![NodeLogGapReport {
+            unit_id: "service-1".into(),
+            generation: 1,
+            cursor: Some("opaque:100".into()),
+            sequence: 101,
+            observed_at_ms: batches[1].gaps[0].observed_at_ms,
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }]
+    );
+    assert_eq!(batches[2].chunks[0].chunk.cursor, "opaque:1");
+    assert_eq!(batches[2].chunks[0].chunk.sequence, 102);
+
+    let resumed = shipper
+        .state
+        .snapshot(targets)
+        .await
+        .expect("resumed state");
+    let resumed = resumed.cursor("service-1", 1).expect("resumed cursor");
+    assert_eq!(resumed.cursor.as_deref(), Some("opaque:1"));
+    assert_eq!(resumed.sequence, 102);
+    assert!(resumed.discontinuity.is_none());
+}
+
+#[tokio::test]
+async fn source_disconnect_replays_exactly_and_is_not_reported_repeatedly() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    let targets = vec![target()];
+    let first_runtime = Arc::new(LogRuntime::new(vec![Err(RuntimeError::LogDiscontinuity {
+        unit_id: "service-1".into(),
+        generation: 1,
+        cursor: None,
+        reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+    })]));
+    let first_transport = Arc::new(LogTransport::new(1));
+    let first = LogShipper::new(
+        node_id,
+        first_runtime,
+        first_transport.clone(),
+        directory.path().to_owned(),
+        config(2),
+    )
+    .expect("first shipper");
+    assert!(first
+        .ship_once(&targets)
+        .await
+        .expect_err("interrupted gap upload")
+        .retryable());
+    let pending = first
+        .state
+        .snapshot(targets.clone())
+        .await
+        .expect("pending gap")
+        .pending
+        .expect("durable pending gap");
+    assert!(pending.chunks.is_empty());
+    assert_eq!(pending.gaps.len(), 1);
+
+    let restarted_runtime = Arc::new(LogRuntime::new(vec![Err(RuntimeError::LogDiscontinuity {
+        unit_id: "service-1".into(),
+        generation: 1,
+        cursor: None,
+        reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+    })]));
+    let restarted_transport = Arc::new(LogTransport::new(0));
+    let restarted = LogShipper::new(
+        node_id,
+        restarted_runtime.clone(),
+        restarted_transport.clone(),
+        directory.path().to_owned(),
+        config(2),
+    )
+    .expect("restarted shipper");
+    assert!(restarted
+        .ship_once(&targets)
+        .await
+        .expect("replay pending gap"));
+    assert_eq!(restarted_runtime.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        restarted_transport.batches.lock().await.first().cloned(),
+        Some(pending)
+    );
+
+    assert!(!restarted
+        .ship_once(&targets)
+        .await
+        .expect("suppress repeated disconnect"));
+    assert_eq!(restarted_runtime.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(restarted_transport.batches.lock().await.len(), 1);
+}
+
+#[tokio::test]
+async fn discontinuity_identity_must_match_the_exact_runtime_query() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    let targets = vec![target()];
+    let runtime = Arc::new(LogRuntime::new(vec![Err(RuntimeError::LogDiscontinuity {
+        unit_id: "another-service".into(),
+        generation: 1,
+        cursor: None,
+        reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+    })]));
+    let shipper = LogShipper::new(
+        node_id,
+        runtime,
+        Arc::new(LogTransport::new(0)),
+        directory.path().to_owned(),
+        config(2),
+    )
+    .expect("shipper");
+
+    assert!(matches!(
+        shipper.ship_once(&targets).await,
+        Err(LogShippingError::Invalid(message))
+            if message.contains("requested identity")
+    ));
+    assert!(shipper
+        .state
+        .snapshot(targets)
+        .await
+        .expect("state")
+        .pending
+        .is_none());
+}
+
+#[tokio::test]
+async fn repeated_disconnect_after_cursor_clear_is_suppressed_until_reconnection() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    let targets = vec![target()];
+    let runtime = Arc::new(LogRuntime::new(vec![
+        Ok(vec![chunk(1)]),
+        Err(RuntimeError::LogDiscontinuity {
+            unit_id: "service-1".into(),
+            generation: 1,
+            cursor: Some("opaque:1".into()),
+            reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+        }),
+        Err(RuntimeError::LogDiscontinuity {
+            unit_id: "service-1".into(),
+            generation: 1,
+            cursor: None,
+            reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+        }),
+        Ok(Vec::new()),
+        Err(RuntimeError::LogDiscontinuity {
+            unit_id: "service-1".into(),
+            generation: 1,
+            cursor: None,
+            reason: RuntimeLogDiscontinuityReason::SourceDisconnected,
+        }),
+    ]));
+    let transport = Arc::new(LogTransport::new(0));
+    let shipper = LogShipper::new(
+        node_id,
+        runtime,
+        transport.clone(),
+        directory.path().to_owned(),
+        config(2),
+    )
+    .expect("shipper");
+
+    assert!(shipper
+        .ship_once(&targets)
+        .await
+        .expect("initial log upload"));
+    assert!(shipper
+        .ship_once(&targets)
+        .await
+        .expect("first disconnect upload"));
+    assert!(!shipper
+        .ship_once(&targets)
+        .await
+        .expect("suppress continuous disconnect"));
+    assert!(!shipper
+        .ship_once(&targets)
+        .await
+        .expect("observe empty reconnected source"));
+    assert!(shipper
+        .ship_once(&targets)
+        .await
+        .expect("report a new disconnect episode"));
+
+    let batches = transport.batches.lock().await.clone();
+    assert_eq!(batches.len(), 3);
+    assert_eq!(batches[1].gaps[0].sequence, 2);
+    assert_eq!(batches[2].gaps[0].sequence, 3);
+}
+
+#[tokio::test]
+async fn legacy_string_cursor_state_upgrades_without_changing_its_watermark() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    std::fs::write(
+        directory.path().join(LOG_SHIPPING_FILE),
+        serde_json::to_vec(&serde_json::json!({
+            "schema": LogShippingState::SCHEMA,
+            "node_id": node_id,
+            "cursors": {
+                "service-1": {
+                    "1": {
+                        "cursor": "opaque:7",
+                        "sequence": 7
+                    }
+                }
+            },
+            "pending": null
+        }))
+        .expect("encode legacy state"),
+    )
+    .expect("write legacy state");
+    let state = FileLogShippingState::new(directory.path(), node_id)
+        .expect("state")
+        .snapshot(vec![target()])
+        .await
+        .expect("legacy snapshot");
+    let cursor = state.cursor("service-1", 1).expect("legacy cursor");
+    assert_eq!(cursor.cursor.as_deref(), Some("opaque:7"));
+    assert_eq!(cursor.sequence, 7);
+    assert!(cursor.discontinuity.is_none());
 }

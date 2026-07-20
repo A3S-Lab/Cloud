@@ -2,7 +2,7 @@ use super::{GetWorkloadLogs, GetWorkloadLogsHandler};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogCompactionRange, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogGapMetadata, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
@@ -31,7 +31,7 @@ use a3s_cloud_contracts::{
     NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch,
     NodeObservationReceipt,
 };
-use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogStream};
+use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
@@ -43,6 +43,7 @@ use uuid::Uuid;
 
 struct LogMetadataRepository {
     chunks: Vec<NodeLogChunkMetadata>,
+    gaps: Vec<NodeLogGapMetadata>,
     ranges: Vec<NodeLogCompactionRange>,
     calls: AtomicUsize,
 }
@@ -153,6 +154,28 @@ impl INodeControlRepository for LogMetadataRepository {
             .collect())
     }
 
+    async fn list_log_gaps(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogGapMetadata>, RepositoryError> {
+        query.validate().map_err(RepositoryError::Conflict)?;
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .gaps
+            .iter()
+            .filter(|gap| {
+                gap.node_id == query.node_id
+                    && gap.unit_id == query.unit_id
+                    && gap.generation == query.generation
+                    && query
+                        .after_sequence
+                        .is_none_or(|after_sequence| gap.sequence > after_sequence)
+            })
+            .take(query.limit)
+            .cloned()
+            .collect())
+    }
+
     async fn list_log_compaction_ranges(
         &self,
         query: NodeLogChunkQuery,
@@ -242,6 +265,7 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
         .collect::<Vec<_>>();
     let metadata = Arc::new(LogMetadataRepository {
         chunks,
+        gaps: Vec::new(),
         ranges: Vec::new(),
         calls: AtomicUsize::new(0),
     });
@@ -296,6 +320,81 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
 }
 
 #[tokio::test]
+async fn provider_gaps_merge_into_sequence_pagination_and_ignore_stream_filters() {
+    let seeded = seed_workload().await;
+    let first_report = report(&seeded.unit_id, 1);
+    let third_report = report(&seeded.unit_id, 3);
+    let metadata = Arc::new(LogMetadataRepository {
+        chunks: vec![
+            metadata(seeded.node_id, "object-1".into(), &first_report),
+            metadata(seeded.node_id, "object-3".into(), &third_report),
+        ],
+        gaps: vec![NodeLogGapMetadata {
+            node_id: seeded.node_id,
+            unit_id: seeded.unit_id.clone(),
+            generation: 1,
+            cursor: Some("source:1".into()),
+            sequence: 2,
+            observed_at_ms: 2,
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }],
+        ranges: Vec::new(),
+        calls: AtomicUsize::new(0),
+    });
+    let objects = Arc::new(QueryLogStore {
+        objects: RwLock::new(BTreeMap::from([
+            ("object-1".into(), RetrievedLogChunk::Found(first_report)),
+            ("object-3".into(), RetrievedLogChunk::Found(third_report)),
+        ])),
+        calls: AtomicUsize::new(0),
+    });
+    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata, objects.clone());
+
+    let first = handler
+        .execute(query(&seeded, seeded.organization_id, None, 2), context())
+        .await
+        .expect("framework result")
+        .expect("first provider-gap page");
+    assert!(matches!(
+        &first.records[..],
+        [
+            WorkloadLogRecord::Data(chunk),
+            WorkloadLogRecord::ProviderGap { metadata },
+        ] if chunk.sequence == 1
+            && metadata.sequence == 2
+            && metadata.reason == RuntimeLogDiscontinuityReason::CursorLost
+    ));
+    assert_eq!(first.next_after_sequence, Some(2));
+
+    let second = handler
+        .execute(
+            query(&seeded, seeded.organization_id, Some(2), 2),
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .expect("second provider-gap page");
+    assert!(matches!(
+        &second.records[..],
+        [WorkloadLogRecord::Data(chunk)] if chunk.sequence == 3
+    ));
+    assert_eq!(second.next_after_sequence, None);
+
+    let mut filtered = query(&seeded, seeded.organization_id, None, 10);
+    filtered.stream = Some(RuntimeLogStream::Stderr);
+    let filtered = handler
+        .execute(filtered, context())
+        .await
+        .expect("framework result")
+        .expect("stream-filtered provider gap");
+    assert!(matches!(
+        &filtered.records[..],
+        [WorkloadLogRecord::ProviderGap { metadata }] if metadata.sequence == 2
+    ));
+    assert_eq!(objects.calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
 async fn retained_sequence_zero_is_an_explicit_gap_without_an_object_read() {
     let seeded = seed_workload().await;
     let report = report(&seeded.unit_id, 0);
@@ -303,6 +402,7 @@ async fn retained_sequence_zero_is_an_explicit_gap_without_an_object_read() {
     retained.retained_at = Some(Utc::now());
     let metadata = Arc::new(LogMetadataRepository {
         chunks: vec![retained],
+        gaps: Vec::new(),
         ranges: Vec::new(),
         calls: AtomicUsize::new(0),
     });
@@ -337,6 +437,7 @@ async fn compacted_ranges_are_explicit_and_page_to_their_terminal_sequence() {
             metadata(seeded.node_id, "stale-object".into(), &stale_report),
             metadata(seeded.node_id, "live-object".into(), &live_report),
         ],
+        gaps: Vec::new(),
         ranges: vec![
             NodeLogCompactionRange {
                 node_id: seeded.node_id,
@@ -431,6 +532,7 @@ async fn workload_log_query_does_not_cross_the_organization_boundary() {
     let seeded = seed_workload().await;
     let metadata = Arc::new(LogMetadataRepository {
         chunks: Vec::new(),
+        gaps: Vec::new(),
         ranges: Vec::new(),
         calls: AtomicUsize::new(0),
     });

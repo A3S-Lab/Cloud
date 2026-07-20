@@ -417,6 +417,7 @@ async fn log_tombstone_compaction_is_bounded_coalesced_and_replay_safe() {
                 object_key: format!("logs/{node_id}/{sequence}.json"),
             })
             .collect(),
+        gaps: Vec::new(),
     };
     assert!(
         !repository
@@ -482,6 +483,7 @@ async fn log_tombstone_compaction_is_bounded_coalesced_and_replay_safe() {
                 payload_digest: batch.payload_digest.clone(),
                 sent_at: batch.sent_at,
                 chunk_count: 3,
+                gap_count: 0,
             })
             .await
             .expect("replay compacted batch")

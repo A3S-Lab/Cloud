@@ -1,6 +1,7 @@
 use super::GetWorkloadLogs;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogCompactionRange,
+    NodeLogGapMetadata,
 };
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk,
@@ -104,12 +105,17 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                 Ok(chunks) => chunks,
                 Err(error) => return Ok(Err(error.into())),
             };
+            let gaps = match metadata.list_log_gaps(metadata_query.clone()).await {
+                Ok(gaps) => gaps,
+                Err(error) => return Ok(Err(error.into())),
+            };
             let ranges = match metadata.list_log_compaction_ranges(metadata_query).await {
                 Ok(ranges) => ranges,
                 Err(error) => return Ok(Err(error.into())),
             };
-            let source_has_more =
-                chunks.len() > usize::from(query.limit) || ranges.len() > usize::from(query.limit);
+            let source_has_more = chunks.len() > usize::from(query.limit)
+                || gaps.len() > usize::from(query.limit)
+                || ranges.len() > usize::from(query.limit);
             chunks.retain(|chunk| {
                 !ranges.iter().any(|range| {
                     (range.first_sequence..=range.through_sequence).contains(&chunk.sequence)
@@ -118,6 +124,7 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
             let mut stored = chunks
                 .into_iter()
                 .map(StoredLogRecord::Chunk)
+                .chain(gaps.into_iter().map(StoredLogRecord::ProviderGap))
                 .chain(ranges.into_iter().map(StoredLogRecord::Compacted))
                 .collect::<Vec<_>>();
             stored.sort_by_key(|record| record.first_sequence());
@@ -134,6 +141,10 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                     StoredLogRecord::Chunk(chunk) => chunk,
                     StoredLogRecord::Compacted(range) => {
                         records.push(WorkloadLogRecord::CompactedGap { range });
+                        continue;
+                    }
+                    StoredLogRecord::ProviderGap(metadata) => {
+                        records.push(WorkloadLogRecord::ProviderGap { metadata });
                         continue;
                     }
                 };
@@ -196,6 +207,7 @@ fn report_matches(report: &NodeLogChunkReport, metadata: &NodeLogChunkMetadata) 
 
 enum StoredLogRecord {
     Chunk(NodeLogChunkMetadata),
+    ProviderGap(NodeLogGapMetadata),
     Compacted(NodeLogCompactionRange),
 }
 
@@ -203,6 +215,7 @@ impl StoredLogRecord {
     const fn first_sequence(&self) -> u64 {
         match self {
             Self::Chunk(chunk) => chunk.sequence,
+            Self::ProviderGap(gap) => gap.sequence,
             Self::Compacted(range) => range.first_sequence,
         }
     }
@@ -210,6 +223,7 @@ impl StoredLogRecord {
     const fn through_sequence(&self) -> u64 {
         match self {
             Self::Chunk(chunk) => chunk.sequence,
+            Self::ProviderGap(gap) => gap.sequence,
             Self::Compacted(range) => range.through_sequence,
         }
     }

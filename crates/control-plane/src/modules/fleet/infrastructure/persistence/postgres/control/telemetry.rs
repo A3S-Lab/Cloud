@@ -26,6 +26,16 @@ struct LogChunkMetadataRow {
     retained_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LogGapRow {
+    unit_id: String,
+    generation: u64,
+    cursor: Option<String>,
+    sequence: u64,
+    observed_at_ms: u64,
+    reason: String,
+}
+
 impl FromRow for LogChunkMetadataRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
@@ -38,6 +48,19 @@ impl FromRow for LogChunkMetadataRow {
             checksum: decode(row, 6)?,
             object_key: decode(row, 7)?,
             retained_at: decode(row, 8)?,
+        })
+    }
+}
+
+impl FromRow for LogGapRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            unit_id: decode(row, 0)?,
+            generation: decode(row, 1)?,
+            cursor: decode(row, 2)?,
+            sequence: decode(row, 3)?,
+            observed_at_ms: decode(row, 4)?,
+            reason: decode(row, 5)?,
         })
     }
 }
@@ -139,6 +162,19 @@ impl From<&NodeLogChunkReceiptDraft> for LogChunkRow {
     }
 }
 
+impl From<&NodeLogGapReceiptDraft> for LogGapRow {
+    fn from(value: &NodeLogGapReceiptDraft) -> Self {
+        Self {
+            unit_id: value.unit_id.clone(),
+            generation: value.generation,
+            cursor: value.cursor.clone(),
+            sequence: value.sequence,
+            observed_at_ms: value.observed_at_ms,
+            reason: log_gap_reason(value.reason).into(),
+        }
+    }
+}
+
 impl LogChunkMetadataRow {
     fn metadata(self, node_id: NodeId) -> Result<NodeLogChunkMetadata, PostgresPersistenceError> {
         NodeLogChunkReceiptDraft {
@@ -152,6 +188,21 @@ impl LogChunkMetadataRow {
             object_key: self.object_key,
         }
         .metadata(node_id, self.retained_at)
+        .map_err(PostgresPersistenceError::Invariant)
+    }
+}
+
+impl LogGapRow {
+    fn metadata(self, node_id: NodeId) -> Result<NodeLogGapMetadata, PostgresPersistenceError> {
+        NodeLogGapReceiptDraft {
+            unit_id: self.unit_id,
+            generation: self.generation,
+            cursor: self.cursor,
+            sequence: self.sequence,
+            observed_at_ms: self.observed_at_ms,
+            reason: parse_log_gap_reason(&self.reason)?,
+        }
+        .metadata(node_id)
         .map_err(PostgresPersistenceError::Invariant)
     }
 }
@@ -331,10 +382,11 @@ pub(in super::super) async fn record_log_chunks(
                 if node.state == NodeState::Revoked {
                     return Err(RepositoryError::NotFound.into());
                 }
-                if let Some(existing) = fetch_optional::<(Uuid, String, DateTime<Utc>, i32), _>(
+                if let Some(existing) =
+                    fetch_optional::<(Uuid, String, DateTime<Utc>, i32, i32), _>(
                     transaction,
-                    sql_query::<(Uuid, String, DateTime<Utc>, i32)>(
-                        "select node_id, payload_digest, sent_at, chunk_count from node_log_batches where batch_id = ",
+                    sql_query::<(Uuid, String, DateTime<Utc>, i32, i32)>(
+                        "select node_id, payload_digest, sent_at, chunk_count, gap_count from node_log_batches where batch_id = ",
                     )
                     .bind(batch.batch_id)
                     .append(" for update"),
@@ -349,6 +401,11 @@ pub(in super::super) async fn record_log_chunks(
                             i32::try_from(batch.chunks.len()).map_err(|_| {
                                 PostgresPersistenceError::Invariant(
                                     "log chunk count overflowed".into(),
+                                )
+                            })?,
+                            i32::try_from(batch.gaps.len()).map_err(|_| {
+                                PostgresPersistenceError::Invariant(
+                                    "log gap count overflowed".into(),
                                 )
                             })?,
                         )
@@ -366,7 +423,7 @@ pub(in super::super) async fn record_log_chunks(
                     execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into node_log_batches (batch_id, node_id, payload_digest, sent_at, received_at, chunk_count) values (",
+                            "insert into node_log_batches (batch_id, node_id, payload_digest, sent_at, received_at, chunk_count, gap_count) values (",
                         )
                         .bind(batch.batch_id)
                         .append(", ")
@@ -381,6 +438,12 @@ pub(in super::super) async fn record_log_chunks(
                         .bind(i32::try_from(batch.chunks.len()).map_err(|_| {
                             PostgresPersistenceError::Invariant(
                                 "log chunk count overflowed".into(),
+                            )
+                        })?)
+                        .append(", ")
+                        .bind(i32::try_from(batch.gaps.len()).map_err(|_| {
+                            PostgresPersistenceError::Invariant(
+                                "log gap count overflowed".into(),
                             )
                         })?)
                         .append(")"),
@@ -506,6 +569,98 @@ pub(in super::super) async fn record_log_chunks(
                         .await?,
                     )?;
                 }
+                for (ordinal, gap) in batch.gaps.iter().enumerate() {
+                    let existing = fetch_optional::<LogGapRow, _>(
+                        transaction,
+                        sql_query::<LogGapRow>(
+                            "select unit_id, generation, cursor_value, sequence, observed_at_ms, reason from node_log_gaps where node_id = ",
+                        )
+                        .bind(batch.node_id.as_uuid())
+                        .append(" and unit_id = ")
+                        .bind(gap.unit_id.as_str())
+                        .append(" and generation = ")
+                        .bind(gap.generation)
+                        .append(" and sequence = ")
+                        .bind(gap.sequence)
+                        .append(" for update"),
+                    )
+                    .await?;
+                    if let Some(existing) = existing {
+                        if existing != LogGapRow::from(gap) {
+                            return Err(RepositoryError::Conflict(
+                                "log gap sequence was reused with different content".into(),
+                            )
+                            .into());
+                        }
+                    } else {
+                        if maximum_log_sequence(
+                            transaction,
+                            batch.node_id,
+                            &gap.unit_id,
+                            gap.generation,
+                        )
+                        .await?
+                        .is_some_and(|sequence| gap.sequence <= sequence)
+                        {
+                            return Err(RepositoryError::Conflict(
+                                "log gap sequence did not advance beyond durable history".into(),
+                            )
+                            .into());
+                        }
+                        require_one_row(
+                            "node log gap",
+                            execute(
+                                transaction,
+                                sql_query::<()>(
+                                    "insert into node_log_gaps (node_id, unit_id, generation, cursor_value, sequence, observed_at_ms, reason, received_at) values (",
+                                )
+                                .bind(batch.node_id.as_uuid())
+                                .append(", ")
+                                .bind(gap.unit_id.as_str())
+                                .append(", ")
+                                .bind(gap.generation)
+                                .append(", ")
+                                .bind(gap.cursor.clone())
+                                .append(", ")
+                                .bind(gap.sequence)
+                                .append(", ")
+                                .bind(gap.observed_at_ms)
+                                .append(", ")
+                                .bind(log_gap_reason(gap.reason))
+                                .append(", ")
+                                .bind(received_at)
+                                .append(")"),
+                            )
+                            .await?,
+                        )?;
+                    }
+                    require_one_row(
+                        "node log batch gap",
+                        execute(
+                            transaction,
+                            sql_query::<()>(
+                                "insert into node_log_batch_gaps (batch_id, ordinal, node_id, unit_id, generation, sequence) values (",
+                            )
+                            .bind(batch.batch_id)
+                            .append(", ")
+                            .bind(i32::try_from(ordinal).map_err(|_| {
+                                PostgresPersistenceError::Invariant(
+                                    "log gap ordinal overflowed".into(),
+                                )
+                            })?)
+                            .append(", ")
+                            .bind(batch.node_id.as_uuid())
+                            .append(", ")
+                            .bind(gap.unit_id.as_str())
+                            .append(", ")
+                            .bind(gap.generation)
+                            .append(", ")
+                            .bind(gap.sequence)
+                            .append(")"),
+                        )
+                        .await?,
+                    )?;
+                }
                 log_receipt(&batch, false)
             })
         })
@@ -522,10 +677,10 @@ pub(in super::super) async fn replay_log_batch(
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
-                let existing = fetch_optional::<(Uuid, String, DateTime<Utc>, i32), _>(
+                let existing = fetch_optional::<(Uuid, String, DateTime<Utc>, i32, i32), _>(
                     transaction,
-                    sql_query::<(Uuid, String, DateTime<Utc>, i32)>(
-                        "select node_id, payload_digest, sent_at, chunk_count from node_log_batches where batch_id = ",
+                    sql_query::<(Uuid, String, DateTime<Utc>, i32, i32)>(
+                        "select node_id, payload_digest, sent_at, chunk_count, gap_count from node_log_batches where batch_id = ",
                     )
                     .bind(batch.batch_id),
                 )
@@ -539,6 +694,7 @@ pub(in super::super) async fn replay_log_batch(
                         batch.payload_digest.clone(),
                         batch.sent_at,
                         i32::from(batch.chunk_count),
+                        i32::from(batch.gap_count),
                     )
                 {
                     return Err(RepositoryError::Conflict(
@@ -581,6 +737,43 @@ pub(in super::super) async fn list_log_chunks(
                         RuntimeLogStream::Stdout => "stdout",
                         RuntimeLogStream::Stderr => "stderr",
                     });
+                }
+                let rows = fetch_all(
+                    transaction,
+                    statement.append(" order by sequence limit ").bind(limit),
+                )
+                .await?;
+                rows.into_iter()
+                    .map(|row| row.metadata(query.node_id))
+                    .collect()
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
+pub(in super::super) async fn list_log_gaps(
+    executor: &PostgresExecutor,
+    query: NodeLogChunkQuery,
+) -> Result<Vec<NodeLogGapMetadata>, RepositoryError> {
+    query.validate().map_err(RepositoryError::Conflict)?;
+    let limit = i64::try_from(query.limit)
+        .map_err(|_| RepositoryError::Conflict("log gap query limit is invalid".into()))?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let mut statement = sql_query::<LogGapRow>(
+                    "select unit_id, generation, cursor_value, sequence, observed_at_ms, reason from node_log_gaps where node_id = ",
+                )
+                .bind(query.node_id.as_uuid())
+                .append(" and unit_id = ")
+                .bind(query.unit_id.as_str())
+                .append(" and generation = ")
+                .bind(query.generation);
+                if let Some(after_sequence) = query.after_sequence {
+                    statement = statement
+                        .append(" and sequence > ")
+                        .bind(after_sequence);
                 }
                 let rows = fetch_all(
                     transaction,
@@ -947,6 +1140,14 @@ async fn maximum_log_sequence(
         .append(" and generation = ")
         .bind(generation)
         .append(
+            " union all select sequence from node_log_gaps where node_id = ",
+        )
+        .bind(node_id.as_uuid())
+        .append(" and unit_id = ")
+        .bind(unit_id)
+        .append(" and generation = ")
+        .bind(generation)
+        .append(
             " union all select through_sequence as sequence from node_log_compaction_ranges where node_id = ",
         )
         .bind(node_id.as_uuid())
@@ -958,6 +1159,25 @@ async fn maximum_log_sequence(
     )
     .await?
     .flatten())
+}
+
+const fn log_gap_reason(reason: RuntimeLogDiscontinuityReason) -> &'static str {
+    match reason {
+        RuntimeLogDiscontinuityReason::CursorLost => "cursor_lost",
+        RuntimeLogDiscontinuityReason::SourceDisconnected => "source_disconnected",
+    }
+}
+
+fn parse_log_gap_reason(
+    reason: &str,
+) -> Result<RuntimeLogDiscontinuityReason, PostgresPersistenceError> {
+    match reason {
+        "cursor_lost" => Ok(RuntimeLogDiscontinuityReason::CursorLost),
+        "source_disconnected" => Ok(RuntimeLogDiscontinuityReason::SourceDisconnected),
+        _ => Err(PostgresPersistenceError::Invariant(
+            "stored log gap reason is invalid".into(),
+        )),
+    }
 }
 
 const fn gateway_state(state: GatewayAckState) -> &'static str {
@@ -988,6 +1208,8 @@ fn log_receipt(
         accepted_chunks: u16::try_from(batch.chunks.len()).map_err(|_| {
             PostgresPersistenceError::Invariant("log chunk count overflowed".into())
         })?,
+        accepted_gaps: u16::try_from(batch.gaps.len())
+            .map_err(|_| PostgresPersistenceError::Invariant("log gap count overflowed".into()))?,
         replayed,
     };
     receipt

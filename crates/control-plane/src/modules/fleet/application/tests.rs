@@ -26,11 +26,11 @@ use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
     NodeCommandResult, NodeEnrollmentRequest, NodeEnrollmentResponse, NodeLogChunkBatch,
-    NodeLogChunkReport,
+    NodeLogChunkReport, NodeLogGapReport,
 };
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeLogChunk, RuntimeLogStream, RuntimeUnitClass,
+    RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeUnitClass,
 };
 use chrono::{Duration, Utc};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
@@ -337,6 +337,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             },
             checksum: format!("sha256:{:x}", Sha256::digest(log_data.as_bytes())),
         }],
+        gaps: Vec::new(),
     };
     let logged = log_handler
         .execute(
@@ -474,14 +475,75 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .expect("replay compacted logs")
             .replayed
     );
+    let gap_batch = NodeLogChunkBatch {
+        schema: NodeLogChunkBatch::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id: node_id.as_uuid(),
+        sent_at: issued_at + Duration::seconds(9),
+        chunks: Vec::new(),
+        gaps: vec![NodeLogGapReport {
+            unit_id: "worker-service".into(),
+            generation: 1,
+            cursor: Some("cursor:1".into()),
+            sequence: 2,
+            observed_at_ms: 2,
+            reason: RuntimeLogDiscontinuityReason::CursorLost,
+        }],
+    };
+    let gap_receipt = log_handler
+        .execute(
+            RecordNodeLogChunks {
+                authenticated_node_id: node_id,
+                batch: gap_batch.clone(),
+                received_at: issued_at + Duration::seconds(9),
+            },
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .expect("record provider gap");
+    assert_eq!(gap_receipt.accepted_chunks, 0);
+    assert_eq!(gap_receipt.accepted_gaps, 1);
+    assert!(!gap_receipt.replayed);
+    let gaps = nodes
+        .list_log_gaps(NodeLogChunkQuery {
+            node_id,
+            unit_id: "worker-service".into(),
+            generation: 1,
+            after_sequence: None,
+            limit: 2,
+            stream: Some(RuntimeLogStream::Stderr),
+        })
+        .await
+        .expect("provider gaps");
+    assert_eq!(gaps.len(), 1);
+    assert_eq!(gaps[0].sequence, 2);
+    assert_eq!(gaps[0].reason, RuntimeLogDiscontinuityReason::CursorLost);
+    assert!(
+        log_handler
+            .execute(
+                RecordNodeLogChunks {
+                    authenticated_node_id: node_id,
+                    batch: gap_batch,
+                    received_at: issued_at + Duration::seconds(10),
+                },
+                context(),
+            )
+            .await
+            .expect("framework result")
+            .expect("replay provider gap")
+            .replayed
+    );
     let mut reused_sequence = log_batch;
     reused_sequence.batch_id = Uuid::now_v7();
+    reused_sequence.chunks[0].chunk.sequence = 2;
+    reused_sequence.chunks[0].chunk.cursor = "cursor:2".into();
     assert!(log_handler
         .execute(
             RecordNodeLogChunks {
                 authenticated_node_id: node_id,
                 batch: reused_sequence,
-                received_at: issued_at + Duration::seconds(9),
+                received_at: issued_at + Duration::seconds(11),
             },
             context(),
         )

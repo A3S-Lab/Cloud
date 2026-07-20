@@ -13,19 +13,21 @@ Runtime targets durably, persists bounded batches before mTLS upload, redacts
 bound Secret values at the Docker boundary, stores verified chunk objects
 through a typed filesystem or S3-compatible adapter, indexes metadata in
 PostgreSQL, and exposes tenant-scoped cursor queries with explicit
-missing/corrupt gaps. A bounded control-plane worker removes object bodies after
-the configured receipt age while durable `retained` tombstones preserve every
-cursor position. An independently configured bounded worker later replaces old
-per-chunk tombstones with coalesced durable sequence ranges, and queries expose
-those ranges as explicit `compacted` gaps. A dedicated digest-pinned MinIO CI
-job defines the real S3-compatible lifecycle gate, and a separate remote
-Gateway job exercises the real managed-TLS path. Later E0 sections remain the
-accepted design until their exit gates pass. A3S Cloud ships as a Rust modular
-monolith, a separate Linux node agent, and a React web application. The first
-release still requires production DNS/CA integration and renewal, full
-Secret/log Linux, Docker, and PostgreSQL crash certification, provider
-cursor-loss recovery, update, rollback, live web logs, and clean-host gates
-before multi-node scheduling or hosted assets begin.
+provider/missing/corrupt gaps. Typed Runtime cursor-loss and source-disconnect
+boundaries are persisted and replayed by the node, stored atomically with batch
+headers in PostgreSQL, and merged into the same sequence pages. A bounded
+control-plane worker removes object bodies after the configured receipt age
+while durable `retained` tombstones preserve every cursor position. An
+independently configured bounded worker later replaces old per-chunk tombstones
+with coalesced durable sequence ranges, and queries expose those ranges as
+explicit `compacted` gaps. A dedicated digest-pinned MinIO CI job defines the
+real S3-compatible lifecycle gate, and a separate remote Gateway job exercises
+the real managed-TLS path. Later E0 sections remain the accepted design until
+their exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate
+Linux node agent, and a React web application. The first release still requires
+production DNS/CA integration and renewal, full Secret/log Linux, Docker, and
+PostgreSQL crash certification, update, rollback, live web logs, and clean-host
+gates before multi-node scheduling or hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -348,14 +350,26 @@ ordered provider chunks after the durable cursor, persists at most one pending
 batch before upload, and replays that exact batch ID and content after restart.
 It advances per-unit-generation cursors only after an exact validated receipt.
 ACL configuration bounds polling independently and closes each batch at 256
-chunks and 16 MiB of log text.
+chunk/gap records and 16 MiB of log text.
 
 Before Docker returns stdout/stderr, the driver resolves every immutable Secret
 reference bound to that Runtime unit. Authorization or materialization failure
 fails the log read closed. Exact values are redacted in overlap-safe order, and
 the temporary raw Docker text buffer is zeroized before the sanitized chunks
-leave the driver. Provider cursor disappearance and disconnect-to-gap semantics
-still require an explicit Runtime contract and real-provider certification.
+leave the driver. A missing requested cursor returns the typed permanent
+`cursor_lost` Runtime boundary. A durable Runtime unit whose Docker source is
+absent, including an explicit Docker 404 during the read, returns
+`source_disconnected`; transient Docker transport and availability errors stay
+retryable and never become gaps.
+
+The node validates the discontinuity's exact unit, generation, and requested
+cursor, assigns the next monotonic Cloud sequence, and includes the gap in the
+same durable replay protocol as chunks. An acknowledged gap clears the provider
+cursor but retains the delivery watermark. The next read starts at the earliest
+available provider record, and each returned source sequence is rebased to at
+least the prior delivery sequence plus one. A continuous source disconnect is
+reported once; a successful source read re-arms detection for a later,
+independent disconnect.
 
 For either selected object adapter, control-plane `all` and `worker` roles also
 run a bounded retention scan. Eligibility uses the durable Fleet `received_at`
@@ -373,11 +387,11 @@ One PostgreSQL transaction locks eligible rows with `SKIP LOCKED`, deletes their
 batch memberships and per-chunk metadata, and inserts continuous sequence-range
 markers. Adjacent markers for one node, unit, and generation are coalesced
 across cycles. Batch headers and payload digests remain durable for exact replay,
-and the maximum live-or-compacted sequence is a durable watermark that rejects
-an unseen non-advancing sequence. Queries surface each marker as an explicit
-`compacted` gap. Original provider cursors, observation times, and stream values
-are intentionally discarded, so stream-filtered queries conservatively include
-compacted ranges.
+and the maximum live, provider-gap, or compacted sequence is a durable watermark
+that rejects an unseen non-advancing sequence. Queries surface each marker as an
+explicit `compacted` gap. Original provider cursors, observation times, and
+stream values are intentionally discarded, so stream-filtered queries
+conservatively include compacted ranges.
 
 The S3-compatible adapter uses conditional create for every immutable object.
 An exact replay compares the existing bytes and returns the original logical
@@ -543,7 +557,10 @@ rejects non-files and symbolic links. Deleted and invalid objects remain
 visible as ordered `missing` and `corrupt` gap records. A row whose body was
 removed by the configured retention worker remains visible as a `retained` gap
 without an object-store read. Object-storage unavailability is an error rather
-than a fabricated gap. Once old tombstones are compacted, the query returns a
+than a fabricated gap. Durable provider discontinuities appear as
+`provider_cursor_lost` or `provider_disconnected`; they carry the exact nullable
+requested cursor and observation time but no stream, so they remain visible
+under a stream filter. Once old tombstones are compacted, the query returns a
 `compacted` gap with inclusive `fromSequence` and `throughSequence` bounds plus
 the number of compacted chunks. Its source cursor, observation time, and stream
 are null; paging advances to the terminal sequence. Compacted ranges remain
@@ -633,7 +650,9 @@ so snapshot queries never silently skip old positions. The production profile
 requires HTTPS S3-compatible storage, and the dedicated CI job provisions
 digest-pinned MinIO to exercise the immutable object lifecycle. A separate
 bounded worker compacts aged tombstones into coalesced sequence ranges while
-preserving batch replay and durable sequence watermarks. Full crash
+preserving batch replay and durable sequence watermarks. Provider cursor loss
+and source disconnects use typed Runtime errors, durable node replay, and
+ordered PostgreSQL gap metadata without creating object bodies. Full crash
 certification and live fan-out are still planned. Loki or ClickHouse is
 introduced only when product requirements demand global text search at a
 volume that the chunk index cannot serve.

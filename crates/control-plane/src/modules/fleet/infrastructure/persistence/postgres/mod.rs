@@ -11,8 +11,8 @@ use crate::modules::fleet::domain::repositories::{
     NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogRetentionTarget,
-    NodeStateChange, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogGapMetadata,
+    NodeLogRetentionTarget, NodeStateChange, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
@@ -291,6 +291,13 @@ impl INodeControlRepository for PostgresNodeRepository {
         query: NodeLogChunkQuery,
     ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError> {
         control::list_log_chunks(&self.executor, query).await
+    }
+
+    async fn list_log_gaps(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogGapMetadata>, RepositoryError> {
+        control::list_log_gaps(&self.executor, query).await
     }
 
     async fn list_log_compaction_ranges(

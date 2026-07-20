@@ -1,7 +1,9 @@
 use crate::state_file::{self, StateLock};
 use crate::{LogShippingConfig, NodeControlClientError, NodeControlTransport, RuntimeLogTarget};
-use a3s_cloud_contracts::{NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport};
-use a3s_runtime::contract::RuntimeLogQuery;
+use a3s_cloud_contracts::{
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
+};
+use a3s_runtime::contract::{RuntimeLogDiscontinuityReason, RuntimeLogQuery};
 use a3s_runtime::{RuntimeClient, RuntimeError};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -17,8 +19,18 @@ const LOG_SHIPPING_LOCK_FILE: &str = "log-shipping.lock";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DurableLogCursor {
-    cursor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cursor: Option<String>,
     sequence: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    discontinuity: Option<DurableLogDiscontinuity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DurableLogDiscontinuity {
+    cursor: Option<String>,
+    reason: RuntimeLogDiscontinuityReason,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,9 +65,15 @@ impl LogShippingState {
             validate_target(unit_id, 1)?;
             for (generation, cursor) in generations {
                 if *generation == 0
-                    || cursor.cursor.is_empty()
-                    || cursor.cursor.len() > 1024
-                    || cursor.cursor.contains('\0')
+                    || cursor.cursor.as_ref().is_some_and(|value| {
+                        value.is_empty() || value.len() > 1024 || value.contains('\0')
+                    })
+                    || cursor.discontinuity.as_ref().is_some_and(|gap| {
+                        gap.cursor.as_ref().is_some_and(|value| {
+                            value.is_empty() || value.len() > 1024 || value.contains('\0')
+                        })
+                    })
+                    || cursor.cursor.is_some() && cursor.discontinuity.is_some()
                 {
                     return Err(LogShippingError::Invalid(
                         "durable log cursor is invalid".into(),
@@ -71,8 +89,14 @@ impl LogShippingState {
                 ));
             }
             let mut last_sequences = BTreeMap::<(&str, u64), u64>::new();
+            let mut record_kinds = BTreeMap::<(&str, u64), bool>::new();
             for report in &pending.chunks {
                 let key = (report.unit_id.as_str(), report.generation);
+                if record_kinds.insert(key, false).is_some_and(|gap| gap) {
+                    return Err(LogShippingError::Invalid(
+                        "pending log batch mixes chunks and gaps for one target".into(),
+                    ));
+                }
                 let committed = self
                     .cursor(report.unit_id.as_str(), report.generation)
                     .map(|cursor| cursor.sequence);
@@ -83,6 +107,25 @@ impl LogShippingState {
                     ));
                 }
                 last_sequences.insert(key, report.chunk.sequence);
+            }
+            let mut gap_targets = BTreeSet::new();
+            for gap in &pending.gaps {
+                let key = (gap.unit_id.as_str(), gap.generation);
+                if record_kinds.insert(key, true).is_some_and(|chunk| !chunk)
+                    || !gap_targets.insert(key)
+                {
+                    return Err(LogShippingError::Invalid(
+                        "pending log batch mixes record kinds or repeats a target gap".into(),
+                    ));
+                }
+                let committed = self.cursor(gap.unit_id.as_str(), gap.generation);
+                if gap.cursor.as_deref() != committed.and_then(|cursor| cursor.cursor.as_deref())
+                    || committed.is_some_and(|cursor| gap.sequence <= cursor.sequence)
+                {
+                    return Err(LogShippingError::Invalid(
+                        "pending log gap does not advance its exact durable cursor".into(),
+                    ));
+                }
             }
         }
         Ok(())
@@ -149,6 +192,20 @@ impl FileLogShippingState {
             .map_err(task_error)?
     }
 
+    async fn mark_connected(
+        &self,
+        unit_id: String,
+        generation: u64,
+        expected_sequence: u64,
+    ) -> Result<(), LogShippingError> {
+        let state = self.clone();
+        tokio::task::spawn_blocking(move || {
+            state.mark_connected_sync(&unit_id, generation, expected_sequence)
+        })
+        .await
+        .map_err(task_error)?
+    }
+
     fn snapshot_sync(
         &self,
         targets: &[RuntimeLogTarget],
@@ -200,27 +257,88 @@ impl FileLogShippingState {
         if receipt.batch_id != pending.batch_id
             || receipt.node_id != pending.node_id
             || usize::from(receipt.accepted_chunks) != pending.chunks.len()
+            || usize::from(receipt.accepted_gaps) != pending.gaps.len()
         {
             return Err(LogShippingError::Invalid(
-                "log receipt changed the pending batch identity or chunk count".into(),
+                "log receipt changed the pending batch identity or record counts".into(),
             ));
         }
+        let mut committed = BTreeMap::<(String, u64), DurableLogCursor>::new();
         for report in &pending.chunks {
+            committed.insert(
+                (report.unit_id.clone(), report.generation),
+                DurableLogCursor {
+                    cursor: Some(report.chunk.cursor.clone()),
+                    sequence: report.chunk.sequence,
+                    discontinuity: None,
+                },
+            );
+        }
+        for gap in &pending.gaps {
+            if committed
+                .insert(
+                    (gap.unit_id.clone(), gap.generation),
+                    DurableLogCursor {
+                        cursor: None,
+                        sequence: gap.sequence,
+                        discontinuity: Some(DurableLogDiscontinuity {
+                            cursor: gap.cursor.clone(),
+                            reason: gap.reason,
+                        }),
+                    },
+                )
+                .is_some()
+            {
+                return Err(LogShippingError::Invalid(
+                    "pending log batch mixes chunks and gaps for one target".into(),
+                ));
+            }
+        }
+        for ((unit_id, generation), cursor) in committed {
             state
                 .cursors
-                .entry(report.unit_id.clone())
+                .entry(unit_id)
                 .or_default()
-                .insert(
-                    report.generation,
-                    DurableLogCursor {
-                        cursor: report.chunk.cursor.clone(),
-                        sequence: report.chunk.sequence,
-                    },
-                );
+                .insert(generation, cursor);
         }
         state.pending = None;
         state.validate(self.node_id)?;
         self.write_state(&state)
+    }
+
+    fn mark_connected_sync(
+        &self,
+        unit_id: &str,
+        generation: u64,
+        expected_sequence: u64,
+    ) -> Result<(), LogShippingError> {
+        validate_target(unit_id, generation)?;
+        state_file::ensure_directory(&self.root).map_err(state_error)?;
+        let _lock =
+            StateLock::exclusive(&self.root.join(LOG_SHIPPING_LOCK_FILE)).map_err(state_error)?;
+        let mut state = self.read_state()?;
+        if state.pending.is_some() {
+            return Err(LogShippingError::Conflict(
+                "cannot mark a log source connected while a batch is pending".into(),
+            ));
+        }
+        let Some(cursor) = state
+            .cursors
+            .get_mut(unit_id)
+            .and_then(|generations| generations.get_mut(&generation))
+        else {
+            return Ok(());
+        };
+        if cursor.sequence != expected_sequence {
+            return Err(LogShippingError::Conflict(
+                "log cursor changed while marking its source connected".into(),
+            ));
+        }
+        if cursor.cursor.is_none() && cursor.discontinuity.take().is_some() {
+            state.validate(self.node_id)?;
+            self.write_state(&state)?;
+        }
+        Ok(())
     }
 
     fn read_state(&self) -> Result<LogShippingState, LogShippingError> {
@@ -291,11 +409,13 @@ impl LogShipper {
         targets: &[RuntimeLogTarget],
         snapshot: &LogShippingState,
     ) -> Result<Option<NodeLogChunkBatch>, LogShippingError> {
-        let maximum_chunks = usize::from(self.config.max_batch_chunks);
-        let mut reports = Vec::with_capacity(maximum_chunks);
+        let maximum_records = usize::from(self.config.max_batch_chunks);
+        let mut reports = Vec::with_capacity(maximum_records);
+        let mut gaps = Vec::new();
         let mut data_bytes = 0_usize;
         'targets: for target in targets {
-            let remaining = maximum_chunks.saturating_sub(reports.len());
+            let record_count = reports.len() + gaps.len();
+            let remaining = maximum_records.saturating_sub(record_count);
             if remaining == 0 || data_bytes == self.config.max_batch_bytes {
                 break;
             }
@@ -304,7 +424,7 @@ impl LogShipper {
                 schema: RuntimeLogQuery::SCHEMA.into(),
                 unit_id: target.unit_id.clone(),
                 generation: target.generation,
-                cursor: durable.map(|cursor| cursor.cursor.clone()),
+                cursor: durable.and_then(|cursor| cursor.cursor.clone()),
                 limit: u32::try_from(remaining).map_err(|_| {
                     LogShippingError::Invalid("log batch chunk bound overflowed".into())
                 })?,
@@ -314,24 +434,72 @@ impl LogShipper {
             let chunks = match self.runtime.logs(&query).await {
                 Ok(chunks) => chunks,
                 Err(RuntimeError::NotFound { .. }) => continue,
+                Err(RuntimeError::LogDiscontinuity {
+                    unit_id,
+                    generation,
+                    cursor,
+                    reason,
+                }) => {
+                    if unit_id != target.unit_id
+                        || generation != target.generation
+                        || cursor != query.cursor
+                    {
+                        return Err(LogShippingError::Invalid(
+                            "Runtime log discontinuity changed the requested identity".into(),
+                        ));
+                    }
+                    if durable.is_some_and(|position| {
+                        position.discontinuity.as_ref().is_some_and(|reported| {
+                            reported.reason == reason
+                                && (reason == RuntimeLogDiscontinuityReason::SourceDisconnected
+                                    || reported.cursor == cursor)
+                        })
+                    }) {
+                        continue;
+                    }
+                    gaps.push(NodeLogGapReport {
+                        unit_id,
+                        generation,
+                        cursor,
+                        sequence: next_delivery_sequence(
+                            durable.map(|position| position.sequence),
+                        )?,
+                        observed_at_ms: current_time_ms()?,
+                        reason,
+                    });
+                    continue;
+                }
                 Err(error) => return Err(error.into()),
             };
+            if chunks.is_empty() {
+                if let Some(durable) = durable.filter(|cursor| cursor.discontinuity.is_some()) {
+                    self.state
+                        .mark_connected(target.unit_id.clone(), target.generation, durable.sequence)
+                        .await?;
+                }
+                continue;
+            }
             if chunks.len() > remaining {
                 return Err(LogShippingError::Invalid(
                     "Runtime returned more log chunks than requested".into(),
                 ));
             }
-            let mut previous_sequence = durable.map(|cursor| cursor.sequence);
+            let mut previous_source_sequence = None;
+            let mut previous_delivery_sequence = durable.map(|cursor| cursor.sequence);
             let mut cursors = BTreeSet::new();
-            for chunk in chunks {
+            if let Some(cursor) = query.cursor.as_ref() {
+                cursors.insert(cursor.clone());
+            }
+            for mut chunk in chunks {
                 chunk.validate().map_err(LogShippingError::Invalid)?;
-                if previous_sequence.is_some_and(|sequence| chunk.sequence <= sequence)
+                if previous_source_sequence.is_some_and(|sequence| chunk.sequence <= sequence)
                     || !cursors.insert(chunk.cursor.clone())
                 {
                     return Err(LogShippingError::Invalid(
                         "Runtime log chunks do not strictly advance sequence and cursor".into(),
                     ));
                 }
+                let source_sequence = chunk.sequence;
                 let next_data_bytes =
                     data_bytes.checked_add(chunk.data.len()).ok_or_else(|| {
                         LogShippingError::Invalid("log batch byte count overflowed".into())
@@ -339,7 +507,10 @@ impl LogShipper {
                 if next_data_bytes > self.config.max_batch_bytes {
                     break 'targets;
                 }
-                previous_sequence = Some(chunk.sequence);
+                chunk.sequence =
+                    rebase_delivery_sequence(source_sequence, previous_delivery_sequence)?;
+                previous_source_sequence = Some(source_sequence);
+                previous_delivery_sequence = Some(chunk.sequence);
                 data_bytes = next_data_bytes;
                 let checksum = format!("sha256:{:x}", Sha256::digest(chunk.data.as_bytes()));
                 reports.push(NodeLogChunkReport {
@@ -348,12 +519,12 @@ impl LogShipper {
                     chunk,
                     checksum,
                 });
-                if reports.len() == maximum_chunks {
+                if reports.len() + gaps.len() == maximum_records {
                     break 'targets;
                 }
             }
         }
-        if reports.is_empty() {
+        if reports.is_empty() && gaps.is_empty() {
             return Ok(None);
         }
         let batch = NodeLogChunkBatch {
@@ -362,10 +533,31 @@ impl LogShipper {
             node_id: self.node_id,
             sent_at: Utc::now(),
             chunks: reports,
+            gaps,
         };
         batch.validate().map_err(LogShippingError::Invalid)?;
         Ok(Some(batch))
     }
+}
+
+fn next_delivery_sequence(previous: Option<u64>) -> Result<u64, LogShippingError> {
+    previous.map_or(Ok(0), |sequence| {
+        sequence.checked_add(1).ok_or_else(|| {
+            LogShippingError::Invalid("durable log delivery sequence is exhausted".into())
+        })
+    })
+}
+
+fn rebase_delivery_sequence(
+    source_sequence: u64,
+    previous: Option<u64>,
+) -> Result<u64, LogShippingError> {
+    Ok(source_sequence.max(next_delivery_sequence(previous)?))
+}
+
+fn current_time_ms() -> Result<u64, LogShippingError> {
+    u64::try_from(Utc::now().timestamp_millis())
+        .map_err(|_| LogShippingError::Invalid("current log gap timestamp is invalid".into()))
 }
 
 fn validate_config(config: &LogShippingConfig) -> Result<(), LogShippingError> {

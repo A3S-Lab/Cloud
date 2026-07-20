@@ -14,7 +14,7 @@ pub use node::{
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandOutcome,
     NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest, NodeEnrollmentResponse,
     NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch, NodeLogChunkReceipt,
-    NodeLogChunkReport, NodeObservationBatch, NodeObservationReceipt, NodeProtocolError,
-    NodeProtocolErrorCode, NodeSecretMaterialRequest, NodeSecretMaterialResponse,
-    RuntimeObservationReport, RuntimeServiceEndpoint,
+    NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch, NodeObservationReceipt,
+    NodeProtocolError, NodeProtocolErrorCode, NodeSecretMaterialRequest,
+    NodeSecretMaterialResponse, RuntimeObservationReport, RuntimeServiceEndpoint,
 };
