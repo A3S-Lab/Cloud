@@ -131,7 +131,14 @@ pub async fn exercise_deployment_flow(
     let applying = workload_repository
         .find_deployment(organization_id, deployment_id)
         .await?;
-    assert_eq!(applying.status, DeploymentStatus::Applying);
+    if applying.status != DeploymentStatus::Applying {
+        let history = flow.engine().history(&operation_id.to_string()).await?;
+        return Err(format!(
+            "deployment remained {} before Runtime dispatch; Flow history: {history:#?}",
+            applying.status.as_str()
+        )
+        .into());
+    }
     let command_id = applying.command_id.ok_or("deployment has no command")?;
     let now = Utc::now();
     let lease = node_repository

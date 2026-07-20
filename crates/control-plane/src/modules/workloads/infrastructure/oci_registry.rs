@@ -467,9 +467,10 @@ fn registry_error(error: reqwest::Error) -> OciArtifactResolutionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::fleet::infrastructure::LocalKeyEncryptionService;
     use crate::modules::secrets::domain::{
-        CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,
-        Secret, SecretChanged, SecretEncryptionError,
+        secret_encryption_context, CreateSecretWrite, ISecretEncryptionService, ISecretRepository,
+        Secret, SecretChanged,
     };
     use crate::modules::secrets::infrastructure::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
@@ -484,7 +485,6 @@ mod tests {
     use base64::Engine;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, RwLock};
-    use zeroize::Zeroizing;
 
     #[tokio::test]
     async fn resolves_the_registry_digest_and_detects_a_moved_tag() {
@@ -569,8 +569,23 @@ mod tests {
         let environment_id = EnvironmentId::new();
         let secret_id = SecretId::new();
         let secrets = Arc::new(InMemorySecretRepository::new());
-        let encrypted =
-            EncryptedSecretValue::new("test:key", "test:ciphertext").expect("encrypted value");
+        let material = serde_json::to_vec(&serde_json::json!({
+            "schema": RegistryCredentialMaterial::SCHEMA,
+            "username": username,
+            "password": password,
+        }))
+        .expect("credential material");
+        let key_directory = tempfile::tempdir().expect("key directory");
+        let key_encryption = Arc::new(
+            LocalKeyEncryptionService::load_or_create(key_directory.path().join("key"))
+                .expect("local encryption"),
+        );
+        let context = secret_encryption_context(organization_id, secret_id, 1)
+            .expect("Secret encryption context");
+        let encrypted = key_encryption
+            .encrypt(&material, &context)
+            .await
+            .expect("encrypted value");
         let (secret, version) = Secret::create(
             secret_id,
             organization_id,
@@ -596,15 +611,8 @@ mod tests {
             })
             .await
             .expect("store Secret");
-        let material = serde_json::to_vec(&serde_json::json!({
-            "schema": RegistryCredentialMaterial::SCHEMA,
-            "username": username,
-            "password": password,
-        }))
-        .expect("credential material");
         let secret_repository: Arc<dyn ISecretRepository> = secrets;
-        let encryption: Arc<dyn ISecretEncryptionService> =
-            Arc::new(FixedEncryption(Zeroizing::new(material)));
+        let encryption: Arc<dyn ISecretEncryptionService> = key_encryption;
         let resolver =
             OciRegistryArtifactResolver::new(Duration::from_secs(2), [address.to_string()])
                 .expect("resolver")
@@ -743,33 +751,6 @@ mod tests {
             .header(CONTENT_TYPE, "application/vnd.oci.image.manifest.v1+json")
             .body(String::new())
             .expect("authenticated registry response")
-    }
-
-    struct FixedEncryption(Zeroizing<Vec<u8>>);
-
-    #[async_trait]
-    impl ISecretEncryptionService for FixedEncryption {
-        async fn encrypt(
-            &self,
-            _plaintext: &[u8],
-            _context: &[u8],
-        ) -> Result<EncryptedSecretValue, SecretEncryptionError> {
-            Err(SecretEncryptionError::Unavailable(
-                "test encryption is read-only".into(),
-            ))
-        }
-
-        async fn decrypt(
-            &self,
-            _value: &EncryptedSecretValue,
-            _context: &[u8],
-        ) -> Result<Vec<u8>, SecretEncryptionError> {
-            Ok(self.0.as_slice().to_vec())
-        }
-
-        async fn health(&self) -> Result<bool, SecretEncryptionError> {
-            Ok(true)
-        }
     }
 
     struct TokenServiceState {
