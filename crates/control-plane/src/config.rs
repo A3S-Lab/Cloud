@@ -160,6 +160,7 @@ pub struct EdgeConfig {
     pub management_address: String,
     pub management_path_prefix: String,
     pub management_auth_token_env: String,
+    pub domain_verification_timeout_ms: u64,
     pub certificate_directory: String,
     pub certificate_ttl_ms: u64,
     pub certificate_renewal_window_ms: u64,
@@ -346,6 +347,7 @@ impl CloudConfig {
                 "management_address",
                 "management_path_prefix",
                 "management_auth_token_env",
+                "domain_verification_timeout_ms",
                 "certificate_directory",
                 "certificate_ttl_ms",
                 "certificate_renewal_window_ms",
@@ -466,6 +468,7 @@ impl CloudConfig {
                 management_address: string(edge, "management_address")?,
                 management_path_prefix: string(edge, "management_path_prefix")?,
                 management_auth_token_env: string(edge, "management_auth_token_env")?,
+                domain_verification_timeout_ms: integer(edge, "domain_verification_timeout_ms")?,
                 certificate_directory: string(edge, "certificate_directory")?,
                 certificate_ttl_ms: integer(edge, "certificate_ttl_ms")?,
                 certificate_renewal_window_ms: integer(edge, "certificate_renewal_window_ms")?,
@@ -725,6 +728,8 @@ impl CloudConfig {
                 .management_path_prefix
                 .contains(['\0', '\r', '\n', '?', '#'])
             || !valid_env_name(&self.edge.management_auth_token_env)
+            || self.edge.domain_verification_timeout_ms == 0
+            || self.edge.domain_verification_timeout_ms > 60_000
             || self.edge.certificate_directory.len() > 4096
             || self.edge.certificate_directory.contains(['\0', '\r', '\n'])
             || !certificate_directory.is_absolute()
@@ -740,7 +745,7 @@ impl CloudConfig {
             || self.edge.command_ttl_ms > 86_400_000
         {
             return Err(ConfigError::Invalid(
-                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, a normalized certificate directory with bounded lifecycle windows, and independent bounded upstream and command timeouts"
+                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, bounded DNS verification, a normalized certificate directory with bounded lifecycle windows, and independent bounded upstream and command timeouts"
                     .into(),
             ));
         }
@@ -1191,6 +1196,7 @@ edge {
   management_address = "127.0.0.1:9090"
   management_path_prefix = "/api/gateway"
   management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  domain_verification_timeout_ms = 5000
   certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
@@ -1231,6 +1237,7 @@ security {
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
+        assert_eq!(config.edge.domain_verification_timeout_ms, 5_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
 
@@ -1260,6 +1267,16 @@ security {
         assert!(CloudConfig::parse(
             &VALID.replace("publish_timeout_ms = 3000", "publish_timeout_ms = 10000")
         )
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "domain_verification_timeout_ms = 5000",
+            "domain_verification_timeout_ms = 0"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "domain_verification_timeout_ms = 5000",
+            "domain_verification_timeout_ms = 60001"
+        ))
         .is_err());
         assert!(CloudConfig::parse(
             &VALID.replace("profile = \"development\"", "profile = \"production\"")

@@ -53,13 +53,14 @@ template with reference-only Secret bindings, and operation queries expose
 explicit rollback lineage. The React console consumes those authoritative
 projections for deployment history, route/certificate state, complete-template
 differences and updates, eligible rollback, and browser-local terminal
-operation cleanup. Later E0 sections remain the accepted design until their
-exit gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux
-node agent, and a React web application. The first release still requires
-production DNS/CA integration and renewal/revocation convergence, the remaining
-Gateway acknowledgement process-death gate, provider death during a Secret-rotation
-apply, and clean-host gates before multi-node scheduling or hosted assets
-begin.
+operation cleanup. Production now performs bounded DNS TXT ownership
+verification through the host resolver. Later E0 sections remain the accepted
+design until their exit gates pass. A3S Cloud ships as a Rust modular monolith,
+a separate Linux node agent, and a React web application. The first release
+still requires a production Gateway CA, renewal/revocation convergence, the
+remaining Gateway acknowledgement process-death gate, provider death during a
+Secret-rotation apply, and clean-host gates before multi-node scheduling or
+hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -571,7 +572,14 @@ Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route
 can compile only from verified claims that cover every hostname in the complete
 snapshot. Development uses a deterministic local proof verifier, while
-production fails closed until a real DNS verifier is configured.
+production constructs an asynchronous resolver from the host DNS configuration
+and fails startup closed when that configuration is unavailable. The production
+verifier requires the caller's proof to exactly match the issued challenge
+before lookup, joins split TXT fragments in wire order, and accepts only an
+exact constant-time match from a bounded response. An absent or stale TXT value
+leaves the claim `pending` without consuming the idempotency key so the same
+request can be retried; timeout and resolver failures expose only a sanitized
+temporary-unavailability error.
 
 The compiler emits one HTTPS entrypoint with TLS 1.2 as the minimum, unions and
 sorts the required SAN patterns, and binds one typed certificate request into
@@ -589,7 +597,7 @@ the Fleet/node CA and overrides CSR SANs with the desired set. Production
 issuance fails closed until its certificate provider exists. A dedicated Ubuntu
 CI job installs A3S Gateway 1.0.12 and proves the node-generated key, managed
 chain, exact reload, trusted DNS/SNI HTTPS request, and durable revision against
-a loopback upstream. Production DNS/CA adapters, automated renewal, and
+a loopback upstream. The production Gateway CA, automated renewal, and
 revocation-driven route convergence remain E0 work.
 
 ## 9. Source, build, and asset hosting

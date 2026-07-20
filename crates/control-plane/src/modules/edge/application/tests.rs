@@ -1,22 +1,26 @@
 use super::{
     PublishRoute, PublishRouteHandler, SignGatewayCertificate, SignGatewayCertificateHandler,
+    VerifyDomainClaim, VerifyDomainClaimHandler,
 };
 use crate::modules::edge::domain::events::DomainClaimChanged;
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, IEdgeRepository, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::services::{
+    DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayCommandDispatch,
-    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, RouteTarget,
+    IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
+    IRouteTargetReader, RouteTarget,
 };
 use crate::modules::edge::domain::{
-    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
-    GatewayPublication, RoutePortName, UpstreamEndpoint,
+    DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
+    GatewayCertificateMaterial, GatewayPublication, RoutePortName, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::infrastructure::{
     GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
 };
+use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, IdempotencyRequest, NodeId, OrganizationId, ProjectId,
     RepositoryError, WorkloadId, WorkloadRevisionId,
@@ -70,6 +74,27 @@ impl IRouteTargetReader for UnavailableTargetReader {
         Err(RepositoryError::Conflict(
             "current target evidence is no longer available".into(),
         ))
+    }
+}
+
+#[derive(Default)]
+struct RetryableDomainOwnershipVerifier {
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl IDomainOwnershipVerifier for RetryableDomainOwnershipVerifier {
+    async fn verify(
+        &self,
+        request: DomainOwnershipVerificationRequest,
+    ) -> Result<(), DomainOwnershipVerificationError> {
+        assert_eq!(request.presented_proof, request.expected_value);
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(DomainOwnershipVerificationError::NotReady(
+                "expected DNS TXT challenge is not observable".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -314,6 +339,104 @@ async fn stage_certificate(
     .expect("command bus")
     .expect("stage Gateway certificate")
     .publication
+}
+
+#[tokio::test]
+async fn unobserved_domain_proof_remains_pending_and_retryable_with_the_same_key() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let now = Utc::now();
+    let mut claim = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse("api.example.com").expect("domain pattern"),
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .expect("domain claim");
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: claim.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-domain-claim-creation",
+            claim.id.to_string(),
+            claim.pattern.as_str().as_bytes(),
+        )
+        .expect("create idempotency"),
+        event: DomainClaimChanged::envelope(&claim, Uuid::now_v7()).expect("created event"),
+    })
+    .await
+    .expect("persist domain claim");
+
+    let verifier = Arc::new(RetryableDomainOwnershipVerifier::default());
+    let repository: Arc<dyn IEdgeRepository> = edge.clone();
+    let handler = VerifyDomainClaimHandler::new(repository, verifier.clone());
+    let command = VerifyDomainClaim {
+        organization_id,
+        claim_id: claim.id,
+        proof: claim.challenge_value.clone(),
+        idempotency_key: "verify-api-domain".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: now + Duration::seconds(1),
+    };
+
+    let first_error = handler
+        .execute(command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect_err("DNS proof is not observable yet");
+    assert!(matches!(first_error, ApplicationError::Conflict(_)));
+    claim = edge
+        .find_domain_claim(organization_id, claim.id)
+        .await
+        .expect("pending domain claim");
+    assert_eq!(claim.state, DomainClaimState::Pending);
+    assert_eq!(claim.aggregate_version, 1);
+    assert_eq!(edge.outbox_events().await.len(), 1);
+
+    let canonical = serde_json::to_vec(&serde_json::json!({
+        "organization_id": command.organization_id,
+        "claim_id": command.claim_id,
+        "proof": command.proof,
+    }))
+    .expect("canonical verification request");
+    let verification_idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{}/domain-claims/{}/verify",
+            command.organization_id, command.claim_id
+        ),
+        command.idempotency_key.clone(),
+        &canonical,
+    )
+    .expect("verification idempotency");
+    assert!(edge
+        .replay_domain_claim_write(&verification_idempotency)
+        .await
+        .expect("verification replay lookup")
+        .is_none());
+
+    let verified = handler
+        .execute(command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect("retry domain verification");
+    assert!(!verified.replayed);
+    assert_eq!(verified.claim.state, DomainClaimState::Verified);
+    assert_eq!(verified.claim.aggregate_version, 2);
+    assert_eq!(verifier.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(edge.outbox_events().await.len(), 2);
+
+    let replay = handler
+        .execute(command, context())
+        .await
+        .expect("command bus")
+        .expect("replay domain verification");
+    assert!(replay.replayed);
+    assert_eq!(replay.claim, verified.claim);
+    assert_eq!(verifier.calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]

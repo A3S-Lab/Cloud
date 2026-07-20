@@ -225,6 +225,7 @@ fn config() -> CloudConfig {
             management_address: "127.0.0.1:9090".into(),
             management_path_prefix: "/api/gateway".into(),
             management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+            domain_verification_timeout_ms: 5_000,
             certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
             certificate_ttl_ms: 2_592_000_000,
             certificate_renewal_window_ms: 604_800_000,
