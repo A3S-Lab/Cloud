@@ -110,6 +110,14 @@ Owns immutable artifact metadata, provenance, checksums, signatures, and
 registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
+The implemented G0 engine boundary lives here rather than in Sources or
+Runtime. Its typed Build service binds a build ID, checked-out content digest,
+and recipe to a validated OCI root descriptor and local layout receipt. The
+BuildKit adapter verifies every referenced blob and the exact requested
+platform set before accepting the result. Artifact persistence, registry
+locations, provenance, signatures, and build-operation state remain subsequent
+boundaries.
+
 Primary aggregate:
 
 - `Artifact`
@@ -534,9 +542,13 @@ public GitHub branch, tag, or full commit through a provider-neutral port, and
 accepts the resulting immutable object ID with
 `a3s.cloud.build-recipe.v1`. The implemented secure checkout port materializes
 that exact public commit under bounded isolated Git configuration, removes
-`.git`, and records an immutable filesystem digest for replay. GitHub
-App/private-repository authentication, build-operation integration, and
-source-to-artifact execution remain later G0 operations.
+`.git`, and records an immutable filesystem digest for replay. The implemented
+Artifact-owned Build service can consume a caller-supplied materialized source
+and recipe through rootless BuildKit, then validate and atomically receipt a
+local OCI layout. It does not yet coordinate or revalidate the checkout,
+publish the image, record provenance, or hand a digest to Workloads. GitHub
+App/private-repository authentication and the complete source-to-artifact
+operation remain later G0 work.
 
 ## 6. State models
 

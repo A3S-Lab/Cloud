@@ -147,6 +147,12 @@ API command
   through a provider-neutral port, pin the verified commit to a path-safe
   versioned Dockerfile recipe, and persist the tenant-scoped revision,
   idempotency result, optional delivery reservation, and outbox fact atomically
+- **Validated OCI Build Boundary**: Bind one immutable build ID to a checked-out
+  content digest and recipe, invoke BuildKit through an Artifact-owned typed
+  port with Unix, mTLS, or explicit loopback-conformance transport, export an
+  OCI image layout, verify the BuildKit descriptor plus every referenced
+  SHA-256 blob and requested platform, and atomically replay or reject the
+  resulting content receipt
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
@@ -169,7 +175,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, webhook source-identity deduplication, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented; GitHub App/private-repository authentication, signed webhook intake, isolated BuildKit execution, OCI publication, provenance, and push-to-deploy remain | In progress (`G0` secure-checkout slice) |
+| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, webhook source-identity deduplication, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. The Artifacts context now owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. GitHub App/private-repository authentication, signed webhook intake, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` validated-OCI-build slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -729,7 +735,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, public GitHub ref resolution, and secure exact-commit checkout implemented) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, public GitHub ref resolution, secure exact-commit checkout, and rootless BuildKit OCI-output validation implemented) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
@@ -825,7 +831,11 @@ rollback, and Secret-rotation restart recovery after the committed version
 boundary. Because this suite deliberately has no public-network route, its
 PostgreSQL fixture accepts only typed full commit references through a
 deterministic test resolver; the dedicated GitHub source-resolution and Linux
-Secret/log jobs exercise the production GitHub adapter. The real Docker
+Secret/log jobs exercise the production GitHub adapter. A separate rootless
+BuildKit job exports a scratch fixture to an OCI layout through the typed Build
+service, validates every referenced blob and platform, and replays the
+immutable receipt; it does not claim Runtime Task isolation or registry
+publication. The real Docker
 update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the

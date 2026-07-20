@@ -66,14 +66,18 @@ add a Sources context with canonical GitHub repository identities, an exact
 allow/deny policy, provider-neutral public branch/tag/commit resolution, full
 immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic webhook
 source-identity reservation, PostgreSQL persistence, and tenant-scoped REST
-acceptance/query. GitHub App/private-repository authentication, signed webhook
-ingress, and build execution are not yet implemented. A provider-neutral
-checkout port and Git adapter now fetch an accepted public commit under
-isolated Git configuration, reject unsafe tree entries, strip `.git`, and
-commit an immutable content receipt; the build coordinator does not invoke
-that boundary yet. Unimplemented portions of later milestone sections remain
-accepted design until their own exit gates pass. A3S Cloud ships as a Rust
-modular monolith, a separate Linux node agent, and a React web application.
+acceptance/query. A provider-neutral checkout port and Git adapter now fetch an
+accepted public commit under isolated Git configuration, reject unsafe tree
+entries, strip `.git`, and commit an immutable content receipt. The Artifacts
+context also owns a typed Build service whose BuildKit adapter exports and
+fully validates a local OCI image layout; a dedicated gate exercises it against
+the digest-pinned rootless BuildKit image. The build coordinator does not yet
+join those boundaries or run the client through a Runtime Task. GitHub
+App/private-repository authentication, signed webhook ingress, isolated build
+orchestration, registry publication, and provenance remain unimplemented.
+Unimplemented portions of later milestone sections remain accepted design
+until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
+separate Linux node agent, and a React web application.
 
 The following decisions are fixed for the first architecture:
 
@@ -278,7 +282,7 @@ inside the same transaction.
 | Projects | create project/environment, request deletion | operation coordinator |
 | Sources | resolve and accept immutable external source revision | provider source resolver, build coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
-| Artifacts | register, verify, sign, retain artifact | OCI registry, object store, signer |
+| Artifacts | build, register, verify, sign, retain artifact | BuildKit, OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
 | Workloads | create revision, deploy, stop, update, roll back | scheduler, Runtime dispatch, Flow, Fleet log metadata |
 | Edge | claim domain, publish/remove route | DNS verifier, Gateway publisher, ACME |
@@ -712,8 +716,8 @@ revision, idempotency response, optional webhook repository-plus-commit
 reservation, and `source.revision.accepted` outbox fact. Natural identity is
 environment, repository, commit, and recipe digest. Mutable ref names and
 credential references are not durable source-revision state. GitHub App and
-private-repository authentication, signed webhook ingress, and the BuildKit
-operation remain subsequent G0 boundaries.
+private-repository authentication, signed webhook ingress, and the coordinated
+BuildKit operation remain subsequent G0 boundaries.
 
 The provider-neutral source-checkout port accepts only a canonical repository,
 one full commit object ID, and an immutable checkout ID. Its Git adapter uses a
@@ -730,6 +734,35 @@ and mutated content fails integrity validation. The dedicated public GitHub CI
 gate resolves a branch and exercises this exact checkout and replay boundary.
 It does not yet start a build operation or establish private-repository
 evidence.
+
+The Artifact-owned `IBuildService` accepts one immutable build ID, an absolute
+materialized source directory, the source content receipt digest, and the
+accepted recipe. The BuildKit adapter resolves only recipe-owned context and
+Dockerfile paths beneath that directory, runs `buildctl` with an empty client
+home and no credential, SSH, cache import/export, push, or
+privileged-entitlement inputs, and exports an OCI image layout. Unix sockets
+and mTLS are the production-capable transports; unauthenticated TCP is
+constructible only through an explicitly named conformance option and only for
+a literal loopback address.
+
+Acceptance requires the BuildKit metadata digest and descriptor to agree, the
+OCI root to bind that descriptor, every reachable index, manifest,
+config, and layer to have its declared size and SHA-256 bytes, the inventory to
+contain no unreferenced blob, and the config platforms to equal the recipe.
+The bounded result and receipt publish atomically by build ID; replay validates
+the whole graph again, changed input conflicts, and changed output fails
+integrity validation. The real CI gate runs a scratch-based fixture through
+the digest-pinned rootless BuildKit image and validates the output through this
+same adapter.
+
+This is deliberately a local-context engine boundary, not the G0 build
+operation. It binds but does not independently recompute the checkout content
+digest, so the future coordinator must replay the secure checkout immediately
+before submission. The CI daemon's unauthenticated endpoint is ephemeral and
+loopback-only. Rootless BuildKit itself does not prove deny-by-default build
+networking, and the current client is not yet a Runtime Task. Registry push,
+cache trust, provenance, credentials, cancellation, logs, and deployment
+handoff remain later slices.
 
 Hosted assets follow a separate publication chain:
 

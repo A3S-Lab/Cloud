@@ -517,7 +517,7 @@ through the proven loop.
 
 ### Current implementation
 
-The first three independently testable G0 slices are implemented:
+The first four independently testable G0 slices are implemented:
 
 - A dedicated Sources bounded context accepts and lists tenant-, project-, and
   environment-scoped `ExternalSourceRevision` aggregates.
@@ -564,12 +564,34 @@ The first three independently testable G0 slices are implemented:
 - Unit tests cover moving-branch pinning, immutable replay, tampering, limits,
   gitlinks, and escaping symlinks. The public GitHub CI job also materializes
   the just-resolved commit and verifies metadata-free replay.
+- The Artifacts context owns a provider-neutral `IBuildService`. Its request
+  binds an immutable build ID, absolute materialized source directory, checkout
+  content digest, and accepted recipe without exposing BuildKit semantics to
+  Sources or Runtime.
+- The BuildKit adapter accepts Unix or mTLS endpoints and permits
+  unauthenticated TCP only through an explicit literal-loopback conformance
+  constructor. It runs `buildctl` with an empty home and no credential, SSH,
+  cache import/export, push, or privileged-entitlement inputs, applies total
+  deadlines, and removes failed staging output.
+- Build output is accepted only when BuildKit metadata binds the root
+  descriptor, the OCI layout contains exactly the reachable SHA-256 inventory,
+  every index/manifest/config/layer has the declared digest and size, and image
+  configs exactly match the recipe platforms. Build-ID replay revalidates the
+  full graph, conflicting input fails, tampering fails, and removal is
+  idempotent.
+- A dedicated Linux gate starts the digest-pinned `moby/buildkit` 0.31.2
+  rootless image, proves its non-root image user, builds a network-independent
+  scratch fixture through the production adapter, validates the OCI output,
+  and replays it without reexecution.
 
-These slices establish persistence, public resolution, and secure public
-checkout, not the G0 integration gate. GitHub App credentials and
-private-repository access, signed webhook intake, build-operation checkout
-orchestration, BuildKit execution, artifact publication, provenance,
-deployment handoff, build operations/logs, and web surfaces remain required.
+These slices establish persistence, public resolution, secure public checkout,
+and a real local-context BuildKit/OCI engine boundary, not the G0 integration
+gate. The Build service binds but does not recompute the checkout digest, and
+the rootless worker does not by itself prove deny-by-default build networking.
+GitHub App credentials and private-repository access, signed webhook intake,
+build-operation checkout replay, Runtime Task orchestration, registry
+publication, provenance, deployment handoff, build operations/logs,
+cancellation, and web surfaces remain required.
 
 ### Work
 
@@ -578,12 +600,14 @@ deployment handoff, build operations/logs, and web surfaces remain required.
 - Complete private-repository resolution with a real GitHub App gate.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
-- Define a typed build recipe and run builds as isolated Runtime Tasks with
+- Run the implemented typed build recipe and Build service as isolated Runtime
+  Tasks with
   deny-by-default network policy. G0 requires an explicit recipe; automatic
   stack detection is a P0 input that may propose, but never silently replace,
   this contract.
-- Use rootless BuildKit through a typed Build service port; BuildKit endpoint,
-  Dockerfile, buildpack, and cache details do not leak into Runtime contracts.
+- Extend the implemented rootless BuildKit/local-OCI gate through the Runtime
+  Task and publication boundaries; BuildKit endpoint, Dockerfile, buildpack,
+  and cache details must continue not to leak into Runtime contracts.
 - Push by digest to the configured OCI registry and record source, recipe,
   builder, platform, SBOM, signature, and artifact provenance.
 - Add content-addressed build caching without allowing cache hits to weaken
@@ -1108,7 +1132,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> GitHub App and real BuildKit gate -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> GitHub App and signed webhook -> Runtime Task plus registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
