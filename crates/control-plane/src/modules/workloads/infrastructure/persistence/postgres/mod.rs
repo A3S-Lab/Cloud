@@ -1,6 +1,7 @@
 mod create;
 mod queries;
 mod rows;
+mod secret_rotation_restarts;
 mod stop;
 mod transitions;
 
@@ -12,9 +13,10 @@ use crate::modules::workloads::domain::entities::{
     Deployment, OciArtifact, Workload, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::{
-    ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IWorkloadRepository,
-    IWorkloadRuntimeTargetRepository, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, WorkloadStopBundle,
+    ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
+    ISecretRotationRestartRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, SecretRotation,
+    SecretRotationReconciliation, WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -292,6 +294,26 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
             transitions::DeploymentMutation::Cancel { at },
         )
         .await
+    }
+}
+
+#[async_trait]
+impl ISecretRotationRestartRepository for PostgresWorkloadRepository {
+    async fn pending_secret_rotations(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<SecretRotation>, RepositoryError> {
+        secret_rotation_restarts::pending(&self.executor, limit).await
+    }
+
+    async fn reconcile_secret_rotation(
+        &self,
+        rotation: SecretRotation,
+        workload_limit: usize,
+        reconciled_at: DateTime<Utc>,
+    ) -> Result<SecretRotationReconciliation, RepositoryError> {
+        secret_rotation_restarts::reconcile(&self.executor, rotation, workload_limit, reconciled_at)
+            .await
     }
 }
 

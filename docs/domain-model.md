@@ -301,6 +301,12 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Secret payloads use authenticated provider encryption with a key identifier;
   production Transit/KMS providers own their internal key hierarchy.
 - Updating a secret creates a new version; it never mutates ciphertext in place.
+- A committed rotation event advances every older binding on each active
+  revision of a running workload by deriving a new immutable revision. The
+  resolved artifact digest and unrelated template fields do not change.
+- The derived revision, deployment operation, causal event, and restart record
+  commit together after the Secret version commit. A unique event/workload key
+  and terminal event checkpoint make worker replay idempotent.
 - Deletion is blocked while a live workload revision references the version,
   unless an explicit force workflow records the impact.
 - Durable workload, Runtime, Fleet, Flow, event, label, and API state carries
@@ -501,6 +507,7 @@ the same public material for the same CSR digest and rejects a conflicting CSR.
 | Gateway private key and CSR files | Node-local managed certificate directory |
 | Secret identity and encrypted immutable versions | PostgreSQL Secret tables |
 | Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
+| Secret-rotation restart causality, derived deployment, and replay checkpoint | PostgreSQL rotation restart/reconciliation tables plus the committed outbox fact |
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation |
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |

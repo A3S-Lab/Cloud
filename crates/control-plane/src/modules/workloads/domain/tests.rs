@@ -1,7 +1,7 @@
 use super::entities::*;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ResourceName, WorkloadId, WorkloadRevisionId,
+    ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
 };
 use chrono::{Duration, Timelike, Utc};
 use std::collections::BTreeMap;
@@ -158,6 +158,105 @@ fn revision_requires_a_digest_bound_oci_artifact_and_has_a_stable_digest() {
         created_at,
     )
     .is_err());
+}
+
+#[test]
+fn secret_rotation_derives_a_new_resolved_revision_without_mutating_the_source() {
+    let workload_id = WorkloadId::new();
+    let secret_id = SecretId::new();
+    let created_at = Utc::now();
+    let mut source_template = template('a');
+    source_template.secrets = vec![
+        SecretBinding {
+            name: "database-environment".into(),
+            secret_id,
+            version: 2,
+            target: SecretBindingTarget::Environment {
+                variable: "DATABASE_URL".into(),
+            },
+        },
+        SecretBinding {
+            name: "database-file".into(),
+            secret_id,
+            version: 2,
+            target: SecretBindingTarget::File {
+                path: "/run/secrets/database-url".into(),
+                mode: 0o400,
+            },
+        },
+        SecretBinding {
+            name: "unrelated".into(),
+            secret_id: SecretId::new(),
+            version: 7,
+            target: SecretBindingTarget::Environment {
+                variable: "UNRELATED".into(),
+            },
+        },
+    ];
+    let source = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload_id,
+        4,
+        source_template,
+        created_at,
+    )
+    .expect("source revision");
+
+    let derived = source
+        .restart_for_secret_rotation(
+            WorkloadRevisionId::new(),
+            6,
+            secret_id,
+            3,
+            created_at + Duration::seconds(1),
+        )
+        .expect("derived Secret-rotation revision");
+
+    assert_eq!(source.generation, 4);
+    assert!(source
+        .request
+        .secrets
+        .iter()
+        .filter(|binding| binding.secret_id == secret_id)
+        .all(|binding| binding.version == 2));
+    assert_eq!(derived.generation, 6);
+    assert_eq!(
+        derived
+            .resolved_template()
+            .expect("resolved derived template")
+            .artifact,
+        source
+            .resolved_template()
+            .expect("resolved source template")
+            .artifact
+    );
+    assert!(derived
+        .request
+        .secrets
+        .iter()
+        .filter(|binding| binding.secret_id == secret_id)
+        .all(|binding| binding.version == 3));
+    assert_eq!(
+        derived
+            .request
+            .secrets
+            .iter()
+            .find(|binding| binding.name == "unrelated")
+            .expect("unrelated binding")
+            .version,
+        7
+    );
+    assert_ne!(derived.request_digest, source.request_digest);
+    assert_ne!(derived.template_digest, source.template_digest);
+    assert!(source
+        .restart_for_secret_rotation(
+            WorkloadRevisionId::new(),
+            7,
+            secret_id,
+            2,
+            created_at + Duration::seconds(2),
+        )
+        .is_err());
 }
 
 #[test]

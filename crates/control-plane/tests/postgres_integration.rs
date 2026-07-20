@@ -39,6 +39,8 @@ mod edge_support;
 mod fleet_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
+#[path = "support/secret_rotation_restart.rs"]
+mod secret_rotation_restart_support;
 #[path = "support/workloads.rs"]
 mod workloads_support;
 
@@ -86,6 +88,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists secret_rotation_reconciliations cascade;
+             drop table if exists secret_rotation_restarts cascade;
              drop table if exists secret_versions cascade;
              drop table if exists secrets cascade;
              drop table if exists deployments cascade;
@@ -132,7 +136,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 16);
+    assert_eq!(applied, 17);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -280,6 +284,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "017",
+                "Secret rotation workload restarts",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/017_secret_rotation_restarts.sql"
+                )),
+            ),
+            Migration::new(
+                "018",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1003,12 +1015,25 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     assert_eq!(changed_workload.status(), 409);
 
+    let created_workload_body = response_json(&created_workload)?;
+    let workload_id = created_workload_body["data"]["workloadId"]
+        .as_str()
+        .ok_or("workload creation response omitted workloadId")?
+        .to_owned();
+    let deployment_id = created_workload_body["data"]["deploymentId"]
+        .as_str()
+        .ok_or("workload creation response omitted deploymentId")?
+        .to_owned();
+    let revision_id = created_workload_body["data"]["revisionId"]
+        .as_str()
+        .ok_or("workload creation response omitted revisionId")?
+        .to_owned();
     let sensitive_plaintexts = [
         second_secret_value,
         registry_credential_value.as_str(),
         registry_password.as_str(),
     ];
-    deployment_flow_support::exercise_deployment_flow(
+    let deployment_flow_fixture = deployment_flow_support::exercise_deployment_flow(
         &executor,
         &url,
         Uuid::parse_str(&organization_id)?,
@@ -1017,7 +1042,76 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         &sensitive_plaintexts,
     )
     .await?;
-    for plaintext in sensitive_plaintexts {
+    let third_secret_value = "postgres://cloud:restart-secret@database";
+    let restart_rotation = app
+        .call(post_json(
+            &secret_versions_path,
+            "secret-database-url-rotate-for-restart",
+            json!({"value": third_secret_value}),
+        ))
+        .await?;
+    assert_eq!(restart_rotation.status(), 201);
+    assert_eq!(
+        response_json(&restart_rotation)?["data"]["currentVersion"],
+        3
+    );
+    assert!(!String::from_utf8_lossy(restart_rotation.body()).contains(third_secret_value));
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from secret_versions where secret_id = ",)
+                    .bind(Uuid::parse_str(&secret_id)?)
+                    .append(" and version = 3"),
+            )
+            .await?,
+        1,
+        "Secret rotation did not commit before restart reconciliation"
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from workload_revisions where workload_id = ",)
+                    .bind(Uuid::parse_str(&workload_id)?),
+            )
+            .await?,
+        1,
+        "restart revision appeared in the Secret mutation transaction"
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from secret_rotation_restarts where workload_id = ",
+                )
+                .bind(Uuid::parse_str(&workload_id)?),
+            )
+            .await?,
+        0,
+        "restart intent appeared before the committed Secret event was reconciled"
+    );
+
+    let restart_fixture = secret_rotation_restart_support::exercise_secret_rotation_restart(
+        &executor,
+        &url,
+        Uuid::parse_str(&organization_id)?,
+        Uuid::parse_str(&workload_id)?,
+        Uuid::parse_str(&secret_id)?,
+        3,
+        &deployment_flow_fixture,
+        &[
+            second_secret_value,
+            third_secret_value,
+            registry_credential_value.as_str(),
+            registry_password.as_str(),
+        ],
+    )
+    .await?;
+    for plaintext in [
+        second_secret_value,
+        third_secret_value,
+        registry_credential_value.as_str(),
+        registry_password.as_str(),
+    ] {
         let durable_leaks = database
             .fetch_one_as(
                 sql_query::<i64>("with needle as (select ")
@@ -1026,7 +1120,16 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                         "::text as value) select
                          (select count(*) from workload_revisions, needle
                             where template_request::text like needle.value
-                               or coalesce(template::text, '') like needle.value)
+                               or coalesce(template::text, '') like needle.value
+                               or request_digest like needle.value
+                               or coalesce(template_digest, '') like needle.value)
+                       + (select count(*) from secret_rotation_restarts, needle
+                            where row_to_json(secret_rotation_restarts)::text like needle.value)
+                       + (select count(*) from secret_rotation_reconciliations, needle
+                            where row_to_json(secret_rotation_reconciliations)::text like needle.value)
+                       + (select count(*) from secret_versions, needle
+                            where ciphertext like needle.value
+                               or key_id like needle.value)
                        + (select count(*) from operation_requests, needle
                             where input::text like needle.value)
                        + (select count(*) from operation_projections, needle
@@ -1055,19 +1158,6 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         );
     }
 
-    let created_workload_body = response_json(&created_workload)?;
-    let workload_id = created_workload_body["data"]["workloadId"]
-        .as_str()
-        .ok_or("workload creation response omitted workloadId")?
-        .to_owned();
-    let deployment_id = created_workload_body["data"]["deploymentId"]
-        .as_str()
-        .ok_or("workload creation response omitted deploymentId")?
-        .to_owned();
-    let revision_id = created_workload_body["data"]["revisionId"]
-        .as_str()
-        .ok_or("workload creation response omitted revisionId")?
-        .to_owned();
     if std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() == Ok("1") {
         let persisted_logs = app
             .call(get_as(
@@ -1081,6 +1171,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         let persisted_logs_body = String::from_utf8_lossy(persisted_logs.body());
         assert!(!persisted_logs_body.contains(first_secret_value));
         assert!(!persisted_logs_body.contains(second_secret_value));
+        assert!(!persisted_logs_body.contains(third_secret_value));
         assert!(!persisted_logs_body.contains(registry_credential_value.as_str()));
         assert!(!persisted_logs_body.contains(registry_password.as_str()));
         let persisted_logs_json = response_json(&persisted_logs)?;
@@ -1105,8 +1196,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let listed = &response_json(&listed_workloads)?["data"];
     assert_eq!(listed.as_array().map(Vec::len), Some(1));
     assert_eq!(listed[0]["id"], workload_id);
-    assert_eq!(listed[0]["desiredRevision"]["generation"], 1);
-    assert_eq!(listed[0]["activeRevision"]["generation"], 1);
+    assert_eq!(listed[0]["desiredRevision"]["generation"], 2);
+    assert_eq!(listed[0]["activeRevision"]["generation"], 2);
     assert_eq!(listed[0]["deployments"][0]["status"], "active");
     assert_eq!(
         listed[0]["deployments"][0]["observedRuntime"]["state"],
@@ -1137,6 +1228,32 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         response_json(&deployment_detail)?["data"]["id"],
         deployment_id
     );
+    let restart_revision_id = restart_fixture.revision_id.to_string();
+    let restart_deployment_id = restart_fixture.deployment_id.to_string();
+    let restart_operation_id = restart_fixture.operation_id.to_string();
+    let restart_deployment_detail = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization_id}/deployments/{restart_deployment_id}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(restart_deployment_detail.status(), 200);
+    assert_eq!(
+        response_json(&restart_deployment_detail)?["data"]["operationId"],
+        restart_operation_id
+    );
+    for response in [
+        &listed_workloads,
+        &workload_detail,
+        &deployment_detail,
+        &restart_deployment_detail,
+    ] {
+        let body = String::from_utf8_lossy(response.body());
+        assert!(!body.contains(second_secret_value));
+        assert!(!body.contains(third_secret_value));
+        assert!(!body.contains(registry_credential_value.as_str()));
+        assert!(!body.contains(registry_password.as_str()));
+    }
 
     edge_support::exercise_edge_api(
         &app,
@@ -1145,7 +1262,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             organization_id: &organization_id,
             project_id: &project_id,
             environment_id: &environment_id,
-            workload_revision_id: &revision_id,
+            workload_revision_id: &restart_revision_id,
             token: ADMIN_TOKEN,
         },
     )
@@ -1165,7 +1282,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             organization_id: &organization_id,
             workload_path: &workload_path,
             workload_body: cancellation_workload_body,
-            active_deployment_id: &deployment_id,
+            active_deployment_id: &restart_deployment_id,
             admin_token: ADMIN_TOKEN,
         },
     )
@@ -1198,7 +1315,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     );
     assert_eq!(
         response_json(&stopped_detail)?["data"]["activeRevision"]["generation"],
-        1
+        2
     );
 
     fleet_support::exercise_fleet(&executor, Uuid::parse_str(&organization_id)?).await?;

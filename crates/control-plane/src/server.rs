@@ -1,13 +1,18 @@
 use crate::infrastructure::FlowOperationCoordinator;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
-use crate::modules::workloads::WorkloadRuntimeReconciler;
+use crate::modules::workloads::{SecretRotationRestartReconciler, WorkloadRuntimeReconciler};
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
 use std::net::SocketAddr;
 
 pub struct ControlPlane {
     application: BootApplication,
+    workers: ControlPlaneWorkers,
+}
+
+pub(crate) struct ControlPlaneWorkers {
     operation_coordinator: Option<FlowOperationCoordinator>,
+    secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
     log_compaction_worker: Option<LogCompactionWorker>,
@@ -15,10 +20,10 @@ pub struct ControlPlane {
     node_control_server: Option<NodeControlServer>,
 }
 
-impl ControlPlane {
+impl ControlPlaneWorkers {
     pub(crate) fn new(
-        application: BootApplication,
         operation_coordinator: Option<FlowOperationCoordinator>,
+        secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
         log_compaction_worker: Option<LogCompactionWorker>,
@@ -26,13 +31,22 @@ impl ControlPlane {
         node_control_server: Option<NodeControlServer>,
     ) -> Self {
         Self {
-            application,
             operation_coordinator,
+            secret_rotation_restart_reconciler,
             workload_reconciler,
             log_retention_worker,
             log_compaction_worker,
             outbox_relay,
             node_control_server,
+        }
+    }
+}
+
+impl ControlPlane {
+    pub(crate) fn new(application: BootApplication, workers: ControlPlaneWorkers) -> Self {
+        Self {
+            application,
+            workers,
         }
     }
 
@@ -53,22 +67,25 @@ impl ControlPlane {
         let (failure_sender, mut failure_receiver) =
             tokio::sync::mpsc::unbounded_channel::<BootError>();
         let mut workers = Vec::new();
-        if let Some(coordinator) = self.operation_coordinator {
-            workers.push(tokio::spawn(coordinator.run(shutdown_receiver.clone())));
-        }
-        if let Some(reconciler) = self.workload_reconciler {
+        if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
-        if let Some(worker) = self.log_retention_worker {
+        if let Some(coordinator) = self.workers.operation_coordinator {
+            workers.push(tokio::spawn(coordinator.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.workload_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(worker) = self.workers.log_retention_worker {
             workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
         }
-        if let Some(worker) = self.log_compaction_worker {
+        if let Some(worker) = self.workers.log_compaction_worker {
             workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
         }
-        if let Some(relay) = self.outbox_relay {
+        if let Some(relay) = self.workers.outbox_relay {
             workers.push(tokio::spawn(relay.run(shutdown_receiver.clone())));
         }
-        if let Some(node_control) = self.node_control_server {
+        if let Some(node_control) = self.workers.node_control_server {
             let failure_sender = failure_sender.clone();
             let lifecycle = shutdown_receiver.clone();
             workers.push(tokio::spawn(async move {

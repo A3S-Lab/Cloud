@@ -27,6 +27,24 @@ impl DeploymentRequested {
         revision: &WorkloadRevision,
         correlation_id: Uuid,
     ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        Self::envelope_with_cause(deployment, revision, correlation_id, None)
+    }
+
+    pub fn caused_by(
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        correlation_id: Uuid,
+        causation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        Self::envelope_with_cause(deployment, revision, correlation_id, Some(causation_id))
+    }
+
+    fn envelope_with_cause(
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        correlation_id: Uuid,
+        causation_id: Option<Uuid>,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "workload.deployment.requested".into(),
@@ -36,7 +54,7 @@ impl DeploymentRequested {
             aggregate_version: deployment.aggregate_version,
             occurred_at: deployment.requested_at,
             correlation_id,
-            causation_id: None,
+            causation_id,
             payload: serde_json::to_value(Self {
                 organization_id: deployment.organization_id,
                 workload_id: deployment.workload_id,

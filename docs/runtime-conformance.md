@@ -104,7 +104,11 @@ unprivileged with every capability dropped. The gate then:
   for plaintext and requires the post-test tmpfs directory to contain no
   Secret files.
 
-This gate proves the real success path and durable replay boundary. It does not
-claim provider or control-plane process-death injection, object corruption, or
-automatic workload restart after Secret rotation; those remain separate E0
-acceptance gates.
+This gate proves the real provider success path and durable replay boundary.
+The PostgreSQL control-plane gate separately kills the in-memory orchestration
+boundary after a Secret rotation commit, races reconstructed restart workers,
+requires one causally linked derived revision and Runtime apply command, then
+reconstructs Flow after the reference-only result and verifies terminal
+activation plus final plaintext scans. Provider-process death during the
+rotated apply and log-object corruption remain part of the broader E0 recovery
+matrix.
