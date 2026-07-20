@@ -44,7 +44,7 @@ The host requires:
 - Docker with access to `/var/run/docker.sock`;
 - Rust and Cargo capable of building the pinned Cloud and Runtime revisions;
 - A3S Gateway 1.0.12;
-- Bash, Curl, Git, Python 3, `rg`, `sha256sum`, and GNU `timeout`; and
+- Bash, Curl, Git, GNU `grep`, Python 3, `sha256sum`, and GNU `timeout`; and
 - outbound access to fetch the pinned container images and Rust dependencies.
 
 Prepare the monorepo-shaped source tree directly from Git:

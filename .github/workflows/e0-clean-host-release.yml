@@ -78,7 +78,7 @@ jobs:
         run: |
           mkdir -p "$EVIDENCE_DIR"
           required_commands=(
-            a3s-gateway awk cargo comm curl docker git python3 realpath rg
+            a3s-gateway awk cargo comm curl docker git grep python3 realpath
             sha256sum sort timeout
           )
           : >"$EVIDENCE_DIR/required-commands.txt"
@@ -111,7 +111,7 @@ jobs:
             command -v "$command" >/dev/null
           done
 
-          rg '^a3s-gateway v1\.0\.12:' \
+          grep -E '^a3s-gateway v1\.0\.12:' \
             "$EVIDENCE_DIR/cargo-installed-packages.txt" \
             >"$EVIDENCE_DIR/gateway-install-record.txt"
           docker info >/dev/null

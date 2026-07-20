@@ -157,7 +157,7 @@ done
 [[ $(printf '%s\n' "${ports[@]}" | sort -u | wc -l) -eq ${#ports[@]} ]] ||
     die "release-gate ports must be distinct"
 
-for command in awk comm curl docker git python3 realpath rg sha256sum sort timeout; do
+for command in awk comm curl docker git grep python3 realpath sha256sum sort timeout; do
     command -v "$command" >/dev/null || die "required command is unavailable: $command"
 done
 [[ -n $source_root ]] || die "--source-root is required"
@@ -342,7 +342,8 @@ scan_sensitive_evidence() {
         "$A3S_CLOUD_ENROLLMENT_TOKEN" \
         "$A3S_GATEWAY_ADMIN_TOKEN"; do
         [[ -n $secret ]] || continue
-        if rg --hidden --files-with-matches --fixed-strings -- "$secret" "$evidence" \
+        if grep --recursive --files-with-matches --fixed-strings \
+            --binary-files=without-match -- "$secret" "$evidence" \
             >>"$evidence/sensitive-scan.txt"; then
             cleanup_failed=1
         fi
