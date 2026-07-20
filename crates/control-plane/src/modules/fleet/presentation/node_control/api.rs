@@ -43,6 +43,8 @@ use uuid::Uuid;
 
 const SECRET_MATERIAL_TTL: Duration = Duration::seconds(30);
 
+type RotationClock = Arc<dyn Fn() -> chrono::DateTime<Utc> + Send + Sync>;
+
 #[derive(Clone)]
 pub(super) struct PeerCertificate {
     pub(super) fingerprint: String,
@@ -64,6 +66,7 @@ struct NodeControlApiInner {
     rotate_certificate: RotateNodeCertificateHandler,
     resolve_secret_material: ResolveSecretMaterialHandler,
     certificate_rotation_window: Duration,
+    rotation_clock: RotationClock,
     maximum_body_bytes: usize,
     body_timeout: StdDuration,
 }
@@ -127,10 +130,23 @@ impl NodeControlApi {
                     secret_encryption,
                 ),
                 certificate_rotation_window,
+                rotation_clock: Arc::new(Utc::now),
                 maximum_body_bytes,
                 body_timeout,
             }),
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_rotation_clock(mut self, rotation_clock: RotationClock) -> Self {
+        Arc::get_mut(&mut self.inner)
+            .expect("rotation clock must be configured before the API is cloned")
+            .rotation_clock = rotation_clock;
+        self
+    }
+
+    fn rotation_now(&self) -> chrono::DateTime<Utc> {
+        (self.inner.rotation_clock)()
     }
 
     pub(super) fn router(self) -> Router {
@@ -497,7 +513,7 @@ async fn rotate_certificate(
     request
         .validate()
         .map_err(|error| NodeControlHttpError::invalid(request_id, error))?;
-    let now = Utc::now();
+    let now = api.rotation_now();
     let node = api
         .authenticate_rotation(request_id, &peer, &request, now)
         .await?;
