@@ -7,6 +7,7 @@ import unittest
 
 
 MODULE_PATH = pathlib.Path(__file__).with_name("release_gate.py")
+RUNNER_PATH = pathlib.Path(__file__).with_name("run_clean_host_gate.sh")
 SPEC = importlib.util.spec_from_file_location("release_gate", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -15,6 +16,21 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ReleaseGateContractTests(unittest.TestCase):
+    def test_generated_cloud_config_contains_the_closed_source_policy(self) -> None:
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        cloud_config = runner.split(
+            'cat >"$config_dir/cloud.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+
+        self.assertIn(
+            """sources {
+  github_request_timeout_ms = 10000
+  allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
+  denied_repositories = []
+}""",
+            cloud_config,
+        )
+
     def test_service_template_binds_the_exact_digest_and_release_marker(self) -> None:
         digest = f"sha256:{'a' * 64}"
         template = MODULE.service_template(
