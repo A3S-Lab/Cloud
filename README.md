@@ -132,9 +132,11 @@ API command
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
-  organization, project, and environment, and inspect desired revisions,
-  observed Runtime state, health, cancellation, live operation progress, and
-  bounded stdout/stderr records with explicit gaps
+  organization, project, and environment, inspect the authoritative deployment
+  timeline plus route/certificate state, edit a complete immutable template
+  with field-level differences, roll back to an eligible activated revision,
+  locally dismiss terminal operation projections, and follow observed Runtime
+  health plus bounded stdout/stderr records with explicit gaps
 
 ### Delivery capability matrix
 
@@ -144,9 +146,10 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, recovery, one-node immutable replacement, and manual rollback with deterministic previous-revision retirement | Complete (`E0` update and rollback slice) |
-| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, exact acknowledgement projection, and byte-preserving routed update and rollback cutover are implemented; production DNS/CA providers, renewal, and the remaining process-death gates remain | In progress (`E0`) |
+| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, exact acknowledgement projection, and byte-preserving routed update and rollback cutover are implemented; production DNS/CA providers, renewal/revocation convergence, and the remaining process-death gates remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
+| Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -318,6 +321,15 @@ then use the ordinary immutable update workflow. An exact idempotent replay
 returns the original revision, deployment, and operation with `200`, even if
 the workload state changes after the first request; a different rollback source
 at the same key returns `409`.
+
+Workload detail and list responses project each revision's complete camel-case
+`requestedTemplate`. Secret bindings contain only immutable Secret
+ID/version/target references; plaintext is never returned. Operation list
+responses expose `rollbackSourceRevisionId` only for rollback-derived
+operations. The web console uses these projections directly for update
+differences, rollback eligibility, deployment lineage, and route/certificate
+state. Clearing terminal operations is browser-local visibility state and never
+deletes durable operation or audit records.
 
 ### Run the web console
 
@@ -615,7 +627,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, and manual rollback through the same immutable path are implemented; production certificate automation, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and the remaining web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable path, and the authoritative Web operations surfaces are implemented; production certificate automation, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -785,7 +797,8 @@ router/service snapshot passes that gate. The final Gateway command is also a
 dedicated CI job: it generates a private key and CSR on the node, provisions the
 managed certificate, reloads the exact HTTPS snapshot, trusts the fixture CA,
 and reaches a loopback upstream through DNS/SNI. Production DNS and certificate
-authority providers plus automated renewal remain E0 work.
+authority providers plus automated renewal and revocation-driven route
+convergence remain E0 work.
 
 The final S3 command must target a disposable bucket controlled by the test
 operator. The dedicated CI job creates a fresh bucket in digest-pinned MinIO,

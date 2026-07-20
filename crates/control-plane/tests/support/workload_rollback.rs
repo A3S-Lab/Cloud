@@ -96,6 +96,30 @@ pub async fn accept_and_cancel(
         rollback_operation.2["rollbackSourceRevisionId"],
         source_revision_id
     );
+    let listed_operations = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!("/api/v1/organizations/{organization_id}/operations?limit=100"),
+            )
+            .with_header("accept", "application/json")
+            .with_header("authorization", format!("Bearer {token}")),
+        )
+        .await?;
+    assert_eq!(listed_operations.status(), 200);
+    let listed_operations: Value = listed_operations.body_json()?;
+    let listed_rollback = listed_operations["data"]
+        .as_array()
+        .and_then(|operations| {
+            operations
+                .iter()
+                .find(|operation| operation["id"] == rollback_operation_id)
+        })
+        .ok_or("operations list omitted the rollback operation")?;
+    assert_eq!(
+        listed_rollback["rollbackSourceRevisionId"],
+        source_revision_id
+    );
     assert_eq!(
         database
             .fetch_one_as(

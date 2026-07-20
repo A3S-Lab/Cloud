@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ServiceTemplate } from '../types/api';
 import { CloudApi, type CloudApiError } from './api';
 
 afterEach(() => {
@@ -155,6 +156,120 @@ describe('CloudApi', () => {
           Authorization: 'Bearer a3s_secret',
           'Idempotency-Key': 'web-stop:workload-1',
         }),
+      })
+    );
+  });
+
+  it('loads authoritative route and certificate projections for the selected context', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ code: 200, message: 'Success', data: [], requestId: '1', timestamp: 'now' }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new CloudApi('a3s_secret');
+
+    await api.listRoutes('organization', 'project / one', 'production');
+    await api.listGatewayCertificates('organization');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/organizations/organization/projects/project%20%2F%20one/environments/production/routes'
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/organizations/organization/gateway-certificates');
+  });
+
+  it('submits a complete immutable template and an explicit rollback source', async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            code: 202,
+            message: 'Success',
+            data: {
+              organizationId: 'organization',
+              projectId: 'project',
+              environmentId: 'environment',
+              workloadId: 'workload',
+              revisionId: 'revision',
+              deploymentId: 'deployment',
+              operationId: 'operation',
+              generation: 2,
+              status: 'queued',
+              artifactSourceUri: 'oci://registry.example/cloud/api:v2',
+              expectedArtifactDigest: null,
+              requestDigest: 'sha256:request',
+              artifactDigest: null,
+              templateDigest: null,
+              requestedAt: 'now',
+              replayed: false,
+            },
+            requestId: '1',
+            timestamp: 'now',
+          }),
+          { status: 202, headers: { 'content-type': 'application/json' } }
+        )
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new CloudApi('a3s_secret');
+    const template: ServiceTemplate = {
+      artifact: {
+        uri: 'oci://registry.example/cloud/api:v2',
+        expectedDigest: null,
+      },
+      process: {
+        command: [],
+        args: [],
+        workingDirectory: null,
+        environment: {},
+      },
+      secrets: [],
+      resources: {
+        cpuMillis: 100,
+        memoryBytes: 33_554_432,
+        pids: 32,
+        ephemeralStorageBytes: null,
+      },
+      ports: [{ name: 'http', containerPort: 8080 }],
+      health: {
+        portName: 'http',
+        path: '/health',
+        intervalMs: 1_000,
+        timeoutMs: 500,
+        healthyThreshold: 1,
+        unhealthyThreshold: 3,
+        stabilizationWindowMs: 1_000,
+      },
+    };
+
+    await api.updateWorkload('organization', 'workload / one', template, 'web-update:key');
+    await api.rollbackWorkload('organization', 'workload / one', 'revision / one', 'web-rollback:key');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/organizations/organization/workloads/workload%20%2F%20one/deployments'
+    );
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'web-update:key',
+        }),
+        body: JSON.stringify({ template }),
+      })
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      '/api/v1/organizations/organization/workloads/workload%20%2F%20one/rollback'
+    );
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ revisionId: 'revision / one' }),
+        headers: expect.objectContaining({ 'Idempotency-Key': 'web-rollback:key' }),
       })
     );
   });

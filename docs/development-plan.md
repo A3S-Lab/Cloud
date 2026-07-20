@@ -95,7 +95,7 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, and manual rollback through the same immutable operation path are implemented. Production DNS/CA adapters, renewal, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and the remaining web surfaces remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, one-node immutable update with exact routed cutover and deterministic retirement, manual rollback through the same immutable operation path, and authoritative Web deployment/Edge/update/rollback/operation surfaces are implemented. Production DNS/CA adapters, renewal/revocation convergence, the remaining Gateway process-death gate, provider-death Secret-rotation apply, and clean-host release gates remain |
 
 The MVP is not complete until E0 passes. D0 verification alone does not imply
 public reachability, production log retention, immutable update, or rollback
@@ -437,8 +437,12 @@ Complete the first user-visible release loop.
   routed suite verifies exact Gateway acknowledgement and C retirement; the
   isolated Docker A→failed B→distinct C→cloned A scenario verifies real apply,
   health, selection, and deterministic retirement of C.
-- Complete the web deployment timeline, route/certificate state, update diff,
-  rollback action, and terminal-operation cleanup.
+- Implemented: workload queries expose complete immutable requested templates
+  with reference-only Secret bindings, operation queries expose explicit
+  rollback lineage, and the web console renders the deployment timeline plus
+  route/certificate state, commits complete-template updates after field-level
+  comparison, offers only eligible activated rollback sources, and dismisses
+  terminal operations locally without deleting durable history.
 
 ### Exit gate
 
@@ -953,8 +957,11 @@ The remaining changes should land as vertical, independently verified slices:
    same versioned operation, exact routed cutover, and deterministic retirement
    path. PostgreSQL API persistence/replay, routed control-plane, and isolated
    Docker A→B→C→A evidence cover the slice.
-3. Web route, certificate, update-diff, rollback, and terminal-operation
-   surfaces backed only by authoritative projections.
+3. Implemented on 2026-07-20: Web route, certificate, deployment-timeline,
+   complete-template update-diff, eligible rollback, lineage, and
+   terminal-operation cleanup surfaces are backed only by authoritative
+   projections; cleanup is browser-local and preserves durable operation and
+   audit history.
 4. Production DNS/CA adapters, certificate renewal/revocation, provider death
    during a Secret-rotation apply, crash gates for Gateway reload before
    acknowledgement and activation before old-revision cleanup, followed by the

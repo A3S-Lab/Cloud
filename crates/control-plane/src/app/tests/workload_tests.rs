@@ -79,6 +79,47 @@ async fn workload_update_api_requires_an_active_revision_and_creates_one_idempot
     )
     .await?;
 
+    let workload_detail = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/workloads/{workload_id}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(workload_detail.status(), 200);
+    let workload_detail = response_json(&workload_detail)?;
+    assert_eq!(
+        workload_detail["data"]["activeRevision"]["requestedTemplate"],
+        json!({
+            "artifact": {
+                "uri": "oci://registry.example/cloud/api:v1",
+                "expectedDigest": null
+            },
+            "process": {
+                "command": [],
+                "args": [],
+                "workingDirectory": null,
+                "environment": {}
+            },
+            "secrets": [],
+            "resources": {
+                "cpuMillis": 100,
+                "memoryBytes": 33554432,
+                "pids": 32,
+                "ephemeralStorageBytes": null
+            },
+            "ports": [{"name": "http", "containerPort": 8080}],
+            "health": {
+                "portName": "http",
+                "path": "/health",
+                "intervalMs": 1000,
+                "timeoutMs": 500,
+                "healthyThreshold": 1,
+                "unhealthyThreshold": 3,
+                "stabilizationWindowMs": 1000
+            }
+        })
+    );
+
     let invalid_secret = app
         .call(post_json(
             &update_path,

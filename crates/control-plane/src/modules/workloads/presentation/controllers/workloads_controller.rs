@@ -46,7 +46,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             project_id,
                             environment_id,
                             name: body.name,
-                            template: body.template.into_domain(),
+                            template: body.template.into(),
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -81,7 +81,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         .execute(UpdateWorkloadDeployment {
                             organization_id,
                             workload_id,
-                            template: body.into_domain(),
+                            template: body.template.into(),
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
