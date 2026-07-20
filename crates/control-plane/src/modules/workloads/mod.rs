@@ -7,10 +7,11 @@ pub use application::{
     CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult, CreateWorkloadDeployment,
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, GetWorkloadLogs,
-    GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, StopWorkload, StopWorkloadHandler,
-    StopWorkloadResult, UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler,
-    UpdateWorkloadDeploymentResult, WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
-    WorkloadQueryResult,
+    GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, RollbackWorkloadDeployment,
+    RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult, StopWorkload,
+    StopWorkloadHandler, StopWorkloadResult, UpdateWorkloadDeployment,
+    UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadLogGapReason,
+    WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
 };
 pub use domain::entities::{
     Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,

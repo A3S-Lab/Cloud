@@ -42,6 +42,13 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
         create::deployment(&self.executor, bundle).await
     }
 
+    async fn replay_deployment(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<DeploymentBundle>, RepositoryError> {
+        create::replay(&self.executor, idempotency).await
+    }
+
     async fn request_deployment_cancellation(
         &self,
         bundle: RequestDeploymentCancellationBundle,

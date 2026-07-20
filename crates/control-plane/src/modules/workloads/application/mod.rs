@@ -7,6 +7,9 @@ pub use commands::cancel_deployment::{
 pub use commands::create_workload_deployment::{
     CreateWorkloadDeployment, CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult,
 };
+pub use commands::rollback_workload_deployment::{
+    RollbackWorkloadDeployment, RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult,
+};
 pub use commands::stop_workload::{StopWorkload, StopWorkloadHandler, StopWorkloadResult};
 pub use commands::update_workload_deployment::{
     UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult,

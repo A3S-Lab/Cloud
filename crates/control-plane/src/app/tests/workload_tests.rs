@@ -1,5 +1,10 @@
 use super::*;
-use crate::modules::shared_kernel::domain::{DeploymentId, NodeCommandId, NodeId, OrganizationId};
+use crate::modules::shared_kernel::domain::{
+    DeploymentId, NodeCommandId, NodeId, OrganizationId, WorkloadRevisionId,
+};
+use crate::modules::workloads::OciArtifact;
+
+mod rollback;
 
 #[tokio::test]
 async fn workload_update_api_requires_an_active_revision_and_creates_one_idempotent_generation(
@@ -65,53 +70,14 @@ async fn workload_update_api_requires_an_active_revision_and_creates_one_idempot
     let deployment_id = DeploymentId::from_uuid(
         Uuid::parse_str(deployment_id).map_err(|error| BootError::Internal(error.to_string()))?,
     );
-    let mut deployment = workloads
-        .find_deployment(organization_id, deployment_id)
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
-    deployment = workloads
-        .mark_resolving(
-            deployment.id,
-            deployment.aggregate_version,
-            Utc::now().max(deployment.updated_at),
-        )
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
-    deployment = workloads
-        .assign_node(
-            deployment.id,
-            deployment.aggregate_version,
-            NodeId::new(),
-            Utc::now().max(deployment.updated_at),
-        )
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
-    deployment = workloads
-        .mark_dispatched(
-            deployment.id,
-            deployment.aggregate_version,
-            NodeCommandId::new(),
-            Utc::now().max(deployment.updated_at),
-        )
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
-    deployment = workloads
-        .mark_verifying(
-            deployment.id,
-            deployment.aggregate_version,
-            Utc::now().max(deployment.updated_at),
-        )
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
-    workloads
-        .activate(
-            deployment.id,
-            deployment.aggregate_version,
-            false,
-            Utc::now().max(deployment.updated_at),
-        )
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
+    resolve_and_activate(
+        workloads.as_ref(),
+        organization_id,
+        deployment_id,
+        'a',
+        NodeId::new(),
+    )
+    .await?;
 
     let invalid_secret = app
         .call(post_json(
@@ -148,6 +114,9 @@ async fn workload_update_api_requires_an_active_revision_and_creates_one_idempot
     assert_eq!(replayed.status(), 200);
     let accepted_json = response_json(&accepted)?;
     let replayed_json = response_json(&replayed)?;
+    assert!(accepted_json["data"]
+        .as_object()
+        .is_some_and(|data| !data.contains_key("rollbackSourceRevisionId")));
     assert_eq!(accepted_json["data"]["generation"], 2);
     assert_eq!(
         accepted_json["data"]["deploymentId"],
@@ -176,6 +145,103 @@ async fn workload_update_api_requires_an_active_revision_and_creates_one_idempot
         .await?;
     assert_eq!(concurrent.status(), 409);
     Ok(())
+}
+
+async fn resolve_and_activate(
+    workloads: &InMemoryWorkloadRepository,
+    organization_id: OrganizationId,
+    deployment_id: DeploymentId,
+    digest_character: char,
+    node_id: NodeId,
+) -> Result<WorkloadRevisionId> {
+    let deployment = workloads
+        .find_deployment(organization_id, deployment_id)
+        .await
+        .map_err(repository_error)?;
+    let revision = workloads
+        .find_revision(organization_id, deployment.revision_id)
+        .await
+        .map_err(repository_error)?;
+    let digest = format!("sha256:{}", digest_character.to_string().repeat(64));
+    workloads
+        .resolve_revision(
+            organization_id,
+            revision.id,
+            OciArtifact {
+                uri: format!("oci://registry.example/cloud/api@{digest}"),
+                digest,
+                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            },
+            Utc::now().max(revision.created_at),
+        )
+        .await
+        .map_err(repository_error)?;
+    let deployment = workloads
+        .mark_resolving(
+            deployment.id,
+            deployment.aggregate_version,
+            Utc::now().max(deployment.updated_at),
+        )
+        .await
+        .map_err(repository_error)?;
+    let deployment = workloads
+        .assign_node(
+            deployment.id,
+            deployment.aggregate_version,
+            node_id,
+            Utc::now().max(deployment.updated_at),
+        )
+        .await
+        .map_err(repository_error)?;
+    let deployment = workloads
+        .mark_dispatched(
+            deployment.id,
+            deployment.aggregate_version,
+            NodeCommandId::new(),
+            Utc::now().max(deployment.updated_at),
+        )
+        .await
+        .map_err(repository_error)?;
+    let deployment = workloads
+        .mark_verifying(
+            deployment.id,
+            deployment.aggregate_version,
+            Utc::now().max(deployment.updated_at),
+        )
+        .await
+        .map_err(repository_error)?;
+    workloads
+        .activate(
+            deployment.id,
+            deployment.aggregate_version,
+            false,
+            Utc::now().max(deployment.updated_at),
+        )
+        .await
+        .map_err(repository_error)?;
+    Ok(revision.id)
+}
+
+fn parse_organization_id(value: &str) -> Result<OrganizationId> {
+    Uuid::parse_str(value)
+        .map(OrganizationId::from_uuid)
+        .map_err(|error| BootError::Internal(error.to_string()))
+}
+
+fn parse_deployment_id(value: &str) -> Result<DeploymentId> {
+    Uuid::parse_str(value)
+        .map(DeploymentId::from_uuid)
+        .map_err(|error| BootError::Internal(error.to_string()))
+}
+
+fn parse_revision_id(value: &str) -> Result<WorkloadRevisionId> {
+    Uuid::parse_str(value)
+        .map(WorkloadRevisionId::from_uuid)
+        .map_err(|error| BootError::Internal(error.to_string()))
+}
+
+fn repository_error(error: impl std::fmt::Display) -> BootError {
+    BootError::Internal(error.to_string())
 }
 
 fn workload_template(tag: &str, secrets: Value) -> Value {

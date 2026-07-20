@@ -260,6 +260,17 @@ tables directly. Audit records are append-only and separate from event delivery.
   persisted-run compatibility.
 - A workload has at most one nonterminal deployment. An update requires an
   active running workload and commits a complete new immutable template.
+- Manual rollback requires an older revision of that same active running
+  workload and at least one successfully activated deployment for the source.
+  Current, newer, failed, unresolved, missing, and cross-workload sources are
+  rejected.
+- Rollback never reactivates the source revision ID. It clones the source's
+  resolved template and template digest into the next generation, pins the
+  request to the resolved artifact digest, revalidates its Secret bindings, and
+  records the source revision in the new deployment operation.
+- Exact rollback replay returns the originally committed deployment before
+  consulting mutable workload or Secret state. Reusing the key for another
+  source revision is an idempotency conflict.
 - An update candidate is scheduled on the previous Runtime node. It cannot
   change the active revision or routes before current-generation health
   succeeds and any required route cutover is exactly acknowledged.

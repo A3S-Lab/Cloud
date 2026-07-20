@@ -406,6 +406,52 @@ pub(super) fn deployment_bundle(
     })
 }
 
+pub(super) fn rollback_deployment_bundle(
+    workload: Workload,
+    source_revision: &WorkloadRevision,
+    generation: u64,
+    requested_at: chrono::DateTime<Utc>,
+    idempotency_key: &str,
+) -> Result<CreateDeploymentBundle, Box<dyn std::error::Error>> {
+    let revision =
+        source_revision.rollback_as(WorkloadRevisionId::new(), generation, requested_at)?;
+    let deployment = Deployment::create(
+        DeploymentId::new(),
+        workload.organization_id,
+        workload.id,
+        revision.id,
+        OperationId::new(),
+        requested_at,
+    );
+    let operation = OperationRequest::new(
+        deployment.operation_id,
+        workload.organization_id,
+        OperationSubject::new("deployment", deployment.id.as_uuid())?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
+        serde_json::json!({
+            "deploymentId": deployment.id,
+            "organizationId": workload.organization_id,
+            "revisionId": revision.id,
+            "rollbackSourceRevisionId": source_revision.id,
+            "workloadId": workload.id,
+        }),
+        requested_at,
+    );
+    let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
+    Ok(CreateDeploymentBundle {
+        workload,
+        revision,
+        deployment,
+        operation,
+        idempotency: IdempotencyRequest::new(
+            "test.workload.rollback",
+            idempotency_key,
+            idempotency_key.as_bytes(),
+        )?,
+        event,
+    })
+}
+
 pub(super) fn requested_deployment_bundle(
     workload: Workload,
     requested_at: chrono::DateTime<Utc>,

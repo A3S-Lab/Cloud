@@ -148,6 +148,7 @@ async fn resolve(
             .await
             .map_err(|error| flow_error("could not persist resolved OCI artifact", error))?;
     }
+    validate_rollback_source(runtime, &input, &revision).await?;
     let spec = project_runtime_spec(&revision)
         .map_err(|error| flow_error("could not project Runtime specification", error))?;
     let previous_runtime = previous_runtime(runtime, &input, &revision).await?;
@@ -165,6 +166,50 @@ async fn resolve(
         convergence_deadline,
         previous_runtime,
     })))
+}
+
+async fn validate_rollback_source(
+    runtime: &DeploymentFlowRuntime,
+    input: &DeploymentFlowInput,
+    candidate: &WorkloadRevision,
+) -> a3s_flow::Result<()> {
+    let Some(source_revision_id) = input.rollback_source_revision_id else {
+        return Ok(());
+    };
+    if source_revision_id == candidate.id {
+        return Err(FlowError::Runtime(
+            "rollback source cannot be the candidate revision".into(),
+        ));
+    }
+    let source = runtime
+        .workloads
+        .find_revision(input.organization_id, source_revision_id)
+        .await
+        .map_err(|error| flow_error("could not load rollback source revision", error))?;
+    if source.workload_id != candidate.workload_id
+        || source.generation >= candidate.generation
+        || source.template != candidate.template
+        || source.template_digest != candidate.template_digest
+    {
+        return Err(FlowError::Runtime(
+            "rollback candidate does not clone its declared source revision".into(),
+        ));
+    }
+    let deployments = runtime
+        .workloads
+        .list_deployments(input.organization_id, candidate.workload_id)
+        .await
+        .map_err(|error| flow_error("could not load rollback source deployment", error))?;
+    if !deployments.iter().any(|deployment| {
+        deployment.revision_id == source.id
+            && deployment.status == DeploymentStatus::Active
+            && deployment.activated_at.is_some()
+    }) {
+        return Err(FlowError::Runtime(
+            "rollback source revision was never activated successfully".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn previous_runtime(

@@ -44,7 +44,7 @@ const BUSYBOX_DIGEST: &str =
     "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662";
 
 #[tokio::test]
-async fn real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous_revision(
+async fn real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_the_current_revision(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() != Ok("1") {
         return Ok(());
@@ -254,13 +254,18 @@ async fn real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous
     let third = deployment_bundle(
         selected_workload,
         3,
-        healthy_template(),
+        updated_healthy_template(),
         Utc::now(),
         "docker-healthy-update",
     )?;
     let third_revision = third.revision.clone();
     let third_deployment = third.deployment.clone();
     let third_operation = third.operation.clone();
+    assert_ne!(third_revision.template, first_revision.template);
+    assert_ne!(
+        third_revision.template_digest,
+        first_revision.template_digest
+    );
     workloads.create_deployment(third).await?;
     engine
         .start_with_id(
@@ -395,9 +400,170 @@ async fn real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous
     .commands
     .is_empty());
 
+    let selected_workload = workloads
+        .find_workload(organization_id, first_deployment.workload_id)
+        .await?;
+    let rollback = rollback_deployment_bundle(
+        selected_workload,
+        &first_revision,
+        4,
+        Utc::now(),
+        "docker-rollback-first",
+    )?;
+    let rollback_revision = rollback.revision.clone();
+    let rollback_deployment = rollback.deployment.clone();
+    let rollback_operation = rollback.operation.clone();
+    assert_ne!(rollback_revision.id, first_revision.id);
+    assert_eq!(rollback_revision.template, first_revision.template);
+    assert_eq!(
+        rollback_revision.template_digest,
+        first_revision.template_digest
+    );
+    assert_ne!(rollback_revision.template, third_revision.template);
+    workloads.create_deployment(rollback).await?;
+    engine
+        .start_with_id(
+            rollback_operation.id.to_string(),
+            workflow_spec(),
+            rollback_operation.input.clone(),
+        )
+        .await?;
+
+    let rollback_lease = lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        retirement_command.sequence,
+    )
+    .await?;
+    assert_eq!(rollback_lease.commands.len(), 1);
+    let rollback_ack = command_executor
+        .execute(rollback_lease.commands[0].clone())
+        .await?;
+    let rollback_observation = persist_apply_result(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        capabilities.clone(),
+        rollback_ack,
+    )
+    .await?;
+    assert_eq!(
+        rollback_observation
+            .health
+            .as_ref()
+            .map(|health| health.state),
+        Some(RuntimeHealthState::Healthy)
+    );
+    let rollback_record = runtime_state.load(&rollback_observation.unit_id).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let rollback_retiring = workloads
+        .find_deployment(organization_id, rollback_deployment.id)
+        .await?;
+    assert_eq!(rollback_retiring.status, DeploymentStatus::Retiring);
+    assert_eq!(
+        workloads
+            .find_workload(organization_id, rollback_deployment.workload_id)
+            .await?
+            .active_revision_id,
+        Some(rollback_revision.id)
+    );
+    let rollback_retirement_command_id = rollback_retiring
+        .retirement_command_id
+        .ok_or("Docker rollback omitted its retirement command")?;
+    let rollback_retirement_lease = lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        rollback_lease.commands[0].sequence,
+    )
+    .await?;
+    assert_eq!(rollback_retirement_lease.commands.len(), 1);
+    let rollback_retirement_command = rollback_retirement_lease
+        .commands
+        .iter()
+        .find(|command| command.command_id == rollback_retirement_command_id.as_uuid())
+        .ok_or("Docker rollback retirement command was not leased")?;
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeStop { request } =
+        &rollback_retirement_command.payload
+    else {
+        return Err("Docker rollback retirement is not Runtime stop".into());
+    };
+    assert_eq!(request.unit_id, third_record.spec.unit_id);
+    assert_eq!(request.generation, third_record.spec.generation);
+    let rollback_retirement_ack = command_executor
+        .execute(rollback_retirement_command.clone())
+        .await?;
+    match &rollback_retirement_ack.outcome {
+        NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
+            NodeCommandResult::RuntimeStopped {
+                inspection: RuntimeInspection::Found { observation, .. },
+            } => assert_eq!(observation.state, RuntimeUnitState::Stopped),
+            NodeCommandResult::RuntimeStopped {
+                inspection: RuntimeInspection::NotFound { .. },
+            } => {}
+            _ => return Err("Docker rollback retirement returned a non-stop result".into()),
+        },
+        outcome => return Err(format!("Docker rollback retirement failed: {outcome:?}").into()),
+    }
+    let received_at = Utc::now().max(rollback_retirement_ack.completed_at);
+    assert!(
+        !nodes
+            .acknowledge_command(rollback_retirement_ack, received_at)
+            .await?
+            .replayed
+    );
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    assert_eq!(
+        engine
+            .snapshot(&rollback_operation.id.to_string())
+            .await?
+            .status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, rollback_deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Active
+    );
+    match RuntimeDriver::inspect(driver.as_ref(), &third_record).await? {
+        RuntimeInspection::Found { observation, .. } => {
+            assert_eq!(observation.state, RuntimeUnitState::Stopped)
+        }
+        RuntimeInspection::NotFound { .. } => {}
+    }
+    match RuntimeDriver::inspect(driver.as_ref(), &rollback_record).await? {
+        RuntimeInspection::Found { observation, .. } => {
+            assert_eq!(observation.state, RuntimeUnitState::Running);
+            assert_eq!(
+                observation.health.as_ref().map(|health| health.state),
+                Some(RuntimeHealthState::Healthy)
+            );
+        }
+        RuntimeInspection::NotFound { .. } => {
+            return Err("the activated Docker rollback container disappeared".into())
+        }
+    }
+    assert!(lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        rollback_retirement_command.sequence,
+    )
+    .await?
+    .commands
+    .is_empty());
+
     remove_record(driver.as_ref(), &second_record, "unhealthy").await?;
     remove_record(driver.as_ref(), &first_record, "healthy").await?;
     remove_record(driver.as_ref(), &third_record, "updated").await?;
+    remove_record(driver.as_ref(), &rollback_record, "rollback").await?;
     Ok(())
 }
 
@@ -517,6 +683,52 @@ fn deployment_bundle(
     })
 }
 
+fn rollback_deployment_bundle(
+    workload: Workload,
+    source_revision: &WorkloadRevision,
+    generation: u64,
+    requested_at: chrono::DateTime<Utc>,
+    idempotency_key: &str,
+) -> Result<CreateDeploymentBundle, Box<dyn std::error::Error>> {
+    let revision =
+        source_revision.rollback_as(WorkloadRevisionId::new(), generation, requested_at)?;
+    let deployment = Deployment::create(
+        DeploymentId::new(),
+        workload.organization_id,
+        workload.id,
+        revision.id,
+        OperationId::new(),
+        requested_at,
+    );
+    let operation = OperationRequest::new(
+        deployment.operation_id,
+        workload.organization_id,
+        OperationSubject::new("deployment", deployment.id.as_uuid())?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
+        serde_json::json!({
+            "deploymentId": deployment.id,
+            "organizationId": workload.organization_id,
+            "revisionId": revision.id,
+            "rollbackSourceRevisionId": source_revision.id,
+            "workloadId": workload.id,
+        }),
+        requested_at,
+    );
+    let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
+    Ok(CreateDeploymentBundle {
+        workload,
+        revision,
+        deployment,
+        operation,
+        idempotency: IdempotencyRequest::new(
+            "test.workload.rollback",
+            idempotency_key,
+            idempotency_key.as_bytes(),
+        )?,
+        event,
+    })
+}
+
 async fn lease(
     nodes: &InMemoryNodeRepository,
     node_id: NodeId,
@@ -617,6 +829,17 @@ fn healthy_template() -> ServiceTemplate {
         vec![
             "-c".into(),
             "mkdir -p /www && printf 'healthy\\n' >/www/index.html && exec httpd -f -p 8080 -h /www"
+                .into(),
+        ],
+    )
+}
+
+fn updated_healthy_template() -> ServiceTemplate {
+    busybox_template(
+        vec!["/bin/sh".into()],
+        vec![
+            "-c".into(),
+            "mkdir -p /www && printf 'updated\\n' >/www/index.html && exec httpd -f -p 8080 -h /www"
                 .into(),
         ],
     )

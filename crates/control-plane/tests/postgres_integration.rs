@@ -41,6 +41,8 @@ mod fleet_support;
 mod postgres_fixture;
 #[path = "support/secret_rotation_restart.rs"]
 mod secret_rotation_restart_support;
+#[path = "support/workload_rollback.rs"]
+mod workload_rollback_support;
 #[path = "support/workloads.rs"]
 mod workloads_support;
 
@@ -1337,6 +1339,20 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await?;
 
+    let rollback_replay = workload_rollback_support::accept_and_cancel(
+        workload_rollback_support::RollbackApiScenario {
+            app: &app,
+            executor: &executor,
+            organization_id: &organization_id,
+            workload_id: &workload_id,
+            source_revision_id: &revision_id,
+            current_revision_id: &restart_revision_id,
+            artifact_digest,
+            token: ADMIN_TOKEN,
+        },
+    )
+    .await?;
+
     let stop_path = format!("/api/v1/organizations/{organization_id}/workloads/{workload_id}/stop");
     let stop = app
         .call(post_json(&stop_path, "api-stop-workload", json!({})))
@@ -1366,6 +1382,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         response_json(&stopped_detail)?["data"]["activeRevision"]["generation"],
         2
     );
+    workload_rollback_support::assert_replay_after_workload_stop(
+        &app,
+        rollback_replay,
+        ADMIN_TOKEN,
+    )
+    .await?;
 
     fleet_support::exercise_fleet(&executor, Uuid::parse_str(&organization_id)?).await?;
     let workload_fixture = workloads_support::exercise_workloads(

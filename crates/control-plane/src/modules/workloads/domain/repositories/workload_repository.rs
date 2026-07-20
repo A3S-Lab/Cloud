@@ -133,6 +133,11 @@ pub trait IWorkloadRepository: Send + Sync {
         bundle: CreateDeploymentBundle,
     ) -> Result<DeploymentBundle, RepositoryError>;
 
+    async fn replay_deployment(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<DeploymentBundle>, RepositoryError>;
+
     async fn request_deployment_cancellation(
         &self,
         bundle: RequestDeploymentCancellationBundle,

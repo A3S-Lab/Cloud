@@ -43,13 +43,18 @@ immutable replacement templates, runs candidates on the previous Runtime node,
 gates routed cutover on health plus an exact Gateway acknowledgement, and
 recovers deterministic old-revision retirement after activation. Unhealthy,
 mismatched, and rejected outcomes preserve the previous active revision and
-route rows. Later E0 sections remain the accepted design until their exit gates
-pass. A3S Cloud ships as a Rust modular monolith, a separate Linux node agent,
-and a React web application. The first release still requires production
+route rows. Manual rollback now selects an older successfully activated
+revision, derives a new generation from its exact resolved template, and reuses
+the version 2 deployment, cutover, and retirement workflow. PostgreSQL API
+coverage proves the durable clone and replay contract, the routed suite proves
+exact Gateway cutover, and the isolated Docker suite proves real rollback apply
+and retirement. Later E0 sections remain the accepted design until their exit
+gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux node
+agent, and a React web application. The first release still requires production
 DNS/CA integration and renewal, the remaining Gateway acknowledgement
-process-death gate, provider death during a Secret-rotation apply, manual
-rollback, the remaining web timeline, and clean-host gates before multi-node
-scheduling or hosted assets begin.
+process-death gate, provider death during a Secret-rotation apply, the remaining
+web timeline, and clean-host gates before multi-node scheduling or hosted assets
+begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -308,6 +313,32 @@ most one nonterminal deployment may exist for a workload. Cancellation is
 available during resolution, scheduling, and apply, but closes when the
 deployment enters `verifying`, because health-verified work may already be
 participating in a Gateway cutover.
+
+Manual rollback enters this same workflow through:
+
+```text
+POST /api/v1/organizations/{organization}/workloads/{workload}/rollback
+{"revisionId":"<older-revision-id>"}
+```
+
+The application accepts only an active running workload and an older revision
+of that same workload whose deployment reached `active` with an activation
+timestamp. It never changes `active_revision_id` back to the source identity.
+Instead, it clones the source's exact resolved template and template digest into
+the next monotonically increasing generation, pins the request to the resolved
+artifact digest, and revalidates all referenced Secret versions. The new
+operation input carries `rollbackSourceRevisionId`, allowing the workflow to
+reject a candidate that does not exactly clone its declared source or whose
+source was never active.
+
+The rollback idempotency scope is bound to organization and workload. Durable
+replay is checked before mutable workload and Secret validation, so an exact
+retry returns the first committed revision, deployment, and operation even
+after the workload later stops or its referenced Secret state changes. A
+different source revision under the same key is an idempotency conflict. Once
+accepted, rollback has no special data-plane branch: health, routed cutover,
+activation, `retiring`, and deterministic cleanup of the revision it replaces
+use steps 7–10 above.
 
 The reconciler compares database desired state with the last accepted node and
 Gateway observations. It periodically scans all nonterminal and stale records,

@@ -692,7 +692,7 @@ else
             "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
                 -p a3s-cloud-control-plane \
                 --test docker_deployment \
-                real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous_revision \
+                real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_the_current_revision \
                 -- --exact --nocapture --test-threads=1 \
         2>&1 | tee "$evidence/cargo-docker-deployment-test.log"
     docker_deployment_test_status=${PIPESTATUS[0]}
