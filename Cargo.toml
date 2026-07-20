@@ -40,6 +40,10 @@ futures-util = "0.3"
 getrandom = "0.3"
 hyper = { version = "1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio"] }
+hickory-resolver = { version = "0.24.4", default-features = false, features = [
+    "system-config",
+    "tokio-runtime",
+] }
 http-body-util = "0.1"
 libc = "0.2"
 object_store = { version = "=0.12.4", default-features = false, features = ["aws"] }

@@ -25,6 +25,8 @@ pub enum DomainOwnershipVerificationError {
     Invalid(String),
     #[error("domain ownership proof was rejected: {0}")]
     Rejected(String),
+    #[error("domain ownership proof is not observable yet: {0}")]
+    NotReady(String),
     #[error("domain ownership verifier is unavailable: {0}")]
     Unavailable(String),
 }

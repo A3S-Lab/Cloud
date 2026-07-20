@@ -91,6 +91,9 @@ impl CommandHandler<VerifyDomainClaim> for VerifyDomainClaimHandler {
                 Err(DomainOwnershipVerificationError::Invalid(error)) => {
                     return Ok(Err(ApplicationError::Invalid(error)))
                 }
+                Err(DomainOwnershipVerificationError::NotReady(error)) => {
+                    return Ok(Err(ApplicationError::Conflict(error)))
+                }
                 Err(DomainOwnershipVerificationError::Unavailable(error)) => {
                     return Ok(Err(ApplicationError::Internal(error)))
                 }

@@ -4,13 +4,13 @@ use crate::modules::edge::domain::services::{
     IRouteTargetReader,
 };
 use crate::modules::edge::{
-    CreateDomainClaimHandler, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
-    EdgeModule, FleetGatewayCommandQueue, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, PostgresEdgeRepository, PublishRouteHandler,
-    UnavailableDomainOwnershipVerifier, UnavailableGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    CreateDomainClaimHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
+    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler,
+    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
+    PublishRouteHandler, UnavailableGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
@@ -101,6 +101,8 @@ pub enum ControlPlaneStartupError {
     Outbox(String),
     #[error("could not initialize security providers: {0}")]
     Security(String),
+    #[error("could not initialize Edge providers: {0}")]
+    Edge(String),
     #[error("could not initialize log storage: {0}")]
     LogStorage(String),
     #[error("could not initialize node control: {0}")]
@@ -143,7 +145,12 @@ pub async fn build_application(
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
-        SecurityProfile::Production => Arc::new(UnavailableDomainOwnershipVerifier),
+        SecurityProfile::Production => Arc::new(
+            DnsDomainOwnershipVerifier::from_system_config(Duration::from_millis(
+                config.edge.domain_verification_timeout_ms,
+            ))
+            .map_err(|error| ControlPlaneStartupError::Edge(error.to_string()))?,
+        ),
     };
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),

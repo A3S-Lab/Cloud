@@ -8,9 +8,7 @@ pub mod persistence;
 mod route_target_reader;
 
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
-pub use domain_ownership_verifier::{
-    LocalDomainOwnershipVerifier, UnavailableDomainOwnershipVerifier,
-};
+pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
 pub use gateway_acknowledgement_projector::EdgeGatewayAcknowledgementProjector;
 pub use gateway_command_queue::FleetGatewayCommandQueue;
 pub use gateway_snapshot_compiler::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig};
