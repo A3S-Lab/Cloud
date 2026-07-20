@@ -95,10 +95,12 @@ Status as of 2026-07-20:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, and the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance are implemented. Production DNS/CA adapters, renewal, Gateway acknowledgement crash recovery, provider-death Secret-rotation apply, update, rollback, and the remaining web surfaces remain |
+| E0 | In progress | PostgreSQL-backed route ownership, exact/wildcard claims, managed certificate state and node-local keys, HTTPS-only snapshot dispatch/replay, exact acknowledgement activation, the dedicated A3S Gateway 1.0.12 TLS gate, encrypted Secret resource/version APIs, typed environment/file/registry-credential workload binding, transient authenticated manifest resolution, assigned-node mTLS materialization, authenticated private-image pulls, real PostgreSQL/Linux Docker injection and redacted-log acceptance, post-commit automatic Secret restarts with process-loss/concurrency recovery and final plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, and one-node immutable update with exact routed cutover and deterministic retirement are implemented. Production DNS/CA adapters, renewal, the remaining Gateway process-death gate, provider-death Secret-rotation apply, manual rollback, and the remaining web surfaces remain |
 
-The MVP is not complete until E0 passes. D0 verification does not imply public
-reachability, production log retention, rolling update, or rollback support.
+The MVP is not complete until E0 passes. D0 verification alone does not imply
+public reachability, production log retention, immutable update, or rollback
+support; the E0 update slice now supplies the single-node update behavior while
+manual rollback remains open.
 
 ### 3.2 Capability ownership
 
@@ -407,8 +409,23 @@ Complete the first user-visible release loop.
   plus immutable repair rejection.
 - Export metrics and traces through OpenTelemetry and publish the initial
   Prometheus-compatible service/node/operation dashboard contract.
-- Implement rolling update for one node, activation after health and route
-  acknowledgement, a rollback window, and explicit manual rollback.
+- Implemented: `POST
+  /organizations/{organization_id}/workloads/{workload_id}/deployments`
+  commits a complete immutable replacement template and a
+  `cloud.deployment@2` operation. Version 1 remains executable only for
+  persisted-run replay. A workload permits one nonterminal deployment, the
+  candidate stays on the previous Runtime node, cancellation closes at
+  `verifying`, and health must converge before any routed cutover is staged.
+- Implemented: routed updates preserve the old route rows and active revision
+  through unhealthy candidates, mismatched acknowledgements, and rejected
+  reloads. Only the exact node, command, Gateway revision, and snapshot digest
+  acknowledgement atomically replaces route targets. The candidate then enters
+  `retiring`; a deterministic stop command targets the previous Runtime
+  revision, and durable stopped-or-absent evidence completes the operation.
+  Reconciliation adopts staged cutovers and retirement commands after
+  coordinator recovery.
+- Implement explicit manual rollback by submitting a prior immutable template
+  through the same version 2 deployment path.
 - Complete the web deployment timeline, route/certificate state, update diff,
   rollback action, and terminal-operation cleanup.
 
@@ -875,7 +892,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
 | 7 | Gateway reload before acknowledgement | In progress | Route-bearing Gateway validate/reload, managed certificate provisioning, real HTTPS, atomic installed-state publication, journal replay, and Gateway-before-command acknowledgement ordering are covered with A3S Gateway 1.0.12. PostgreSQL API tests prove exact route activation and replay; process-death injection remains |
-| 8 | Activation before old-revision cleanup | Planned for E0 | Rolling update and rollback cleanup are not implemented |
+| 8 | Activation before old-revision cleanup | Implemented slice; release process-death gate remains | Control-plane and routed-update tests reconstruct the coordinator after activation, adopt the deterministic retirement command, and require durable stopped-or-absent evidence before terminal `active`; the real Docker A→failed B→healthy C scenario stops A after C activates. A clean-host process kill at this exact boundary remains required before E0 release |
 | 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 
 The real-provider commands and PostgreSQL isolation contract are documented in
@@ -906,16 +923,19 @@ real fault gate passes. Planned rows are not release evidence.
 ### 18.1 Immediate E0 backlog
 
 D0 is closed. E0's route desired-state, managed TLS mechanics, versioned
-complete snapshot transport, Secret injection, and filesystem/S3-compatible
-durable log query/retention/compaction path are implemented through the
-PostgreSQL, Fleet, node/Runtime, and Gateway boundaries, including typed
-provider cursor-loss/source-disconnect recovery, real provider restart cursor
-continuity, control-plane object-before-receipt process-death recovery, and
-filesystem/MinIO corruption certification. The remaining changes should land
-as vertical, independently verified slices:
+complete snapshot transport, Secret injection, filesystem/S3-compatible
+durable log query/retention/compaction path, and one-node immutable update are
+implemented through the PostgreSQL, Fleet, node/Runtime, and Gateway
+boundaries, including typed provider cursor-loss/source-disconnect recovery,
+real provider restart cursor continuity, control-plane
+object-before-receipt process-death recovery, exact route cutover, deterministic
+previous-revision retirement, and filesystem/MinIO corruption certification.
+The remaining changes should land as vertical, independently verified slices:
 
-1. One-node update orchestration that keeps the prior healthy revision until
-   Runtime health and Gateway acknowledgement both succeed.
+1. Implemented on 2026-07-20: one-node update orchestration keeps the prior
+   healthy revision and byte-identical route rows until Runtime health and the
+   exact Gateway acknowledgement both succeed, then recovers deterministic
+   previous-revision retirement.
 2. Manual rollback through the same immutable revision and operation path.
 3. Web route, certificate, update-diff, rollback, and terminal-operation
    surfaces backed only by authoritative projections.

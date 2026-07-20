@@ -220,7 +220,7 @@ async fn reconcile_in_transaction(
                     "could not create Secret rotation operation subject: {error}"
                 ))
             })?,
-            WorkflowIdentity::new("cloud.deployment", "1").map_err(|error| {
+            WorkflowIdentity::new("cloud.deployment", "2").map_err(|error| {
                 PostgresPersistenceError::Invariant(format!(
                     "could not create Secret rotation workflow identity: {error}"
                 ))

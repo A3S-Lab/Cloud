@@ -82,7 +82,10 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
             .into_iter()
             .find(|deployment| {
                 deployment.revision_id == revision.id
-                    && deployment.status == DeploymentStatus::Active
+                    && matches!(
+                        deployment.status,
+                        DeploymentStatus::Retiring | DeploymentStatus::Active
+                    )
             })
             .ok_or_else(|| {
                 RepositoryError::Conflict("route target has no active healthy deployment".into())

@@ -324,7 +324,21 @@ async fn retryable_inspect_failure_uses_a_new_deterministic_command(
     Ok(())
 }
 
+#[test]
+fn retiring_deployment_remains_an_active_runtime_target() -> Result<(), String> {
+    let target = runtime_target(Utc::now(), true)?;
+    assert_eq!(target.deployment.status, DeploymentStatus::Retiring);
+    validate_target(&target)
+}
+
 fn active_target(at: DateTime<Utc>) -> Result<ActiveRuntimeTarget, String> {
+    runtime_target(at, false)
+}
+
+fn runtime_target(
+    at: DateTime<Utc>,
+    retirement_required: bool,
+) -> Result<ActiveRuntimeTarget, String> {
     let organization_id = OrganizationId::new();
     let mut workload = Workload::create(
         WorkloadId::new(),
@@ -355,7 +369,7 @@ fn active_target(at: DateTime<Utc>) -> Result<ActiveRuntimeTarget, String> {
     deployment.schedule(node_id, at)?;
     deployment.dispatch(command_id, at)?;
     deployment.verify(at)?;
-    deployment.activate(at)?;
+    deployment.activate(retirement_required, at)?;
     workload.activate(revision.id, at)?;
     Ok(ActiveRuntimeTarget {
         workload,

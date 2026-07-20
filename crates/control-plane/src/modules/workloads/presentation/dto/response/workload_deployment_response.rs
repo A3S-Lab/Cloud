@@ -1,4 +1,7 @@
-use crate::modules::workloads::application::CreateWorkloadDeploymentResult;
+use crate::modules::workloads::application::{
+    CreateWorkloadDeploymentResult, UpdateWorkloadDeploymentResult,
+};
+use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -26,7 +29,18 @@ pub struct WorkloadDeploymentResponse {
 
 impl From<CreateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
     fn from(result: CreateWorkloadDeploymentResult) -> Self {
-        let bundle = result.bundle;
+        Self::from_bundle(result.bundle)
+    }
+}
+
+impl From<UpdateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
+    fn from(result: UpdateWorkloadDeploymentResult) -> Self {
+        Self::from_bundle(result.bundle)
+    }
+}
+
+impl WorkloadDeploymentResponse {
+    fn from_bundle(bundle: DeploymentBundle) -> Self {
         Self {
             organization_id: bundle.workload.organization_id.as_uuid(),
             project_id: bundle.workload.project_id.as_uuid(),

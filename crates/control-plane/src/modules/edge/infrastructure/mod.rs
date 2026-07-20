@@ -1,3 +1,4 @@
+mod deployment_route_updater;
 mod domain_ownership_verifier;
 mod gateway_acknowledgement_projector;
 mod gateway_command_queue;
@@ -6,6 +7,7 @@ mod local_gateway_certificate_authority;
 pub mod persistence;
 mod route_target_reader;
 
+pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{
     LocalDomainOwnershipVerifier, UnavailableDomainOwnershipVerifier,
 };

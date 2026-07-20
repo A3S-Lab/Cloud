@@ -100,6 +100,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists secret_rotation_restarts cascade;
              drop table if exists secret_versions cascade;
              drop table if exists secrets cascade;
+             drop table if exists gateway_route_cutovers cascade;
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
@@ -144,7 +145,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 17);
+    assert_eq!(applied, 19);
     let deployment_version_checks = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%aggregate_version%'",
@@ -300,6 +301,22 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "018",
+                "Gateway route cutovers",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/018_gateway_route_cutovers.sql"
+                )),
+            ),
+            Migration::new(
+                "019",
+                "deployment retirement",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/019_deployment_retirement.sql"
+                )),
+            ),
+            Migration::new(
+                "020",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -662,7 +679,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         operation_id,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
         OperationSubject::new("deployment", Uuid::now_v7())?,
-        WorkflowIdentity::new("cloud.deployment", "1")?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
         json!({"generation": 1}),
         Utc::now(),
     );
@@ -1373,6 +1390,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             node_id: workload_fixture.node_id,
             workload_id: workload_fixture.workload_id,
             revision_id: workload_fixture.revision_id,
+            candidate_revision_id: workload_fixture.candidate_revision_id,
+            candidate_deployment_id: workload_fixture.candidate_deployment_id,
         },
     )
     .await?;

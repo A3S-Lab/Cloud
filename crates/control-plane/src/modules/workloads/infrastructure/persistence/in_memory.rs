@@ -75,6 +75,13 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                     "workload changed before a new revision was requested".into(),
                 ));
             }
+            if state.deployments.values().any(|deployment| {
+                deployment.workload_id == existing.id && !deployment.status.is_terminal()
+            }) {
+                return Err(RepositoryError::Conflict(
+                    "workload already has a nonterminal deployment".into(),
+                ));
+            }
             existing.clone()
         } else {
             let name_key = (
@@ -469,6 +476,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         &self,
         deployment_id: DeploymentId,
         expected_version: u64,
+        retirement_required: bool,
         at: DateTime<Utc>,
     ) -> Result<(Workload, Deployment), RepositoryError> {
         let mut state = self.state.write().await;
@@ -478,9 +486,15 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 .get(&deployment_id)
                 .ok_or(RepositoryError::NotFound)?;
             if deployment.aggregate_version != expected_version {
-                if deployment.status
-                    == crate::modules::workloads::domain::entities::DeploymentStatus::Active
-                {
+                if matches!(
+                    deployment.status,
+                    crate::modules::workloads::domain::entities::DeploymentStatus::Retiring
+                        | crate::modules::workloads::domain::entities::DeploymentStatus::Active
+                ) {
+                    let mut replay = deployment.clone();
+                    replay
+                        .activate(retirement_required, at)
+                        .map_err(transition_error)?;
                     let workload = state
                         .workloads
                         .get(&deployment.workload_id)
@@ -506,13 +520,40 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .get(&workload_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        deployment.activate(at).map_err(transition_error)?;
+        deployment
+            .activate(retirement_required, at)
+            .map_err(transition_error)?;
         workload
             .activate(revision_id, at)
             .map_err(transition_error)?;
         state.deployments.insert(deployment_id, deployment.clone());
         state.workloads.insert(workload_id, workload.clone());
         Ok((workload, deployment))
+    }
+
+    async fn dispatch_retirement(
+        &self,
+        deployment_id: DeploymentId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    ) -> Result<Deployment, RepositoryError> {
+        mutate(&self.state, deployment_id, expected_version, |deployment| {
+            deployment.dispatch_retirement(command_id, at)
+        })
+        .await
+    }
+
+    async fn complete_retirement(
+        &self,
+        deployment_id: DeploymentId,
+        expected_version: u64,
+        at: DateTime<Utc>,
+    ) -> Result<Deployment, RepositoryError> {
+        mutate(&self.state, deployment_id, expected_version, |deployment| {
+            deployment.complete_retirement(at)
+        })
+        .await
     }
 
     async fn fail(
@@ -623,8 +664,11 @@ impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
                     .find(|deployment| {
                         deployment.workload_id == workload.id
                             && deployment.revision_id == revision_id
-                            && deployment.status
-                                == crate::modules::workloads::domain::entities::DeploymentStatus::Active
+                            && matches!(
+                                deployment.status,
+                                crate::modules::workloads::domain::entities::DeploymentStatus::Retiring
+                                    | crate::modules::workloads::domain::entities::DeploymentStatus::Active
+                            )
                     })
                     .cloned()
                     .ok_or_else(|| {

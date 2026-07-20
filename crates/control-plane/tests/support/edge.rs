@@ -4,14 +4,16 @@ use a3s_cloud_contracts::{
     NodeCommandPayload, NodeGatewayAck,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
+use a3s_cloud_control_plane::modules::edge::domain::events::GatewayRouteCutoverStaged;
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, StageRoutePublication, TransitionDomainClaim,
+    CreateDomainClaimWrite, IEdgeRepository, StageGatewayRouteCutover, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use a3s_cloud_control_plane::modules::edge::infrastructure::persistence::PostgresEdgeRepository;
 use a3s_cloud_control_plane::modules::edge::{
     DomainClaim, DomainNamePattern, EdgeGatewayAcknowledgementProjector, GatewayCertificate,
-    GatewayCertificateMaterial, GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, UpstreamEndpoint,
+    GatewayCertificateMaterial, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
+    Route, RouteHostname, RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::{
@@ -19,8 +21,8 @@ use a3s_cloud_control_plane::modules::fleet::{
     RecordGatewayAcknowledgementHandler,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::ControlPlane;
 use a3s_orm::PostgresExecutor;
@@ -36,6 +38,8 @@ pub struct EdgeFixture {
     pub node_id: NodeId,
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
+    pub candidate_revision_id: WorkloadRevisionId,
+    pub candidate_deployment_id: DeploymentId,
 }
 
 pub struct EdgeApiFixture<'a> {
@@ -378,6 +382,122 @@ pub async fn exercise_edge(
             .len(),
         initial_routes + 2
     );
+    issue_certificate(
+        &repository,
+        &second.certificate,
+        second.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await?;
+    let second_ack = NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: second.publication.command_id.as_uuid(),
+        node_id: fixture.node_id.as_uuid(),
+        revision: second.publication.revision,
+        snapshot_digest: second.publication.snapshot_digest.clone(),
+        state: GatewayAckState::Applied,
+        message: None,
+        acknowledged_at: second.publication.command_issued_at + Duration::seconds(1),
+    };
+    repository
+        .project_gateway_acknowledgement(
+            &second_ack,
+            second_ack.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await?;
+
+    let before_cutover = repository
+        .active_routes(fixture.node_id)
+        .await?
+        .into_iter()
+        .filter(|route| {
+            route.workload_id == fixture.workload_id
+                && route.workload_revision_id == fixture.revision_id
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(before_cutover.len(), 2);
+    let scope = repository.gateway_scope(fixture.node_id).await?;
+    let request = staged_cutover(
+        &fixture,
+        &before_cutover,
+        scope.next_revision()?,
+        scope.installed_revision,
+        scope.aggregate_version,
+        now + Duration::seconds(6),
+    )?;
+    let idempotency = request.idempotency.clone();
+    let (cutover, replay) = tokio::join!(
+        repository.stage_gateway_route_cutover(request.clone()),
+        repository.stage_gateway_route_cutover(request)
+    );
+    let cutover = cutover?;
+    let replay = replay?;
+    assert_ne!(cutover.replayed, replay.replayed);
+    assert_eq!(cutover.cutover, replay.cutover);
+    assert_eq!(
+        repository
+            .replay_gateway_route_cutover(&idempotency)
+            .await?
+            .ok_or("PostgreSQL cutover has no idempotency replay")?
+            .cutover,
+        cutover.cutover
+    );
+    assert!(repository
+        .replay_gateway_route_cutover(&IdempotencyRequest::new(
+            idempotency.scope,
+            idempotency.key,
+            b"changed cutover",
+        )?)
+        .await
+        .is_err());
+    for route in &before_cutover {
+        assert_eq!(
+            repository
+                .find_route(fixture.organization_id, route.id)
+                .await?,
+            *route
+        );
+    }
+    let mut wrong = cutover_acknowledgement(&cutover.cutover, GatewayAckState::Applied);
+    wrong.snapshot_digest = format!("sha256:{}", "f".repeat(64));
+    assert!(repository
+        .project_gateway_acknowledgement(&wrong, wrong.acknowledged_at)
+        .await
+        .is_err());
+    for route in &before_cutover {
+        assert_eq!(
+            repository
+                .find_route(fixture.organization_id, route.id)
+                .await?,
+            *route
+        );
+    }
+    issue_certificate(
+        &repository,
+        &cutover.certificate,
+        cutover.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await?;
+    let applied = cutover_acknowledgement(&cutover.cutover, GatewayAckState::Applied);
+    repository
+        .project_gateway_acknowledgement(
+            &applied,
+            applied.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await?;
+    let stored_cutover = repository
+        .find_gateway_route_cutover(fixture.organization_id, fixture.candidate_deployment_id)
+        .await?
+        .ok_or("PostgreSQL route cutover disappeared")?;
+    assert_eq!(stored_cutover.state, GatewayRouteCutoverState::Applied);
+    for route in stored_cutover.routes {
+        let active = repository
+            .find_route(fixture.organization_id, route.id)
+            .await?;
+        assert_eq!(active, route);
+        assert_eq!(active.workload_revision_id, fixture.candidate_revision_id);
+        assert_eq!(active.upstream.as_str(), "http://127.0.0.1:49153/");
+    }
     Ok(())
 }
 
@@ -451,6 +571,134 @@ async fn issue_certificate(
         .transition_gateway_certificate(issued, expected_version)
         .await?;
     Ok(())
+}
+
+fn staged_cutover(
+    fixture: &EdgeFixture,
+    active_routes: &[Route],
+    gateway_revision: u64,
+    expected_revision: Option<u64>,
+    expected_scope_version: u64,
+    staged_at: chrono::DateTime<Utc>,
+) -> Result<StageGatewayRouteCutover, Box<dyn std::error::Error>> {
+    let certificate_id = GatewayCertificateId::new();
+    let command_id = NodeCommandId::new();
+    let correlation_id = Uuid::now_v7();
+    let mut dns_names = active_routes
+        .iter()
+        .filter_map(|route| route.domain_pattern.as_ref())
+        .map(|pattern| pattern.as_str().to_owned())
+        .collect::<Vec<_>>();
+    dns_names.sort();
+    dns_names.dedup();
+    let certificate_request = GatewayCertificateRequest::new(
+        certificate_id.as_uuid(),
+        dns_names,
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+    )?;
+    let snapshot = GatewaySnapshot::new_with_certificate(
+        gateway_revision,
+        expected_revision,
+        format!(
+            "# PostgreSQL route cutover {}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
+            fixture.candidate_deployment_id,
+            certificate_request.certificate_file,
+            certificate_request.private_key_file
+        ),
+        Some(certificate_request.clone()),
+    )?;
+    let mut candidates = active_routes
+        .iter()
+        .map(|route| {
+            route.prepare_cutover(
+                fixture.candidate_revision_id,
+                UpstreamEndpoint::parse("http://127.0.0.1:49153")?,
+                certificate_id,
+                staged_at,
+            )
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    for route in &mut candidates {
+        route.stage(
+            gateway_revision,
+            command_id,
+            snapshot.snapshot_digest.clone(),
+            staged_at,
+        )?;
+    }
+    let publication = GatewayPublication::stage(
+        fixture.node_id,
+        command_id,
+        correlation_id,
+        snapshot,
+        staged_at,
+        staged_at + Duration::minutes(3),
+    )?;
+    let mut domain_claim_ids = candidates
+        .iter()
+        .filter_map(|route| route.domain_claim_id)
+        .collect::<Vec<_>>();
+    domain_claim_ids.sort();
+    domain_claim_ids.dedup();
+    let certificate = GatewayCertificate::provision(
+        certificate_id,
+        fixture.organization_id,
+        fixture.node_id,
+        domain_claim_ids,
+        gateway_revision,
+        command_id,
+        publication.snapshot_digest.clone(),
+        certificate_request,
+        staged_at,
+    )?;
+    let cutover = GatewayRouteCutover::stage(
+        fixture.candidate_deployment_id,
+        fixture.organization_id,
+        fixture.workload_id,
+        fixture.revision_id,
+        fixture.candidate_revision_id,
+        fixture.node_id,
+        gateway_revision,
+        command_id,
+        certificate_id,
+        publication.snapshot_digest.clone(),
+        candidates,
+        staged_at,
+    )?;
+    let event = GatewayRouteCutoverStaged::envelope(&cutover, &publication)?;
+    Ok(StageGatewayRouteCutover {
+        cutover,
+        certificate,
+        publication,
+        expected_scope_version,
+        idempotency: IdempotencyRequest::new(
+            format!(
+                "deployments/{}/route-cutover",
+                fixture.candidate_deployment_id
+            ),
+            "postgres-route-cutover",
+            fixture.candidate_revision_id.to_string().as_bytes(),
+        )?,
+        event,
+    })
+}
+
+fn cutover_acknowledgement(
+    cutover: &GatewayRouteCutover,
+    state: GatewayAckState,
+) -> NodeGatewayAck {
+    NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: cutover.gateway_command_id.as_uuid(),
+        node_id: cutover.node_id.as_uuid(),
+        revision: cutover.gateway_revision,
+        snapshot_digest: cutover.snapshot_digest.clone(),
+        state,
+        message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
+        acknowledged_at: cutover.staged_at + Duration::seconds(1),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

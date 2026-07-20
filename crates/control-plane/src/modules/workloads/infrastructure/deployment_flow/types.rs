@@ -1,6 +1,7 @@
 use crate::modules::shared_kernel::domain::{
     DeploymentId, NodeCommandId, NodeId, OrganizationId, WorkloadId, WorkloadRevisionId,
 };
+use crate::modules::workloads::domain::services::DeploymentGatewayPublication;
 use a3s_runtime::contract::RuntimeUnitSpec;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,16 @@ pub(super) struct ResolveStepOutput {
     pub workload_id: WorkloadId,
     pub spec: RuntimeUnitSpec,
     pub convergence_deadline: DateTime<Utc>,
+    #[serde(default)]
+    pub previous_runtime: Option<PreviousRuntime>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PreviousRuntime {
+    pub revision_id: WorkloadRevisionId,
+    pub node_id: NodeId,
+    pub spec: RuntimeUnitSpec,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,9 +137,75 @@ pub(super) enum VerifyStepOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct StageGatewayStepInput {
+    pub resolved: ResolveStepOutput,
+    pub dispatched: DispatchedRuntime,
+    pub verification: VerifyStepOutput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum StageGatewayStepOutput {
+    NotRequired {
+        gated_at: DateTime<Utc>,
+    },
+    Pending {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Ready {
+        publication: DeploymentGatewayPublication,
+    },
+    Failed {
+        reason: String,
+    },
+    CancellationRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ObserveGatewayStepInput {
+    pub resolved: ResolveStepOutput,
+    pub publication: DeploymentGatewayPublication,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum ObserveGatewayStepOutput {
+    Pending {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Ready {
+        acknowledged_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+    CancellationRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum RouteGate {
+    NotRequired {
+        gated_at: DateTime<Utc>,
+    },
+    Acknowledged {
+        publication: DeploymentGatewayPublication,
+        acknowledged_at: DateTime<Utc>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ActivateStepInput {
     pub resolved: ResolveStepOutput,
     pub verification: VerifyStepOutput,
+    #[serde(default)]
+    pub routing: Option<RouteGate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,8 +216,84 @@ pub(super) enum ActivateStepOutput {
         workload_id: WorkloadId,
         revision_id: WorkloadRevisionId,
         activated_at: DateTime<Utc>,
+        #[serde(default)]
+        retired_at: Option<DateTime<Utc>>,
     },
     CancellationRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RetirementDispatchStepInput {
+    pub resolved: ResolveStepOutput,
+    pub activation: ActivateStepOutput,
+    pub attempt: u32,
+    pub issued_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct DispatchedRetirement {
+    pub node_id: NodeId,
+    pub command_id: NodeCommandId,
+    pub result_deadline: DateTime<Utc>,
+    pub retirement_deadline: DateTime<Utc>,
+    pub attempt: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum RetirementDispatchStepOutput {
+    NotRequired {
+        retired_at: DateTime<Utc>,
+    },
+    Ready {
+        dispatched: DispatchedRetirement,
+    },
+    Retry {
+        reason: String,
+        next_attempt_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RetirementObserveStepInput {
+    pub resolved: ResolveStepOutput,
+    pub dispatched: DispatchedRetirement,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum RetirementObserveStepOutput {
+    Pending {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Ready {
+        retired_at: DateTime<Utc>,
+    },
+    Retry {
+        reason: String,
+        next_attempt_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct CompleteRetirementStepInput {
+    pub resolved: ResolveStepOutput,
+    pub activation: ActivateStepOutput,
+    pub retired_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

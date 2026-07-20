@@ -296,7 +296,10 @@ async fn resolve(
                 .into_iter()
                 .find(|deployment| {
                     deployment.revision_id == revision_id
-                        && deployment.status == DeploymentStatus::Active
+                        && matches!(
+                            deployment.status,
+                            DeploymentStatus::Retiring | DeploymentStatus::Active
+                        )
                 })
                 .ok_or_else(|| {
                     FlowError::Runtime("active workload revision has no active deployment".into())

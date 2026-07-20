@@ -1,12 +1,16 @@
 use super::*;
-use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
+use crate::modules::edge::domain::events::GatewayRouteCutoverStaged;
+use crate::modules::edge::domain::repositories::{
+    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayRouteCutover, StageRoutePublication,
+};
 use crate::modules::edge::domain::{
-    DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication, Route,
-    RouteHostname, RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
+    GatewayRouteCutover, GatewayRouteCutoverState, Route, RouteHostname, RoutePath, RoutePortName,
+    RouteState, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
@@ -152,6 +156,141 @@ fn acknowledgement(
         snapshot_digest: staged.publication.snapshot_digest.clone(),
         state,
         message: (state == GatewayAckState::Rejected).then(|| "invalid snapshot".into()),
+        acknowledged_at: staged.publication.command_issued_at + Duration::seconds(1),
+    }
+}
+
+fn staged_cutover(
+    active_routes: &[Route],
+    deployment_id: DeploymentId,
+    candidate_revision_id: WorkloadRevisionId,
+    gateway_revision: u64,
+    expected_revision: Option<u64>,
+    expected_scope_version: u64,
+    key: &str,
+) -> StageGatewayRouteCutover {
+    let first = active_routes.first().expect("active route");
+    let now = active_routes
+        .iter()
+        .map(|route| route.updated_at)
+        .max()
+        .unwrap_or_else(Utc::now)
+        + Duration::milliseconds(1);
+    let node_id = first.gateway_node_id;
+    let certificate_id = GatewayCertificateId::new();
+    let command_id = NodeCommandId::new();
+    let correlation_id = Uuid::now_v7();
+    let certificate_request = GatewayCertificateRequest::new(
+        certificate_id.as_uuid(),
+        vec![first.hostname.as_str().to_owned()],
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+        format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+    )
+    .expect("certificate request");
+    let snapshot = GatewaySnapshot::new_with_certificate(
+        gateway_revision,
+        expected_revision,
+        format!(
+            "# cutover {deployment_id}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
+            certificate_request.certificate_file, certificate_request.private_key_file
+        ),
+        Some(certificate_request.clone()),
+    )
+    .expect("snapshot");
+    let mut candidates = active_routes
+        .iter()
+        .map(|route| {
+            route
+                .prepare_cutover(
+                    candidate_revision_id,
+                    UpstreamEndpoint::parse("http://127.0.0.1:49153").expect("candidate endpoint"),
+                    certificate_id,
+                    now,
+                )
+                .expect("prepare cutover")
+        })
+        .collect::<Vec<_>>();
+    for route in &mut candidates {
+        route
+            .stage(
+                gateway_revision,
+                command_id,
+                snapshot.snapshot_digest.clone(),
+                now,
+            )
+            .expect("stage candidate");
+    }
+    let publication = GatewayPublication::stage(
+        node_id,
+        command_id,
+        correlation_id,
+        snapshot,
+        now,
+        now + Duration::minutes(3),
+    )
+    .expect("publication");
+    let mut domain_claim_ids = candidates
+        .iter()
+        .filter_map(|route| route.domain_claim_id)
+        .collect::<Vec<_>>();
+    domain_claim_ids.sort();
+    domain_claim_ids.dedup();
+    let certificate = GatewayCertificate::provision(
+        certificate_id,
+        first.organization_id,
+        node_id,
+        domain_claim_ids,
+        gateway_revision,
+        command_id,
+        publication.snapshot_digest.clone(),
+        certificate_request,
+        now,
+    )
+    .expect("certificate");
+    let cutover = GatewayRouteCutover::stage(
+        deployment_id,
+        first.organization_id,
+        first.workload_id,
+        first.workload_revision_id,
+        candidate_revision_id,
+        node_id,
+        gateway_revision,
+        command_id,
+        certificate_id,
+        publication.snapshot_digest.clone(),
+        candidates,
+        now,
+    )
+    .expect("cutover");
+    let event = GatewayRouteCutoverStaged::envelope(&cutover, &publication).expect("cutover event");
+    StageGatewayRouteCutover {
+        cutover,
+        certificate,
+        publication,
+        expected_scope_version,
+        idempotency: IdempotencyRequest::new(
+            format!("deployments/{deployment_id}/route-cutover"),
+            key,
+            candidate_revision_id.to_string().as_bytes(),
+        )
+        .expect("idempotency"),
+        event,
+    }
+}
+
+fn cutover_acknowledgement(
+    staged: &GatewayRouteCutoverResult,
+    state: GatewayAckState,
+) -> NodeGatewayAck {
+    NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: staged.publication.command_id.as_uuid(),
+        node_id: staged.publication.node_id.as_uuid(),
+        revision: staged.publication.revision,
+        snapshot_digest: staged.publication.snapshot_digest.clone(),
+        state,
+        message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: staged.publication.command_issued_at + Duration::seconds(1),
     }
 }
@@ -331,5 +470,190 @@ async fn persists_only_closed_gateway_certificate_transitions() {
             .expect("revoked certificate")
             .state,
         crate::modules::edge::domain::GatewayCertificateState::Revoked
+    );
+}
+
+#[tokio::test]
+async fn route_cutover_preserves_the_active_target_until_exact_applied_acknowledgement() {
+    let repository = InMemoryEdgeRepository::new();
+    let node_id = NodeId::new();
+    let first = repository
+        .stage_route_publication(staged(
+            node_id,
+            1,
+            None,
+            "update.example.com",
+            "/",
+            "update-first",
+        ))
+        .await
+        .expect("stage initial route");
+    issue(
+        &repository,
+        &first.certificate,
+        first.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await;
+    let initial_ack = acknowledgement(&first, GatewayAckState::Applied);
+    repository
+        .project_gateway_acknowledgement(
+            &initial_ack,
+            initial_ack.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await
+        .expect("activate initial route");
+    let active = repository
+        .find_route(first.route.organization_id, first.route.id)
+        .await
+        .expect("active route");
+    let previous_revision_id = active.workload_revision_id;
+    let previous_upstream = active.upstream.clone();
+    let candidate_revision_id = WorkloadRevisionId::new();
+    let cutover = repository
+        .stage_gateway_route_cutover(staged_cutover(
+            std::slice::from_ref(&active),
+            DeploymentId::new(),
+            candidate_revision_id,
+            2,
+            Some(1),
+            2,
+            "update-cutover",
+        ))
+        .await
+        .expect("stage cutover");
+
+    let pending_route = repository
+        .find_route(first.route.organization_id, first.route.id)
+        .await
+        .expect("pending serving route");
+    assert_eq!(pending_route.workload_revision_id, previous_revision_id);
+    assert_eq!(pending_route.upstream, previous_upstream);
+    assert_eq!(
+        repository
+            .find_gateway_route_cutover(
+                cutover.cutover.organization_id,
+                cutover.cutover.deployment_id,
+            )
+            .await
+            .expect("cutover query")
+            .expect("cutover")
+            .state,
+        GatewayRouteCutoverState::Pending
+    );
+
+    issue(
+        &repository,
+        &cutover.certificate,
+        cutover.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await;
+    let mut wrong = cutover_acknowledgement(&cutover, GatewayAckState::Applied);
+    wrong.snapshot_digest = format!("sha256:{}", "f".repeat(64));
+    assert!(repository
+        .project_gateway_acknowledgement(&wrong, wrong.acknowledged_at)
+        .await
+        .is_err());
+    let applied = cutover_acknowledgement(&cutover, GatewayAckState::Applied);
+    repository
+        .project_gateway_acknowledgement(
+            &applied,
+            applied.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await
+        .expect("apply exact cutover");
+
+    let updated = repository
+        .find_route(first.route.organization_id, first.route.id)
+        .await
+        .expect("updated route");
+    assert_eq!(updated.workload_revision_id, candidate_revision_id);
+    assert_eq!(updated.upstream.as_str(), "http://127.0.0.1:49153/");
+    assert_eq!(updated.gateway_revision, Some(2));
+    assert_eq!(
+        repository
+            .find_gateway_route_cutover(
+                cutover.cutover.organization_id,
+                cutover.cutover.deployment_id,
+            )
+            .await
+            .expect("cutover query")
+            .expect("cutover")
+            .state,
+        GatewayRouteCutoverState::Applied
+    );
+}
+
+#[tokio::test]
+async fn rejected_route_cutover_keeps_the_previous_route_authoritative() {
+    let repository = InMemoryEdgeRepository::new();
+    let node_id = NodeId::new();
+    let first = repository
+        .stage_route_publication(staged(
+            node_id,
+            1,
+            None,
+            "reject-update.example.com",
+            "/",
+            "reject-update-first",
+        ))
+        .await
+        .expect("stage initial route");
+    issue(
+        &repository,
+        &first.certificate,
+        first.publication.command_issued_at + Duration::milliseconds(1),
+    )
+    .await;
+    let initial_ack = acknowledgement(&first, GatewayAckState::Applied);
+    repository
+        .project_gateway_acknowledgement(
+            &initial_ack,
+            initial_ack.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await
+        .expect("activate initial route");
+    let active = repository
+        .find_route(first.route.organization_id, first.route.id)
+        .await
+        .expect("active route");
+    let cutover = repository
+        .stage_gateway_route_cutover(staged_cutover(
+            std::slice::from_ref(&active),
+            DeploymentId::new(),
+            WorkloadRevisionId::new(),
+            2,
+            Some(1),
+            2,
+            "reject-update-cutover",
+        ))
+        .await
+        .expect("stage cutover");
+    let rejected = cutover_acknowledgement(&cutover, GatewayAckState::Rejected);
+    repository
+        .project_gateway_acknowledgement(
+            &rejected,
+            rejected.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await
+        .expect("reject cutover");
+
+    assert_eq!(
+        repository
+            .find_route(first.route.organization_id, first.route.id)
+            .await
+            .expect("serving route"),
+        active
+    );
+    assert_eq!(
+        repository
+            .find_gateway_route_cutover(
+                cutover.cutover.organization_id,
+                cutover.cutover.deployment_id,
+            )
+            .await
+            .expect("cutover query")
+            .expect("cutover")
+            .state,
+        GatewayRouteCutoverState::Rejected
     );
 }

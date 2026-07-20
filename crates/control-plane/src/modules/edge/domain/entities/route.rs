@@ -147,6 +147,42 @@ impl Route {
         Ok(())
     }
 
+    pub fn prepare_cutover(
+        &self,
+        workload_revision_id: WorkloadRevisionId,
+        upstream: UpstreamEndpoint,
+        gateway_certificate_id: GatewayCertificateId,
+        prepared_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let prepared_at = canonical_timestamp(prepared_at);
+        if self.state != RouteState::Active
+            || self.gateway_revision.is_none()
+            || self.gateway_command_id.is_none()
+            || self.snapshot_digest.is_none()
+            || self.failure.is_some()
+            || self.activated_at.is_none()
+        {
+            return Err("only an active route can prepare a target cutover".into());
+        }
+        if workload_revision_id == self.workload_revision_id {
+            return Err("route cutover must select a different immutable revision".into());
+        }
+        self.ensure_time(prepared_at)?;
+
+        let mut candidate = self.clone();
+        candidate.workload_revision_id = workload_revision_id;
+        candidate.upstream = upstream;
+        candidate.state = RouteState::Pending;
+        candidate.gateway_revision = None;
+        candidate.gateway_command_id = None;
+        candidate.snapshot_digest = None;
+        candidate.gateway_certificate_id = Some(gateway_certificate_id);
+        candidate.failure = None;
+        candidate.updated_at = prepared_at;
+        candidate.activated_at = None;
+        Ok(candidate)
+    }
+
     pub fn apply_gateway_acknowledgement(
         &mut self,
         acknowledgement: &NodeGatewayAck,

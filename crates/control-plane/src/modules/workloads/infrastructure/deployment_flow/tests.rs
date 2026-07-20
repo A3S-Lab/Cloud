@@ -1,4 +1,15 @@
 use super::{DeploymentFlowConfig, DeploymentFlowRuntime};
+use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
+use crate::modules::edge::domain::{
+    DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
+    GatewayRouteCutover, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+    UpstreamEndpoint,
+};
+use crate::modules::edge::infrastructure::{
+    EdgeDeploymentRouteUpdater, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig,
+};
+use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
@@ -10,8 +21,9 @@ use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnrollmentTokenId, EnvironmentId, IdempotencyRequest, OperationId,
-    OrganizationId, ProjectId, ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, GatewayCertificateId,
+    IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId,
+    ResourceName, RouteId, SecretId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
@@ -27,8 +39,8 @@ use crate::modules::workloads::domain::services::{
 };
 use crate::modules::workloads::infrastructure::{project_runtime_spec, InMemoryWorkloadRepository};
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, NodeCommandLeaseRequest, NodeHeartbeat, NodeObservationBatch,
-    RuntimeObservationReport,
+    DomainEventEnvelope, GatewayAckState, NodeCommandLeaseRequest, NodeGatewayAck, NodeHeartbeat,
+    NodeObservationBatch, RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, InMemoryEventStore,
@@ -36,8 +48,8 @@ use a3s_flow::{
 };
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities,
-    RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState, RuntimeObservation,
-    RuntimeUnitClass, RuntimeUnitState,
+    RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState,
+    RuntimeObservation, RuntimeUnitClass, RuntimeUnitState, TransportProtocol,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -46,9 +58,82 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
+mod routed_update;
 mod support;
 
 use support::*;
+
+#[tokio::test]
+async fn legacy_deployment_workflow_remains_executable_for_persisted_v1_runs(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id, capabilities) =
+        ready_node(&nodes, organization_id, base).await?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime(
+        &workloads,
+        &nodes,
+        Duration::seconds(10),
+    )?));
+    let bundle = deployment_bundle(
+        Workload::create(
+            WorkloadId::new(),
+            organization_id,
+            ProjectId::new(),
+            EnvironmentId::new(),
+            ResourceName::parse("legacy deployment fixture")?,
+            base,
+        ),
+        1,
+        '0',
+        base,
+        "legacy-deployment-v1",
+    )?;
+    let revision = bundle.revision.clone();
+    let deployment = bundle.deployment.clone();
+    let operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+    engine
+        .start_with_id(
+            operation.id.to_string(),
+            legacy_workflow_spec(),
+            operation.input,
+        )
+        .await?;
+    let apply = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        apply
+            .commands
+            .first()
+            .ok_or("legacy apply command missing")?,
+        healthy_observation(
+            &project_runtime_spec(&revision)?,
+            RuntimeHealthState::Healthy,
+        )?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    assert_eq!(
+        engine.snapshot(&operation.id.to_string()).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Active
+    );
+    Ok(())
+}
 
 #[tokio::test]
 async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
@@ -69,6 +154,7 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
         resolver.clone(),
         node_port,
         control_port,
+        Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 1, 10_000, 5_000, 1, 10_000)?,
     )?;
@@ -150,6 +236,7 @@ async fn resolving_step_lends_only_the_bound_registry_secret_reference_to_the_re
         resolver.clone(),
         nodes.clone(),
         nodes,
+        Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 1, 10_000, 5_000, 1, 10_000)?,
     )?;
@@ -637,6 +724,7 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
         Arc::new(UnusedArtifactResolver),
         node_port,
         control_port,
+        Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 1, 10_000, 5_000, 1, 10_000)?,
     )?;

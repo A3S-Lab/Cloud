@@ -197,6 +197,22 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/017_secret_rotation_restarts.sql"
             )),
         ),
+        Migration::new(
+            "018",
+            "Gateway route cutovers",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/018_gateway_route_cutovers.sql"
+            )),
+        ),
+        Migration::new(
+            "019",
+            "deployment retirement",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/019_deployment_retirement.sql"
+            )),
+        ),
     ]
 }
 

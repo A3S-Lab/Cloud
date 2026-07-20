@@ -145,7 +145,7 @@ mod tests {
     ) -> WorkflowRunSnapshot {
         WorkflowRunSnapshot {
             run_id: operation_id.to_string(),
-            spec: WorkflowSpec::rust_embedded("cloud.deployment", "1", "a3s-cloud", "main"),
+            spec: WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main"),
             input: json!({}),
             status: WorkflowRunStatus::Completed,
             steps: BTreeMap::new(),

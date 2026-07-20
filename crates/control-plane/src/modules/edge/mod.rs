@@ -12,7 +12,8 @@ pub use application::{
     VerifyDomainClaimResult,
 };
 pub use domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, IEdgeRepository, TransitionDomainClaim,
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayRouteCutover, TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
@@ -22,14 +23,14 @@ pub use domain::services::{
 pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
     GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
-    GatewayPublicationState, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, UpstreamEndpoint,
+    GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState, GatewayScopeState,
+    Route, RouteHostname, RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
-    EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    UnavailableDomainOwnershipVerifier, UnavailableGatewayCertificateAuthority,
-    WorkloadRouteTargetReader,
+    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, UnavailableDomainOwnershipVerifier,
+    UnavailableGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

@@ -4,8 +4,8 @@ use crate::modules::edge::domain::services::{
     IRouteTargetReader,
 };
 use crate::modules::edge::{
-    CreateDomainClaimHandler, EdgeGatewayAcknowledgementProjector, EdgeModule,
-    FleetGatewayCommandQueue, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    CreateDomainClaimHandler, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
+    EdgeModule, FleetGatewayCommandQueue, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
     ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
     LocalGatewayCertificateAuthority, PostgresEdgeRepository, PublishRouteHandler,
@@ -55,13 +55,13 @@ use crate::modules::secrets::{
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
-use crate::modules::workloads::domain::services::IOciArtifactResolver;
+use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
     CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
     IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
     PostgresWorkloadRepository, SecretRotationRestartReconciler, StopWorkloadHandler,
-    WorkloadRuntimeReconciler, WorkloadsModule,
+    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -158,6 +158,26 @@ pub async fn build_application(
     );
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
+    let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: config.edge.entrypoint_address.clone(),
+        management_address: config.edge.management_address.clone(),
+        management_path_prefix: config.edge.management_path_prefix.clone(),
+        management_auth_token_env: config.edge.management_auth_token_env.clone(),
+        upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
+        certificate_directory: config.edge.certificate_directory.clone(),
+    })
+    .map_err(ControlPlaneStartupError::NodeControl)?;
+    let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
+        EdgeDeploymentRouteUpdater::new(
+            Arc::clone(&routes),
+            Arc::clone(&node_control),
+            Arc::clone(&route_commands),
+            deployment_route_compiler,
+            chrono_duration(config.edge.command_ttl_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?,
+    );
     let artifacts: Arc<dyn IOciArtifactResolver> = Arc::new(
         OciRegistryArtifactResolver::new(
             Duration::from_millis(config.registry.request_timeout_ms),
@@ -181,6 +201,7 @@ pub async fn build_application(
         artifacts,
         Arc::clone(&nodes),
         Arc::clone(&node_control),
+        deployment_route_updates,
         chrono_duration(config.fleet.heartbeat_timeout_ms)
             .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         deployment_flow_config,
@@ -396,6 +417,8 @@ fn build_application_with_health(
     let secret_environments = Arc::clone(&environments);
     let create_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
+    let update_workloads = Arc::clone(&workloads);
+    let update_workload_secrets = Arc::clone(&secrets);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
     let list_workloads = Arc::clone(&workloads);
@@ -528,6 +551,9 @@ fn build_application_with_health(
                         create_workloads,
                         workload_secrets,
                     ),
+                )
+                .command_handler::<crate::modules::workloads::UpdateWorkloadDeployment, _>(
+                    UpdateWorkloadDeploymentHandler::new(update_workloads, update_workload_secrets),
                 )
                 .command_handler::<crate::modules::workloads::CancelDeployment, _>(
                     CancelDeploymentHandler::new(cancel_workloads),

@@ -103,6 +103,7 @@ pub async fn exercise_deployment_flow(
         deployment_artifact_resolver(executor, security_state_dir)?,
         nodes,
         node_control,
+        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;
@@ -309,6 +310,7 @@ pub async fn exercise_deployment_flow(
         deployment_artifact_resolver(executor, security_state_dir)?,
         node_repository.clone(),
         node_repository.clone(),
+        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;

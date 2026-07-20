@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 pub(super) const SELECT_WORKLOADS: &str = "select id, organization_id, project_id, environment_id, name, desired_state, active_revision_id, aggregate_version, created_at, updated_at from workloads";
 pub(super) const SELECT_REVISIONS: &str = "select r.id, r.workload_id, r.generation, r.resolution_state, r.artifact_source_uri, r.expected_artifact_digest, r.template_request, r.request_digest, r.artifact_uri, r.artifact_digest, r.artifact_media_type, r.template, r.template_digest, r.created_at, r.resolved_at from workload_revisions r";
-pub(super) const SELECT_DEPLOYMENTS: &str = "select id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at from deployments";
+pub(super) const SELECT_DEPLOYMENTS: &str = "select id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, retirement_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at from deployments";
 
 pub(super) struct WorkloadRow {
     id: Uuid,
@@ -55,6 +55,7 @@ pub(super) struct DeploymentRow {
     node_id: Option<Uuid>,
     command_id: Option<Uuid>,
     cleanup_command_id: Option<Uuid>,
+    retirement_command_id: Option<Uuid>,
     status: String,
     failure: Option<String>,
     aggregate_version: u64,
@@ -89,9 +90,9 @@ from_row!(RevisionRow, {
 });
 from_row!(DeploymentRow, {
     id: 0, organization_id: 1, workload_id: 2, revision_id: 3, operation_id: 4,
-    node_id: 5, command_id: 6, cleanup_command_id: 7, status: 8, failure: 9,
-    aggregate_version: 10, requested_at: 11, updated_at: 12, activated_at: 13,
-    cancellation_requested_at: 14, cancelled_at: 15,
+    node_id: 5, command_id: 6, cleanup_command_id: 7, retirement_command_id: 8,
+    status: 9, failure: 10, aggregate_version: 11, requested_at: 12, updated_at: 13,
+    activated_at: 14, cancellation_requested_at: 15, cancelled_at: 16,
 });
 fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
     T::from_value(
@@ -198,19 +199,37 @@ pub(super) fn deployment(row: DeploymentRow) -> Result<Deployment, RepositoryErr
     let node_id = row.node_id.map(NodeId::from_uuid);
     let command_id = row.command_id.map(NodeCommandId::from_uuid);
     let cleanup_command_id = row.cleanup_command_id.map(NodeCommandId::from_uuid);
+    let retirement_command_id = row.retirement_command_id.map(NodeCommandId::from_uuid);
     let state_is_valid = match status {
         DeploymentStatus::Queued | DeploymentStatus::Resolving => {
-            node_id.is_none() && command_id.is_none() && cleanup_command_id.is_none()
+            node_id.is_none()
+                && command_id.is_none()
+                && cleanup_command_id.is_none()
+                && retirement_command_id.is_none()
         }
         DeploymentStatus::Scheduled => {
-            node_id.is_some() && command_id.is_none() && cleanup_command_id.is_none()
+            node_id.is_some()
+                && command_id.is_none()
+                && cleanup_command_id.is_none()
+                && retirement_command_id.is_none()
         }
-        DeploymentStatus::Applying | DeploymentStatus::Verifying | DeploymentStatus::Active => {
+        DeploymentStatus::Applying | DeploymentStatus::Verifying => {
+            node_id.is_some()
+                && command_id.is_some()
+                && cleanup_command_id.is_none()
+                && retirement_command_id.is_none()
+        }
+        DeploymentStatus::Retiring | DeploymentStatus::Active => {
             node_id.is_some() && command_id.is_some() && cleanup_command_id.is_none()
         }
-        DeploymentStatus::Cancelling => cleanup_command_id.is_none(),
+        DeploymentStatus::Cancelling => {
+            cleanup_command_id.is_none() && retirement_command_id.is_none()
+        }
         DeploymentStatus::CleanupPending => {
-            node_id.is_some() && command_id.is_some() && cleanup_command_id.is_some()
+            node_id.is_some()
+                && command_id.is_some()
+                && cleanup_command_id.is_some()
+                && retirement_command_id.is_none()
         }
         DeploymentStatus::Failed | DeploymentStatus::Orphaned | DeploymentStatus::Cancelled => {
             command_id.is_none() || node_id.is_some()
@@ -223,14 +242,18 @@ pub(super) fn deployment(row: DeploymentRow) -> Result<Deployment, RepositoryErr
             status,
             DeploymentStatus::Failed | DeploymentStatus::Orphaned
         ) != row.failure.is_some()
-        || (status == DeploymentStatus::Active) != row.activated_at.is_some()
+        || match status {
+            DeploymentStatus::Retiring | DeploymentStatus::Active => row.activated_at.is_none(),
+            DeploymentStatus::Orphaned => false,
+            _ => row.activated_at.is_some(),
+        }
         || matches!(
             status,
             DeploymentStatus::Cancelling
                 | DeploymentStatus::CleanupPending
                 | DeploymentStatus::Cancelled
-                | DeploymentStatus::Orphaned
         ) != row.cancellation_requested_at.is_some()
+            && status != DeploymentStatus::Orphaned
         || (status == DeploymentStatus::Cancelled) != row.cancelled_at.is_some()
     {
         return Err(corrupt("deployment row violates its state invariants"));
@@ -244,6 +267,7 @@ pub(super) fn deployment(row: DeploymentRow) -> Result<Deployment, RepositoryErr
         node_id,
         command_id,
         cleanup_command_id,
+        retirement_command_id,
         status,
         failure: row.failure,
         aggregate_version: row.aggregate_version,

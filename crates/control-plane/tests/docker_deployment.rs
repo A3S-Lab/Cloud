@@ -44,7 +44,7 @@ const BUSYBOX_DIGEST: &str =
     "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662";
 
 #[tokio::test]
-async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
+async fn real_docker_updates_preserve_a_failed_candidate_and_retire_the_previous_revision(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() != Ok("1") {
         return Ok(());
@@ -79,6 +79,7 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
         Arc::new(UnusedArtifactResolver),
         node_port,
         control_port,
+        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(30_000, 20_000, 5, 30_000, 10_000, 5, 20_000)?,
     )?;
@@ -186,8 +187,14 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
     let second_ack = command_executor
         .execute(second_lease.commands[0].clone())
         .await?;
-    let second_observation =
-        persist_apply_result(&nodes, node_id, agent_instance_id, capabilities, second_ack).await?;
+    let second_observation = persist_apply_result(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        capabilities.clone(),
+        second_ack,
+    )
+    .await?;
     assert_eq!(second_observation.state, RuntimeUnitState::Running);
     assert_eq!(
         second_observation
@@ -241,8 +248,156 @@ async fn permanently_unhealthy_real_docker_update_preserves_healthy_revision(
     }
 
     let second_record = runtime_state.load(&second_observation.unit_id).await?;
+    let selected_workload = workloads
+        .find_workload(organization_id, first_deployment.workload_id)
+        .await?;
+    let third = deployment_bundle(
+        selected_workload,
+        3,
+        healthy_template(),
+        Utc::now(),
+        "docker-healthy-update",
+    )?;
+    let third_revision = third.revision.clone();
+    let third_deployment = third.deployment.clone();
+    let third_operation = third.operation.clone();
+    workloads.create_deployment(third).await?;
+    engine
+        .start_with_id(
+            third_operation.id.to_string(),
+            workflow_spec(),
+            third_operation.input.clone(),
+        )
+        .await?;
+    let third_lease = lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        second_lease.commands[0].sequence,
+    )
+    .await?;
+    assert_eq!(third_lease.commands.len(), 1);
+    let third_ack = command_executor
+        .execute(third_lease.commands[0].clone())
+        .await?;
+    let third_observation = persist_apply_result(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        capabilities.clone(),
+        third_ack,
+    )
+    .await?;
+    assert_eq!(
+        third_observation.health.as_ref().map(|health| health.state),
+        Some(RuntimeHealthState::Healthy)
+    );
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let retiring = workloads
+        .find_deployment(organization_id, third_deployment.id)
+        .await?;
+    assert_eq!(retiring.status, DeploymentStatus::Retiring);
+    assert_eq!(
+        workloads
+            .find_workload(organization_id, third_deployment.workload_id)
+            .await?
+            .active_revision_id,
+        Some(third_revision.id)
+    );
+    let retirement_command_id = retiring
+        .retirement_command_id
+        .ok_or("healthy Docker update omitted its retirement command")?;
+    let retirement_lease = lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        third_lease.commands[0].sequence,
+    )
+    .await?;
+    assert_eq!(retirement_lease.commands.len(), 1);
+    let retirement_command = retirement_lease
+        .commands
+        .iter()
+        .find(|command| command.command_id == retirement_command_id.as_uuid())
+        .ok_or("healthy Docker update retirement command was not leased")?;
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeStop { request } =
+        &retirement_command.payload
+    else {
+        return Err("healthy Docker update retirement is not Runtime stop".into());
+    };
+    assert_eq!(request.unit_id, first_record.spec.unit_id);
+    assert_eq!(request.generation, first_record.spec.generation);
+    let retirement_ack = command_executor.execute(retirement_command.clone()).await?;
+    match &retirement_ack.outcome {
+        NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
+            NodeCommandResult::RuntimeStopped {
+                inspection: RuntimeInspection::Found { observation, .. },
+            } => assert_eq!(observation.state, RuntimeUnitState::Stopped),
+            NodeCommandResult::RuntimeStopped {
+                inspection: RuntimeInspection::NotFound { .. },
+            } => {}
+            _ => return Err("Docker retirement returned a non-stop result".into()),
+        },
+        outcome => return Err(format!("Docker retirement failed: {outcome:?}").into()),
+    }
+    let received_at = Utc::now().max(retirement_ack.completed_at);
+    assert!(
+        !nodes
+            .acknowledge_command(retirement_ack, received_at)
+            .await?
+            .replayed
+    );
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    assert_eq!(
+        engine
+            .snapshot(&third_operation.id.to_string())
+            .await?
+            .status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, third_deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Active
+    );
+    match RuntimeDriver::inspect(driver.as_ref(), &first_record).await? {
+        RuntimeInspection::Found { observation, .. } => {
+            assert_eq!(observation.state, RuntimeUnitState::Stopped)
+        }
+        RuntimeInspection::NotFound { .. } => {}
+    }
+    let third_record = runtime_state.load(&third_observation.unit_id).await?;
+    match RuntimeDriver::inspect(driver.as_ref(), &third_record).await? {
+        RuntimeInspection::Found { observation, .. } => {
+            assert_eq!(observation.state, RuntimeUnitState::Running);
+            assert_eq!(
+                observation.health.as_ref().map(|health| health.state),
+                Some(RuntimeHealthState::Healthy)
+            );
+        }
+        RuntimeInspection::NotFound { .. } => {
+            return Err("the activated Docker update container disappeared".into())
+        }
+    }
+    assert!(lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        retirement_command.sequence,
+    )
+    .await?
+    .commands
+    .is_empty());
+
     remove_record(driver.as_ref(), &second_record, "unhealthy").await?;
     remove_record(driver.as_ref(), &first_record, "healthy").await?;
+    remove_record(driver.as_ref(), &third_record, "updated").await?;
     Ok(())
 }
 
@@ -338,7 +493,7 @@ fn deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "1")?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -511,7 +666,7 @@ fn busybox_template(command: Vec<String>, args: Vec<String>) -> ServiceTemplate 
 }
 
 fn workflow_spec() -> WorkflowSpec {
-    WorkflowSpec::rust_embedded("cloud.deployment", "1", "a3s-cloud", "main")
+    WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main")
 }
 
 fn docker_socket() -> String {

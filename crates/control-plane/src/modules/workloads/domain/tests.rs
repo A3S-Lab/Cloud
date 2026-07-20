@@ -293,8 +293,11 @@ fn deployment_lifecycle_is_monotonic_and_activation_selects_the_revision() {
     deployment
         .verify(now + Duration::seconds(3))
         .expect("verify");
+    assert!(deployment
+        .request_cancellation(now + Duration::seconds(4))
+        .is_err());
     deployment
-        .activate(now + Duration::seconds(4))
+        .activate(false, now + Duration::seconds(4))
         .expect("activate");
     workload
         .activate(revision_id, now + Duration::seconds(4))
@@ -307,6 +310,47 @@ fn deployment_lifecycle_is_monotonic_and_activation_selects_the_revision() {
     assert_eq!(workload.updated_at.nanosecond() % 1_000, 0);
     assert!(deployment
         .fail("late failure".into(), now + Duration::seconds(5))
+        .is_err());
+}
+
+#[test]
+fn activated_update_retires_the_previous_runtime_before_becoming_terminal() {
+    let now = Utc::now();
+    let mut deployment = Deployment::create(
+        DeploymentId::new(),
+        OrganizationId::new(),
+        WorkloadId::new(),
+        WorkloadRevisionId::new(),
+        OperationId::new(),
+        now,
+    );
+    deployment.resolve(now).expect("resolve");
+    deployment.schedule(NodeId::new(), now).expect("schedule");
+    deployment
+        .dispatch(NodeCommandId::new(), now)
+        .expect("dispatch");
+    deployment.verify(now).expect("verify");
+    deployment
+        .activate(true, now + Duration::seconds(1))
+        .expect("activate update");
+    assert_eq!(deployment.status, DeploymentStatus::Retiring);
+    assert!(!deployment.status.is_terminal());
+
+    let retirement_command_id = NodeCommandId::new();
+    deployment
+        .dispatch_retirement(retirement_command_id, now + Duration::seconds(2))
+        .expect("dispatch retirement");
+    assert_eq!(
+        deployment.retirement_command_id,
+        Some(retirement_command_id)
+    );
+    deployment
+        .complete_retirement(now + Duration::seconds(3))
+        .expect("complete retirement");
+    assert_eq!(deployment.status, DeploymentStatus::Active);
+    assert!(deployment.status.is_terminal());
+    assert!(deployment
+        .activate(false, now + Duration::seconds(4))
         .is_err());
 }
 

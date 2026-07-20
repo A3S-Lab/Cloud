@@ -1,6 +1,6 @@
 mod edge_repository;
 
 pub use edge_repository::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, IEdgeRepository, StageRoutePublication,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };

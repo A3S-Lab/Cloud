@@ -213,9 +213,48 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
         &self,
         deployment_id: DeploymentId,
         expected_version: u64,
+        retirement_required: bool,
         at: DateTime<Utc>,
     ) -> Result<(Workload, Deployment), RepositoryError> {
-        transitions::activate(&self.executor, deployment_id, expected_version, at).await
+        transitions::activate(
+            &self.executor,
+            deployment_id,
+            expected_version,
+            retirement_required,
+            at,
+        )
+        .await
+    }
+
+    async fn dispatch_retirement(
+        &self,
+        deployment_id: DeploymentId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    ) -> Result<Deployment, RepositoryError> {
+        transitions::mutate(
+            &self.executor,
+            deployment_id,
+            expected_version,
+            transitions::DeploymentMutation::DispatchRetirement { command_id, at },
+        )
+        .await
+    }
+
+    async fn complete_retirement(
+        &self,
+        deployment_id: DeploymentId,
+        expected_version: u64,
+        at: DateTime<Utc>,
+    ) -> Result<Deployment, RepositoryError> {
+        transitions::mutate(
+            &self.executor,
+            deployment_id,
+            expected_version,
+            transitions::DeploymentMutation::CompleteRetirement { at },
+        )
+        .await
     }
 
     async fn fail(

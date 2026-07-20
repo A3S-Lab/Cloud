@@ -29,6 +29,13 @@ pub(super) enum DeploymentMutation {
     Verify {
         at: DateTime<Utc>,
     },
+    DispatchRetirement {
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    },
+    CompleteRetirement {
+        at: DateTime<Utc>,
+    },
     Fail {
         reason: String,
         at: DateTime<Utc>,
@@ -58,6 +65,7 @@ impl DeploymentMutation {
                     | DeploymentStatus::Scheduled
                     | DeploymentStatus::Applying
                     | DeploymentStatus::Verifying
+                    | DeploymentStatus::Retiring
                     | DeploymentStatus::Active
             ),
             Self::Schedule { node_id, .. } => {
@@ -67,6 +75,7 @@ impl DeploymentMutation {
                         DeploymentStatus::Scheduled
                             | DeploymentStatus::Applying
                             | DeploymentStatus::Verifying
+                            | DeploymentStatus::Retiring
                             | DeploymentStatus::Active
                     )
             }
@@ -76,13 +85,24 @@ impl DeploymentMutation {
                         deployment.status,
                         DeploymentStatus::Applying
                             | DeploymentStatus::Verifying
+                            | DeploymentStatus::Retiring
                             | DeploymentStatus::Active
                     )
             }
             Self::Verify { .. } => matches!(
                 deployment.status,
-                DeploymentStatus::Verifying | DeploymentStatus::Active
+                DeploymentStatus::Verifying | DeploymentStatus::Retiring | DeploymentStatus::Active
             ),
+            Self::DispatchRetirement { command_id, .. } => {
+                deployment.retirement_command_id == Some(*command_id)
+                    && matches!(
+                        deployment.status,
+                        DeploymentStatus::Retiring
+                            | DeploymentStatus::Active
+                            | DeploymentStatus::Orphaned
+                    )
+            }
+            Self::CompleteRetirement { .. } => deployment.status == DeploymentStatus::Active,
             Self::Fail { reason, .. } => {
                 matches!(
                     deployment.status,
@@ -119,6 +139,10 @@ impl DeploymentMutation {
             Self::Schedule { node_id, at } => deployment.schedule(node_id, at),
             Self::Dispatch { command_id, at } => deployment.dispatch(command_id, at),
             Self::Verify { at } => deployment.verify(at),
+            Self::DispatchRetirement { command_id, at } => {
+                deployment.dispatch_retirement(command_id, at)
+            }
+            Self::CompleteRetirement { at } => deployment.complete_retirement(at),
             Self::Fail { reason, at } => deployment.fail(reason, at),
             Self::RequestCancellation { at } => deployment.request_cancellation(at),
             Self::BeginCleanup { command_id, at } => deployment.begin_cleanup(command_id, at),
@@ -317,6 +341,7 @@ pub(super) async fn activate(
     executor: &PostgresExecutor,
     deployment_id: DeploymentId,
     expected_version: u64,
+    retirement_required: bool,
     at: DateTime<Utc>,
 ) -> Result<(Workload, Deployment), RepositoryError> {
     executor
@@ -335,7 +360,17 @@ pub(super) async fn activate(
                 .await?
                 .ok_or(RepositoryError::NotFound)?;
 
-                if deployment.status == DeploymentStatus::Active {
+                if matches!(
+                    deployment.status,
+                    DeploymentStatus::Retiring | DeploymentStatus::Active
+                ) {
+                    deployment
+                        .activate(retirement_required, at)
+                        .map_err(|error| {
+                            RepositoryError::Conflict(format!(
+                                "deployment activation replay was rejected: {error}"
+                            ))
+                        })?;
                     if workload.active_revision_id != Some(deployment.revision_id) {
                         return Err(PostgresPersistenceError::Invariant(
                             "active deployment is not selected by its workload".into(),
@@ -346,11 +381,13 @@ pub(super) async fn activate(
                 require_expected_version(&deployment, expected_version)?;
                 let previous_deployment_version = deployment.aggregate_version;
                 let previous_workload_version = workload.aggregate_version;
-                deployment.activate(at).map_err(|error| {
-                    RepositoryError::Conflict(format!(
-                        "deployment activation was rejected: {error}"
-                    ))
-                })?;
+                deployment
+                    .activate(retirement_required, at)
+                    .map_err(|error| {
+                        RepositoryError::Conflict(format!(
+                            "deployment activation was rejected: {error}"
+                        ))
+                    })?;
                 workload
                     .activate(deployment.revision_id, at)
                     .map_err(|error| {
@@ -395,6 +432,8 @@ async fn persist_deployment(
             .bind(deployment.command_id.map(|id| id.as_uuid()))
             .append(", cleanup_command_id = ")
             .bind(deployment.cleanup_command_id.map(|id| id.as_uuid()))
+            .append(", retirement_command_id = ")
+            .bind(deployment.retirement_command_id.map(|id| id.as_uuid()))
             .append(", status = ")
             .bind(deployment.status.as_str())
             .append(", failure = ")

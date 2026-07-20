@@ -1,5 +1,6 @@
 mod in_memory;
 mod postgres;
+mod postgres_cutovers;
 mod postgres_tls;
 
 pub use in_memory::InMemoryEdgeRepository;

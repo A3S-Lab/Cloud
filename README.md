@@ -116,9 +116,15 @@ API command
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
+- **Immutable One-Node Updates**: Accept a complete replacement template for
+  an active workload, run the candidate on the previous Runtime node, preserve
+  the active revision and routes until health and the exact Gateway
+  acknowledgement succeed, then stop the previous revision with a
+  deterministic command and wait for durable stopped-or-absent evidence
 - **Convergent Recovery**: Reattach after provider creation, recover a lost
   provider at the same generation, preserve the prior healthy revision on a
-  failed update, and drive cancellation through bounded cleanup
+  failed or rejected update, resume retirement after activation, and drive
+  cancellation through bounded cleanup
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
@@ -133,8 +139,8 @@ API command
 | Runtime prerequisite | General Task and Service lifecycle with provider capability matching | Complete |
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
-| Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
+| Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, recovery, and one-node immutable replacement with deterministic previous-revision retirement | Complete (`E0` update slice) |
+| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, exact acknowledgement projection, and byte-preserving routed update cutover are implemented; production DNS/CA providers, renewal, manual rollback, and the remaining process-death gates remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
@@ -202,6 +208,79 @@ curl --request POST http://127.0.0.1:8080/api/v1/bootstrap \
 Subsequent API requests use
 `Authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}`. Every mutation also requires a
 stable `idempotency-key` header.
+
+### Update an active workload
+
+Submit a complete replacement service template to the workload deployment
+collection:
+
+```text
+POST /api/v1/organizations/{organization_id}/workloads/{workload_id}/deployments
+```
+
+For example:
+
+```bash
+curl --request POST \
+  "http://127.0.0.1:8080/api/v1/organizations/${A3S_CLOUD_ORGANIZATION_ID}/workloads/${A3S_CLOUD_WORKLOAD_ID}/deployments" \
+  --header "authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}" \
+  --header "content-type: application/json" \
+  --header "idempotency-key: workload-update-v2" \
+  --data '{
+    "template": {
+      "artifact": {
+        "uri": "ghcr.io/example/application:v2",
+        "expectedDigest": null
+      },
+      "process": {
+        "command": [],
+        "args": [],
+        "workingDirectory": null,
+        "environment": {}
+      },
+      "secrets": [],
+      "resources": {
+        "cpuMillis": 500,
+        "memoryBytes": 536870912,
+        "pids": 256,
+        "ephemeralStorageBytes": null
+      },
+      "ports": [
+        {
+          "name": "http",
+          "containerPort": 8080
+        }
+      ],
+      "health": {
+        "portName": "http",
+        "path": "/health",
+        "intervalMs": 1000,
+        "timeoutMs": 500,
+        "healthyThreshold": 2,
+        "unhealthyThreshold": 3,
+        "stabilizationWindowMs": 2000
+      }
+    }
+  }'
+```
+
+A new request returns `202`; an exact idempotent replay returns `200` and the
+same revision, deployment, and operation identities. New deployments use the
+`cloud.deployment@2` workflow. Version 1 remains registered only so operations
+persisted before routed updates can replay.
+
+Only an active running workload may be updated, and a workload may have only
+one nonterminal deployment. The candidate is scheduled on the previous
+Runtime node. Its health must converge before Cloud stages a Gateway cutover,
+and the old route rows remain byte-identical until an `applied`
+acknowledgement matches the exact node, command, Gateway revision, and snapshot
+digest. An unhealthy candidate, a mismatched acknowledgement, or a rejected
+reload leaves the previous route and active revision selected. After the exact
+acknowledgement, Cloud swaps the route target, selects the candidate, marks its
+deployment `retiring`, and issues the deterministic stop for the previous
+Runtime revision. Durable stopped-or-absent evidence makes the deployment
+terminal `active`, including after coordinator recovery. Cancellation is
+accepted only before the deployment reaches `verifying`.
 
 ### Run the web console
 
@@ -499,7 +578,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, and the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance are implemented; production certificate automation, Gateway acknowledgement crash recovery, provider-death Secret-rotation apply, update, rollback, and the remaining web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, real Linux/PostgreSQL/Docker Secret acceptance, post-commit rotation restarts with process-loss recovery and plaintext scans, the restart-safe filesystem/S3-compatible workload-log path with provider/control-plane process-death and corruption acceptance, and one-node immutable update with exact routed cutover and deterministic retirement are implemented; production certificate automation, the remaining Gateway process-death gate, provider-death Secret-rotation apply, manual rollback, and the remaining web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
@@ -593,6 +672,8 @@ persistence, a real child-process death after immutable object publication but
 before PostgreSQL receipt, exact orphan adoption, ordered REST corruption
 projection, cancellation, failed-update preservation, cleanup, and
 Secret-rotation restart recovery after the committed version boundary. The
+real Docker update case deploys healthy A, proves an unhealthy B cannot replace
+it, activates healthy C, and stops A only after C is selected. The rotation
 restart case races reconstructed workers, derives one new
 revision with the pinned artifact unchanged, reconstructs Flow after the
 reference-only Runtime result, and scans the restart/checkpoint, desired-state,

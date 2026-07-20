@@ -14,6 +14,7 @@ pub async fn exercise_pre_dispatch_cancellation(
         test_artifact_resolver(),
         node_repository.clone(),
         node_repository,
+        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;
@@ -96,6 +97,7 @@ pub async fn exercise_dispatched_cancellation(
         test_artifact_resolver(),
         node_repository.clone(),
         node_repository.clone(),
+        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;
