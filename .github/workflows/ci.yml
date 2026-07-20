@@ -146,12 +146,13 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 1.85.0
+          cache: false
 
       - name: Start digest-pinned rootless BuildKit on an ephemeral loopback endpoint
         run: |
           buildkit_image=docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b
           docker pull "$buildkit_image"
-          docker run --detach --rm --privileged \
+          docker run --detach --privileged \
             --name a3s-cloud-buildkit \
             --publish 127.0.0.1:12340:1234 \
             "$buildkit_image" \
@@ -163,6 +164,11 @@ jobs:
           [[ $buildctl_version == *"v0.31.2"* ]]
           ready=false
           for attempt in $(seq 1 90); do
+            state=$(docker inspect --format '{{.State.Status}}' a3s-cloud-buildkit)
+            if [[ $state == exited || $state == dead ]]; then
+              docker logs a3s-cloud-buildkit
+              exit 1
+            fi
             if "$RUNNER_TEMP/buildctl" \
               --addr tcp://127.0.0.1:12340 debug workers >/dev/null 2>&1; then
               ready=true
