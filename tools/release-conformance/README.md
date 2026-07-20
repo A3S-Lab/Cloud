@@ -110,9 +110,10 @@ The default evidence directory is
   post-cleanup inventories.
 
 `result.txt` is withheld if the scenario, cleanup, source-cleanliness check,
-host-inventory comparison, or evidence credential scan fails. Private node and
-Gateway keys, generated credentials, PostgreSQL data, registry data, and build
-output remain under the run root and are removed before success is recorded.
+host-inventory comparison, or evidence credential scan fails. PostgreSQL and
+registry fixture data remain on container tmpfs mounts. Private node and
+Gateway keys, generated credentials, and build output remain under the run
+root. Both storage classes are removed before success is recorded.
 
 The dedicated GitHub Actions workflow runs this contract on a disposable
 Ubuntu host and uploads the evidence directory even when the gate fails. A

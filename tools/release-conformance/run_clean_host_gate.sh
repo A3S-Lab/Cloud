@@ -2,6 +2,7 @@
 
 set -Eeuo pipefail
 umask 077
+export PYTHONDONTWRITEBYTECODE=1
 
 readonly POSTGRES_IMAGE="postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
 readonly REGISTRY_IMAGE="registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
@@ -205,12 +206,11 @@ evidence=$(realpath -m "$evidence")
 target_dir=$(realpath -m "$target_dir")
 config_dir="$run_root/config"
 state_dir="$run_root/state"
-registry_data="$run_root/registry"
 gateway_certificates="$state_dir/gateway-certificates"
 secret_memory_root="/dev/shm/a3s-cloud-e0-$suffix"
 context_file="$run_root/release-context.json"
 
-mkdir -p "$evidence" "$config_dir" "$state_dir" "$registry_data" "$target_dir"
+mkdir -p "$evidence" "$config_dir" "$state_dir" "$target_dir"
 exec > >(tee -a "$evidence/runner.log") 2>&1
 
 log() {
@@ -446,7 +446,7 @@ docker run --detach --name "$postgres" --pull=never \
 docker run --detach --name "$registry" --pull=never \
     --label "$fixture_label" \
     --publish 127.0.0.1::5000 \
-    --mount "type=bind,source=$registry_data,target=/var/lib/registry" \
+    --tmpfs /var/lib/registry:rw,nosuid,nodev,noexec,size=268435456 \
     "$REGISTRY_IMAGE" >"$evidence/registry.id"
 postgres_port=$(docker inspect --format \
     '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$postgres")
