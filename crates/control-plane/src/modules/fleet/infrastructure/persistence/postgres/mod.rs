@@ -9,8 +9,8 @@ use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertifi
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeCertificateRotationCompletion,
     NodeCertificateRotationDraft, NodeCertificateRotationReservation, NodeEnrollmentDraft,
-    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeStateChange,
-    RuntimeObservationRecord,
+    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogChunkMetadata,
+    NodeLogChunkQuery, NodeStateChange, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
@@ -275,5 +275,12 @@ impl INodeControlRepository for PostgresNodeRepository {
         received_at: DateTime<Utc>,
     ) -> Result<NodeLogChunkReceipt, RepositoryError> {
         control::record_log_chunks(&self.executor, batch, received_at).await
+    }
+
+    async fn list_log_chunks(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError> {
+        control::list_log_chunks(&self.executor, query).await
     }
 }

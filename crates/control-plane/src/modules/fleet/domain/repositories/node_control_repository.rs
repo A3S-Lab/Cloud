@@ -4,7 +4,7 @@ use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeGatewayAck,
     NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
 };
-use a3s_runtime::contract::RuntimeObservation;
+use a3s_runtime::contract::{RuntimeLogStream, RuntimeObservation};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -26,6 +26,29 @@ pub struct NodeLogChunkReceiptDraft {
     pub sequence: u64,
     pub observed_at_ms: u64,
     pub stream: String,
+    pub checksum: String,
+    pub object_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeLogChunkQuery {
+    pub node_id: NodeId,
+    pub unit_id: String,
+    pub generation: u64,
+    pub after_sequence: u64,
+    pub limit: usize,
+    pub stream: Option<RuntimeLogStream>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeLogChunkMetadata {
+    pub node_id: NodeId,
+    pub unit_id: String,
+    pub generation: u64,
+    pub cursor: String,
+    pub sequence: u64,
+    pub observed_at_ms: u64,
+    pub stream: RuntimeLogStream,
     pub checksum: String,
     pub object_key: String,
 }
@@ -83,6 +106,42 @@ impl NodeLogChunkReceiptDraft {
             || self.object_key.len() > 4096
         {
             return Err("log chunk receipt is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn metadata(&self, node_id: NodeId) -> Result<NodeLogChunkMetadata, String> {
+        self.validate()?;
+        let stream = match self.stream.as_str() {
+            "stdout" => RuntimeLogStream::Stdout,
+            "stderr" => RuntimeLogStream::Stderr,
+            _ => return Err("log chunk receipt stream is invalid".into()),
+        };
+        Ok(NodeLogChunkMetadata {
+            node_id,
+            unit_id: self.unit_id.clone(),
+            generation: self.generation,
+            cursor: self.cursor.clone(),
+            sequence: self.sequence,
+            observed_at_ms: self.observed_at_ms,
+            stream,
+            checksum: self.checksum.clone(),
+            object_key: self.object_key.clone(),
+        })
+    }
+}
+
+impl NodeLogChunkQuery {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.node_id.as_uuid().is_nil()
+            || self.unit_id.is_empty()
+            || self.unit_id.len() > 512
+            || self.unit_id.contains('\0')
+            || self.generation == 0
+            || self.limit == 0
+            || self.limit > 1_000
+        {
+            return Err("log chunk query is invalid".into());
         }
         Ok(())
     }
@@ -151,4 +210,9 @@ pub trait INodeControlRepository: Send + Sync {
         batch: NodeLogBatchReceiptDraft,
         received_at: DateTime<Utc>,
     ) -> Result<NodeLogChunkReceipt, RepositoryError>;
+
+    async fn list_log_chunks(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError>;
 }

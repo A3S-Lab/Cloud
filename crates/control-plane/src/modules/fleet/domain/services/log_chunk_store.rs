@@ -8,6 +8,13 @@ pub struct StoredLogChunk {
     pub created: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RetrievedLogChunk {
+    Found(NodeLogChunkReport),
+    Missing,
+    Corrupt,
+}
+
 #[async_trait]
 pub trait ILogChunkStore: Send + Sync {
     async fn put(
@@ -17,6 +24,12 @@ pub trait ILogChunkStore: Send + Sync {
         ordinal: u16,
         report: &NodeLogChunkReport,
     ) -> Result<StoredLogChunk, LogChunkStoreError>;
+
+    async fn get(
+        &self,
+        object_key: &str,
+        expected_checksum: &str,
+    ) -> Result<RetrievedLogChunk, LogChunkStoreError>;
 
     async fn remove(&self, object_key: &str) -> Result<(), LogChunkStoreError>;
 

@@ -16,6 +16,12 @@ node {
   state_dir = ".a3s/cloud/node"
 }
 
+logs {
+  poll_interval_ms = 1000
+  max_batch_chunks = 256
+  max_batch_bytes = 16777216
+}
+
 docker {
   socket = "unix:///var/run/docker.sock"
   namespace = "a3s-cloud"

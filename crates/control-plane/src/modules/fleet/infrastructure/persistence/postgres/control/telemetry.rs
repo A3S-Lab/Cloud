@@ -1,4 +1,5 @@
 use super::*;
+use a3s_runtime::contract::RuntimeLogStream;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LogChunkRow {
@@ -39,6 +40,23 @@ impl From<&NodeLogChunkReceiptDraft> for LogChunkRow {
             checksum: value.checksum.clone(),
             object_key: value.object_key.clone(),
         }
+    }
+}
+
+impl LogChunkRow {
+    fn metadata(self, node_id: NodeId) -> Result<NodeLogChunkMetadata, PostgresPersistenceError> {
+        NodeLogChunkReceiptDraft {
+            unit_id: self.unit_id,
+            generation: self.generation,
+            cursor: self.cursor,
+            sequence: self.sequence,
+            observed_at_ms: self.observed_at_ms,
+            stream: self.stream,
+            checksum: self.checksum,
+            object_key: self.object_key,
+        }
+        .metadata(node_id)
+        .map_err(PostgresPersistenceError::Invariant)
     }
 }
 
@@ -351,6 +369,46 @@ pub(in super::super) async fn record_log_chunks(
                     )?;
                 }
                 log_receipt(&batch, false)
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
+pub(in super::super) async fn list_log_chunks(
+    executor: &PostgresExecutor,
+    query: NodeLogChunkQuery,
+) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError> {
+    query.validate().map_err(RepositoryError::Conflict)?;
+    let limit = i64::try_from(query.limit)
+        .map_err(|_| RepositoryError::Conflict("log chunk query limit is invalid".into()))?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let mut statement = sql_query::<LogChunkRow>(
+                    "select unit_id, generation, cursor_value, sequence, observed_at_ms, stream, checksum, object_key from node_log_chunks where node_id = ",
+                )
+                .bind(query.node_id.as_uuid())
+                .append(" and unit_id = ")
+                .bind(query.unit_id.as_str())
+                .append(" and generation = ")
+                .bind(query.generation)
+                .append(" and sequence > ")
+                .bind(query.after_sequence);
+                if let Some(stream) = query.stream {
+                    statement = statement.append(" and stream = ").bind(match stream {
+                        RuntimeLogStream::Stdout => "stdout",
+                        RuntimeLogStream::Stderr => "stderr",
+                    });
+                }
+                let rows = fetch_all(
+                    transaction,
+                    statement.append(" order by sequence limit ").bind(limit),
+                )
+                .await?;
+                rows.into_iter()
+                    .map(|row| row.metadata(query.node_id))
+                    .collect()
             })
         })
         .await

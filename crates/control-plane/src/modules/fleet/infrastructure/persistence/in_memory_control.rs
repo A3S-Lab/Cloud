@@ -2,8 +2,8 @@ use super::in_memory::project_heartbeat;
 use super::InMemoryNodeRepository;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogChunkReceiptDraft,
-    RuntimeObservationRecord,
+    INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogChunkMetadata, NodeLogChunkQuery,
+    NodeLogChunkReceiptDraft, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -589,6 +589,38 @@ impl INodeControlRepository for InMemoryNodeRepository {
             },
         );
         log_receipt(&batch, false)
+    }
+
+    async fn list_log_chunks(
+        &self,
+        query: NodeLogChunkQuery,
+    ) -> Result<Vec<NodeLogChunkMetadata>, RepositoryError> {
+        query.validate().map_err(RepositoryError::Conflict)?;
+        let state = self.state.read().await;
+        state
+            .log_chunks
+            .iter()
+            .filter(|((node_id, unit_id, generation, sequence), stored)| {
+                *node_id == query.node_id
+                    && unit_id == &query.unit_id
+                    && *generation == query.generation
+                    && *sequence > query.after_sequence
+                    && query.stream.is_none_or(|stream| {
+                        stored.draft.stream
+                            == match stream {
+                                a3s_runtime::contract::RuntimeLogStream::Stdout => "stdout",
+                                a3s_runtime::contract::RuntimeLogStream::Stderr => "stderr",
+                            }
+                    })
+            })
+            .take(query.limit)
+            .map(|(_, stored)| {
+                stored
+                    .draft
+                    .metadata(query.node_id)
+                    .map_err(RepositoryError::Storage)
+            })
+            .collect()
     }
 }
 

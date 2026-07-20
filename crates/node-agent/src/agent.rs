@@ -1,10 +1,12 @@
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
+use crate::log_shipper::LogShipper;
 use crate::state_file::{self, StateLock};
 use crate::{
     CommandExecutionError, CommandExecutor, CommandJournalError, DurableGatewaySnapshotInstaller,
     EnrolledNodeIdentity, FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
-    GatewaySnapshotInstaller, IdentityStoreError, NodeAgentConfig, NodeControlClient,
-    NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
+    GatewaySnapshotInstaller, IdentityStoreError, LogShippingConfig, LogShippingError,
+    NodeAgentConfig, NodeControlClient, NodeControlClientError, NodeControlTransport,
+    NodeIdentityState, NodeSecretTransport,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
@@ -73,6 +75,7 @@ pub async fn run_node_agent(
         capabilities,
         env!("CARGO_PKG_VERSION").into(),
         config.node.state_dir.clone(),
+        config.logs.clone(),
         Duration::from_millis(config.control_plane.retry_initial_ms),
         Duration::from_millis(config.control_plane.retry_max_ms),
     )?;
@@ -109,9 +112,11 @@ impl NodeRuntimeProvider {
 pub struct NodeAgentSession {
     transport: Arc<dyn NodeControlTransport>,
     executor: CommandExecutor,
+    log_shipper: LogShipper,
     identity: EnrolledNodeIdentity,
     capabilities: RuntimeCapabilities,
     agent_version: String,
+    log_poll_interval: Duration,
     retry_initial: Duration,
     retry_maximum: Duration,
 }
@@ -126,6 +131,7 @@ impl NodeAgentSession {
         capabilities: RuntimeCapabilities,
         agent_version: String,
         state_dir: PathBuf,
+        log_config: LogShippingConfig,
         retry_initial: Duration,
         retry_maximum: Duration,
     ) -> Result<Self, NodeAgentError> {
@@ -144,13 +150,23 @@ impl NodeAgentSession {
                 "node-agent session identity or retry policy is invalid".into(),
             ));
         }
-        let journal = FileCommandJournal::new(state_dir, identity.response.node_id)?;
+        let journal = FileCommandJournal::new(state_dir.clone(), identity.response.node_id)?;
+        let log_poll_interval = Duration::from_millis(log_config.poll_interval_ms);
+        let log_shipper = LogShipper::new(
+            identity.response.node_id,
+            Arc::clone(&runtime),
+            Arc::clone(&transport),
+            state_dir,
+            log_config,
+        )?;
         Ok(Self {
             transport,
             executor: CommandExecutor::new(journal, runtime, gateway),
+            log_shipper,
             identity,
             capabilities,
             agent_version,
+            log_poll_interval,
             retry_initial,
             retry_maximum,
         })
@@ -159,11 +175,13 @@ impl NodeAgentSession {
     pub async fn run(&self, shutdown: watch::Receiver<bool>) -> Result<(), NodeAgentError> {
         let command_loop = self.command_loop();
         let heartbeat_loop = self.heartbeat_loop();
+        let log_loop = self.log_loop();
         let shutdown = wait_for_shutdown(shutdown);
-        tokio::pin!(command_loop, heartbeat_loop, shutdown);
+        tokio::pin!(command_loop, heartbeat_loop, log_loop, shutdown);
         tokio::select! {
             result = &mut command_loop => result,
             result = &mut heartbeat_loop => result,
+            result = &mut log_loop => result,
             () = &mut shutdown => Ok(()),
         }
     }
@@ -258,6 +276,33 @@ impl NodeAgentSession {
                 Err(error) if error.retryable() => {
                     let delay = backoff.next_delay();
                     tracing::warn!(error = %error, ?delay, "node heartbeat will retry");
+                    tokio::time::sleep(delay).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    async fn log_loop(&self) -> Result<(), NodeAgentError> {
+        let mut backoff = ExponentialBackoff::new(self.retry_initial, self.retry_maximum);
+        loop {
+            let result = async {
+                let targets = self.executor.journal().log_targets().await?;
+                self.log_shipper
+                    .ship_once(&targets)
+                    .await
+                    .map_err(NodeAgentError::from)
+            }
+            .await;
+            match result {
+                Ok(true) => backoff.reset(),
+                Ok(false) => {
+                    backoff.reset();
+                    tokio::time::sleep(self.log_poll_interval).await;
+                }
+                Err(error) if error.retryable() => {
+                    let delay = backoff.next_delay();
+                    tracing::warn!(error = %error, ?delay, "node log shipping will retry");
                     tokio::time::sleep(delay).await;
                 }
                 Err(error) => return Err(error),
@@ -628,6 +673,8 @@ pub enum NodeAgentError {
     #[error(transparent)]
     Journal(#[from] CommandJournalError),
     #[error(transparent)]
+    LogShipping(#[from] LogShippingError),
+    #[error(transparent)]
     Execution(#[from] CommandExecutionError),
     #[error(transparent)]
     ControlPlane(#[from] NodeControlClientError),
@@ -645,6 +692,7 @@ impl NodeAgentError {
                 true
             }
             Self::Gateway(error) => error.retryable(),
+            Self::LogShipping(error) => error.retryable(),
             Self::Invalid(_)
             | Self::State(_)
             | Self::Config(_)

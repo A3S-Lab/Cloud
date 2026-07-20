@@ -32,6 +32,35 @@ impl MaterializedSecrets {
 }
 
 impl DockerRuntimeDriver {
+    pub(super) async fn resolve_log_redaction_materials(
+        &self,
+        spec: &RuntimeUnitSpec,
+    ) -> RuntimeResult<Vec<SecretMaterial>> {
+        if spec.secrets.is_empty() {
+            return Ok(Vec::new());
+        }
+        let transport = self.secret_transport.read().await.clone().ok_or_else(|| {
+            RuntimeError::ProviderUnavailable(
+                "Docker Secret material transport is not bound".into(),
+            )
+        })?;
+        let mut materials = Vec::with_capacity(spec.secrets.len());
+        for secret in &spec.secrets {
+            let reference = CloudSecretReference::parse(&secret.reference).map_err(|_| {
+                RuntimeError::InvalidRequest(
+                    "Docker log redaction Secret reference is invalid".into(),
+                )
+            })?;
+            materials.push(
+                transport
+                    .resolve_secret(reference)
+                    .await
+                    .map_err(secret_transport_error)?,
+            );
+        }
+        Ok(materials)
+    }
+
     pub(super) async fn materialize_secrets(
         &self,
         spec: &RuntimeUnitSpec,
@@ -422,6 +451,47 @@ mod tests {
             driver.materialize_secrets(&spec, &digest).await,
             Err(RuntimeError::InvalidRequest(_))
         ));
+    }
+
+    struct RejectedSecretTransport;
+
+    #[async_trait]
+    impl NodeSecretTransport for RejectedSecretTransport {
+        async fn resolve_secret(
+            &self,
+            _reference: CloudSecretReference,
+        ) -> Result<SecretMaterial, NodeControlClientError> {
+            Err(NodeControlClientError::Rejected {
+                status: 403,
+                code: "forbidden".into(),
+                message: "sensitive-control-plane-detail".into(),
+                retryable: false,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn log_redaction_fails_closed_when_secret_authorization_is_rejected() {
+        let driver = DockerRuntimeDriver::connect(&DockerConfig {
+            socket: "unix:///var/run/docker.sock".into(),
+            namespace: "secret-log-redaction-test".into(),
+            operation_timeout_ms: 1_000,
+            secret_memory_dir: "/dev/shm/a3s-cloud/test-secrets".into(),
+        })
+        .expect("Docker driver");
+        let binding: Arc<dyn NodeSecretTransport> = Arc::new(RejectedSecretTransport);
+        driver
+            .bind_secret_transport(binding)
+            .await
+            .expect("Secret transport");
+        let reference =
+            CloudSecretReference::new(Uuid::now_v7(), Uuid::now_v7(), 2).expect("reference");
+        let error = driver
+            .resolve_log_redaction_materials(&runtime_spec(reference.to_string()))
+            .await
+            .expect_err("rejected redaction material");
+        assert!(matches!(error, RuntimeError::InvalidRequest(_)));
+        assert!(!error.to_string().contains("sensitive-control-plane-detail"));
     }
 
     #[cfg(target_os = "linux")]

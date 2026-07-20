@@ -54,9 +54,9 @@ use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepos
 use crate::modules::workloads::domain::services::IOciArtifactResolver;
 use crate::modules::workloads::{
     CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
-    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, IWorkloadRuntimeControl,
-    ListWorkloadsHandler, OciRegistryArtifactResolver, PostgresWorkloadRepository,
-    StopWorkloadHandler, WorkloadRuntimeReconciler, WorkloadsModule,
+    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
+    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
+    PostgresWorkloadRepository, StopWorkloadHandler, WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -364,6 +364,7 @@ fn build_application_with_health(
     let list_workloads = Arc::clone(&workloads);
     let get_workloads = Arc::clone(&workloads);
     let get_deployment_workloads = Arc::clone(&workloads);
+    let get_log_workloads = Arc::clone(&workloads);
     let workload_list_operations = Arc::clone(&operations);
     let workload_get_operations = Arc::clone(&operations);
     let deployment_get_operations = Arc::clone(&operations);
@@ -382,6 +383,7 @@ fn build_application_with_health(
     let workload_list_observations = Arc::clone(&node_control);
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
+    let workload_log_metadata = Arc::clone(&node_control);
     let gateway_commands = node_control;
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
@@ -398,6 +400,7 @@ fn build_application_with_health(
     let get_secrets = secrets;
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
+    let workload_log_store = Arc::clone(&log_chunks);
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
     let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
@@ -576,6 +579,13 @@ fn build_application_with_health(
                         get_deployment_workloads,
                         deployment_get_operations,
                         deployment_get_observations,
+                    ),
+                )
+                .query_handler::<crate::modules::workloads::GetWorkloadLogs, _>(
+                    GetWorkloadLogsHandler::new(
+                        get_log_workloads,
+                        workload_log_metadata,
+                        workload_log_store,
                     ),
                 )
                 .query_handler::<crate::modules::fleet::GetNode, _>(

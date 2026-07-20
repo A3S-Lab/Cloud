@@ -81,6 +81,17 @@ impl crate::modules::fleet::domain::services::ILogChunkStore for TestLogChunkSto
         })
     }
 
+    async fn get(
+        &self,
+        _object_key: &str,
+        _expected_checksum: &str,
+    ) -> std::result::Result<
+        crate::modules::fleet::domain::services::RetrievedLogChunk,
+        crate::modules::fleet::domain::services::LogChunkStoreError,
+    > {
+        Ok(crate::modules::fleet::domain::services::RetrievedLogChunk::Missing)
+    }
+
     async fn remove(
         &self,
         _object_key: &str,

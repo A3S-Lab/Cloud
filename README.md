@@ -94,6 +94,11 @@ API command
   placing plaintext in desired state, Runtime state, commands, or events
 - **Runtime Observations**: Record provider capabilities, workload state,
   health, logs, and durable command acknowledgements from A3S Runtime
+- **Durable Workload Logs**: Project active Runtime targets from the command
+  journal, persist one bounded batch before mTLS upload, resume only after an
+  exact receipt, redact bound Secret values at the Docker log boundary, and
+  query verified local chunk objects through tenant-scoped cursor pages with
+  explicit missing or corrupt gaps
 - **Digest-Pinned Deployments**: Resolve mutable OCI tags once, persist the
   resulting digest, schedule one eligible node, and activate only after real
   Runtime health evidence
@@ -114,8 +119,9 @@ API command
 | Foundation | Identity, tenancy, PostgreSQL, Flow, outbox, projections, API, and web shell | Complete |
 | Node control | Enrollment, node identity, outbound mTLS, command leases, and observations | Complete |
 | Deployment | Digest-pinned OCI revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Complete |
-| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, logs, update, rollback, and crash recovery remain | In progress (`E0`) |
+| Reachability | Route ownership, managed TLS policy and provisioning, routed Gateway validation, complete snapshot publication, and exact acknowledgement projection are implemented; production DNS/CA providers, renewal, update, rollback, and crash recovery remain | In progress (`E0`) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed workload bindings, assigned-node mTLS materialization, Docker environment/file injection, metadata-only APIs/events, and reference-only durable state are implemented; real-provider restart/crash gates and full redaction scans remain | In progress (`E0`) |
+| Logs | Restart-safe bounded node shipping, Docker-bound Secret redaction, PostgreSQL metadata, verified local chunk objects, cursor paging, tenant isolation, and explicit missing/corrupt gaps are implemented; production S3-compatible storage, retention, provider cursor-loss recovery, real crash certification, and live web logs remain | In progress (`E0`) |
 | Source delivery | Pinned Git revisions, isolated builds, OCI publication, provenance, and push-to-deploy | Planned (`G0`) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
@@ -223,6 +229,9 @@ deployment and Edge policies are split across independent boundaries:
 | `gateway.connect_timeout_ms` | Connection timeout for the node-local Gateway management API |
 | `gateway.validation_timeout_ms` | Independent deadline for validating one complete snapshot |
 | `gateway.reload_timeout_ms` | Independent deadline for transactionally reloading one snapshot |
+| `logs.poll_interval_ms` | Independent node-agent interval for polling active Runtime log targets |
+| `logs.max_batch_chunks` | Maximum chunks in one durable upload batch; closed at 256 |
+| `logs.max_batch_bytes` | Maximum log-data bytes in one durable upload batch; closed at 16 MiB |
 | `docker.secret_memory_dir` | Linux tmpfs root used only for transient Docker file-Secret bind mounts |
 
 These timers do not consume one shared request budget. API acceptance commits
@@ -249,6 +258,22 @@ selects either an environment variable or an absolute file target:
 File targets use `{"kind":"file","path":"/run/secrets/key","mode":256}`.
 The Linux node-agent rejects file materialization unless
 `docker.secret_memory_dir` is backed by tmpfs.
+
+### Query workload logs
+
+The authenticated workload log query reads one immutable revision and returns
+records ordered after an opaque versioned cursor:
+
+```text
+GET /api/v1/organizations/{organizationId}/workloads/{workloadId}/revisions/{revisionId}/logs?cursor=v1:42&limit=100&stream=stdout
+```
+
+`limit` is between 1 and 256, and `stream` may be `stdout` or `stderr`. A data
+record carries the provider cursor, sequence, observation time, stream, and
+text. If PostgreSQL metadata points to a deleted or invalid local object,
+the same ordered position is returned as a `gap` with reason `missing` or
+`corrupt`; storage unavailability remains an API error. The endpoint is
+snapshot paging, not the still-planned live web stream.
 
 See [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) for the complete control
@@ -367,7 +392,7 @@ security model, consistency boundaries, and failure recovery.
 | F0 — Foundation | Boot control plane, PostgreSQL, identity, tenancy, Flow operations, outbox, projections, and web shell | Verified |
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| E0 — Reachable service | Edge desired state, managed TLS mechanics, routed Gateway validation, exact activation projection, and encrypted Secret resources with workload-to-Docker injection are implemented; production certificate automation, Secret restart/crash acceptance, logs, update, rollback, and web timeline remain | In progress |
+| E0 — Reachable service | Edge desired state, managed TLS mechanics, exact activation projection, encrypted Secret injection, and the restart-safe local workload-log path are implemented; production certificate automation, Secret/log real-provider crash acceptance, S3 log storage and retention, update, rollback, and web timeline remain | In progress |
 | G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | Planned |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |

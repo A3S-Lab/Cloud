@@ -18,6 +18,12 @@ pub enum JournalDecision {
     Replay(NodeCommandAck),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeLogTarget {
+    pub unit_id: String,
+    pub generation: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct JournalCompletion {
@@ -233,6 +239,13 @@ impl FileCommandJournal {
             .map_err(task_error)?
     }
 
+    pub async fn log_targets(&self) -> Result<Vec<RuntimeLogTarget>, CommandJournalError> {
+        let journal = self.clone();
+        tokio::task::spawn_blocking(move || journal.log_targets_sync())
+            .await
+            .map_err(task_error)?
+    }
+
     fn begin_sync(
         &self,
         envelope: NodeCommandEnvelope,
@@ -421,6 +434,52 @@ impl FileCommandJournal {
         Ok(self.read_journal()?.last_acknowledged_sequence)
     }
 
+    fn log_targets_sync(&self) -> Result<Vec<RuntimeLogTarget>, CommandJournalError> {
+        state_file::ensure_directory(&self.root)?;
+        let _lock = StateLock::exclusive(&self.root.join(JOURNAL_LOCK_FILE))?;
+        let journal = self.read_journal()?;
+        let mut entries = journal.entries.values().collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.envelope.sequence);
+        let mut targets = BTreeMap::<String, RuntimeLogTarget>::new();
+        for entry in entries {
+            let Some(JournalCompletion {
+                outcome: NodeCommandOutcome::Succeeded { result },
+                ..
+            }) = entry.completion.as_ref()
+            else {
+                continue;
+            };
+            match (&entry.envelope.payload, result.as_ref()) {
+                (
+                    NodeCommandPayload::RuntimeApply { request },
+                    a3s_cloud_contracts::NodeCommandResult::RuntimeApplied { .. },
+                ) => {
+                    let candidate = RuntimeLogTarget {
+                        unit_id: request.spec.unit_id.clone(),
+                        generation: request.spec.generation,
+                    };
+                    let replace = targets
+                        .get(&candidate.unit_id)
+                        .is_none_or(|current| current.generation <= candidate.generation);
+                    if replace {
+                        targets.insert(candidate.unit_id.clone(), candidate);
+                    }
+                }
+                (
+                    NodeCommandPayload::RuntimeRemove { request },
+                    a3s_cloud_contracts::NodeCommandResult::RuntimeRemoved { .. },
+                ) if targets
+                    .get(&request.unit_id)
+                    .is_some_and(|target| target.generation == request.generation) =>
+                {
+                    targets.remove(&request.unit_id);
+                }
+                _ => {}
+            }
+        }
+        Ok(targets.into_values().collect())
+    }
+
     fn read_journal(&self) -> Result<CommandJournal, CommandJournalError> {
         let path = self.root.join(JOURNAL_FILE);
         let journal: CommandJournal = state_file::read_json(&path, "node command journal")?
@@ -493,8 +552,9 @@ mod tests {
     use a3s_cloud_contracts::{CloudSecretReference, NodeCommandMetadata, NodeCommandResult};
     use a3s_runtime::contract::{
         ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
-        RuntimeApplyRequest, RuntimeInspection, RuntimeNetworkSpec, RuntimeProcessSpec,
-        RuntimeUnitClass, RuntimeUnitSpec, SecretReference, SecretTarget,
+        RuntimeActionRequest, RuntimeApplyRequest, RuntimeInspection, RuntimeNetworkSpec,
+        RuntimeObservation, RuntimeProcessSpec, RuntimeRemoval, RuntimeUnitClass, RuntimeUnitSpec,
+        RuntimeUnitState, SecretReference, SecretTarget,
     };
     use chrono::Duration;
     use std::collections::BTreeMap;
@@ -606,6 +666,66 @@ mod tests {
             },
         )
         .expect("Runtime apply envelope")
+    }
+
+    fn applied_outcome(envelope: &NodeCommandEnvelope) -> NodeCommandOutcome {
+        let NodeCommandPayload::RuntimeApply { request } = &envelope.payload else {
+            panic!("apply payload");
+        };
+        NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::RuntimeApplied {
+                observation: Box::new(RuntimeObservation {
+                    schema: RuntimeObservation::SCHEMA.into(),
+                    unit_id: request.spec.unit_id.clone(),
+                    generation: request.spec.generation,
+                    spec_digest: request.spec.digest().expect("spec digest"),
+                    class: request.spec.class,
+                    state: RuntimeUnitState::Accepted,
+                    provider_resource_id: None,
+                    provider_build: None,
+                    observed_at_ms: 1,
+                    started_at_ms: None,
+                    finished_at_ms: None,
+                    health: None,
+                    outputs: Vec::new(),
+                    usage: None,
+                    evidence: None,
+                    provider_attestation: None,
+                    failure: None,
+                }),
+            }),
+        }
+    }
+
+    fn remove_envelope(
+        node_id: Uuid,
+        command_id: Uuid,
+        sequence: u64,
+        aggregate_id: Uuid,
+    ) -> NodeCommandEnvelope {
+        let issued_at = Utc::now();
+        NodeCommandEnvelope::new(
+            NodeCommandMetadata {
+                command_id,
+                lease_id: Uuid::now_v7(),
+                node_id,
+                sequence,
+                aggregate_id,
+                issued_at,
+                not_after: issued_at + Duration::minutes(1),
+                correlation_id: Uuid::now_v7(),
+            },
+            NodeCommandPayload::RuntimeRemove {
+                request: RuntimeActionRequest {
+                    schema: RuntimeActionRequest::SCHEMA.into(),
+                    request_id: "remove-service-1".into(),
+                    unit_id: "service-1".into(),
+                    generation: 1,
+                    deadline_at_ms: None,
+                },
+            },
+        )
+        .expect("Runtime remove envelope")
     }
 
     #[tokio::test]
@@ -768,5 +888,57 @@ mod tests {
             .expect("journal JSON");
         assert!(persisted.contains(&reference.to_string()));
         assert!(!persisted.contains("materialized-at-docker"));
+    }
+
+    #[tokio::test]
+    async fn successful_runtime_outcomes_project_restart_safe_log_targets() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let node_id = Uuid::now_v7();
+        let aggregate_id = Uuid::now_v7();
+        let apply_id = Uuid::now_v7();
+        let apply = apply_envelope(node_id, apply_id, 1, aggregate_id, "log-target-apply", 'a');
+        let journal = FileCommandJournal::new(directory.path(), node_id).expect("journal");
+        journal.begin(apply.clone()).await.expect("begin apply");
+        journal
+            .complete(apply_id, Utc::now(), applied_outcome(&apply))
+            .await
+            .expect("complete apply");
+
+        let reopened = FileCommandJournal::new(directory.path(), node_id).expect("reopen journal");
+        assert_eq!(
+            reopened.log_targets().await.expect("project targets"),
+            vec![RuntimeLogTarget {
+                unit_id: "service-1".into(),
+                generation: 1,
+            }]
+        );
+
+        let remove_id = Uuid::now_v7();
+        let remove = remove_envelope(node_id, remove_id, 2, aggregate_id);
+        reopened.begin(remove).await.expect("begin remove");
+        reopened
+            .complete(
+                remove_id,
+                Utc::now(),
+                NodeCommandOutcome::Succeeded {
+                    result: Box::new(NodeCommandResult::RuntimeRemoved {
+                        removal: RuntimeRemoval {
+                            schema: RuntimeRemoval::SCHEMA.into(),
+                            request_id: "remove-service-1".into(),
+                            unit_id: "service-1".into(),
+                            generation: 1,
+                            removed_at_ms: 2,
+                            already_absent: false,
+                        },
+                    }),
+                },
+            )
+            .await
+            .expect("complete remove");
+        assert!(reopened
+            .log_targets()
+            .await
+            .expect("project removed targets")
+            .is_empty());
     }
 }

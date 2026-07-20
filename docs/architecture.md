@@ -7,13 +7,20 @@ ownership, exact and wildcard domain claims, managed Gateway certificate
 provisioning, HTTPS-only snapshot compilation, Fleet dispatch, and exact
 acknowledgement projection. It also has tenant-scoped Secret identities,
 immutable encrypted versions, rotation and version revocation APIs, and
-metadata-only events and idempotency records. PostgreSQL and offline gates pass,
-and a dedicated remote Gateway job exercises the real managed-TLS path. Later
-E0 sections remain the accepted design until their exit gates pass. A3S Cloud
-ships as a Rust modular monolith, a separate Linux node agent, and a React web
-application. The first release still requires production DNS/CA integration,
-renewal, Secret binding and Runtime injection, logs, update, rollback, web,
-crash, and clean-host gates before multi-node scheduling or hosted assets begin.
+metadata-only events and idempotency records, typed workload bindings, and late
+Docker environment/file injection. The first-node log slice now projects active
+Runtime targets durably, persists bounded batches before mTLS upload, redacts
+bound Secret values at the Docker boundary, stores verified chunk objects
+through the local adapter, indexes metadata in PostgreSQL, and exposes
+tenant-scoped cursor queries with explicit missing/corrupt gaps. PostgreSQL and
+offline gates pass, and a dedicated remote Gateway job exercises the real
+managed-TLS path. Later E0 sections remain the accepted design until their exit
+gates pass. A3S Cloud ships as a Rust modular monolith, a separate Linux node
+agent, and a React web application. The first release still requires production
+DNS/CA integration and renewal, real Secret/log crash certification,
+S3-compatible log storage and retention, provider cursor-loss recovery, update,
+rollback, live web logs, and clean-host gates before multi-node scheduling or
+hosted assets begin.
 
 The following decisions are fixed for the first architecture:
 
@@ -218,8 +225,8 @@ inside the same transaction.
 | Projects | create project/environment, request deletion | operation coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
 | Artifacts | register, verify, sign, retain artifact | OCI registry, object store, signer |
-| Fleet | issue enrollment, accept node observation, drain/revoke node | certificate authority, node control |
-| Workloads | create revision, deploy, stop, update, roll back | scheduler, Runtime dispatch, Flow |
+| Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
+| Workloads | create revision, deploy, stop, update, roll back | scheduler, Runtime dispatch, Flow, Fleet log metadata |
 | Edge | claim domain, publish/remove route | DNS verifier, Gateway publisher, ACME |
 | Data | provision database/volume, back up, restore | Runtime dispatch, object store |
 | Secrets | create version, bind, rotate, revoke | envelope encryption, node secret delivery |
@@ -329,6 +336,21 @@ version before decrypting. Environment material is passed directly into the
 Docker create boundary; file material is written only beneath the configured
 Linux tmpfs root and mounted read-only. Runtime state files, command journals,
 Flow input, events, and provider labels never receive the plaintext.
+
+Successful Runtime apply/remove completions are also projected from the command
+journal into restart-safe active log targets. A separate node-agent loop reads
+ordered provider chunks after the durable cursor, persists at most one pending
+batch before upload, and replays that exact batch ID and content after restart.
+It advances per-unit-generation cursors only after an exact validated receipt.
+ACL configuration bounds polling independently and closes each batch at 256
+chunks and 16 MiB of log text.
+
+Before Docker returns stdout/stderr, the driver resolves every immutable Secret
+reference bound to that Runtime unit. Authorization or materialization failure
+fails the log read closed. Exact values are redacted in overlap-safe order, and
+the temporary raw Docker text buffer is zeroized before the sanitized chunks
+leave the driver. Provider cursor disappearance and disconnect-to-gap semantics
+still require an explicit Runtime contract and real-provider certification.
 
 ## 8. Gateway and edge publication
 
@@ -470,6 +492,20 @@ Secret mutations require the `secret:write` scope. The initial resource API is:
 Mutation bodies accept a plaintext `value`, but request debugging redacts it
 and every response returns version metadata only.
 
+Workload log snapshots use:
+
+- `GET /organizations/{organization}/workloads/{workload}/revisions/{revision}/logs`
+
+The query validates organization, workload, and revision ownership before it
+selects the newest assigned deployment for that revision. `cursor=v1:<sequence>`
+pages ordered PostgreSQL metadata, `limit` is closed to 1 through 256, and an
+optional `stream=stdout|stderr` filter preserves sequence order. Each object key
+is validated, then its file type, size, JSON schema, report checksum, and
+expected metadata are verified before its body is returned. Deleted and
+invalid objects remain visible as ordered `missing` and `corrupt` gap records.
+Object-storage unavailability is an error rather than a fabricated gap. This is
+a snapshot query; bounded live fan-out and the web log stream remain E0 work.
+
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
 health, route, and operation states remain visually distinct.
@@ -477,10 +513,12 @@ health, route, and operation states remain visually distinct.
 ## 12. Observability and audit
 
 Every API request, command, Flow run, Runtime unit, Gateway revision, event, and
-log stream carries the same correlation chain. Structured logs redact by field,
-not by best-effort string replacement. Metrics cover queue age, reconcile lag,
-command lease expiry, Runtime convergence, health latency, Gateway publication,
-outbox lag, certificate expiry, and node heartbeat age.
+log stream carries the same correlation chain. Control-plane structured logs
+redact by field. Unstructured Docker stdout/stderr additionally redacts exact
+bound Secret values at the provider boundary before durable shipping. Metrics
+cover queue age, reconcile lag, command lease expiry, Runtime convergence,
+health latency, Gateway publication, outbox lag, certificate expiry, and node
+heartbeat age.
 
 Audit records capture actor, tenant, command, target, result, request ID, and
 time. They are append-only business records, not copies of debug logs. A3S
@@ -540,11 +578,15 @@ Runtime Task containing a BuildKit client and typed recipe; the Build service
 selects a BuildKit endpoint, captures provenance, and registers the resulting
 digest. Runtime remains unaware of Dockerfiles, buildpacks, or registry policy.
 
-The initial log design writes ordered, checksummed chunks to object storage and
-keeps cursors, time ranges, stream identity, and retention state in PostgreSQL.
-Live subscribers receive bounded fan-out directly from the ingestion service.
-Loki or ClickHouse is introduced only when product requirements demand global
-text search at a volume that the chunk index cannot serve.
+The implemented first-node log path writes ordered, checksummed report objects
+through an immutable filesystem adapter and keeps node, unit, generation,
+cursor, sequence, observation time, stream, checksum, and object key metadata
+in PostgreSQL. Reads revalidate the object and surface missing or corrupt
+objects without putting log bodies in PostgreSQL. Production must replace the
+filesystem adapter with S3-compatible storage and add an explicit retention
+policy/worker. Bounded live fan-out is also still planned. Loki or ClickHouse is
+introduced only when product requirements demand global text search at a
+volume that the chunk index cannot serve.
 
 ### 14.2 Middleware deliberately not selected
 
