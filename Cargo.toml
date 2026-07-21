@@ -15,7 +15,7 @@ repository = "https://github.com/A3S-Lab/Cloud"
 
 [workspace.dependencies]
 a3s-acl = "=0.3.0"
-a3s-boot = { version = "=0.1.1", default-features = false, features = [
+a3s-boot = { version = "=0.1.2", default-features = false, features = [
     "auth",
     "axum",
     "cqrs",
