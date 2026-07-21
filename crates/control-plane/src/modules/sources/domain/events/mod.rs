@@ -1,9 +1,11 @@
 mod github_connection_created;
+mod github_connection_reconciled;
 mod github_repository_subscription_created;
 mod github_repository_subscription_deactivated;
 mod source_revision_accepted;
 
 pub use github_connection_created::GithubConnectionCreated;
+pub use github_connection_reconciled::GithubConnectionReconciled;
 pub use github_repository_subscription_created::GithubRepositorySubscriptionCreated;
 pub use github_repository_subscription_deactivated::GithubRepositorySubscriptionDeactivated;
 pub use source_revision_accepted::SourceRevisionAccepted;

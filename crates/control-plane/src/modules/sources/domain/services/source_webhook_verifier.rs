@@ -1,5 +1,6 @@
 use crate::modules::sources::domain::{
-    GitCommitSha, GitProvider, GitReference, GitRepository, GithubInstallationId, WebhookDeliveryId,
+    GitCommitSha, GitProvider, GitReference, GitRepository, GithubConnectionLifecycleChange,
+    GithubInstallationId, WebhookDeliveryId,
 };
 
 #[derive(Debug, Clone)]
@@ -14,9 +15,18 @@ pub struct VerifiedSourcePush {
 }
 
 #[derive(Debug, Clone)]
+pub struct VerifiedGithubConnectionLifecycle {
+    pub provider: GitProvider,
+    pub delivery_id: WebhookDeliveryId,
+    pub change: GithubConnectionLifecycleChange,
+    pub payload_digest: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum VerifiedSourceWebhook {
     Ignored,
     Push(VerifiedSourcePush),
+    GithubConnectionLifecycle(VerifiedGithubConnectionLifecycle),
 }
 
 #[derive(Debug, Clone, Copy)]

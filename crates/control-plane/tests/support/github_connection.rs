@@ -3,8 +3,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     CompleteGithubConnection, GithubAccountId, GithubAccountKind, GithubConnection,
-    GithubConnectionCreated, GithubConnectionFlow, GithubConnectionFlowStage, GithubInstallationId,
-    GithubLogin, IGithubConnectionRepository, NewGithubConnection,
+    GithubConnectionCreated, GithubConnectionFlow, GithubConnectionFlowStage,
+    GithubConnectionLifecycleChange, GithubConnectionStatus, GithubInstallationAccount,
+    GithubInstallationId, GithubLogin, IGithubConnectionRepository, NewGithubConnection,
+    ReconcileGithubConnectionLifecycle, VerifiedGithubConnectionLifecycle, WebhookDeliveryId,
 };
 use a3s_cloud_control_plane::modules::sources::PostgresGithubConnectionRepository;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
@@ -174,12 +176,112 @@ pub(super) async fn exercise_github_connection_persistence(
         .await
         .is_ok());
 
+    let suspend = lifecycle_request(
+        "postgres-github-lifecycle-suspend",
+        GithubConnectionLifecycleChange::InstallationSuspended {
+            installation_id: connection.installation_id,
+            account: installation_account(&connection),
+        },
+        connected_at + Duration::seconds(3),
+    )?;
+    let suspended = repository.reconcile_lifecycle(suspend.clone()).await?;
+    assert!(!suspended.replayed);
+    assert_eq!(suspended.connections.len(), 1);
+    assert_eq!(
+        suspended.connections[0].status,
+        GithubConnectionStatus::Suspended
+    );
+    assert!(repository
+        .find_authoritative_by_installation(connection.installation_id)
+        .await?
+        .is_none());
+    assert!(repository.reconcile_lifecycle(suspend).await?.replayed);
+    let changed_replay = lifecycle_request(
+        "postgres-github-lifecycle-suspend",
+        GithubConnectionLifecycleChange::InstallationDeleted {
+            installation_id: connection.installation_id,
+            account: installation_account(&connection),
+        },
+        connected_at + Duration::seconds(3),
+    )?;
+    assert!(matches!(
+        repository.reconcile_lifecycle(changed_replay).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    repository
+        .reconcile_lifecycle(lifecycle_request(
+            "postgres-github-lifecycle-unsuspend",
+            GithubConnectionLifecycleChange::InstallationUnsuspended {
+                installation_id: connection.installation_id,
+                account: installation_account(&connection),
+            },
+            connected_at + Duration::seconds(4),
+        )?)
+        .await?;
+    assert!(repository
+        .find_authoritative_by_installation(connection.installation_id)
+        .await?
+        .is_some());
+    repository
+        .reconcile_lifecycle(lifecycle_request(
+            "postgres-github-lifecycle-verification-revoked",
+            GithubConnectionLifecycleChange::UserAuthorizationRevoked {
+                user_id: connection.verified_by_user_id,
+                user_login: connection.verified_by_user_login.clone(),
+            },
+            connected_at + Duration::seconds(5),
+        )?)
+        .await?;
+    assert_eq!(
+        repository
+            .find(connected_organization_id)
+            .await?
+            .map(|connection| connection.status),
+        Some(GithubConnectionStatus::VerificationRevoked)
+    );
+
+    let (reconnect_flow, _, _) = prepare_github_flow(
+        &repository,
+        connected_organization_id,
+        42,
+        "connected-after-revocation",
+        connected_at + Duration::seconds(6),
+    )
+    .await?;
+    let reconnected = github_connection(
+        connected_organization_id,
+        42,
+        100,
+        "A3S-Lab",
+        GithubAccountKind::Organization,
+        connected_at + Duration::seconds(6),
+    )?;
+    let reconnected_event = GithubConnectionCreated::envelope(&reconnected, Uuid::now_v7())?;
+    repository
+        .complete(CompleteGithubConnection {
+            flow_id: reconnect_flow.id,
+            connection: reconnected.clone(),
+            event: reconnected_event,
+            completed_at: connected_at + Duration::seconds(7),
+        })
+        .await?;
+    assert_eq!(
+        repository.find(connected_organization_id).await?,
+        Some(reconnected.clone())
+    );
+    assert_eq!(
+        repository
+            .find_authoritative_by_installation(reconnected.installation_id)
+            .await?,
+        Some(reconnected)
+    );
+
     let connection_rows = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from github_source_connections",
         ))
         .await?;
-    assert_eq!(connection_rows, 1);
+    assert_eq!(connection_rows, 2);
     let event_payload = database
         .fetch_one_as(
             sql_query::<Value>(
@@ -198,9 +300,50 @@ pub(super) async fn exercise_github_connection_persistence(
                 "select count(*) from outbox_events where event_key = 'source.github-connection.created'",
             ))
             .await?,
-        1
+        2
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<i64>(
+                "select count(*) from outbox_events where event_key = 'source.github-connection.reconciled'",
+            ))
+            .await?,
+        3
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<i64>(
+                "select count(*) from github_connection_lifecycle_inbox",
+            ))
+            .await?,
+        3
     );
     Ok(())
+}
+
+fn installation_account(connection: &GithubConnection) -> GithubInstallationAccount {
+    GithubInstallationAccount {
+        id: connection.account_id,
+        login: connection.account_login.clone(),
+        kind: connection.account_kind,
+    }
+}
+
+fn lifecycle_request(
+    delivery_id: &str,
+    change: GithubConnectionLifecycleChange,
+    received_at: DateTime<Utc>,
+) -> Result<ReconcileGithubConnectionLifecycle, Box<dyn std::error::Error>> {
+    Ok(ReconcileGithubConnectionLifecycle {
+        lifecycle: VerifiedGithubConnectionLifecycle {
+            provider: a3s_cloud_control_plane::modules::sources::domain::GitProvider::Github,
+            delivery_id: WebhookDeliveryId::parse(delivery_id).map_err(std::io::Error::other)?,
+            change,
+            payload_digest: github_test_digest(delivery_id),
+        },
+        correlation_id: Uuid::now_v7(),
+        received_at,
+    })
 }
 
 async fn prepare_github_flow(

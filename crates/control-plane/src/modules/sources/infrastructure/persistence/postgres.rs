@@ -1,5 +1,6 @@
 use super::subscription_postgres::{
-    map_row as map_subscription_row, select_columns as subscription_select_columns,
+    map_row as map_subscription_row,
+    select_columns_for_authoritative_fanout as authoritative_subscription_select_columns,
     GithubRepositorySubscriptionRow,
 };
 use crate::infrastructure::{
@@ -182,20 +183,25 @@ impl ISourceWebhookRepository for PostgresSourceRevisionRepository {
                             revisions: Vec::new(),
                         });
                     }
-                    let subscription_rows = fetch_all::<GithubRepositorySubscriptionRow, _>(
-                        transaction,
-                        subscription_select_columns()
-                            .append(" where status = 'active' and installation_id = ")
-                            .bind(installation_id)
-                            .append(" and repository_provider = ")
-                            .bind(delivery.provider.as_str())
-                            .append(" and repository_identity = ")
-                            .bind(delivery.repository.identity())
-                            .append(" and branch_name = ")
-                            .bind(branch_name.as_str())
-                            .append(" order by organization_id asc, id asc for share"),
-                    )
-                    .await?;
+                    let subscription_rows = match request.authoritative_connection_id {
+                        Some(connection_id) => fetch_all::<GithubRepositorySubscriptionRow, _>(
+                            transaction,
+                            authoritative_subscription_select_columns()
+                                .append(" where s.status = 'active' and c.status = 'active' and s.connection_id = ")
+                                .bind(connection_id.as_uuid())
+                                .append(" and s.installation_id = ")
+                                .bind(installation_id)
+                                .append(" and s.repository_provider = ")
+                                .bind(delivery.provider.as_str())
+                                .append(" and s.repository_identity = ")
+                                .bind(delivery.repository.identity())
+                                .append(" and s.branch_name = ")
+                                .bind(branch_name.as_str())
+                                .append(" order by s.organization_id asc, s.id asc for share of s, c"),
+                        )
+                        .await?,
+                        None => Vec::new(),
+                    };
                     let mut revisions = Vec::with_capacity(subscription_rows.len());
                     for row in subscription_rows {
                         let subscription = map_subscription_row(row)?;
@@ -254,6 +260,29 @@ impl ISourceWebhookRepository for PostgresSourceRevisionRepository {
 
 #[async_trait]
 impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        source_revision_id: SourceRevisionId,
+    ) -> Result<ExternalSourceRevision, RepositoryError> {
+        let row = Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<SourceRevisionRow>(
+                    "select organization_id, project_id, environment_id, id, repository_provider, repository_url, repository_identity, commit_sha, recipe, recipe_digest, aggregate_version, accepted_at from external_source_revisions where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(source_revision_id.as_uuid()),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .ok_or(RepositoryError::NotFound)?;
+        map_row(row).map_err(|error| match error {
+            PostgresPersistenceError::Repository(error) => error,
+            error => RepositoryError::Storage(error.to_string()),
+        })
+    }
+
     async fn replay_acceptance(
         &self,
         idempotency: &IdempotencyRequest,

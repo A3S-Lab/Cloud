@@ -132,13 +132,16 @@ Owns immutable artifact metadata, provenance, checksums, signatures, and
 registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
-The implemented G0 engine boundary lives here rather than in Sources or
-Runtime. Its typed Build service binds a build ID, checked-out content digest,
-and recipe to a validated OCI root descriptor and local layout receipt. The
-BuildKit adapter verifies every referenced blob and the exact requested
-platform set before accepting the result. Artifact persistence, registry
-locations, provenance, signatures, and build-operation state remain subsequent
-boundaries.
+The implemented G0 build boundary lives here rather than in Sources or Runtime.
+Its typed Build service and `cloud.build@1` Flow bind a build ID, checked-out
+content digest, recipe, Runtime Task identity, and validated OCI root descriptor
+to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
+and requested platform before accepting the result. Registry locations,
+provenance, signatures, and published OCI artifact state remain subsequent
+boundaries. The node-transfer store
+persists command-scoped directory archives by digest so Runtime input/output
+bytes can cross the existing mTLS node boundary without pretending that cache
+objects are published OCI artifacts.
 
 Primary aggregate:
 
@@ -275,9 +278,10 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 ### GitHub source connection
 
-- A Cloud organization owns at most one GitHub connection. A numeric GitHub
-  installation ID and an `(account_kind, account_id)` identity may each belong
-  to at most one Cloud organization.
+- A Cloud organization owns at most one current (`active` or `suspended`)
+  GitHub connection. A current numeric GitHub installation ID and an
+  `(account_kind, account_id)` identity may each belong to at most one Cloud
+  organization. Terminal connections remain history under immutable IDs.
 - Installation setup and OAuth are two stages of one expiring flow. Each stage
   has an independent random 32-byte state, PostgreSQL stores only its SHA-256
   digest, and advancing or completing a stage makes it single-use.
@@ -286,17 +290,26 @@ tables directly. Audit records are append-only and separate from event delivery.
 - S256 PKCE binds the OAuth callback. Only the verifier digest is durable; the
   verifier itself exists in a short-lived secure, HTTP-only, same-site cookie.
 - Completion stores durable numeric installation, account, and verifying-user
-  IDs, account kind, display logins, and connection time in the same
-  transaction as `source.github-connection.created`.
+  IDs, account kind, display logins, `active` status, aggregate version, and
+  connection/update time in the same transaction as
+  `source.github-connection.created`.
 - OAuth code, client secret, user access/refresh token, PKCE verifier, and
   provider response bytes are transient and never enter the aggregate,
   PostgreSQL, event payload, response, or error.
 - A connection remains durable installation/account ownership only; it stores
   no credential. Anonymous source failure may use that same tenant authority to
   issue one short-lived, repository-bound, read-only installation token for
-  resolution or checkout. Repository subscriptions are separate
-  environment-owned aggregates, and provider lifecycle reconciliation remains
-  an independent future workflow.
+  resolution or checkout only while status is `active`. Repository
+  subscriptions are separate environment-owned aggregates.
+- Signed installation suspend/unsuspend/delete, installation-target rename, and
+  verifying-user App-authorization revocation facts reconcile only current
+  connections. Same numeric account identity may update its login; account
+  ID/kind mismatch fails closed. Each changed aggregate advances its version
+  and emits `source.github-connection.reconciled` atomically with the state.
+- `verification_revoked`, `installation_deleted`, and `account_changed` are
+  terminal for one connection ID. A fresh installation/OAuth flow creates a
+  new ID and never transfers subscriptions from the historical connection.
+  Webhooks cannot reactivate terminal state.
 
 ### GitHub repository subscription
 
@@ -312,8 +325,9 @@ tables directly. Audit records are append-only and separate from event delivery.
 - State is only `active -> inactive`. Deactivation is explicit, retained,
   versioned, idempotent, and terminal for that aggregate.
 - Only active subscriptions can authorize webhook fanout. Installation,
-  repository, or branch mismatch creates no tenant revision and exposes no
-  tenant state to the provider response.
+  connection, repository, or branch mismatch creates no tenant revision and
+  exposes no tenant state to the provider response. PostgreSQL also requires
+  and locks the exact joined connection in `active` state during fanout.
 - Subscription API, idempotency state, database rows, and events contain no
   access token, private key, credential reference, or raw webhook body.
 
@@ -347,8 +361,10 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Provider authentication covers the exact bounded raw request body. GitHub
   uses HMAC-SHA256 with a secret read from its configured environment variable
   for every request; an A3S bearer token is never an alternative proof.
-- Only a signed branch push becomes a delivery. Authenticated non-push,
-  deletion, and non-branch events are acknowledged without durable state.
+- Only a signed non-deleted branch push becomes a `SourceWebhookDelivery`.
+  Supported signed connection-lifecycle events become a separate typed
+  lifecycle receipt. Other authenticated events are acknowledged without
+  durable state.
 - A delivery records provider, bounded delivery ID, canonical repository,
   positive installation ID, safe branch, full nonzero commit ID,
   exact-payload SHA-256 digest, and canonical receipt time. Raw payload and
@@ -357,10 +373,22 @@ tables directly. Audit records are append-only and separate from event delivery.
   payload returns the first fact; reusing the key with another payload or typed
   identity conflicts atomically.
 - The inbox identity remains provider-level. Only first acceptance joins exact
-  active subscriptions by installation, repository, and branch, then creates
-  each matching environment/recipe revision, tenant delivery reservation, and
-  `source.revision.accepted` outbox fact in the same transaction. Replay never
-  re-runs fanout. It still does not create a build or deployment.
+  active subscriptions by authoritative connection ID, installation,
+  repository, and branch while requiring the joined connection to remain
+  `active`, then creates each matching environment/recipe revision, tenant
+  delivery reservation, and `source.revision.accepted` outbox fact in the same
+  transaction. Replay never re-runs fanout. It still does not create a build or
+  deployment.
+- A lifecycle receipt stores provider, bounded delivery ID, event/action,
+  installation-or-user subject, exact-payload digest, and canonical receipt
+  time. First acceptance locks matching active/suspended connections and
+  commits every state/outbox change with the receipt. Exact replay changes
+  nothing; reuse with a changed action, subject, or digest conflicts. Raw body
+  and credentials remain absent.
+- Lifecycle ordering is webhook-receipt driven. Periodic provider polling,
+  missed/out-of-order repair, delayed pre-reconnection delivery
+  disambiguation, and checkout-time authoritative revalidation remain outside
+  this implemented slice.
 - The provider delivery is distinct from an optional
   `ExternalSourceRevision` webhook reservation supplied through the
   authenticated tenant mutation.
@@ -693,30 +721,99 @@ object ID with
 `a3s.cloud.build-recipe.v1`. A separate public GitHub endpoint
 HMAC-authenticates exact raw requests and durably deduplicates typed branch
 pushes in a provider-level inbox. A newly accepted delivery atomically selects
-only active subscriptions with the exact installation, repository, and branch,
-then creates one immutable revision/outbox fact for each matching environment
-and recipe without resolving the branch again. Replay does not re-run fanout.
+only active subscriptions with the exact authoritative connection,
+installation, repository, and branch, then creates one immutable
+revision/outbox fact for each matching environment and recipe without
+resolving the branch again. Replay does not re-run fanout.
 The implemented secure checkout port materializes an accepted commit under
 bounded isolated Git configuration, supplies an optional repository-bound
 token only through a transient Git HTTP header, removes `.git`, and records an
 immutable filesystem digest for credential-free replay. The implemented
-Artifact-owned Build service can consume a
-caller-supplied materialized source and recipe through rootless BuildKit, then
-validate and atomically receipt a local OCI layout. It does not yet coordinate
-or revalidate the checkout, publish the image, record provenance, or hand a
-digest to Workloads. A separate implemented GitHub App connection aggregate
-verifies and exclusively assigns an installation/account to one Cloud
+Artifact-owned Build service can consume a materialized source and recipe
+through rootless BuildKit, then validate and atomically receipt an OCI layout.
+The production Build Flow now coordinates this service boundary through an
+isolated Runtime Task: it replays the checkout, verifies package-time identity,
+admits immutable input bytes, selects a compatible node, applies independent
+Runtime and BuildKit network denials, validates the Runtime output, and removes
+the Task and checkout before terminal completion. It does not yet publish the
+image, record provenance, or hand a digest to Workloads. The Artifacts context
+owns one deterministic
+`BuildRun` per accepted source revision. It binds tenant/environment ownership,
+the exact `cloud.build@1` operation, immutable input and Runtime artifact
+identities, assigned node and command identities, validated OCI output,
+terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
+operation replay, and optimistic single-transition saves prevent duplicate or
+forged logical builds across process loss. The production worker runs the
+BuildRun reconciler and a closed Flow router dispatches only the supported
+deployment, workload-stop, and build workflow identities. A separate
+implemented GitHub App connection
+aggregate verifies and exclusively assigns an installation/account to one Cloud
 organization using single-use state, OAuth user authority, and PKCE. The
 separate `GithubRepositorySubscription` aggregate provides explicit repository
 authority and retained active/inactive lifecycle. Anonymous source resolution
-may use the connection to issue one repository-scoped read-only installation
-token; token and App key material are never durable. Local issuer, resolver,
-and real Git smart-HTTP fixtures cover the private path, while the
-operator-credential external GitHub gate remains unexecuted. Provider lifecycle
-reconciliation and the complete source-to-artifact operation remain later G0
-work.
+may use only an active connection to issue one repository-scoped read-only
+installation token; token and App key material are never durable. Signed
+provider lifecycle facts reconcile explicit connection status, retain terminal
+history, and prevent old subscriptions from inheriting a fresh connection.
+Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
+while the
+operator-credential external GitHub gate remains unexecuted. Authoritative
+provider polling, registry publication, provenance, and source-to-deployment
+handoff remain later G0 work.
+
+The implemented node Artifact transfer model binds every request to one
+authenticated node, persisted unexpired command, exact Runtime spec digest,
+and either one read-only `Artifact` mount or one declared Task output. Download
+identity includes the immutable Cloud URI, digest, and media type. Upload
+identity additionally includes the exact output size and returns a replayable
+`RuntimeOutputArtifact` receipt. The control-plane store and node cache both
+rehash bytes; neither accepts a caller- or transport-asserted digest alone.
+
+Node-local blobs use `a3s-node-artifact://sha256/<digest>` and remain internal
+until the mTLS upload returns `a3s-cloud-artifact://sha256/<digest>`. Mount and
+output receipts bind a blob to the Runtime spec and name. Safe archive
+materialization and restart verification preserve a read-only directory view;
+spec removal deletes its views and garbage-collects only content with no other
+receipt reference. These cache objects carry no tenant authority by
+themselves—the persisted command is the transfer authorization source of
+truth.
 
 ## 6. State models
+
+### Build run state
+
+```text
+queued -> preparing -> prepared -> scheduled -> running -> validating
+  |          |            |           |           |           |
+  +----------+------------+-----------+-----------+-----------+-> cancelling
+  +----------+------------+-----------+-----------+-----------+-> cleanup_pending
+
+validating -> cleanup_pending -> succeeded
+cancelling -> cleanup_pending -> cancelled
+cleanup_pending -> failed | cancelled
+```
+
+Failure or cancellation before Runtime dispatch may terminate without a
+cleanup command. Once a Runtime Task command exists, terminal state requires a
+durable cleanup command identity. Successful completion requires a validated
+OCI graph whose artifact exactly matches the collected Runtime output. Exact
+transition replay changes neither version nor timestamps. Cleanup first
+observes the deterministic Runtime removal receipt, then deletes the checkout;
+a build failure is persisted only after this cleanup path completes.
+
+### GitHub source connection state
+
+```text
+active <-> suspended
+active | suspended -> verification_revoked
+active | suspended -> installation_deleted
+active | suspended -> account_changed
+```
+
+Only `active` is authoritative. `active` and `suspended` are current states and
+block another connection for the organization, installation, or account.
+Terminal states never transition within the same aggregate; reconnection is a
+new aggregate after fresh provider proof.
 
 ### GitHub repository subscription state
 
@@ -835,8 +932,9 @@ Gateway revision.
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
-| Verified GitHub installation/account ownership and verifying-user identity | PostgreSQL GitHub source-connection table; no OAuth credential |
-| Provider webhook delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
+| Verified GitHub installation/account ownership, verifying-user identity, explicit status, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential |
+| Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
+| Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
@@ -880,6 +978,7 @@ carry a versioned envelope:
 identity.organization.created
 project.environment.created
 source.github-connection.created
+source.github-connection.reconciled
 source.github-repository-subscription.created
 source.github-repository-subscription.deactivated
 source.revision.accepted

@@ -4,4 +4,5 @@ pub mod complete_github_connection;
 pub mod create_github_repository_subscription;
 pub mod deactivate_github_repository_subscription;
 pub mod prepare_github_connection_oauth;
+pub mod reconcile_github_connection_lifecycle;
 pub mod resolve_external_source_revision;

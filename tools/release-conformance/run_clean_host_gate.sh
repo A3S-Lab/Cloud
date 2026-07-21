@@ -557,6 +557,12 @@ node_control {
   request_body_timeout_ms = 10000
 }
 
+artifacts {
+  store_dir = "$state_dir/artifacts"
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
+}
+
 postgres {
   url_env = "A3S_CLOUD_POSTGRES_URL"
   max_connections = 16
@@ -594,6 +600,31 @@ deployments {
   cleanup_timeout_ms = 120000
 }
 
+builds {
+  reconcile_interval_ms = 250
+  builder_uri = "oci://docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+  builder_digest = "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+  builder_media_type = "application/vnd.oci.image.index.v1+json"
+  buildkit_socket_volume_id = "a3s-cloud-buildkit-v0-31-2"
+  input_staging_dir = "$state_dir/build-input-staging"
+  input_max_entries = 100000
+  input_max_bytes = 536870912
+  output_staging_dir = "$state_dir/build-output-staging"
+  output_max_entries = 100000
+  output_max_expanded_bytes = 1073741824
+  oci_max_blobs = 10000
+  oci_max_bytes = 1073741824
+  command_ttl_ms = 900000
+  runtime_execution_timeout_ms = 600000
+  observation_poll_ms = 250
+  convergence_timeout_ms = 1800000
+  cleanup_timeout_ms = 300000
+  cpu_millis = 2000
+  memory_bytes = 1073741824
+  pids = 512
+  output_max_bytes = 536870912
+}
+
 registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:$registry_port"]
@@ -610,6 +641,10 @@ sources {
   github_app_private_key_env = ""
   github_app_callback_url = ""
   github_connection_state_ttl_ms = 600000
+  checkout_dir = "$state_dir/source-checkouts"
+  checkout_timeout_ms = 120000
+  checkout_max_files = 100000
+  checkout_max_bytes = 268435456
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }
@@ -702,9 +737,17 @@ control_plane {
   max_response_bytes = 20971520
   connect_timeout_ms = 5000
   request_timeout_ms = 10000
+  artifact_transfer_timeout_ms = 900000
   long_poll_margin_ms = 3000
   retry_initial_ms = 100
   retry_max_ms = 5000
+}
+
+artifacts {
+  max_blob_bytes = 1073741824
+  max_entries = 100000
+  max_file_bytes = 1073741824
+  max_expanded_bytes = 4294967296
 }
 
 node {

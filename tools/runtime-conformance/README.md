@@ -4,7 +4,7 @@
 Runtime contract without restarting or reconfiguring the host Docker daemon. It
 runs the mandatory Base and Recovery profiles together with every capability
 profile advertised by the driver: Networking, Mounts, Health, Resources, Logs,
-and Security.
+Security, and Outputs.
 
 ## Safety model
 
@@ -15,6 +15,9 @@ host inventories before and after the gate. Its provider uses:
 - a 4 GiB loopback ext4 data disk and a private Unix socket;
 - a run-specific tmpfs Secret directory mounted at the same absolute path in
   the provider daemon;
+- a run-specific Artifact state directory mounted at the same absolute path in
+  the provider daemon, so nested bind sources resolve without exposing any
+  broader host path;
 - 2 CPUs, 4 GiB of memory, and 2,048 PIDs;
 - a dedicated network-keeper container, so provider restart preserves the
   network namespace used for loopback port probes;
@@ -63,18 +66,26 @@ sudo tools/runtime-conformance/run_isolated_docker_gate.sh \
 Omitting `--suite` selects `--suite provider`. This is the release gate for the
 Docker `RuntimeDriver`: it runs the mandatory Base and Recovery profiles and
 every profile advertised by the driver (Networking, Mounts, Health, Resources,
-Logs, and Security). The Security profile resolves a file Secret only inside
-the driver, proves its value is absent from Runtime specs, provider inspection,
-Runtime inspection, and Runtime observation evidence, requires exact log
-redaction, then retries and restarts the provider while preserving one
-container and one material file. Removal must delete the generation's material
-directory.
+Logs, Security, and Outputs). The Security profile resolves a file Secret only
+inside the driver, proves its value is absent from Runtime specs, provider
+inspection, Runtime inspection, and Runtime observation evidence, requires
+exact log redaction, then retries and restarts the provider while preserving
+one container and one material file. Removal must delete the generation's
+material directory.
 
 The Mounts profile keeps a named-volume Service running across a distinct
 caller request and isolated provider restart. It requires the same single
 container and volume identity after each operation, then mounts that volume
 into a separate read-only Task to verify the exact token and write denial. The
-Service and named volume must both be removed explicitly.
+Service and named volume must both be removed explicitly. It also materializes
+an exact digest-bound directory Artifact, verifies its absolute read-only bind
+inside a Task, reconstructs the driver without changing identity, and requires
+removal to delete the view and unreferenced blob.
+
+The Outputs profile captures a bounded Task directory as an Artifact, verifies
+its URI, digest, media type, size, replay, and reconstructed-driver identity,
+rejects an oversized output, detects same-length blob tampering, and requires
+removal to delete the output view and unreferenced blob.
 
 The `Docker provider conformance` GitHub Actions workflow runs this provider
 gate on relevant pull requests and merges to `main`, every night, and on manual
@@ -166,6 +177,8 @@ Both suites retain:
 - provider inventories before and after conformance;
 - host container, volume, network, loop-device, mount, and Docker-netns deltas;
 - provider/keeper network namespace identities across every restart;
+- the run-specific Artifact state root plus post-test and pre-cleanup Artifact
+  file findings;
 - the run-specific tmpfs Secret path and any post-test Secret-file findings;
   and
 - cleanup logs plus targeted post-cleanup leak inventories.
@@ -173,7 +186,8 @@ Both suites retain:
 Certification succeeds only when the exact-SHA source worktrees remain clean,
 the provider inventory returns to its baseline, every host inventory delta is
 empty, the TTL process exits, and the provider root, loop device, mount, and
-Docker network namespace leave no residue. The Cloud suite additionally
+Docker network namespace leave no residue. The Artifact state root must contain
+no files before targeted removal. The Cloud suite additionally
 requires its run-specific tmpfs Secret directory to contain no files before
 targeted removal.
 

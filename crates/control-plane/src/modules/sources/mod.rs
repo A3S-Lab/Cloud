@@ -25,6 +25,9 @@ pub use application::commands::prepare_github_connection_oauth::{
     PrepareGithubConnectionOauth, PrepareGithubConnectionOauthHandler,
     PrepareGithubConnectionOauthResult,
 };
+pub use application::commands::reconcile_github_connection_lifecycle::{
+    ReconcileGithubConnectionLifecycle, ReconcileGithubConnectionLifecycleHandler,
+};
 pub use application::commands::resolve_external_source_revision::{
     DockerfileBuildRecipeInput, ResolveExternalSourceRevision,
     ResolveExternalSourceRevisionHandler, ResolveExternalSourceRevisionResult,

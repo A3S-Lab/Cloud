@@ -1,8 +1,9 @@
 use super::*;
 use crate::config::{
-    AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
-    LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
-    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig, SourcesConfig,
+    ArtifactTransferConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
+    EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
+    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
@@ -33,6 +34,7 @@ use uuid::Uuid;
 
 mod platform_tests;
 mod secret_tests;
+mod source_lifecycle_tests;
 mod source_private_tests;
 mod source_subscription_tests;
 mod source_tests;
@@ -252,6 +254,11 @@ fn config() -> CloudConfig {
             tls_handshake_timeout_ms: 5_000,
             request_body_timeout_ms: 10_000,
         },
+        artifacts: ArtifactTransferConfig {
+            store_dir: ".a3s/test-artifacts".into(),
+            max_blob_bytes: 1024 * 1024 * 1024,
+            transfer_timeout_ms: 900_000,
+        },
         postgres: PostgresConfig {
             url_env: "A3S_CLOUD_POSTGRES_URL".into(),
             max_connections: 4,
@@ -284,6 +291,30 @@ fn config() -> CloudConfig {
             cleanup_poll_ms: 10,
             cleanup_timeout_ms: 20_000,
         },
+        builds: BuildsConfig {
+            reconcile_interval_ms: 1_000,
+            builder_uri: format!("oci://docker.io/moby/buildkit@sha256:{}", "a".repeat(64)),
+            builder_digest: format!("sha256:{}", "a".repeat(64)),
+            builder_media_type: "application/vnd.oci.image.index.v1+json".into(),
+            buildkit_socket_volume_id: "test-buildkit".into(),
+            input_staging_dir: ".a3s/test-build-input".into(),
+            input_max_entries: 10_000,
+            input_max_bytes: 128 * 1024 * 1024,
+            output_staging_dir: ".a3s/test-build-output".into(),
+            output_max_entries: 10_000,
+            output_max_expanded_bytes: 256 * 1024 * 1024,
+            oci_max_blobs: 1_000,
+            oci_max_bytes: 256 * 1024 * 1024,
+            command_ttl_ms: 10_000,
+            runtime_execution_timeout_ms: 5_000,
+            observation_poll_ms: 10,
+            convergence_timeout_ms: 20_000,
+            cleanup_timeout_ms: 20_000,
+            cpu_millis: 1_000,
+            memory_bytes: 512 * 1024 * 1024,
+            pids: 256,
+            output_max_bytes: 128 * 1024 * 1024,
+        },
         registry: RegistryConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
@@ -300,6 +331,10 @@ fn config() -> CloudConfig {
             github_app_callback_url:
                 "https://cloud.example.test/api/v1/source-connections/github/callback".into(),
             github_connection_state_ttl_ms: 600_000,
+            checkout_dir: ".a3s/test-source-checkouts".into(),
+            checkout_timeout_ms: 10_000,
+            checkout_max_files: 10_000,
+            checkout_max_bytes: 64 * 1024 * 1024,
             allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],
             denied_repositories: Vec::new(),
         },

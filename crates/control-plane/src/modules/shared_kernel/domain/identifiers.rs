@@ -57,3 +57,4 @@ identifier!(SecretId);
 identifier!(SourceRevisionId);
 identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
+identifier!(BuildRunId);

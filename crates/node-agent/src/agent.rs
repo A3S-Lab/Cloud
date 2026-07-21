@@ -5,8 +5,8 @@ use crate::{
     CommandExecutionError, CommandExecutor, CommandJournalError, DurableGatewaySnapshotInstaller,
     EnrolledNodeIdentity, FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
     GatewaySnapshotInstaller, IdentityStoreError, LogShippingConfig, LogShippingError,
-    NodeAgentConfig, NodeControlClient, NodeControlClientError, NodeControlTransport,
-    NodeIdentityState, NodeSecretTransport,
+    NodeAgentConfig, NodeArtifactManager, NodeArtifactTransport, NodeControlClient,
+    NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
@@ -66,6 +66,20 @@ pub async fn run_node_agent(
         .binding
         .bind_secret_transport(secret_transport)
         .await?;
+    let artifact_transport: Arc<dyn NodeArtifactTransport> = transport.clone();
+    let artifact_manager = Arc::new(
+        NodeArtifactManager::new(
+            &config.node.state_dir,
+            config.artifacts.clone(),
+            identity.response.node_id,
+            artifact_transport,
+        )
+        .map_err(NodeAgentError::Invalid)?,
+    );
+    runtime
+        .binding
+        .bind_artifact_manager(Arc::clone(&artifact_manager))
+        .await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(
         session_transport,
@@ -78,7 +92,8 @@ pub async fn run_node_agent(
         config.logs.clone(),
         Duration::from_millis(config.control_plane.retry_initial_ms),
         Duration::from_millis(config.control_plane.retry_max_ms),
-    )?;
+    )?
+    .with_artifacts(artifact_manager);
     let session_run = session.run(shutdown.clone());
     let rotation_run = certificate_rotation_loop(config, identity_store, transport, shutdown);
     tokio::pin!(session_run, rotation_run);
@@ -96,6 +111,9 @@ pub trait NodeRuntimeBinding: Send + Sync {
         &self,
         transport: Arc<dyn NodeSecretTransport>,
     ) -> RuntimeResult<()>;
+
+    async fn bind_artifact_manager(&self, artifacts: Arc<NodeArtifactManager>)
+        -> RuntimeResult<()>;
 }
 
 pub struct NodeRuntimeProvider {
@@ -170,6 +188,11 @@ impl NodeAgentSession {
             retry_initial,
             retry_maximum,
         })
+    }
+
+    fn with_artifacts(mut self, artifacts: Arc<NodeArtifactManager>) -> Self {
+        self.executor = self.executor.with_artifacts(artifacts);
+        self
     }
 
     pub async fn run(&self, shutdown: watch::Receiver<bool>) -> Result<(), NodeAgentError> {

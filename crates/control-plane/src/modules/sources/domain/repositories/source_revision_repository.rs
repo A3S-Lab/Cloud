@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    SourceRevisionId,
 };
 use crate::modules::sources::domain::{ExternalSourceRevision, GitProvider, WebhookDeliveryId};
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -25,6 +26,12 @@ pub struct AcceptSourceRevision {
 
 #[async_trait]
 pub trait ISourceRevisionRepository: Send + Sync {
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        source_revision_id: SourceRevisionId,
+    ) -> Result<ExternalSourceRevision, RepositoryError>;
+
     async fn replay_acceptance(
         &self,
         idempotency: &IdempotencyRequest,

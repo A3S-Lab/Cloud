@@ -69,7 +69,12 @@ impl CommandHandler<CreateGithubRepositorySubscription>
                 Err(error) => return Ok(Err(error.into())),
             }
             let connection = match connections.find(command.organization_id).await {
-                Ok(Some(value)) => value,
+                Ok(Some(value)) if value.is_authoritative() => value,
+                Ok(Some(_)) => {
+                    return Ok(Err(ApplicationError::Conflict(
+                        "GitHub source connection is not active".into(),
+                    )))
+                }
                 Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "verified GitHub source connection not found for organization".into(),

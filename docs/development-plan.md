@@ -608,19 +608,40 @@ The current independently testable G0 slices are implemented:
   inaccessible installation rejection, body bounds, malformed responses, and
   secretless errors. The isolated PostgreSQL gate exercises prepare, complete,
   replay, uniqueness rollback, query, and outbox persistence.
+- GitHub connections have explicit `active`, `suspended`,
+  `verification_revoked`, `installation_deleted`, and `account_changed` state.
+  Only `active` supplies authority. Current active/suspended installation,
+  account, and organization uniqueness is enforced with partial indexes while
+  terminal connection records remain durable history.
 - A public `POST /api/v1/webhooks/github` provider boundary requires JSON and
   the GitHub event, delivery, and `X-Hub-Signature-256` headers. It bounds the
   body, reads a configured secret environment variable per request, and
   authenticates the exact raw bytes with canonical lowercase HMAC-SHA256 before
   interpreting provider data. Bearer authentication cannot bypass the proof.
-- Authenticated non-push, deletion, and non-branch events are acknowledged
-  without persistence. A branch push is reduced to typed provider, delivery,
-  canonical repository, installation, branch, commit, payload-digest, and
-  receipt-time fields; raw payload and secret material are never durable.
+- Deleted/non-branch pushes, unsupported lifecycle actions, and unrelated
+  authenticated events are acknowledged without persistence. A branch push is
+  reduced to typed provider, delivery, canonical repository, installation,
+  branch, commit, payload-digest, and receipt-time fields; raw payload and
+  secret material are never durable.
 - The PostgreSQL provider inbox atomically replays the same delivery and exact
   payload while rejecting delivery-ID reuse with changed bytes or typed
   identity. Unit, API, and PostgreSQL integration tests cover signature
   authentication, payload bounds, ignored events, replay, and conflict.
+- The signed ingress also accepts `installation` suspend/unsuspend/deleted,
+  `installation_target` renamed, and `github_app_authorization` revoked. A
+  separate lifecycle inbox stores only typed event/action, installation-or-user
+  subject, exact-payload digest, and receipt time. Exact replay is a no-op and
+  changed reuse conflicts without persisting the provider body.
+- Same-identity suspension/unsuspension and rename preserve authority state and
+  update the display login. Account ID/kind mismatch, installation deletion,
+  and verifying-user authorization revocation fail closed to terminal states.
+  Every changed connection advances its aggregate version and atomically emits
+  `source.github-connection.reconciled`; terminal state cannot be reactivated
+  by a webhook.
+- A terminal organization must complete fresh installation and OAuth proof,
+  producing a new connection ID while retaining the old record. Existing
+  subscriptions remain bound to the prior ID. API projections expose status
+  and update time so the loss of authority is operator-visible.
 - Environment-owned `GithubRepositorySubscription` commands and queries bind
   the same organization's verified connection/installation to a canonical
   allowlisted repository, exact branch, and explicit recipe. PostgreSQL
@@ -634,8 +655,11 @@ The current independently testable G0 slices are implemented:
   state, idempotency response, nor event contains provider credentials or raw
   webhook payloads.
 - Only a newly inserted provider delivery selects active bindings by exact
-  installation, repository, and branch. The authenticated delivery commit is
-  never re-resolved. Inbox, tenant reservations, every matching immutable
+  connection, installation, repository, and branch. PostgreSQL joins and share
+  locks the exact active connection, serializing fanout with lifecycle updates;
+  stale lookup results and old bindings therefore create no revision. The
+  authenticated delivery commit is never re-resolved. Inbox, tenant
+  reservations, every matching immutable
   revision, and every `source.revision.accepted` fact commit in one transaction;
   exact replay does not re-fanout, unmatched delivery creates no revision, and
   outbox failure rolls back the inbox.
@@ -681,6 +705,35 @@ The current independently testable G0 slices are implemented:
   binds an immutable build ID, absolute materialized source directory, checkout
   content digest, and accepted recipe without exposing BuildKit semantics to
   Sources or Runtime.
+- One deterministic tenant-owned `BuildRun` is reserved for every accepted
+  source revision. Its operation ID is the build ID, and its aggregate records
+  exact input, node/command, Runtime output, validated OCI result,
+  cancellation/failure, cleanup, timestamps, and optimistic version.
+  Repository saves accept only one aggregate-generated transition; exact
+  replay changes no timestamp or version.
+- Concurrent PostgreSQL reservation creates one build, and a dedicated
+  reconciler repairs the source-commit-to-operation crash gap by enqueuing the
+  same `cloud.build@1` request. The isolated PostgreSQL gate covers concurrent
+  reservation, crash-gap repair, exact operation replay, stale writes, forged
+  ownership, and tenant/environment isolation.
+- Typed node Artifact download/upload contracts bind the authenticated node,
+  command, Runtime spec digest, exact mount/output, digest, media type, and
+  size. The mTLS node-control endpoints authorize against the persisted
+  unexpired `RuntimeApply` command and stream raw bytes under a total deadline.
+- The control plane stores content-addressed blobs with hash/length admission,
+  exact replay, same-length tamper detection, and blob-before-receipt crash-gap
+  repair. The node agent independently verifies and seals blobs, persists
+  spec-bound receipts, revalidates materialized trees after restart, and
+  reference-collects blobs when Runtime specs are removed.
+- Directory Artifact extraction rejects absolute/parent paths, escaping
+  symlinks or hardlinks, devices, FIFOs, duplicate paths, non-directory
+  ancestors, and configured entry/file/expanded limits. Files and directories
+  are mounted read-only; planned and extracted content hashes must agree.
+- Docker advertises Artifact mounts and output Artifacts, binds exact
+  materialized inputs read-only, captures declared successful Task outputs via
+  the Docker archive API, and preserves output identity through replay,
+  reconstructed clients/drivers, and removal. The exported Docker conformance
+  fixture now exercises both capability profiles.
 - The BuildKit adapter accepts Unix or mTLS endpoints and permits
   unauthenticated TCP only through an explicit literal-loopback conformance
   constructor. It runs `buildctl` with an empty home and no credential, SSH,
@@ -696,19 +749,46 @@ The current independently testable G0 slices are implemented:
   rootless image, proves its non-root image user, builds a network-independent
   scratch fixture through the production adapter, validates the OCI output,
   and replays it without reexecution.
+- `cloud.build@1` is registered in the production Flow router alongside
+  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. The worker-role BuildRun
+  reconciler reserves revisions and enqueues their deterministic operation
+  before generic Flow coordination.
+- `SourceBuildInputPreparer` performs exact tenant/revision checks, ephemeral
+  private checkout when needed, deterministic directory packaging, Artifact
+  admission, and credential-free offline receipt replay to reject package-time
+  mutation. Failure cleanup removes the checkout.
+- The Build Flow selects only nodes with the full Task, isolation, mount,
+  resource, output, network, and builder-media capability set. It persists
+  apply identity before dispatch, mounts source and BuildKit socket read-only,
+  uses both Runtime `NetworkMode::None` and BuildKit
+  `force-network-mode=none`, accepts no secret/SSH/entitlement/cache channel,
+  and returns one bounded OCI directory Artifact.
+- Runtime output is re-read and rehashed from the control-plane Artifact store,
+  extracted with path/entry/byte bounds, and subjected to complete OCI graph
+  validation. Terminal success, failure, or cancellation requires deterministic
+  Runtime removal followed by checkout cleanup; replay does not duplicate
+  prepare, apply, validate, remove, or completion side effects.
+- An ignored real gate drives the exact projected Task through the node command
+  journal, Docker Runtime, Artifact transport, and OCI validator. Its Dockerfile
+  succeeds only when a BuildKit `RUN` has no `eth0` and a `wget` attempt fails.
+  The gate requires an operator-provisioned rootless BuildKit socket volume;
+  evidence has not been recorded in this workspace because no Docker daemon is
+  available.
 
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
 ownership of a GitHub installation,
-authoritative repository subscription/fanout, credential-safe checkout, and a
-real local-context BuildKit/OCI engine boundary, not the G0 integration gate.
-Subscriptions create revision authority but not checkout authority. The Build
-service binds but does not recompute the checkout digest, and the rootless
-worker does not by itself prove deny-by-default build networking.
-External private-provider certification, installation lifecycle reconciliation,
-build-operation checkout replay, Runtime Task orchestration, registry
-publication, provenance, deployment handoff, build operations/logs,
-cancellation, and web surfaces remain required.
+authoritative repository subscription/fanout, credential-safe checkout,
+durable build intent/crash-gap repair, command-bound mTLS Artifact transport,
+restart-safe Docker inputs/outputs, a real local-context BuildKit/OCI engine
+boundary, and the production isolated Build Flow. The remaining G0 integration
+gate begins at OCI publication rather than Runtime execution.
+Lifecycle reconciliation is currently driven only by signed webhook receipt;
+periodic authoritative provider polling, missed/out-of-order repair, delayed
+pre-reconnection delivery disambiguation, and checkout-time revalidation are
+not yet implemented. External private-provider certification, operator evidence
+for the Runtime/BuildKit gate, registry publication, provenance, deployment
+handoff, build operations/logs, and web surfaces remain required.
 
 ### Work
 
@@ -716,19 +796,21 @@ cancellation, and web surfaces remain required.
   implemented installation-token resolution/checkout gate. Do not promote the
   local fixture evidence to external-provider certification until that pass is
   recorded; never persist token or private-key material in source state.
-- Reconcile installation suspension, deletion, account transfer, and revoked
-  authorization before fanout or checkout, with explicit operator-visible
-  connection state and retry semantics.
+- Add periodic authoritative GitHub installation/authorization polling and a
+  fresh check before credential issuance or checkout. Repair missed and
+  out-of-order deliveries without allowing a delayed pre-reconnection event to
+  mutate a newly verified connection. Define bounded retry/backoff and
+  operator-visible reconciliation failure semantics.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
-- Run the implemented typed build recipe and Build service as isolated Runtime
-  Tasks with
-  deny-by-default network policy. G0 requires an explicit recipe; automatic
-  stack detection is a P0 input that may propose, but never silently replace,
-  this contract.
-- Extend the implemented rootless BuildKit/local-OCI gate through the Runtime
-  Task and publication boundaries; BuildKit endpoint, Dockerfile, buildpack,
-  and cache details must continue not to leak into Runtime contracts.
+- Provision the exact Docker named volume and rootless BuildKit Unix socket,
+  then run and record the implemented Runtime Task gate on the dedicated Linux
+  runner. Volume capability alone is not readiness evidence. G0 continues to
+  require an explicit recipe; automatic stack detection is a P0 input that may
+  propose, but never silently replace, this contract.
+- Extend the implemented Runtime/BuildKit/local-OCI gate through the publication
+  boundary; BuildKit endpoint, Dockerfile, buildpack, and cache details must
+  continue not to leak into Runtime contracts.
 - Push by digest to the configured OCI registry and record source, recipe,
   builder, platform, SBOM, signature, and artifact provenance.
 - Add content-addressed build caching without allowing cache hits to weaken
@@ -1186,7 +1268,7 @@ Later gates extend the same fault-injection discipline:
 
 | # | Durable boundary | Owning gate | Required outcome |
 | ---: | --- | --- | --- |
-| 10 | Source revision commit before build run creation | `G0` | Reconciliation starts one build for the accepted commit and recipe |
+| 10 | Source revision commit before build run creation | `G0` | The durable repository/reconciler gate reserves one deterministic build and repairs the operation enqueue gap; the registered Build Flow persists dispatch identity and restart tests prove apply/remove replay, while promotion to current evidence still requires the operator Runtime gate and OS process-death run |
 | 11 | OCI push before artifact and provenance projection | `G0` | The pushed digest is adopted exactly once or explicitly garbage-collected |
 | 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
 | 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
@@ -1282,7 +1364,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> Runtime Task plus registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> operator gate evidence -> registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

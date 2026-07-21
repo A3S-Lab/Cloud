@@ -1,6 +1,6 @@
 use super::health::host_port;
 use super::secrets::MaterializedSecrets;
-use super::{docker_error, is_status, DockerRuntimeDriver};
+use super::{artifact_error, docker_error, is_status, DockerRuntimeDriver};
 use a3s_cloud_contracts::RuntimeServiceEndpoint;
 use a3s_runtime::contract::{
     HealthProbe, NetworkMode, RestartPolicy, RuntimeActionRequest, RuntimeEvidence, RuntimeFailure,
@@ -57,13 +57,10 @@ impl DockerRuntimeDriver {
         };
         if container.is_none() {
             let name = container_name(&self.namespace, spec, &spec_digest);
-            let config = match self.container_config(
-                node_id,
-                spec,
-                &spec_digest,
-                image,
-                materialized.as_ref(),
-            ) {
+            let config = match self
+                .container_config(node_id, spec, &spec_digest, image, materialized.as_ref())
+                .await
+            {
                 Ok(config) => config,
                 Err(error) => {
                     self.cleanup_secret_directory(&spec_digest).await?;
@@ -161,7 +158,9 @@ impl DockerRuntimeDriver {
         } else {
             None
         };
-        let observation = self.observation(&unit.spec, &container, &provider_build, health)?;
+        let observation = self
+            .observation(&unit.spec, &container, &provider_build, health)
+            .await?;
         Ok(RuntimeInspection::Found {
             schema: RuntimeInspection::SCHEMA.into(),
             observation: Box::new(observation),
@@ -205,7 +204,9 @@ impl DockerRuntimeDriver {
                 .await
                 .map_err(docker_error)?;
         }
-        let mut observation = self.observation(&unit.spec, &container, &provider_build, None)?;
+        let mut observation = self
+            .observation(&unit.spec, &container, &provider_build, None)
+            .await?;
         observation.state = RuntimeUnitState::Stopped;
         observation.observed_at_ms = now_ms();
         observation.finished_at_ms = Some(observation.observed_at_ms);
@@ -229,6 +230,12 @@ impl DockerRuntimeDriver {
         let already_absent = container.is_none();
         if let Some(container) = container {
             self.remove_managed_container(&container).await?;
+        }
+        if let Some(artifacts) = self.artifact_manager.read().await.clone() {
+            artifacts
+                .cleanup_spec(&digest)
+                .await
+                .map_err(artifact_error)?;
         }
         let removal = RuntimeRemoval {
             schema: RuntimeRemoval::SCHEMA.into(),
@@ -366,6 +373,12 @@ impl DockerRuntimeDriver {
         };
         if let Some(spec_digest) = spec_digest {
             self.cleanup_secret_directory(&spec_digest).await?;
+            if let Some(artifacts) = self.artifact_manager.read().await.clone() {
+                artifacts
+                    .cleanup_spec(&spec_digest)
+                    .await
+                    .map_err(artifact_error)?;
+            }
         }
         Ok(())
     }
@@ -451,7 +464,7 @@ impl DockerRuntimeDriver {
         Ok(())
     }
 
-    fn container_config(
+    async fn container_config(
         &self,
         node_id: Uuid,
         spec: &RuntimeUnitSpec,
@@ -479,6 +492,7 @@ impl DockerRuntimeDriver {
         }
         let mut binds = Vec::new();
         let mut tmpfs = HashMap::new();
+        let mut secret_mounts = Vec::new();
         for mount in &spec.mounts {
             match &mount.source {
                 RuntimeMountSource::Volume { volume_id } => binds.push(format!(
@@ -495,9 +509,24 @@ impl DockerRuntimeDriver {
                     );
                 }
                 RuntimeMountSource::Artifact { .. } => {
-                    return Err(RuntimeError::UnsupportedCapabilities(vec![
-                        "mount_kind:Artifact".into(),
-                    ]));
+                    if !mount.read_only {
+                        return Err(RuntimeError::InvalidRequest(
+                            "Docker artifact mounts must be read-only".into(),
+                        ));
+                    }
+                    let source = self
+                        .artifacts()
+                        .await?
+                        .mount_path(spec, mount)
+                        .await
+                        .map_err(artifact_error)?;
+                    secret_mounts.push(Mount {
+                        target: Some(mount.target.clone()),
+                        source: Some(source.to_string_lossy().into_owned()),
+                        typ: Some(MountTypeEnum::BIND),
+                        read_only: Some(true),
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -507,7 +536,6 @@ impl DockerRuntimeDriver {
             .iter()
             .map(|(key, value)| format!("{key}={value}"))
             .collect::<Vec<_>>();
-        let mut secret_mounts = Vec::new();
         if !spec.secrets.is_empty() {
             let materialized = materialized.ok_or_else(|| {
                 RuntimeError::Protocol("Docker Secret references were not materialized".into())
@@ -576,7 +604,7 @@ impl DockerRuntimeDriver {
         })
     }
 
-    pub(super) fn observation(
+    pub(super) async fn observation(
         &self,
         spec: &RuntimeUnitSpec,
         container: &ContainerInspectResponse,
@@ -613,6 +641,11 @@ impl DockerRuntimeDriver {
         let observed_at = now_ms();
         let terminal = unit_state.is_terminal();
         let spec_digest = spec.digest().map_err(RuntimeError::Protocol)?;
+        let outputs = if unit_state == RuntimeUnitState::Succeeded {
+            self.collect_outputs(spec, container).await?
+        } else {
+            Vec::new()
+        };
         let observation = RuntimeObservation {
             schema: RuntimeObservation::SCHEMA.into(),
             unit_id: spec.unit_id.clone(),
@@ -627,7 +660,7 @@ impl DockerRuntimeDriver {
             finished_at_ms: terminal
                 .then(|| parse_timestamp_ms(state.finished_at.as_deref()).unwrap_or(observed_at)),
             health: running.then_some(health).flatten(),
-            outputs: Vec::new(),
+            outputs,
             usage: None,
             evidence: Some(RuntimeEvidence {
                 provider_build: provider_build.into(),

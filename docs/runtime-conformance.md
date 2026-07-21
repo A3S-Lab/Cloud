@@ -39,7 +39,7 @@ the test process.
 
 The suite always runs Base and Recovery and derives every other profile from
 the driver's reported capabilities. Docker currently activates Networking,
-Mounts, Health, Resources, Logs, and Security. Each profile performs provider
+Mounts, Health, Resources, Logs, Security, and Outputs. Each profile performs provider
 inspection and workload-visible behavior checks. The fixture uses a unique
 namespace, enforces bounded Docker operations, removes only namespace-owned
 containers and volumes, and requires the canonical post-cleanup inventory to
@@ -59,6 +59,19 @@ same container and the same single Docker volume. A separate read-only Task
 then verifies the exact pre-restart token and write denial before the Service
 and volume are removed explicitly.
 
+The same Mounts profile seeds one content-addressed directory archive through
+the node Artifact manager, materializes it under the exact Runtime spec digest,
+and requires Docker to use one absolute read-only bind. The workload verifies
+the expected bytes and write denial; a reconstructed driver must reattach the
+same container, and removal must delete the spec view and its now-unreferenced
+blob.
+
+Outputs certification runs a finite Task with one declared bounded directory
+output. It hashes the exact Docker archive bytes, checks local URI/media/size
+identity, replays the same apply, reconstructs both client and driver, rejects
+an over-limit output, and detects same-length blob corruption on inspection.
+Removal must clear the output receipt and reclaim the unreferenced blob.
+
 Recovery certification also captures a real Docker log cursor before the
 isolated provider restart, reconstructs the driver and client, requires the
 same provider resource and pre-restart record to remain visible, and resumes
@@ -77,7 +90,7 @@ A3S_CLOUD_TEST_DOCKER=1 cargo test -p a3s-cloud-node-agent \
 
 Its result never substitutes for the mandatory Base and Recovery gate.
 Set `A3S_CLOUD_TEST_RUNTIME_PROFILE` to one of `networking`, `mounts`,
-`health`, `resources`, `logs`, or `security` to run one focused optional
+`health`, `resources`, `logs`, `security`, or `outputs` to run one focused optional
 profile during development. Omitting it runs all optional profiles.
 
 Docker log queries page forward from the earliest retained provider record.

@@ -1,12 +1,14 @@
 use crate::infrastructure::{
-    execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
-    store_outbox, transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, is_foreign_key_violation, is_unique_violation,
+    require_one_row, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, SourceConnectionId};
 use crate::modules::sources::domain::{
-    CompleteGithubConnection, GithubAccountId, GithubAccountKind, GithubConnection,
+    CompleteGithubConnection, GitProvider, GithubAccountId, GithubAccountKind, GithubConnection,
     GithubConnectionFlow, GithubConnectionFlowError, GithubConnectionFlowStage,
+    GithubConnectionLifecycleAcceptance, GithubConnectionReconciled, GithubConnectionStatus,
     GithubInstallationId, GithubLogin, IGithubConnectionRepository,
+    ReconcileGithubConnectionLifecycle,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
@@ -36,8 +38,18 @@ struct GithubConnectionRow {
     account_kind: String,
     verified_by_user_id: i64,
     verified_by_user_login: String,
+    status: String,
     aggregate_version: u64,
     connected_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+struct GithubConnectionLifecycleRow {
+    event_name: String,
+    action_name: String,
+    subject_kind: String,
+    subject_id: i64,
+    payload_digest: String,
 }
 
 impl FromRow for GithubConnectionFlowRow {
@@ -67,8 +79,22 @@ impl FromRow for GithubConnectionRow {
             account_kind: decode(row, 5)?,
             verified_by_user_id: decode(row, 6)?,
             verified_by_user_login: decode(row, 7)?,
-            aggregate_version: decode(row, 8)?,
-            connected_at: decode(row, 9)?,
+            status: decode(row, 8)?,
+            aggregate_version: decode(row, 9)?,
+            connected_at: decode(row, 10)?,
+            updated_at: decode(row, 11)?,
+        })
+    }
+}
+
+impl FromRow for GithubConnectionLifecycleRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            event_name: decode(row, 0)?,
+            action_name: decode(row, 1)?,
+            subject_kind: decode(row, 2)?,
+            subject_id: decode(row, 3)?,
+            payload_digest: decode(row, 4)?,
         })
     }
 }
@@ -110,7 +136,7 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
                             "select 1 from github_source_connections where organization_id = ",
                         )
                         .bind(flow.organization_id.as_uuid())
-                        .append(" for update"),
+                        .append(" and status in ('active', 'suspended') for update"),
                     )
                     .await?
                     .is_some()
@@ -250,6 +276,14 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
         &self,
         request: CompleteGithubConnection,
     ) -> Result<GithubConnection, RepositoryError> {
+        if !request.connection.is_authoritative()
+            || request.connection.aggregate_version != 1
+            || request.connection.updated_at != request.connection.connected_at
+        {
+            return Err(RepositoryError::Conflict(
+                "new GitHub connection is not active at its initial version".into(),
+            ));
+        }
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
@@ -283,7 +317,7 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
                     let insert = execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into github_source_connections (organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, aggregate_version, connected_at) values (",
+                            "insert into github_source_connections (organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, status, aggregate_version, connected_at, updated_at) values (",
                         )
                         .bind(request.connection.organization_id.as_uuid())
                         .append(", ")
@@ -301,9 +335,13 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
                         .append(", ")
                         .bind(request.connection.verified_by_user_login.as_str())
                         .append(", ")
+                        .bind(request.connection.status.as_str())
+                        .append(", ")
                         .bind(request.connection.aggregate_version)
                         .append(", ")
                         .bind(request.connection.connected_at)
+                        .append(", ")
+                        .bind(request.connection.updated_at)
                         .append(")"),
                     )
                     .await;
@@ -357,6 +395,180 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
             .transpose()
             .map_err(persistence_error)
     }
+
+    async fn find_authoritative_by_installation(
+        &self,
+        installation_id: GithubInstallationId,
+    ) -> Result<Option<GithubConnection>, RepositoryError> {
+        let installation_id = as_i64(installation_id).map_err(persistence_error)?;
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                connection_select_query()
+                    .append(" where installation_id = ")
+                    .bind(installation_id)
+                    .append(" and status = 'active'"),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .map(map_connection)
+            .transpose()
+            .map_err(persistence_error)
+    }
+
+    async fn reconcile_lifecycle(
+        &self,
+        request: ReconcileGithubConnectionLifecycle,
+    ) -> Result<GithubConnectionLifecycleAcceptance, RepositoryError> {
+        if request.lifecycle.provider != GitProvider::Github
+            || !valid_payload_digest(&request.lifecycle.payload_digest)
+        {
+            return Err(RepositoryError::Conflict(
+                "GitHub connection lifecycle delivery is invalid".into(),
+            ));
+        }
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let event_name = request.lifecycle.change.event_name();
+                    let action_name = request.lifecycle.change.action_name();
+                    let subject_kind = request.lifecycle.change.subject_kind();
+                    let subject_id = i64::try_from(request.lifecycle.change.subject_id()).map_err(
+                        |_| {
+                            PostgresPersistenceError::Invariant(
+                                "GitHub lifecycle subject ID exceeds PostgreSQL bigint".into(),
+                            )
+                        },
+                    )?;
+                    let inserted = execute(
+                        transaction,
+                        sql_query::<()>(
+                            "insert into github_connection_lifecycle_inbox (provider, delivery_id, event_name, action_name, subject_kind, subject_id, payload_digest, received_at) values (",
+                        )
+                        .bind(request.lifecycle.provider.as_str())
+                        .append(", ")
+                        .bind(request.lifecycle.delivery_id.as_str())
+                        .append(", ")
+                        .bind(event_name)
+                        .append(", ")
+                        .bind(action_name)
+                        .append(", ")
+                        .bind(subject_kind)
+                        .append(", ")
+                        .bind(subject_id)
+                        .append(", ")
+                        .bind(request.lifecycle.payload_digest.as_str())
+                        .append(", ")
+                        .bind(request.received_at)
+                        .append(") on conflict (provider, delivery_id) do nothing"),
+                    )
+                    .await?;
+                    if inserted > 1 {
+                        return Err(PostgresPersistenceError::Invariant(format!(
+                            "accepting GitHub lifecycle delivery affected {inserted} rows"
+                        )));
+                    }
+                    let stored = fetch_optional::<GithubConnectionLifecycleRow, _>(
+                        transaction,
+                        sql_query::<GithubConnectionLifecycleRow>(
+                            "select event_name, action_name, subject_kind, subject_id, payload_digest from github_connection_lifecycle_inbox where provider = ",
+                        )
+                        .bind(request.lifecycle.provider.as_str())
+                        .append(" and delivery_id = ")
+                        .bind(request.lifecycle.delivery_id.as_str())
+                        .append(" for update"),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        PostgresPersistenceError::Invariant(
+                            "accepted GitHub lifecycle delivery could not be read".into(),
+                        )
+                    })?;
+                    if stored.event_name != event_name
+                        || stored.action_name != action_name
+                        || stored.subject_kind != subject_kind
+                        || stored.subject_id != subject_id
+                        || stored.payload_digest != request.lifecycle.payload_digest
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "GitHub lifecycle delivery ID was reused with another payload".into(),
+                        )
+                        .into());
+                    }
+                    if inserted == 0 {
+                        return Ok(GithubConnectionLifecycleAcceptance {
+                            replayed: true,
+                            connections: Vec::new(),
+                        });
+                    }
+                    let connection_query = match subject_kind {
+                        "installation" => connection_select_query()
+                            .append(" where installation_id = ")
+                            .bind(subject_id),
+                        "user" => connection_select_query()
+                            .append(" where verified_by_user_id = ")
+                            .bind(subject_id),
+                        _ => {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "GitHub lifecycle subject kind is invalid".into(),
+                            ))
+                        }
+                    }
+                    .append(
+                        " and status in ('active', 'suspended') order by organization_id asc, id asc for update",
+                    );
+                    let rows = fetch_all::<GithubConnectionRow, _>(transaction, connection_query)
+                        .await?;
+                    let mut reconciled = Vec::with_capacity(rows.len());
+                    for row in rows {
+                        let mut connection = map_connection(row)?;
+                        let previous_version = connection.aggregate_version;
+                        if !connection
+                            .reconcile(&request.lifecycle.change, request.received_at)
+                            .map_err(PostgresPersistenceError::Invariant)?
+                        {
+                            continue;
+                        }
+                        let updated = execute(
+                            transaction,
+                            sql_query::<()>(
+                                "update github_source_connections set account_login = ",
+                            )
+                            .bind(connection.account_login.as_str())
+                            .append(", status = ")
+                            .bind(connection.status.as_str())
+                            .append(", aggregate_version = ")
+                            .bind(connection.aggregate_version)
+                            .append(", updated_at = ")
+                            .bind(connection.updated_at)
+                            .append(" where id = ")
+                            .bind(connection.id.as_uuid())
+                            .append(" and aggregate_version = ")
+                            .bind(previous_version),
+                        )
+                        .await?;
+                        require_one_row("reconciled GitHub source connection", updated)?;
+                        let event = GithubConnectionReconciled::envelope(
+                            &connection,
+                            request.correlation_id,
+                        )?;
+                        store_outbox(transaction, &event).await?;
+                        reconciled.push(connection);
+                    }
+                    Ok(GithubConnectionLifecycleAcceptance {
+                        replayed: false,
+                        connections: reconciled,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+}
+
+fn connection_select_query() -> a3s_orm::SqlQuery<GithubConnectionRow> {
+    sql_query::<GithubConnectionRow>(
+        "select organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, status, aggregate_version, connected_at, updated_at from github_source_connections",
+    )
 }
 
 fn flow_by_state_query(state_digest: &str) -> a3s_orm::SqlQuery<GithubConnectionFlowRow> {
@@ -376,10 +588,9 @@ fn flow_by_id_query(flow_id: Uuid) -> a3s_orm::SqlQuery<GithubConnectionFlowRow>
 fn connection_by_organization_query(
     organization_id: OrganizationId,
 ) -> a3s_orm::SqlQuery<GithubConnectionRow> {
-    sql_query::<GithubConnectionRow>(
-        "select organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, aggregate_version, connected_at from github_source_connections where organization_id = ",
-    )
+    connection_select_query().append(" where organization_id = ")
     .bind(organization_id.as_uuid())
+    .append(" order by (status in ('active', 'suspended')) desc, connected_at desc, id desc limit 1")
 }
 
 fn map_flow(
@@ -427,8 +638,11 @@ fn map_connection(row: GithubConnectionRow) -> Result<GithubConnection, Postgres
         .map_err(PostgresPersistenceError::Invariant)?,
         verified_by_user_login: GithubLogin::parse(row.verified_by_user_login)
             .map_err(PostgresPersistenceError::Invariant)?,
+        status: GithubConnectionStatus::parse(&row.status)
+            .map_err(PostgresPersistenceError::Invariant)?,
         aggregate_version: row.aggregate_version,
         connected_at: row.connected_at,
+        updated_at: row.updated_at,
     })
     .map_err(PostgresPersistenceError::Invariant)
 }
@@ -470,6 +684,15 @@ fn persistence_error(error: PostgresPersistenceError) -> RepositoryError {
         PostgresPersistenceError::Repository(error) => error,
         error => RepositoryError::Storage(error.to_string()),
     }
+}
+
+fn valid_payload_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    })
 }
 
 fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {

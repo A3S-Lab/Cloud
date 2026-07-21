@@ -34,10 +34,76 @@ class ReleaseGateContractTests(unittest.TestCase):
   github_app_private_key_env = ""
   github_app_callback_url = ""
   github_connection_state_ttl_ms = 600000
+  checkout_dir = "$state_dir/source-checkouts"
+  checkout_timeout_ms = 120000
+  checkout_max_files = 100000
+  checkout_max_bytes = 268435456
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }""",
             cloud_config,
+        )
+
+    def test_generated_cloud_config_contains_the_build_flow_contract(self) -> None:
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        cloud_config = runner.split(
+            'cat >"$config_dir/cloud.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+
+        self.assertIn(
+            """builds {
+  reconcile_interval_ms = 250
+  builder_uri = "oci://docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+  builder_digest = "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+  builder_media_type = "application/vnd.oci.image.index.v1+json"
+  buildkit_socket_volume_id = "a3s-cloud-buildkit-v0-31-2"
+  input_staging_dir = "$state_dir/build-input-staging"
+  input_max_entries = 100000
+  input_max_bytes = 536870912
+  output_staging_dir = "$state_dir/build-output-staging"
+  output_max_entries = 100000
+  output_max_expanded_bytes = 1073741824
+  oci_max_blobs = 10000
+  oci_max_bytes = 1073741824
+  command_ttl_ms = 900000
+  runtime_execution_timeout_ms = 600000
+  observation_poll_ms = 250
+  convergence_timeout_ms = 1800000
+  cleanup_timeout_ms = 300000
+  cpu_millis = 2000
+  memory_bytes = 1073741824
+  pids = 512
+  output_max_bytes = 536870912
+}""",
+            cloud_config,
+        )
+
+    def test_generated_configs_bound_artifact_storage_and_transfer(self) -> None:
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        cloud_config = runner.split(
+            'cat >"$config_dir/cloud.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+        node_config = runner.split(
+            'cat >"$config_dir/node.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+
+        self.assertIn(
+            """artifacts {
+  store_dir = "$state_dir/artifacts"
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
+}""",
+            cloud_config,
+        )
+        self.assertIn("artifact_transfer_timeout_ms = 900000", node_config)
+        self.assertIn(
+            """artifacts {
+  max_blob_bytes = 1073741824
+  max_entries = 100000
+  max_file_bytes = 1073741824
+  max_expanded_bytes = 4294967296
+}""",
+            node_config,
         )
 
     def test_service_template_binds_the_exact_digest_and_release_marker(self) -> None:

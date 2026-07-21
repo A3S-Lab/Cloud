@@ -527,7 +527,7 @@ fn github_push_payload_for_reference(git_reference: &str, commit: &str, deleted:
     .expect("GitHub push payload")
 }
 
-fn github_webhook_request(
+pub(super) fn github_webhook_request(
     event: &str,
     delivery_id: &str,
     body: &[u8],

@@ -1,9 +1,12 @@
-use super::fixture::{found, require, resource_id, DockerConformanceFixture};
+use super::artifacts::directory_artifact;
+use super::fixture::{connect_driver, found, require, resource_id, DockerConformanceFixture};
 use super::specs;
 use a3s_runtime::contract::{RuntimeMount, RuntimeMountSource, RuntimeUnitSpec, RuntimeUnitState};
 use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
 use bollard::errors::Error as DockerError;
 use bollard::volume::RemoveVolumeOptions;
+use std::io::Cursor;
+use std::sync::Arc;
 use std::time::Duration;
 
 impl DockerConformanceFixture {
@@ -170,6 +173,57 @@ impl DockerConformanceFixture {
             .await?;
         self.require_container_absent(&tmpfs_id).await?;
 
+        let archive = directory_archive("payload/value", b"immutable-input");
+        let input = directory_artifact(&archive)?;
+        let mut artifact = specs::task_spec(
+            specs::unit_id(&self.namespace, "mount-artifact"),
+            "test \"$(cat /artifact/payload/value)\" = 'immutable-input' && ! touch /artifact/forbidden 2>/dev/null",
+        );
+        artifact.mounts = vec![RuntimeMount {
+            name: "source".into(),
+            source: RuntimeMountSource::Artifact {
+                artifact: input.clone(),
+            },
+            target: "/artifact".into(),
+            read_only: true,
+        }];
+        self.artifacts
+            .prepare_input(&artifact, "source", archive)
+            .await?;
+        let artifact_observation = client
+            .apply(&specs::apply("mount-artifact-apply", artifact.clone()))
+            .await?;
+        require(
+            artifact_observation.converges(&artifact),
+            "Docker Artifact mount did not expose exact read-only input bytes",
+        )?;
+        let artifact_id = resource_id(&artifact_observation)?.to_owned();
+        self.require_artifact_bind(&artifact_id, "/artifact")
+            .await?;
+        let restarted_driver = Arc::new(
+            connect_driver(&self.namespace, self.node_id, self.artifacts.manager()).await?,
+        );
+        let reconstructed = found(
+            self.inspect_driver(restarted_driver.as_ref(), &artifact.unit_id)
+                .await?,
+        )?;
+        require(
+            reconstructed.state == artifact_observation.state
+                && reconstructed.spec_digest == artifact_observation.spec_digest
+                && resource_id(&reconstructed)? == artifact_id,
+            "Docker Artifact mount identity changed after driver reconstruction",
+        )?;
+        let restarted = self.restarted_client(restarted_driver);
+        restarted
+            .remove(&specs::action("mount-artifact-remove", &artifact))
+            .await?;
+        self.require_container_absent(&artifact_id).await?;
+        require(
+            self.artifacts.spec_views_absent(&artifact).await?
+                && self.artifacts.blob_absent(&input).await?,
+            "Docker Artifact mount removal retained its view or unreferenced blob",
+        )?;
+
         self.require_single_mount_volume(Some(&volume_name), "pre-cleanup")
             .await?;
         self.docker_call(
@@ -186,6 +240,29 @@ impl DockerConformanceFixture {
             "A3S_RUNTIME_MOUNTS_CASE_PASS case=MOUNT-VOLUME-PERSISTENCE retry=true provider_restart={provider_restart} resource_identity=true volume_identity=true mount_attachment=true"
         );
         Ok(())
+    }
+
+    async fn require_artifact_bind(&self, container_id: &str, target: &str) -> RuntimeResult<()> {
+        let inspection = self
+            .docker_call(
+                "inspect Artifact mount container",
+                self.docker.inspect_container(container_id, None),
+            )
+            .await?;
+        let mounts = inspection.mounts.unwrap_or_default();
+        require(
+            mounts.len() == 1
+                && mounts[0].typ == Some(bollard::models::MountPointTypeEnum::BIND)
+                && mounts[0].destination.as_deref() == Some(target)
+                && mounts[0].rw == Some(false)
+                && mounts[0]
+                    .source
+                    .as_deref()
+                    .is_some_and(|source| std::path::Path::new(source).is_absolute()),
+            format!(
+                "Docker Artifact mount did not use one exact absolute read-only bind: {mounts:?}"
+            ),
+        )
     }
 
     async fn require_single_mount_unit_container(
@@ -280,4 +357,18 @@ impl DockerConformanceFixture {
             format!("Docker removed mount container {id} is still present"),
         )
     }
+}
+
+fn directory_archive(path: &str, bytes: &[u8]) -> Vec<u8> {
+    let mut header = tar::Header::new_gnu();
+    header.set_entry_type(tar::EntryType::file());
+    header.set_mode(0o444);
+    header.set_size(bytes.len() as u64);
+    header.set_cksum();
+    let mut builder = tar::Builder::new(Vec::new());
+    builder
+        .append_data(&mut header, path, Cursor::new(bytes))
+        .expect("append Artifact mount fixture");
+    builder.finish().expect("finish Artifact mount archive");
+    builder.into_inner().expect("Artifact mount archive")
 }

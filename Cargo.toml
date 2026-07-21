@@ -15,7 +15,7 @@ repository = "https://github.com/A3S-Lab/Cloud"
 
 [workspace.dependencies]
 a3s-acl = "=0.3.0"
-a3s-boot = { version = "=0.1.1", default-features = false, features = [
+a3s-boot = { version = "=0.1.2", default-features = false, features = [
     "auth",
     "axum",
     "cqrs",
@@ -25,7 +25,7 @@ a3s-boot = { version = "=0.1.1", default-features = false, features = [
     "security",
 ] }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
-a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "d11cc9ab1e859b23c5108882158ade8d296d93ab", default-features = false, features = ["postgres"] }
+a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "ca17ae78968370eacd97992d9202dabf1cd82a2e", default-features = false, features = ["postgres"] }
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "6fdeae38032a5134e858cf3985f47d60cb5180ac", default-features = false, features = ["postgres"] }
 a3s-runtime = { path = "../../crates/runtime" }
 aes-gcm = "0.10"
@@ -49,15 +49,17 @@ http-body-util = "0.1"
 libc = "0.2"
 object_store = { version = "=0.12.4", default-features = false, features = ["aws"] }
 rcgen = { version = "0.13.2", features = ["x509-parser"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 rustls-pemfile = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_urlencoded = "0.7"
 sha2 = "0.10"
 subtle = "2"
 tempfile = "3"
+tar = "0.4"
 thiserror = "2"
 time = "0.3"
 tokio = { version = "1", features = [
@@ -72,6 +74,7 @@ tokio = { version = "1", features = [
     "time",
 ] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"] }
+tokio-util = { version = "0.7", features = ["io"] }
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

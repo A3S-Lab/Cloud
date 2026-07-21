@@ -1,4 +1,4 @@
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{RepositoryError, SourceConnectionId};
 use crate::modules::sources::domain::{ExternalSourceRevision, SourceWebhookDelivery};
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct AcceptSourceWebhook {
     pub delivery: SourceWebhookDelivery,
+    pub authoritative_connection_id: Option<SourceConnectionId>,
     pub correlation_id: Uuid,
 }
 

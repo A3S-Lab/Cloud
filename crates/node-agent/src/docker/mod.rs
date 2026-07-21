@@ -2,10 +2,13 @@ mod container;
 mod health;
 mod image;
 mod logs;
+mod outputs;
 mod registry_credentials;
 mod secrets;
 
-use crate::{DockerConfig, NodeRuntimeBinding, NodeSecretTransport};
+use crate::{
+    DockerConfig, NodeArtifactError, NodeArtifactManager, NodeRuntimeBinding, NodeSecretTransport,
+};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
     RuntimeCapabilities, RuntimeExecRequest, RuntimeExecResult, RuntimeFeature, RuntimeInspection,
@@ -23,7 +26,15 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 const OCI_IMAGE_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
+const OCI_IMAGE_INDEX: &str = "application/vnd.oci.image.index.v1+json";
 const DOCKER_IMAGE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
+const DOCKER_MANIFEST_LIST: &str = "application/vnd.docker.distribution.manifest.list.v2+json";
+const DOCKER_ARTIFACT_MEDIA_TYPES: [&str; 4] = [
+    OCI_IMAGE_MANIFEST,
+    OCI_IMAGE_INDEX,
+    DOCKER_IMAGE_MANIFEST,
+    DOCKER_MANIFEST_LIST,
+];
 
 pub struct DockerRuntimeDriver {
     provider_id: ProviderId,
@@ -32,6 +43,7 @@ pub struct DockerRuntimeDriver {
     pub(super) operation_timeout: Duration,
     pub(super) node_id: RwLock<Option<Uuid>>,
     pub(super) secret_transport: RwLock<Option<Arc<dyn NodeSecretTransport>>>,
+    pub(super) artifact_manager: RwLock<Option<Arc<NodeArtifactManager>>>,
     pub(super) secret_memory_dir: PathBuf,
     pub(super) health_client: reqwest::Client,
 }
@@ -78,6 +90,7 @@ impl DockerRuntimeDriver {
             operation_timeout: Duration::from_millis(config.operation_timeout_ms),
             node_id: RwLock::new(None),
             secret_transport: RwLock::new(None),
+            artifact_manager: RwLock::new(None),
             secret_memory_dir: config.secret_memory_dir.join(&config.namespace),
             health_client,
         })
@@ -96,6 +109,14 @@ impl DockerRuntimeDriver {
         let engine = version.version.unwrap_or_else(|| "unknown".into());
         let api = version.api_version.unwrap_or_else(|| "unknown".into());
         Ok(format!("docker/{engine} api/{api}"))
+    }
+
+    pub(super) async fn artifacts(&self) -> RuntimeResult<Arc<NodeArtifactManager>> {
+        self.artifact_manager.read().await.clone().ok_or_else(|| {
+            RuntimeError::InvalidRequest(
+                "Docker Runtime is not bound to the node artifact manager".into(),
+            )
+        })
     }
 
     pub(super) async fn bounded<T, F>(&self, operation: &'static str, future: F) -> RuntimeResult<T>
@@ -151,6 +172,25 @@ impl NodeRuntimeBinding for DockerRuntimeDriver {
             }
         }
     }
+
+    async fn bind_artifact_manager(
+        &self,
+        artifacts: Arc<NodeArtifactManager>,
+    ) -> RuntimeResult<()> {
+        let mut current = self.artifact_manager.write().await;
+        match current.as_ref() {
+            Some(existing) if !Arc::ptr_eq(existing, &artifacts) => {
+                Err(RuntimeError::RequestConflict {
+                    request_id: "docker-artifact-manager-binding".into(),
+                })
+            }
+            Some(_) => Ok(()),
+            None => {
+                *current = Some(artifacts);
+                Ok(())
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -165,14 +205,17 @@ impl RuntimeDriver for DockerRuntimeDriver {
             provider_id: self.provider_id.clone(),
             provider_build: self.provider_build().await?,
             unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
-            artifact_media_types: vec![OCI_IMAGE_MANIFEST.into(), DOCKER_IMAGE_MANIFEST.into()],
+            artifact_media_types: DOCKER_ARTIFACT_MEDIA_TYPES
+                .iter()
+                .map(|media_type| (*media_type).into())
+                .collect(),
             isolation_levels: vec![IsolationLevel::Container],
             network_modes: vec![
                 NetworkMode::None,
                 NetworkMode::Outbound,
                 NetworkMode::Service,
             ],
-            mount_kinds: vec![MountKind::Volume, MountKind::Tmpfs],
+            mount_kinds: vec![MountKind::Artifact, MountKind::Volume, MountKind::Tmpfs],
             health_check_kinds: vec![
                 HealthCheckKind::Http,
                 HealthCheckKind::Tcp,
@@ -190,6 +233,7 @@ impl RuntimeDriver for DockerRuntimeDriver {
                 RuntimeFeature::Remove,
                 RuntimeFeature::Logs,
                 RuntimeFeature::SecretReferences,
+                RuntimeFeature::OutputArtifacts,
             ],
         };
         capabilities.validate().map_err(RuntimeError::Protocol)?;
@@ -245,6 +289,15 @@ impl RuntimeDriver for DockerRuntimeDriver {
     }
 }
 
+pub(super) fn artifact_error(error: NodeArtifactError) -> RuntimeError {
+    match error {
+        NodeArtifactError::Invalid(message) => RuntimeError::InvalidRequest(message),
+        NodeArtifactError::Integrity(message) => RuntimeError::Protocol(message),
+        NodeArtifactError::Transport(error) => RuntimeError::ProviderUnavailable(error.to_string()),
+        NodeArtifactError::Storage(message) => RuntimeError::ProviderUnavailable(message),
+    }
+}
+
 pub(super) fn docker_error(error: DockerError) -> RuntimeError {
     RuntimeError::ProviderUnavailable(sanitize_docker_error(&error.to_string()))
 }
@@ -263,5 +316,23 @@ fn sanitize_docker_error(message: &str) -> String {
         "Docker operation failed".into()
     } else {
         value.chars().take(16 * 1024).collect()
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+
+    #[test]
+    fn docker_declares_digest_pinned_single_and_multi_platform_images() {
+        assert_eq!(
+            DOCKER_ARTIFACT_MEDIA_TYPES,
+            [
+                "application/vnd.oci.image.manifest.v1+json",
+                "application/vnd.oci.image.index.v1+json",
+                "application/vnd.docker.distribution.manifest.v2+json",
+                "application/vnd.docker.distribution.manifest.list.v2+json",
+            ]
+        );
     }
 }

@@ -5,7 +5,11 @@ mod reconciliation;
 pub(crate) mod runtime_spec;
 mod secret_rotation_reconciliation;
 
-pub use deployment_flow::{DeploymentFlowConfig, DeploymentFlowRuntime};
+pub use deployment_flow::{
+    DeploymentFlowConfig, DeploymentFlowRuntime, DEPLOYMENT_WORKFLOW_NAME,
+    DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME,
+    STOP_WORKFLOW_VERSION,
+};
 pub use oci_registry::OciRegistryArtifactResolver;
 pub use persistence::{InMemoryWorkloadRepository, PostgresWorkloadRepository};
 pub use reconciliation::{

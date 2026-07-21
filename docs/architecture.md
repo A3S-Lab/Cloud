@@ -73,23 +73,36 @@ digest in a durable provider-level replay inbox. A provider-neutral checkout
 port and Git adapter fetch an accepted commit under isolated Git configuration,
 accept an ephemeral repository-bound credential only for the provider fetch,
 reject unsafe tree entries, strip `.git`, and commit an immutable content
-receipt. The Artifacts context also owns a typed Build
-service whose BuildKit adapter exports and fully validates a local OCI image
-layout; a dedicated gate exercises it against the digest-pinned rootless
-BuildKit image. A tenant-scoped GitHub App connection boundary now binds one
+receipt. The Artifacts context also owns a deterministic PostgreSQL-backed
+`BuildRun` aggregate and production reconciler that reserve one build per
+accepted revision and enqueue one exact `cloud.build@1` operation. The
+registered Flow replays and packages the credential-free checkout, selects a
+compatible node, dispatches a digest-pinned BuildKit client as a Runtime Task,
+validates the complete OCI output graph, and durably removes both the Task and
+checkout before terminal completion. The
+node-control boundary now also provides command-bound mTLS Artifact streaming:
+the control plane stores content-addressed directory archives, and the node
+agent verifies, safely materializes, mounts, captures, replays, and reclaims
+their exact Runtime input/output identities. A
+tenant-scoped GitHub App connection boundary now binds one
 verified installation/account to one Cloud organization using single-use
 installation and OAuth state, S256 PKCE, and transient GitHub user-token
-verification. The build coordinator does not yet join those boundaries or run
-the client through a Runtime Task. Environment-owned repository subscriptions
-now bind that verified installation to exact repository/branch/recipe policy,
+verification. Environment-owned repository
+subscriptions now bind that verified installation to exact
+repository/branch/recipe policy,
 and the provider inbox atomically fans out immutable revisions only through
-active matches. Installation-token authentication and private checkout are
+the exact active connection. Signed GitHub installation, installation-target,
+and App-authorization deliveries reconcile versioned connection status,
+retain terminal history, and write typed replay receipts plus outbox facts.
+Installation-token authentication and private checkout are
 implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
-gate has not been run without provider credentials. Installation lifecycle
-reconciliation, isolated build orchestration, registry publication, and
-provenance remain unimplemented.
+gate has not been run without provider credentials. Periodic authoritative
+provider polling and checkout-time lifecycle revalidation, registry
+publication, provenance, and deployment handoff remain unimplemented. The real
+Runtime/BuildKit gate exists but still requires recorded evidence from an
+operator-provisioned shared socket volume.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -765,25 +778,38 @@ never installation authority. Provider bodies and requests are bounded, and
 OAuth codes, client secrets, access/refresh tokens, PKCE verifiers, and
 provider response buffers are never durable.
 
-Completion atomically consumes the flow, persists one `GithubConnection`, and
-writes `source.github-connection.created` to the outbox. A Cloud organization
-has at most one connection; GitHub installation ID and account identity are
-exclusive across organizations. Durable state contains only numeric
-installation/account/verifying-user IDs, account kind, display logins, and the
-connection time. The tenant GET returns that record, while flow responses use
-no-store and no-referrer policy. Explicitly disabled GitHub App ACL fields
-construct a closed unavailable adapter rather than partial provider behavior.
+Completion atomically consumes the flow, persists one active
+`GithubConnection`, and writes `source.github-connection.created` to the
+outbox. A Cloud organization has at most one current active/suspended
+connection; current GitHub installation ID and account identity are exclusive
+across organizations. Terminal history is retained under its original
+connection ID. Durable state contains only numeric
+installation/account/verifying-user IDs, account kind, display logins, status,
+aggregate version, and connection/update times. The tenant GET prefers the
+current connection and otherwise returns the latest terminal record, including
+`status` and `updatedAt`. Flow responses use no-store and no-referrer policy.
+Explicitly disabled GitHub App ACL fields construct a closed unavailable
+adapter rather than partial provider behavior.
+
+Connection status is `active`, `suspended`, `verification_revoked`,
+`installation_deleted`, or `account_changed`. Only `active` is provider
+authority. Both `active` and `suspended` prevent a competing connection;
+terminal states require the full installation/OAuth proof again and create a
+new connection ID. A terminal record cannot be reactivated by a webhook, and
+subscriptions retain their old connection ID rather than inheriting a new
+proof.
 
 The durable connection does not enumerate repositories or contain a token.
-After anonymous resolution reports unavailable, the application may use the
-same tenant's verified installation ID to mint a bounded App JWT and request
-one repository-scoped installation token with `contents: read`. The App PEM key
-is read from its configured environment variable for each attempt. The
+After anonymous resolution reports unavailable, the application may use only
+the same tenant's active verified installation ID to mint a bounded App JWT and
+request one repository-scoped installation token with `contents: read`. The
+App PEM key is read from its configured environment variable for each attempt. The
 provider must confirm selected-repository scope and only read-only contents plus
 implicit metadata permission. Any issuance or authenticated-provider
 failure collapses to the same unavailable source result. Repository binding and
-fanout remain separate transactions beneath this verified ownership record;
-suspension, deletion, and account-transfer reconciliation are not implemented.
+fanout remain separate transactions beneath this verified ownership record.
+Already-issued credentials are provider-managed and may remain usable until
+expiry or revocation.
 
 An environment-owned `GithubRepositorySubscription` binds the organization's
 verified connection and installation to one canonical GitHub repository, one
@@ -798,8 +824,10 @@ POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/
 
 Creation requires `source:write`, the configured exact repository policy, an
 existing environment in the complete tenant hierarchy, and the same
-organization's verified connection. Composite PostgreSQL foreign keys bind both
-the environment hierarchy and connection/installation identity. Active natural
+organization's active verified connection. Composite PostgreSQL foreign keys
+bind both the environment hierarchy and connection/installation identity. The
+transaction locks and rechecks the exact connection in `active` state, so a
+concurrent lifecycle change cannot authorize a stale creation. Active natural
 identity is environment, connection, repository, branch, and recipe digest;
 idempotency and canonical duplicates return the original binding. Explicit
 deactivation changes `active` to `inactive` and retains the historical record.
@@ -816,19 +844,24 @@ authenticates the exact raw bytes with HMAC-SHA256 before parsing. The accepted
 signature syntax is exactly `sha256=` plus 64 lowercase hexadecimal digits.
 Bearer authentication cannot substitute for or bypass this proof.
 
-Authenticated non-push events, deleted pushes, and non-branch refs are
-acknowledged without persistence. A branch push is reduced to the GitHub
-provider, bounded delivery ID, canonical repository identity, positive
-installation ID, safe branch, full commit object ID, exact-payload SHA-256
-digest, and canonical receipt time. The PostgreSQL inbox is keyed by provider
-and delivery ID. An exact-payload replay returns the stored fact; reusing the
-key with any changed typed identity or raw-body digest conflicts in the same
-transaction. Neither secret material nor the raw payload is stored.
+Deleted pushes, non-branch refs, unsupported lifecycle actions, and unrelated
+authenticated events are acknowledged without persistence. A branch push is
+reduced to the GitHub provider, bounded delivery ID, canonical repository
+identity, positive installation ID, safe branch, full commit object ID,
+exact-payload SHA-256 digest, and canonical receipt time. The PostgreSQL inbox
+is keyed by provider and delivery ID. An exact-payload replay returns the
+stored fact; reusing the key with any changed typed identity or raw-body digest
+conflicts in the same transaction. Neither secret material nor the raw payload
+is stored.
 
-Only a newly inserted delivery may fan out. In the inbox transaction, Cloud
-selects active subscriptions by exact installation, canonical repository
-identity, and branch, then derives the immutable commit directly from the
-authenticated delivery without resolving the branch again. Each matching
+Only a newly inserted push delivery may fan out. Before the transaction, Cloud
+resolves the currently authoritative connection ID for the installation. In
+the inbox transaction it joins that exact connection and selects only active
+subscriptions whose installation, repository identity, and branch match while
+requiring `connection.status = 'active'`. Share locks on the connection and
+subscription serialize fanout against lifecycle reconciliation. The immutable
+commit is derived directly from the authenticated delivery without resolving
+the branch again. Each matching
 environment/recipe natural identity creates one `ExternalSourceRevision` and
 one `source.revision.accepted` outbox fact. Multiple environments and recipes
 fan out independently; no match creates no tenant revision. Tenant delivery
@@ -842,6 +875,28 @@ well. Exact replay never re-evaluates subscriptions, preventing duplicate or
 retroactive fanout. This transaction still does not create a build or
 deployment. The optional source-revision `webhookDeliveryId` remains a separate
 authenticated mutation-time entry to the same tenant reservation invariant.
+
+The same signed ingress recognizes `installation` `suspend`, `unsuspend`, and
+`deleted`; `installation_target` `renamed`; and
+`github_app_authorization` `revoked`. These deliveries are reduced to typed
+event/action, installation-or-user subject, exact-payload digest, and receipt
+time in a separate lifecycle inbox. Raw provider bodies and credentials are
+not stored. The first accepted fact locks matching active/suspended
+connections, applies the state transition, advances aggregate version/update
+time, and atomically emits `source.github-connection.reconciled`. Exact replay
+does not reconcile again; changed event, subject, action, or digest under the
+same lifecycle delivery ID conflicts.
+
+Suspend and unsuspend preserve a same-identity account login; rename updates
+that login without losing active/suspended state. Numeric account or account
+kind mismatch fails closed to `account_changed`. Installation deletion is
+terminal. App-authorization revocation invalidates every current connection
+whose proof was supplied by that user; it is not interpreted as installation
+deletion. Because GitHub does not supply one uniformly reliable event time for
+all of these deliveries, this slice orders first acceptance by local receipt
+and remains webhook-driven. Periodic authoritative polling, missed/out-of-order
+repair, delayed pre-reconnection delivery disambiguation, and a fresh provider
+check immediately before checkout remain subsequent G0 work.
 
 `POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
 normalizes an exact GitHub HTTPS locator, enforces the configured exact
@@ -861,8 +916,9 @@ organization's verified GitHub connection, issue one short-lived credential
 bound to the canonical repository, and retry with a Bearer header. Public
 success, non-availability provider failures, and idempotency replay never issue
 a token. Token-service and authenticated-provider errors are sanitized so even
-a defective adapter cannot reflect a credential. The coordinated BuildKit
-operation remains a subsequent G0 boundary.
+a defective adapter cannot reflect a credential. The Build Flow consumes only
+the resulting immutable revision and transient checkout authority described
+below.
 
 The provider-neutral source-checkout port accepts only a canonical repository,
 one full commit object ID, and an immutable checkout ID. Its Git adapter uses a
@@ -885,7 +941,54 @@ public GitHub CI gate resolves a branch and exercises checkout/replay. A local
 smart-HTTP Git fixture proves authenticated fetch, exact header transport, and
 credential-free receipt/replay. The ignored real GitHub App test is ready for
 operator credentials but has not produced external private-repository
-evidence. The boundary does not yet start a build operation.
+evidence.
+
+Every accepted source revision now has one deterministic prospective
+`BuildRun` identity. PostgreSQL reservation uses row locking and a unique
+revision constraint so concurrent reconcilers create one row. The aggregate
+binds the organization/project/environment, source revision, operation ID,
+immutable input and Runtime artifact identities, exact node/command identities,
+validated OCI output, cancellation/failure outcome, cleanup command, timestamps,
+and optimistic version. Its state transitions are exact-replay no-ops; storage
+accepts only one transition generated by the aggregate and rejects stale or
+forged state. A separate reconciler repairs the durable gap after source commit
+by enqueuing the same deterministic `cloud.build@1` request. The PostgreSQL gate
+covers concurrent reservation, the pre-enqueue crash gap, operation replay,
+tenant ownership, and optimistic conflicts. The production worker runs this
+reconciler before the generic operation coordinator; a closed Flow router keeps
+`cloud.deployment@1/@2`, `cloud.workload.stop@1`, and `cloud.build@1` on their
+own Runtime implementations.
+
+The Artifact transport prerequisite is implemented below that Flow boundary.
+Typed download and upload requests bind the authenticated node, durable command
+ID, Runtime specification digest, exact mount or output name, media type,
+SHA-256 digest, and byte size. The mTLS node-control API authorizes those fields
+against the persisted unexpired `RuntimeApply` command before opening a blob or
+accepting a body. It streams raw bytes rather than base64, returns explicit
+length/content/digest metadata, applies a total transfer deadline, and persists
+content-addressed blobs plus atomic replay receipts. A blob/receipt crash gap
+is repaired only after the bytes are rehashed.
+
+The node agent independently verifies downloaded and captured bytes before
+admission. Its persistent cache separates immutable read-only blobs from
+spec-bound mount/output receipts. Directory archives are planned and hashed
+before extraction, reject absolute or parent paths, escaping links, devices,
+FIFOs, duplicates, non-directory ancestors, and configured entry/file/expanded
+limits, and are reverified by path, type, content, link identity, and
+permissions after restart. Artifact views are reference-counted by durable spec
+receipts; Runtime removal deletes the view and reclaims only blobs with no
+remaining reference.
+
+Docker advertises `MountKind::Artifact` and `OutputArtifacts`; node startup
+binds this manager before it begins command processing. Artifact inputs become
+exact read-only host binds. A successful finite Task is archived through the
+Docker API into its declared named output, then the command executor uploads
+the verified node-local blob and replaces the local URI with the control-plane
+content URI. Exact command replay, node/client restart, inspection, and removal
+retain or retire the same output identity. The registered `cloud.build@1` Flow
+now composes this transport with checkout replay, BuildKit execution, OCI
+validation, and cleanup. Registry publication and deployment handoff remain
+later Artifact and Workload boundaries.
 
 The Artifact-owned `IBuildService` accepts one immutable build ID, an absolute
 materialized source directory, the source content receipt digest, and the
@@ -903,18 +1006,30 @@ config, and layer to have its declared size and SHA-256 bytes, the inventory to
 contain no unreferenced blob, and the config platforms to equal the recipe.
 The bounded result and receipt publish atomically by build ID; replay validates
 the whole graph again, changed input conflicts, and changed output fails
-integrity validation. The real CI gate runs a scratch-based fixture through
-the digest-pinned rootless BuildKit image and validates the output through this
-same adapter.
+integrity validation. The local-context CI gate still certifies this adapter
+directly.
 
-This is deliberately a local-context engine boundary, not the G0 build
-operation. It binds but does not independently recompute the checkout content
-digest, so the future coordinator must replay the secure checkout immediately
-before submission. The CI daemon's unauthenticated endpoint is ephemeral and
-loopback-only. Rootless BuildKit itself does not prove deny-by-default build
-networking, and the current client is not yet a Runtime Task. Registry push,
-cache trust, provenance, credentials, cancellation, logs, and deployment
-handoff remain later slices.
+The production Build Flow closes the previously separate source, Runtime, and
+validation boundaries. `SourceBuildInputPreparer` checks tenant identity,
+materializes the exact commit anonymously or with one ephemeral installation
+token, packages deterministic archive bytes, admits them to the Artifact store,
+then performs an offline checkout receipt replay to reject package-time change.
+Only nodes advertising Task, container isolation, Artifact/Volume mounts,
+output Artifacts, resource controls, `NetworkMode::None`, and the builder media
+type are eligible. The projected Task mounts source and the BuildKit socket
+read-only, drops Runtime networking, and also passes
+`force-network-mode=none`; it accepts no secret, SSH, entitlement, or cache
+channel. Successful output is rehashed from the mTLS Artifact store and its
+complete OCI graph is validated before a deterministic `RuntimeRemove` command
+and checkout deletion. Flow history persists dispatch identities before replay,
+so a crash cannot duplicate apply or removal.
+
+The Runtime gate uses the exact projector, node command journal, Docker driver,
+Artifact upload, and OCI validator. Its Dockerfile requires a `RUN` environment
+without `eth0` and a failed `wget` attempt while the overall build succeeds.
+This gate is implemented but still needs an operator-provisioned rootless
+BuildKit socket volume on a Docker runner. Registry push, cache trust,
+provenance, logs, and deployment handoff remain later slices.
 
 Hosted assets follow a separate publication chain:
 
@@ -1091,7 +1206,7 @@ provided by the middleware below rather than reimplemented in A3S Cloud.
 | Transactional state and coordination | PostgreSQL | HA PostgreSQL; PgBouncer when measured connection pressure requires it | Required from F0; remains the source of desired state and leases |
 | Durable workflow work | A3S Flow PostgreSQL store and task queue | The same store/queue with multiple leased workers | Required; do not add another job queue for the same work |
 | Integration event fan-out | A3S Event local provider | NATS JetStream durable streams and consumers | NATS is required when API, workers, or integrations run as independent replicas |
-| OCI build execution | Rootless BuildKit | Isolated BuildKit workers selected by platform/architecture | Required when external Git or hosted source builds are enabled |
+| OCI build execution | Operator-provisioned rootless BuildKit Unix socket volume | Isolated BuildKit workers selected by platform/architecture | Required when external Git or hosted source builds are enabled; Runtime Volume capability alone does not prove the configured socket exists |
 | OCI artifact storage | Existing external registry for image-only deployment | CNCF Distribution or Harbor with retention, replication, and access policy | Cloud-owned registry is required when Cloud owns builds |
 | Object and log-segment storage | Filesystem adapter for development | S3-compatible storage such as RustFS, MinIO, or a managed S3 service | Required for production logs, asset archives, backups, SBOMs, and provenance |
 | Hosted Git repository storage | Local durable POSIX filesystem | Replicated POSIX/block storage with PostgreSQL single-writer leases and object-store backups | Required only when hosted assets are enabled; live loose Git objects do not use S3 |
@@ -1109,10 +1224,15 @@ provides durable distributed delivery after commit; PostgreSQL still proves
 whether a command is required. NATS subjects carry event IDs and compact fact
 payloads, not secret material, logs, or Runtime command authority.
 
-BuildKit is a build engine, not the Runtime. A build Flow submits an isolated
-Runtime Task containing a BuildKit client and typed recipe; the Build service
-selects a BuildKit endpoint, captures provenance, and registers the resulting
-digest. Runtime remains unaware of Dockerfiles, buildpacks, or registry policy.
+BuildKit is a build engine, not the Runtime. The implemented build Flow submits
+an isolated Runtime Task containing a digest-pinned BuildKit client and typed
+recipe; Runtime remains unaware of Dockerfiles, buildpacks, and registry
+policy. On Docker nodes, the operator must provision the physical volume as
+`a3s-{namespace}-volume-{first16(sha256(volume_id))}`, mount it into a rootless
+BuildKit daemon at `/run/user/1000/a3s-buildkit`, and keep
+`buildkitd.sock` available there. The Task sees that volume read-only. Missing
+or stale socket infrastructure fails the build; node capability advertisement
+does not satisfy this operator readiness gate.
 
 The implemented first-node log path writes ordered, checksummed report objects
 through an immutable filesystem or S3-compatible adapter and keeps node, unit,

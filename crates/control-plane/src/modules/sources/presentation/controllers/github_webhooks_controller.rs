@@ -1,4 +1,5 @@
 use crate::modules::sources::application::commands::accept_source_webhook_delivery::AcceptSourceWebhookDelivery;
+use crate::modules::sources::application::commands::reconcile_github_connection_lifecycle::ReconcileGithubConnectionLifecycle;
 use crate::modules::sources::domain::{
     ISourceWebhookVerifier, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
     VerifiedSourceWebhook,
@@ -36,17 +37,32 @@ pub fn github_webhooks_controller(
                         body: request.body(),
                     })
                     .map_err(verification_error)?;
-                if let VerifiedSourceWebhook::Push(push) = verified {
-                    match bus
-                        .execute(AcceptSourceWebhookDelivery {
-                            push,
-                            received_at: Utc::now(),
-                            request_id,
-                        })
-                        .await?
-                    {
-                        Ok(_) => {}
-                        Err(error) => return application_error_response(error, request_id),
+                let received_at = Utc::now();
+                match verified {
+                    VerifiedSourceWebhook::Ignored => {}
+                    VerifiedSourceWebhook::Push(push) => {
+                        if let Err(error) = bus
+                            .execute(AcceptSourceWebhookDelivery {
+                                push,
+                                received_at,
+                                request_id,
+                            })
+                            .await?
+                        {
+                            return application_error_response(error, request_id);
+                        }
+                    }
+                    VerifiedSourceWebhook::GithubConnectionLifecycle(lifecycle) => {
+                        if let Err(error) = bus
+                            .execute(ReconcileGithubConnectionLifecycle {
+                                lifecycle,
+                                received_at,
+                                request_id,
+                            })
+                            .await?
+                        {
+                            return application_error_response(error, request_id);
+                        }
                     }
                 }
                 BootResponse::json_with_status(202, &SourceWebhookResponse::received())
