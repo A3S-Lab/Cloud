@@ -123,7 +123,7 @@ Status as of 2026-07-22:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, and explicit published-build deployment through `cloud.deployment@2` are implemented. Authoritative provider polling and checkout-time revalidation, provenance/SBOM/signing, external private-provider evidence, cache trust, and complete product build surfaces still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, explicit published-build deployment through `cloud.deployment@2`, periodic installation/account authority polling, and fresh private-credential/checkout revalidation are implemented. Provenance/SBOM/signing, external private-provider evidence, cache trust, and complete build status/log/cancel/retry surfaces still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -643,6 +643,28 @@ The current independently testable G0 slices are implemented:
   producing a new connection ID while retaining the old record. Existing
   subscriptions remain bound to the prior ID. API projections expose status
   and update time so the loss of authority is operator-visible.
+- A bounded worker signs an App JWT and calls
+  `GET /app/installations/{installation_id}` for due active or suspended
+  connections. A successful response repairs missed suspension, unsuspension,
+  account-login, and numeric account-identity facts; `404` confirms installation
+  deletion. Authentication, rate-limit, transport, and server failures remain
+  retryable, while malformed or identity-confused responses fail closed as
+  protocol errors.
+- Provider authority health is durable: last successful check, last attempt,
+  next attempt, bounded consecutive-failure count, and a closed generic error
+  category. PostgreSQL selects bounded due batches and compare-and-sets the
+  aggregate version with any lifecycle event in one transaction. Exponential
+  retry is capped, concurrent workers lose safely, and only lifecycle/account
+  changes emit `source.github-connection.reconciled`.
+- Installation deletion or account-change webhooks schedule immediate provider
+  confirmation. A delayed terminal fact can be repaired when GitHub still
+  reports the original active or suspended installation; optimistic versions
+  and current-connection uniqueness prevent that repair from changing a newly
+  verified replacement connection.
+- GitHub does not expose a tokenless current-user App-grant query. Cloud keeps
+  user OAuth access and refresh tokens non-durable, so the signed
+  `github_app_authorization.revoked` delivery remains authoritative for
+  verifying-user revocation rather than introducing durable user credentials.
 - Environment-owned `GithubRepositorySubscription` commands and queries bind
   the same organization's verified connection/installation to a canonical
   allowlisted repository, exact branch, and explicit recipe. PostgreSQL
@@ -676,6 +698,12 @@ The current independently testable G0 slices are implemented:
   `contents: read`, and retry with the returned short-lived Bearer credential.
   Public success, anonymous provider/protocol errors, missing or cross-tenant
   connection, and idempotency replay never issue a token.
+- Before any private-repository credential is issued, a decorator requires the
+  exact organization, connection, and installation identities, performs a fresh
+  installation/account authority check, persists its outcome, and confirms the
+  connection is still `active`. Provider uncertainty or terminal authority
+  prevents the underlying issuer from running. The same path protects both
+  authenticated ref resolution and Build Flow checkout.
 - The App PEM key is read from its configured environment variable for every
   issuance. The provider response must confirm selected-repository scope and
   only read-only contents plus implicit metadata permission. Credential values
@@ -812,20 +840,23 @@ The current independently testable G0 slices are implemented:
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
 ownership of a GitHub installation,
-authoritative repository subscription/fanout, credential-safe checkout,
+authoritative repository subscription/fanout, periodic installation/account
+authority reconciliation, fresh private-credential and checkout revalidation,
+credential-safe checkout,
 durable build intent/crash-gap repair, command-bound mTLS Artifact transport,
 restart-safe Docker inputs/outputs, a real local-context BuildKit/OCI engine
 boundary, the production isolated Build Flow, and authoritative registry
 publication, and explicit artifact-free deployment of a successful published
 BuildRun through the existing Workload path. The deployment handoff durably
 binds tenant, source revision, BuildRun, published digest, and resulting
-Workload revision; rollback and Secret rotation preserve that lineage.
-Lifecycle reconciliation is currently driven only by signed webhook receipt;
-periodic authoritative provider polling, missed/out-of-order repair, delayed
-pre-reconnection delivery disambiguation, and checkout-time revalidation are
-not yet implemented. External private-provider certification,
-provenance/SBOM/signing, cache trust, and complete build status, log, and
-product web surfaces remain required.
+Workload revision; rollback and Secret rotation preserve that lineage. Signed
+webhooks remain the immediate lifecycle path, periodic provider inspection
+repairs installation/account drift, and every private credential requires a
+fresh successful check. Verifying-user OAuth revocation remains signed-webhook
+authoritative because no tokenless GitHub query exists and user tokens are not
+persisted. External private-provider certification, provenance/SBOM/signing,
+cache trust, and complete build status, log, cancellation, retry, and product
+web surfaces remain required.
 
 ### Work
 
@@ -833,11 +864,6 @@ product web surfaces remain required.
   implemented installation-token resolution/checkout gate. Do not promote the
   local fixture evidence to external-provider certification until that pass is
   recorded; never persist token or private-key material in source state.
-- Add periodic authoritative GitHub installation/authorization polling and a
-  fresh check before credential issuance or checkout. Repair missed and
-  out-of-order deliveries without allowing a delayed pre-reconnection event to
-  mutate a newly verified connection. Define bounded retry/backoff and
-  operator-visible reconciliation failure semantics.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Record source, recipe, builder, platform, SBOM, signature, and artifact
