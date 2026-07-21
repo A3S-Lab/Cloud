@@ -15,7 +15,7 @@ repository = "https://github.com/A3S-Lab/Cloud"
 
 [workspace.dependencies]
 a3s-acl = "=0.3.0"
-a3s-boot = { version = "=0.1.1", default-features = false, features = [
+a3s-boot = { version = "=0.1.2", default-features = false, features = [
     "auth",
     "axum",
     "cqrs",
@@ -25,7 +25,7 @@ a3s-boot = { version = "=0.1.1", default-features = false, features = [
     "security",
 ] }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
-a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "d11cc9ab1e859b23c5108882158ade8d296d93ab", default-features = false, features = ["postgres"] }
+a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "ca17ae78968370eacd97992d9202dabf1cd82a2e", default-features = false, features = ["postgres"] }
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "6fdeae38032a5134e858cf3985f47d60cb5180ac", default-features = false, features = ["postgres"] }
 a3s-runtime = { path = "../../crates/runtime" }
 aes-gcm = "0.10"

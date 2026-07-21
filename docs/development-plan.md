@@ -30,6 +30,12 @@ These horizons are cumulative. A broader interface or import format never
 creates a second orchestration path and never weakens an earlier durability,
 security, or recovery gate.
 
+Inference is an optional product profile over the same platform, not a fourth
+deployment engine. Its single-node accelerator and model-serving gates begin
+after E0; its multi-node replica and distributed-serving gates consume H0's
+generic replica, placement, target-set, networking, and HA primitives. The
+detailed I0 design is maintained in [`inference-plan.md`](inference-plan.md).
+
 ## 2. Engineering rules
 
 - Implement vertical behavior through domain, application, infrastructure,
@@ -72,10 +78,25 @@ flowchart LR
     G0 --> P0[Developer workflows and project import]
     G0 --> A0[Agent/MCP/Skill hosting]
     E0 --> S0[Databases, volumes, backups]
-    P0 --> H0[Multi-node hardening]
-    C0 --> H0
-    A0 --> H0[Multi-node hardening]
-    S0 --> H0
+    E0 --> I00[I0.0 versioned accelerator contracts]
+    E0 --> H01[H0.1 managed replica and claim foundation]
+    I00 --> I01[I0.1 accelerator substrate]
+    H01 --> I01
+    I01 --> I02A[I0.2a single-node backend serving]
+    H01 --> H02[H0.2 private target projection]
+    I02A --> I02BC[I0.2b/c Gateway data plane and usage]
+    H02 --> I02BC
+    H02 --> H03[H0.3 multi-node placement and network]
+    I02BC --> I034[I0.3/4 multi-node inference]
+    H03 --> I034
+    P0 --> H04[H0.4 production deployment and HA]
+    C0 --> H04
+    A0 --> H04
+    S0 --> H04
+    H03 --> H04
+    H04 --> H05[H0.5 measured autoscaling and hardening]
+    I034 --> I05[I0.5 inference hardening]
+    H05 --> I05
 ```
 
 The first release gate is `E0`, and it is verified. Source delivery (`G0`),
@@ -84,6 +105,12 @@ independent lanes. Project import (`P0`) depends on the immutable source and
 build contracts from G0. Hosted assets (`A0`) reuse the same source-to-artifact
 path. Production multi-node work (`H0`) starts only after the product surfaces
 it must scale have passed their single-node gates.
+
+H0 is delivered through the numbered sub-gates below. H0.1 through H0.3 may be
+proved against an owning profile after that profile's single-node gate. I0 uses
+that rule to exercise inference-neutral replica, claim, target-set, placement,
+and network primitives. This does not mark the broader H0 milestone complete
+for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
@@ -121,6 +148,8 @@ authoritative model:
 | Agent, MCP, and Skill releases | `A0` | A3S-specific catalog over the common build and deployment path |
 | Databases, volumes, and backups | `S0` | Model state explicitly with fencing and verified restore |
 | Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
+| Generic accelerator inventory, claims, and enforcement | `I0.0`/`I0.1` with `H0` placement ownership | Extend Runtime, Fleet, and Workloads without introducing model or backend semantics into their core contracts |
+| Model catalog, inference deployment, model routes, and usage | `I0` | Add a separate Inference bounded context that compiles into managed Workloads and Edge target sets |
 | Edge caching and transport optimization | `E0`/`H0` | A3S Gateway owns HTTP, TLS, compression, and cache mechanics; Cloud owns desired policy |
 | Mail hosting, native desktop, and commercial billing | Outside core | Use integrations or separately owned products; do not couple them to workload orchestration |
 
@@ -1072,15 +1101,36 @@ Scale the proven semantics rather than replace them with a new control path.
 One desired replica must retain one durable identity across rescheduling,
 reconciliation, process death, and provider recovery.
 
+### Delivery sub-gates
+
+| Gate | Owned foundation | Exit evidence before a consumer advances |
+| --- | --- | --- |
+| `H0.1` | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
+| `H0.2` | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
+| `H0.3` | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
+| `H0.4` | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
+| `H0.5` | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
+
+H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
+job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the
+OpenTelemetry Collector remain replaceable dependencies with explicit health
+and recovery contracts. Kubernetes/Helm may be one installation profile, but it
+does not become a second workload scheduler, and Cloud product configuration
+remains ACL.
+
 ### Work
 
 - Add desired replica count, durable replica identity, per-replica generation,
   placement constraints, capacity accounting, anti-affinity, drain and
   evacuation, maintenance windows, and node pools.
+- Add inference-neutral managed-owner references, multi-member execution plans,
+  atomic placement groups, exact resource claims, and fencing epochs. These
+  primitives support I0 gang scheduling but contain no model, backend, rank
+  launcher, or tensor-parallel policy.
 - Extend rolling update policy with explicit surge and unavailable bounds.
-  Route projection contains only healthy replicas of the exact desired
-  revision, and old replicas remain eligible until replacement health and
-  Gateway acknowledgement are both proven.
+  Route projection contains only healthy replicas from the explicitly allowed
+  prior/candidate revisions of one rollout generation. Prior replicas remain
+  eligible until replacement health and Gateway acknowledgement are proven.
 - Support dedicated or replicated Gateway placement through the same snapshot
   protocol, complete target-set publication, and exact acknowledgement model.
 - Add measured autoscaling policy with min/max replicas, stabilization,
@@ -1092,6 +1142,10 @@ reconciliation, process death, and provider recovery.
   isolation, partition, and recovery evidence across real nodes.
 - Add highly available control-plane roles, leader/lease contention tests,
   backup/restore for control-plane PostgreSQL, and disaster runbooks.
+- Define per-Gateway rollout readiness with explicit `min_ready` and
+  `max_unavailable`. Success requires every desired Gateway replica to
+  acknowledge the exact revision or the rollout to terminate as explicitly
+  degraded; no global atomic reload is assumed.
 - Add versioned control-plane export/import manifests for tenant-owned desired
   state, provenance, audit metadata, and referenced artifacts. Secret values are
   re-encrypted for the destination through an explicit migration ceremony;
@@ -1188,6 +1242,7 @@ proves the resource stopped or records an operator-visible orphan.
 | Interfaces | REST/web/CLI/MCP contract parity, scope equivalence, revocation, redaction, and terminal lifetime evidence |
 | Stateful | Real volume fencing, engine readiness, backup corruption, restore query, credential rotation, and retention evidence |
 | Scale | Real multi-node placement, replica identity, Gateway target sets, drain, partition, autoscaling, and failover evidence |
+| Inference | Real accelerator isolation, immutable model cache, backend conformance, OpenAI streaming, model authorization, usage deduplication, multi-node replica and gang recovery evidence |
 | End to end | Real Linux node enrollment through TLS route, logs, update, rollback |
 | Recovery | Process kill and network fault at every durable boundary |
 | Security | Tenant isolation, certificate revocation, secret redaction, Git/path/SSRF tests |
@@ -1244,6 +1299,9 @@ Later gates extend the same fault-injection discipline:
 | 15 | Backup object upload before manifest commit | `S0` | Reconciliation verifies and adopts the object or records and removes an orphan; no false successful backup exists |
 | 16 | Volume detach before replacement attach | `S0`/`H0` | A replacement writer remains blocked until durable fencing evidence exists |
 | 17 | Replica provider create before placement projection | `H0` | Restart adopts one provider unit for the replica generation and does not consume an extra replica slot |
+| 18 | Accelerator reservation commit before node prepare | `I0.1` | Replay prepares the exact claim or compensates it; no device is allocated twice |
+| 19 | Some placement-group members prepare before another rejects | `I0.4` | The complete group converges to all ready or no committed claims and no Gateway target |
+| 20 | Gateway usage batch send before contiguous ingestion acknowledgement | `I0.2c` | Replay records one request/attempt fact; interruption or loss remains an explicit gap rather than zero |
 
 Each owning milestone must add its row to the current-evidence table when the
 real fault gate passes. Planned rows are not release evidence.
@@ -1334,11 +1392,18 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
 | Stateful platform | `E0` | `S0` local volume -> PostgreSQL -> backup/restore -> additional engines and remote volume provider |
-| Production scale | `P0`, `C0`, `A0`, and `S0` single-node contracts | `H0` replicas -> multi-node placement/drain -> Gateway replication -> HA -> measured autoscaling |
+| Production scale | `P0`, `C0`, `A0`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
+| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening |
 
 The lane table expresses dependency, not a promise of equal staffing or calendar
 dates. The next slice is always the smallest vertical behavior that can pass a
 real exit gate.
+
+E0 is verified, so I0 implementation may proceed in the order above. No
+user-visible Inference capability is claimed before its owning I0 and H0 exit
+gates pass. See
+[`inference-plan.md`](inference-plan.md) for ownership, protocol evolution,
+scheduling, persistence slices, crash points, and exit evidence.
 
 ### 18.3 Milestone definition of done
 

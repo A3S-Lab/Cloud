@@ -7,6 +7,10 @@ workload on an operator-owned node. The model must support ordinary OCI
 applications and A3S-native Agent, MCP, and Skill assets without pretending
 that every platform object is an asset.
 
+Planned I0 adds models and inference deployments as a separate product profile
+that compiles into the same Workloads path; it does not broaden the Asset kind
+set or create a second deployment engine.
+
 The domain uses ordinary transactional aggregates. It does not event-source all
 business data. A3S Flow event-sources long-running operations, and A3S Event
 distributes committed facts after the corresponding database transaction.
@@ -24,6 +28,10 @@ distributes committed facts after the corresponding database transaction.
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
 | Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
+| Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
+| Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
+| Inference deployment | Environment-scoped model-serving intent projected into one inference-managed Workload. |
+| Inference route | External model name, target and fallback policy projected into an Edge target set. |
 | Workload | Environment-scoped desired long-running service. It is not an Asset. |
 | Workload revision | Immutable desired runtime specification derived from one source. |
 | Deployment | One attempt to make a workload revision active on a node. |
@@ -219,7 +227,34 @@ The first stateless deployment slice does not implement this context. Its
 boundary is defined now so stateful behavior is not later hidden in workload
 metadata or provider-specific JSON.
 
-### 3.11 Operations and audit
+### 3.11 Inference platform (planned I0)
+
+Owns model and backend catalogs, immutable model-serving revisions, model-level
+routes and access-policy revisions referencing Identity principals, external
+provider targets scoped to one environment, model-aware scaling intent, and the
+append-only inference usage ledger. It compiles model-serving intent into the
+common Workloads path and never schedules a provider process or writes Fleet,
+Workloads, Edge, Identity, Secrets, or Operations tables directly.
+
+Primary aggregates:
+
+- `InferenceModel`
+- `InferenceBackend`
+- `InferenceDeployment`
+- `InferenceRoute`
+- `ExternalModelProvider`
+
+Primary append-only records:
+
+- `InferenceUsageRecord`
+- `InferenceUsageAttempt`
+
+Inference does not own replicas, placement members, accelerator claims, node
+cache state, instance endpoints, Gateway acknowledgements, or operation status.
+Those facts are composed from their authoritative contexts. The complete
+planned boundary is defined in [`inference-plan.md`](inference-plan.md).
+
+### 3.12 Operations and audit
 
 Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
@@ -628,6 +663,39 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Backup retention never deletes the last verified recovery point while a
   database policy requires one.
 
+### Inference model, backend, deployment, route, and usage (planned I0)
+
+- A ModelResolutionAttempt carries retry and failure state. Only a successful,
+  fully verified attempt creates and seals a ModelRevision that binds the
+  immutable manifest digest. An attempt executes in one environment and may
+  bind only a Secret version from that environment through a scoped Artifact
+  materialization grant. Model bytes remain in an Artifact store.
+- A BackendRevision binds a digest-pinned image, a typed compiler profile, and
+  declared accelerator, model-format, network, health, and protocol support.
+- An InferenceDeployment revision references exact model and backend revisions
+  and compiles deterministically to one inference-managed Workload owner
+  generation and spec digest.
+- Inference does not persist replica, placement-member, device-claim, endpoint,
+  node-cache, Gateway-acknowledgement, or operation state.
+- An InferenceRoute alias is unique within its environment and references only
+  same-tenant local deployments or explicitly registered external providers.
+- Every InferenceRoute revision binds one immutable, same-environment Edge
+  reference containing DomainClaim, logical Gateway scope, canonical hostname,
+  path and binding generation. Claim revocation fails the route closed; scope
+  migration requires a new route revision and acknowledged Edge cutover.
+- An ExternalModelProvider and its egress Workload bind only a Secret version
+  from their own environment.
+- Identity owns environment-scoped inference-key verifier hashes, issuance
+  generation, expiry and revocation. Inference access-policy revisions reference
+  credential IDs and never persist key plaintext or verifier state.
+- Route weights are bounded positive integers. Fallback conditions are explicit
+  and do not include authorization or invalid-input failures by default.
+- A usage record is append-only and deduplicated by stable request/event ID.
+  Missing or interrupted usage is represented explicitly and never converted
+  to zero.
+- Prompts, responses, plaintext provider credentials, and commercial price or
+  balance state do not enter the usage ledger.
+
 ## 5. Source model
 
 Workload authoring accepts three source forms. Deployment always resolves them
@@ -875,11 +943,17 @@ Gateway revision.
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |
+| Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
+| Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
+| Workload replicas, placement members, accelerator reservations and claims | PostgreSQL Workloads tables |
+| Accelerator inventory and node Artifact-cache observations | Node agent plus PostgreSQL Fleet projection |
+| Raw accelerator and inference time-series metrics | Configured metrics backend |
+| Inference request, attempt and token usage facts | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
 | Operation history | A3S Flow PostgreSQL event store |
 | Operation summary | Rebuildable PostgreSQL projection |
 | Provider resource and live health | Node agent plus Runtime provider |
 | Last accepted observation | PostgreSQL fleet/deployment projection |
-| Route desired state, Gateway scope, and publication identity | PostgreSQL Edge tables |
+| Route desired state, target-set/rollout generation, Gateway scope, and publication identity | PostgreSQL Edge tables |
 | Pending/applied/rejected Gateway route cutover and candidate route projections | PostgreSQL Edge tables |
 | Pending/applied/rejected Gateway certificate convergence and versioned route classification | PostgreSQL Edge tables |
 | Domain claims and Gateway certificate public material | PostgreSQL Edge tables |
@@ -887,6 +961,8 @@ Gateway revision.
 | Gateway private key and CSR files | Node-local managed certificate directory |
 | Secret identity and encrypted immutable versions | PostgreSQL Secret tables |
 | Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
+| Artifact ingest attempt, immutable file manifest/digests, storage descriptor and consumed grant ID | PostgreSQL Artifacts tables |
+| Secret materialization grant identity, version, environment, attempt/Task/host/digest scope, expiry and revocation | PostgreSQL Secret tables; plaintext is process-create-only and Artifacts consumes the grant by ID |
 | Secret-rotation restart causality, derived deployment, and replay checkpoint | PostgreSQL rotation restart/reconciliation tables plus the committed outbox fact |
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation |
@@ -915,10 +991,18 @@ asset.release.published
 artifact.artifact.registered
 fleet.node.enrolled
 fleet.node.observed
+fleet.node-inventory.observed
 workload.revision.created
 deployment.deployment.requested
 deployment.deployment.succeeded
 deployment.deployment.failed
+inference.model.registered
+inference.model-revision.resolved
+inference.backend-revision.published
+inference.deployment.created
+inference.deployment.revised
+inference.route.changed
+inference.usage.recorded
 edge.route.publication-staged
 edge.route.cutover-staged
 edge.domain-claim.created
@@ -951,3 +1035,7 @@ The first architecture does not implement:
 - SSH as the normal control channel;
 - event-only reconciliation;
 - a second deployment engine for Agent or MCP workloads.
+
+Planned I0 also excludes model training/fine-tuning orchestration, unisolated
+soft GPU overcommit, price/balance/invoice settlement, and vendor support based
+only on unverified capability advertisement.
