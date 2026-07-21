@@ -1191,7 +1191,7 @@ docker pull --platform linux/amd64 "$A3S_BUSYBOX_IMAGE"
 docker run --rm --platform linux/amd64 --user 0 --entrypoint sh \
   -v /tmp:/a3s-fixtures \
   "$A3S_BUSYBOX_IMAGE" \
-  -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-gate-busybox && chmod 0500 /a3s-fixtures/a3s-cloud-buildkit-gate-busybox'
+  -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-gate-busybox && chmod 0555 /a3s-fixtures/a3s-cloud-buildkit-gate-busybox'
 docker volume create "$A3S_BUILDKIT_VOLUME"
 docker run --rm --user 0 --entrypoint sh \
   -v "$A3S_BUILDKIT_VOLUME:/run/user/1000/a3s-buildkit" \

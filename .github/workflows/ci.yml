@@ -170,7 +170,7 @@ jobs:
           docker run --rm --platform linux/amd64 --user 0 --entrypoint /bin/sh \
             --volume "$RUNNER_TEMP:/a3s-fixtures" \
             "$busybox_image" \
-            -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-busybox && chmod 0500 /a3s-fixtures/a3s-cloud-buildkit-busybox'
+            -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-busybox && chmod 0555 /a3s-fixtures/a3s-cloud-buildkit-busybox'
           [[ -s $RUNNER_TEMP/a3s-cloud-buildkit-busybox ]]
           docker volume create "$buildkit_volume"
           docker run --rm --user 0 --entrypoint /bin/sh \
