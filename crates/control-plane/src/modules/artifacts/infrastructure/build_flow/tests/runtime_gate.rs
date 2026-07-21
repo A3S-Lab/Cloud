@@ -48,6 +48,7 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 const GATE_ENV: &str = "A3S_CLOUD_TEST_RUNTIME_BUILDKIT";
+const BUSYBOX_BINARY_ENV: &str = "A3S_CLOUD_TEST_BUSYBOX_BINARY";
 const REGISTRY_URL_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_URL";
 const REGISTRY_USERNAME_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_USERNAME";
 const REGISTRY_PASSWORD_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_PASSWORD";
@@ -56,8 +57,6 @@ const DEFAULT_NAMESPACE: &str = "cloud-buildkit-gate";
 const DEFAULT_VOLUME_ID: &str = "a3s-cloud-buildkit-v0-31-2";
 const BUILDER_DIGEST: &str =
     "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b";
-const BUSYBOX_DIGEST: &str =
-    "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662";
 
 #[tokio::test]
 #[ignore = "requires Docker, a rootless BuildKit socket volume, and an authenticated OCI registry"]
@@ -89,15 +88,21 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         root.path().join("control-plane-artifacts"),
         1024 * 1024 * 1024,
     )?);
-    let dockerfile = format!(
-        "FROM docker.io/library/busybox@{BUSYBOX_DIGEST} AS network-check\n\
-         RUN command -v wget >/dev/null && test ! -e /sys/class/net/eth0 && ! wget -T 1 -q -O /dev/null http://1.1.1.1/\n\
+    let busybox_binary = tokio::fs::read(required_environment(BUSYBOX_BINARY_ENV)?).await?;
+    require(
+        busybox_binary.starts_with(b"\x7fELF") && busybox_binary.len() <= 16 * 1024 * 1024,
+        "Runtime BuildKit gate BusyBox fixture is not a bounded ELF executable",
+    )?;
+    let dockerfile =
+        "FROM scratch AS network-check\n\
+         COPY busybox /bin/busybox\n\
+         RUN [\"/bin/busybox\", \"sh\", \"-ceu\", \"/bin/busybox --list | /bin/busybox grep -qx wget; test ! -e /sys/class/net/eth0; ! /bin/busybox wget -T 1 -q -O /dev/null http://1.1.1.1/\"]\n\
          FROM scratch\n\
          COPY --from=network-check /bin/busybox /network-check\n\
-         COPY message.txt /message.txt\n"
-    );
+         COPY message.txt /message.txt\n";
     let source_archive = directory_archive(&[
         ("Dockerfile", dockerfile.as_bytes(), 0o644),
+        ("busybox", busybox_binary.as_slice(), 0o755),
         (
             "message.txt",
             b"A3S Cloud Runtime BuildKit network-none gate\n",

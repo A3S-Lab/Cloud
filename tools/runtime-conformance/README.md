@@ -144,10 +144,12 @@ rootless BuildKit daemon on its shared Unix socket, and rejects anonymous access
 to a digest-pinned private Distribution fixture. It then drives the projected
 build Task through the real command journal, Docker Runtime, Artifact transport,
 OCI validator, and production publisher. Success requires both network-denial
-layers, authenticated digest-only push, complete remote graph verification,
-idempotent replay, Runtime removal, and deletion of the socket volume. The
-manual operator command and fixture contract are documented in the repository
-README under `Certify the isolated Build Flow`.
+layers, an offline scratch build context containing only the executable
+extracted from the digest-pinned linux/amd64 BusyBox fixture, authenticated
+digest-only push, complete remote graph verification, idempotent replay,
+Runtime removal, and deletion of the socket volume. The manual operator command
+and fixture contract are documented in the repository README under `Certify the
+isolated Build Flow`.
 
 Without `--registry-data`, the runner copies the pinned multi-platform BusyBox
 OCI index from Docker Hub into a temporary registry and retries transient copy

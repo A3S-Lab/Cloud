@@ -161,10 +161,17 @@ jobs:
       - name: Start digest-pinned rootless BuildKit on the operator socket volume
         run: |
           buildkit_image=docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b
+          busybox_image=docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
           buildkit_namespace=cloud-buildkit-gate
           buildkit_volume_id=a3s-cloud-buildkit-v0-31-2
           buildkit_volume="a3s-${buildkit_namespace}-volume-$(printf '%s' "$buildkit_volume_id" | sha256sum | cut -c1-16)"
           docker pull "$buildkit_image"
+          docker pull --platform linux/amd64 "$busybox_image"
+          docker run --rm --platform linux/amd64 --user 0 --entrypoint /bin/sh \
+            --volume "$RUNNER_TEMP:/a3s-fixtures" \
+            "$busybox_image" \
+            -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-busybox && chmod 0500 /a3s-fixtures/a3s-cloud-buildkit-busybox'
+          [[ -s $RUNNER_TEMP/a3s-cloud-buildkit-busybox ]]
           docker volume create "$buildkit_volume"
           docker run --rm --user 0 --entrypoint /bin/sh \
             --volume "$buildkit_volume:/run/user/1000/a3s-buildkit" \
@@ -259,6 +266,7 @@ jobs:
 
       - name: Run the Runtime-to-Registry production gate
         env:
+          A3S_CLOUD_TEST_BUSYBOX_BINARY: ${{ runner.temp }}/a3s-cloud-buildkit-busybox
           A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
           A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
           A3S_CLOUD_TEST_REGISTRY_URL: http://127.0.0.1:50030/
@@ -295,7 +303,7 @@ jobs:
           docker volume rm "$buildkit_volume" || true
           ! docker volume inspect "$buildkit_volume" >/dev/null 2>&1
           rm -rf "$RUNNER_TEMP/a3s-cloud-build-registry-auth"
-          rm -f "$RUNNER_TEMP/buildctl"
+          rm -f "$RUNNER_TEMP/a3s-cloud-buildkit-busybox" "$RUNNER_TEMP/buildctl"
 
   gateway-managed-tls:
     name: Gateway managed TLS
