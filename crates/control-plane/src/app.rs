@@ -1,3 +1,4 @@
+use crate::modules::artifacts::{INodeArtifactStore, LocalNodeArtifactStore};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -175,6 +176,10 @@ pub async fn build_application_with_source_resolver(
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
+    let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
+        LocalNodeArtifactStore::new(&config.artifacts.store_dir, config.artifacts.max_blob_bytes)
+            .map_err(ControlPlaneStartupError::NodeControl)?,
+    );
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
@@ -310,6 +315,7 @@ pub async fn build_application_with_source_resolver(
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
+            Arc::clone(&node_artifacts),
             Arc::clone(&gateway_projector),
             Arc::clone(&routes),
             Arc::clone(&gateway_certificate_authority),
@@ -340,6 +346,7 @@ pub async fn build_application_with_source_resolver(
             Duration::from_millis(config.fleet.command_long_poll_ms.clamp(1, 50)),
             config.node_control.max_request_bytes,
             Duration::from_millis(config.node_control.request_body_timeout_ms),
+            Duration::from_millis(config.artifacts.transfer_timeout_ms),
         )
         .map_err(ControlPlaneStartupError::NodeControl)?;
         Some(

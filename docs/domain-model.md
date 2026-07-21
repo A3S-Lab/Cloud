@@ -130,7 +130,10 @@ and recipe to a validated OCI root descriptor and local layout receipt. The
 BuildKit adapter verifies every referenced blob and the exact requested
 platform set before accepting the result. Artifact persistence, registry
 locations, provenance, signatures, and build-operation state remain subsequent
-boundaries.
+boundaries for OCI publication. The separate implemented node-transfer store
+persists command-scoped directory archives by digest so Runtime input/output
+bytes can cross the existing mTLS node boundary without pretending that cache
+objects are published OCI artifacts.
 
 Primary aggregate:
 
@@ -684,6 +687,23 @@ while the
 operator-credential external GitHub gate remains unexecuted. Authoritative
 provider polling and Runtime execution of the complete source-to-artifact
 operation remain later G0 work.
+
+The implemented node Artifact transfer model binds every request to one
+authenticated node, persisted unexpired command, exact Runtime spec digest,
+and either one read-only `Artifact` mount or one declared Task output. Download
+identity includes the immutable Cloud URI, digest, and media type. Upload
+identity additionally includes the exact output size and returns a replayable
+`RuntimeOutputArtifact` receipt. The control-plane store and node cache both
+rehash bytes; neither accepts a caller- or transport-asserted digest alone.
+
+Node-local blobs use `a3s-node-artifact://sha256/<digest>` and remain internal
+until the mTLS upload returns `a3s-cloud-artifact://sha256/<digest>`. Mount and
+output receipts bind a blob to the Runtime spec and name. Safe archive
+materialization and restart verification preserve a read-only directory view;
+spec removal deletes its views and garbage-collects only content with no other
+receipt reference. These cache objects carry no tenant authority by
+themselves—the persisted command is the transfer authorization source of
+truth.
 
 ## 6. State models
 

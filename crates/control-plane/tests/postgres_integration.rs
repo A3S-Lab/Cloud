@@ -1,9 +1,10 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_cloud_control_plane::app::build_application_with_source_resolver;
 use a3s_cloud_control_plane::config::{
-    AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
-    LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
-    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig, SourcesConfig,
+    ArtifactTransferConfig, AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind,
+    EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig,
+    ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind,
+    ServerConfig, SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::integration_events::{

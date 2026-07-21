@@ -1,8 +1,9 @@
 use super::*;
 use crate::config::{
-    AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind, EventsConfig, FleetConfig,
-    LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig,
-    SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig, SourcesConfig,
+    ArtifactTransferConfig, AuthConfig, DeploymentsConfig, EdgeConfig, EventProviderKind,
+    EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig, PostgresConfig,
+    ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind,
+    ServerConfig, SourcesConfig,
 };
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
@@ -252,6 +253,11 @@ fn config() -> CloudConfig {
             max_request_bytes: 20 * 1024 * 1024,
             tls_handshake_timeout_ms: 5_000,
             request_body_timeout_ms: 10_000,
+        },
+        artifacts: ArtifactTransferConfig {
+            store_dir: ".a3s/test-artifacts".into(),
+            max_blob_bytes: 1024 * 1024 * 1024,
+            transfer_timeout_ms: 900_000,
         },
         postgres: PostgresConfig {
             url_env: "A3S_CLOUD_POSTGRES_URL".into(),

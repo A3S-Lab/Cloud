@@ -557,6 +557,12 @@ node_control {
   request_body_timeout_ms = 10000
 }
 
+artifacts {
+  store_dir = "$state_dir/artifacts"
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
+}
+
 postgres {
   url_env = "A3S_CLOUD_POSTGRES_URL"
   max_connections = 16
@@ -702,9 +708,17 @@ control_plane {
   max_response_bytes = 20971520
   connect_timeout_ms = 5000
   request_timeout_ms = 10000
+  artifact_transfer_timeout_ms = 900000
   long_poll_margin_ms = 3000
   retry_initial_ms = 100
   retry_max_ms = 5000
+}
+
+artifacts {
+  max_blob_bytes = 1073741824
+  max_entries = 100000
+  max_file_bytes = 1073741824
+  max_expanded_bytes = 4294967296
 }
 
 node {

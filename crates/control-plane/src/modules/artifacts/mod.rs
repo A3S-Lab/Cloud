@@ -4,9 +4,11 @@ pub mod infrastructure;
 
 pub use domain::{
     BuildArtifact, BuildRun, BuildRunStatus, BuildServiceError, BuiltOciArtifact,
-    IBuildRunRepository, IBuildService, OciBuildRequest, OciDescriptor, ValidatedOciBuildOutput,
+    IBuildRunRepository, IBuildService, INodeArtifactStore, NodeArtifactDescriptor,
+    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OciBuildRequest, OciDescriptor,
+    OpenNodeArtifact, ValidatedOciBuildOutput,
 };
 pub use infrastructure::{
-    BuildkitBuildService, BuildkitConnection, InMemoryBuildRunRepository,
+    BuildkitBuildService, BuildkitConnection, InMemoryBuildRunRepository, LocalNodeArtifactStore,
     PostgresBuildRunRepository,
 };

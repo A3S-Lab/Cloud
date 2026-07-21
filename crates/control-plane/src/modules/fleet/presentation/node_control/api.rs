@@ -1,13 +1,18 @@
 use super::error::NodeControlHttpError;
+use crate::modules::artifacts::domain::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
+};
 use crate::modules::edge::application::{SignGatewayCertificate, SignGatewayCertificateHandler};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::IGatewayCertificateAuthority;
-use crate::modules::fleet::application::IGatewayAcknowledgementProjector;
 use crate::modules::fleet::application::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, LeaseNodeCommands,
     LeaseNodeCommandsHandler, RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,
     RecordNodeLogChunks, RecordNodeLogChunksHandler, RecordNodeObservations,
     RecordNodeObservationsHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
+};
+use crate::modules::fleet::application::{
+    IGatewayAcknowledgementProjector, NodeArtifactAuthorizer,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
@@ -17,21 +22,25 @@ use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId, Repositor
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
-    GatewayCertificateSigningRequest, NodeCertificate as NodeCertificateContract,
-    NodeCertificateRotationRequest, NodeCertificateRotationResponse, NodeCommandAck,
-    NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch,
-    NodeObservationBatch, NodeSecretMaterialRequest, NodeSecretMaterialResponse,
+    artifact_uri, GatewayCertificateSigningRequest, NodeArtifactDownloadRequest,
+    NodeArtifactUploadReceipt, NodeArtifactUploadRequest,
+    NodeCertificate as NodeCertificateContract, NodeCertificateRotationRequest,
+    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
+    NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch, NodeObservationBatch,
+    NodeSecretMaterialRequest, NodeSecretMaterialResponse,
 };
-use axum::body::to_bytes;
-use axum::extract::{Extension, Path, Request, State};
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
+use axum::body::{to_bytes, Body};
+use axum::extract::{Extension, Path, RawQuery, Request, State};
 use axum::http::{
     header::CACHE_CONTROL, header::CONTENT_LENGTH, header::CONTENT_TYPE, header::PRAGMA,
-    HeaderValue, StatusCode,
+    HeaderName, HeaderValue, StatusCode,
 };
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::{Duration, Utc};
+use futures_util::TryStreamExt;
 use http_body_util::LengthLimitError;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -39,6 +48,7 @@ use sha2::{Digest, Sha256};
 use std::error::Error as _;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
+use tokio_util::io::{ReaderStream, StreamReader};
 use uuid::Uuid;
 
 const SECRET_MATERIAL_TTL: Duration = Duration::seconds(30);
@@ -65,10 +75,13 @@ struct NodeControlApiInner {
     sign_gateway_certificate: SignGatewayCertificateHandler,
     rotate_certificate: RotateNodeCertificateHandler,
     resolve_secret_material: ResolveSecretMaterialHandler,
+    artifact_authorizer: NodeArtifactAuthorizer,
+    artifacts: Arc<dyn INodeArtifactStore>,
     certificate_rotation_window: Duration,
     rotation_clock: RotationClock,
     maximum_body_bytes: usize,
     body_timeout: StdDuration,
+    artifact_transfer_timeout: StdDuration,
 }
 
 impl NodeControlApi {
@@ -76,6 +89,7 @@ impl NodeControlApi {
     pub(crate) fn new(
         nodes: Arc<dyn INodeRepository>,
         commands: Arc<dyn INodeControlRepository>,
+        artifacts: Arc<dyn INodeArtifactStore>,
         gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
         gateway_certificates: Arc<dyn IEdgeRepository>,
         gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
@@ -92,9 +106,11 @@ impl NodeControlApi {
         retry_interval: StdDuration,
         maximum_body_bytes: usize,
         body_timeout: StdDuration,
+        artifact_transfer_timeout: StdDuration,
     ) -> Result<Self, String> {
         if maximum_body_bytes == 0
             || body_timeout.is_zero()
+            || artifact_transfer_timeout.is_zero()
             || certificate_rotation_window <= Duration::zero()
             || certificate_rotation_window >= certificate_ttl
         {
@@ -105,6 +121,7 @@ impl NodeControlApi {
             certificate_authority,
             certificate_ttl,
         )?;
+        let artifact_authorizer = NodeArtifactAuthorizer::new(Arc::clone(&commands));
         Ok(Self {
             inner: Arc::new(NodeControlApiInner {
                 nodes,
@@ -129,10 +146,13 @@ impl NodeControlApi {
                     secrets,
                     secret_encryption,
                 ),
+                artifact_authorizer,
+                artifacts,
                 certificate_rotation_window,
                 rotation_clock: Arc::new(Utc::now),
                 maximum_body_bytes,
                 body_timeout,
+                artifact_transfer_timeout,
             }),
         })
     }
@@ -162,6 +182,11 @@ impl NodeControlApi {
                 "/v1/node-control/secrets:materialize",
                 post(materialize_secret),
             )
+            .route(
+                "/v1/node-control/artifacts:download",
+                get(download_artifact),
+            )
+            .route("/v1/node-control/artifacts:upload", put(upload_artifact))
             .route("/v1/node-control/gateway-acks", post(record_gateway_ack))
             .route(
                 "/v1/node-control/gateway-certificates:sign",
@@ -274,6 +299,159 @@ impl NodeControlApi {
             NodeControlHttpError::invalid(request_id, format!("invalid JSON body: {error}"))
         })
     }
+}
+
+async fn download_artifact(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    RawQuery(raw_query): RawQuery,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node_id = api.authenticate(request_id, &peer).await?;
+    let request: NodeArtifactDownloadRequest = decode_query(request_id, raw_query)?;
+    let artifact = api
+        .inner
+        .artifact_authorizer
+        .authorize_download(node_id, &request, Utc::now())
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    let deadline = tokio::time::Instant::now() + api.inner.artifact_transfer_timeout;
+    let opened = tokio::time::timeout_at(deadline, api.inner.artifacts.open(&artifact))
+        .await
+        .map_err(|_| NodeControlHttpError::request_timeout(request_id))?
+        .map_err(|error| artifact_read_error(request_id, error))?;
+    if opened.descriptor.artifact != artifact {
+        return Err(NodeControlHttpError::unavailable(
+            request_id,
+            "artifact store returned a different artifact identity",
+        ));
+    }
+    let mut source = ReaderStream::new(opened.reader);
+    let stream = async_stream::stream! {
+        loop {
+            match tokio::time::timeout_at(deadline, source.try_next()).await {
+                Ok(Ok(Some(chunk))) => yield Ok::<_, std::io::Error>(chunk),
+                Ok(Ok(None)) => break,
+                Ok(Err(error)) => {
+                    yield Err(error);
+                    break;
+                }
+                Err(_) => {
+                    yield Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "artifact download exceeded its total transfer timeout",
+                    ));
+                    break;
+                }
+            }
+        }
+    };
+    let mut response = Response::new(Body::from_stream(stream));
+    *response.status_mut() = StatusCode::OK;
+    let headers = response.headers_mut();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_str(&artifact.media_type)
+            .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?,
+    );
+    headers.insert(
+        CONTENT_LENGTH,
+        HeaderValue::from_str(&opened.descriptor.size_bytes.to_string())
+            .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?,
+    );
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        HeaderName::from_static("x-a3s-artifact-digest"),
+        HeaderValue::from_str(&artifact.digest)
+            .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?,
+    );
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-request-id"),
+        HeaderValue::from_str(&request_id.to_string())
+            .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?,
+    );
+    Ok(response)
+}
+
+async fn upload_artifact(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    RawQuery(raw_query): RawQuery,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node_id = api.authenticate(request_id, &peer).await?;
+    let transfer: NodeArtifactUploadRequest = decode_query(request_id, raw_query)?;
+    require_media_type(
+        request_id,
+        request.headers().get(CONTENT_TYPE),
+        &transfer.media_type,
+    )?;
+    let declared_size = content_length(request.headers().get(CONTENT_LENGTH)).ok_or_else(|| {
+        NodeControlHttpError::invalid(request_id, "artifact upload requires content-length")
+    })?;
+    if declared_size != transfer.size_bytes {
+        return Err(NodeControlHttpError::invalid(
+            request_id,
+            "artifact content-length does not match its typed request",
+        ));
+    }
+    api.inner
+        .artifact_authorizer
+        .authorize_upload(node_id, &transfer, Utc::now())
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    let artifact = ArtifactRef {
+        uri: artifact_uri(&transfer.digest)
+            .map_err(|error| NodeControlHttpError::invalid(request_id, error))?,
+        digest: transfer.digest.clone(),
+        media_type: transfer.media_type.clone(),
+    };
+    let descriptor = NodeArtifactDescriptor::new(artifact, transfer.size_bytes)
+        .map_err(|error| NodeControlHttpError::invalid(request_id, error))?;
+    let stream = request
+        .into_body()
+        .into_data_stream()
+        .map_err(|error| std::io::Error::other(error.to_string()));
+    let reader = StreamReader::new(stream);
+    let write = tokio::time::timeout(
+        api.inner.artifact_transfer_timeout,
+        api.inner.artifacts.put(&descriptor, Box::pin(reader)),
+    )
+    .await
+    .map_err(|_| NodeControlHttpError::request_timeout(request_id))?
+    .map_err(|error| artifact_write_error(request_id, error))?;
+    let receipt = NodeArtifactUploadReceipt {
+        schema: NodeArtifactUploadReceipt::SCHEMA.into(),
+        node_id: transfer.node_id,
+        command_id: transfer.command_id,
+        spec_digest: transfer.spec_digest.clone(),
+        artifact: RuntimeOutputArtifact {
+            name: transfer.output_name.clone(),
+            artifact: write.descriptor.artifact,
+            size_bytes: write.descriptor.size_bytes,
+        },
+        replayed: write.replayed,
+    };
+    receipt
+        .validate_against(&transfer)
+        .map_err(|error| NodeControlHttpError::internal(request_id, error))?;
+    let status = if receipt.replayed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+    let mut response = json_response(request_id, status, &receipt)?;
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(response)
 }
 
 async fn materialize_secret(
@@ -597,6 +775,77 @@ fn require_json(
             request_id,
             "content-type must be application/json",
         ))
+    }
+}
+
+fn require_media_type(
+    request_id: Uuid,
+    content_type: Option<&HeaderValue>,
+    expected: &str,
+) -> Result<(), NodeControlHttpError> {
+    let actual = content_type
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim);
+    if actual == Some(expected) {
+        Ok(())
+    } else {
+        Err(NodeControlHttpError::invalid(
+            request_id,
+            "content-type does not match the typed artifact request",
+        ))
+    }
+}
+
+fn decode_query<T>(request_id: Uuid, raw: Option<String>) -> Result<T, NodeControlHttpError>
+where
+    T: DeserializeOwned,
+{
+    let raw = raw.ok_or_else(|| NodeControlHttpError::invalid(request_id, "query is required"))?;
+    serde_urlencoded::from_str(&raw).map_err(|error| {
+        NodeControlHttpError::invalid(request_id, format!("invalid query: {error}"))
+    })
+}
+
+fn artifact_read_error(request_id: Uuid, error: NodeArtifactStoreError) -> NodeControlHttpError {
+    match error {
+        NodeArtifactStoreError::Invalid(message) => {
+            NodeControlHttpError::invalid(request_id, message)
+        }
+        NodeArtifactStoreError::NotFound => NodeControlHttpError::from_application(
+            request_id,
+            crate::modules::shared_kernel::application::ApplicationError::NotFound(
+                "artifact was not found".into(),
+            ),
+        ),
+        NodeArtifactStoreError::Conflict => NodeControlHttpError::from_application(
+            request_id,
+            crate::modules::shared_kernel::application::ApplicationError::Conflict(
+                "artifact identity conflicts with stored content".into(),
+            ),
+        ),
+        NodeArtifactStoreError::Integrity(_) | NodeArtifactStoreError::Storage(_) => {
+            tracing::error!(%request_id, %error, "artifact download storage failed");
+            NodeControlHttpError::unavailable(request_id, "artifact storage is unavailable")
+        }
+    }
+}
+
+fn artifact_write_error(request_id: Uuid, error: NodeArtifactStoreError) -> NodeControlHttpError {
+    match error {
+        NodeArtifactStoreError::Invalid(message) | NodeArtifactStoreError::Integrity(message) => {
+            NodeControlHttpError::invalid(request_id, message)
+        }
+        NodeArtifactStoreError::Conflict => NodeControlHttpError::from_application(
+            request_id,
+            crate::modules::shared_kernel::application::ApplicationError::Conflict(
+                "artifact identity conflicts with stored content".into(),
+            ),
+        ),
+        NodeArtifactStoreError::NotFound | NodeArtifactStoreError::Storage(_) => {
+            tracing::error!(%request_id, %error, "artifact upload storage failed");
+            NodeControlHttpError::unavailable(request_id, "artifact storage is unavailable")
+        }
     }
 }
 

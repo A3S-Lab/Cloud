@@ -1,6 +1,7 @@
 //! Outbound node control and Runtime provider boundary.
 
 mod agent;
+mod artifact;
 mod config;
 mod control_plane;
 mod docker;
@@ -13,9 +14,12 @@ mod log_shipper;
 mod secret;
 mod state_file;
 
+pub use artifact::{
+    DownloadedNodeArtifact, NodeArtifactError, NodeArtifactManager, NodeArtifactTransport,
+};
 pub use config::{
-    ConfigError, ControlPlaneConfig, DockerConfig, GatewayControlConfig, LogShippingConfig,
-    NodeAgentConfig, NodeConfig,
+    ArtifactConfig, ConfigError, ControlPlaneConfig, DockerConfig, GatewayControlConfig,
+    LogShippingConfig, NodeAgentConfig, NodeConfig,
 };
 pub use control_plane::{
     GatewayCertificateSigningTransport, NodeControlClient, NodeControlClientError,

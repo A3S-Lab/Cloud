@@ -1,5 +1,7 @@
-use super::{secrets::conformance_secret_transport, specs};
-use a3s_cloud_node_agent::{DockerConfig, DockerRuntimeDriver, NodeRuntimeBinding};
+use super::{artifacts::DockerConformanceArtifacts, secrets::conformance_secret_transport, specs};
+use a3s_cloud_node_agent::{
+    DockerConfig, DockerRuntimeDriver, NodeArtifactManager, NodeRuntimeBinding,
+};
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
 use a3s_runtime::{
     runtime_profile_requirements, FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient,
@@ -32,6 +34,7 @@ pub(crate) struct DockerConformanceFixture {
     pub(crate) driver: Arc<DockerRuntimeDriver>,
     pub(crate) store: Arc<FileRuntimeStateStore>,
     pub(crate) docker: Docker,
+    pub(crate) artifacts: Arc<DockerConformanceArtifacts>,
     base: a3s_runtime::RuntimeBaseConformanceCase,
 }
 
@@ -41,6 +44,7 @@ impl DockerConformanceFixture {
         node_id: Uuid,
         driver: Arc<DockerRuntimeDriver>,
         store: Arc<FileRuntimeStateStore>,
+        artifacts: Arc<DockerConformanceArtifacts>,
     ) -> Self {
         Self {
             base: specs::base_case(&namespace),
@@ -49,6 +53,7 @@ impl DockerConformanceFixture {
             docker: connect_provider_docker().expect("connect Docker fixture client"),
             driver,
             store,
+            artifacts,
         }
     }
 
@@ -335,6 +340,7 @@ impl RuntimeConformanceFixture for DockerConformanceFixture {
             RuntimeConformanceProfile::Resources,
             RuntimeConformanceProfile::Logs,
             RuntimeConformanceProfile::Security,
+            RuntimeConformanceProfile::Outputs,
         ])
     }
 
@@ -381,9 +387,9 @@ impl RuntimeConformanceFixture for DockerConformanceFixture {
             RuntimeConformanceProfile::Resources => self.run_resources(client).await?,
             RuntimeConformanceProfile::Logs => self.run_logs(client).await?,
             RuntimeConformanceProfile::Security => self.run_security(client).await?,
+            RuntimeConformanceProfile::Outputs => self.run_outputs(client).await?,
             RuntimeConformanceProfile::Base
             | RuntimeConformanceProfile::Exec
-            | RuntimeConformanceProfile::Outputs
             | RuntimeConformanceProfile::Evidence => {
                 return Err(RuntimeError::Protocol(format!(
                     "Docker fixture was asked to run unexpected {} profile",
@@ -430,6 +436,7 @@ impl RuntimeConformanceFixture for DockerConformanceFixture {
 pub(crate) async fn connect_driver(
     namespace: &str,
     node_id: Uuid,
+    artifacts: Arc<NodeArtifactManager>,
 ) -> RuntimeResult<DockerRuntimeDriver> {
     let driver = DockerRuntimeDriver::connect(&DockerConfig {
         socket: docker_socket(),
@@ -441,6 +448,7 @@ pub(crate) async fn connect_driver(
     driver
         .bind_secret_transport(conformance_secret_transport())
         .await?;
+    driver.bind_artifact_manager(artifacts).await?;
     Ok(driver)
 }
 

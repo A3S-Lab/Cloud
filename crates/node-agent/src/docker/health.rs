@@ -23,7 +23,9 @@ impl DockerRuntimeDriver {
             })?);
         let started = Instant::now();
         loop {
-            let observation = self.observation(spec, &container, provider_build, None)?;
+            let observation = self
+                .observation(spec, &container, provider_build, None)
+                .await?;
             if observation.state.is_terminal() {
                 return Ok(observation);
             }
@@ -38,7 +40,9 @@ impl DockerRuntimeDriver {
                     .inspect_container(&id, None)
                     .await
                     .map_err(docker_error)?;
-                let mut timed_out = self.observation(spec, &container, provider_build, None)?;
+                let mut timed_out = self
+                    .observation(spec, &container, provider_build, None)
+                    .await?;
                 timed_out.state = RuntimeUnitState::Failed;
                 timed_out.observed_at_ms = now_ms();
                 timed_out.finished_at_ms = Some(timed_out.observed_at_ms);
@@ -70,10 +74,14 @@ impl DockerRuntimeDriver {
         provider_build: &str,
     ) -> RuntimeResult<RuntimeObservation> {
         let Some(policy) = &spec.health else {
-            return self.observation(spec, &container, provider_build, None);
+            return self
+                .observation(spec, &container, provider_build, None)
+                .await;
         };
         if !container_is_running(&container) {
-            return self.observation(spec, &container, provider_build, None);
+            return self
+                .observation(spec, &container, provider_build, None)
+                .await;
         }
         if policy.start_period_ms > 0 {
             tokio::time::sleep(Duration::from_millis(policy.start_period_ms)).await;
@@ -84,7 +92,9 @@ impl DockerRuntimeDriver {
             .await
             .map_err(docker_error)?;
         if !container_is_running(&container) {
-            return self.observation(spec, &container, provider_build, None);
+            return self
+                .observation(spec, &container, provider_build, None)
+                .await;
         }
         let mut successes = 0_u32;
         let mut failures = 0_u32;
@@ -104,7 +114,9 @@ impl DockerRuntimeDriver {
                 }
             }
             if successes >= policy.success_threshold || failures >= policy.failure_threshold {
-                return self.observation(spec, &container, provider_build, Some(health));
+                return self
+                    .observation(spec, &container, provider_build, Some(health))
+                    .await;
             }
             tokio::time::sleep(Duration::from_millis(policy.interval_ms)).await;
             container = self
@@ -113,7 +125,9 @@ impl DockerRuntimeDriver {
                 .await
                 .map_err(docker_error)?;
             if !container_is_running(&container) {
-                return self.observation(spec, &container, provider_build, None);
+                return self
+                    .observation(spec, &container, provider_build, None)
+                    .await;
             }
         }
     }

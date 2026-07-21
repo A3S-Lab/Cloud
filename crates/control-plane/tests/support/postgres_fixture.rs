@@ -198,6 +198,11 @@ pub(super) fn config() -> CloudConfig {
             tls_handshake_timeout_ms: 5_000,
             request_body_timeout_ms: 10_000,
         },
+        artifacts: ArtifactTransferConfig {
+            store_dir: ".a3s/integration-artifacts".into(),
+            max_blob_bytes: 1024 * 1024 * 1024,
+            transfer_timeout_ms: 900_000,
+        },
         postgres: PostgresConfig {
             url_env: URL_ENV.into(),
             max_connections: 8,

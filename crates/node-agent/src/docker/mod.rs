@@ -2,10 +2,13 @@ mod container;
 mod health;
 mod image;
 mod logs;
+mod outputs;
 mod registry_credentials;
 mod secrets;
 
-use crate::{DockerConfig, NodeRuntimeBinding, NodeSecretTransport};
+use crate::{
+    DockerConfig, NodeArtifactError, NodeArtifactManager, NodeRuntimeBinding, NodeSecretTransport,
+};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
     RuntimeCapabilities, RuntimeExecRequest, RuntimeExecResult, RuntimeFeature, RuntimeInspection,
@@ -32,6 +35,7 @@ pub struct DockerRuntimeDriver {
     pub(super) operation_timeout: Duration,
     pub(super) node_id: RwLock<Option<Uuid>>,
     pub(super) secret_transport: RwLock<Option<Arc<dyn NodeSecretTransport>>>,
+    pub(super) artifact_manager: RwLock<Option<Arc<NodeArtifactManager>>>,
     pub(super) secret_memory_dir: PathBuf,
     pub(super) health_client: reqwest::Client,
 }
@@ -78,6 +82,7 @@ impl DockerRuntimeDriver {
             operation_timeout: Duration::from_millis(config.operation_timeout_ms),
             node_id: RwLock::new(None),
             secret_transport: RwLock::new(None),
+            artifact_manager: RwLock::new(None),
             secret_memory_dir: config.secret_memory_dir.join(&config.namespace),
             health_client,
         })
@@ -96,6 +101,14 @@ impl DockerRuntimeDriver {
         let engine = version.version.unwrap_or_else(|| "unknown".into());
         let api = version.api_version.unwrap_or_else(|| "unknown".into());
         Ok(format!("docker/{engine} api/{api}"))
+    }
+
+    pub(super) async fn artifacts(&self) -> RuntimeResult<Arc<NodeArtifactManager>> {
+        self.artifact_manager.read().await.clone().ok_or_else(|| {
+            RuntimeError::InvalidRequest(
+                "Docker Runtime is not bound to the node artifact manager".into(),
+            )
+        })
     }
 
     pub(super) async fn bounded<T, F>(&self, operation: &'static str, future: F) -> RuntimeResult<T>
@@ -151,6 +164,25 @@ impl NodeRuntimeBinding for DockerRuntimeDriver {
             }
         }
     }
+
+    async fn bind_artifact_manager(
+        &self,
+        artifacts: Arc<NodeArtifactManager>,
+    ) -> RuntimeResult<()> {
+        let mut current = self.artifact_manager.write().await;
+        match current.as_ref() {
+            Some(existing) if !Arc::ptr_eq(existing, &artifacts) => {
+                Err(RuntimeError::RequestConflict {
+                    request_id: "docker-artifact-manager-binding".into(),
+                })
+            }
+            Some(_) => Ok(()),
+            None => {
+                *current = Some(artifacts);
+                Ok(())
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -172,7 +204,7 @@ impl RuntimeDriver for DockerRuntimeDriver {
                 NetworkMode::Outbound,
                 NetworkMode::Service,
             ],
-            mount_kinds: vec![MountKind::Volume, MountKind::Tmpfs],
+            mount_kinds: vec![MountKind::Artifact, MountKind::Volume, MountKind::Tmpfs],
             health_check_kinds: vec![
                 HealthCheckKind::Http,
                 HealthCheckKind::Tcp,
@@ -190,6 +222,7 @@ impl RuntimeDriver for DockerRuntimeDriver {
                 RuntimeFeature::Remove,
                 RuntimeFeature::Logs,
                 RuntimeFeature::SecretReferences,
+                RuntimeFeature::OutputArtifacts,
             ],
         };
         capabilities.validate().map_err(RuntimeError::Protocol)?;
@@ -242,6 +275,15 @@ impl RuntimeDriver for DockerRuntimeDriver {
         Err(RuntimeError::UnsupportedCapabilities(vec![
             "feature:Exec".into()
         ]))
+    }
+}
+
+pub(super) fn artifact_error(error: NodeArtifactError) -> RuntimeError {
+    match error {
+        NodeArtifactError::Invalid(message) => RuntimeError::InvalidRequest(message),
+        NodeArtifactError::Integrity(message) => RuntimeError::Protocol(message),
+        NodeArtifactError::Transport(error) => RuntimeError::ProviderUnavailable(error.to_string()),
+        NodeArtifactError::Storage(message) => RuntimeError::ProviderUnavailable(message),
     }
 }
 

@@ -1,23 +1,29 @@
 use crate::{
-    ControlPlaneConfig, EnrolledNodeIdentity, FileNodeIdentityStore, IdentityStoreError,
-    NodeSecretTransport, PendingNodeIdentity, SecretMaterial,
+    ControlPlaneConfig, DownloadedNodeArtifact, EnrolledNodeIdentity, FileNodeIdentityStore,
+    IdentityStoreError, NodeArtifactTransport, NodeSecretTransport, PendingNodeIdentity,
+    SecretMaterial,
 };
 use a3s_cloud_contracts::{
     ApiErrorResponse, CloudSecretReference, GatewayCertificateSigningRequest,
-    GatewayCertificateSigningResponse, NodeCertificateRotationRequest,
-    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
-    NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeEnrollmentResponse, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatch,
-    NodeObservationReceipt, NodeProtocolError, NodeSecretMaterialRequest,
-    NodeSecretMaterialResponse,
+    GatewayCertificateSigningResponse, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
+    NodeArtifactUploadRequest, NodeCertificateRotationRequest, NodeCertificateRotationResponse,
+    NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
+    NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
+    NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt, NodeProtocolError,
+    NodeSecretMaterialRequest, NodeSecretMaterialResponse,
 };
 use async_trait::async_trait;
 use chrono::Utc;
+use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use reqwest::{Client, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
+use sha2::{Digest, Sha256};
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::RwLock;
+use tokio_util::io::ReaderStream;
 use url::Url;
 use zeroize::Zeroizing;
 
@@ -28,6 +34,7 @@ pub struct NodeControlClient {
     node_id: uuid::Uuid,
     agent_instance_id: uuid::Uuid,
     request_timeout: Duration,
+    artifact_transfer_timeout: Duration,
     long_poll_margin: Duration,
     maximum_response_bytes: usize,
 }
@@ -111,6 +118,7 @@ impl NodeControlClient {
             node_id: identity.response.node_id,
             agent_instance_id: identity.agent_instance_id,
             request_timeout: Duration::from_millis(config.request_timeout_ms),
+            artifact_transfer_timeout: Duration::from_millis(config.artifact_transfer_timeout_ms),
             long_poll_margin: Duration::from_millis(config.long_poll_margin_ms),
             maximum_response_bytes: config.max_response_bytes,
         })
@@ -361,6 +369,151 @@ impl NodeControlClient {
         SecretMaterial::new(value).map_err(NodeControlClientError::Invalid)
     }
 
+    pub async fn download_artifact(
+        &self,
+        request: &NodeArtifactDownloadRequest,
+        destination: &Path,
+        maximum_bytes: u64,
+    ) -> Result<DownloadedNodeArtifact, NodeControlClientError> {
+        request
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if request.node_id != self.node_id || maximum_bytes == 0 {
+            return Err(NodeControlClientError::Invalid(
+                "artifact download changed the node identity or has no size bound".into(),
+            ));
+        }
+        if let Some(parent) = destination.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+        }
+        let mut response = self
+            .client
+            .get(self.endpoint("v1/node-control/artifacts:download")?)
+            .query(request)
+            .timeout(self.artifact_transfer_timeout)
+            .send()
+            .await
+            .map_err(transport_error)?;
+        if !response.status().is_success() {
+            return Err(decode_rejection(response, self.maximum_response_bytes).await);
+        }
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .map(str::trim);
+        let response_digest = response
+            .headers()
+            .get("x-a3s-artifact-digest")
+            .and_then(|value| value.to_str().ok());
+        let expected_size = response.content_length().ok_or_else(|| {
+            NodeControlClientError::Invalid(
+                "artifact download response omits content-length".into(),
+            )
+        })?;
+        if content_type != Some(request.artifact_media_type.as_str())
+            || response_digest != Some(request.artifact_digest.as_str())
+            || expected_size == 0
+            || expected_size > maximum_bytes
+        {
+            return Err(NodeControlClientError::Invalid(
+                "artifact download response metadata changed its typed identity".into(),
+            ));
+        }
+        let file = tokio::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(destination)
+            .await
+            .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+        let mut file = BufWriter::new(file);
+        let result = async {
+            let mut size = 0_u64;
+            let mut digest = Sha256::new();
+            while let Some(chunk) = response.chunk().await.map_err(transport_error)? {
+                size = size.checked_add(chunk.len() as u64).ok_or_else(|| {
+                    NodeControlClientError::Invalid("artifact download size overflowed".into())
+                })?;
+                if size > expected_size || size > maximum_bytes {
+                    return Err(NodeControlClientError::Invalid(
+                        "artifact download exceeds its declared or configured size".into(),
+                    ));
+                }
+                digest.update(&chunk);
+                file.write_all(&chunk)
+                    .await
+                    .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+            }
+            if size != expected_size
+                || format!("sha256:{:x}", digest.finalize()) != request.artifact_digest
+            {
+                return Err(NodeControlClientError::Invalid(
+                    "artifact download bytes do not match their typed identity".into(),
+                ));
+            }
+            file.flush()
+                .await
+                .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+            file.get_ref()
+                .sync_all()
+                .await
+                .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+            Ok(DownloadedNodeArtifact { size_bytes: size })
+        }
+        .await;
+        drop(file);
+        if result.is_err() {
+            let _ = tokio::fs::remove_file(destination).await;
+        }
+        result
+    }
+
+    pub async fn upload_artifact(
+        &self,
+        request: &NodeArtifactUploadRequest,
+        source: &Path,
+    ) -> Result<NodeArtifactUploadReceipt, NodeControlClientError> {
+        request
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if request.node_id != self.node_id {
+            return Err(NodeControlClientError::Invalid(
+                "artifact upload changed the node identity".into(),
+            ));
+        }
+        let file = tokio::fs::File::open(source)
+            .await
+            .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+        let metadata = file
+            .metadata()
+            .await
+            .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+        if !metadata.is_file() || metadata.len() != request.size_bytes {
+            return Err(NodeControlClientError::Invalid(
+                "artifact upload source does not match its declared size".into(),
+            ));
+        }
+        let body = reqwest::Body::wrap_stream(ReaderStream::new(file));
+        let receipt: NodeArtifactUploadReceipt = self
+            .send(
+                self.client
+                    .put(self.endpoint("v1/node-control/artifacts:upload")?)
+                    .query(request)
+                    .timeout(self.artifact_transfer_timeout)
+                    .header(CONTENT_TYPE, &request.media_type)
+                    .header(CONTENT_LENGTH, request.size_bytes)
+                    .body(body),
+            )
+            .await?;
+        receipt
+            .validate_against(request)
+            .map_err(NodeControlClientError::Invalid)?;
+        Ok(receipt)
+    }
+
     async fn send<T>(&self, request: RequestBuilder) -> Result<T, NodeControlClientError>
     where
         T: DeserializeOwned,
@@ -517,6 +670,26 @@ impl NodeSecretTransport for NodeControlClient {
 }
 
 #[async_trait]
+impl NodeArtifactTransport for NodeControlClient {
+    async fn download(
+        &self,
+        request: &NodeArtifactDownloadRequest,
+        destination: &Path,
+        maximum_bytes: u64,
+    ) -> Result<DownloadedNodeArtifact, NodeControlClientError> {
+        NodeControlClient::download_artifact(self, request, destination, maximum_bytes).await
+    }
+
+    async fn upload(
+        &self,
+        request: &NodeArtifactUploadRequest,
+        source: &Path,
+    ) -> Result<NodeArtifactUploadReceipt, NodeControlClientError> {
+        NodeControlClient::upload_artifact(self, request, source).await
+    }
+}
+
+#[async_trait]
 impl NodeControlTransport for ReloadableNodeControlClient {
     async fn lease(
         &self,
@@ -585,6 +758,30 @@ impl NodeSecretTransport for ReloadableNodeControlClient {
         reference: CloudSecretReference,
     ) -> Result<SecretMaterial, NodeControlClientError> {
         self.inner.read().await.resolve_secret(reference).await
+    }
+}
+
+#[async_trait]
+impl NodeArtifactTransport for ReloadableNodeControlClient {
+    async fn download(
+        &self,
+        request: &NodeArtifactDownloadRequest,
+        destination: &Path,
+        maximum_bytes: u64,
+    ) -> Result<DownloadedNodeArtifact, NodeControlClientError> {
+        let client = self.inner.read().await.clone();
+        client
+            .download_artifact(request, destination, maximum_bytes)
+            .await
+    }
+
+    async fn upload(
+        &self,
+        request: &NodeArtifactUploadRequest,
+        source: &Path,
+    ) -> Result<NodeArtifactUploadReceipt, NodeControlClientError> {
+        let client = self.inner.read().await.clone();
+        client.upload_artifact(request, source).await
     }
 }
 
@@ -669,6 +866,39 @@ where
         });
     }
     Err(rejected_error(status, &body))
+}
+
+async fn decode_rejection(mut response: Response, maximum_bytes: usize) -> NodeControlClientError {
+    let status = response.status();
+    if response
+        .content_length()
+        .is_some_and(|length| length > maximum_bytes as u64)
+    {
+        return NodeControlClientError::Invalid(format!(
+            "node-control error response exceeds {maximum_bytes} bytes"
+        ));
+    }
+    let mut body = Zeroizing::new(Vec::new());
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                let Some(next) = body.len().checked_add(chunk.len()) else {
+                    return NodeControlClientError::Invalid(
+                        "node-control error response size overflowed".into(),
+                    );
+                };
+                if next > maximum_bytes {
+                    return NodeControlClientError::Invalid(format!(
+                        "node-control error response exceeds {maximum_bytes} bytes"
+                    ));
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(error) => return transport_error(error),
+        }
+    }
+    rejected_error(status, &body)
 }
 
 fn rejected_error(status: StatusCode, body: &[u8]) -> NodeControlClientError {

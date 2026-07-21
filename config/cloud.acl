@@ -16,6 +16,12 @@ node_control {
   request_body_timeout_ms = 10000
 }
 
+artifacts {
+  store_dir = ".a3s/cloud/artifacts"
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
+}
+
 postgres {
   url_env = "A3S_CLOUD_POSTGRES_URL"
   max_connections = 16

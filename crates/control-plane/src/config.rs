@@ -48,6 +48,13 @@ pub struct NodeControlConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactTransferConfig {
+    pub store_dir: String,
+    pub max_blob_bytes: u64,
+    pub transfer_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresConfig {
     pub url_env: String,
     pub max_connections: usize,
@@ -254,6 +261,7 @@ pub struct SecurityConfig {
 pub struct CloudConfig {
     pub server: ServerConfig,
     pub node_control: NodeControlConfig,
+    pub artifacts: ArtifactTransferConfig,
     pub postgres: PostgresConfig,
     pub auth: AuthConfig,
     pub events: EventsConfig,
@@ -297,6 +305,11 @@ impl CloudConfig {
                 "tls_handshake_timeout_ms",
                 "request_body_timeout_ms",
             ],
+        )?;
+        let artifacts = one_block(&document, "artifacts")?;
+        validate_block(
+            artifacts,
+            &["store_dir", "max_blob_bytes", "transfer_timeout_ms"],
         )?;
         let postgres = one_block(&document, "postgres")?;
         validate_block(postgres, &["url_env", "max_connections"])?;
@@ -445,6 +458,11 @@ impl CloudConfig {
                 max_request_bytes: integer(node_control, "max_request_bytes")?,
                 tls_handshake_timeout_ms: integer(node_control, "tls_handshake_timeout_ms")?,
                 request_body_timeout_ms: integer(node_control, "request_body_timeout_ms")?,
+            },
+            artifacts: ArtifactTransferConfig {
+                store_dir: string(artifacts, "store_dir")?,
+                max_blob_bytes: integer(artifacts, "max_blob_bytes")?,
+                transfer_timeout_ms: integer(artifacts, "transfer_timeout_ms")?,
             },
             postgres: PostgresConfig {
                 url_env: string(postgres, "url_env")?,
@@ -617,6 +635,21 @@ impl CloudConfig {
         if self.node_control.certificate_file == self.node_control.private_key_file {
             return Err(ConfigError::Invalid(
                 "node_control certificate and private key files must differ".into(),
+            ));
+        }
+        let artifact_path = Path::new(&self.artifacts.store_dir);
+        if self.artifacts.store_dir.trim().is_empty()
+            || self.artifacts.store_dir.len() > 4096
+            || self.artifacts.store_dir.contains('\0')
+            || artifact_path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+            || !(1024 * 1024..=10 * 1024 * 1024 * 1024_u64).contains(&self.artifacts.max_blob_bytes)
+            || !(1_000..=3_600_000).contains(&self.artifacts.transfer_timeout_ms)
+        {
+            return Err(ConfigError::Invalid(
+                "artifacts requires a normalized store path, a 1 MiB to 10 GiB blob bound, and a 1 second to 1 hour transfer timeout"
+                    .into(),
             ));
         }
         if !valid_env_name(&self.postgres.url_env) {
@@ -1093,6 +1126,7 @@ pub enum ConfigError {
 
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
     let allowed = [
+        "artifacts",
         "auth",
         "events",
         "deployments",
@@ -1353,6 +1387,11 @@ node_control {
   max_request_bytes = 20971520
   tls_handshake_timeout_ms = 5000
   request_body_timeout_ms = 10000
+}
+artifacts {
+  store_dir = ".a3s/cloud/artifacts"
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
 }
 postgres { url_env = "A3S_CLOUD_POSTGRES_URL" max_connections = 16 }
 auth { bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN" }
