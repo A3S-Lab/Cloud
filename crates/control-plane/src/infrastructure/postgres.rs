@@ -285,6 +285,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/028_external_build_workload_handoff.sql"
             )),
         ),
+        Migration::new(
+            "029",
+            "GitHub provider authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/029_github_provider_authority.sql"
+            )),
+        ),
     ]
 }
 

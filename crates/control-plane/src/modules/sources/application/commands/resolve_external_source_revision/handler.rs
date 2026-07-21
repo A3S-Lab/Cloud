@@ -172,6 +172,8 @@ impl CommandHandler<ResolveExternalSourceRevision> for ResolveExternalSourceRevi
                     };
                     let credential = match github_installation_tokens
                         .issue(GithubInstallationTokenRequest {
+                            organization_id: connection.organization_id,
+                            connection_id: connection.id,
                             installation_id: connection.installation_id,
                             repository: repository.clone(),
                             requested_at: chrono::Utc::now(),

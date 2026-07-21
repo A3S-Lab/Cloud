@@ -163,6 +163,11 @@ pub struct SourcesConfig {
     pub github_app_private_key_env: String,
     pub github_app_callback_url: String,
     pub github_connection_state_ttl_ms: u64,
+    pub github_authority_reconcile_interval_ms: u64,
+    pub github_authority_poll_interval_ms: u64,
+    pub github_authority_retry_initial_ms: u64,
+    pub github_authority_retry_max_ms: u64,
+    pub github_authority_batch_size: usize,
     pub checkout_dir: String,
     pub checkout_timeout_ms: u64,
     pub checkout_max_files: usize,
@@ -437,6 +442,11 @@ impl CloudConfig {
                 "github_app_private_key_env",
                 "github_app_callback_url",
                 "github_connection_state_ttl_ms",
+                "github_authority_reconcile_interval_ms",
+                "github_authority_poll_interval_ms",
+                "github_authority_retry_initial_ms",
+                "github_authority_retry_max_ms",
+                "github_authority_batch_size",
                 "checkout_dir",
                 "checkout_timeout_ms",
                 "checkout_max_files",
@@ -619,6 +629,20 @@ impl CloudConfig {
                 github_app_private_key_env: string(sources, "github_app_private_key_env")?,
                 github_app_callback_url: string(sources, "github_app_callback_url")?,
                 github_connection_state_ttl_ms: integer(sources, "github_connection_state_ttl_ms")?,
+                github_authority_reconcile_interval_ms: integer(
+                    sources,
+                    "github_authority_reconcile_interval_ms",
+                )?,
+                github_authority_poll_interval_ms: integer(
+                    sources,
+                    "github_authority_poll_interval_ms",
+                )?,
+                github_authority_retry_initial_ms: integer(
+                    sources,
+                    "github_authority_retry_initial_ms",
+                )?,
+                github_authority_retry_max_ms: integer(sources, "github_authority_retry_max_ms")?,
+                github_authority_batch_size: integer(sources, "github_authority_batch_size")?,
                 checkout_dir: string(sources, "checkout_dir")?,
                 checkout_timeout_ms: integer(sources, "checkout_timeout_ms")?,
                 checkout_max_files: integer(sources, "checkout_max_files")?,
@@ -942,6 +966,18 @@ impl CloudConfig {
             || self.sources.github_request_timeout_ms > 60_000
             || !(1024..=2 * 1024 * 1024).contains(&self.sources.github_webhook_max_body_bytes)
             || !(60_000..=1_800_000).contains(&self.sources.github_connection_state_ttl_ms)
+            || self.sources.github_authority_reconcile_interval_ms == 0
+            || self.sources.github_authority_reconcile_interval_ms > 60_000
+            || self.sources.github_authority_poll_interval_ms
+                < self.sources.github_authority_reconcile_interval_ms
+            || self.sources.github_authority_poll_interval_ms > 86_400_000
+            || self.sources.github_authority_retry_initial_ms == 0
+            || self.sources.github_authority_retry_max_ms
+                < self.sources.github_authority_retry_initial_ms
+            || self.sources.github_authority_retry_max_ms
+                > self.sources.github_authority_poll_interval_ms
+            || self.sources.github_authority_batch_size == 0
+            || self.sources.github_authority_batch_size > 10_000
             || !valid_data_path(&self.sources.checkout_dir)
             || self.sources.checkout_dir == self.builds.input_staging_dir
             || self.sources.checkout_dir == self.builds.output_staging_dir
@@ -954,7 +990,7 @@ impl CloudConfig {
             || self.sources.denied_repositories.len() > 256
         {
             return Err(ConfigError::Invalid(
-                "sources requires bounded GitHub and checkout timings, a normalized isolated checkout path, bounded checkout files/bytes, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
+                "sources requires bounded GitHub authority, webhook, connection, and checkout schedules, a normalized isolated checkout path, bounded checkout files/bytes, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
                     .into(),
             ));
         }
@@ -1674,6 +1710,11 @@ sources {
   github_app_private_key_env = "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
   github_app_callback_url = "https://cloud.example.test/api/v1/source-connections/github/callback"
   github_connection_state_ttl_ms = 600000
+  github_authority_reconcile_interval_ms = 10000
+  github_authority_poll_interval_ms = 300000
+  github_authority_retry_initial_ms = 1000
+  github_authority_retry_max_ms = 60000
+  github_authority_batch_size = 100
   checkout_dir = ".a3s/cloud/source-checkouts"
   checkout_timeout_ms = 120000
   checkout_max_files = 100000
@@ -1772,6 +1813,9 @@ security {
             "https://cloud.example.test/api/v1/source-connections/github/callback"
         );
         assert_eq!(config.sources.github_connection_state_ttl_ms, 600_000);
+        assert_eq!(config.sources.github_authority_poll_interval_ms, 300_000);
+        assert_eq!(config.sources.github_authority_retry_max_ms, 60_000);
+        assert_eq!(config.sources.github_authority_batch_size, 100);
         assert_eq!(config.sources.checkout_max_files, 100_000);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
@@ -1798,6 +1842,7 @@ security {
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
+        assert_eq!(config.sources.github_authority_poll_interval_ms, 300_000);
         assert!(!config.sources.github_app_enabled);
         assert!(config.sources.github_app_slug.is_empty());
         assert!(config.sources.github_app_private_key_env.is_empty());
@@ -1903,6 +1948,26 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "github_connection_state_ttl_ms = 600000",
             "github_connection_state_ttl_ms = 59999"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_reconcile_interval_ms = 10000",
+            "github_authority_reconcile_interval_ms = 0"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_poll_interval_ms = 300000",
+            "github_authority_poll_interval_ms = 9999"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_retry_max_ms = 60000",
+            "github_authority_retry_max_ms = 999"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_batch_size = 100",
+            "github_authority_batch_size = 0"
         ))
         .is_err());
         assert!(CloudConfig::parse(

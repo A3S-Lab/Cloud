@@ -61,19 +61,21 @@ use crate::modules::secrets::{
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
 use crate::modules::sources::domain::{
-    IGithubAppAuthorizationService, IGithubConnectionRepository, IGithubInstallationTokenService,
-    ISourceCheckout, ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
+    IGithubAppAuthorizationService, IGithubConnectionAuthorityService, IGithubConnectionRepository,
+    IGithubInstallationAuthorityProvider, IGithubInstallationTokenService, ISourceCheckout,
+    ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
     ISourceWebhookRepository, ISourceWebhookVerifier, SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
     AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
     CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
     DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GitSourceCheckout,
-    GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
-    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
-    PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
-    PostgresSourceSubscriptionRepository, PrepareGithubConnectionOauthHandler,
-    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler, SourcesModule,
+    GithubAppClient, GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer,
+    GithubSourceResolver, GithubWebhookVerifier, ListGithubRepositorySubscriptionsHandler,
+    ListSourceRevisionsHandler, PostgresGithubConnectionRepository,
+    PostgresSourceRevisionRepository, PostgresSourceSubscriptionRepository,
+    PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
+    ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -224,19 +226,35 @@ pub async fn build_application_with_source_resolver(
         } else {
             Arc::new(GithubAppClient::disabled())
         };
-    let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> =
-        if config.sources.github_app_enabled {
-            Arc::new(
-                GithubInstallationTokenIssuer::new(
-                    Duration::from_millis(config.sources.github_request_timeout_ms),
-                    config.sources.github_app_client_id.clone(),
-                    config.sources.github_app_private_key_env.clone(),
-                )
-                .map_err(ControlPlaneStartupError::Sources)?,
-            )
-        } else {
-            Arc::new(GithubInstallationTokenIssuer::disabled())
-        };
+    let github_installation_client = Arc::new(if config.sources.github_app_enabled {
+        GithubInstallationTokenIssuer::new(
+            Duration::from_millis(config.sources.github_request_timeout_ms),
+            config.sources.github_app_client_id.clone(),
+            config.sources.github_app_private_key_env.clone(),
+        )
+        .map_err(ControlPlaneStartupError::Sources)?
+    } else {
+        GithubInstallationTokenIssuer::disabled()
+    });
+    let github_installation_tokens_raw: Arc<dyn IGithubInstallationTokenService> =
+        github_installation_client.clone();
+    let github_authority_provider: Arc<dyn IGithubInstallationAuthorityProvider> =
+        github_installation_client;
+    let github_authority_reconciler = GithubConnectionAuthorityReconciler::new(
+        Arc::clone(&github_connections),
+        github_authority_provider,
+        Duration::from_millis(config.sources.github_authority_reconcile_interval_ms),
+        Duration::from_millis(config.sources.github_authority_poll_interval_ms),
+        Duration::from_millis(config.sources.github_authority_retry_initial_ms),
+        Duration::from_millis(config.sources.github_authority_retry_max_ms),
+        config.sources.github_authority_batch_size,
+    )
+    .map_err(ControlPlaneStartupError::Sources)?;
+    let github_authority: Arc<dyn IGithubConnectionAuthorityService> =
+        Arc::new(github_authority_reconciler.clone());
+    let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> = Arc::new(
+        RevalidatingGithubInstallationTokens::new(github_authority, github_installation_tokens_raw),
+    );
     let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
         GitSourceCheckout::new(
             &config.sources.checkout_dir,
@@ -552,6 +570,7 @@ pub async fn build_application_with_source_resolver(
         application,
         ControlPlaneWorkers::new(
             run_operations.then_some(build_run_reconciler),
+            run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),

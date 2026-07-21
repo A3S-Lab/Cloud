@@ -1,3 +1,4 @@
+use crate::modules::shared_kernel::domain::{OrganizationId, SourceConnectionId};
 use crate::modules::sources::domain::{
     GitRepository, GithubInstallationId, SourceProviderCredential,
 };
@@ -6,6 +7,8 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub struct GithubInstallationTokenRequest {
+    pub organization_id: OrganizationId,
+    pub connection_id: SourceConnectionId,
     pub installation_id: GithubInstallationId,
     pub repository: GitRepository,
     pub requested_at: DateTime<Utc>,

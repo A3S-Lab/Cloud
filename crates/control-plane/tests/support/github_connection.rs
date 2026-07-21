@@ -4,9 +4,11 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::sources::domain::{
     CompleteGithubConnection, GithubAccountId, GithubAccountKind, GithubConnection,
     GithubConnectionCreated, GithubConnectionFlow, GithubConnectionFlowStage,
-    GithubConnectionLifecycleChange, GithubConnectionStatus, GithubInstallationAccount,
-    GithubInstallationId, GithubLogin, IGithubConnectionRepository, NewGithubConnection,
-    ReconcileGithubConnectionLifecycle, VerifiedGithubConnectionLifecycle, WebhookDeliveryId,
+    GithubConnectionLifecycleChange, GithubConnectionReconciled, GithubConnectionStatus,
+    GithubInstallationAccount, GithubInstallationId, GithubLogin, GithubProviderAuthority,
+    GithubProviderCheckError, IGithubConnectionRepository, NewGithubConnection,
+    PersistGithubProviderReconciliation, ReconcileGithubConnectionLifecycle,
+    VerifiedGithubConnectionLifecycle, WebhookDeliveryId,
 };
 use a3s_cloud_control_plane::modules::sources::PostgresGithubConnectionRepository;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
@@ -273,7 +275,75 @@ pub(super) async fn exercise_github_connection_persistence(
         repository
             .find_authoritative_by_installation(reconnected.installation_id)
             .await?,
-        Some(reconnected)
+        Some(reconnected.clone())
+    );
+
+    let provider_check_at = connected_at + Duration::seconds(8);
+    let mut candidates = repository
+        .find_provider_check_candidates(provider_check_at, 10)
+        .await?;
+    assert_eq!(candidates.len(), 1);
+    let mut provider_checked = candidates.pop().expect("provider check candidate");
+    assert_eq!(provider_checked.id, reconnected.id);
+    let expected_version = provider_checked.aggregate_version;
+    let provider_reconciliation = provider_checked
+        .reconcile_provider_authority(
+            GithubProviderAuthority::available(
+                provider_checked.installation_id,
+                GithubInstallationAccount {
+                    id: provider_checked.account_id,
+                    login: GithubLogin::parse("A3S-Platform").map_err(std::io::Error::other)?,
+                    kind: provider_checked.account_kind,
+                },
+                false,
+            ),
+            provider_check_at,
+            provider_check_at + Duration::minutes(5),
+        )
+        .map_err(std::io::Error::other)?;
+    assert!(provider_reconciliation.lifecycle_changed);
+    let provider_event = GithubConnectionReconciled::envelope(&provider_checked, Uuid::now_v7())?;
+    let provider_checked = repository
+        .save_provider_reconciliation(PersistGithubProviderReconciliation {
+            connection: provider_checked,
+            expected_version,
+            event: Some(provider_event),
+        })
+        .await?;
+    assert_eq!(provider_checked.account_login.as_str(), "A3S-Platform");
+    assert_eq!(provider_checked.provider_checked_at, provider_check_at);
+
+    let mut retrying = provider_checked;
+    let expected_version = retrying.aggregate_version;
+    retrying
+        .record_provider_check_failure(
+            GithubProviderCheckError::Unavailable,
+            provider_check_at + Duration::seconds(1),
+            provider_check_at + Duration::seconds(2),
+        )
+        .map_err(std::io::Error::other)?;
+    let retrying = repository
+        .save_provider_reconciliation(PersistGithubProviderReconciliation {
+            connection: retrying,
+            expected_version,
+            event: None,
+        })
+        .await?;
+    assert_eq!(retrying.provider_check_failures, 1);
+    assert_eq!(
+        retrying.provider_check_error,
+        Some(GithubProviderCheckError::Unavailable)
+    );
+    assert!(repository
+        .find_provider_check_candidates(provider_check_at + Duration::seconds(1), 10)
+        .await?
+        .is_empty());
+    assert_eq!(
+        repository
+            .find_provider_check_candidates(provider_check_at + Duration::seconds(2), 10)
+            .await?
+            .len(),
+        1
     );
 
     let connection_rows = database
@@ -308,7 +378,7 @@ pub(super) async fn exercise_github_connection_persistence(
                 "select count(*) from outbox_events where event_key = 'source.github-connection.reconciled'",
             ))
             .await?,
-        3
+        4
     );
     assert_eq!(
         database

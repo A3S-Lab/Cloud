@@ -1,11 +1,13 @@
 use super::*;
+use crate::modules::shared_kernel::domain::{OrganizationId, SourceConnectionId};
 use crate::modules::sources::domain::{
-    GitProvider, GithubInstallationId, GithubInstallationTokenRequest,
-    IGithubInstallationTokenService,
+    GitProvider, GithubInstallationAuthorityError, GithubInstallationAuthorityRequest,
+    GithubInstallationId, GithubInstallationTokenRequest, GithubProviderAuthorityState,
+    IGithubInstallationAuthorityProvider, IGithubInstallationTokenService,
 };
 use axum::extract::State;
 use axum::http::HeaderMap as AxumHeaderMap;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -60,6 +62,8 @@ async fn issues_one_repository_scoped_read_only_token_with_a_bounded_app_jwt() {
 
     let credential = issuer
         .issue(GithubInstallationTokenRequest {
+            organization_id: OrganizationId::new(),
+            connection_id: SourceConnectionId::new(),
             installation_id: GithubInstallationId::parse(42).expect("installation ID"),
             repository: repository.clone(),
             requested_at,
@@ -192,6 +196,109 @@ async fn provider_cannot_broaden_permission_scope() {
     server.abort();
 }
 
+#[tokio::test]
+async fn inspects_authoritative_active_and_suspended_installations() {
+    for (suspended_at, expected_state) in [
+        (None, GithubProviderAuthorityState::Active),
+        (
+            Some("2026-07-21T00:00:00Z"),
+            GithubProviderAuthorityState::Suspended,
+        ),
+    ] {
+        let (address, server) = start_fixture(Router::new().route(
+            "/app/installations/42",
+            get(move || async move {
+                Json(json!({
+                    "id": 42,
+                    "account": {
+                        "id": 100,
+                        "login": "A3S-Lab",
+                        "type": "Organization"
+                    },
+                    "suspended_at": suspended_at
+                }))
+            }),
+        ))
+        .await;
+        let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+        let authority = fixture_issuer(address, private_key.name())
+            .inspect(authority_request())
+            .await
+            .expect("installation authority");
+
+        assert_eq!(authority.installation_id.as_u64(), 42);
+        assert_eq!(authority.state, expected_state);
+        let account = authority.account.expect("installation account");
+        assert_eq!(account.id.as_u64(), 100);
+        assert_eq!(account.login.as_str(), "A3S-Lab");
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn authoritative_not_found_is_deleted_while_provider_failures_stay_retryable() {
+    let (deleted_address, deleted_server) = start_fixture(Router::new().route(
+        "/app/installations/42",
+        get(|| async { StatusCode::NOT_FOUND }),
+    ))
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+    let deleted = fixture_issuer(deleted_address, private_key.name())
+        .inspect(authority_request())
+        .await
+        .expect("deleted installation authority");
+    assert_eq!(deleted.state, GithubProviderAuthorityState::Deleted);
+    assert!(deleted.account.is_none());
+    deleted_server.abort();
+
+    let (unavailable_address, unavailable_server) = start_fixture(Router::new().route(
+        "/app/installations/42",
+        get(|| async { StatusCode::TOO_MANY_REQUESTS }),
+    ))
+    .await;
+    assert_eq!(
+        fixture_issuer(unavailable_address, private_key.name())
+            .inspect(authority_request())
+            .await,
+        Err(GithubInstallationAuthorityError::Unavailable)
+    );
+    unavailable_server.abort();
+
+    assert_eq!(
+        GithubInstallationTokenIssuer::disabled()
+            .inspect(authority_request())
+            .await,
+        Err(GithubInstallationAuthorityError::NotConfigured)
+    );
+}
+
+#[tokio::test]
+async fn authority_rejects_provider_identity_confusion() {
+    let (address, server) = start_fixture(Router::new().route(
+        "/app/installations/42",
+        get(|| async {
+            Json(json!({
+                "id": 43,
+                "account": {
+                    "id": 100,
+                    "login": "A3S-Lab",
+                    "type": "Organization"
+                },
+                "suspended_at": null
+            }))
+        }),
+    ))
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+    assert!(matches!(
+        fixture_issuer(address, private_key.name())
+            .inspect(authority_request())
+            .await,
+        Err(GithubInstallationAuthorityError::Protocol(_))
+    ));
+    server.abort();
+}
+
 #[derive(Default)]
 struct RequestCapture {
     headers: Mutex<Option<AxumHeaderMap>>,
@@ -231,10 +338,21 @@ fn fixture_issuer(
 
 fn token_request() -> GithubInstallationTokenRequest {
     GithubInstallationTokenRequest {
+        organization_id: OrganizationId::new(),
+        connection_id: SourceConnectionId::new(),
         installation_id: GithubInstallationId::parse(42).expect("installation ID"),
         repository: repository(),
         requested_at: DateTime::parse_from_rfc3339("2026-07-21T00:00:00Z")
             .expect("request time")
+            .with_timezone(&Utc),
+    }
+}
+
+fn authority_request() -> GithubInstallationAuthorityRequest {
+    GithubInstallationAuthorityRequest {
+        installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+        checked_at: DateTime::parse_from_rfc3339("2026-07-21T00:00:00Z")
+            .expect("check time")
             .with_timezone(&Utc),
     }
 }
