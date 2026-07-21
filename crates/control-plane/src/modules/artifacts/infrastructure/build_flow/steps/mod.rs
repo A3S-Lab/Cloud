@@ -1,6 +1,7 @@
 mod cleanup;
 mod common;
 mod prepare;
+mod publication;
 mod runtime;
 mod validation;
 
@@ -27,6 +28,12 @@ pub(super) async fn execute(
         }
         "build_validate_output" => {
             encode(validation::validate(runtime, &run_id, invocation.input_as()?).await?)
+        }
+        "build_prepare_publication" => {
+            encode(publication::prepare(runtime, &run_id, invocation.input_as()?).await?)
+        }
+        "build_publish_output" => {
+            encode(publication::publish(runtime, &run_id, invocation.input_as()?).await?)
         }
         "build_fail" => encode(validation::fail(runtime, &run_id, invocation.input_as()?).await?),
         "build_cleanup_dispatch" => {

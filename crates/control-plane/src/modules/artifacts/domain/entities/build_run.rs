@@ -1,4 +1,5 @@
 use super::build_artifact::{validate_sha256, BuildArtifact, ValidatedOciBuildOutput};
+use super::oci_publication::{OciPublicationTarget, PublishedOciArtifact};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, EnvironmentId, NodeCommandId, NodeId, OperationId,
     OrganizationId, ProjectId, SourceRevisionId,
@@ -20,6 +21,7 @@ pub enum BuildRunStatus {
     Scheduled,
     Running,
     Validating,
+    Publishing,
     Cancelling,
     CleanupPending,
     Succeeded,
@@ -36,6 +38,7 @@ impl BuildRunStatus {
             Self::Scheduled => "scheduled",
             Self::Running => "running",
             Self::Validating => "validating",
+            Self::Publishing => "publishing",
             Self::Cancelling => "cancelling",
             Self::CleanupPending => "cleanup_pending",
             Self::Succeeded => "succeeded",
@@ -52,6 +55,7 @@ impl BuildRunStatus {
             "scheduled" => Ok(Self::Scheduled),
             "running" => Ok(Self::Running),
             "validating" => Ok(Self::Validating),
+            "publishing" => Ok(Self::Publishing),
             "cancelling" => Ok(Self::Cancelling),
             "cleanup_pending" => Ok(Self::CleanupPending),
             "succeeded" => Ok(Self::Succeeded),
@@ -83,6 +87,8 @@ pub struct BuildRun {
     pub runtime_spec_digest: Option<String>,
     pub runtime_output_artifact: Option<BuildArtifact>,
     pub output: Option<ValidatedOciBuildOutput>,
+    pub publication_target: Option<OciPublicationTarget>,
+    pub published_artifact: Option<PublishedOciArtifact>,
     pub failure: Option<String>,
     pub aggregate_version: u64,
     pub requested_at: DateTime<Utc>,
@@ -125,6 +131,8 @@ impl BuildRun {
             runtime_spec_digest: None,
             runtime_output_artifact: None,
             output: None,
+            publication_target: None,
+            published_artifact: None,
             failure: None,
             aggregate_version: 1,
             requested_at,
@@ -255,6 +263,63 @@ impl BuildRun {
         Ok(())
     }
 
+    pub fn begin_publication(
+        &mut self,
+        target: OciPublicationTarget,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        target.validate()?;
+        let output = self
+            .output
+            .as_ref()
+            .ok_or_else(|| "OCI publication requires validated output".to_owned())?;
+        if !target.matches_output(output) {
+            return Err("OCI publication target changed the validated output descriptor".into());
+        }
+        if self.status == BuildRunStatus::Publishing {
+            return if self.publication_target.as_ref() == Some(&target) {
+                self.observe_time(at)
+            } else {
+                Err("publishing build cannot change its immutable target".into())
+            };
+        }
+        self.transition(BuildRunStatus::Validating, BuildRunStatus::Publishing, at)?;
+        self.publication_target = Some(target);
+        Ok(())
+    }
+
+    pub fn record_published_artifact(
+        &mut self,
+        artifact: PublishedOciArtifact,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        artifact.validate()?;
+        if !matches!(
+            self.status,
+            BuildRunStatus::Publishing | BuildRunStatus::Cancelling
+        ) {
+            return Err("published OCI artifact requires a publishing or cancelling build".into());
+        }
+        let target = self
+            .publication_target
+            .as_ref()
+            .ok_or_else(|| "published OCI artifact is missing its durable target".to_owned())?;
+        if !artifact.matches_target(target) {
+            return Err("published OCI artifact changed its durable target".into());
+        }
+        let at = self.canonical_time(at)?;
+        if let Some(existing) = &self.published_artifact {
+            if existing != &artifact {
+                return Err("published OCI artifact cannot change".into());
+            }
+            return self.observe_time(at);
+        }
+        self.published_artifact = Some(artifact);
+        self.aggregate_version += 1;
+        self.updated_at = at;
+        Ok(())
+    }
+
     pub fn record_failure(&mut self, reason: String, at: DateTime<Utc>) -> Result<(), String> {
         validate_reason(&reason)?;
         if self.status.is_terminal() {
@@ -299,14 +364,14 @@ impl BuildRun {
         }
         if !matches!(
             self.status,
-            BuildRunStatus::Validating
+            BuildRunStatus::Publishing
                 | BuildRunStatus::Cancelling
                 | BuildRunStatus::CleanupPending
         ) {
             return Err("build run is not ready for Runtime cleanup".into());
         }
-        if self.status == BuildRunStatus::Validating && self.output.is_none() {
-            return Err("successful Runtime cleanup requires validated output".into());
+        if self.status == BuildRunStatus::Publishing && self.published_artifact.is_none() {
+            return Err("successful Runtime cleanup requires a published OCI artifact".into());
         }
         let at = self.canonical_time(at)?;
         match self.cleanup_command_id {
@@ -357,7 +422,7 @@ impl BuildRun {
             BuildRunStatus::Cancelled
         } else if self.failure.is_some() {
             BuildRunStatus::Failed
-        } else if self.output.is_some() {
+        } else if self.published_artifact.is_some() {
             BuildRunStatus::Succeeded
         } else {
             return Err("build completion has no terminal outcome".into());
@@ -411,11 +476,32 @@ impl BuildRun {
         if let Some(artifact) = &self.runtime_output_artifact {
             artifact.validate()?;
         }
+        match (&self.publication_target, &self.published_artifact) {
+            (Some(target), published) => {
+                target.validate()?;
+                let output = self.output.as_ref().ok_or_else(|| {
+                    "stored OCI publication target is missing validated output".to_owned()
+                })?;
+                if !target.matches_output(output) {
+                    return Err("stored OCI publication target changed the validated output".into());
+                }
+                if let Some(artifact) = published {
+                    artifact.validate()?;
+                    if !artifact.matches_target(target) {
+                        return Err("stored published OCI artifact changed its target".into());
+                    }
+                }
+            }
+            (None, None) => {}
+            (None, Some(_)) => {
+                return Err("stored published OCI artifact is missing its target".into())
+            }
+        }
         if let Some(reason) = &self.failure {
             validate_reason(reason)?;
         }
         if self.status == BuildRunStatus::Succeeded
-            && (self.output.is_none()
+            && (self.published_artifact.is_none()
                 || self.failure.is_some()
                 || self.cancellation_requested_at.is_some()
                 || self.cleanup_command_id.is_none())
@@ -444,6 +530,8 @@ impl BuildRun {
                     || self.command_id.is_some()
                     || self.runtime_output_artifact.is_some()
                     || self.output.is_some()
+                    || self.publication_target.is_some()
+                    || self.published_artifact.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some()
                     || self.cleanup_command_id.is_some() =>
@@ -454,6 +542,8 @@ impl BuildRun {
                 if self.started_at.is_none()
                     || self.input_artifact.is_some()
                     || self.node_id.is_some()
+                    || self.publication_target.is_some()
+                    || self.published_artifact.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -463,6 +553,8 @@ impl BuildRun {
                 if self.started_at.is_none()
                     || self.input_artifact.is_none()
                     || self.node_id.is_some()
+                    || self.publication_target.is_some()
+                    || self.published_artifact.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -472,6 +564,8 @@ impl BuildRun {
                 if self.input_artifact.is_none()
                     || self.node_id.is_none()
                     || self.command_id.is_some()
+                    || self.publication_target.is_some()
+                    || self.published_artifact.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -480,6 +574,8 @@ impl BuildRun {
             BuildRunStatus::Running
                 if self.command_id.is_none()
                     || self.runtime_output_artifact.is_some()
+                    || self.publication_target.is_some()
+                    || self.published_artifact.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -489,16 +585,29 @@ impl BuildRun {
                 if self.command_id.is_none()
                     || self.runtime_output_artifact.is_none()
                     || self.cleanup_command_id.is_some()
+                    || self.publication_target.is_some()
+                    || self.published_artifact.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
                 return Err("validating build run has inconsistent execution state".into());
             }
+            BuildRunStatus::Publishing
+                if self.command_id.is_none()
+                    || self.runtime_output_artifact.is_none()
+                    || self.output.is_none()
+                    || self.publication_target.is_none()
+                    || self.cleanup_command_id.is_some()
+                    || self.failure.is_some()
+                    || self.cancellation_requested_at.is_some() =>
+            {
+                return Err("publishing build run has inconsistent execution state".into());
+            }
             BuildRunStatus::Cancelling if self.cancellation_requested_at.is_none() => {
                 return Err("cancelling build run has no cancellation request".into());
             }
             BuildRunStatus::CleanupPending
-                if self.output.is_none()
+                if self.published_artifact.is_none()
                     && self.failure.is_none()
                     && self.cancellation_requested_at.is_none() =>
             {

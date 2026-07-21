@@ -144,6 +144,11 @@ pub struct BuildsConfig {
 pub struct RegistryConfig {
     pub request_timeout_ms: u64,
     pub insecure_hosts: Vec<String>,
+    pub publication_registry: String,
+    pub publication_repository_prefix: String,
+    pub publication_credential_env: String,
+    pub publication_allow_anonymous: bool,
+    pub publication_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -406,7 +411,18 @@ impl CloudConfig {
             ],
         )?;
         let registry = one_block(&document, "registry")?;
-        validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
+        validate_block(
+            registry,
+            &[
+                "request_timeout_ms",
+                "insecure_hosts",
+                "publication_registry",
+                "publication_repository_prefix",
+                "publication_credential_env",
+                "publication_allow_anonymous",
+                "publication_timeout_ms",
+            ],
+        )?;
         let sources = one_block(&document, "sources")?;
         validate_block(
             sources,
@@ -586,6 +602,11 @@ impl CloudConfig {
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
+                publication_registry: string(registry, "publication_registry")?,
+                publication_repository_prefix: string(registry, "publication_repository_prefix")?,
+                publication_credential_env: string(registry, "publication_credential_env")?,
+                publication_allow_anonymous: boolean(registry, "publication_allow_anonymous")?,
+                publication_timeout_ms: integer(registry, "publication_timeout_ms")?,
             },
             sources: SourcesConfig {
                 github_request_timeout_ms: integer(sources, "github_request_timeout_ms")?,
@@ -701,6 +722,7 @@ impl CloudConfig {
                 observation_poll_ms: self.builds.observation_poll_ms,
                 convergence_timeout_ms: self.builds.convergence_timeout_ms,
                 cleanup_timeout_ms: self.builds.cleanup_timeout_ms,
+                publication_timeout_ms: self.registry.publication_timeout_ms,
                 cpu_millis: self.builds.cpu_millis,
                 memory_bytes: self.builds.memory_bytes,
                 pids: self.builds.pids,
@@ -867,6 +889,8 @@ impl CloudConfig {
             .map_err(|error| ConfigError::Invalid(format!("builds is invalid: {error}")))?;
         if self.registry.request_timeout_ms == 0
             || self.registry.request_timeout_ms > 60_000
+            || self.registry.publication_timeout_ms == 0
+            || self.registry.publication_timeout_ms > 7_200_000
             || self.registry.insecure_hosts.len() > 64
             || self.registry.insecure_hosts.iter().any(|host| {
                 host.is_empty()
@@ -885,6 +909,33 @@ impl CloudConfig {
         if unique_registry_hosts.len() != self.registry.insecure_hosts.len() {
             return Err(ConfigError::Invalid(
                 "registry.insecure_hosts cannot contain duplicates".into(),
+            ));
+        }
+        crate::modules::artifacts::domain::entities::validate_registry(
+            &self.registry.publication_registry,
+        )
+        .and_then(|_| {
+            crate::modules::artifacts::domain::entities::validate_repository_prefix(
+                &self.registry.publication_repository_prefix,
+            )
+        })
+        .map_err(|error| {
+            ConfigError::Invalid(format!("registry publication is invalid: {error}"))
+        })?;
+        if self.registry.publication_allow_anonymous
+            != self.registry.publication_credential_env.is_empty()
+            || (!self.registry.publication_credential_env.is_empty()
+                && !valid_env_name(&self.registry.publication_credential_env))
+            || (self.security.profile == SecurityProfile::Production
+                && (self.registry.publication_allow_anonymous
+                    || self
+                        .registry
+                        .insecure_hosts
+                        .contains(&self.registry.publication_registry)))
+        {
+            return Err(ConfigError::Invalid(
+                "registry publication requires exactly one credential environment reference or development-only anonymous mode; production requires authenticated HTTPS"
+                    .into(),
             ));
         }
         if self.sources.github_request_timeout_ms == 0
@@ -1606,6 +1657,11 @@ builds {
 registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:5000"]
+  publication_registry = "127.0.0.1:5000"
+  publication_repository_prefix = "a3s-cloud/builds"
+  publication_credential_env = ""
+  publication_allow_anonymous = true
+  publication_timeout_ms = 600000
 }
 sources {
   github_request_timeout_ms = 10000
@@ -1771,6 +1827,11 @@ security {
         ))
         .is_err());
         assert!(CloudConfig::parse(&VALID.replace(
+            "publication_registry = \"127.0.0.1:5000\"",
+            "publication_registry = \"registry.example:invalid\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
             "certificate_reconciliation_interval_ms = 60000",
             "certificate_reconciliation_interval_ms = 604800001"
         ))
@@ -1778,6 +1839,12 @@ security {
         assert!(CloudConfig::parse(
             &VALID.replace("profile = \"development\"", "profile = \"production\"")
         )
+        .is_err());
+        let oversized_publication_prefix = vec!["a".repeat(125); 7].join("/");
+        assert!(CloudConfig::parse(&VALID.replace(
+            "publication_repository_prefix = \"a3s-cloud/builds\"",
+            &format!("publication_repository_prefix = \"{oversized_publication_prefix}\"")
+        ))
         .is_err());
         assert!(CloudConfig::parse(
             &VALID.replace("retention_poll_ms = 60000", "retention_poll_ms = 604800001")
@@ -1883,8 +1950,41 @@ security {
                 "  certificate_authority = \"vault\"",
             )
             .replace("key_encryption = \"local\"", "key_encryption = \"vault\"")
-            .replace("storage_provider = \"local\"", "storage_provider = \"s3\"");
+            .replace("storage_provider = \"local\"", "storage_provider = \"s3\"")
+            .replace(
+                "insecure_hosts = [\"127.0.0.1:5000\"]",
+                "insecure_hosts = []",
+            )
+            .replace(
+                "publication_registry = \"127.0.0.1:5000\"",
+                "publication_registry = \"registry.example.test\"",
+            )
+            .replace(
+                "publication_credential_env = \"\"",
+                "publication_credential_env = \"A3S_CLOUD_REGISTRY_CREDENTIAL\"",
+            )
+            .replace(
+                "publication_allow_anonymous = true",
+                "publication_allow_anonymous = false",
+            );
         assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(&production_s3.replace(
+            "insecure_hosts = []",
+            "insecure_hosts = [\"registry.example.test\"]"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(
+            &production_s3
+                .replace(
+                    "publication_credential_env = \"A3S_CLOUD_REGISTRY_CREDENTIAL\"",
+                    "publication_credential_env = \"\""
+                )
+                .replace(
+                    "publication_allow_anonymous = false",
+                    "publication_allow_anonymous = true"
+                )
+        )
+        .is_err());
         assert!(CloudConfig::parse(&production_s3.replace(
             "gateway_certificate_authority = \"vault\"",
             "gateway_certificate_authority = \"local\""

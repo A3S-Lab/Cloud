@@ -73,6 +73,7 @@ fn projected_build_task_has_two_independent_network_denials_and_exact_artifacts(
         observation_poll_ms: 100,
         convergence_timeout_ms: 120_000,
         cleanup_timeout_ms: 60_000,
+        publication_timeout_ms: 60_000,
         cpu_millis: 1_000,
         memory_bytes: 512 * 1024 * 1024,
         pids: 256,

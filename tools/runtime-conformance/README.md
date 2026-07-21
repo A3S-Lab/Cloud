@@ -138,6 +138,20 @@ decrypt the exact bound credential for manifest authentication, and requires
 the node to resolve the same encrypted reference before Docker can pull the
 exact private digest.
 
+The dedicated `Runtime BuildKit private Registry` CI job provisions the exact
+named volume expected by the Docker Runtime driver, starts the digest-pinned
+rootless BuildKit daemon on its shared Unix socket, and rejects anonymous access
+to a digest-pinned private Distribution fixture. It then drives the projected
+build Task through the real command journal, Docker Runtime, Artifact transport,
+OCI validator, and production publisher. Success requires both network-denial
+layers, an offline scratch build context containing a bounded root filesystem
+exported from the digest-pinned linux/amd64 BusyBox fixture, authenticated
+digest-only push, complete remote graph verification, idempotent replay,
+Runtime removal, and deletion of the socket volume. The exported root filesystem
+keeps BusyBox and its dynamic-loader closure bound to the same image digest. The
+manual operator command and fixture contract are documented in the repository
+README under `Certify the isolated Build Flow`.
+
 Without `--registry-data`, the runner copies the pinned multi-platform BusyBox
 OCI index from Docker Hub into a temporary registry and retries transient copy
 failures three times. For an offline or rate-limited runner, pass a persistent

@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
+pub(super) use self::oci_layout::OciLayoutBlob;
 pub use connection::BuildkitConnection;
 
 pub(super) struct ValidatedBuildkitOutput {
@@ -25,6 +26,8 @@ pub(super) struct ValidatedBuildkitOutput {
     pub platforms: Vec<BuildPlatform>,
     pub content_bytes: u64,
     pub blob_count: usize,
+    pub layout_directory: PathBuf,
+    pub blobs: Vec<OciLayoutBlob>,
 }
 
 pub(super) async fn validate_exported_output(
@@ -49,6 +52,8 @@ pub(super) async fn validate_exported_output(
         platforms: validated.platforms,
         content_bytes: validated.content_bytes,
         blob_count: validated.blob_count,
+        layout_directory: layout,
+        blobs: validated.blobs,
     })
 }
 

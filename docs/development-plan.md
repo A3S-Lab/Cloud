@@ -114,7 +114,7 @@ for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-20:
+Status as of 2026-07-21:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -123,6 +123,7 @@ Status as of 2026-07-20:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, and replay/cancellation adoption are implemented. Provenance, source-to-deployment handoff, external private-provider evidence, and product build surfaces still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -707,15 +708,17 @@ The current independently testable G0 slices are implemented:
   Sources or Runtime.
 - One deterministic tenant-owned `BuildRun` is reserved for every accepted
   source revision. Its operation ID is the build ID, and its aggregate records
-  exact input, node/command, Runtime output, validated OCI result,
-  cancellation/failure, cleanup, timestamps, and optimistic version.
+  exact input, node/command, Runtime output, validated OCI result, immutable
+  publication target, verified published artifact, cancellation/failure,
+  cleanup, timestamps, and optimistic version.
   Repository saves accept only one aggregate-generated transition; exact
   replay changes no timestamp or version.
 - Concurrent PostgreSQL reservation creates one build, and a dedicated
   reconciler repairs the source-commit-to-operation crash gap by enqueuing the
-  same `cloud.build@1` request. The isolated PostgreSQL gate covers concurrent
+  same `cloud.build@2` request. The isolated PostgreSQL gate covers concurrent
   reservation, crash-gap repair, exact operation replay, stale writes, forged
-  ownership, and tenant/environment isolation.
+  ownership, tenant/environment isolation, the complete publication state
+  round trip, and rejection of multi-transition saves.
 - Typed node Artifact download/upload contracts bind the authenticated node,
   command, Runtime spec digest, exact mount/output, digest, media type, and
   size. The mTLS node-control endpoints authorize against the persisted
@@ -745,14 +748,35 @@ The current independently testable G0 slices are implemented:
   configs exactly match the recipe platforms. Build-ID replay revalidates the
   full graph, conflicting input fails, tampering fails, and removal is
   idempotent.
+- `OciRegistryArtifactPublisher` derives one tenant/project/environment/build
+  repository under the configured prefix and binds the validated root digest,
+  media type, and size before external I/O. It re-materializes and revalidates
+  the admitted layout for every attempt, streams blobs, publishes child
+  manifests before the root, and accepts only a remotely complete graph with
+  exact digest, media type, and content length.
+- Registry upload redirects are disabled and upload `Location` values must stay
+  inside the configured origin and repository. Basic and Bearer credentials are
+  read from an environment reference per attempt and zeroized without entering
+  BuildRun or Flow history. Production configuration requires authenticated
+  HTTPS; anonymous and HTTP publication are development-only explicit modes.
+- Protocol fixtures cover single-manifest and multi-platform graphs,
+  Basic/Bearer authentication, 401/403 and token failure, hostile upload
+  locations, descriptor mismatches, and partial-response replay. The Linux CI
+  private Distribution fixture exercises authenticated push, remote lookup,
+  and idempotent replay through the production adapter.
 - A dedicated Linux gate starts the digest-pinned `moby/buildkit` 0.31.2
-  rootless image, proves its non-root image user, builds a network-independent
-  scratch fixture through the production adapter, validates the OCI output,
-  and replays it without reexecution.
-- `cloud.build@1` is registered in the production Flow router alongside
-  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. The worker-role BuildRun
-  reconciler reserves revisions and enqueues their deterministic operation
-  before generic Flow coordination.
+  rootless image on the exact operator Unix socket volume, proves its non-root
+  image user, and retains the typed local-context adapter build and replay
+  check. The same job provisions an authenticated private Distribution
+  registry and runs the production Runtime Task through Artifact capture, full
+  graph validation, deterministic publication targeting, authenticated push,
+  remote verification, idempotent replay, removal, and terminal BuildRun
+  completion.
+- `cloud.build@1/@2` are registered in the production Flow router alongside
+  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. New work uses v2; v1 is
+  retained only to drain upgrade-invalidated builds without rewriting
+  persisted history. The worker-role BuildRun reconciler reserves revisions
+  and enqueues their deterministic operation before generic Flow coordination.
 - `SourceBuildInputPreparer` performs exact tenant/revision checks, ephemeral
   private checkout when needed, deterministic directory packaging, Artifact
   admission, and credential-free offline receipt replay to reject package-time
@@ -765,15 +789,25 @@ The current independently testable G0 slices are implemented:
   and returns one bounded OCI directory Artifact.
 - Runtime output is re-read and rehashed from the control-plane Artifact store,
   extracted with path/entry/byte bounds, and subjected to complete OCI graph
-  validation. Terminal success, failure, or cancellation requires deterministic
-  Runtime removal followed by checkout cleanup; replay does not duplicate
-  prepare, apply, validate, remove, or completion side effects.
-- An ignored real gate drives the exact projected Task through the node command
-  journal, Docker Runtime, Artifact transport, and OCI validator. Its Dockerfile
-  succeeds only when a BuildKit `RUN` has no `eth0` and a `wget` attempt fails.
-  The gate requires an operator-provisioned rootless BuildKit socket volume;
-  evidence has not been recorded in this workspace because no Docker daemon is
-  available.
+  validation. Successful completion additionally requires a persisted and
+  remotely verified publication. Terminal success, failure, or cancellation
+  requires deterministic Runtime removal followed by checkout cleanup; replay
+  does not duplicate prepare, apply, validate, publish, remove, or completion
+  side effects. Flow-event-loss and push/cancellation race tests prove an exact
+  completed push is adopted without changing its target.
+- The combined real gate drives the exact projected Task through the node
+  command journal, Docker Runtime, Artifact transport, OCI validator, and
+  production registry publisher. Its Dockerfile succeeds only when a BuildKit
+  `RUN` has no `eth0` and a `wget` attempt fails. CI provisions the exact named
+  volume and shared Unix socket, exports the bounded root filesystem of a
+  digest-pinned linux/amd64 BusyBox fixture into a scratch-only offline context,
+  rejects anonymous registry access, verifies the complete remote digest graph
+  twice, and removes the Runtime Task and fixture volume. The root filesystem
+  carries BusyBox and its exact dynamic-loader closure without base-image
+  resolution. BuildKit endpoint and cache details remain outside Runtime
+  contracts; G0 still requires an explicit recipe, while automatic stack
+  detection is a P0 input that may propose but never silently replace that
+  contract.
 
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
@@ -781,14 +815,14 @@ ownership of a GitHub installation,
 authoritative repository subscription/fanout, credential-safe checkout,
 durable build intent/crash-gap repair, command-bound mTLS Artifact transport,
 restart-safe Docker inputs/outputs, a real local-context BuildKit/OCI engine
-boundary, and the production isolated Build Flow. The remaining G0 integration
-gate begins at OCI publication rather than Runtime execution.
+boundary, the production isolated Build Flow, and authoritative registry
+publication.
 Lifecycle reconciliation is currently driven only by signed webhook receipt;
 periodic authoritative provider polling, missed/out-of-order repair, delayed
 pre-reconnection delivery disambiguation, and checkout-time revalidation are
-not yet implemented. External private-provider certification, operator evidence
-for the Runtime/BuildKit gate, registry publication, provenance, deployment
-handoff, build operations/logs, and web surfaces remain required.
+not yet implemented. External private-provider certification,
+provenance/SBOM/signing, deployment handoff, cache trust, build
+operations/logs, and web surfaces remain required.
 
 ### Work
 
@@ -803,16 +837,8 @@ handoff, build operations/logs, and web surfaces remain required.
   operator-visible reconciliation failure semantics.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
-- Provision the exact Docker named volume and rootless BuildKit Unix socket,
-  then run and record the implemented Runtime Task gate on the dedicated Linux
-  runner. Volume capability alone is not readiness evidence. G0 continues to
-  require an explicit recipe; automatic stack detection is a P0 input that may
-  propose, but never silently replace, this contract.
-- Extend the implemented Runtime/BuildKit/local-OCI gate through the publication
-  boundary; BuildKit endpoint, Dockerfile, buildpack, and cache details must
-  continue not to leak into Runtime contracts.
-- Push by digest to the configured OCI registry and record source, recipe,
-  builder, platform, SBOM, signature, and artifact provenance.
+- Record source, recipe, builder, platform, SBOM, signature, and artifact
+  provenance for the already published digest.
 - Add content-addressed build caching without allowing cache hits to weaken
   digest or provenance validation.
 - Keep source and registry credentials as secret references. They may be
@@ -1269,7 +1295,7 @@ Later gates extend the same fault-injection discipline:
 | # | Durable boundary | Owning gate | Required outcome |
 | ---: | --- | --- | --- |
 | 10 | Source revision commit before build run creation | `G0` | The durable repository/reconciler gate reserves one deterministic build and repairs the operation enqueue gap; the registered Build Flow persists dispatch identity and restart tests prove apply/remove replay, while promotion to current evidence still requires the operator Runtime gate and OS process-death run |
-| 11 | OCI push before artifact and provenance projection | `G0` | The pushed digest is adopted exactly once or explicitly garbage-collected |
+| 11 | OCI push before artifact and provenance projection | `G0` | Artifact adoption is implemented: deterministic Flow event-loss, transient-response, and cancellation/CAS race tests adopt the exact pushed graph once. Provenance projection and an OS process-death run remain before this row becomes release evidence |
 | 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
 | 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
 | 14 | Remote exec start before session acknowledgement | `C0` | Reconnect adopts or terminates the exact bounded process and expires its grant |
@@ -1364,7 +1390,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> operator gate evidence -> registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> registry publication -> combined operator gate evidence -> provenance, deployment handoff, and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
