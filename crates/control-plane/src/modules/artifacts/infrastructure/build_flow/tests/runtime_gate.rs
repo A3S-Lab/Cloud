@@ -113,6 +113,7 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         observation_poll_ms: 100,
         convergence_timeout_ms: 300_000,
         cleanup_timeout_ms: 60_000,
+        publication_timeout_ms: 60_000,
         cpu_millis: 2_000,
         memory_bytes: 1024 * 1024 * 1024,
         pids: 512,

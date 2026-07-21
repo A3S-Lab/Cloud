@@ -69,7 +69,9 @@ impl FlowRuntime for FlowRuntimeRouter {
         &self,
         invocation: WorkflowInvocation,
     ) -> Result<RuntimeCommand, FlowError> {
-        use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
+        use crate::modules::artifacts::application::{
+            BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
+        };
         use crate::modules::workloads::infrastructure::{
             DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
             LEGACY_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
@@ -79,7 +81,8 @@ impl FlowRuntime for FlowRuntimeRouter {
             invocation.spec.name.as_str(),
             invocation.spec.version.as_str(),
         ) {
-            (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION) => &self.builds,
+            (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)
+            | (BUILD_WORKFLOW_NAME, LEGACY_BUILD_WORKFLOW_VERSION) => &self.builds,
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
             | (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => &self.deployments,
@@ -303,6 +306,7 @@ mod tests {
             ("cloud.deployment", "2", "deployment"),
             ("cloud.workload.stop", "1", "deployment"),
             ("cloud.build", "1", "build"),
+            ("cloud.build", "2", "build"),
         ] {
             assert_eq!(
                 router().run_workflow(workflow(name, version)).await?,

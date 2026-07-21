@@ -628,6 +628,11 @@ builds {
 registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:$registry_port"]
+  publication_registry = "127.0.0.1:$registry_port"
+  publication_repository_prefix = "a3s-cloud/builds"
+  publication_credential_env = ""
+  publication_allow_anonymous = true
+  publication_timeout_ms = 600000
 }
 
 sources {

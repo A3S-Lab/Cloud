@@ -1,7 +1,8 @@
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
-    BuildFlowRuntime, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
-    INodeArtifactStore, LocalNodeArtifactStore, PostgresBuildRunRepository,
+    BuildFlowRuntime, BuildFlowRuntimeDependencies, IBuildArtifactPublisher, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, LocalNodeArtifactStore,
+    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
     RuntimeBuildOutputValidator, SourceBuildInputPreparer,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
@@ -257,7 +258,7 @@ pub async fn build_application_with_source_resolver(
         )
         .map_err(ControlPlaneStartupError::Build)?,
     );
-    let build_outputs: Arc<dyn IBuildOutputValidator> = Arc::new(
+    let runtime_build_outputs = Arc::new(
         RuntimeBuildOutputValidator::new(
             Arc::clone(&node_artifacts),
             &config.builds.output_staging_dir,
@@ -268,6 +269,26 @@ pub async fn build_application_with_source_resolver(
             config.builds.oci_max_bytes,
         )
         .map_err(ControlPlaneStartupError::Build)?,
+    );
+    let build_outputs: Arc<dyn IBuildOutputValidator> = runtime_build_outputs.clone();
+    let build_publisher: Arc<dyn IBuildArtifactPublisher> = Arc::new(
+        OciRegistryArtifactPublisher::new(
+            runtime_build_outputs,
+            Duration::from_millis(config.registry.request_timeout_ms),
+            config
+                .registry
+                .insecure_hosts
+                .iter()
+                .filter(|host| *host == &config.registry.publication_registry)
+                .cloned(),
+            OciRegistryArtifactPublisherOptions {
+                registry: config.registry.publication_registry.clone(),
+                repository_prefix: config.registry.publication_repository_prefix.clone(),
+                credential_env: config.registry.publication_credential_env.clone(),
+                allow_anonymous: config.registry.publication_allow_anonymous,
+            },
+        )
+        .map_err(ControlPlaneStartupError::Registry)?,
     );
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
@@ -353,12 +374,15 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let build_runtime = BuildFlowRuntime::new(
-        Arc::clone(&builds),
-        Arc::clone(&sources),
-        build_inputs,
-        build_outputs,
-        Arc::clone(&nodes),
-        Arc::clone(&node_control),
+        BuildFlowRuntimeDependencies {
+            builds: Arc::clone(&builds),
+            sources: Arc::clone(&sources),
+            inputs: build_inputs,
+            outputs: build_outputs,
+            publisher: build_publisher,
+            nodes: Arc::clone(&nodes),
+            node_control: Arc::clone(&node_control),
+        },
         config
             .build_flow_config()
             .map_err(ControlPlaneStartupError::Build)?,

@@ -51,6 +51,24 @@ pub(super) struct ValidatedOciLayout {
     pub(super) platforms: Vec<BuildPlatform>,
     pub(super) content_bytes: u64,
     pub(super) blob_count: usize,
+    pub(super) blobs: Vec<OciLayoutBlob>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::modules::artifacts::infrastructure) struct OciLayoutBlob {
+    pub(in crate::modules::artifacts::infrastructure) media_type: String,
+    pub(in crate::modules::artifacts::infrastructure) digest: String,
+    pub(in crate::modules::artifacts::infrastructure) size: u64,
+    pub(in crate::modules::artifacts::infrastructure) depth: usize,
+}
+
+impl OciLayoutBlob {
+    pub(in crate::modules::artifacts::infrastructure) fn is_manifest(&self) -> bool {
+        matches!(
+            self.media_type.as_str(),
+            OCI_IMAGE_INDEX_MEDIA_TYPE | OCI_IMAGE_MANIFEST_MEDIA_TYPE
+        )
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -113,6 +131,7 @@ struct PendingDescriptor {
 struct ValidationState {
     limits: OciLayoutLimits,
     seen: HashMap<String, (String, u64)>,
+    dependencies: HashMap<String, Vec<String>>,
     config_platforms: HashMap<String, BuildPlatform>,
     platforms: BTreeSet<BuildPlatform>,
     content_bytes: u64,
@@ -131,6 +150,7 @@ pub(super) async fn validate_oci_layout(
     let mut state = ValidationState {
         limits,
         seen: HashMap::new(),
+        dependencies: HashMap::new(),
         config_platforms: HashMap::new(),
         platforms: BTreeSet::new(),
         content_bytes: 0,
@@ -216,6 +236,14 @@ pub(super) async fn validate_oci_layout(
                 {
                     return Err(integrity("OCI image-index blob is invalid"));
                 }
+                state.dependencies.insert(
+                    item.descriptor.digest.clone(),
+                    index
+                        .manifests
+                        .iter()
+                        .map(|descriptor| descriptor.digest.clone())
+                        .collect(),
+                );
                 for descriptor in index.manifests {
                     let platform_hint = descriptor.platform.clone();
                     pending.push_back(PendingDescriptor {
@@ -237,6 +265,17 @@ pub(super) async fn validate_oci_layout(
                 {
                     return Err(integrity("OCI image-manifest blob is invalid"));
                 }
+                state.dependencies.insert(
+                    item.descriptor.digest.clone(),
+                    std::iter::once(manifest.config.digest.clone())
+                        .chain(
+                            manifest
+                                .layers
+                                .iter()
+                                .map(|descriptor| descriptor.digest.clone()),
+                        )
+                        .collect(),
+                );
                 pending.push_back(PendingDescriptor {
                     descriptor: manifest.config,
                     depth: item.depth + 1,
@@ -273,11 +312,52 @@ pub(super) async fn validate_oci_layout(
             "OCI image platforms do not match the accepted build recipe",
         ));
     }
+    let depths = descriptor_depths(expected_root.digest(), &state.dependencies)?;
+    let mut blobs = Vec::with_capacity(state.seen.len());
+    for (digest, (media_type, size)) in &state.seen {
+        let depth = depths
+            .get(digest)
+            .copied()
+            .ok_or_else(|| integrity("OCI descriptor graph contains an unreachable blob"))?;
+        blobs.push(OciLayoutBlob {
+            media_type: media_type.clone(),
+            digest: digest.clone(),
+            size: *size,
+            depth,
+        });
+    }
+    blobs.sort_by(|left, right| left.digest.cmp(&right.digest));
     Ok(ValidatedOciLayout {
         platforms: state.platforms.into_iter().collect(),
         content_bytes: state.content_bytes,
         blob_count: state.seen.len(),
+        blobs,
     })
+}
+
+pub(super) fn descriptor_depths(
+    root: &str,
+    dependencies: &HashMap<String, Vec<String>>,
+) -> Result<HashMap<String, usize>, BuildServiceError> {
+    let mut depths = HashMap::from([(root.to_owned(), 0_usize)]);
+    let mut pending = VecDeque::from([root.to_owned()]);
+    while let Some(parent) = pending.pop_front() {
+        let parent_depth = depths.get(&parent).copied().unwrap_or_default();
+        for child in dependencies.get(&parent).into_iter().flatten() {
+            let depth = parent_depth
+                .checked_add(1)
+                .ok_or_else(|| integrity("OCI descriptor graph depth overflowed"))?;
+            if depth > MAX_GRAPH_DEPTH {
+                return Err(integrity("OCI descriptor graph exceeds its depth bound"));
+            }
+            let current = depths.entry(child.clone()).or_default();
+            if depth > *current {
+                *current = depth;
+                pending.push_back(child.clone());
+            }
+        }
+    }
+    Ok(depths)
 }
 
 pub(super) async fn normalize_buildctl_layout(layout: &Path) -> Result<(), BuildServiceError> {
