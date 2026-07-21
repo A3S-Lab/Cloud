@@ -160,6 +160,11 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
                 "GitHub connection flow organization changed".into(),
             ));
         }
+        if state.connections.contains_key(&request.connection.id) {
+            return Err(RepositoryError::Conflict(
+                "GitHub source connection ID is already in use".into(),
+            ));
+        }
         if state.connections.values().any(|connection| {
             connection.blocks_reconnection()
                 && (connection.organization_id == organization_id
@@ -289,14 +294,12 @@ fn current_connection<'a>(
 }
 
 fn valid_payload_digest(value: &str) -> bool {
-    value
-        .strip_prefix("sha256:")
-        .is_some_and(|digest| {
-            digest.len() == 64
-                && digest
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-        })
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    })
 }
 
 fn flow_error(error: GithubConnectionFlowError) -> RepositoryError {

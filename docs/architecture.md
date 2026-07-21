@@ -83,13 +83,16 @@ verification. The build coordinator does not yet join those boundaries or run
 the client through a Runtime Task. Environment-owned repository subscriptions
 now bind that verified installation to exact repository/branch/recipe policy,
 and the provider inbox atomically fans out immutable revisions only through
-active matches. Installation-token authentication and private checkout are
+the exact active connection. Signed GitHub installation, installation-target,
+and App-authorization deliveries reconcile versioned connection status,
+retain terminal history, and write typed replay receipts plus outbox facts.
+Installation-token authentication and private checkout are
 implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
-gate has not been run without provider credentials. Installation lifecycle
-reconciliation, isolated build orchestration, registry publication, and
-provenance remain unimplemented.
+gate has not been run without provider credentials. Periodic authoritative
+provider polling and checkout-time lifecycle revalidation, isolated build
+orchestration, registry publication, and provenance remain unimplemented.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -740,25 +743,38 @@ never installation authority. Provider bodies and requests are bounded, and
 OAuth codes, client secrets, access/refresh tokens, PKCE verifiers, and
 provider response buffers are never durable.
 
-Completion atomically consumes the flow, persists one `GithubConnection`, and
-writes `source.github-connection.created` to the outbox. A Cloud organization
-has at most one connection; GitHub installation ID and account identity are
-exclusive across organizations. Durable state contains only numeric
-installation/account/verifying-user IDs, account kind, display logins, and the
-connection time. The tenant GET returns that record, while flow responses use
-no-store and no-referrer policy. Explicitly disabled GitHub App ACL fields
-construct a closed unavailable adapter rather than partial provider behavior.
+Completion atomically consumes the flow, persists one active
+`GithubConnection`, and writes `source.github-connection.created` to the
+outbox. A Cloud organization has at most one current active/suspended
+connection; current GitHub installation ID and account identity are exclusive
+across organizations. Terminal history is retained under its original
+connection ID. Durable state contains only numeric
+installation/account/verifying-user IDs, account kind, display logins, status,
+aggregate version, and connection/update times. The tenant GET prefers the
+current connection and otherwise returns the latest terminal record, including
+`status` and `updatedAt`. Flow responses use no-store and no-referrer policy.
+Explicitly disabled GitHub App ACL fields construct a closed unavailable
+adapter rather than partial provider behavior.
+
+Connection status is `active`, `suspended`, `verification_revoked`,
+`installation_deleted`, or `account_changed`. Only `active` is provider
+authority. Both `active` and `suspended` prevent a competing connection;
+terminal states require the full installation/OAuth proof again and create a
+new connection ID. A terminal record cannot be reactivated by a webhook, and
+subscriptions retain their old connection ID rather than inheriting a new
+proof.
 
 The durable connection does not enumerate repositories or contain a token.
-After anonymous resolution reports unavailable, the application may use the
-same tenant's verified installation ID to mint a bounded App JWT and request
-one repository-scoped installation token with `contents: read`. The App PEM key
+After anonymous resolution reports unavailable, the application may use only
+the same tenant's active verified installation ID to mint a bounded App JWT and
+request one repository-scoped installation token with `contents: read`. The App PEM key
 is read from its configured environment variable for each attempt. The
 provider must confirm selected-repository scope and only read-only contents plus
 implicit metadata permission. Any issuance or authenticated-provider
 failure collapses to the same unavailable source result. Repository binding and
-fanout remain separate transactions beneath this verified ownership record;
-suspension, deletion, and account-transfer reconciliation are not implemented.
+fanout remain separate transactions beneath this verified ownership record.
+Already-issued credentials are provider-managed and may remain usable until
+expiry or revocation.
 
 An environment-owned `GithubRepositorySubscription` binds the organization's
 verified connection and installation to one canonical GitHub repository, one
@@ -773,8 +789,10 @@ POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/
 
 Creation requires `source:write`, the configured exact repository policy, an
 existing environment in the complete tenant hierarchy, and the same
-organization's verified connection. Composite PostgreSQL foreign keys bind both
-the environment hierarchy and connection/installation identity. Active natural
+organization's active verified connection. Composite PostgreSQL foreign keys
+bind both the environment hierarchy and connection/installation identity. The
+transaction locks and rechecks the exact connection in `active` state, so a
+concurrent lifecycle change cannot authorize a stale creation. Active natural
 identity is environment, connection, repository, branch, and recipe digest;
 idempotency and canonical duplicates return the original binding. Explicit
 deactivation changes `active` to `inactive` and retains the historical record.
@@ -791,8 +809,8 @@ authenticates the exact raw bytes with HMAC-SHA256 before parsing. The accepted
 signature syntax is exactly `sha256=` plus 64 lowercase hexadecimal digits.
 Bearer authentication cannot substitute for or bypass this proof.
 
-Authenticated non-push events, deleted pushes, and non-branch refs are
-acknowledged without persistence. A branch push is reduced to the GitHub
+Deleted pushes, non-branch refs, unsupported lifecycle actions, and unrelated
+authenticated events are acknowledged without persistence. A branch push is reduced to the GitHub
 provider, bounded delivery ID, canonical repository identity, positive
 installation ID, safe branch, full commit object ID, exact-payload SHA-256
 digest, and canonical receipt time. The PostgreSQL inbox is keyed by provider
@@ -800,10 +818,14 @@ and delivery ID. An exact-payload replay returns the stored fact; reusing the
 key with any changed typed identity or raw-body digest conflicts in the same
 transaction. Neither secret material nor the raw payload is stored.
 
-Only a newly inserted delivery may fan out. In the inbox transaction, Cloud
-selects active subscriptions by exact installation, canonical repository
-identity, and branch, then derives the immutable commit directly from the
-authenticated delivery without resolving the branch again. Each matching
+Only a newly inserted push delivery may fan out. Before the transaction, Cloud
+resolves the currently authoritative connection ID for the installation. In
+the inbox transaction it joins that exact connection and selects only active
+subscriptions whose installation, repository identity, and branch match while
+requiring `connection.status = 'active'`. Share locks on the connection and
+subscription serialize fanout against lifecycle reconciliation. The immutable
+commit is derived directly from the authenticated delivery without resolving
+the branch again. Each matching
 environment/recipe natural identity creates one `ExternalSourceRevision` and
 one `source.revision.accepted` outbox fact. Multiple environments and recipes
 fan out independently; no match creates no tenant revision. Tenant delivery
@@ -817,6 +839,28 @@ well. Exact replay never re-evaluates subscriptions, preventing duplicate or
 retroactive fanout. This transaction still does not create a build or
 deployment. The optional source-revision `webhookDeliveryId` remains a separate
 authenticated mutation-time entry to the same tenant reservation invariant.
+
+The same signed ingress recognizes `installation` `suspend`, `unsuspend`, and
+`deleted`; `installation_target` `renamed`; and
+`github_app_authorization` `revoked`. These deliveries are reduced to typed
+event/action, installation-or-user subject, exact-payload digest, and receipt
+time in a separate lifecycle inbox. Raw provider bodies and credentials are
+not stored. The first accepted fact locks matching active/suspended
+connections, applies the state transition, advances aggregate version/update
+time, and atomically emits `source.github-connection.reconciled`. Exact replay
+does not reconcile again; changed event, subject, action, or digest under the
+same lifecycle delivery ID conflicts.
+
+Suspend and unsuspend preserve a same-identity account login; rename updates
+that login without losing active/suspended state. Numeric account or account
+kind mismatch fails closed to `account_changed`. Installation deletion is
+terminal. App-authorization revocation invalidates every current connection
+whose proof was supplied by that user; it is not interpreted as installation
+deletion. Because GitHub does not supply one uniformly reliable event time for
+all of these deliveries, this slice orders first acceptance by local receipt
+and remains webhook-driven. Periodic authoritative polling, missed/out-of-order
+repair, delayed pre-reconnection delivery disambiguation, and a fresh provider
+check immediately before checkout remain subsequent G0 work.
 
 `POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
 normalizes an exact GitHub HTTPS locator, enforces the configured exact

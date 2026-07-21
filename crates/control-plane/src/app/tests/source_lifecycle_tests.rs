@@ -10,6 +10,7 @@ const COMMIT_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const COMMIT_C: &str = "cccccccccccccccccccccccccccccccccccccccc";
 const COMMIT_D: &str = "dddddddddddddddddddddddddddddddddddddddd";
+const COMMIT_E: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 struct UnavailableSourceResolver;
 
@@ -218,6 +219,25 @@ async fn signed_lifecycle_gates_authority_replays_and_requires_explicit_reconnec
     );
     push(&app, "github-lifecycle-push-new-binding", COMMIT_D).await?;
     assert_eq!(revision_count(&app, &revisions_path).await?, 2);
+
+    let deleted = installation_payload("deleted", "A3S-Lab");
+    assert_eq!(
+        app.call(github_webhook_request(
+            "installation",
+            "github-lifecycle-installation-deleted",
+            &deleted,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?
+        .status(),
+        202
+    );
+    assert_eq!(
+        response_json(&app.call(get_as(&connection_path, ADMIN_TOKEN)).await?)?["data"]["status"],
+        "installation_deleted"
+    );
+    push(&app, "github-lifecycle-push-deleted", COMMIT_E).await?;
+    assert_eq!(revision_count(&app, &revisions_path).await?, 2);
     assert_eq!(
         connections
             .outbox_events()
@@ -225,7 +245,7 @@ async fn signed_lifecycle_gates_authority_replays_and_requires_explicit_reconnec
             .iter()
             .filter(|event| event.event_key == "source.github-connection.reconciled")
             .count(),
-        3
+        4
     );
     let durable = serde_json::to_string(&connections.outbox_events().await)
         .map_err(|error| BootError::Internal(error.to_string()))?;

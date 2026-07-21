@@ -579,19 +579,39 @@ The current independently testable G0 slices are implemented:
   inaccessible installation rejection, body bounds, malformed responses, and
   secretless errors. The isolated PostgreSQL gate exercises prepare, complete,
   replay, uniqueness rollback, query, and outbox persistence.
+- GitHub connections have explicit `active`, `suspended`,
+  `verification_revoked`, `installation_deleted`, and `account_changed` state.
+  Only `active` supplies authority. Current active/suspended installation,
+  account, and organization uniqueness is enforced with partial indexes while
+  terminal connection records remain durable history.
 - A public `POST /api/v1/webhooks/github` provider boundary requires JSON and
   the GitHub event, delivery, and `X-Hub-Signature-256` headers. It bounds the
   body, reads a configured secret environment variable per request, and
   authenticates the exact raw bytes with canonical lowercase HMAC-SHA256 before
   interpreting provider data. Bearer authentication cannot bypass the proof.
-- Authenticated non-push, deletion, and non-branch events are acknowledged
-  without persistence. A branch push is reduced to typed provider, delivery,
+- Deleted/non-branch pushes, unsupported lifecycle actions, and unrelated
+  authenticated events are acknowledged without persistence. A branch push is reduced to typed provider, delivery,
   canonical repository, installation, branch, commit, payload-digest, and
   receipt-time fields; raw payload and secret material are never durable.
 - The PostgreSQL provider inbox atomically replays the same delivery and exact
   payload while rejecting delivery-ID reuse with changed bytes or typed
   identity. Unit, API, and PostgreSQL integration tests cover signature
   authentication, payload bounds, ignored events, replay, and conflict.
+- The signed ingress also accepts `installation` suspend/unsuspend/deleted,
+  `installation_target` renamed, and `github_app_authorization` revoked. A
+  separate lifecycle inbox stores only typed event/action, installation-or-user
+  subject, exact-payload digest, and receipt time. Exact replay is a no-op and
+  changed reuse conflicts without persisting the provider body.
+- Same-identity suspension/unsuspension and rename preserve authority state and
+  update the display login. Account ID/kind mismatch, installation deletion,
+  and verifying-user authorization revocation fail closed to terminal states.
+  Every changed connection advances its aggregate version and atomically emits
+  `source.github-connection.reconciled`; terminal state cannot be reactivated
+  by a webhook.
+- A terminal organization must complete fresh installation and OAuth proof,
+  producing a new connection ID while retaining the old record. Existing
+  subscriptions remain bound to the prior ID. API projections expose status
+  and update time so the loss of authority is operator-visible.
 - Environment-owned `GithubRepositorySubscription` commands and queries bind
   the same organization's verified connection/installation to a canonical
   allowlisted repository, exact branch, and explicit recipe. PostgreSQL
@@ -605,8 +625,11 @@ The current independently testable G0 slices are implemented:
   state, idempotency response, nor event contains provider credentials or raw
   webhook payloads.
 - Only a newly inserted provider delivery selects active bindings by exact
-  installation, repository, and branch. The authenticated delivery commit is
-  never re-resolved. Inbox, tenant reservations, every matching immutable
+  connection, installation, repository, and branch. PostgreSQL joins and share
+  locks the exact active connection, serializing fanout with lifecycle updates;
+  stale lookup results and old bindings therefore create no revision. The
+  authenticated delivery commit is never re-resolved. Inbox, tenant
+  reservations, every matching immutable
   revision, and every `source.revision.accepted` fact commit in one transaction;
   exact replay does not re-fanout, unmatched delivery creates no revision, and
   outbox failure rolls back the inbox.
@@ -676,10 +699,13 @@ real local-context BuildKit/OCI engine boundary, not the G0 integration gate.
 Subscriptions create revision authority but not checkout authority. The Build
 service binds but does not recompute the checkout digest, and the rootless
 worker does not by itself prove deny-by-default build networking.
-External private-provider certification, installation lifecycle reconciliation,
-build-operation checkout replay, Runtime Task orchestration, registry
-publication, provenance, deployment handoff, build operations/logs,
-cancellation, and web surfaces remain required.
+Lifecycle reconciliation is currently driven only by signed webhook receipt;
+periodic authoritative provider polling, missed/out-of-order repair, delayed
+pre-reconnection delivery disambiguation, and checkout-time revalidation are
+not yet implemented. External private-provider certification, build-operation
+checkout replay, Runtime Task orchestration, registry publication, provenance,
+deployment handoff, build operations/logs, cancellation, and web surfaces
+remain required.
 
 ### Work
 
@@ -687,9 +713,11 @@ cancellation, and web surfaces remain required.
   implemented installation-token resolution/checkout gate. Do not promote the
   local fixture evidence to external-provider certification until that pass is
   recorded; never persist token or private-key material in source state.
-- Reconcile installation suspension, deletion, account transfer, and revoked
-  authorization before fanout or checkout, with explicit operator-visible
-  connection state and retry semantics.
+- Add periodic authoritative GitHub installation/authorization polling and a
+  fresh check before credential issuance or checkout. Repair missed and
+  out-of-order deliveries without allowing a delayed pre-reconnection event to
+  mutate a newly verified connection. Define bounded retry/backoff and
+  operator-visible reconciliation failure semantics.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Run the implemented typed build recipe and Build service as isolated Runtime
@@ -1224,7 +1252,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> Runtime Task plus registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> Runtime Task plus registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

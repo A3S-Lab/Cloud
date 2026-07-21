@@ -478,13 +478,31 @@ fn github_connection_lifecycle_is_fail_closed_terminal_and_reconnectable() {
     assert!(!connection.is_authoritative());
     assert!(connection.blocks_reconnection());
 
+    let renamed_while_suspended = GithubInstallationAccount {
+        id: connection.account_id,
+        login: GithubLogin::parse("A3S-Systems").expect("renamed suspended login"),
+        kind: connection.account_kind,
+    };
+    assert!(connection
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationTargetRenamed {
+                installation_id: connection.installation_id,
+                account: renamed_while_suspended.clone(),
+                previous_login: renamed_account.login,
+            },
+            connected_at + chrono::Duration::seconds(3),
+        )
+        .expect("rename while suspended"));
+    assert_eq!(connection.status, GithubConnectionStatus::Suspended);
+    assert_eq!(connection.account_login, renamed_while_suspended.login);
+
     assert!(connection
         .reconcile(
             &GithubConnectionLifecycleChange::InstallationUnsuspended {
                 installation_id: connection.installation_id,
-                account: renamed_account.clone(),
+                account: renamed_while_suspended.clone(),
             },
-            connected_at + chrono::Duration::seconds(3),
+            connected_at + chrono::Duration::seconds(4),
         )
         .expect("unsuspend"));
     assert_eq!(connection.status, GithubConnectionStatus::Active);
@@ -495,7 +513,7 @@ fn github_connection_lifecycle_is_fail_closed_terminal_and_reconnectable() {
                 user_id: connection.verified_by_user_id,
                 user_login: connection.verified_by_user_login.clone(),
             },
-            connected_at + chrono::Duration::seconds(4),
+            connected_at + chrono::Duration::seconds(5),
         )
         .expect("authorization revocation"));
     assert_eq!(
@@ -508,10 +526,74 @@ fn github_connection_lifecycle_is_fail_closed_terminal_and_reconnectable() {
         .reconcile(
             &GithubConnectionLifecycleChange::InstallationUnsuspended {
                 installation_id: connection.installation_id,
-                account: renamed_account,
+                account: renamed_while_suspended,
             },
-            connected_at + chrono::Duration::seconds(5),
+            connected_at + chrono::Duration::seconds(6),
         )
         .expect("terminal state"));
     assert_eq!(connection.aggregate_version, terminal_version);
+}
+
+#[test]
+fn github_connection_deletion_and_account_mismatch_are_terminal() {
+    let connected_at = Utc::now();
+    let connection = |id| {
+        GithubConnection::connect(NewGithubConnection {
+            id: SourceConnectionId::new(),
+            organization_id: OrganizationId::new(),
+            installation_id: GithubInstallationId::parse(id).expect("installation ID"),
+            account_id: GithubAccountId::parse(100).expect("account ID"),
+            account_login: GithubLogin::parse("A3S-Lab").expect("account login"),
+            account_kind: GithubAccountKind::Organization,
+            verified_by_user_id: GithubAccountId::parse(200).expect("user ID"),
+            verified_by_user_login: GithubLogin::parse("octocat").expect("user login"),
+            connected_at,
+        })
+        .expect("GitHub connection")
+    };
+
+    let mut deleted = connection(42);
+    let account = GithubInstallationAccount {
+        id: deleted.account_id,
+        login: deleted.account_login.clone(),
+        kind: deleted.account_kind,
+    };
+    assert!(deleted
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationDeleted {
+                installation_id: deleted.installation_id,
+                account: account.clone(),
+            },
+            connected_at + chrono::Duration::seconds(1),
+        )
+        .expect("installation deletion"));
+    assert_eq!(deleted.status, GithubConnectionStatus::InstallationDeleted);
+    assert!(!deleted.blocks_reconnection());
+    assert!(!deleted
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationUnsuspended {
+                installation_id: deleted.installation_id,
+                account,
+            },
+            connected_at + chrono::Duration::seconds(2),
+        )
+        .expect("terminal deletion"));
+
+    let mut changed = connection(43);
+    let mismatched_account = GithubInstallationAccount {
+        id: GithubAccountId::parse(101).expect("different account ID"),
+        login: GithubLogin::parse("Other-Account").expect("different account login"),
+        kind: GithubAccountKind::Organization,
+    };
+    assert!(changed
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationSuspended {
+                installation_id: changed.installation_id,
+                account: mismatched_account,
+            },
+            connected_at + chrono::Duration::seconds(1),
+        )
+        .expect("account mismatch"));
+    assert_eq!(changed.status, GithubConnectionStatus::AccountChanged);
+    assert!(!changed.blocks_reconnection());
 }

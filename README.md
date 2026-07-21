@@ -149,16 +149,18 @@ API command
   tenant-scoped revision, idempotency result, optional delivery reservation,
   and outbox fact atomically
 - **Signed GitHub Delivery Inbox**: Authenticate the exact raw body of public
-  GitHub webhook requests with HMAC-SHA256, accept typed branch-push identity
-  into a durable provider-level inbox, replay the same delivery and payload,
-  and reject delivery-ID reuse with different bytes without storing the raw
-  payload or secret
+  GitHub webhook requests with HMAC-SHA256, accept typed branch-push and
+  installation-lifecycle facts into durable provider-level inboxes, replay the
+  same delivery and payload, and reject delivery-ID reuse with different bytes
+  without storing the raw payload or secret
 - **Tenant-Scoped GitHub App Connection**: Start an installation from an
   organization-authorized API, bind setup and OAuth callbacks with expiring
   single-use state plus PKCE, verify the installation through the transient
   GitHub user-token intersection, and persist only durable numeric
   installation/account/user identities with global installation/account
-  ownership
+  ownership; signed suspend, unsuspend, deletion, rename, and verifying-user
+  revocation deliveries version explicit connection state while retaining
+  terminal history
 - **Ephemeral Private GitHub Access**: Sign bounded GitHub App JWTs from a PEM
   key read per attempt, request one repository with read-only contents access,
   bind the returned short-lived token to that canonical repository, and pass it
@@ -192,7 +194,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes without storing payloads or secrets. An organization-scoped GitHub App flow verifies exclusive installation/account ownership with expiring single-use state, OAuth plus PKCE, and transient user-token authority. Environment-owned subscriptions bind that installation to an exact repository, branch, and recipe; first-delivery inbox processing atomically fans out immutable revisions/outbox facts only through active matches. Anonymous-first resolution now falls back through the same tenant's verified installation to one short-lived repository-scoped read-only token, and checkout injects that credential only into one environment-backed Git HTTP header. Local provider fixtures prove scope, expiry, redaction, authenticated Git transport, and credential-free replay; the external private-repository gate is runnable but has not been executed without operator credentials. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Installation lifecycle reconciliation, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` installation-token/private-source slice) |
+| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes and connection-lifecycle facts without storing payloads or secrets. An organization-scoped GitHub App flow verifies exclusive installation/account ownership with expiring single-use state, OAuth plus PKCE, and transient user-token authority. Signed suspension, unsuspension, deletion, account rename/mismatch, and verifying-user revocation deliveries version explicit connection state, retain terminal history, and atomically emit reconciliation facts. Environment-owned subscriptions bind the exact connection to a repository, branch, and recipe; first-delivery inbox processing atomically fans out immutable revisions/outbox facts only through that active connection, so terminal history and a fresh reconnection cannot silently inherit old bindings. Anonymous-first resolution falls back only through an active same-tenant installation to one short-lived repository-scoped read-only token, and checkout injects that credential only into one environment-backed Git HTTP header. Local provider fixtures prove scope, expiry, redaction, authenticated Git transport, and credential-free replay; the external private-repository gate is runnable but has not been executed without operator credentials. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Periodic authoritative provider polling and checkout-time revalidation, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` connection-lifecycle/private-source slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -386,24 +388,45 @@ the setup-provided installation ID only if that transient user token can access
 it. The OAuth code, client secret, user/refresh tokens, and PKCE verifier are
 never persisted.
 
-One Cloud organization may own one GitHub connection, and a GitHub
-installation or account may belong to only one Cloud organization. The durable
-record contains numeric installation, account, and verifying-user IDs plus
-display logins, and completion emits
-`source.github-connection.created`. API and callback responses are
-non-cacheable.
+One Cloud organization may have one current GitHub connection, and a current
+GitHub installation or account may belong to only one Cloud organization. The
+durable record contains numeric installation, account, and verifying-user IDs,
+display logins, explicit status, connection/update times, and aggregate
+version. Completion emits `source.github-connection.created`; the GET response
+includes `status` and `updatedAt`. API and callback responses are non-cacheable.
+
+Only `active` is provider authority. `suspended` blocks credentials, new
+subscriptions, and push fanout but also blocks a second connection until GitHub
+reports a terminal outcome. Signed lifecycle deliveries support:
+
+- `installation`: `suspend`, `unsuspend`, and `deleted`
+- `installation_target`: `renamed`
+- `github_app_authorization`: `revoked`
+
+A same-identity rename updates the display login without changing active or
+suspended authority. A numeric account/kind mismatch fails closed to
+`account_changed`. Deletion becomes `installation_deleted`; revocation of the
+verifying user's App authorization becomes `verification_revoked` and is not
+treated as App uninstallation. Terminal records cannot be reactivated by a
+webhook. Reconnecting requires the complete installation/OAuth proof again,
+creates a new connection ID, and retains the old record as history. Existing
+repository subscriptions stay bound to the old ID and do not transfer to the
+new connection.
 
 The durable connection itself remains only installation ownership; repository
 bindings are separate environment-owned resources. On an anonymous source miss,
-Cloud uses that ownership to request one short-lived token for the exact
-allowlisted repository and retries resolution. The checkout adapter accepts the
-same repository-bound credential for one fetch, but the source-revision request
-does not yet coordinate checkout or build. Suspension, deletion, account
-transfer, and authorization revocation reconciliation remain later work.
+Cloud may use only an active connection to request one short-lived token for
+the exact allowlisted repository and retry resolution. The checkout adapter
+accepts the same repository-bound credential for one fetch, but the
+source-revision request does not yet coordinate checkout or build. Lifecycle
+state is currently webhook-driven. Periodic provider polling, reconciliation
+immediately before checkout, and disambiguation of delayed pre-reconnection
+deliveries remain later work; a credential already issued before a state
+change can remain usable until GitHub expires or revokes it.
 
 ### Subscribe an environment to a GitHub repository
 
-After the organization has a verified GitHub connection, create an exact
+After the organization has an active verified GitHub connection, create an exact
 repository binding for an environment:
 
 ```text
@@ -439,8 +462,10 @@ organization/project/environment hierarchy, infers the organization's verified
 connection and installation, applies the configured repository allow/deny
 policy, and accepts only a safe exact branch plus an explicit canonical recipe.
 The connection, installation, and environment ownership are also tied by
-PostgreSQL foreign keys. An exact idempotency replay or duplicate active binding
-returns the original identity with `200`; a new binding returns `201` and emits
+PostgreSQL foreign keys. PostgreSQL locks and rechecks the exact connection as
+active in the creation transaction, closing a lifecycle race after the API
+lookup. An exact idempotency replay or duplicate active binding returns the
+original identity with `200`; a new binding returns `201` and emits
 `source.github-repository-subscription.created`.
 
 Bindings remain queryable after they stop being authoritative. Deactivate one
@@ -488,21 +513,34 @@ curl --request POST http://127.0.0.1:8080/api/v1/webhooks/github \
 ```
 
 The signature header must be `sha256=` followed by exactly 64 lowercase
-hexadecimal digits. A valid branch push returns `202`; replaying its delivery
-ID with the exact payload also returns `202`, while changing the payload under
-that ID returns `409`. Authenticated non-push, deleted, and non-branch events
-return `202` without entering the inbox. Invalid signatures return `401`,
-including requests that also carry a valid A3S bearer token, and bodies beyond
-the configured limit return `413`.
+hexadecimal digits. A valid branch push or supported lifecycle delivery returns
+`202`; replaying its delivery ID with the exact payload also returns `202`,
+while changing the payload under that ID returns `409`. Deleted/non-branch
+pushes, unsupported lifecycle actions, and unrelated authenticated events
+return `202` without durable state. Invalid signatures return `401`, including
+requests that also carry a valid A3S bearer token, and bodies beyond the
+configured limit return `413`.
 
 The provider inbox records only provider, delivery ID, canonical repository,
 installation ID, branch, commit, payload digest, and receipt time. It stores
 neither raw payload nor secret. On the first accepted delivery, the same
 PostgreSQL transaction selects only active subscriptions whose installation,
-canonical repository, and exact branch all match. Each authoritative
+canonical repository, exact branch, and exact active connection ID all match.
+It locks both the binding and connection, so a concurrent lifecycle transition
+either precedes fanout and suppresses it or follows the committed delivery.
+Each authoritative
 environment/recipe binding creates one immutable `ExternalSourceRevision` and
 one `source.revision.accepted` outbox fact. Multiple recipes or environments
 fan out independently; unmatched deliveries create no tenant revision.
+
+Supported lifecycle deliveries use a separate typed inbox containing only
+event/action, installation or user subject, payload digest, and receipt time.
+The first delivery reconciles matching current connections and atomically emits
+`source.github-connection.reconciled`; exact replay is a no-op, and changed
+payload reuse conflicts. Lifecycle state gates private-token fallback,
+subscription creation, and PostgreSQL fanout. It does not yet poll GitHub for
+missed/out-of-order deliveries or coordinate a fresh provider check with
+checkout.
 
 An exact provider replay is stopped by the inbox and never evaluates bindings
 again, so it cannot duplicate revisions/events or retroactively pick up a
@@ -947,7 +985,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, anonymous-first and installation-token GitHub resolution, credential-safe exact-commit checkout, signed webhook subscription fanout, and rootless BuildKit OCI-output validation implemented; external private-repository evidence pending) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (immutable source/recipe contract, anonymous-first and installation-token GitHub resolution, credential-safe exact-commit checkout, signed lifecycle-aware subscription fanout, and rootless BuildKit OCI-output validation implemented; authoritative polling and external private-repository evidence pending) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
