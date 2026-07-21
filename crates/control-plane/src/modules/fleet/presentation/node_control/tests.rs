@@ -1,5 +1,6 @@
 use super::{NodeControlApi, NodeControlServer};
 use crate::config::NodeControlConfig;
+use crate::modules::artifacts::LocalNodeArtifactStore;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCertificateAuthority};
 use crate::modules::fleet::application::{EnrollNode, EnrollNodeHandler};
@@ -40,6 +41,8 @@ use std::time::Duration as StdDuration;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+mod artifacts;
+
 #[tokio::test]
 async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let directory = tempfile::tempdir().expect("node-control directory");
@@ -75,6 +78,10 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        Arc::new(
+            LocalNodeArtifactStore::new(directory.path().join("artifacts"), 1024 * 1024)
+                .expect("artifact store"),
+        ),
         Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),
         edge,
         Arc::new(
@@ -99,6 +106,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         StdDuration::from_millis(5),
         1024 * 1024,
         StdDuration::from_millis(50),
+        StdDuration::from_secs(5),
     )
     .expect("node-control API")
     .with_rotation_clock(Arc::new(move || {

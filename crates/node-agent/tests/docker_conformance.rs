@@ -1,3 +1,5 @@
+#[path = "docker_conformance/artifacts.rs"]
+mod artifacts;
 #[path = "docker_conformance/fixture.rs"]
 mod fixture;
 #[path = "docker_conformance/health.rs"]
@@ -8,6 +10,8 @@ mod logs;
 mod mounts;
 #[path = "docker_conformance/networking.rs"]
 mod networking;
+#[path = "docker_conformance/outputs.rs"]
+mod outputs;
 #[path = "docker_conformance/recovery.rs"]
 mod recovery;
 #[path = "docker_conformance/resources.rs"]
@@ -24,8 +28,10 @@ use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeConformanceFixture,
     RuntimeConformanceProfile, RuntimeStateStore,
 };
+use artifacts::DockerConformanceArtifacts;
 use fixture::{connect_driver, DockerConformanceFixture};
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -40,15 +46,20 @@ async fn real_docker_passes_all_advertised_runtime_profiles() {
         &Uuid::now_v7().simple().to_string()[..12]
     );
     let node_id = Uuid::now_v7();
+    let artifact_state_root = resolve_artifact_state_root(state_directory.path());
+    let artifacts = Arc::new(
+        DockerConformanceArtifacts::new(&artifact_state_root, node_id)
+            .expect("create Docker conformance Artifact manager"),
+    );
     let driver = Arc::new(
-        connect_driver(&namespace, node_id)
+        connect_driver(&namespace, node_id, artifacts.manager())
             .await
             .expect("connect dedicated Docker conformance driver"),
     );
     let store = Arc::new(FileRuntimeStateStore::new(state_directory.path()));
     let runtime =
         ManagedRuntimeClient::new(store.clone() as Arc<dyn RuntimeStateStore>, driver.clone());
-    let fixture = DockerConformanceFixture::new(namespace, node_id, driver, store);
+    let fixture = DockerConformanceFixture::new(namespace, node_id, driver, store, artifacts);
 
     let report = verify_runtime_profiles(&runtime, &fixture)
         .await
@@ -85,15 +96,20 @@ async fn real_docker_exercises_advertised_optional_profile_behavior() {
         &Uuid::now_v7().simple().to_string()[..12]
     );
     let node_id = Uuid::now_v7();
+    let artifact_state_root = resolve_artifact_state_root(state_directory.path());
+    let artifacts = Arc::new(
+        DockerConformanceArtifacts::new(&artifact_state_root, node_id)
+            .expect("create Docker profile Artifact manager"),
+    );
     let driver = Arc::new(
-        connect_driver(&namespace, node_id)
+        connect_driver(&namespace, node_id, artifacts.manager())
             .await
             .expect("connect Docker profile probe driver"),
     );
     let store = Arc::new(FileRuntimeStateStore::new(state_directory.path()));
     let runtime =
         ManagedRuntimeClient::new(store.clone() as Arc<dyn RuntimeStateStore>, driver.clone());
-    let fixture = DockerConformanceFixture::new(namespace, node_id, driver, store);
+    let fixture = DockerConformanceFixture::new(namespace, node_id, driver, store, artifacts);
     let before = fixture.inventory().await.expect("profile probe inventory");
     let capabilities = runtime
         .capabilities()
@@ -128,6 +144,32 @@ fn require_docker_gate() {
     );
 }
 
+fn resolve_artifact_state_root(default: &Path) -> PathBuf {
+    let Some(configured) = std::env::var_os("A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT") else {
+        return default.to_path_buf();
+    };
+    let configured = PathBuf::from(configured);
+    assert!(
+        configured.is_absolute(),
+        "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must be absolute"
+    );
+    let canonical = std::fs::canonicalize(&configured).unwrap_or_else(|error| {
+        panic!(
+            "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must exist: {}: {error}",
+            configured.display()
+        )
+    });
+    assert!(
+        canonical.is_dir(),
+        "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must be a directory"
+    );
+    assert_eq!(
+        canonical, configured,
+        "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must already be canonical"
+    );
+    configured
+}
+
 fn optional_probe_profiles() -> Vec<RuntimeConformanceProfile> {
     let all = vec![
         RuntimeConformanceProfile::Networking,
@@ -136,6 +178,7 @@ fn optional_probe_profiles() -> Vec<RuntimeConformanceProfile> {
         RuntimeConformanceProfile::Resources,
         RuntimeConformanceProfile::Logs,
         RuntimeConformanceProfile::Security,
+        RuntimeConformanceProfile::Outputs,
     ];
     let Ok(selected) = std::env::var("A3S_CLOUD_TEST_RUNTIME_PROFILE") else {
         return all;

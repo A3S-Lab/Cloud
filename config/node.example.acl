@@ -6,9 +6,17 @@ control_plane {
   max_response_bytes = 20971520
   connect_timeout_ms = 5000
   request_timeout_ms = 10000
+  artifact_transfer_timeout_ms = 900000
   long_poll_margin_ms = 5000
   retry_initial_ms = 250
   retry_max_ms = 30000
+}
+
+artifacts {
+  max_blob_bytes = 1073741824
+  max_entries = 100000
+  max_file_bytes = 1073741824
+  max_expanded_bytes = 4294967296
 }
 
 node {

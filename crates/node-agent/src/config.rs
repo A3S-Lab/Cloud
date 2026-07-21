@@ -13,9 +13,18 @@ pub struct ControlPlaneConfig {
     pub max_response_bytes: usize,
     pub connect_timeout_ms: u64,
     pub request_timeout_ms: u64,
+    pub artifact_transfer_timeout_ms: u64,
     pub long_poll_margin_ms: u64,
     pub retry_initial_ms: u64,
     pub retry_max_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactConfig {
+    pub max_blob_bytes: u64,
+    pub max_entries: usize,
+    pub max_file_bytes: u64,
+    pub max_expanded_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +62,7 @@ pub struct GatewayControlConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeAgentConfig {
     pub control_plane: ControlPlaneConfig,
+    pub artifacts: ArtifactConfig,
     pub node: NodeConfig,
     pub logs: LogShippingConfig,
     pub docker: DockerConfig,
@@ -84,9 +94,20 @@ impl NodeAgentConfig {
                 "max_response_bytes",
                 "connect_timeout_ms",
                 "request_timeout_ms",
+                "artifact_transfer_timeout_ms",
                 "long_poll_margin_ms",
                 "retry_initial_ms",
                 "retry_max_ms",
+            ],
+        )?;
+        let artifacts = one_block(&document, "artifacts")?;
+        validate_block(
+            artifacts,
+            &[
+                "max_blob_bytes",
+                "max_entries",
+                "max_file_bytes",
+                "max_expanded_bytes",
             ],
         )?;
         let node = one_block(&document, "node")?;
@@ -139,9 +160,19 @@ impl NodeAgentConfig {
                 max_response_bytes: integer(control_plane, "max_response_bytes")?,
                 connect_timeout_ms: integer(control_plane, "connect_timeout_ms")?,
                 request_timeout_ms: integer(control_plane, "request_timeout_ms")?,
+                artifact_transfer_timeout_ms: integer(
+                    control_plane,
+                    "artifact_transfer_timeout_ms",
+                )?,
                 long_poll_margin_ms: integer(control_plane, "long_poll_margin_ms")?,
                 retry_initial_ms: integer(control_plane, "retry_initial_ms")?,
                 retry_max_ms: integer(control_plane, "retry_max_ms")?,
+            },
+            artifacts: ArtifactConfig {
+                max_blob_bytes: integer(artifacts, "max_blob_bytes")?,
+                max_entries: integer(artifacts, "max_entries")?,
+                max_file_bytes: integer(artifacts, "max_file_bytes")?,
+                max_expanded_bytes: integer(artifacts, "max_expanded_bytes")?,
             },
             node: NodeConfig {
                 name: string(node, "name")?,
@@ -226,6 +257,8 @@ impl NodeAgentConfig {
             || self.control_plane.connect_timeout_ms > 60_000
             || self.control_plane.request_timeout_ms == 0
             || self.control_plane.request_timeout_ms > 300_000
+            || self.control_plane.artifact_transfer_timeout_ms < 1_000
+            || self.control_plane.artifact_transfer_timeout_ms > 3_600_000
             || self.control_plane.long_poll_margin_ms == 0
             || self.control_plane.long_poll_margin_ms > 60_000
             || self.control_plane.retry_initial_ms == 0
@@ -233,7 +266,20 @@ impl NodeAgentConfig {
             || self.control_plane.retry_max_ms > 300_000
         {
             return Err(ConfigError::Invalid(
-                "control-plane connection, request, long-poll margin, and retry timings are independently bounded"
+                "control-plane connection, request, artifact transfer, long-poll margin, and retry timings are independently bounded"
+                    .into(),
+            ));
+        }
+        if !(1024 * 1024..=10 * 1024 * 1024 * 1024_u64).contains(&self.artifacts.max_blob_bytes)
+            || self.artifacts.max_entries == 0
+            || self.artifacts.max_entries > 1_000_000
+            || self.artifacts.max_file_bytes == 0
+            || self.artifacts.max_file_bytes > self.artifacts.max_expanded_bytes
+            || self.artifacts.max_expanded_bytes < self.artifacts.max_blob_bytes
+            || self.artifacts.max_expanded_bytes > 20 * 1024 * 1024 * 1024_u64
+        {
+            return Err(ConfigError::Invalid(
+                "artifacts requires a 1 MiB to 10 GiB blob bound, 1 to 1000000 entries, and ordered positive file/expanded bounds capped at 20 GiB"
                     .into(),
             ));
         }
@@ -361,7 +407,14 @@ pub enum ConfigError {
 }
 
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
-    let allowed = ["control_plane", "docker", "gateway", "logs", "node"];
+    let allowed = [
+        "artifacts",
+        "control_plane",
+        "docker",
+        "gateway",
+        "logs",
+        "node",
+    ];
     if document
         .blocks
         .iter()
@@ -515,9 +568,17 @@ control_plane {
   max_response_bytes = 20971520
   connect_timeout_ms = 5000
   request_timeout_ms = 10000
+  artifact_transfer_timeout_ms = 900000
   long_poll_margin_ms = 5000
   retry_initial_ms = 250
   retry_max_ms = 30000
+}
+
+artifacts {
+  max_blob_bytes = 1073741824
+  max_entries = 100000
+  max_file_bytes = 1073741824
+  max_expanded_bytes = 4294967296
 }
 
 node {

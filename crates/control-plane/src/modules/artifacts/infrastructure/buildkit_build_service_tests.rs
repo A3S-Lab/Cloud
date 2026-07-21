@@ -97,7 +97,7 @@ async fn build_output_replays_without_reexecution_and_revalidates_integrity() {
         .expect("Dockerfile");
     let executable = fixture.root.path().join("fake-buildctl");
     let script = format!(
-        "#!/bin/sh\nset -eu\noutput=\nmetadata=\nprevious=\nfor argument in \"$@\"; do\n  if [ \"$previous\" = output ]; then output=$argument; previous=; continue; fi\n  if [ \"$previous\" = metadata ]; then metadata=$argument; previous=; continue; fi\n  case \"$argument\" in\n    --output) previous=output ;;\n    --metadata-file) previous=metadata ;;\n  esac\ndone\ndestination=$(printf '%s' \"$output\" | sed -n 's/.*dest=\\([^,]*\\).*/\\1/p')\ncp -R '{}' \"$destination\"\nmkdir \"$destination/ingest\"\ncp '{}' \"$metadata\"\n",
+        "#!/bin/sh\nset -eu\noutput=\nmetadata=\nprevious=\nforce_network=\nfor argument in \"$@\"; do\n  if [ \"$previous\" = output ]; then output=$argument; previous=; continue; fi\n  if [ \"$previous\" = metadata ]; then metadata=$argument; previous=; continue; fi\n  if [ \"$previous\" = opt ]; then\n    [ \"$argument\" = force-network-mode=none ] && force_network=present\n    previous=\n    continue\n  fi\n  case \"$argument\" in\n    --output) previous=output ;;\n    --metadata-file) previous=metadata ;;\n    --opt) previous=opt ;;\n  esac\ndone\n[ \"$force_network\" = present ]\ndestination=$(printf '%s' \"$output\" | sed -n 's/.*dest=\\([^,]*\\).*/\\1/p')\ncp -R '{}' \"$destination\"\nmkdir \"$destination/ingest\"\ncp '{}' \"$metadata\"\n",
         fixture.layout.display(),
         fixture.metadata.display(),
     );

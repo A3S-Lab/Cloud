@@ -1,3 +1,4 @@
+mod artifact;
 mod command;
 mod enrollment;
 mod error;
@@ -8,6 +9,10 @@ mod secret;
 #[cfg(test)]
 mod tests;
 
+pub use artifact::{
+    artifact_uri, validate_cloud_artifact, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
+    NodeArtifactUploadRequest, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
 pub use command::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandOutcome,

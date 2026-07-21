@@ -261,6 +261,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/025_github_connection_lifecycle.sql"
             )),
         ),
+        Migration::new(
+            "026",
+            "durable source build runs",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/026_build_runs.sql"
+            )),
+        ),
     ]
 }
 

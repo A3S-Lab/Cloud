@@ -1,7 +1,7 @@
 use a3s_boot::HealthIndicatorResult;
 use a3s_flow::{
     FlowEngine, FlowError, FlowRuntime, FlowScheduler, FlowTaskQueue, FlowWorker,
-    PostgresEventStore, PostgresFlowTaskQueue,
+    PostgresEventStore, PostgresFlowTaskQueue, RuntimeCommand, StepInvocation, WorkflowInvocation,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -46,6 +46,60 @@ pub struct FlowCoordinatorReport {
 pub struct FlowInfrastructure {
     engine: FlowEngine,
     queue: Arc<PostgresFlowTaskQueue>,
+}
+
+#[derive(Clone)]
+pub struct FlowRuntimeRouter {
+    deployments: Arc<dyn FlowRuntime>,
+    builds: Arc<dyn FlowRuntime>,
+}
+
+impl FlowRuntimeRouter {
+    pub fn new(deployments: Arc<dyn FlowRuntime>, builds: Arc<dyn FlowRuntime>) -> Self {
+        Self {
+            deployments,
+            builds,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl FlowRuntime for FlowRuntimeRouter {
+    async fn run_workflow(
+        &self,
+        invocation: WorkflowInvocation,
+    ) -> Result<RuntimeCommand, FlowError> {
+        use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
+        use crate::modules::workloads::infrastructure::{
+            DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+            LEGACY_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+        };
+
+        let runtime = match (
+            invocation.spec.name.as_str(),
+            invocation.spec.version.as_str(),
+        ) {
+            (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION) => &self.builds,
+            (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
+            | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
+            | (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => &self.deployments,
+            _ => {
+                return Err(FlowError::Runtime(format!(
+                    "Cloud has no workflow runtime for {}@{}",
+                    invocation.spec.name, invocation.spec.version
+                )))
+            }
+        };
+        runtime.run_workflow(invocation).await
+    }
+
+    async fn run_step(&self, invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
+        if invocation.step_name.starts_with("build_") {
+            self.builds.run_step(invocation).await
+        } else {
+            self.deployments.run_step(invocation).await
+        }
+    }
 }
 
 pub struct FlowOperationCoordinator {
@@ -192,6 +246,102 @@ fn scoped_postgres_url(database_url: &str) -> Result<Url, FlowInfrastructureErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use a3s_flow::WorkflowSpec;
+    use serde_json::json;
+
+    #[derive(Clone, Copy)]
+    struct StubRuntime(&'static str);
+
+    #[async_trait::async_trait]
+    impl FlowRuntime for StubRuntime {
+        async fn run_workflow(
+            &self,
+            invocation: WorkflowInvocation,
+        ) -> Result<RuntimeCommand, FlowError> {
+            Ok(invocation.context().complete(json!(self.0)))
+        }
+
+        async fn run_step(
+            &self,
+            _invocation: StepInvocation,
+        ) -> Result<serde_json::Value, FlowError> {
+            Ok(json!(self.0))
+        }
+    }
+
+    fn workflow(name: &str, version: &str) -> WorkflowInvocation {
+        WorkflowInvocation {
+            run_id: "run-1".into(),
+            spec: WorkflowSpec::rust_embedded(name, version, "cloud", "run"),
+            input: json!({}),
+            history: Vec::new(),
+        }
+    }
+
+    fn step(name: &str) -> StepInvocation {
+        StepInvocation {
+            run_id: "run-1".into(),
+            step_id: "step-1".into(),
+            step_name: name.into(),
+            input: json!({}),
+            history: Vec::new(),
+        }
+    }
+
+    fn router() -> FlowRuntimeRouter {
+        FlowRuntimeRouter::new(
+            Arc::new(StubRuntime("deployment")),
+            Arc::new(StubRuntime("build")),
+        )
+    }
+
+    #[tokio::test]
+    async fn runtime_router_preserves_all_production_workflow_identities() -> Result<(), FlowError>
+    {
+        for (name, version, expected) in [
+            ("cloud.deployment", "1", "deployment"),
+            ("cloud.deployment", "2", "deployment"),
+            ("cloud.workload.stop", "1", "deployment"),
+            ("cloud.build", "1", "build"),
+        ] {
+            assert_eq!(
+                router().run_workflow(workflow(name, version)).await?,
+                RuntimeCommand::Complete {
+                    output: json!(expected)
+                }
+            );
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_router_routes_build_steps_by_reserved_prefix() -> Result<(), FlowError> {
+        assert_eq!(
+            router().run_step(step("build_prepare_input")).await?,
+            json!("build")
+        );
+        assert_eq!(
+            router().run_step(step("resolve_deployment")).await?,
+            json!("deployment")
+        );
+        assert_eq!(
+            router().run_step(step("stop_workload_resolve")).await?,
+            json!("deployment")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_router_rejects_unknown_workflow_identity() {
+        let error = router()
+            .run_workflow(workflow("cloud.unknown", "1"))
+            .await
+            .expect_err("unknown workflow must be rejected");
+        assert_eq!(
+            error.to_string(),
+            "runtime error: Cloud has no workflow runtime for cloud.unknown@1"
+        );
+    }
 
     #[test]
     fn flow_url_owns_an_isolated_search_path() -> Result<(), FlowInfrastructureError> {

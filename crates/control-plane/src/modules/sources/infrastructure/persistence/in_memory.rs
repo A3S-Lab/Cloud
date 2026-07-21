@@ -345,6 +345,20 @@ impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
 
 #[async_trait]
 impl ISourceRevisionRepository for InMemorySourceRevisionRepository {
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        source_revision_id: crate::modules::shared_kernel::domain::SourceRevisionId,
+    ) -> Result<ExternalSourceRevision, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .revisions
+            .get(&(organization_id, source_revision_id))
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+
     async fn replay_acceptance(
         &self,
         idempotency: &IdempotencyRequest,

@@ -1,3 +1,9 @@
+use crate::modules::artifacts::application::BuildRunReconciler;
+use crate::modules::artifacts::{
+    BuildFlowRuntime, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    INodeArtifactStore, LocalNodeArtifactStore, PostgresBuildRunRepository,
+    RuntimeBuildOutputValidator, SourceBuildInputPreparer,
+};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -55,14 +61,14 @@ use crate::modules::secrets::{
 };
 use crate::modules::sources::domain::{
     IGithubAppAuthorizationService, IGithubConnectionRepository, IGithubInstallationTokenService,
-    ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
+    ISourceCheckout, ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
     ISourceWebhookRepository, ISourceWebhookVerifier, SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
     AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
     CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
-    DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GithubAppClient,
-    GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
+    DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GitSourceCheckout,
+    GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
     ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
     PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
     PostgresSourceSubscriptionRepository, PrepareGithubConnectionOauthHandler,
@@ -88,7 +94,9 @@ use crate::{
         EventProviderKind, LogStorageProviderKind, ProcessRole, SecurityProfile,
         SecurityProviderKind,
     },
-    infrastructure::{connect_and_migrate, postgres_health, PostgresBootstrapError},
+    infrastructure::{
+        connect_and_migrate, postgres_health, FlowRuntimeRouter, PostgresBootstrapError,
+    },
     CloudConfig,
 };
 use a3s_boot::{
@@ -127,6 +135,8 @@ pub enum ControlPlaneStartupError {
     Registry(String),
     #[error("could not initialize source provider access: {0}")]
     Sources(String),
+    #[error("could not initialize build execution: {0}")]
+    Build(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -175,6 +185,12 @@ pub async fn build_application_with_source_resolver(
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
+    let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
+        LocalNodeArtifactStore::new(&config.artifacts.store_dir, config.artifacts.max_blob_bytes)
+            .map_err(ControlPlaneStartupError::NodeControl)?,
+    );
+    let builds: Arc<dyn IBuildRunRepository> =
+        Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
@@ -220,6 +236,39 @@ pub async fn build_application_with_source_resolver(
         } else {
             Arc::new(GithubInstallationTokenIssuer::disabled())
         };
+    let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
+        GitSourceCheckout::new(
+            &config.sources.checkout_dir,
+            Duration::from_millis(config.sources.checkout_timeout_ms),
+            config.sources.checkout_max_files,
+            config.sources.checkout_max_bytes,
+        )
+        .map_err(ControlPlaneStartupError::Build)?,
+    );
+    let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
+        SourceBuildInputPreparer::new(
+            source_checkout,
+            Arc::clone(&github_connections),
+            Arc::clone(&github_installation_tokens),
+            Arc::clone(&node_artifacts),
+            &config.builds.input_staging_dir,
+            config.builds.input_max_entries,
+            config.builds.input_max_bytes,
+        )
+        .map_err(ControlPlaneStartupError::Build)?,
+    );
+    let build_outputs: Arc<dyn IBuildOutputValidator> = Arc::new(
+        RuntimeBuildOutputValidator::new(
+            Arc::clone(&node_artifacts),
+            &config.builds.output_staging_dir,
+            config.builds.output_max_bytes,
+            config.builds.output_max_entries,
+            config.builds.output_max_expanded_bytes,
+            config.builds.oci_max_blobs,
+            config.builds.oci_max_bytes,
+        )
+        .map_err(ControlPlaneStartupError::Build)?,
+    );
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
         SecurityProfile::Production => Arc::new(
@@ -303,13 +352,26 @@ pub async fn build_application_with_source_resolver(
         deployment_flow_config,
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
-    let flow =
-        crate::infrastructure::connect_flow(&postgres_url, Arc::new(deployment_runtime)).await?;
+    let build_runtime = BuildFlowRuntime::new(
+        Arc::clone(&builds),
+        Arc::clone(&sources),
+        build_inputs,
+        build_outputs,
+        Arc::clone(&nodes),
+        Arc::clone(&node_control),
+        config
+            .build_flow_config()
+            .map_err(ControlPlaneStartupError::Build)?,
+    );
+    let flow_runtime =
+        FlowRuntimeRouter::new(Arc::new(deployment_runtime), Arc::new(build_runtime));
+    let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
+            Arc::clone(&node_artifacts),
             Arc::clone(&gateway_projector),
             Arc::clone(&routes),
             Arc::clone(&gateway_certificate_authority),
@@ -340,6 +402,7 @@ pub async fn build_application_with_source_resolver(
             Duration::from_millis(config.fleet.command_long_poll_ms.clamp(1, 50)),
             config.node_control.max_request_bytes,
             Duration::from_millis(config.node_control.request_body_timeout_ms),
+            Duration::from_millis(config.artifacts.transfer_timeout_ms),
         )
         .map_err(ControlPlaneStartupError::NodeControl)?;
         Some(
@@ -351,6 +414,13 @@ pub async fn build_application_with_source_resolver(
     };
     let operation_repository: Arc<dyn IOperationRepository> =
         Arc::new(PostgresOperationRepository::new(executor.clone()));
+    let build_run_reconciler = BuildRunReconciler::with_schedule(
+        Arc::clone(&builds),
+        Arc::clone(&operation_repository),
+        Duration::from_millis(config.builds.reconcile_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Build)?;
     let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
     let operation_reconciler = OperationReconciler::new(
         Arc::new(ReconcileOperationsHandler::new(
@@ -456,6 +526,7 @@ pub async fn build_application_with_source_resolver(
     Ok(ControlPlane::new(
         application,
         ControlPlaneWorkers::new(
+            run_operations.then_some(build_run_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
