@@ -186,7 +186,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes in a provider-level inbox without storing payloads or secrets. An organization-scoped GitHub App installation flow now uses expiring single-use state, OAuth plus PKCE, transient user-token verification, durable numeric identities, and exclusive installation/account ownership without persisting OAuth credentials. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Repository subscriptions, tenant fanout, installation-token authentication and private-repository checkout, lifecycle reconciliation, webhook fanout, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` GitHub connection slice) |
+| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes without storing payloads or secrets. An organization-scoped GitHub App flow verifies exclusive installation/account ownership with expiring single-use state, OAuth plus PKCE, and transient user-token authority. Environment-owned repository subscriptions now bind that installation to an exact canonical repository, branch, and recipe; first-delivery inbox processing atomically fans out immutable revisions/outbox facts only through active matches, while replay, mismatch, deactivation, and outbox rollback fail closed. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Installation-token authentication and private-repository checkout, lifecycle reconciliation, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` repository subscription/fanout slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -312,8 +312,10 @@ gitlinks and symlinks that escape the source root, removes `.git`, and commits
 an immutable credential-free SHA-256 content receipt. Reusing a checkout ID
 revalidates that content; another repository or commit conflicts. The real
 GitHub CI gate resolves `main`, materializes that exact commit, and verifies
-metadata-free replay. Build-operation wiring, GitHub installation-token
-authentication, and private-repository access remain later G0 slices.
+metadata-free replay. Webhook-created revisions now use the same immutable
+aggregate and event contract described below. Build-operation wiring, GitHub
+installation-token authentication, and private-repository access remain later
+G0 slices.
 
 List accepted revisions with:
 
@@ -379,10 +381,64 @@ display logins, and completion emits
 `source.github-connection.created`. API and callback responses are
 non-cacheable.
 
-This slice establishes installation ownership only. It does not create
-repository subscriptions, mint installation tokens, authenticate checkout,
-enable private repositories, reconcile installation lifecycle changes, or fan
-out webhooks to tenants.
+The connection itself establishes installation ownership only. Repository
+bindings are separate environment-owned resources described below. The
+connection still does not mint installation tokens, authenticate checkout,
+enable private repositories, or reconcile installation lifecycle changes.
+
+### Subscribe an environment to a GitHub repository
+
+After the organization has a verified GitHub connection, create an exact
+repository binding for an environment:
+
+```text
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github
+GET  /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github
+```
+
+```bash
+curl --request POST \
+  "http://127.0.0.1:8080/api/v1/organizations/${A3S_CLOUD_ORGANIZATION_ID}/projects/${A3S_CLOUD_PROJECT_ID}/environments/${A3S_CLOUD_ENVIRONMENT_ID}/source-subscriptions/github" \
+  --header "authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}" \
+  --header "content-type: application/json" \
+  --header "idempotency-key: subscribe-cloud-main-api" \
+  --data '{
+    "repository": {
+      "provider": "github",
+      "url": "https://github.com/A3S-Lab/Cloud.git"
+    },
+    "branch": "main",
+    "recipe": {
+      "schema": "a3s.cloud.build-recipe.v1",
+      "kind": "dockerfile",
+      "contextPath": ".",
+      "dockerfilePath": "Dockerfile",
+      "target": null,
+      "platforms": ["linux/amd64"]
+    }
+  }'
+```
+
+Creation requires `source:write`, validates the exact
+organization/project/environment hierarchy, infers the organization's verified
+connection and installation, applies the configured repository allow/deny
+policy, and accepts only a safe exact branch plus an explicit canonical recipe.
+The connection, installation, and environment ownership are also tied by
+PostgreSQL foreign keys. An exact idempotency replay or duplicate active binding
+returns the original identity with `200`; a new binding returns `201` and emits
+`source.github-repository-subscription.created`.
+
+Bindings remain queryable after they stop being authoritative. Deactivate one
+idempotently with `source:write`:
+
+```text
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github/{subscription_id}/deactivate
+```
+
+Deactivation changes `active` to `inactive`, advances the aggregate version,
+and emits `source.github-repository-subscription.deactivated`. No provider
+credential, token reference, private key, or raw webhook payload enters the
+subscription, its idempotency response, or either event.
 
 ### Receive a signed GitHub webhook
 
@@ -424,11 +480,22 @@ return `202` without entering the inbox. Invalid signatures return `401`,
 including requests that also carry a valid A3S bearer token, and bodies beyond
 the configured limit return `413`.
 
-This inbox records only provider, delivery ID, canonical repository,
+The provider inbox records only provider, delivery ID, canonical repository,
 installation ID, branch, commit, payload digest, and receipt time. It stores
-neither raw payload nor secret and does not yet apply repository policy, map a
-repository to a tenant subscription, create a source revision or outbox event,
-or start a build or deployment.
+neither raw payload nor secret. On the first accepted delivery, the same
+PostgreSQL transaction selects only active subscriptions whose installation,
+canonical repository, and exact branch all match. Each authoritative
+environment/recipe binding creates one immutable `ExternalSourceRevision` and
+one `source.revision.accepted` outbox fact. Multiple recipes or environments
+fan out independently; unmatched deliveries create no tenant revision.
+
+An exact provider replay is stopped by the inbox and never evaluates bindings
+again, so it cannot duplicate revisions/events or retroactively pick up a
+subscription created later. Reusing a delivery ID with changed typed identity
+or raw-body digest rolls back as a conflict. Inbox insertion, tenant delivery
+reservations, all new revisions, and all outbox facts commit or roll back
+together. This boundary still does not issue installation credentials, check
+out source, start a build, or create a deployment.
 
 ### Update an active workload
 

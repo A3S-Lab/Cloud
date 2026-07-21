@@ -1,18 +1,24 @@
+use super::subscription_postgres::{
+    map_row as map_subscription_row, select_columns as subscription_select_columns,
+    GithubRepositorySubscriptionRow,
+};
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, store_idempotency,
-    store_outbox, transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
+    store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
     SourceRevisionId,
 };
 use crate::modules::sources::domain::{
-    AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
-    GitReference, GitRepository, GithubInstallationId, ISourceRevisionRepository,
-    ISourceWebhookRepository, SourceWebhookDelivery, WebhookDeliveryId,
+    AcceptSourceRevision, AcceptSourceWebhook, BuildRecipe, ExternalSourceRevision, GitCommitSha,
+    GitProvider, GitReference, GitRepository, GithubInstallationId, ISourceRevisionRepository,
+    ISourceWebhookRepository, NewExternalSourceRevision, SourceRevisionAccepted,
+    SourceWebhookAcceptance, SourceWebhookDelivery, WebhookDeliveryId, WebhookDeliveryReservation,
 };
 use a3s_orm::{
-    sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
+    sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor,
+    PostgresTransaction, Row,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -96,11 +102,12 @@ impl PostgresSourceRevisionRepository {
 impl ISourceWebhookRepository for PostgresSourceRevisionRepository {
     async fn accept_delivery(
         &self,
-        delivery: SourceWebhookDelivery,
-    ) -> Result<IdempotentWrite<SourceWebhookDelivery>, RepositoryError> {
+        request: AcceptSourceWebhook,
+    ) -> Result<SourceWebhookAcceptance, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
+                    let delivery = request.delivery;
                     let branch_name = match &delivery.reference {
                         GitReference::Branch(value) => value,
                         _ => {
@@ -168,9 +175,75 @@ impl ISourceWebhookRepository for PostgresSourceRevisionRepository {
                         )
                         .into());
                     }
-                    Ok(IdempotentWrite {
-                        value: existing,
-                        replayed: inserted == 0,
+                    if inserted == 0 {
+                        return Ok(SourceWebhookAcceptance {
+                            delivery: existing,
+                            replayed: true,
+                            revisions: Vec::new(),
+                        });
+                    }
+                    let subscription_rows = fetch_all::<GithubRepositorySubscriptionRow, _>(
+                        transaction,
+                        subscription_select_columns()
+                            .append(" where status = 'active' and installation_id = ")
+                            .bind(installation_id)
+                            .append(" and repository_provider = ")
+                            .bind(delivery.provider.as_str())
+                            .append(" and repository_identity = ")
+                            .bind(delivery.repository.identity())
+                            .append(" and branch_name = ")
+                            .bind(branch_name.as_str())
+                            .append(" order by organization_id asc, id asc for share"),
+                    )
+                    .await?;
+                    let mut revisions = Vec::with_capacity(subscription_rows.len());
+                    for row in subscription_rows {
+                        let subscription = map_subscription_row(row)?;
+                        let source_identity_digest =
+                            delivery.repository.source_identity_digest(&delivery.commit_sha);
+                        reserve_webhook_delivery(
+                            transaction,
+                            &WebhookDeliveryReservation {
+                                organization_id: subscription.organization_id,
+                                provider: delivery.provider,
+                                delivery_id: delivery.delivery_id.clone(),
+                                source_identity_digest,
+                                received_at: delivery.received_at,
+                            },
+                        )
+                        .await?;
+                        let candidate = ExternalSourceRevision::accept(
+                            NewExternalSourceRevision {
+                                organization_id: subscription.organization_id,
+                                project_id: subscription.project_id,
+                                environment_id: subscription.environment_id,
+                                id: SourceRevisionId::new(),
+                                repository: delivery.repository.clone(),
+                                commit_sha: delivery.commit_sha.clone(),
+                                recipe: subscription.recipe,
+                                accepted_at: delivery.received_at,
+                            },
+                        )
+                        .map_err(|error| {
+                            PostgresPersistenceError::Invariant(format!(
+                                "could not create source revision from subscription: {error}"
+                            ))
+                        })?;
+                        let (revision, revision_inserted) =
+                            insert_source_revision(transaction, &candidate).await?;
+                        if revision_inserted {
+                            let event = SourceRevisionAccepted::envelope(
+                                &revision,
+                                request.correlation_id,
+                            )?;
+                            store_outbox(transaction, &event).await?;
+                        }
+                        revisions.push(revision);
+                    }
+                    Ok(SourceWebhookAcceptance {
+                        delivery: existing,
+                        replayed: false,
+                        revisions,
                     })
                 })
             })
@@ -231,104 +304,10 @@ impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
                         });
                     }
                     if let Some(delivery) = &request.webhook_delivery {
-                        execute(
-                            transaction,
-                            sql_query::<()>(
-                                "insert into source_webhook_deliveries (organization_id, provider, delivery_id, source_identity_digest, received_at) values (",
-                            )
-                            .bind(delivery.organization_id.as_uuid())
-                            .append(", ")
-                            .bind(delivery.provider.as_str())
-                            .append(", ")
-                            .bind(delivery.delivery_id.as_str())
-                            .append(", ")
-                            .bind(delivery.source_identity_digest.as_str())
-                            .append(", ")
-                            .bind(delivery.received_at)
-                            .append(") on conflict (organization_id, provider, delivery_id) do nothing"),
-                        )
-                        .await?;
-                        let existing = fetch_optional::<String, _>(
-                            transaction,
-                            sql_query::<String>(
-                                "select source_identity_digest from source_webhook_deliveries where organization_id = ",
-                            )
-                            .bind(delivery.organization_id.as_uuid())
-                            .append(" and provider = ")
-                            .bind(delivery.provider.as_str())
-                            .append(" and delivery_id = ")
-                            .bind(delivery.delivery_id.as_str())
-                            .append(" for update"),
-                        )
-                        .await?
-                        .ok_or_else(|| {
-                            PostgresPersistenceError::Invariant(
-                                "webhook delivery reservation disappeared".into(),
-                            )
-                        })?;
-                        if existing != delivery.source_identity_digest {
-                            return Err(RepositoryError::Conflict(
-                                "webhook delivery ID was reused for another source identity".into(),
-                            )
-                            .into());
-                        }
+                        reserve_webhook_delivery(transaction, delivery).await?;
                     }
-                    let inserted = execute(
-                        transaction,
-                        sql_query::<()>(
-                            "insert into external_source_revisions (organization_id, project_id, environment_id, id, repository_provider, repository_url, repository_identity, commit_sha, recipe, recipe_digest, aggregate_version, accepted_at) values (",
-                        )
-                        .bind(request.revision.organization_id.as_uuid())
-                        .append(", ")
-                        .bind(request.revision.project_id.as_uuid())
-                        .append(", ")
-                        .bind(request.revision.environment_id.as_uuid())
-                        .append(", ")
-                        .bind(request.revision.id.as_uuid())
-                        .append(", ")
-                        .bind(request.revision.repository.provider().as_str())
-                        .append(", ")
-                        .bind(request.revision.repository.canonical_url())
-                        .append(", ")
-                        .bind(request.revision.repository.identity())
-                        .append(", ")
-                        .bind(request.revision.commit_sha.as_str())
-                        .append(", ")
-                        .bind(serde_json::to_value(&request.revision.recipe)?)
-                        .append(", ")
-                        .bind(request.revision.recipe_digest.as_str())
-                        .append(", ")
-                        .bind(request.revision.aggregate_version)
-                        .append(", ")
-                        .bind(request.revision.accepted_at)
-                        .append(
-                            ") on conflict (organization_id, project_id, environment_id, repository_identity, commit_sha, recipe_digest) do nothing",
-                        ),
-                    )
-                    .await;
-                    let inserted = match inserted {
-                        Ok(rows @ 0..=1) => rows == 1,
-                        Ok(rows) => {
-                            return Err(PostgresPersistenceError::Invariant(format!(
-                                "accepting source revision affected {rows} rows"
-                            )))
-                        }
-                        Err(error) if is_foreign_key_violation(&error) => {
-                            return Err(RepositoryError::NotFound.into())
-                        }
-                        Err(error) => return Err(error),
-                    };
-                    let row = fetch_optional::<SourceRevisionRow, _>(
-                        transaction,
-                        source_revision_by_identity_query(&request.revision),
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        PostgresPersistenceError::Invariant(
-                            "accepted source revision could not be read".into(),
-                        )
-                    })?;
-                    let revision = map_row(row)?;
+                    let (revision, inserted) =
+                        insert_source_revision(transaction, &request.revision).await?;
                     if inserted {
                         store_outbox(transaction, &request.event).await?;
                     }
@@ -374,6 +353,112 @@ impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
             })
             .collect()
     }
+}
+
+async fn reserve_webhook_delivery(
+    transaction: &PostgresTransaction,
+    delivery: &WebhookDeliveryReservation,
+) -> Result<(), PostgresPersistenceError> {
+    execute(
+        transaction,
+        sql_query::<()>(
+            "insert into source_webhook_deliveries (organization_id, provider, delivery_id, source_identity_digest, received_at) values (",
+        )
+        .bind(delivery.organization_id.as_uuid())
+        .append(", ")
+        .bind(delivery.provider.as_str())
+        .append(", ")
+        .bind(delivery.delivery_id.as_str())
+        .append(", ")
+        .bind(delivery.source_identity_digest.as_str())
+        .append(", ")
+        .bind(delivery.received_at)
+        .append(") on conflict (organization_id, provider, delivery_id) do nothing"),
+    )
+    .await?;
+    let existing = fetch_optional::<String, _>(
+        transaction,
+        sql_query::<String>(
+            "select source_identity_digest from source_webhook_deliveries where organization_id = ",
+        )
+        .bind(delivery.organization_id.as_uuid())
+        .append(" and provider = ")
+        .bind(delivery.provider.as_str())
+        .append(" and delivery_id = ")
+        .bind(delivery.delivery_id.as_str())
+        .append(" for update"),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("webhook delivery reservation disappeared".into())
+    })?;
+    if existing != delivery.source_identity_digest {
+        return Err(RepositoryError::Conflict(
+            "webhook delivery ID was reused for another source identity".into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+async fn insert_source_revision(
+    transaction: &PostgresTransaction,
+    revision: &ExternalSourceRevision,
+) -> Result<(ExternalSourceRevision, bool), PostgresPersistenceError> {
+    let inserted = execute(
+        transaction,
+        sql_query::<()>(
+            "insert into external_source_revisions (organization_id, project_id, environment_id, id, repository_provider, repository_url, repository_identity, commit_sha, recipe, recipe_digest, aggregate_version, accepted_at) values (",
+        )
+        .bind(revision.organization_id.as_uuid())
+        .append(", ")
+        .bind(revision.project_id.as_uuid())
+        .append(", ")
+        .bind(revision.environment_id.as_uuid())
+        .append(", ")
+        .bind(revision.id.as_uuid())
+        .append(", ")
+        .bind(revision.repository.provider().as_str())
+        .append(", ")
+        .bind(revision.repository.canonical_url())
+        .append(", ")
+        .bind(revision.repository.identity())
+        .append(", ")
+        .bind(revision.commit_sha.as_str())
+        .append(", ")
+        .bind(serde_json::to_value(&revision.recipe)?)
+        .append(", ")
+        .bind(revision.recipe_digest.as_str())
+        .append(", ")
+        .bind(revision.aggregate_version)
+        .append(", ")
+        .bind(revision.accepted_at)
+        .append(
+            ") on conflict (organization_id, project_id, environment_id, repository_identity, commit_sha, recipe_digest) do nothing",
+        ),
+    )
+    .await;
+    let inserted = match inserted {
+        Ok(rows @ 0..=1) => rows == 1,
+        Ok(rows) => {
+            return Err(PostgresPersistenceError::Invariant(format!(
+                "accepting source revision affected {rows} rows"
+            )))
+        }
+        Err(error) if is_foreign_key_violation(&error) => {
+            return Err(RepositoryError::NotFound.into())
+        }
+        Err(error) => return Err(error),
+    };
+    let row = fetch_optional::<SourceRevisionRow, _>(
+        transaction,
+        source_revision_by_identity_query(revision),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("accepted source revision could not be read".into())
+    })?;
+    Ok((map_row(row)?, inserted))
 }
 
 fn source_revision_by_identity_query(

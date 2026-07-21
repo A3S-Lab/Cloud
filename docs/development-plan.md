@@ -592,11 +592,30 @@ The current independently testable G0 slices are implemented:
   payload while rejecting delivery-ID reuse with changed bytes or typed
   identity. Unit, API, and PostgreSQL integration tests cover signature
   authentication, payload bounds, ignored events, replay, and conflict.
-- The provider inbox intentionally has no tenant or repository-subscription
-  authority. It does not apply the source-revision allowlist, emit an outbox
-  fact, create a source revision, or start checkout, build, or deployment.
-  Existing authenticated source-revision `webhookDeliveryId` reservation
-  remains a separate mutation boundary.
+- Environment-owned `GithubRepositorySubscription` commands and queries bind
+  the same organization's verified connection/installation to a canonical
+  allowlisted repository, exact branch, and explicit recipe. PostgreSQL
+  composite foreign keys enforce both connection ownership and the full
+  organization/project/environment hierarchy. Active natural duplicates and
+  HTTP idempotency return one identity.
+- Subscription creation and explicit `active -> inactive` deactivation retain
+  history and atomically emit
+  `source.github-repository-subscription.created` and
+  `source.github-repository-subscription.deactivated`. Neither API, durable
+  state, idempotency response, nor event contains provider credentials or raw
+  webhook payloads.
+- Only a newly inserted provider delivery selects active bindings by exact
+  installation, repository, and branch. The authenticated delivery commit is
+  never re-resolved. Inbox, tenant reservations, every matching immutable
+  revision, and every `source.revision.accepted` fact commit in one transaction;
+  exact replay does not re-fanout, unmatched delivery creates no revision, and
+  outbox failure rolls back the inbox.
+- Domain/API tests cover tenant scope, missing/cross-tenant connection and
+  environment ownership, invalid repository/branch/recipe, natural and HTTP
+  replay, changed delivery conflicts, installation/repository/branch mismatch,
+  multi-recipe fanout, inactive exclusion, and secretless state. The isolated
+  PostgreSQL gate covers schema ownership, active uniqueness, fanout replay,
+  outbox atomic rollback, lifecycle, and secretless database/event state.
 - A provider-neutral checkout port accepts only the canonical repository, full
   accepted commit, and immutable checkout ID. The Git adapter uses a fresh
   bounded staging directory and isolated empty Git home, disables redirects,
@@ -631,24 +650,19 @@ The current independently testable G0 slices are implemented:
   and replays it without reexecution.
 
 These slices establish source persistence, public resolution, authenticated
-provider ingress, verified tenant ownership of a GitHub installation, secure
-public checkout, and a real local-context BuildKit/OCI engine boundary, not the
-G0 integration gate. The connection does not enumerate repositories or create
-checkout authority. The Build service binds but does not recompute the checkout
-digest, and the rootless worker does not by itself prove deny-by-default build
-networking. Tenant repository subscriptions, installation-token/private-
-repository authentication, installation lifecycle reconciliation, webhook
-fanout, build-operation checkout replay, Runtime Task orchestration, registry
-publication, provenance, deployment handoff, build operations/logs,
+provider ingress, verified tenant ownership of a GitHub installation,
+authoritative repository subscription/fanout, secure public checkout, and a
+real local-context BuildKit/OCI engine boundary, not the G0 integration gate.
+Subscriptions create revision authority but not checkout authority. The Build
+service binds but does not recompute the checkout digest, and the rootless
+worker does not by itself prove deny-by-default build networking.
+Installation-token/private-repository authentication, installation lifecycle
+reconciliation, build-operation checkout replay, Runtime Task orchestration,
+registry publication, provenance, deployment handoff, build operations/logs,
 cancellation, and web surfaces remain required.
 
 ### Work
 
-- Add tenant-scoped repository subscriptions beneath the verified GitHub
-  connection. Bind a canonical repository, target environment, branch policy,
-  and explicit recipe without changing the provider-neutral source port or
-  immutable revision. Fan out an accepted provider delivery only through these
-  authoritative bindings.
 - Add short-lived GitHub App installation-token issuance and complete
   private-repository resolution/checkout with a real installation-token gate;
   never persist the token or private key material in source state.

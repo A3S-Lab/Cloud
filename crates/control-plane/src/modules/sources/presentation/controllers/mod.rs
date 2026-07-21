@@ -1,5 +1,7 @@
 mod github_connection_callbacks_controller;
 mod github_connections_controller;
+mod github_repository_subscription_queries_controller;
+mod github_repository_subscriptions_controller;
 mod github_response_security;
 mod github_webhooks_controller;
 mod source_revision_queries_controller;
@@ -7,6 +9,8 @@ mod source_revisions_controller;
 
 pub use github_connection_callbacks_controller::github_connection_callbacks_controller;
 pub use github_connections_controller::github_connections_controller;
+pub use github_repository_subscription_queries_controller::github_repository_subscription_queries_controller;
+pub use github_repository_subscriptions_controller::github_repository_subscriptions_controller;
 pub use github_webhooks_controller::github_webhooks_controller;
 pub use source_revision_queries_controller::source_revision_queries_controller;
 pub use source_revisions_controller::source_revisions_controller;

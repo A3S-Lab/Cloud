@@ -53,6 +53,8 @@ mod postgres_fixture;
 mod secret_rotation_provider_crash_support;
 #[path = "support/secret_rotation_restart.rs"]
 mod secret_rotation_restart_support;
+#[path = "support/source_subscription.rs"]
+mod source_subscription_support;
 #[path = "support/workload_rollback.rs"]
 mod workload_rollback_support;
 #[path = "support/workloads.rs"]
@@ -144,6 +146,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists github_repository_subscriptions cascade;
              drop table if exists github_source_connections cascade;
              drop table if exists github_connection_flows cascade;
              drop table if exists source_webhook_inbox cascade;
@@ -199,7 +202,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 23);
+    assert_eq!(applied, 24);
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -416,6 +419,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "024",
+                "GitHub repository subscriptions",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/024_github_repository_subscriptions.sql"
+                )),
+            ),
+            Migration::new(
+                "025",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -559,6 +570,34 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         response_id(&environment_replay)?
     );
     let environment_id = response_id(&environment)?;
+
+    let installation_conflict_organization = app
+        .call(post_json(
+            "/api/v1/organizations",
+            "organization-github-installation-conflict",
+            json!({"name": "GitHub installation conflict"}),
+        ))
+        .await?;
+    assert_eq!(installation_conflict_organization.status(), 201);
+    let account_conflict_organization = app
+        .call(post_json(
+            "/api/v1/organizations",
+            "organization-github-account-conflict",
+            json!({"name": "GitHub account conflict"}),
+        ))
+        .await?;
+    assert_eq!(account_conflict_organization.status(), 201);
+    github_connection_support::exercise_github_connection_persistence(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
+        )?)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &account_conflict_organization,
+        )?)?),
+    )
+    .await?;
 
     let webhook_body = serde_json::to_vec(&json!({
         "ref": "refs/heads/main",
@@ -719,6 +758,15 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(source_rows, 1);
     assert_eq!(delivery_rows, 1);
     assert_eq!(source_events, 1);
+
+    source_subscription_support::exercise_source_subscriptions(
+        &app,
+        &executor,
+        &organization_id,
+        &project_id,
+        &environment_id,
+    )
+    .await?;
 
     let secrets_path = format!(
         "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/secrets"
@@ -928,8 +976,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 13);
-    assert_eq!(idempotency_records, 13);
+    assert_eq!(outbox_events, 22);
+    assert_eq!(idempotency_records, 19);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
@@ -1674,32 +1722,5 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await?;
 
-    let installation_conflict_organization = app
-        .call(post_json(
-            "/api/v1/organizations",
-            "organization-github-installation-conflict",
-            json!({"name": "GitHub installation conflict"}),
-        ))
-        .await?;
-    assert_eq!(installation_conflict_organization.status(), 201);
-    let account_conflict_organization = app
-        .call(post_json(
-            "/api/v1/organizations",
-            "organization-github-account-conflict",
-            json!({"name": "GitHub account conflict"}),
-        ))
-        .await?;
-    assert_eq!(account_conflict_organization.status(), 201);
-    github_connection_support::exercise_github_connection_persistence(
-        &executor,
-        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
-        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
-            &installation_conflict_organization,
-        )?)?),
-        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
-            &account_conflict_organization,
-        )?)?),
-    )
-    .await?;
     Ok(())
 }

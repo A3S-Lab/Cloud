@@ -55,14 +55,16 @@ use crate::modules::secrets::{
 };
 use crate::modules::sources::domain::{
     IGithubAppAuthorizationService, IGithubConnectionRepository, ISourceResolver,
-    ISourceRevisionRepository, ISourceWebhookRepository, ISourceWebhookVerifier,
-    SourceRepositoryPolicy,
+    ISourceRevisionRepository, ISourceSubscriptionRepository, ISourceWebhookRepository,
+    ISourceWebhookVerifier, SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
     AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
-    CompleteGithubConnectionHandler, GetGithubConnectionHandler, GithubAppClient,
-    GithubSourceResolver, GithubWebhookVerifier, ListSourceRevisionsHandler,
-    PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
+    CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
+    DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GithubAppClient,
+    GithubSourceResolver, GithubWebhookVerifier, ListGithubRepositorySubscriptionsHandler,
+    ListSourceRevisionsHandler, PostgresGithubConnectionRepository,
+    PostgresSourceRevisionRepository, PostgresSourceSubscriptionRepository,
     PrepareGithubConnectionOauthHandler, ResolveExternalSourceRevisionHandler, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -185,6 +187,8 @@ pub async fn build_application_with_source_resolver(
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let sources: Arc<dyn ISourceRevisionRepository> = source_repository.clone();
     let source_webhooks: Arc<dyn ISourceWebhookRepository> = source_repository;
+    let source_subscriptions: Arc<dyn ISourceSubscriptionRepository> =
+        Arc::new(PostgresSourceSubscriptionRepository::new(executor.clone()));
     let github_connections: Arc<dyn IGithubConnectionRepository> =
         Arc::new(PostgresGithubConnectionRepository::new(executor.clone()));
     let github_authorization: Arc<dyn IGithubAppAuthorizationService> =
@@ -407,6 +411,7 @@ pub async fn build_application_with_source_resolver(
             secrets,
             sources,
             source_webhooks,
+            source_subscriptions,
             github_connections,
             github_authorization,
             source_resolver,
@@ -458,6 +463,7 @@ struct ApplicationDependencies {
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
+    source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
     github_connections: Arc<dyn IGithubConnectionRepository>,
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     source_resolver: Arc<dyn ISourceResolver>,
@@ -490,6 +496,7 @@ fn build_application_with_health(
         secrets,
         sources,
         source_webhooks,
+        source_subscriptions,
         github_connections,
         github_authorization,
         source_resolver,
@@ -514,6 +521,9 @@ fn build_application_with_health(
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
+    let create_subscription_environments = Arc::clone(&environments);
+    let deactivate_subscription_environments = Arc::clone(&environments);
+    let subscription_query_environments = Arc::clone(&environments);
     let github_connection_organizations = Arc::clone(&organizations);
     let create_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
@@ -564,9 +574,13 @@ fn build_application_with_health(
     let accept_sources = Arc::clone(&sources);
     let list_sources = sources;
     let accept_source_webhooks = source_webhooks;
+    let create_source_subscriptions = Arc::clone(&source_subscriptions);
+    let deactivate_source_subscriptions = Arc::clone(&source_subscriptions);
+    let list_source_subscriptions = source_subscriptions;
     let begin_github_connections = Arc::clone(&github_connections);
     let prepare_github_connections = Arc::clone(&github_connections);
     let complete_github_connections = Arc::clone(&github_connections);
+    let create_subscription_connections = Arc::clone(&github_connections);
     let get_github_connections = github_connections;
     let begin_github_authorization = Arc::clone(&github_authorization);
     let prepare_github_authorization = Arc::clone(&github_authorization);
@@ -578,6 +592,7 @@ fn build_application_with_health(
         )
         .map_err(BootError::Internal)?,
     );
+    let subscription_source_policy = Arc::clone(&source_policy);
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
@@ -675,6 +690,20 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::sources::AcceptSourceWebhookDelivery, _>(
                     AcceptSourceWebhookDeliveryHandler::new(accept_source_webhooks),
+                )
+                .command_handler::<crate::modules::sources::CreateGithubRepositorySubscription, _>(
+                    CreateGithubRepositorySubscriptionHandler::new(
+                        create_subscription_environments,
+                        create_subscription_connections,
+                        create_source_subscriptions,
+                        subscription_source_policy,
+                    ),
+                )
+                .command_handler::<crate::modules::sources::DeactivateGithubRepositorySubscription, _>(
+                    DeactivateGithubRepositorySubscriptionHandler::new(
+                        deactivate_subscription_environments,
+                        deactivate_source_subscriptions,
+                    ),
                 )
                 .command_handler::<crate::modules::sources::BeginGithubConnection, _>(
                     BeginGithubConnectionHandler::new(
@@ -786,6 +815,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::sources::GetGithubConnection, _>(
                     GetGithubConnectionHandler::new(get_github_connections),
+                )
+                .query_handler::<crate::modules::sources::ListGithubRepositorySubscriptions, _>(
+                    ListGithubRepositorySubscriptionsHandler::new(
+                        subscription_query_environments,
+                        list_source_subscriptions,
+                    ),
                 )
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),

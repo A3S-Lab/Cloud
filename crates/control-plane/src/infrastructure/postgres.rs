@@ -245,6 +245,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/023_github_source_connections.sql"
             )),
         ),
+        Migration::new(
+            "024",
+            "GitHub repository subscriptions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/024_github_repository_subscriptions.sql"
+            )),
+        ),
     ]
 }
 

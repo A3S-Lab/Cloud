@@ -1,10 +1,13 @@
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
-    SourceRevisionId,
+    SourceConnectionId, SourceRevisionId, SourceSubscriptionId,
 };
 use crate::modules::sources::domain::{
-    AcceptSourceRevision, ExternalSourceRevision, ISourceRevisionRepository,
-    ISourceWebhookRepository, SourceWebhookDelivery,
+    AcceptSourceRevision, AcceptSourceWebhook, CreateGithubRepositorySubscription,
+    DeactivateGithubRepositorySubscription, ExternalSourceRevision, GithubRepositorySubscription,
+    ISourceRevisionRepository, ISourceSubscriptionRepository, ISourceWebhookRepository,
+    NewExternalSourceRevision, SourceRevisionAccepted, SourceWebhookAcceptance,
+    SourceWebhookDelivery,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -16,10 +19,13 @@ pub struct InMemorySourceRevisionRepository {
     state: RwLock<State>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct State {
     revisions: BTreeMap<(OrganizationId, SourceRevisionId), ExternalSourceRevision>,
     natural_ids: BTreeMap<NaturalKey, SourceRevisionId>,
+    subscriptions: BTreeMap<(OrganizationId, SourceSubscriptionId), GithubRepositorySubscription>,
+    subscription_natural_ids: BTreeMap<SubscriptionNaturalKey, SourceSubscriptionId>,
+    subscription_idempotency: BTreeMap<(String, String), (String, GithubRepositorySubscription)>,
     webhook_deliveries: BTreeMap<DeliveryKey, String>,
     webhook_inbox: BTreeMap<(String, String), SourceWebhookDelivery>,
     idempotency: BTreeMap<(String, String), (String, ExternalSourceRevision)>,
@@ -35,6 +41,15 @@ type NaturalKey = (
     String,
 );
 type DeliveryKey = (OrganizationId, String, String);
+type SubscriptionNaturalKey = (
+    OrganizationId,
+    ProjectId,
+    EnvironmentId,
+    SourceConnectionId,
+    String,
+    String,
+    String,
+);
 
 impl InMemorySourceRevisionRepository {
     pub fn new() -> Self {
@@ -57,12 +72,180 @@ impl InMemorySourceRevisionRepository {
 }
 
 #[async_trait]
+impl ISourceSubscriptionRepository for InMemorySourceRevisionRepository {
+    async fn create(
+        &self,
+        request: CreateGithubRepositorySubscription,
+    ) -> Result<IdempotentWrite<GithubRepositorySubscription>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let idempotency_key = owned_idempotency_key(&request.idempotency);
+        if let Some((digest, subscription)) = state.subscription_idempotency.get(&idempotency_key) {
+            if digest != &request.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: subscription.clone(),
+                replayed: true,
+            });
+        }
+        let natural_key = subscription_natural_key(&request.subscription);
+        if let Some(existing_id) = state.subscription_natural_ids.get(&natural_key).copied() {
+            let existing = state
+                .subscriptions
+                .get(&(request.subscription.organization_id, existing_id))
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "subscription natural identity points to a missing subscription".into(),
+                    )
+                })?;
+            state.subscription_idempotency.insert(
+                idempotency_key,
+                (request.idempotency.request_digest, existing.clone()),
+            );
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        state
+            .subscription_natural_ids
+            .insert(natural_key, request.subscription.id);
+        state.subscriptions.insert(
+            (
+                request.subscription.organization_id,
+                request.subscription.id,
+            ),
+            request.subscription.clone(),
+        );
+        state.subscription_idempotency.insert(
+            idempotency_key,
+            (
+                request.idempotency.request_digest,
+                request.subscription.clone(),
+            ),
+        );
+        state.outbox.push(request.event);
+        Ok(IdempotentWrite {
+            value: request.subscription,
+            replayed: false,
+        })
+    }
+
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        subscription_id: SourceSubscriptionId,
+    ) -> Result<Option<GithubRepositorySubscription>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .subscriptions
+            .get(&(organization_id, subscription_id))
+            .cloned())
+    }
+
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<GithubRepositorySubscription>, RepositoryError> {
+        let mut subscriptions = self
+            .state
+            .read()
+            .await
+            .subscriptions
+            .values()
+            .filter(|subscription| {
+                subscription.organization_id == organization_id
+                    && subscription.project_id == project_id
+                    && subscription.environment_id == environment_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        subscriptions.sort_by_key(|subscription| (subscription.created_at, subscription.id));
+        Ok(subscriptions)
+    }
+
+    async fn deactivate(
+        &self,
+        request: DeactivateGithubRepositorySubscription,
+    ) -> Result<IdempotentWrite<GithubRepositorySubscription>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let idempotency_key = owned_idempotency_key(&request.idempotency);
+        if let Some((digest, subscription)) = state.subscription_idempotency.get(&idempotency_key) {
+            if digest != &request.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: subscription.clone(),
+                replayed: true,
+            });
+        }
+        let key = (
+            request.subscription.organization_id,
+            request.subscription.id,
+        );
+        let existing = state
+            .subscriptions
+            .get(&key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if existing == request.subscription {
+            state.subscription_idempotency.insert(
+                idempotency_key,
+                (request.idempotency.request_digest, existing.clone()),
+            );
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        if existing.aggregate_version != request.previous_version
+            || existing.organization_id != request.subscription.organization_id
+            || existing.project_id != request.subscription.project_id
+            || existing.environment_id != request.subscription.environment_id
+            || existing.connection_id != request.subscription.connection_id
+            || existing.installation_id != request.subscription.installation_id
+            || existing.repository != request.subscription.repository
+            || existing.branch != request.subscription.branch
+            || existing.recipe != request.subscription.recipe
+        {
+            return Err(RepositoryError::Conflict(
+                "GitHub repository subscription changed concurrently".into(),
+            ));
+        }
+        state
+            .subscription_natural_ids
+            .remove(&subscription_natural_key(&existing));
+        state
+            .subscriptions
+            .insert(key, request.subscription.clone());
+        state.subscription_idempotency.insert(
+            idempotency_key,
+            (
+                request.idempotency.request_digest,
+                request.subscription.clone(),
+            ),
+        );
+        state.outbox.push(request.event);
+        Ok(IdempotentWrite {
+            value: request.subscription,
+            replayed: false,
+        })
+    }
+}
+
+#[async_trait]
 impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
     async fn accept_delivery(
         &self,
-        delivery: SourceWebhookDelivery,
-    ) -> Result<IdempotentWrite<SourceWebhookDelivery>, RepositoryError> {
+        request: AcceptSourceWebhook,
+    ) -> Result<SourceWebhookAcceptance, RepositoryError> {
         let mut state = self.state.write().await;
+        let delivery = request.delivery;
         let key = (
             delivery.provider.as_str().to_owned(),
             delivery.delivery_id.as_str().to_owned(),
@@ -73,15 +256,88 @@ impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
                     "webhook delivery ID was reused with another payload".into(),
                 ));
             }
-            return Ok(IdempotentWrite {
-                value: existing.clone(),
+            return Ok(SourceWebhookAcceptance {
+                delivery: existing.clone(),
                 replayed: true,
+                revisions: Vec::new(),
             });
         }
-        state.webhook_inbox.insert(key, delivery.clone());
-        Ok(IdempotentWrite {
-            value: delivery,
+        let mut next = state.clone();
+        next.webhook_inbox.insert(key, delivery.clone());
+        let mut matching = next
+            .subscriptions
+            .values()
+            .filter(|subscription| {
+                subscription.is_active()
+                    && subscription.installation_id == delivery.installation_id
+                    && subscription.repository == delivery.repository
+                    && subscription.branch_name() == delivery.reference.value()
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        matching.sort_by_key(|subscription| (subscription.organization_id, subscription.id));
+        let mut revisions = Vec::with_capacity(matching.len());
+        for subscription in matching {
+            let delivery_key = (
+                subscription.organization_id,
+                delivery.provider.as_str().to_owned(),
+                delivery.delivery_id.as_str().to_owned(),
+            );
+            let source_identity_digest = delivery
+                .repository
+                .source_identity_digest(&delivery.commit_sha);
+            if let Some(existing_digest) = next.webhook_deliveries.get(&delivery_key) {
+                if existing_digest != &source_identity_digest {
+                    return Err(RepositoryError::Conflict(
+                        "webhook delivery ID was reused for another source identity".into(),
+                    ));
+                }
+            } else {
+                next.webhook_deliveries
+                    .insert(delivery_key, source_identity_digest);
+            }
+            let revision = ExternalSourceRevision::accept(NewExternalSourceRevision {
+                organization_id: subscription.organization_id,
+                project_id: subscription.project_id,
+                environment_id: subscription.environment_id,
+                id: SourceRevisionId::new(),
+                repository: delivery.repository.clone(),
+                commit_sha: delivery.commit_sha.clone(),
+                recipe: subscription.recipe.clone(),
+                accepted_at: delivery.received_at,
+            })
+            .map_err(|error| {
+                RepositoryError::Storage(format!(
+                    "could not create source revision from subscription: {error}"
+                ))
+            })?;
+            let revision_natural_key = natural_key(&revision);
+            if let Some(existing_id) = next.natural_ids.get(&revision_natural_key).copied() {
+                let existing = next
+                    .revisions
+                    .get(&(revision.organization_id, existing_id))
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "source revision natural identity points to a missing revision".into(),
+                        )
+                    })?;
+                revisions.push(existing);
+                continue;
+            }
+            let event = SourceRevisionAccepted::envelope(&revision, request.correlation_id)
+                .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+            next.natural_ids.insert(revision_natural_key, revision.id);
+            next.revisions
+                .insert((revision.organization_id, revision.id), revision.clone());
+            next.outbox.push(event);
+            revisions.push(revision);
+        }
+        *state = next;
+        Ok(SourceWebhookAcceptance {
+            delivery,
             replayed: false,
+            revisions,
         })
     }
 }
@@ -210,5 +466,24 @@ fn natural_key(revision: &ExternalSourceRevision) -> NaturalKey {
         revision.repository.identity().to_owned(),
         revision.commit_sha.as_str().to_owned(),
         revision.recipe_digest.clone(),
+    )
+}
+
+fn subscription_natural_key(subscription: &GithubRepositorySubscription) -> SubscriptionNaturalKey {
+    (
+        subscription.organization_id,
+        subscription.project_id,
+        subscription.environment_id,
+        subscription.connection_id,
+        subscription.repository.identity().to_owned(),
+        subscription.branch_name().to_owned(),
+        subscription.recipe_digest.clone(),
+    )
+}
+
+fn owned_idempotency_key(idempotency: &IdempotencyRequest) -> (String, String) {
+    (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
     )
 }

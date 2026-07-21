@@ -1,7 +1,7 @@
 use super::{AcceptSourceWebhookDelivery, AcceptSourceWebhookDeliveryResult};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::sources::domain::{
-    ISourceWebhookRepository, NewSourceWebhookDelivery, SourceWebhookDelivery,
+    AcceptSourceWebhook, ISourceWebhookRepository, NewSourceWebhookDelivery, SourceWebhookDelivery,
 };
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
@@ -46,13 +46,20 @@ impl CommandHandler<AcceptSourceWebhookDelivery> for AcceptSourceWebhookDelivery
                     ))
                 }
             };
-            let accepted = match webhooks.accept_delivery(delivery).await {
+            let accepted = match webhooks
+                .accept_delivery(AcceptSourceWebhook {
+                    delivery,
+                    correlation_id: command.request_id,
+                })
+                .await
+            {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
             Ok(Ok(AcceptSourceWebhookDeliveryResult {
-                delivery: accepted.value,
+                delivery: accepted.delivery,
                 replayed: accepted.replayed,
+                revisions: accepted.revisions,
             }))
         })
     }

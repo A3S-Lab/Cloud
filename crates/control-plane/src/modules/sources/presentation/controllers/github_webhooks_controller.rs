@@ -41,6 +41,7 @@ pub fn github_webhooks_controller(
                         .execute(AcceptSourceWebhookDelivery {
                             push,
                             received_at: Utc::now(),
+                            request_id,
                         })
                         .await?
                     {

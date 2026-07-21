@@ -32,6 +32,7 @@ use uuid::Uuid;
 
 mod platform_tests;
 mod secret_tests;
+mod source_subscription_tests;
 mod source_tests;
 mod workload_tests;
 
@@ -526,6 +527,7 @@ fn build_test_application_with_source_dependencies(
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
     let source_webhooks = sources.clone();
+    let source_subscriptions = sources.clone();
     build_application_with_health(
         config(),
         ApplicationDependencies {
@@ -538,6 +540,7 @@ fn build_test_application_with_source_dependencies(
             secrets,
             sources,
             source_webhooks,
+            source_subscriptions,
             github_connections,
             github_authorization,
             source_resolver,

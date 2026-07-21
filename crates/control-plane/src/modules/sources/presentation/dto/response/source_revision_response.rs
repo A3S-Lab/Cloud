@@ -23,7 +23,7 @@ pub struct SourceRevisionResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GitRepositoryResponse {
+pub(crate) struct GitRepositoryResponse {
     pub provider: String,
     pub canonical_url: String,
     pub identity: String,
@@ -31,7 +31,7 @@ pub struct GitRepositoryResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BuildRecipeResponse {
+pub(crate) struct BuildRecipeResponse {
     pub schema: String,
     pub kind: String,
     pub context_path: String,
@@ -55,29 +55,40 @@ impl SourceRevisionResponse {
             project_id: revision.project_id.as_uuid(),
             environment_id: revision.environment_id.as_uuid(),
             id: revision.id.as_uuid(),
-            repository: GitRepositoryResponse {
-                provider: revision.repository.provider().as_str().into(),
-                canonical_url: revision.repository.canonical_url().into(),
-                identity: revision.repository.identity().into(),
-            },
+            repository: GitRepositoryResponse::from(&revision.repository),
             commit_sha: revision.commit_sha.as_str().into(),
-            recipe: BuildRecipeResponse {
-                schema: revision.recipe.schema().into(),
-                kind: revision.recipe.kind().into(),
-                context_path: revision.recipe.context_path().into(),
-                dockerfile_path: revision.recipe.dockerfile_path().into(),
-                target: revision.recipe.target().map(str::to_owned),
-                platforms: revision
-                    .recipe
-                    .platforms()
-                    .iter()
-                    .map(|platform| platform.as_str().to_owned())
-                    .collect(),
-            },
+            recipe: BuildRecipeResponse::from(&revision.recipe),
             recipe_digest: revision.recipe_digest,
             aggregate_version: revision.aggregate_version,
             accepted_at: revision.accepted_at,
             replayed,
+        }
+    }
+}
+
+impl From<&crate::modules::sources::domain::GitRepository> for GitRepositoryResponse {
+    fn from(repository: &crate::modules::sources::domain::GitRepository) -> Self {
+        Self {
+            provider: repository.provider().as_str().into(),
+            canonical_url: repository.canonical_url().into(),
+            identity: repository.identity().into(),
+        }
+    }
+}
+
+impl From<&crate::modules::sources::domain::BuildRecipe> for BuildRecipeResponse {
+    fn from(recipe: &crate::modules::sources::domain::BuildRecipe) -> Self {
+        Self {
+            schema: recipe.schema().into(),
+            kind: recipe.kind().into(),
+            context_path: recipe.context_path().into(),
+            dockerfile_path: recipe.dockerfile_path().into(),
+            target: recipe.target().map(str::to_owned),
+            platforms: recipe
+                .platforms()
+                .iter()
+                .map(|platform| platform.as_str().to_owned())
+                .collect(),
         }
     }
 }

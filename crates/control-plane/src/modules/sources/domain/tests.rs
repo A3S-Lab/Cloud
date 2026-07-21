@@ -1,6 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, SourceConnectionId, SourceRevisionId,
+    SourceSubscriptionId,
 };
 use chrono::Utc;
 
@@ -182,6 +183,68 @@ fn source_revision_event_contains_immutable_metadata_only() {
     assert!(payload.contains(&revision.recipe_digest));
     assert!(!payload.contains("credential"));
     assert!(!payload.contains("token"));
+}
+
+#[test]
+fn github_repository_subscription_is_exact_versioned_and_explicitly_deactivated() {
+    let created_at = Utc::now();
+    let mut subscription =
+        GithubRepositorySubscription::subscribe(NewGithubRepositorySubscription {
+            id: SourceSubscriptionId::new(),
+            organization_id: OrganizationId::new(),
+            project_id: ProjectId::new(),
+            environment_id: EnvironmentId::new(),
+            connection_id: SourceConnectionId::new(),
+            installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+            repository: GitRepository::parse(
+                GitProvider::Github,
+                "https://github.com/A3S-Lab/Cloud.git",
+            )
+            .expect("repository"),
+            branch: GitReference::parse("branch", "main").expect("branch"),
+            recipe: BuildRecipe::dockerfile(
+                BuildRecipe::SCHEMA,
+                BuildRecipe::DOCKERFILE_KIND,
+                ".",
+                "Dockerfile",
+                None,
+                vec!["linux/amd64".into()],
+            )
+            .expect("recipe"),
+            created_at,
+        })
+        .expect("subscription");
+    assert!(subscription.is_active());
+    assert_eq!(subscription.branch_name(), "main");
+    assert_eq!(subscription.aggregate_version, 1);
+    let created =
+        GithubRepositorySubscriptionCreated::envelope(&subscription, uuid::Uuid::now_v7())
+            .expect("created event");
+    assert_eq!(
+        created.event_key,
+        "source.github-repository-subscription.created"
+    );
+    assert!(!created.payload.to_string().contains("token"));
+
+    assert!(subscription
+        .deactivate(created_at + chrono::Duration::seconds(1))
+        .expect("deactivation"));
+    assert!(!subscription.is_active());
+    assert_eq!(subscription.aggregate_version, 2);
+    assert!(!subscription
+        .deactivate(created_at + chrono::Duration::seconds(2))
+        .expect("idempotent deactivation"));
+    let deactivated =
+        GithubRepositorySubscriptionDeactivated::envelope(&subscription, uuid::Uuid::now_v7())
+            .expect("deactivated event");
+    assert_eq!(
+        deactivated.event_key,
+        "source.github-repository-subscription.deactivated"
+    );
+
+    let mut invalid = subscription;
+    invalid.branch = GitReference::parse("tag", "v1").expect("tag");
+    assert!(GithubRepositorySubscription::restore(invalid).is_err());
 }
 
 #[test]

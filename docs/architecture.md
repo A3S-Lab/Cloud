@@ -78,9 +78,11 @@ BuildKit image. A tenant-scoped GitHub App connection boundary now binds one
 verified installation/account to one Cloud organization using single-use
 installation and OAuth state, S256 PKCE, and transient GitHub user-token
 verification. The build coordinator does not yet join those boundaries or run
-the client through a Runtime Task. Repository subscriptions and tenant fanout,
-installation-token/private-repository authentication, installation lifecycle
-reconciliation, webhook fanout, isolated build orchestration, registry
+the client through a Runtime Task. Environment-owned repository subscriptions
+now bind that verified installation to exact repository/branch/recipe policy,
+and the provider inbox atomically fans out immutable revisions only through
+active matches. Installation-token/private-repository authentication,
+installation lifecycle reconciliation, isolated build orchestration, registry
 publication, and provenance remain unimplemented.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
@@ -741,11 +743,33 @@ connection time. The tenant GET returns that record, while flow responses use
 no-store and no-referrer policy. Explicitly disabled GitHub App ACL fields
 construct a closed unavailable adapter rather than partial provider behavior.
 
-This connection does not enumerate or bind repositories, mint installation
-JWTs/tokens, authenticate source resolution or checkout, enable private
-repositories, reconcile suspension/deletion/account transfer, or route webhook
-deliveries. Those are separate G0 subscription, credential, lifecycle, and
-fanout transactions.
+The connection does not enumerate repositories, mint installation JWTs/tokens,
+authenticate source resolution or checkout, enable private repositories, or
+reconcile suspension/deletion/account transfer. Repository binding and fanout
+are separate transactions beneath this verified ownership record.
+
+An environment-owned `GithubRepositorySubscription` binds the organization's
+verified connection and installation to one canonical GitHub repository, one
+exact safe branch, and one explicit canonical build recipe. Tenant commands and
+queries use:
+
+```text
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github
+GET  /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github/{subscription_id}/deactivate
+```
+
+Creation requires `source:write`, the configured exact repository policy, an
+existing environment in the complete tenant hierarchy, and the same
+organization's verified connection. Composite PostgreSQL foreign keys bind both
+the environment hierarchy and connection/installation identity. Active natural
+identity is environment, connection, repository, branch, and recipe digest;
+idempotency and canonical duplicates return the original binding. Explicit
+deactivation changes `active` to `inactive` and retains the historical record.
+Creation and deactivation atomically persist their idempotency response and the
+`source.github-repository-subscription.created` or
+`source.github-repository-subscription.deactivated` outbox fact. Subscription
+state contains neither a provider credential nor a credential reference.
 
 `POST /api/v1/webhooks/github` is a public provider boundary. It requires JSON
 plus GitHub event, delivery, and
@@ -764,13 +788,23 @@ and delivery ID. An exact-payload replay returns the stored fact; reusing the
 key with any changed typed identity or raw-body digest conflicts in the same
 transaction. Neither secret material nor the raw payload is stored.
 
-This inbox is deliberately provider-scoped. It does not evaluate tenant
-repository policy, identify a repository subscription, emit an integration
-event, or create a source revision, build, or deployment. Those actions require
-an explicit tenant-owned subscription and fanout boundary. It is also separate
-from the optional source-revision `webhookDeliveryId`, which remains an
-authenticated mutation-time reservation bound to one repository-plus-commit
-source identity.
+Only a newly inserted delivery may fan out. In the inbox transaction, Cloud
+selects active subscriptions by exact installation, canonical repository
+identity, and branch, then derives the immutable commit directly from the
+authenticated delivery without resolving the branch again. Each matching
+environment/recipe natural identity creates one `ExternalSourceRevision` and
+one `source.revision.accepted` outbox fact. Multiple environments and recipes
+fan out independently; no match creates no tenant revision. Tenant delivery
+reservations bind one organization and provider delivery to the
+repository-plus-commit source identity, so multiple recipes in that
+organization remain legal while changed identity conflicts.
+
+Inbox insertion, reservations, every new revision, and every outbox fact are
+one PostgreSQL transaction. An outbox failure rolls back the provider inbox as
+well. Exact replay never re-evaluates subscriptions, preventing duplicate or
+retroactive fanout. This transaction still does not create a build or
+deployment. The optional source-revision `webhookDeliveryId` remains a separate
+authenticated mutation-time entry to the same tenant reservation invariant.
 
 `POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
 normalizes an exact GitHub HTTPS locator, enforces the configured exact
@@ -786,9 +820,8 @@ reservation, and `source.revision.accepted` outbox fact. Natural identity is
 environment, repository, commit, and recipe digest. Mutable ref names and
 credential references are not durable source-revision state. The GitHub App
 connection records verified installation ownership but does not yet supply an
-installation token to this resolver. Private-repository authentication,
-repository subscriptions and webhook fanout, and the coordinated BuildKit
-operation remain subsequent G0 boundaries.
+installation token to this resolver. Private-repository authentication and the
+coordinated BuildKit operation remain subsequent G0 boundaries.
 
 The provider-neutral source-checkout port accepts only a canonical repository,
 one full commit object ID, and an immutable checkout ID. Its Git adapter uses a
