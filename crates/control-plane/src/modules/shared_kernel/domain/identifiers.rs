@@ -56,3 +56,4 @@ identifier!(GatewayCertificateId);
 identifier!(SecretId);
 identifier!(SourceRevisionId);
 identifier!(SourceConnectionId);
+identifier!(SourceSubscriptionId);

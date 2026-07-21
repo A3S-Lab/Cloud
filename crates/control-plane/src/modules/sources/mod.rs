@@ -13,6 +13,14 @@ pub use application::commands::begin_github_connection::{
 pub use application::commands::complete_github_connection::{
     CompleteGithubConnection, CompleteGithubConnectionHandler,
 };
+pub use application::commands::create_github_repository_subscription::{
+    CreateGithubRepositorySubscription, CreateGithubRepositorySubscriptionHandler,
+    CreateGithubRepositorySubscriptionResult,
+};
+pub use application::commands::deactivate_github_repository_subscription::{
+    DeactivateGithubRepositorySubscription, DeactivateGithubRepositorySubscriptionHandler,
+    DeactivateGithubRepositorySubscriptionResult,
+};
 pub use application::commands::prepare_github_connection_oauth::{
     PrepareGithubConnectionOauth, PrepareGithubConnectionOauthHandler,
     PrepareGithubConnectionOauthResult,
@@ -24,12 +32,16 @@ pub use application::commands::resolve_external_source_revision::{
 pub use application::queries::get_github_connection::{
     GetGithubConnection, GetGithubConnectionHandler,
 };
+pub use application::queries::list_github_repository_subscriptions::{
+    ListGithubRepositorySubscriptions, ListGithubRepositorySubscriptionsHandler,
+};
 pub use application::queries::list_source_revisions::{
     ListSourceRevisions, ListSourceRevisionsHandler,
 };
 pub use infrastructure::persistence::{
     InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
     PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
+    PostgresSourceSubscriptionRepository,
 };
 pub use infrastructure::{
     GitSourceCheckout, GithubAppClient, GithubSourceResolver, GithubWebhookVerifier,

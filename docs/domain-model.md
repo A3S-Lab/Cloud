@@ -82,17 +82,20 @@ Primary aggregates:
 
 - `GithubConnection`
 - `GithubConnectionFlow`
+- `GithubRepositorySubscription`
 - `ExternalSourceRevision`
 - `SourceWebhookDelivery`
 
 The initial provider is GitHub. Provider adapters may resolve convenient refs,
-but the aggregate accepts only a canonical repository identity, a full commit
-object ID, and an explicit versioned build recipe. The provider-level webhook
-inbox authenticates and deduplicates typed branch-push facts but does not infer
-tenant ownership or initiate source delivery. Separately, the GitHub App
-connection flow verifies one installation through OAuth user authority and
-records tenant ownership without yet creating repository subscriptions or
-checkout credentials.
+but the immutable revision accepts only a canonical repository identity, a full
+commit object ID, and an explicit versioned build recipe. The GitHub App
+connection flow verifies one installation through OAuth user authority. An
+environment-owned repository subscription then binds that connection and
+installation to one canonical repository, exact branch, and recipe. The
+provider inbox authenticates and deduplicates typed branch-push facts; only a
+new delivery may create revisions through matching active subscriptions.
+Connection, subscription, inbox, and revision state contain no durable provider
+credential.
 
 ### 3.4 Asset hosting
 
@@ -254,9 +257,28 @@ tables directly. Audit records are append-only and separate from event delivery.
   provider response bytes are transient and never enter the aggregate,
   PostgreSQL, event payload, response, or error.
 - A connection establishes installation/account ownership only. Repository
-  subscriptions, installation-token issuance, private-repository checkout,
-  lifecycle reconciliation, and webhook fanout are independent future
-  aggregates/workflows.
+  subscriptions are separate environment-owned aggregates;
+  installation-token issuance, private-repository checkout, and lifecycle
+  reconciliation remain independent future workflows.
+
+### GitHub repository subscription
+
+- A subscription belongs to exactly one organization, project, and environment
+  and references that organization's verified GitHub connection plus its exact
+  installation ID. Both ownership chains are PostgreSQL foreign keys.
+- The binding contains one canonical allowlisted GitHub repository, one exact
+  safe branch without a `refs/` prefix, and one validated explicit recipe plus
+  its canonical digest.
+- Active natural identity is organization, project, environment, connection,
+  repository, branch, and recipe digest. An active duplicate returns the same
+  logical resource; an inactive historical record does not block a new binding.
+- State is only `active -> inactive`. Deactivation is explicit, retained,
+  versioned, idempotent, and terminal for that aggregate.
+- Only active subscriptions can authorize webhook fanout. Installation,
+  repository, or branch mismatch creates no tenant revision and exposes no
+  tenant state to the provider response.
+- Subscription API, idempotency state, database rows, and events contain no
+  access token, private key, credential reference, or raw webhook body.
 
 ### External source revision
 
@@ -595,10 +617,13 @@ The implemented G0 boundary persists `ExternalSourceRevision` before a build
 exists. Its REST boundary enforces exact repository policy, resolves a typed
 public GitHub branch, tag, or full commit through a provider-neutral port, and
 accepts the resulting immutable object ID with
-`a3s.cloud.build-recipe.v1`. A separate public GitHub endpoint now
+`a3s.cloud.build-recipe.v1`. A separate public GitHub endpoint
 HMAC-authenticates exact raw requests and durably deduplicates typed branch
-pushes in a provider-level inbox. It deliberately stops before tenant
-subscription lookup or fanout. The implemented secure checkout port
+pushes in a provider-level inbox. A newly accepted delivery atomically selects
+only active subscriptions with the exact installation, repository, and branch,
+then creates one immutable revision/outbox fact for each matching environment
+and recipe without resolving the branch again. Replay does not re-run fanout.
+The implemented secure checkout port
 materializes an accepted public commit under bounded isolated Git
 configuration, removes `.git`, and records an immutable filesystem digest for
 replay. The implemented Artifact-owned Build service can consume a
@@ -607,13 +632,27 @@ validate and atomically receipt a local OCI layout. It does not yet coordinate
 or revalidate the checkout, publish the image, record provenance, or hand a
 digest to Workloads. A separate implemented GitHub App connection aggregate
 verifies and exclusively assigns an installation/account to one Cloud
-organization using single-use state, OAuth user authority, and PKCE, but it
-does not bind repositories or supply checkout credentials. Repository
-subscriptions, installation-token/private-repository authentication, lifecycle
-reconciliation, webhook fanout, and the complete source-to-artifact operation
-remain later G0 work.
+organization using single-use state, OAuth user authority, and PKCE. The
+separate `GithubRepositorySubscription` aggregate provides explicit repository
+authority and retained active/inactive lifecycle, but the connection still does
+not supply checkout credentials. Installation-token/private-repository
+authentication, provider lifecycle reconciliation, and the complete
+source-to-artifact operation remain later G0 work.
 
 ## 6. State models
+
+### GitHub repository subscription state
+
+```text
+active -> inactive
+```
+
+Creation is valid only beneath the same organization's verified GitHub
+connection and an existing organization/project/environment hierarchy. Active
+identity is connection, environment, canonical repository, exact branch, and
+recipe digest. `inactive` is retained and terminal for that aggregate identity;
+a later equivalent binding is a new aggregate. Only `active` participates in
+provider fanout.
 
 ### Asset state
 
@@ -756,6 +795,8 @@ carry a versioned envelope:
 identity.organization.created
 project.environment.created
 source.github-connection.created
+source.github-repository-subscription.created
+source.github-repository-subscription.deactivated
 source.revision.accepted
 asset.asset.created
 asset.release.published

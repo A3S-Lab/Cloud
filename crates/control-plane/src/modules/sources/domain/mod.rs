@@ -9,13 +9,19 @@ mod tests;
 
 pub use entities::{
     ExternalSourceRevision, GithubConnection, GithubConnectionFlow, GithubConnectionFlowError,
-    GithubConnectionFlowStage, NewExternalSourceRevision, NewGithubConnection,
+    GithubConnectionFlowStage, GithubRepositorySubscription, GithubRepositorySubscriptionStatus,
+    NewExternalSourceRevision, NewGithubConnection, NewGithubRepositorySubscription,
     NewSourceWebhookDelivery, SourceWebhookDelivery,
 };
-pub use events::{GithubConnectionCreated, SourceRevisionAccepted};
+pub use events::{
+    GithubConnectionCreated, GithubRepositorySubscriptionCreated,
+    GithubRepositorySubscriptionDeactivated, SourceRevisionAccepted,
+};
 pub use repositories::{
-    AcceptSourceRevision, CompleteGithubConnection, IGithubConnectionRepository,
-    ISourceRevisionRepository, ISourceWebhookRepository, WebhookDeliveryReservation,
+    AcceptSourceRevision, AcceptSourceWebhook, CompleteGithubConnection,
+    CreateGithubRepositorySubscription, DeactivateGithubRepositorySubscription,
+    IGithubConnectionRepository, ISourceRevisionRepository, ISourceSubscriptionRepository,
+    ISourceWebhookRepository, SourceWebhookAcceptance, WebhookDeliveryReservation,
 };
 pub use services::{
     CheckedOutSource, GithubAppAuthorizationError, GithubInstallationVerificationRequest,
