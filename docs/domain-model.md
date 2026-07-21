@@ -228,10 +228,10 @@ metadata or provider-specific JSON.
 
 Owns model and backend catalogs, immutable model-serving revisions, model-level
 routes and access-policy revisions referencing Identity principals, external
-provider targets, model-aware scaling intent, and the append-only inference
-usage ledger. It compiles model-serving intent into the common Workloads path
-and never schedules a provider process or writes Fleet, Workloads, Edge,
-Identity, or Operations tables directly.
+provider targets scoped to one environment, model-aware scaling intent, and the
+append-only inference usage ledger. It compiles model-serving intent into the
+common Workloads path and never schedules a provider process or writes Fleet,
+Workloads, Edge, Identity, Secrets, or Operations tables directly.
 
 Primary aggregates:
 
@@ -639,7 +639,9 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 - A ModelResolutionAttempt carries retry and failure state. Only a successful,
   fully verified attempt creates and seals a ModelRevision that binds the
-  immutable manifest digest. Model bytes remain in an Artifact store.
+  immutable manifest digest. An attempt executes in one environment and may
+  bind only a Secret version from that environment through a scoped Artifact
+  materialization grant. Model bytes remain in an Artifact store.
 - A BackendRevision binds a digest-pinned image, a typed compiler profile, and
   declared accelerator, model-format, network, health, and protocol support.
 - An InferenceDeployment revision references exact model and backend revisions
@@ -649,6 +651,15 @@ tables directly. Audit records are append-only and separate from event delivery.
   node-cache, Gateway-acknowledgement, or operation state.
 - An InferenceRoute alias is unique within its environment and references only
   same-tenant local deployments or explicitly registered external providers.
+- Every InferenceRoute revision binds one immutable, same-environment Edge
+  reference containing DomainClaim, logical Gateway scope, canonical hostname,
+  path and binding generation. Claim revocation fails the route closed; scope
+  migration requires a new route revision and acknowledged Edge cutover.
+- An ExternalModelProvider and its egress Workload bind only a Secret version
+  from their own environment.
+- Identity owns environment-scoped inference-key verifier hashes, issuance
+  generation, expiry and revocation. Inference access-policy revisions reference
+  credential IDs and never persist key plaintext or verifier state.
 - Route weights are bounded positive integers. Fallback conditions are explicit
   and do not include authorization or invalid-input failures by default.
 - A usage record is append-only and deduplicated by stable request/event ID.
@@ -830,8 +841,8 @@ Gateway revision.
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |
-| Model, backend, inference deployment, model route, and provider intent | PostgreSQL Inference tables |
-| Inference-key identity, audience, expiry and revocation | PostgreSQL Identity tables |
+| Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
+| Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
 | Workload replicas, placement members, accelerator reservations and claims | PostgreSQL Workloads tables |
 | Accelerator inventory and node Artifact-cache observations | Node agent plus PostgreSQL Fleet projection |
 | Raw accelerator and inference time-series metrics | Configured metrics backend |
@@ -848,6 +859,8 @@ Gateway revision.
 | Gateway private key and CSR files | Node-local managed certificate directory |
 | Secret identity and encrypted immutable versions | PostgreSQL Secret tables |
 | Workload Secret bindings and canonical references | Immutable workload revision and reference-only Runtime/Fleet state |
+| Artifact ingest attempt, immutable file manifest/digests, storage descriptor and consumed grant ID | PostgreSQL Artifacts tables |
+| Secret materialization grant identity, version, environment, attempt/Task/host/digest scope, expiry and revocation | PostgreSQL Secret tables; plaintext is process-create-only and Artifacts consumes the grant by ID |
 | Secret-rotation restart causality, derived deployment, and replay checkpoint | PostgreSQL rotation restart/reconciliation tables plus the committed outbox fact |
 | Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation |

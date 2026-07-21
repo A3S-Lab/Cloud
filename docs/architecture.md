@@ -236,6 +236,10 @@ intent, and the Workloads-owned effective autoscaling policy remain Cloud
 concepts. A typed backend compiler converts an immutable
 Inference deployment revision into an inference-managed Workload execution
 plan; neither Runtime nor the node agent branches on `vllm`, `power`, or `ray`.
+Inference route revisions persist only a validated same-environment reference to
+an Edge-owned DomainClaim, logical Gateway scope, hostname and binding
+generation. Edge remains authoritative for certificate, target-set and applied
+Gateway state.
 The complete design and release gates are in
 [`inference-plan.md`](inference-plan.md).
 

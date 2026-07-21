@@ -85,10 +85,10 @@ The capability boundary is explicit:
 
 | Context | Authoritative facts | Explicit exclusions |
 | --- | --- | --- |
-| Inference | Models and immutable revisions, backend revisions, inference deployment revisions and scaling intent, model routes and grants, provider targets, usage ledger | Effective placement/autoscaling policy, Node state, Runtime observations, effective replica state, device availability, instance endpoints, TLS state |
+| Inference | Models and immutable revisions, backend revisions, inference deployment revisions and scaling intent, model routes, immutable Edge binding references and grants, environment provider targets, usage ledger | Effective placement/autoscaling policy, Node state, Runtime observations, effective replica state, device availability, instance endpoints, TLS state |
 | Workloads | Managed Workload spec, desired replica count, effective placement/autoscaling policy and evaluator, replica/member identity, placement generation, Runtime convergence, health | Model formats, tokenizer semantics, backend catalogs, model grants |
 | Fleet | Node identity and eligibility, inventory snapshots, accelerator devices and topology, artifact-cache observations, node commands and acknowledgements | Model deployment policy, backend arguments, desired replica count |
-| Edge | Domain claims, certificates, complete target-set snapshots, Gateway revision and acknowledgement | Model catalog, replica scheduling, token usage |
+| Edge | Domain claims, logical Gateway scopes, certificates, complete target-set snapshots, Gateway revision and acknowledgement | Model catalog, replica scheduling, token usage |
 | Operations | Parent/child operation graph, progress, cancellation, terminal outcome | Copies of aggregate desired state |
 | Artifacts | Model and image descriptors, digests, provenance, registry/object-store locations | Node cache truth and mutable model aliases |
 | Secrets | Encrypted secret identities and immutable versions, delivery, rotation and revocation | Provider/model metadata and route policy |
@@ -117,19 +117,27 @@ state; inference query handlers compose those projections for users.
 
 ### 4.1 Aggregates
 
-`InferenceModel` is the tenant-scoped logical model. An immutable
+`InferenceModel` is the organization-scoped logical model. An immutable
 `ModelRevision` contains:
 
 - a typed source: Hugging Face, ModelScope, or an existing Artifact reference;
-- the resolved upstream commit/revision and canonical manifest digest;
-- file digests, model format, architecture, parameter metadata, context limit,
-  tokenizer digest, and license/trust decision.
+- the resolved upstream commit/revision, immutable Artifact reference, and
+  canonical manifest digest; and
+- model format, architecture, parameter metadata, context limit, tokenizer
+  digest, and license/trust decision.
+
+Artifacts is the sole owner of the file manifest, individual file digests and
+storage descriptors. ModelRevision references that immutable manifest and owns
+only model-serving semantics.
 
 Model bytes never enter PostgreSQL. A node-local path is not a portable model
 source and is excluded from I0. `ResolveModelRevision` starts a durable
-`ModelResolutionAttempt` Operation. Only a successful, fully verified attempt
-creates and seals a ModelRevision; failure and retry state remain in the
-attempt/Operation rather than mutating a supposedly immutable revision.
+`ModelResolutionAttempt` Operation in one selected project/environment. An
+attempt that needs a private source binds an immutable Secret version from that
+same environment; the binding and execution environment never enter the sealed
+ModelRevision. Only a successful, fully verified attempt creates and seals a
+ModelRevision; failure and retry state remain in the attempt/Operation rather
+than mutating a supposedly immutable revision.
 
 `InferenceBackend` is a catalog entry with immutable `BackendRevision` values.
 A revision binds a typed backend profile, digest-pinned OCI image, supported
@@ -149,14 +157,18 @@ status.
 
 `InferenceRoute` owns an external model name and aliases, primary and fallback
 targets, integer weights, explicit fallback conditions, and an access-policy
-revision containing references to Identity principals. A target may reference
-a local InferenceDeployment or an `ExternalModelProvider`. Edge owns the
-compiled transport target set.
+revision containing references to Identity principals. Every route revision
+also binds an immutable `EdgeRouteBindingRef` containing the same-environment
+`domain_claim_id`, logical `gateway_scope_id`, canonical hostname, path prefix,
+and binding generation. A target may reference a local InferenceDeployment or
+an `ExternalModelProvider`. Edge validates and owns the binding, compiled
+transport target set, and applied Gateway state.
 
-`ExternalModelProvider` stores an OpenAI-compatible endpoint descriptor,
-provider-model mapping, timeout and health policy, and an immutable Secret
-version reference. Secrets owns credential creation, rotation, revocation, and
-delivery; Inference only validates and replaces the bound version reference.
+`ExternalModelProvider` is environment-scoped. It stores an OpenAI-compatible
+endpoint descriptor, provider-model mapping, timeout and health policy, and an
+immutable Secret version reference from the same environment. Secrets owns
+credential creation, rotation, revocation, and delivery; Inference only
+validates and replaces the bound version reference.
 
 `InferenceUsageRecord` is an append-only business fact keyed by a stable
 request/event ID. It records tenant, principal, credential, route, selected
@@ -197,6 +209,11 @@ Initial management commands are:
 - `PublishInferenceRoute` and `RetireInferenceRoute`; and
 - `RegisterExternalModelProvider` and `BindExternalProviderSecretVersion`.
 
+`CreateInferenceKey` and `RevokeInferenceKey` are Identity-owned commands
+exposed through the Inference management facade. Inference stores grants that
+reference the resulting credential ID; it never stores the key verifier or
+plaintext secret.
+
 Queries compose authoritative readers:
 
 - deployment detail = Inference spec + Workloads replicas + Operations;
@@ -224,15 +241,18 @@ Management paths are versioned under `/api/v1`. The following table uses
 | Method and path | Scope | Result |
 | --- | --- | --- |
 | `POST ORG/inference/models` | `inference:write` | Create organization-scoped logical model |
-| `POST ORG/inference/models/{model_id}/resolution-attempts` | `inference:write` | `202` ModelResolution Operation; successful attempt seals a revision |
+| `POST ENV/inference/models/{model_id}/resolution-attempts` | `inference:write` | `202` environment-scoped materialization Operation; successful attempt seals an organization model revision |
 | `GET ORG/inference/models` | `inference:read` | Cursor-paginated model catalog |
 | `GET ORG/inference/models/{model_id}` | `inference:read` | Model and immutable revision detail |
-| `GET ORG/inference/backends` | `inference:read` | Eligible platform and organization backend revisions |
+| `GET ORG/inference/backends` | `inference:read` | Platform backend revisions eligible under organization policy |
 | `POST /platform/inference/backend-revisions` | `platform:write` | Publish a typed platform backend revision |
-| `POST ORG/inference/providers` | `inference:write` | Register organization-scoped external provider descriptor |
-| `GET ORG/inference/providers` | `inference:read` | Cursor-paginated provider catalog without Secret material |
-| `GET ORG/inference/providers/{provider_id}` | `inference:read` | Provider descriptor and bound Secret version identity |
-| `POST ORG/inference/providers/{provider_id}/secret-bindings` | `inference:write` | Bind an existing immutable Secret version; does not rotate it |
+| `POST ENV/inference/providers` | `inference:write` | Register an environment-scoped external provider descriptor |
+| `GET ENV/inference/providers` | `inference:read` | Cursor-paginated provider catalog without Secret material |
+| `GET ENV/inference/providers/{provider_id}` | `inference:read` | Provider descriptor and same-environment Secret version identity |
+| `POST ENV/inference/providers/{provider_id}/secret-bindings` | `inference:write` | Bind an existing immutable Secret version from this environment; does not rotate it |
+| `POST ENV/inference/keys` | `inference:write` | Create an Identity-owned inference key; return plaintext once through the idempotent creation receipt |
+| `GET ENV/inference/keys` | `inference:read` | List key identity, prefix, grants, expiry, generation and revocation; never plaintext or verifier |
+| `POST ENV/inference/keys/{key_id}/revoke` | `inference:write` | `202` revoke and converge an exact Gateway authorization snapshot |
 | `POST ENV/inference/deployments` | `inference:write` | `202` create/reconcile Operation |
 | `POST ENV/inference/deployments/{id}/revisions` | `inference:write` | `202` update Operation |
 | `POST ENV/inference/deployments/{id}/scale` | `inference:write` | `202` desired-replica change through Workloads |
@@ -240,8 +260,8 @@ Management paths are versioned under `/api/v1`. The following table uses
 | `POST ENV/inference/deployments/{id}/rollback` | `inference:write` | `202` rollback Operation through Workloads |
 | `GET ENV/inference/deployments` | `inference:read` | Cursor-paginated composed deployment projection |
 | `GET ENV/inference/deployments/{id}` | `inference:read` | Inference, Workloads and Operations detail |
-| `POST ENV/inference/routes` | `inference:write` | `202` route/access-policy publication Operation |
-| `POST ENV/inference/routes/{id}/revisions` | `inference:write` | `202` immutable route revision publication |
+| `POST ENV/inference/routes` | `inference:write` | `202` route/access-policy publication with a required `EdgeRouteBindingRef` |
+| `POST ENV/inference/routes/{id}/revisions` | `inference:write` | `202` immutable policy, target or Edge-binding revision publication |
 | `GET ENV/inference/routes` | `inference:read` | Cursor-paginated route and applied-state projection |
 | `GET ENV/inference/routes/{id}` | `inference:read` | Intent plus exact Edge/Gateway applied state |
 | `GET ENV/inference/usage` | `inference:read` | Cursor-paginated request records or bounded rollups |
@@ -250,7 +270,8 @@ Every management mutation requires `Idempotency-Key`, uses the standard A3S
 response wrapper, and documents synchronous validation versus `202` Operation
 semantics. Stable errors include `MODEL_REVISION_NOT_READY`,
 `BACKEND_INCOMPATIBLE`, `UNSUPPORTED_CAPABILITY`, `NO_ELIGIBLE_PLACEMENT`,
-`RESOURCE_CLAIM_CONFLICT`, `ROUTE_NOT_READY`, and `USAGE_GAP`.
+`RESOURCE_CLAIM_CONFLICT`, `EDGE_ROUTE_BINDING_INVALID`, `ROUTE_NOT_READY`,
+`INFERENCE_KEY_REVOKED`, and `USAGE_GAP`.
 
 Internal mTLS APIs are separately versioned and never accept tenant bearer
 tokens:
@@ -304,10 +325,17 @@ adding fields silently to existing closed schemas. The planned protocol set is:
 - Runtime capabilities v4;
 - Runtime unit spec v3;
 - Runtime observation v3;
+- Runtime unit record v3, request receipt v3, and exec result v2;
 - Runtime apply and inspection envelopes v2;
 - Cloud node inventory v1;
 - Cloud enrollment, heartbeat, and observation batch v2; and
 - the complete Cloud command lease/envelope/payload/result/ack family v2.
+
+These versions are the transitive schema closure, not an exhaustive list frozen
+independently. Any persisted or transported outer type that embeds a changed
+UnitSpec or Observation must receive a new version or an explicit tagged union;
+in particular UnitRecord, RequestReceipt, and ExecResult cannot carry a vNext
+nested value under their old outer schema.
 
 `NodeSessionHello` runs on every authenticated agent start and reconnect. It
 advertises all readable and writable contract versions plus the agent instance
@@ -337,15 +365,13 @@ AcceleratorRequirement {
 }
 ```
 
-After placement, infrastructure maps the accepted claim into a Runtime type
-equivalent to:
+After placement, Workloads and Fleet retain a Cloud-owned binding equivalent to:
 
 ```text
-AcceleratorBinding {
+CloudResourceClaimBinding {
   claim_id,
   claim_generation,
   placement_generation,
-  fencing_epoch,
   node_id,
   inventory_generation,
   inventory_digest,
@@ -353,23 +379,48 @@ AcceleratorBinding {
   member_id,
   runtime_unit_id,
   runtime_unit_generation,
-  exact_device_ids,
-  exact_partition_ids,
+  slots: [
+    ResourceSlotBinding {
+      kind,
+      stable_resource_id,
+      quantity_or_range,
+      slot_generation,
+      fence_token
+    }
+  ],
   topology_digest,
   claim_digest
 }
 ```
 
-Runtime apply receives only the exact binding selected and prepared by Cloud.
-Runtime capabilities advertise supported binding/enforcement modes, not
-placement preferences. Runtime observations echo allocation evidence,
-including stable device IDs, generations, fencing epoch, and claim digest.
+The node adapter maps that record into a product-neutral Runtime value:
+
+```text
+RuntimeAcceleratorBinding {
+  opaque_allocation_id,
+  binding_digest,
+  exact_device_or_partition_ids,
+  per_resource_fence_tokens
+}
+```
+
+Runtime receives no node, inventory, placement, replica, member, claim, or
+tenant field. Runtime capabilities advertise supported binding/enforcement
+modes, not placement preferences. Runtime observations echo the opaque
+allocation identity, stable resource IDs, fence tokens, and binding digest;
+Cloud maps that evidence back to its Workloads/Fleet claim record.
 
 Node command v2 adds idempotent `PrepareResourceClaim` and
-`ReleaseResourceClaim` payloads. `RuntimeApply` may reference only a claim that
-the target agent has durably prepared at the same generation and fencing epoch.
-An exact replay returns the journaled result; conflicting devices, digest,
-generation, node, or epoch fail closed.
+`ReleaseResourceClaim` payloads. The Cloud RuntimeApply command envelope may
+reference only a claim that the target agent has durably prepared at the same
+generation and per-slot fence tokens; the nested Runtime request receives only
+the opaque product-neutral binding above. Both Claim commands use
+`aggregate_id = claim_id` and
+`generation = claim_generation`. Placement generation, inventory
+generation/digest, Runtime unit generation, and the complete sorted slot list
+are payload preconditions covered by `claim_digest`; they are never substituted
+for the command generation. An exact replay returns the journaled result;
+conflicting resources, digest, generation, node, or fence token fail closed.
 
 ### 6.2 Inventory and telemetry
 
@@ -423,17 +474,21 @@ reserved_in_db
 
 `placement_generation` is advanced by the WorkloadReplica whenever its member
 assignment changes. `claim_generation` is advanced by the Workloads
-ResourceClaim aggregate for each lifecycle revision. `fencing_epoch` is
-advanced transactionally for each stable resource slot when Workloads grants a
-new claim; the node journal rejects an older epoch. Every claim binds node and
-inventory identity, replica/member identity, Runtime unit ID/generation, exact
-resources, topology, and a canonical claim digest.
+ResourceClaim aggregate for each lifecycle revision. Each stable resource slot
+has its own monotonic `slot_generation` and unguessable `fence_token`, advanced
+transactionally when Workloads grants that slot to a new claim. A claim that
+reserves multiple devices, CPU/RAM ranges, disk, or ports carries the complete
+sorted slot set; there is no ambiguous claim-wide epoch. The node journal
+rejects an older or mismatched token. Every claim binds node and inventory
+identity, replica/member identity, Runtime unit ID/generation, exact resources,
+topology, and a canonical claim digest.
 
 The reservation transaction creates `reserved_in_db`. Persisting the Fleet
 prepare command advances it to `preparing_on_agent`; only the exact command
 acknowledgement advances it to `prepared_on_agent`. Dispatching Runtime apply is
 not a commit. `bound_to_runtime_unit` requires a matching Runtime observation or
-inspection that proves unit, generation, claim digest, and allocation evidence.
+inspection that proves unit, generation, opaque binding digest, and allocation
+evidence; Cloud verifies those values through its claim-digest mapping.
 After a crash between provider create and acknowledgement, reconciliation
 inspects and adopts that exact unit before retrying or releasing anything.
 Prepared-TTL cleanup applies only to a never-bound claim and reconciles both
@@ -471,7 +526,7 @@ A prepared lease may expire only before Runtime apply and only under the
 bounded clock-skew contract. A binding committed to a Runtime unit does not
 expire because a wall clock or control-plane heartbeat elapsed. Active resource
 uniqueness is removed only after an exact Agent release acknowledgement,
-same-epoch provider `NotFound` evidence, or a trusted Compute-provider
+same-slot-generation provider `NotFound` evidence, or a trusted Compute-provider
 power-off/instance-generation fence. An uncertainty timeout alone is not
 fencing evidence.
 
@@ -485,6 +540,17 @@ proves that the old generation can no longer use the device.
 Model source resolution produces an immutable file manifest before placement.
 Private source credentials use Secret references and never enter model digests,
 Flow history, events, command journals, logs, or cache keys.
+
+A private resolution request selects one project/environment and an immutable
+Secret version from that same environment. The existing E0 Workload binding
+does not implicitly authorize an Artifact task. I0.2a adds an audited Secrets
+port that validates organization/project/environment, source host, attempt ID,
+Task ID, expiry, and destination Artifact digest, then issues a one-time
+materialization grant. The Task receives the secret only at its process-create
+boundary; the grant, temporary file/memory and partial download are revoked or
+removed on success, cancellation, timeout, and crash recovery. This extension
+must pass the E0 plaintext-durability and redaction fixtures before private
+resolution is enabled.
 
 I0 resolves private upstream sources through a bounded Artifact-ingestion Task
 and copies verified bytes into the Cloud-owned Artifact store. Nodes do not
@@ -614,6 +680,23 @@ Inference owns the first layer, including model rewrite and fallback order.
 Edge owns the second layer, including replica health, load-balancing weight,
 cluster-private endpoint, source generation, and per-Gateway acknowledgement.
 
+Every InferenceRoute revision stores an immutable `EdgeRouteBindingRef`. H0.2
+introduces its logical `gateway_scope_id` so a scope can move from today's
+node-keyed Gateway to a dedicated or replicated Gateway set without changing
+Inference ownership. Publication validates that the DomainClaim, canonical
+hostname, `/v1` path prefix, logical scope, route, and every local/provider
+target belong to the same organization/project/environment, that the verified
+claim covers the hostname, and that no Edge owner conflicts. Inference never
+stores a Gateway node ID or certificate state.
+
+DomainClaim revocation or scope loss makes Edge publish a target-free snapshot
+and makes the composed route status unavailable only after the exact
+acknowledgement. Edge does not write the Inference aggregate, and Inference never
+silently selects another hostname or scope. Migration creates a new
+InferenceRoute revision with a new binding generation, proves the new scope,
+then retires the old binding through an acknowledged cutover; failure preserves
+the prior binding or reports an explicit unavailable state.
+
 During update, a target set may contain the active prior revision and a verified
 candidate revision under one explicit rollout generation. The old revision
 remains eligible until candidate health, traffic weight, and the complete
@@ -677,25 +760,41 @@ shared global hostname must use an unambiguous organization-qualified model
 name and is outside I0.
 
 Management tokens and inference keys are separate credentials and audiences.
-Management scopes include `inference:read`, `inference:write`, and
-`inference-backend:write`; they cannot invoke a model. An inference key has the
-`cloud-inference` audience, owner and consumer organization, expiration,
-revocation state, allowed environment/model aliases, allowed endpoints, and an
-`invoke` grant; it cannot call management APIs.
+Management scopes are `inference:read` and `inference:write`; publishing a
+platform BackendRevision uses the existing `platform:write` scope. Management
+tokens cannot invoke a model.
 
-I0.2b initially supports organization-owned inference keys. Human, group, and
-fine-grained principal grants require the C0 membership/principal sub-gate and
-reuse Identity rather than creating another user model. Request authorization
-evaluates hostname/tenant, credential audience and revocation, route visibility,
+An inference key is an environment-owned Identity credential with the
+`cloud-inference` audience, stable credential ID, non-secret prefix,
+memory-hard verifier hash plus algorithm parameters, issuance generation, expiration,
+revocation state, and owner organization. I0.2b sets the consumer organization
+to the owner; cross-organization delegation waits for the C0 principal gate.
+InferenceRoute access-policy revisions reference the credential ID and own the
+allowed aliases, endpoints, limits, and `invoke` grant. The key cannot call a
+management API.
+
+Creation generates at least 256 bits of random secret and returns it only in the
+create response or an exact idempotent replay within a bounded encrypted
+creation-receipt lifetime. List/get, events, audit, logs, Flow history and
+Gateway snapshots never contain plaintext. Receipt expiry never regenerates or
+reveals an existing key; the caller creates a replacement and then revokes the
+old credential.
+
+Request authorization evaluates hostname/tenant, credential audience,
+environment, generation, expiry and revocation, route visibility,
 model/endpoint grant, then rate-limit policy. `/v1/models` returns only granted
 aliases. Unknown and unauthorized aliases use the same non-enumerating 404
-shape and bounded timing policy.
+shape and bounded timing policy. Human, group, and fine-grained principal grants
+reuse C0 Identity rather than creating another user model.
 
-Revocation blocks the next request and stream reconnect. An already established
-stream may finish within its route's bounded total timeout; emergency route or
-key disable removes new traffic and may invoke an explicitly audited abort
-policy. Gateway authorization fails closed when its verifier/grant snapshot is
-expired or unavailable.
+Edge projects a complete, expiring Gateway authorization snapshot containing
+only credential IDs/prefixes, verifier hashes, generations, grants and limits.
+A revoke command commits the Identity fact immediately and completes its `202`
+Operation only after every eligible Gateway acknowledges an exact snapshot that
+cannot accept that generation. A Gateway with an expired or unavailable
+verifier/grant snapshot fails closed. An already established stream may finish
+within its bounded total timeout; emergency route or key disable may invoke an
+explicitly audited abort policy.
 
 The immutable InferenceRoute access-policy revision owns typed request,
 concurrency, token-budget, and rate-limit policy. One Gateway can enforce an
@@ -707,13 +806,14 @@ billing entitlement.
 ### 10.4 External provider targets
 
 ExternalModelProvider is deferred to I0.2d, after local routing, authorization,
-and durable usage pass. It uses one typed, inference-managed egress Workload.
-The egress adapter receives an immutable Secret version through the E0 delivery
-boundary, strips the client credential, injects target-specific authorization
-headers, rewrites the model name, applies provider timeout policy, and emits the
-same attempt/usage protocol as a local target. Gateway snapshots contain only
-the internal egress endpoint and provider target ID. Provider plaintext never
-enters ACL text, usage records, access logs, or traces.
+and durable usage pass. The provider, immutable Secret version, route and typed
+inference-managed egress Workload must share one environment. The egress adapter
+uses the verified E0 Workload Secret boundary, strips the client credential,
+injects target-specific authorization headers, rewrites the model name, applies
+provider timeout policy, and emits the same attempt/usage protocol as a local
+target. Gateway snapshots contain only the internal egress endpoint and
+provider target ID. Provider plaintext never enters ACL text, usage records,
+access logs, or traces.
 
 ### 10.5 Durable usage and observability
 
@@ -768,21 +868,23 @@ prerequisite is already satisfied; the logical order and ownership are:
 
 | Slice | Owner | Tables or changes |
 | --- | --- | --- |
-| Protocol negotiation | Fleet | session hello/epoch, readable/writable contract sets, selected versions, downgrade guard, nested v2 command/lease/result/ack schemas, and expanded command-kind constraints |
+| Protocol negotiation | Fleet | session hello/epoch, readable/writable contract sets, selected versions, downgrade guard, the complete Runtime UnitSpec/Observation outer-schema closure, nested Cloud v2 command/lease/result/ack schemas, and expanded command-kind constraints |
 | Resource inventory | Fleet | immutable inventory snapshots, general capacity and port ranges, accelerator devices/links, cache observations, generation/digest CAS |
-| Artifact foundation | Artifacts | immutable file manifests, ingest attempts, storage descriptors, scoped materialization grants and revocation |
+| Artifact extension | Artifacts | immutable file manifests, environment-scoped ingest attempts, storage descriptors and the consumed Secret grant ID |
+| Secret materialization grants | Secrets | Secret version, environment, attempt/Task/host/destination-digest scope, expiry, consumption and revocation; Artifacts consumes by ID through a port |
 | Managed Workload foundation | Workloads | owner reference, one durable replica/member, protected mutation and replacement of the current single-deployment uniqueness rule |
 | Replica/group foundation | Workloads | replica sets, placement groups/members, rollout generation and private endpoint/port reservations |
-| Resource claims | Workloads | full claim state machine, reservation members for all hard resources, inventory/generation/fencing binding, partial uniqueness and orphan state; Fleet dispatches commands |
-| Inference catalog | Inference | models, model revisions, backends, backend revisions, external providers |
-| Inference serving | Inference | deployments/revisions, routes/aliases, two-level targets, access-policy revisions, model/endpoint grants referencing Identity credential IDs, and typed rate limits |
-| Inference credentials | Identity | credential audience, owner/consumer organization, expiry/revocation and non-secret key identity |
+| Resource claims | Workloads | full claim state machine, reservation members for all hard resources, per-slot generations/fence tokens, inventory and claim-generation binding, partial uniqueness and orphan state; Fleet dispatches commands |
+| Inference catalog | Inference | organization models/revisions and platform backend/revision references |
+| Inference serving | Inference | environment deployments/revisions/providers, routes/aliases, immutable EdgeRouteBinding references, two-level targets, access-policy revisions, credential grants and typed rate limits |
+| Inference credentials | Identity | environment ownership, audience, prefix, verifier hash/algorithm parameters, issuance generation, expiry/revocation, encrypted idempotency receipt and Gateway projection generation |
 | Usage | Inference | append-only request/attempt events, Gateway epoch/sequence cursors, gap state, time partitions, retention and rebuildable rollups |
 | Edge target sets | Edge | source/rollout owner reference, prior/candidate target-set revision/digest, private endpoints, per-Gateway ack/readiness |
 | Autoscaling | Workloads | immutable effective policy, evaluator lease, decision record, stabilization/cooldown state and desired-count mutation |
 | Operation composition | Operations | parent/child operation relations and workflow identity |
 
-Every tenant row carries `organization_id`. Revision keys are unique by
+Every tenant row carries `organization_id`; environment-owned rows also carry
+and constrain `project_id` and `environment_id`. Revision keys are unique by
 aggregate and generation. Closed typed specifications store a canonical digest.
 Gang reservations and all members commit in one PostgreSQL transaction. Raw
 high-frequency metrics do not enter these tables.
@@ -815,14 +917,17 @@ high-frequency metrics do not enter these tables.
   inference-managed Workload, and a real backend health/inference probe.
 - Prove source failure, corrupt/partial cache, incompatible backend, OOM, stop,
   and process restart without a public route or duplicate unit.
+- Prove a private-source Task cannot use a cross-environment Secret, replay an
+  expired materialization grant, or leave credential/plaintext state durable.
 - Keep Power unavailable in this slice; add it only after it passes the same
   backend conformance profile in I0.5.
 
 ### I0.2b: OpenAI data plane, model route, and authorization
 
 - Depend on H0.2 cardinality-one Edge target-set/private-endpoint projection.
-- Land Gateway inference dispatch, the closed endpoint matrix, organization
-  inference keys, model/endpoint grants, typed limits, TLS, and streaming.
+- Land Gateway inference dispatch, the closed endpoint matrix,
+  environment-owned inference keys, exact EdgeRouteBinding validation,
+  model/endpoint grants, typed limits, TLS, and streaming.
 - Prove filtered model listing, non-enumerating denial, revocation, request
   bounds, SSE framing, pre-first-byte fallback, and exact route acknowledgement.
 
@@ -836,8 +941,9 @@ high-frequency metrics do not enter these tables.
 
 ### I0.2d: external provider targets
 
-- Land only after I0.2b/I0.2c. Add the typed inference egress Workload, Secret
-  version binding, model rewrite, header isolation, provider fallback and usage.
+- Land only after I0.2b/I0.2c. Add the same-environment typed inference egress
+  Workload and Secret-version binding, model rewrite, header isolation,
+  provider fallback and usage.
 - Prove client and provider credentials cannot cross, rotate, leak, or select a
   cross-tenant provider target.
 
@@ -914,7 +1020,8 @@ New crash points include:
 14. client response completes before terminal usage spool append;
 15. usage batch send before contiguous-sequence acknowledgement;
 16. serving-node loss, Gateway node loss, and old fenced node still running; and
-17. fencing-epoch advance before the old node reconnects.
+17. per-resource slot generation/fence-token advance before the old node
+    reconnects.
 
 Each test asserts one authoritative rollout generation, only explicitly allowed
 prior/candidate revisions, no duplicate claim, no stale target, no false
@@ -934,7 +1041,8 @@ The recommended merge order is:
 6. Inference domain/application skeleton and model/backend repositories;
 7. I0.2a vLLM backend health without a public route;
 8. H0.2 cardinality-one target set/private endpoint, then I0.2b Gateway
-   dispatch, organization inference keys, authorization and streaming;
+   dispatch, EdgeRouteBinding, environment inference keys, authorization and
+   streaming;
 9. I0.2c durable usage spool/ledger, observability, update and rollback;
 10. I0.2d external-provider egress and Secret-version replacement;
 11. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
