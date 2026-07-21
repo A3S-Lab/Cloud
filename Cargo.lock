@@ -151,8 +151,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-flow"
-version = "0.4.1"
-source = "git+https://github.com/A3S-Lab/Flow.git?rev=d11cc9ab1e859b23c5108882158ade8d296d93ab#d11cc9ab1e859b23c5108882158ade8d296d93ab"
+version = "0.4.2"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=ca17ae78968370eacd97992d9202dabf1cd82a2e#ca17ae78968370eacd97992d9202dabf1cd82a2e"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1024,7 +1024,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2387,7 +2387,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2736,7 +2736,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3393,10 +3393,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
