@@ -31,6 +31,7 @@ use a3s_runtime::{
 use artifacts::DockerConformanceArtifacts;
 use fixture::{connect_driver, DockerConformanceFixture};
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -45,8 +46,9 @@ async fn real_docker_passes_all_advertised_runtime_profiles() {
         &Uuid::now_v7().simple().to_string()[..12]
     );
     let node_id = Uuid::now_v7();
+    let artifact_state_root = resolve_artifact_state_root(state_directory.path());
     let artifacts = Arc::new(
-        DockerConformanceArtifacts::new(state_directory.path(), node_id)
+        DockerConformanceArtifacts::new(&artifact_state_root, node_id)
             .expect("create Docker conformance Artifact manager"),
     );
     let driver = Arc::new(
@@ -94,8 +96,9 @@ async fn real_docker_exercises_advertised_optional_profile_behavior() {
         &Uuid::now_v7().simple().to_string()[..12]
     );
     let node_id = Uuid::now_v7();
+    let artifact_state_root = resolve_artifact_state_root(state_directory.path());
     let artifacts = Arc::new(
-        DockerConformanceArtifacts::new(state_directory.path(), node_id)
+        DockerConformanceArtifacts::new(&artifact_state_root, node_id)
             .expect("create Docker profile Artifact manager"),
     );
     let driver = Arc::new(
@@ -139,6 +142,32 @@ fn require_docker_gate() {
         Ok("1"),
         "the dedicated Docker conformance gate must set A3S_CLOUD_TEST_DOCKER=1"
     );
+}
+
+fn resolve_artifact_state_root(default: &Path) -> PathBuf {
+    let Some(configured) = std::env::var_os("A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT") else {
+        return default.to_path_buf();
+    };
+    let configured = PathBuf::from(configured);
+    assert!(
+        configured.is_absolute(),
+        "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must be absolute"
+    );
+    let canonical = std::fs::canonicalize(&configured).unwrap_or_else(|error| {
+        panic!(
+            "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must exist: {}: {error}",
+            configured.display()
+        )
+    });
+    assert!(
+        canonical.is_dir(),
+        "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must be a directory"
+    );
+    assert_eq!(
+        canonical, configured,
+        "A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT must already be canonical"
+    );
+    configured
 }
 
 fn optional_probe_profiles() -> Vec<RuntimeConformanceProfile> {

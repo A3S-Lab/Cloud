@@ -165,8 +165,8 @@ runtime=$source_root/crates/runtime
 [[ -d $runtime ]] || die "Runtime worktree is missing: $runtime"
 [[ $(git -C "$cloud" rev-parse HEAD) == "$cloud_sha" ]] || die "Cloud worktree is not at $cloud_sha"
 [[ $(git -C "$runtime" rev-parse HEAD) == "$runtime_sha" ]] || die "Runtime worktree is not at $runtime_sha"
-[[ -z $(git -C "$cloud" status --porcelain=v1) ]] || die "Cloud worktree is dirty"
-[[ -z $(git -C "$runtime" status --porcelain=v1) ]] || die "Runtime worktree is dirty"
+[[ -z $(GIT_OPTIONAL_LOCKS=0 git -C "$cloud" status --porcelain=v1) ]] || die "Cloud worktree is dirty"
+[[ -z $(GIT_OPTIONAL_LOCKS=0 git -C "$runtime" status --porcelain=v1) ]] || die "Runtime worktree is dirty"
 docker info >/dev/null 2>&1 || die "the host Docker daemon is unavailable"
 docker image inspect "$PROVIDER_IMAGE" >/dev/null || die "the pinned Docker provider image is not present"
 docker image inspect "$REGISTRY_IMAGE" >/dev/null || die "the pinned registry image is not present"
@@ -183,6 +183,8 @@ else
 fi
 suffix=$(printf '%s' "$run_id-$$-$RANDOM" | sha256sum | cut -c1-12)
 provider_root=/var/tmp/a3s-runtime-provider/$run_id
+artifact_state_root=$provider_root/artifact-state
+cargo_home=$provider_root/cargo-home
 data_dir=$provider_root/data
 socket_dir=$provider_root/socket
 disk_image=$provider_root/provider-data.ext4
@@ -194,6 +196,7 @@ nats=a3s-runtime-nats-$suffix
 network=a3s-runtime-provider-net-$suffix
 provider_host=unix://$socket_dir/docker.sock
 secret_memory_dir=""
+provider_artifact_mount=()
 provider_secret_mount=()
 if [[ -z $evidence ]]; then
     if [[ $suite == provider ]]; then
@@ -217,12 +220,15 @@ loop_device=""
 ttl_pid=""
 cleanup_failed=0
 gate_completed=0
-mkdir -p "$evidence" "$provider_root" "$data_dir" "$socket_dir" "$target_dir" "$registry_data"
+mkdir -p "$evidence" "$provider_root" "$artifact_state_root" "$cargo_home" \
+    "$data_dir" "$socket_dir" "$target_dir" "$registry_data"
+chmod 700 "$provider_root" "$artifact_state_root" "$cargo_home"
 secret_memory_dir=/dev/shm/a3s-cloud/$run_id
 mkdir -p "$secret_memory_dir"
 chmod 700 "$secret_memory_dir"
 [[ $(findmnt -rn -T "$secret_memory_dir" -o FSTYPE) == tmpfs ]] ||
     die "Cloud Secret material directory is not tmpfs-backed"
+provider_artifact_mount=(--mount "type=bind,source=$artifact_state_root,target=$artifact_state_root")
 provider_secret_mount=(--mount "type=bind,source=$secret_memory_dir,target=$secret_memory_dir")
 exec > >(tee -a "$evidence/runner.log") 2>&1
 
@@ -363,6 +369,17 @@ cleanup_resources() {
                 log "cleanup-error=secret-memory-directory-remains"
             fi
         fi
+        if [[ -d $artifact_state_root ]]; then
+            find "$artifact_state_root" -type f -print | sort \
+                >"$evidence/artifact-files-before-cleanup.paths"
+            rm -rf "$artifact_state_root"
+        else
+            : >"$evidence/artifact-files-before-cleanup.paths"
+        fi
+        if [[ -e $artifact_state_root ]]; then
+            cleanup_failed=1
+            log "cleanup-error=artifact-state-directory-remains"
+        fi
         mountpoint -q "$data_dir" || rm -rf "$provider_root"
 
         docker ps -aq --filter "label=a3s.runtime.conformance.run-id=$run_id" | sort >"$evidence/target-containers-after.ids"
@@ -427,27 +444,29 @@ printf '%s\n' "$NATS_IMAGE" >"$evidence/nats-image.txt"
 printf '%s\n' "$WORKLOAD_IMAGE" >"$evidence/workload-image.txt"
 printf '%s\n' "$source_root" >"$evidence/source-root.txt"
 printf '%s\n' "$target_dir" >"$evidence/cargo-target-dir.txt"
+printf '%s\n' "$cargo_home" >"$evidence/cargo-home.txt"
+printf '%s\n' "$artifact_state_root" >"$evidence/artifact-state-root.txt"
 printf '%s\n' "$secret_memory_dir" >"$evidence/secret-memory-dir.txt"
-git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-before.txt"
-git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-before.txt"
+GIT_OPTIONAL_LOCKS=0 git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-before.txt"
+GIT_OPTIONAL_LOCKS=0 git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-before.txt"
 record_host_inventory before
 [[ -z $(docker ps -aq --filter "label=a3s.runtime.conformance.run-id=$run_id") ]] || die "run ID already owns containers"
 
 log "phase=build-start"
 if [[ $suite == provider ]]; then
     timeout --signal=TERM --kill-after=30s 1200s \
-        env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
+        env PATH="$cargo_path" CARGO_HOME="$cargo_home" CARGO_TARGET_DIR="$target_dir" \
         "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
         -p a3s-cloud-node-agent --test docker_conformance --no-run \
         2>&1 | tee "$evidence/cargo-build.log"
 else
     timeout --signal=TERM --kill-after=30s 1200s \
-        env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
+        env PATH="$cargo_path" CARGO_HOME="$cargo_home" CARGO_TARGET_DIR="$target_dir" \
         "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
         -p a3s-cloud-control-plane --test postgres_integration --no-run \
         2>&1 | tee "$evidence/cargo-postgres-build.log"
     timeout --signal=TERM --kill-after=30s 1200s \
-        env PATH="$cargo_path" CARGO_TARGET_DIR="$target_dir" \
+        env PATH="$cargo_path" CARGO_HOME="$cargo_home" CARGO_TARGET_DIR="$target_dir" \
         "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
         -p a3s-cloud-control-plane --test docker_deployment --no-run \
         2>&1 | tee "$evidence/cargo-docker-deployment-build.log"
@@ -552,6 +571,7 @@ docker run -d --pull=never --name "$provider" --network "container:$keeper" \
     --privileged --cpus 2 --memory 4g --pids-limit 2048 \
     --mount "type=bind,source=$data_dir,target=/var/lib/docker" \
     --mount "type=bind,source=$socket_dir,target=/run/a3s-provider" \
+    "${provider_artifact_mount[@]}" \
     "${provider_secret_mount[@]}" \
     --entrypoint /bin/sh "$PROVIDER_IMAGE" \
     -ceu '
@@ -643,7 +663,9 @@ if [[ $suite == provider ]]; then
             A3S_CLOUD_TEST_DOCKER=1 \
             A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
             A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
+            A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT="$artifact_state_root" \
             A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
+            CARGO_HOME="$cargo_home" \
             CARGO_TARGET_DIR="$target_dir" \
             "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
                 -p a3s-cloud-node-agent \
@@ -674,6 +696,7 @@ else
             A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER=1 \
             A3S_CLOUD_TEST_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@$postgres_ip:5432/postgres" \
             A3S_CLOUD_TEST_NATS_URL="nats://$nats_ip:4222" \
+            CARGO_HOME="$cargo_home" \
             CARGO_TARGET_DIR="$target_dir" \
             "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
                 -p a3s-cloud-control-plane \
@@ -690,6 +713,7 @@ else
             A3S_CLOUD_TEST_DOCKER=1 \
             A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
             A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
+            CARGO_HOME="$cargo_home" \
             CARGO_TARGET_DIR="$target_dir" \
             "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
                 -p a3s-cloud-control-plane \
@@ -730,8 +754,9 @@ write_deltas provider-containers "$evidence/provider-containers-before.ids" "$ev
 write_deltas provider-volumes "$evidence/provider-volumes-before.names" "$evidence/provider-volumes-after.names" names names
 write_deltas provider-network-ids "$evidence/provider-networks-before.ids" "$evidence/provider-networks-after.ids" ids ids
 write_deltas provider-networks "$evidence/provider-networks-before.semantic" "$evidence/provider-networks-after.semantic" semantic semantic
-git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-after.txt"
-git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-after.txt"
+find "$artifact_state_root" -type f -print | sort >"$evidence/artifact-files-after-test.paths"
+GIT_OPTIONAL_LOCKS=0 git -C "$cloud" status --porcelain=v1 >"$evidence/cloud-dirty-after.txt"
+GIT_OPTIONAL_LOCKS=0 git -C "$runtime" status --porcelain=v1 >"$evidence/runtime-dirty-after.txt"
 
 if [[ $suite == provider ]]; then
     [[ $test_status -eq 0 ]] || die "Docker Runtime certification test failed"
@@ -745,6 +770,7 @@ for empty_file in \
     "$evidence/provider-volumes-removed.names" \
     "$evidence/provider-networks-added.semantic" \
     "$evidence/provider-networks-removed.semantic" \
+    "$evidence/artifact-files-after-test.paths" \
     "$evidence/cloud-dirty-after.txt" \
     "$evidence/runtime-dirty-after.txt"; do
     [[ ! -s $empty_file ]] || die "post-test inventory changed: $empty_file"
