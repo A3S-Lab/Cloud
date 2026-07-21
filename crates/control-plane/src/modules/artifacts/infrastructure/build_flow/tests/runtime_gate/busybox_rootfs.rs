@@ -67,8 +67,12 @@ pub(super) fn validate_busybox_rootfs(bytes: &[u8]) -> Result<(), Box<dyn Error>
             let target = entry.link_name()?.ok_or_else(|| {
                 std::io::Error::other(format!("BusyBox rootfs link {path:?} omits its target"))
             })?;
+            let known_runtime_link = path == Path::new("etc/mtab")
+                && entry_type.is_symlink()
+                && target == Path::new("/proc/mounts");
             require(
-                archive_link_is_internal(&path, &target, entry_type.is_symlink()),
+                known_runtime_link
+                    || archive_link_is_internal(&path, &target, entry_type.is_symlink()),
                 format!("BusyBox rootfs link {path:?} escapes its root"),
             )?;
             if path == Path::new("lib64") && entry_type.is_symlink() && target == Path::new("lib") {
@@ -165,14 +169,20 @@ fn archive_link_is_internal(path: &Path, target: &Path, relative_to_parent: bool
 
 #[test]
 fn fixture_is_bounded_and_cannot_escape() -> Result<(), Box<dyn Error>> {
-    validate_busybox_rootfs(&busybox_rootfs_fixture("lib")?)?;
-    let error = validate_busybox_rootfs(&busybox_rootfs_fixture("../../escape")?)
+    validate_busybox_rootfs(&busybox_rootfs_fixture("lib", "/proc/mounts")?)?;
+    let error = validate_busybox_rootfs(&busybox_rootfs_fixture("../../escape", "/proc/mounts")?)
         .expect_err("escaping BusyBox rootfs link must fail");
+    assert!(error.to_string().contains("escapes its root"));
+    let error = validate_busybox_rootfs(&busybox_rootfs_fixture("lib", "/proc/self/mounts")?)
+        .expect_err("unrecognized absolute BusyBox rootfs link must fail");
     assert!(error.to_string().contains("escapes its root"));
     Ok(())
 }
 
-fn busybox_rootfs_fixture(lib64_target: &str) -> Result<Vec<u8>, std::io::Error> {
+fn busybox_rootfs_fixture(
+    lib64_target: &str,
+    mtab_target: &str,
+) -> Result<Vec<u8>, std::io::Error> {
     let mut builder = tar::Builder::new(Vec::new());
     append_fixture_file(&mut builder, "bin/[", &fixture_amd64_elf())?;
     append_fixture_link(&mut builder, "bin/busybox", "bin/[", tar::EntryType::Link)?;
@@ -183,6 +193,12 @@ fn busybox_rootfs_fixture(lib64_target: &str) -> Result<Vec<u8>, std::io::Error>
     )?;
     append_fixture_file(&mut builder, "lib/libc.so.6", &fixture_amd64_elf())?;
     append_fixture_link(&mut builder, "lib64", lib64_target, tar::EntryType::Symlink)?;
+    append_fixture_link(
+        &mut builder,
+        "etc/mtab",
+        mtab_target,
+        tar::EntryType::Symlink,
+    )?;
     builder.into_inner()
 }
 
