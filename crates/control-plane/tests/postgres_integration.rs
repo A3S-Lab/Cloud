@@ -987,7 +987,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 22);
+    assert_eq!(outbox_events, 26);
     assert_eq!(idempotency_records, 19);
 
     let operation_id = OperationId::new();
