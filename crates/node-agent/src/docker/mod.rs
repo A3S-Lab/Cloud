@@ -26,7 +26,15 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 const OCI_IMAGE_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
+const OCI_IMAGE_INDEX: &str = "application/vnd.oci.image.index.v1+json";
 const DOCKER_IMAGE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
+const DOCKER_MANIFEST_LIST: &str = "application/vnd.docker.distribution.manifest.list.v2+json";
+const DOCKER_ARTIFACT_MEDIA_TYPES: [&str; 4] = [
+    OCI_IMAGE_MANIFEST,
+    OCI_IMAGE_INDEX,
+    DOCKER_IMAGE_MANIFEST,
+    DOCKER_MANIFEST_LIST,
+];
 
 pub struct DockerRuntimeDriver {
     provider_id: ProviderId,
@@ -197,7 +205,10 @@ impl RuntimeDriver for DockerRuntimeDriver {
             provider_id: self.provider_id.clone(),
             provider_build: self.provider_build().await?,
             unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
-            artifact_media_types: vec![OCI_IMAGE_MANIFEST.into(), DOCKER_IMAGE_MANIFEST.into()],
+            artifact_media_types: DOCKER_ARTIFACT_MEDIA_TYPES
+                .iter()
+                .map(|media_type| (*media_type).into())
+                .collect(),
             isolation_levels: vec![IsolationLevel::Container],
             network_modes: vec![
                 NetworkMode::None,
@@ -305,5 +316,23 @@ fn sanitize_docker_error(message: &str) -> String {
         "Docker operation failed".into()
     } else {
         value.chars().take(16 * 1024).collect()
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+
+    #[test]
+    fn docker_declares_digest_pinned_single_and_multi_platform_images() {
+        assert_eq!(
+            DOCKER_ARTIFACT_MEDIA_TYPES,
+            [
+                "application/vnd.oci.image.manifest.v1+json",
+                "application/vnd.oci.image.index.v1+json",
+                "application/vnd.docker.distribution.manifest.v2+json",
+                "application/vnd.docker.distribution.manifest.list.v2+json",
+            ]
+        );
     }
 }

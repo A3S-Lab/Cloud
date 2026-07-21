@@ -1,4 +1,5 @@
 use crate::infrastructure::FlowOperationCoordinator;
+use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::edge::GatewayCertificateReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
@@ -12,6 +13,7 @@ pub struct ControlPlane {
 }
 
 pub(crate) struct ControlPlaneWorkers {
+    build_run_reconciler: Option<BuildRunReconciler>,
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
@@ -25,6 +27,7 @@ pub(crate) struct ControlPlaneWorkers {
 impl ControlPlaneWorkers {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
+        build_run_reconciler: Option<BuildRunReconciler>,
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
@@ -35,6 +38,7 @@ impl ControlPlaneWorkers {
         node_control_server: Option<NodeControlServer>,
     ) -> Self {
         Self {
+            build_run_reconciler,
             operation_coordinator,
             gateway_certificate_reconciler,
             secret_rotation_restart_reconciler,
@@ -72,6 +76,9 @@ impl ControlPlane {
         let (failure_sender, mut failure_receiver) =
             tokio::sync::mpsc::unbounded_channel::<BootError>();
         let mut workers = Vec::new();
+        if let Some(reconciler) = self.workers.build_run_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
         if let Some(reconciler) = self.workers.gateway_certificate_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }

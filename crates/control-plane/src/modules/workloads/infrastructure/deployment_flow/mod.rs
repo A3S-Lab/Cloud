@@ -16,7 +16,7 @@ use std::time::Duration;
 
 pub const DEPLOYMENT_WORKFLOW_NAME: &str = "cloud.deployment";
 pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "2";
-const LEGACY_DEPLOYMENT_WORKFLOW_VERSION: &str = "1";
+pub const LEGACY_DEPLOYMENT_WORKFLOW_VERSION: &str = "1";
 pub const STOP_WORKFLOW_NAME: &str = "cloud.workload.stop";
 pub const STOP_WORKFLOW_VERSION: &str = "1";
 

@@ -39,6 +39,7 @@ serde_json.workspace = true
 serde_urlencoded.workspace = true
 sha2.workspace = true
 subtle.workspace = true
+tar.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true

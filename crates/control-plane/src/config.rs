@@ -115,6 +115,32 @@ pub struct DeploymentsConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildsConfig {
+    pub reconcile_interval_ms: u64,
+    pub builder_uri: String,
+    pub builder_digest: String,
+    pub builder_media_type: String,
+    pub buildkit_socket_volume_id: String,
+    pub input_staging_dir: String,
+    pub input_max_entries: usize,
+    pub input_max_bytes: u64,
+    pub output_staging_dir: String,
+    pub output_max_entries: usize,
+    pub output_max_expanded_bytes: u64,
+    pub oci_max_blobs: usize,
+    pub oci_max_bytes: u64,
+    pub command_ttl_ms: u64,
+    pub runtime_execution_timeout_ms: u64,
+    pub observation_poll_ms: u64,
+    pub convergence_timeout_ms: u64,
+    pub cleanup_timeout_ms: u64,
+    pub cpu_millis: u64,
+    pub memory_bytes: u64,
+    pub pids: u32,
+    pub output_max_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryConfig {
     pub request_timeout_ms: u64,
     pub insecure_hosts: Vec<String>,
@@ -132,6 +158,10 @@ pub struct SourcesConfig {
     pub github_app_private_key_env: String,
     pub github_app_callback_url: String,
     pub github_connection_state_ttl_ms: u64,
+    pub checkout_dir: String,
+    pub checkout_timeout_ms: u64,
+    pub checkout_max_files: usize,
+    pub checkout_max_bytes: u64,
     pub allowed_repositories: Vec<String>,
     pub denied_repositories: Vec<String>,
 }
@@ -267,6 +297,7 @@ pub struct CloudConfig {
     pub events: EventsConfig,
     pub operations: OperationsConfig,
     pub deployments: DeploymentsConfig,
+    pub builds: BuildsConfig,
     pub registry: RegistryConfig,
     pub sources: SourcesConfig,
     pub logs: LogsConfig,
@@ -346,6 +377,34 @@ impl CloudConfig {
                 "cleanup_timeout_ms",
             ],
         )?;
+        let builds = one_block(&document, "builds")?;
+        validate_block(
+            builds,
+            &[
+                "reconcile_interval_ms",
+                "builder_uri",
+                "builder_digest",
+                "builder_media_type",
+                "buildkit_socket_volume_id",
+                "input_staging_dir",
+                "input_max_entries",
+                "input_max_bytes",
+                "output_staging_dir",
+                "output_max_entries",
+                "output_max_expanded_bytes",
+                "oci_max_blobs",
+                "oci_max_bytes",
+                "command_ttl_ms",
+                "runtime_execution_timeout_ms",
+                "observation_poll_ms",
+                "convergence_timeout_ms",
+                "cleanup_timeout_ms",
+                "cpu_millis",
+                "memory_bytes",
+                "pids",
+                "output_max_bytes",
+            ],
+        )?;
         let registry = one_block(&document, "registry")?;
         validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
         let sources = one_block(&document, "sources")?;
@@ -362,6 +421,10 @@ impl CloudConfig {
                 "github_app_private_key_env",
                 "github_app_callback_url",
                 "github_connection_state_ttl_ms",
+                "checkout_dir",
+                "checkout_timeout_ms",
+                "checkout_max_files",
+                "checkout_max_bytes",
                 "allowed_repositories",
                 "denied_repositories",
             ],
@@ -496,6 +559,30 @@ impl CloudConfig {
                 cleanup_poll_ms: integer(deployments, "cleanup_poll_ms")?,
                 cleanup_timeout_ms: integer(deployments, "cleanup_timeout_ms")?,
             },
+            builds: BuildsConfig {
+                reconcile_interval_ms: integer(builds, "reconcile_interval_ms")?,
+                builder_uri: string(builds, "builder_uri")?,
+                builder_digest: string(builds, "builder_digest")?,
+                builder_media_type: string(builds, "builder_media_type")?,
+                buildkit_socket_volume_id: string(builds, "buildkit_socket_volume_id")?,
+                input_staging_dir: string(builds, "input_staging_dir")?,
+                input_max_entries: integer(builds, "input_max_entries")?,
+                input_max_bytes: integer(builds, "input_max_bytes")?,
+                output_staging_dir: string(builds, "output_staging_dir")?,
+                output_max_entries: integer(builds, "output_max_entries")?,
+                output_max_expanded_bytes: integer(builds, "output_max_expanded_bytes")?,
+                oci_max_blobs: integer(builds, "oci_max_blobs")?,
+                oci_max_bytes: integer(builds, "oci_max_bytes")?,
+                command_ttl_ms: integer(builds, "command_ttl_ms")?,
+                runtime_execution_timeout_ms: integer(builds, "runtime_execution_timeout_ms")?,
+                observation_poll_ms: integer(builds, "observation_poll_ms")?,
+                convergence_timeout_ms: integer(builds, "convergence_timeout_ms")?,
+                cleanup_timeout_ms: integer(builds, "cleanup_timeout_ms")?,
+                cpu_millis: integer(builds, "cpu_millis")?,
+                memory_bytes: integer(builds, "memory_bytes")?,
+                pids: integer(builds, "pids")?,
+                output_max_bytes: integer(builds, "output_max_bytes")?,
+            },
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
@@ -511,6 +598,10 @@ impl CloudConfig {
                 github_app_private_key_env: string(sources, "github_app_private_key_env")?,
                 github_app_callback_url: string(sources, "github_app_callback_url")?,
                 github_connection_state_ttl_ms: integer(sources, "github_connection_state_ttl_ms")?,
+                checkout_dir: string(sources, "checkout_dir")?,
+                checkout_timeout_ms: integer(sources, "checkout_timeout_ms")?,
+                checkout_max_files: integer(sources, "checkout_max_files")?,
+                checkout_max_bytes: integer(sources, "checkout_max_bytes")?,
                 allowed_repositories: string_list(sources, "allowed_repositories")?,
                 denied_repositories: string_list(sources, "denied_repositories")?,
             },
@@ -591,6 +682,31 @@ impl CloudConfig {
         };
         config.validate()?;
         Ok(config)
+    }
+
+    pub(crate) fn build_flow_config(
+        &self,
+    ) -> Result<crate::modules::artifacts::BuildFlowConfig, String> {
+        crate::modules::artifacts::BuildFlowConfig::new(
+            crate::modules::artifacts::BuildFlowConfigOptions {
+                builder: a3s_runtime::contract::ArtifactRef {
+                    uri: self.builds.builder_uri.clone(),
+                    digest: self.builds.builder_digest.clone(),
+                    media_type: self.builds.builder_media_type.clone(),
+                },
+                buildkit_socket_volume_id: self.builds.buildkit_socket_volume_id.clone(),
+                heartbeat_timeout_ms: self.fleet.heartbeat_timeout_ms,
+                command_ttl_ms: self.builds.command_ttl_ms,
+                execution_timeout_ms: self.builds.runtime_execution_timeout_ms,
+                observation_poll_ms: self.builds.observation_poll_ms,
+                convergence_timeout_ms: self.builds.convergence_timeout_ms,
+                cleanup_timeout_ms: self.builds.cleanup_timeout_ms,
+                cpu_millis: self.builds.cpu_millis,
+                memory_bytes: self.builds.memory_bytes,
+                pids: self.builds.pids,
+                output_max_bytes: self.builds.output_max_bytes,
+            },
+        )
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -722,6 +838,33 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        if self.builds.reconcile_interval_ms == 0
+            || self.builds.reconcile_interval_ms > 3_600_000
+            || !valid_data_path(&self.builds.input_staging_dir)
+            || !valid_data_path(&self.builds.output_staging_dir)
+            || self.builds.input_staging_dir == self.builds.output_staging_dir
+            || !(1..=2_000_000).contains(&self.builds.input_max_entries)
+            || !(1024 * 1024..=self.artifacts.max_blob_bytes).contains(&self.builds.input_max_bytes)
+            || !(1..=2_000_000).contains(&self.builds.output_max_entries)
+            || self.builds.output_max_bytes < 1024 * 1024
+            || self.builds.output_max_bytes > self.artifacts.max_blob_bytes
+            || self.builds.output_max_expanded_bytes < self.builds.output_max_bytes
+            || self.builds.output_max_expanded_bytes > 1024 * 1024 * 1024 * 1024_u64
+            || !(1..=1_000_000).contains(&self.builds.oci_max_blobs)
+            || self.builds.oci_max_bytes == 0
+            || self.builds.oci_max_bytes > self.builds.output_max_expanded_bytes
+            || self.builds.cpu_millis > 1_000_000
+            || !(16 * 1024 * 1024..=1024 * 1024 * 1024 * 1024_u64)
+                .contains(&self.builds.memory_bytes)
+            || self.builds.pids > 1_000_000
+        {
+            return Err(ConfigError::Invalid(
+                "builds requires bounded reconciliation, separate normalized staging paths, Artifact/OCI byte and entry limits, and bounded Runtime resources"
+                    .into(),
+            ));
+        }
+        self.build_flow_config()
+            .map_err(|error| ConfigError::Invalid(format!("builds is invalid: {error}")))?;
         if self.registry.request_timeout_ms == 0
             || self.registry.request_timeout_ms > 60_000
             || self.registry.insecure_hosts.len() > 64
@@ -748,11 +891,19 @@ impl CloudConfig {
             || self.sources.github_request_timeout_ms > 60_000
             || !(1024..=2 * 1024 * 1024).contains(&self.sources.github_webhook_max_body_bytes)
             || !(60_000..=1_800_000).contains(&self.sources.github_connection_state_ttl_ms)
+            || !valid_data_path(&self.sources.checkout_dir)
+            || self.sources.checkout_dir == self.builds.input_staging_dir
+            || self.sources.checkout_dir == self.builds.output_staging_dir
+            || self.sources.checkout_timeout_ms == 0
+            || self.sources.checkout_timeout_ms > 600_000
+            || !(1..=1_000_000).contains(&self.sources.checkout_max_files)
+            || self.sources.checkout_max_bytes == 0
+            || self.sources.checkout_max_bytes > self.builds.input_max_bytes
             || self.sources.allowed_repositories.len() > 256
             || self.sources.denied_repositories.len() > 256
         {
             return Err(ConfigError::Invalid(
-                "sources requires a 1-60000 ms GitHub request timeout, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
+                "sources requires bounded GitHub and checkout timings, a normalized isolated checkout path, bounded checkout files/bytes, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
                     .into(),
             ));
         }
@@ -1128,6 +1279,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
     let allowed = [
         "artifacts",
         "auth",
+        "builds",
         "events",
         "deployments",
         "edge",
@@ -1151,6 +1303,16 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         ));
     }
     Ok(())
+}
+
+fn valid_data_path(value: &str) -> bool {
+    let path = Path::new(value);
+    !value.trim().is_empty()
+        && value.len() <= 4096
+        && !value.contains(['\0', '\r', '\n'])
+        && !path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
 }
 
 fn validate_unique_repositories(label: &str, values: &[String]) -> Result<(), ConfigError> {
@@ -1417,6 +1579,30 @@ deployments {
   cleanup_poll_ms = 1000
   cleanup_timeout_ms = 300000
 }
+builds {
+  reconcile_interval_ms = 1000
+  builder_uri = "oci://docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+  builder_digest = "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+  builder_media_type = "application/vnd.oci.image.index.v1+json"
+  buildkit_socket_volume_id = "a3s-cloud-buildkit-v0-31-2"
+  input_staging_dir = ".a3s/cloud/build-input-staging"
+  input_max_entries = 100000
+  input_max_bytes = 536870912
+  output_staging_dir = ".a3s/cloud/build-output-staging"
+  output_max_entries = 100000
+  output_max_expanded_bytes = 1073741824
+  oci_max_blobs = 10000
+  oci_max_bytes = 1073741824
+  command_ttl_ms = 900000
+  runtime_execution_timeout_ms = 600000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 1800000
+  cleanup_timeout_ms = 300000
+  cpu_millis = 2000
+  memory_bytes = 1073741824
+  pids = 512
+  output_max_bytes = 536870912
+}
 registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:5000"]
@@ -1432,6 +1618,10 @@ sources {
   github_app_private_key_env = "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
   github_app_callback_url = "https://cloud.example.test/api/v1/source-connections/github/callback"
   github_connection_state_ttl_ms = 600000
+  checkout_dir = ".a3s/cloud/source-checkouts"
+  checkout_timeout_ms = 120000
+  checkout_max_files = 100000
+  checkout_max_bytes = 268435456
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }
@@ -1504,6 +1694,11 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(
+            config.builds.builder_digest,
+            "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
+        );
+        assert_eq!(config.builds.output_max_entries, 100_000);
         assert_eq!(config.sources.allowed_repositories.len(), 1);
         assert_eq!(
             config.sources.github_webhook_secret_env,
@@ -1521,6 +1716,7 @@ security {
             "https://cloud.example.test/api/v1/source-connections/github/callback"
         );
         assert_eq!(config.sources.github_connection_state_ttl_ms, 600_000);
+        assert_eq!(config.sources.checkout_max_files, 100_000);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);

@@ -20,6 +20,38 @@ use uuid::Uuid;
 
 pub use connection::BuildkitConnection;
 
+pub(super) struct ValidatedBuildkitOutput {
+    pub descriptor: OciDescriptor,
+    pub platforms: Vec<BuildPlatform>,
+    pub content_bytes: u64,
+    pub blob_count: usize,
+}
+
+pub(super) async fn validate_exported_output(
+    root: &Path,
+    expected_platforms: &[BuildPlatform],
+    max_blobs: usize,
+    max_bytes: u64,
+) -> Result<ValidatedBuildkitOutput, BuildServiceError> {
+    let metadata = root.join("buildkit-metadata.json");
+    let layout = root.join("oci");
+    let descriptor = read_buildkit_descriptor(&metadata).await?;
+    normalize_buildctl_layout(&layout).await?;
+    let validated = validate_oci_layout(
+        &layout,
+        &descriptor,
+        expected_platforms,
+        OciLayoutLimits::new(max_blobs, max_bytes).map_err(BuildServiceError::Invalid)?,
+    )
+    .await?;
+    Ok(ValidatedBuildkitOutput {
+        descriptor,
+        platforms: validated.platforms,
+        content_bytes: validated.content_bytes,
+        blob_count: validated.blob_count,
+    })
+}
+
 pub struct BuildkitBuildService {
     root: PathBuf,
     timeout: Duration,
