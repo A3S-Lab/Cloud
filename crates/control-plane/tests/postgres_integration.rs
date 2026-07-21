@@ -45,6 +45,8 @@ mod edge_certificate_lifecycle_support;
 mod edge_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
+#[path = "support/github_connection.rs"]
+mod github_connection_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
 #[path = "support/secret_rotation_provider_crash.rs"]
@@ -142,6 +144,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists github_source_connections cascade;
+             drop table if exists github_connection_flows cascade;
              drop table if exists source_webhook_inbox cascade;
              drop table if exists source_webhook_deliveries cascade;
              drop table if exists external_source_revisions cascade;
@@ -195,7 +199,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 22);
+    assert_eq!(applied, 23);
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -404,6 +408,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "023",
+                "GitHub source connections",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/023_github_source_connections.sql"
+                )),
+            ),
+            Migration::new(
+                "024",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1659,6 +1671,34 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             candidate_revision_id: workload_fixture.candidate_revision_id,
             candidate_deployment_id: workload_fixture.candidate_deployment_id,
         },
+    )
+    .await?;
+
+    let installation_conflict_organization = app
+        .call(post_json(
+            "/api/v1/organizations",
+            "organization-github-installation-conflict",
+            json!({"name": "GitHub installation conflict"}),
+        ))
+        .await?;
+    assert_eq!(installation_conflict_organization.status(), 201);
+    let account_conflict_organization = app
+        .call(post_json(
+            "/api/v1/organizations",
+            "organization-github-account-conflict",
+            json!({"name": "GitHub account conflict"}),
+        ))
+        .await?;
+    assert_eq!(account_conflict_organization.status(), 201);
+    github_connection_support::exercise_github_connection_persistence(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
+        )?)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &account_conflict_organization,
+        )?)?),
     )
     .await?;
     Ok(())

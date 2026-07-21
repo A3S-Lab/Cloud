@@ -1,6 +1,6 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
+    EnvironmentId, OrganizationId, ProjectId, SourceConnectionId, SourceRevisionId,
 };
 use chrono::Utc;
 
@@ -228,4 +228,93 @@ fn signed_push_delivery_is_typed_canonical_and_digest_bound() {
         }
     })
     .is_err());
+}
+
+#[test]
+fn github_connection_flow_is_expiring_single_use_and_stage_bound() {
+    let created_at = Utc::now();
+    let expires_at = created_at + chrono::Duration::minutes(10);
+    let install_digest = format!("sha256:{}", "a".repeat(64));
+    let oauth_digest = format!("sha256:{}", "b".repeat(64));
+    let verifier_digest = format!("sha256:{}", "c".repeat(64));
+    let mut flow = GithubConnectionFlow::begin(
+        uuid::Uuid::now_v7(),
+        OrganizationId::new(),
+        install_digest,
+        created_at,
+        expires_at,
+    )
+    .expect("connection flow");
+    let installation_id = GithubInstallationId::parse(42).expect("installation ID");
+
+    flow.prepare_oauth(
+        installation_id,
+        oauth_digest.clone(),
+        verifier_digest.clone(),
+        created_at,
+    )
+    .expect("prepare OAuth");
+    assert_eq!(
+        flow.require_oauth(&oauth_digest, &verifier_digest, created_at)
+            .expect("authorized flow"),
+        installation_id
+    );
+    assert_eq!(
+        flow.require_oauth(
+            &oauth_digest,
+            &verifier_digest,
+            created_at + chrono::Duration::minutes(10)
+        ),
+        Err(GithubConnectionFlowError::Expired)
+    );
+    flow.complete(created_at + chrono::Duration::seconds(1))
+        .expect("complete flow");
+    assert_eq!(
+        flow.require_oauth(&oauth_digest, &verifier_digest, created_at),
+        Err(GithubConnectionFlowError::Replayed)
+    );
+    let mut restored_after_expiry = flow;
+    restored_after_expiry.consumed_at = Some(expires_at);
+    assert!(GithubConnectionFlow::restore(restored_after_expiry).is_err());
+    assert!(GithubConnectionFlow::begin(
+        uuid::Uuid::now_v7(),
+        OrganizationId::new(),
+        format!("sha256:{}", "d".repeat(64)),
+        created_at,
+        created_at + chrono::Duration::minutes(31),
+    )
+    .is_err());
+    assert!(GithubConnectionFlow::begin(
+        uuid::Uuid::now_v7(),
+        OrganizationId::new(),
+        format!("sha256:{}", "e".repeat(64)),
+        created_at,
+        created_at + chrono::Duration::seconds(59),
+    )
+    .is_err());
+}
+
+#[test]
+fn github_connection_uses_durable_numeric_identities_and_safe_event_data() {
+    let connection = GithubConnection::connect(NewGithubConnection {
+        id: SourceConnectionId::new(),
+        organization_id: OrganizationId::new(),
+        installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+        account_id: GithubAccountId::parse(100).expect("account ID"),
+        account_login: GithubLogin::parse("A3S-Lab").expect("account login"),
+        account_kind: GithubAccountKind::Organization,
+        verified_by_user_id: GithubAccountId::parse(200).expect("user ID"),
+        verified_by_user_login: GithubLogin::parse("octocat").expect("user login"),
+        connected_at: Utc::now(),
+    })
+    .expect("GitHub connection");
+    let event =
+        GithubConnectionCreated::envelope(&connection, uuid::Uuid::now_v7()).expect("event");
+    assert_eq!(event.event_key, "source.github-connection.created");
+    assert_eq!(event.payload["installation_id"], 42);
+    assert_eq!(event.payload["account_id"], 100);
+    assert!(!event.payload.to_string().contains("token"));
+    assert!(GithubAccountId::parse(0).is_err());
+    assert!(GithubLogin::parse("bad/login").is_err());
+    assert!(GithubAccountKind::parse("Enterprise").is_err());
 }

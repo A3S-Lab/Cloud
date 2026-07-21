@@ -1,4 +1,5 @@
 use super::controllers::{
+    github_connection_callbacks_controller, github_connections_controller,
     github_webhooks_controller, source_revision_queries_controller, source_revisions_controller,
 };
 use crate::modules::sources::domain::ISourceWebhookVerifier;
@@ -32,6 +33,11 @@ impl Module for SourcesModule {
 
     fn controllers(&self, module_ref: &ModuleRef) -> Result<Vec<ControllerDefinition>> {
         Ok(vec![
+            github_connection_callbacks_controller(module_ref.get::<CommandBus>()?)?,
+            github_connections_controller(
+                module_ref.get::<CommandBus>()?,
+                module_ref.get::<QueryBus>()?,
+            )?,
             github_webhooks_controller(
                 module_ref.get::<CommandBus>()?,
                 Arc::clone(&self.webhook_verifier),

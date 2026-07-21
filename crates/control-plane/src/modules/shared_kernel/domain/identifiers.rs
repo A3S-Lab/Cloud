@@ -55,3 +55,4 @@ identifier!(DomainClaimId);
 identifier!(GatewayCertificateId);
 identifier!(SecretId);
 identifier!(SourceRevisionId);
+identifier!(SourceConnectionId);

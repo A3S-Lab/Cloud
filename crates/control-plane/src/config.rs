@@ -118,6 +118,12 @@ pub struct SourcesConfig {
     pub github_request_timeout_ms: u64,
     pub github_webhook_secret_env: String,
     pub github_webhook_max_body_bytes: usize,
+    pub github_app_enabled: bool,
+    pub github_app_slug: String,
+    pub github_app_client_id: String,
+    pub github_app_client_secret_env: String,
+    pub github_app_callback_url: String,
+    pub github_connection_state_ttl_ms: u64,
     pub allowed_repositories: Vec<String>,
     pub denied_repositories: Vec<String>,
 }
@@ -335,6 +341,12 @@ impl CloudConfig {
                 "github_request_timeout_ms",
                 "github_webhook_secret_env",
                 "github_webhook_max_body_bytes",
+                "github_app_enabled",
+                "github_app_slug",
+                "github_app_client_id",
+                "github_app_client_secret_env",
+                "github_app_callback_url",
+                "github_connection_state_ttl_ms",
                 "allowed_repositories",
                 "denied_repositories",
             ],
@@ -472,6 +484,12 @@ impl CloudConfig {
                 github_request_timeout_ms: integer(sources, "github_request_timeout_ms")?,
                 github_webhook_secret_env: string(sources, "github_webhook_secret_env")?,
                 github_webhook_max_body_bytes: integer(sources, "github_webhook_max_body_bytes")?,
+                github_app_enabled: boolean(sources, "github_app_enabled")?,
+                github_app_slug: string(sources, "github_app_slug")?,
+                github_app_client_id: string(sources, "github_app_client_id")?,
+                github_app_client_secret_env: string(sources, "github_app_client_secret_env")?,
+                github_app_callback_url: string(sources, "github_app_callback_url")?,
+                github_connection_state_ttl_ms: integer(sources, "github_connection_state_ttl_ms")?,
                 allowed_repositories: string_list(sources, "allowed_repositories")?,
                 denied_repositories: string_list(sources, "denied_repositories")?,
             },
@@ -693,11 +711,12 @@ impl CloudConfig {
         if self.sources.github_request_timeout_ms == 0
             || self.sources.github_request_timeout_ms > 60_000
             || !(1024..=2 * 1024 * 1024).contains(&self.sources.github_webhook_max_body_bytes)
+            || !(60_000..=1_800_000).contains(&self.sources.github_connection_state_ttl_ms)
             || self.sources.allowed_repositories.len() > 256
             || self.sources.denied_repositories.len() > 256
         {
             return Err(ConfigError::Invalid(
-                "sources requires a 1-60000 ms GitHub request timeout, a 1024-byte to 2-MiB webhook body limit, and at most 256 exact allowlisted and denied repositories"
+                "sources requires a 1-60000 ms GitHub request timeout, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
                     .into(),
             ));
         }
@@ -707,6 +726,7 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        self.validate_github_app()?;
         SourceRepositoryPolicy::github(
             &self.sources.allowed_repositories,
             &self.sources.denied_repositories,
@@ -902,6 +922,49 @@ impl CloudConfig {
         Ok(())
     }
 
+    fn validate_github_app(&self) -> Result<(), ConfigError> {
+        let sources = &self.sources;
+        if !sources.github_app_enabled {
+            if [
+                &sources.github_app_slug,
+                &sources.github_app_client_id,
+                &sources.github_app_client_secret_env,
+                &sources.github_app_callback_url,
+            ]
+            .into_iter()
+            .any(|value| !value.is_empty())
+            {
+                return Err(ConfigError::Invalid(
+                    "disabled sources GitHub App fields must be empty".into(),
+                ));
+            }
+            return Ok(());
+        }
+        if !valid_github_app_slug(&sources.github_app_slug) {
+            return Err(ConfigError::Invalid(
+                "sources.github_app_slug must use bounded lowercase GitHub App slug syntax".into(),
+            ));
+        }
+        if !valid_github_client_id(&sources.github_app_client_id) {
+            return Err(ConfigError::Invalid(
+                "sources.github_app_client_id is invalid".into(),
+            ));
+        }
+        if !valid_env_name(&sources.github_app_client_secret_env) {
+            return Err(ConfigError::Invalid(
+                "sources.github_app_client_secret_env must be an uppercase environment variable name"
+                    .into(),
+            ));
+        }
+        if !valid_github_callback_url(&sources.github_app_callback_url) {
+            return Err(ConfigError::Invalid(
+                "sources.github_app_callback_url must be an HTTPS URL ending at /api/v1/source-connections/github/callback"
+                    .into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn server_address(&self) -> Result<SocketAddr, ConfigError> {
         format!("{}:{}", self.server.host, self.server.port)
             .parse()
@@ -1068,6 +1131,37 @@ fn valid_env_name(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn valid_github_app_slug(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 100
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
+fn valid_github_client_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 255
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn valid_github_callback_url(value: &str) -> bool {
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && url.path() == "/api/v1/source-connections/github/callback"
 }
 
 fn valid_provider_segment(value: &str) -> bool {
@@ -1282,6 +1376,12 @@ sources {
   github_request_timeout_ms = 10000
   github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
   github_webhook_max_body_bytes = 1048576
+  github_app_enabled = true
+  github_app_slug = "a3s-cloud-test"
+  github_app_client_id = "Iv1.test-client"
+  github_app_client_secret_env = "A3S_CLOUD_GITHUB_APP_CLIENT_SECRET"
+  github_app_callback_url = "https://cloud.example.test/api/v1/source-connections/github/callback"
+  github_connection_state_ttl_ms = 600000
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }
@@ -1360,6 +1460,13 @@ security {
             "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
         );
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
+        assert!(config.sources.github_app_enabled);
+        assert_eq!(config.sources.github_app_slug, "a3s-cloud-test");
+        assert_eq!(
+            config.sources.github_app_callback_url,
+            "https://cloud.example.test/api/v1/source-connections/github/callback"
+        );
+        assert_eq!(config.sources.github_connection_state_ttl_ms, 600_000);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
@@ -1385,6 +1492,8 @@ security {
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
+        assert!(!config.sources.github_app_enabled);
+        assert!(config.sources.github_app_slug.is_empty());
         assert_eq!(config.logs.retention_ms, 604_800_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
@@ -1458,6 +1567,41 @@ security {
             "github_webhook_max_body_bytes = 1023"
         ))
         .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_app_slug = \"a3s-cloud-test\"",
+            "github_app_slug = \"A3S Cloud\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "https://cloud.example.test/api/v1/source-connections/github/callback",
+            "http://cloud.example.test/api/v1/source-connections/github/callback"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_connection_state_ttl_ms = 600000",
+            "github_connection_state_ttl_ms = 59999"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(
+            &VALID.replace("github_app_enabled = true", "github_app_enabled = false")
+        )
+        .is_err());
+        let disabled_github_app = VALID
+            .replace("github_app_enabled = true", "github_app_enabled = false")
+            .replace("github_app_slug = \"a3s-cloud-test\"", "github_app_slug = \"\"")
+            .replace(
+                "github_app_client_id = \"Iv1.test-client\"",
+                "github_app_client_id = \"\"",
+            )
+            .replace(
+                "github_app_client_secret_env = \"A3S_CLOUD_GITHUB_APP_CLIENT_SECRET\"",
+                "github_app_client_secret_env = \"\"",
+            )
+            .replace(
+                "github_app_callback_url = \"https://cloud.example.test/api/v1/source-connections/github/callback\"",
+                "github_app_callback_url = \"\"",
+            );
+        assert!(CloudConfig::parse(&disabled_github_app).is_ok());
 
         let development_s3 = VALID
             .replace("storage_provider = \"local\"", "storage_provider = \"s3\"")

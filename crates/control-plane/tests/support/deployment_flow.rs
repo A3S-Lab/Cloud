@@ -595,12 +595,14 @@ impl NodeSecretTransport for PostgresSecretTransport {
 
 fn secret_application_error(error: ApplicationError) -> NodeControlClientError {
     match error {
-        ApplicationError::Internal(_) => NodeControlClientError::Rejected {
-            status: 503,
-            code: "secret_material_unavailable".into(),
-            message: "Secret material is temporarily unavailable".into(),
-            retryable: true,
-        },
+        ApplicationError::Unavailable(_) | ApplicationError::Internal(_) => {
+            NodeControlClientError::Rejected {
+                status: 503,
+                code: "secret_material_unavailable".into(),
+                message: "Secret material is temporarily unavailable".into(),
+                retryable: true,
+            }
+        }
         ApplicationError::Invalid(_)
         | ApplicationError::NotFound(_)
         | ApplicationError::Conflict(_)

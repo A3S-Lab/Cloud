@@ -54,13 +54,16 @@ use crate::modules::secrets::{
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
 use crate::modules::sources::domain::{
-    ISourceResolver, ISourceRevisionRepository, ISourceWebhookRepository, ISourceWebhookVerifier,
+    IGithubAppAuthorizationService, IGithubConnectionRepository, ISourceResolver,
+    ISourceRevisionRepository, ISourceWebhookRepository, ISourceWebhookVerifier,
     SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
-    AcceptSourceWebhookDeliveryHandler, GithubSourceResolver, GithubWebhookVerifier,
-    ListSourceRevisionsHandler, PostgresSourceRevisionRepository,
-    ResolveExternalSourceRevisionHandler, SourcesModule,
+    AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
+    CompleteGithubConnectionHandler, GetGithubConnectionHandler, GithubAppClient,
+    GithubSourceResolver, GithubWebhookVerifier, ListSourceRevisionsHandler,
+    PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
+    PrepareGithubConnectionOauthHandler, ResolveExternalSourceRevisionHandler, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -182,6 +185,23 @@ pub async fn build_application_with_source_resolver(
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let sources: Arc<dyn ISourceRevisionRepository> = source_repository.clone();
     let source_webhooks: Arc<dyn ISourceWebhookRepository> = source_repository;
+    let github_connections: Arc<dyn IGithubConnectionRepository> =
+        Arc::new(PostgresGithubConnectionRepository::new(executor.clone()));
+    let github_authorization: Arc<dyn IGithubAppAuthorizationService> =
+        if config.sources.github_app_enabled {
+            Arc::new(
+                GithubAppClient::new(
+                    Duration::from_millis(config.sources.github_request_timeout_ms),
+                    config.sources.github_app_slug.clone(),
+                    config.sources.github_app_client_id.clone(),
+                    config.sources.github_app_client_secret_env.clone(),
+                    &config.sources.github_app_callback_url,
+                )
+                .map_err(ControlPlaneStartupError::Sources)?,
+            )
+        } else {
+            Arc::new(GithubAppClient::disabled())
+        };
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
         SecurityProfile::Production => Arc::new(
@@ -387,6 +407,8 @@ pub async fn build_application_with_source_resolver(
             secrets,
             sources,
             source_webhooks,
+            github_connections,
+            github_authorization,
             source_resolver,
             source_webhook_verifier,
             secret_encryption: Arc::clone(&key_encryption),
@@ -436,6 +458,8 @@ struct ApplicationDependencies {
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
+    github_connections: Arc<dyn IGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     source_resolver: Arc<dyn ISourceResolver>,
     source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
@@ -466,6 +490,8 @@ fn build_application_with_health(
         secrets,
         sources,
         source_webhooks,
+        github_connections,
+        github_authorization,
         source_resolver,
         source_webhook_verifier,
         secret_encryption,
@@ -488,6 +514,7 @@ fn build_application_with_health(
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
+    let github_connection_organizations = Arc::clone(&organizations);
     let create_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
@@ -537,6 +564,13 @@ fn build_application_with_health(
     let accept_sources = Arc::clone(&sources);
     let list_sources = sources;
     let accept_source_webhooks = source_webhooks;
+    let begin_github_connections = Arc::clone(&github_connections);
+    let prepare_github_connections = Arc::clone(&github_connections);
+    let complete_github_connections = Arc::clone(&github_connections);
+    let get_github_connections = github_connections;
+    let begin_github_authorization = Arc::clone(&github_authorization);
+    let prepare_github_authorization = Arc::clone(&github_authorization);
+    let complete_github_authorization = github_authorization;
     let source_policy = Arc::new(
         SourceRepositoryPolicy::github(
             &config.sources.allowed_repositories,
@@ -642,6 +676,27 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::sources::AcceptSourceWebhookDelivery, _>(
                     AcceptSourceWebhookDeliveryHandler::new(accept_source_webhooks),
                 )
+                .command_handler::<crate::modules::sources::BeginGithubConnection, _>(
+                    BeginGithubConnectionHandler::new(
+                        github_connection_organizations,
+                        begin_github_connections,
+                        begin_github_authorization,
+                        chrono_duration(config.sources.github_connection_state_ttl_ms)?,
+                    )
+                    .map_err(BootError::Internal)?,
+                )
+                .command_handler::<crate::modules::sources::PrepareGithubConnectionOauth, _>(
+                    PrepareGithubConnectionOauthHandler::new(
+                        prepare_github_connections,
+                        prepare_github_authorization,
+                    ),
+                )
+                .command_handler::<crate::modules::sources::CompleteGithubConnection, _>(
+                    CompleteGithubConnectionHandler::new(
+                        complete_github_connections,
+                        complete_github_authorization,
+                    ),
+                )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(
                         workload_environments,
@@ -728,6 +783,9 @@ fn build_application_with_health(
                 ))
                 .query_handler::<crate::modules::sources::ListSourceRevisions, _>(
                     ListSourceRevisionsHandler::new(source_query_environments, list_sources),
+                )
+                .query_handler::<crate::modules::sources::GetGithubConnection, _>(
+                    GetGithubConnectionHandler::new(get_github_connections),
                 )
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),

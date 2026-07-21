@@ -517,7 +517,7 @@ through the proven loop.
 
 ### Current implementation
 
-The first five independently testable G0 slices are implemented:
+The current independently testable G0 slices are implemented:
 
 - A dedicated Sources bounded context accepts and lists tenant-, project-, and
   environment-scoped `ExternalSourceRevision` aggregates.
@@ -551,6 +551,34 @@ The first five independently testable G0 slices are implemented:
 - Unit/API tests cover policy, URL/ref confusion, annotated tags, provider
   identity mismatch, and moving-ref replay. A dedicated CI job resolves the
   real public `A3S-Lab/Cloud` branch and then confirms the pinned commit.
+- Closed A3S ACL configuration can explicitly enable one GitHub App by slug,
+  client ID, client-secret environment name, exact HTTPS callback, and a 1- to
+  30-minute connection-state TTL. Disabled configuration requires every App
+  field to be empty; shipped and release-gate ACL keeps the feature disabled.
+- An organization-authorized `source:write` command begins one replaceable
+  installation flow and the tenant query returns its completed connection.
+  GitHub setup and OAuth callback routes are public provider callbacks with
+  non-cacheable/no-referrer responses rather than bearer-token alternatives.
+- Setup and OAuth use separate 32-byte random, expiring, single-use state
+  values. PostgreSQL stores only SHA-256 digests. OAuth uses S256 PKCE; the
+  verifier exists only in a short-lived secure, HTTP-only, same-site cookie
+  while its digest is durable.
+- The callback reads the client secret per attempt, exchanges the bounded code
+  without redirects, calls `GET /user` and at most ten 100-entry pages of
+  `GET /user/installations`, and accepts the setup installation ID only from
+  that transient user-token intersection. Code, client secret, access/refresh
+  tokens, verifier, and provider bodies are never durable.
+- Completion atomically consumes the flow, stores numeric installation,
+  account, and verifying-user identities, and emits
+  `source.github-connection.created`. PostgreSQL enforces one connection per
+  Cloud organization plus exclusive installation and account ownership across
+  organizations.
+- Domain/API tests cover expiry, stage/replay binding, tenant/scope checks,
+  spoofed setup state, missing PKCE, rejected OAuth, duplicate ownership, and
+  secretless responses. Local HTTP fixtures prove exact OAuth form/API headers,
+  inaccessible installation rejection, body bounds, malformed responses, and
+  secretless errors. The isolated PostgreSQL gate exercises prepare, complete,
+  replay, uniqueness rollback, query, and outbox persistence.
 - A public `POST /api/v1/webhooks/github` provider boundary requires JSON and
   the GitHub event, delivery, and `X-Hub-Signature-256` headers. It bounds the
   body, reads a configured secret environment variable per request, and
@@ -603,24 +631,30 @@ The first five independently testable G0 slices are implemented:
   and replays it without reexecution.
 
 These slices establish source persistence, public resolution, authenticated
-provider ingress, secure public checkout, and a real local-context BuildKit/OCI
-engine boundary, not the G0 integration gate. The Build service binds but does
-not recompute the checkout digest, and the rootless worker does not by itself
-prove deny-by-default build networking. Tenant repository subscriptions and
-webhook fanout, GitHub App credentials and private-repository access,
-build-operation checkout replay, Runtime Task orchestration, registry
+provider ingress, verified tenant ownership of a GitHub installation, secure
+public checkout, and a real local-context BuildKit/OCI engine boundary, not the
+G0 integration gate. The connection does not enumerate repositories or create
+checkout authority. The Build service binds but does not recompute the checkout
+digest, and the rootless worker does not by itself prove deny-by-default build
+networking. Tenant repository subscriptions, installation-token/private-
+repository authentication, installation lifecycle reconciliation, webhook
+fanout, build-operation checkout replay, Runtime Task orchestration, registry
 publication, provenance, deployment handoff, build operations/logs,
 cancellation, and web surfaces remain required.
 
 ### Work
 
-- Add tenant-scoped repository connections/subscriptions that bind a canonical
-  repository, GitHub installation, target environment, branch policy, and
-  explicit recipe without changing the provider-neutral source port or
+- Add tenant-scoped repository subscriptions beneath the verified GitHub
+  connection. Bind a canonical repository, target environment, branch policy,
+  and explicit recipe without changing the provider-neutral source port or
   immutable revision. Fan out an accepted provider delivery only through these
   authoritative bindings.
-- Add GitHub App credential references and complete private-repository
-  resolution with a real GitHub App installation-token gate.
+- Add short-lived GitHub App installation-token issuance and complete
+  private-repository resolution/checkout with a real installation-token gate;
+  never persist the token or private key material in source state.
+- Reconcile installation suspension, deletion, account transfer, and revoked
+  authorization before fanout or checkout, with explicit operator-visible
+  connection state and retry semantics.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Run the implemented typed build recipe and Build service as isolated Runtime
@@ -1155,7 +1189,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App repository subscription/fanout -> Runtime Task plus registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> Runtime Task plus registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

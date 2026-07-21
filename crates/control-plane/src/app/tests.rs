@@ -15,9 +15,14 @@ use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
 use crate::modules::sources::domain::{
-    GitReference, ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
+    GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
+    GithubInstallationVerificationRequest, GithubLogin, IGithubAppAuthorizationService,
+    ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
+    VerifiedGithubInstallation,
 };
-use crate::modules::sources::{GithubWebhookVerifier, InMemorySourceRevisionRepository};
+use crate::modules::sources::{
+    GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
+};
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use chrono::Utc;
@@ -45,6 +50,8 @@ struct TestSecretEncryption;
 
 struct TestSourceResolver;
 
+struct TestGithubAppAuthorization;
+
 #[async_trait::async_trait]
 impl ISourceResolver for TestSourceResolver {
     async fn resolve(
@@ -66,6 +73,51 @@ impl ISourceResolver for TestSourceResolver {
         Ok(ResolvedSource {
             repository: request.repository.clone(),
             commit_sha,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl IGithubAppAuthorizationService for TestGithubAppAuthorization {
+    fn installation_url(
+        &self,
+        state: &str,
+    ) -> std::result::Result<String, GithubAppAuthorizationError> {
+        Ok(format!(
+            "https://github.test/apps/a3s-cloud-test/installations/new?state={state}"
+        ))
+    }
+
+    fn authorization_url(
+        &self,
+        state: &str,
+        pkce_challenge: &str,
+    ) -> std::result::Result<String, GithubAppAuthorizationError> {
+        Ok(format!(
+            "https://github.test/login/oauth/authorize?client_id=Iv1.test-client&state={state}&code_challenge={pkce_challenge}&code_challenge_method=S256"
+        ))
+    }
+
+    async fn verify_installation(
+        &self,
+        request: GithubInstallationVerificationRequest,
+    ) -> std::result::Result<VerifiedGithubInstallation, GithubAppAuthorizationError> {
+        if request.code.as_str() != "valid-code" {
+            return Err(GithubAppAuthorizationError::Rejected);
+        }
+        if request.pkce_verifier.len() != 43 || request.installation_id.as_u64() != 42 {
+            return Err(GithubAppAuthorizationError::Forbidden);
+        }
+        Ok(VerifiedGithubInstallation {
+            installation_id: request.installation_id,
+            account_id: GithubAccountId::parse(100)
+                .map_err(GithubAppAuthorizationError::Protocol)?,
+            account_login: GithubLogin::parse("A3S-Lab")
+                .map_err(GithubAppAuthorizationError::Protocol)?,
+            account_kind: GithubAccountKind::Organization,
+            user_id: GithubAccountId::parse(200).map_err(GithubAppAuthorizationError::Protocol)?,
+            user_login: GithubLogin::parse("octocat")
+                .map_err(GithubAppAuthorizationError::Protocol)?,
         })
     }
 }
@@ -236,6 +288,13 @@ fn config() -> CloudConfig {
             github_request_timeout_ms: 10_000,
             github_webhook_secret_env: "A3S_CLOUD_GITHUB_WEBHOOK_SECRET".into(),
             github_webhook_max_body_bytes: 1024 * 1024,
+            github_app_enabled: true,
+            github_app_slug: "a3s-cloud-test".into(),
+            github_app_client_id: "Iv1.test-client".into(),
+            github_app_client_secret_env: "A3S_CLOUD_GITHUB_APP_CLIENT_SECRET".into(),
+            github_app_callback_url:
+                "https://cloud.example.test/api/v1/source-connections/github/callback".into(),
+            github_connection_state_ttl_ms: 600_000,
             allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],
             denied_repositories: Vec::new(),
         },
@@ -408,6 +467,46 @@ fn build_test_application_with_source_resolver(
     sources: Arc<InMemorySourceRevisionRepository>,
     source_resolver: Arc<dyn ISourceResolver>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+    )
+}
+
+fn build_test_application_with_github_connections(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    connections: Arc<InMemoryGithubConnectionRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        connections,
+        Arc::new(TestGithubAppAuthorization),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -439,6 +538,8 @@ fn build_test_application_with_source_resolver(
             secrets,
             sources,
             source_webhooks,
+            github_connections,
+            github_authorization,
             source_resolver,
             source_webhook_verifier: Arc::new(
                 GithubWebhookVerifier::for_test(GITHUB_WEBHOOK_SECRET, 1024 * 1024)

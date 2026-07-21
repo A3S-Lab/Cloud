@@ -74,10 +74,14 @@ configuration, reject unsafe tree entries, strip `.git`, and commit an
 immutable content receipt. The Artifacts context also owns a typed Build
 service whose BuildKit adapter exports and fully validates a local OCI image
 layout; a dedicated gate exercises it against the digest-pinned rootless
-BuildKit image. The build coordinator does not yet join those boundaries or run
+BuildKit image. A tenant-scoped GitHub App connection boundary now binds one
+verified installation/account to one Cloud organization using single-use
+installation and OAuth state, S256 PKCE, and transient GitHub user-token
+verification. The build coordinator does not yet join those boundaries or run
 the client through a Runtime Task. Repository subscriptions and tenant fanout,
-GitHub App/private-repository authentication, isolated build orchestration,
-registry publication, and provenance remain unimplemented.
+installation-token/private-repository authentication, installation lifecycle
+reconciliation, webhook fanout, isolated build orchestration, registry
+publication, and provenance remain unimplemented.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -283,7 +287,7 @@ inside the same transaction.
 | --- | --- | --- |
 | Identity | create organization, manage membership/token | password/identity provider, audit |
 | Projects | create project/environment, request deletion | operation coordinator |
-| Sources | authenticate and accept provider webhook delivery; resolve and accept immutable external source revision | provider webhook verifier, source resolver, build coordinator |
+| Sources | verify and own a provider installation; authenticate and accept provider webhook delivery; resolve and accept immutable external source revision | GitHub App authorization, provider webhook verifier, source resolver, build coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
 | Artifacts | build, register, verify, sign, retain artifact | BuildKit, OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
@@ -706,6 +710,43 @@ with a Runtime Task. OCI inputs resolve a tag once and deploy only the manifest
 digest. Build cache keys include source digest, recipe digest, builder digest,
 platform, and declared inputs.
 
+The GitHub App connection boundary owns installation authorization, not
+repository subscription or checkout credentials. An organization-authorized
+`POST /api/v1/organizations/{organization_id}/source-connections/github`
+creates or replaces one short-lived awaiting-installation flow and returns the
+fixed GitHub App installation URL. PostgreSQL stores only the SHA-256 digest of
+its random 32-byte state. GitHub returns to the public
+`GET /api/v1/source-connections/github/setup`; Cloud atomically consumes that
+state, records the positive installation ID, rotates to a second random
+state, and redirects to GitHub OAuth with an S256 PKCE challenge.
+
+The PKCE verifier is not server-side state. It is carried only in a bounded
+`Secure`, `HttpOnly`, `SameSite=Lax` callback-path cookie while PostgreSQL
+stores its digest. The public OAuth callback matches both digests, reads the
+current client secret from its configured environment variable, exchanges the
+bounded code without following redirects, and uses the transient user token
+for `GET /user` plus at most ten 100-entry pages of
+`GET /user/installations`. The setup-provided installation ID is accepted only
+when it is present in that user-token intersection; the setup query alone is
+never installation authority. Provider bodies and requests are bounded, and
+OAuth codes, client secrets, access/refresh tokens, PKCE verifiers, and
+provider response buffers are never durable.
+
+Completion atomically consumes the flow, persists one `GithubConnection`, and
+writes `source.github-connection.created` to the outbox. A Cloud organization
+has at most one connection; GitHub installation ID and account identity are
+exclusive across organizations. Durable state contains only numeric
+installation/account/verifying-user IDs, account kind, display logins, and the
+connection time. The tenant GET returns that record, while flow responses use
+no-store and no-referrer policy. Explicitly disabled GitHub App ACL fields
+construct a closed unavailable adapter rather than partial provider behavior.
+
+This connection does not enumerate or bind repositories, mint installation
+JWTs/tokens, authenticate source resolution or checkout, enable private
+repositories, reconcile suspension/deletion/account transfer, or route webhook
+deliveries. Those are separate G0 subscription, credential, lifecycle, and
+fanout transactions.
+
 `POST /api/v1/webhooks/github` is a public provider boundary. It requires JSON
 plus GitHub event, delivery, and
 `X-Hub-Signature-256` headers. The verifier rejects bodies beyond the configured
@@ -743,9 +784,11 @@ canonical digest, and atomically stores the environment-owned immutable
 revision, idempotency response, optional webhook repository-plus-commit
 reservation, and `source.revision.accepted` outbox fact. Natural identity is
 environment, repository, commit, and recipe digest. Mutable ref names and
-credential references are not durable source-revision state. GitHub App and
-private-repository authentication, repository subscriptions and webhook fanout,
-and the coordinated BuildKit operation remain subsequent G0 boundaries.
+credential references are not durable source-revision state. The GitHub App
+connection records verified installation ownership but does not yet supply an
+installation token to this resolver. Private-repository authentication,
+repository subscriptions and webhook fanout, and the coordinated BuildKit
+operation remain subsequent G0 boundaries.
 
 The provider-neutral source-checkout port accepts only a canonical repository,
 one full commit object ID, and an immutable checkout ID. Its Git adapter uses a
