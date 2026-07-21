@@ -107,6 +107,11 @@ pub(crate) fn validate_build_run_transition(
                 candidate.begin_cleanup(command_id, at)
             })
         })
+        || next.cleanup_command_id.is_some_and(|command_id| {
+            matches_transition(existing, next, |candidate| {
+                candidate.retry_cleanup(command_id, at)
+            })
+        })
         || matches_transition(existing, next, |candidate| candidate.complete(at));
 
     if valid {

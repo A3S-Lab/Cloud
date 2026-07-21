@@ -108,6 +108,8 @@ impl BuildkitCommand {
                     .join(",")
             )
             .into(),
+            "--opt".into(),
+            "force-network-mode=none".into(),
         ]);
         if let Some(target) = input.recipe.target() {
             arguments.extend(["--opt".into(), format!("target={target}").into()]);

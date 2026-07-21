@@ -323,6 +323,28 @@ impl BuildRun {
         Ok(())
     }
 
+    pub fn retry_cleanup(
+        &mut self,
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        if self.status != BuildRunStatus::CleanupPending
+            || self.command_id.is_none()
+            || self.node_id.is_none()
+            || self.cleanup_command_id.is_none()
+        {
+            return Err("build run is not ready to retry Runtime cleanup".into());
+        }
+        if self.cleanup_command_id == Some(command_id) {
+            return self.observe_time(at);
+        }
+        let at = self.canonical_time(at)?;
+        self.cleanup_command_id = Some(command_id);
+        self.aggregate_version += 1;
+        self.updated_at = at;
+        Ok(())
+    }
+
     pub fn complete(&mut self, at: DateTime<Utc>) -> Result<(), String> {
         if self.status.is_terminal() {
             return self.observe_time(at);

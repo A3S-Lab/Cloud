@@ -4,7 +4,7 @@ mod vault_client;
 
 pub use flow::{
     connect_flow, FlowCoordinatorError, FlowCoordinatorReport, FlowInfrastructure,
-    FlowInfrastructureError, FlowOperationCoordinator,
+    FlowInfrastructureError, FlowOperationCoordinator, FlowRuntimeRouter,
 };
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 

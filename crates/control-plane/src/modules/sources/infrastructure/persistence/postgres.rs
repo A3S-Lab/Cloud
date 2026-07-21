@@ -260,6 +260,29 @@ impl ISourceWebhookRepository for PostgresSourceRevisionRepository {
 
 #[async_trait]
 impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        source_revision_id: SourceRevisionId,
+    ) -> Result<ExternalSourceRevision, RepositoryError> {
+        let row = Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<SourceRevisionRow>(
+                    "select organization_id, project_id, environment_id, id, repository_provider, repository_url, repository_identity, commit_sha, recipe, recipe_digest, aggregate_version, accepted_at from external_source_revisions where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(source_revision_id.as_uuid()),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .ok_or(RepositoryError::NotFound)?;
+        map_row(row).map_err(|error| match error {
+            PostgresPersistenceError::Repository(error) => error,
+            error => RepositoryError::Storage(error.to_string()),
+        })
+    }
+
     async fn replay_acceptance(
         &self,
         idempotency: &IdempotencyRequest,

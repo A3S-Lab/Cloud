@@ -3,12 +3,14 @@ pub mod domain;
 pub mod infrastructure;
 
 pub use domain::{
-    BuildArtifact, BuildRun, BuildRunStatus, BuildServiceError, BuiltOciArtifact,
-    IBuildRunRepository, IBuildService, INodeArtifactStore, NodeArtifactDescriptor,
-    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OciBuildRequest, OciDescriptor,
-    OpenNodeArtifact, ValidatedOciBuildOutput,
+    BuildArtifact, BuildInputPreparationError, BuildOutputValidationError, BuildRun,
+    BuildRunStatus, BuildServiceError, BuiltOciArtifact, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, IBuildService, INodeArtifactStore,
+    NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite,
+    OciBuildRequest, OciDescriptor, OpenNodeArtifact, PreparedBuildInput, ValidatedOciBuildOutput,
 };
 pub use infrastructure::{
-    BuildkitBuildService, BuildkitConnection, InMemoryBuildRunRepository, LocalNodeArtifactStore,
-    PostgresBuildRunRepository,
+    BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildkitBuildService,
+    BuildkitConnection, InMemoryBuildRunRepository, LocalNodeArtifactStore,
+    PostgresBuildRunRepository, RuntimeBuildOutputValidator, SourceBuildInputPreparer,
 };

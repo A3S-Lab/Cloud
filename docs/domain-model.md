@@ -124,13 +124,13 @@ Owns immutable artifact metadata, provenance, checksums, signatures, and
 registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
-The implemented G0 engine boundary lives here rather than in Sources or
-Runtime. Its typed Build service binds a build ID, checked-out content digest,
-and recipe to a validated OCI root descriptor and local layout receipt. The
-BuildKit adapter verifies every referenced blob and the exact requested
-platform set before accepting the result. Artifact persistence, registry
-locations, provenance, signatures, and build-operation state remain subsequent
-boundaries for OCI publication. The separate implemented node-transfer store
+The implemented G0 build boundary lives here rather than in Sources or Runtime.
+Its typed Build service and `cloud.build@1` Flow bind a build ID, checked-out
+content digest, recipe, Runtime Task identity, and validated OCI root descriptor
+to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
+and requested platform before accepting the result. Registry locations,
+provenance, signatures, and published OCI artifact state remain subsequent
+boundaries. The node-transfer store
 persists command-scoped directory archives by digest so Runtime input/output
 bytes can cross the existing mTLS node boundary without pretending that cache
 objects are published OCI artifacts.
@@ -661,19 +661,24 @@ The implemented secure checkout port materializes an accepted commit under
 bounded isolated Git configuration, supplies an optional repository-bound
 token only through a transient Git HTTP header, removes `.git`, and records an
 immutable filesystem digest for credential-free replay. The implemented
-Artifact-owned Build service can consume a
-caller-supplied materialized source and recipe through rootless BuildKit, then
-validate and atomically receipt a local OCI layout. It does not yet coordinate
-or revalidate the checkout, publish the image, record provenance, or hand a
-digest to Workloads. The Artifacts context now also owns one deterministic
+Artifact-owned Build service can consume a materialized source and recipe
+through rootless BuildKit, then validate and atomically receipt an OCI layout.
+The production Build Flow now coordinates this service boundary through an
+isolated Runtime Task: it replays the checkout, verifies package-time identity,
+admits immutable input bytes, selects a compatible node, applies independent
+Runtime and BuildKit network denials, validates the Runtime output, and removes
+the Task and checkout before terminal completion. It does not yet publish the
+image, record provenance, or hand a digest to Workloads. The Artifacts context
+owns one deterministic
 `BuildRun` per accepted source revision. It binds tenant/environment ownership,
 the exact `cloud.build@1` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
 terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
 operation replay, and optimistic single-transition saves prevent duplicate or
-forged logical builds across process loss. The reconciler remains disabled in
-the production worker until the Build Flow runtime can execute that operation
-as an isolated Runtime Task. A separate implemented GitHub App connection
+forged logical builds across process loss. The production worker runs the
+BuildRun reconciler and a closed Flow router dispatches only the supported
+deployment, workload-stop, and build workflow identities. A separate
+implemented GitHub App connection
 aggregate verifies and exclusively assigns an installation/account to one Cloud
 organization using single-use state, OAuth user authority, and PKCE. The
 separate `GithubRepositorySubscription` aggregate provides explicit repository
@@ -685,8 +690,8 @@ history, and prevent old subscriptions from inheriting a fresh connection.
 Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
 while the
 operator-credential external GitHub gate remains unexecuted. Authoritative
-provider polling and Runtime execution of the complete source-to-artifact
-operation remain later G0 work.
+provider polling, registry publication, provenance, and source-to-deployment
+handoff remain later G0 work.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,
@@ -724,7 +729,9 @@ Failure or cancellation before Runtime dispatch may terminate without a
 cleanup command. Once a Runtime Task command exists, terminal state requires a
 durable cleanup command identity. Successful completion requires a validated
 OCI graph whose artifact exactly matches the collected Runtime output. Exact
-transition replay changes neither version nor timestamps.
+transition replay changes neither version nor timestamps. Cleanup first
+observes the deterministic Runtime removal receipt, then deletes the checkout;
+a build failure is persisted only after this cleanup path completes.
 
 ### GitHub source connection state
 
