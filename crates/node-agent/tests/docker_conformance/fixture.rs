@@ -6,7 +6,8 @@ use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObser
 use a3s_runtime::{
     runtime_profile_requirements, FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient,
     RuntimeConformanceFixture, RuntimeConformanceInventory, RuntimeConformanceProfile,
-    RuntimeConformanceProfileEvidence, RuntimeError, RuntimeResult, RuntimeStateStore,
+    RuntimeConformanceProfileEvidence, RuntimeDriver, RuntimeError, RuntimeResult,
+    RuntimeStateStore,
 };
 use async_trait::async_trait;
 use bollard::container::{
@@ -62,6 +63,17 @@ impl DockerConformanceFixture {
         driver: Arc<DockerRuntimeDriver>,
     ) -> ManagedRuntimeClient {
         ManagedRuntimeClient::new(self.store.clone() as Arc<dyn RuntimeStateStore>, driver)
+    }
+
+    /// Bypass managed terminal-state replay so reconstruction checks exercise
+    /// the provider driver's inspection boundary.
+    pub(crate) async fn inspect_driver(
+        &self,
+        driver: &dyn RuntimeDriver,
+        unit_id: &str,
+    ) -> RuntimeResult<RuntimeInspection> {
+        let record = self.store.load(unit_id).await?;
+        driver.inspect(&record).await
     }
 
     pub(crate) async fn namespace_container_ids(&self) -> RuntimeResult<Vec<String>> {

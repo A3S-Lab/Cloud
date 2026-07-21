@@ -203,14 +203,17 @@ impl DockerConformanceFixture {
         let restarted_driver = Arc::new(
             connect_driver(&self.namespace, self.node_id, self.artifacts.manager()).await?,
         );
-        let restarted = self.restarted_client(restarted_driver);
-        let reconstructed = found(restarted.inspect(&artifact.unit_id).await?)?;
+        let reconstructed = found(
+            self.inspect_driver(restarted_driver.as_ref(), &artifact.unit_id)
+                .await?,
+        )?;
         require(
             reconstructed.state == artifact_observation.state
                 && reconstructed.spec_digest == artifact_observation.spec_digest
                 && resource_id(&reconstructed)? == artifact_id,
             "Docker Artifact mount identity changed after driver reconstruction",
         )?;
+        let restarted = self.restarted_client(restarted_driver);
         restarted
             .remove(&specs::action("mount-artifact-remove", &artifact))
             .await?;

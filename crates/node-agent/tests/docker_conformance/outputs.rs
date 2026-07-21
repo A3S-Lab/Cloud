@@ -52,8 +52,10 @@ impl DockerConformanceFixture {
         let restarted_driver = Arc::new(
             connect_driver(&self.namespace, self.node_id, self.artifacts.manager()).await?,
         );
-        let restarted = self.restarted_client(restarted_driver);
-        let reconstructed = found(restarted.inspect(&spec.unit_id).await?)?;
+        let reconstructed = found(
+            self.inspect_driver(restarted_driver.as_ref(), &spec.unit_id)
+                .await?,
+        )?;
         require(
             reconstructed.outputs == first.outputs
                 && resource_id(&reconstructed)? == resource
@@ -90,9 +92,12 @@ impl DockerConformanceFixture {
             .tamper_blob_same_length(&output.artifact)
             .await?;
         require(
-            restarted.inspect(&spec.unit_id).await.is_err(),
+            self.inspect_driver(restarted_driver.as_ref(), &spec.unit_id)
+                .await
+                .is_err(),
             "Docker Task output digest tampering survived inspection",
         )?;
+        let restarted = self.restarted_client(restarted_driver);
         restarted
             .remove(&specs::action("output-exact-remove", &spec))
             .await?;
