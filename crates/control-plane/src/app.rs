@@ -54,18 +54,19 @@ use crate::modules::secrets::{
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
 use crate::modules::sources::domain::{
-    IGithubAppAuthorizationService, IGithubConnectionRepository, ISourceResolver,
-    ISourceRevisionRepository, ISourceSubscriptionRepository, ISourceWebhookRepository,
-    ISourceWebhookVerifier, SourceRepositoryPolicy,
+    IGithubAppAuthorizationService, IGithubConnectionRepository, IGithubInstallationTokenService,
+    ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
+    ISourceWebhookRepository, ISourceWebhookVerifier, SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
     AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
     CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
     DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GithubAppClient,
-    GithubSourceResolver, GithubWebhookVerifier, ListGithubRepositorySubscriptionsHandler,
-    ListSourceRevisionsHandler, PostgresGithubConnectionRepository,
-    PostgresSourceRevisionRepository, PostgresSourceSubscriptionRepository,
-    PrepareGithubConnectionOauthHandler, ResolveExternalSourceRevisionHandler, SourcesModule,
+    GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
+    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
+    PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
+    PostgresSourceSubscriptionRepository, PrepareGithubConnectionOauthHandler,
+    ResolveExternalSourceRevisionHandler, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -205,6 +206,19 @@ pub async fn build_application_with_source_resolver(
             )
         } else {
             Arc::new(GithubAppClient::disabled())
+        };
+    let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> =
+        if config.sources.github_app_enabled {
+            Arc::new(
+                GithubInstallationTokenIssuer::new(
+                    Duration::from_millis(config.sources.github_request_timeout_ms),
+                    config.sources.github_app_client_id.clone(),
+                    config.sources.github_app_private_key_env.clone(),
+                )
+                .map_err(ControlPlaneStartupError::Sources)?,
+            )
+        } else {
+            Arc::new(GithubInstallationTokenIssuer::disabled())
         };
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
@@ -414,6 +428,7 @@ pub async fn build_application_with_source_resolver(
             source_subscriptions,
             github_connections,
             github_authorization,
+            github_installation_tokens,
             source_resolver,
             source_webhook_verifier,
             secret_encryption: Arc::clone(&key_encryption),
@@ -466,6 +481,7 @@ struct ApplicationDependencies {
     source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
     github_connections: Arc<dyn IGithubConnectionRepository>,
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
     source_resolver: Arc<dyn ISourceResolver>,
     source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
@@ -499,6 +515,7 @@ fn build_application_with_health(
         source_subscriptions,
         github_connections,
         github_authorization,
+        github_installation_tokens,
         source_resolver,
         source_webhook_verifier,
         secret_encryption,
@@ -581,6 +598,7 @@ fn build_application_with_health(
     let prepare_github_connections = Arc::clone(&github_connections);
     let complete_github_connections = Arc::clone(&github_connections);
     let create_subscription_connections = Arc::clone(&github_connections);
+    let resolve_github_connections = Arc::clone(&github_connections);
     let get_github_connections = github_connections;
     let begin_github_authorization = Arc::clone(&github_authorization);
     let prepare_github_authorization = Arc::clone(&github_authorization);
@@ -684,6 +702,8 @@ fn build_application_with_health(
                     ResolveExternalSourceRevisionHandler::new(
                         source_environments,
                         accept_sources,
+                        resolve_github_connections,
+                        github_installation_tokens,
                         source_resolver,
                         source_policy,
                     ),

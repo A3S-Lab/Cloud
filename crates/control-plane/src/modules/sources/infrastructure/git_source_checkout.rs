@@ -7,6 +7,7 @@ use self::receipt::{read_receipt, write_receipt, CheckoutReceipt, RECEIPT_SCHEMA
 use self::tree::{digest_worktree, valid_object_id, valid_sha256, GitTreeManifest};
 use crate::modules::sources::domain::{
     CheckedOutSource, GitProvider, ISourceCheckout, SourceCheckoutError, SourceCheckoutRequest,
+    SourceProviderCredential,
 };
 use async_trait::async_trait;
 use std::ffi::OsString;
@@ -23,7 +24,7 @@ pub struct GitSourceCheckout {
     max_bytes: u64,
     commands: GitCommandRunner,
     #[cfg(test)]
-    test_remote: Option<PathBuf>,
+    test_remote: Option<OsString>,
 }
 
 impl GitSourceCheckout {
@@ -49,7 +50,7 @@ impl GitSourceCheckout {
         {
             return Err("Git source checkout options are invalid".into());
         }
-        let commands = GitCommandRunner::discover(timeout, false)
+        let commands = GitCommandRunner::discover(timeout, false, false)
             .map_err(|error| format!("could not initialize Git source checkout: {error}"))?;
         Ok(Self {
             root,
@@ -71,14 +72,40 @@ impl GitSourceCheckout {
         remote: impl Into<PathBuf>,
     ) -> Result<Self, String> {
         let mut checkout = Self::new(root, timeout, max_files, max_bytes)?;
-        checkout.commands = GitCommandRunner::discover(timeout, true)
+        checkout.commands = GitCommandRunner::discover(timeout, true, false)
             .map_err(|error| format!("could not initialize test Git source checkout: {error}"))?;
         checkout.test_remote = Some(
             remote
                 .into()
                 .canonicalize()
-                .map_err(|_| "test Git remote is unavailable".to_owned())?,
+                .map_err(|_| "test Git remote is unavailable".to_owned())?
+                .into_os_string(),
         );
+        Ok(checkout)
+    }
+
+    #[cfg(test)]
+    fn for_http_test(
+        root: impl Into<PathBuf>,
+        timeout: Duration,
+        max_files: usize,
+        max_bytes: u64,
+        remote: &str,
+    ) -> Result<Self, String> {
+        let remote_url =
+            url::Url::parse(remote).map_err(|_| "test Git HTTP remote is invalid".to_owned())?;
+        if remote_url.scheme() != "http"
+            || remote_url.host_str() != Some("127.0.0.1")
+            || remote_url.port().is_none()
+            || !remote_url.username().is_empty()
+            || remote_url.password().is_some()
+        {
+            return Err("test Git HTTP remote is invalid".into());
+        }
+        let mut checkout = Self::new(root, timeout, max_files, max_bytes)?;
+        checkout.commands = GitCommandRunner::discover(timeout, false, true)
+            .map_err(|error| format!("could not initialize test Git HTTP checkout: {error}"))?;
+        checkout.test_remote = Some(remote.into());
         Ok(checkout)
     }
 
@@ -86,6 +113,7 @@ impl GitSourceCheckout {
         &self,
         request: &SourceCheckoutRequest,
         staging: &Path,
+        credential: Option<&SourceProviderCredential>,
     ) -> Result<CheckoutReceipt, SourceCheckoutError> {
         let source = staging.join("source");
         let sandbox = staging.join("sandbox");
@@ -108,6 +136,7 @@ impl GitSourceCheckout {
                 source.as_os_str().to_owned(),
             ],
             false,
+            None,
         )
         .await?;
         self.git(
@@ -124,6 +153,7 @@ impl GitSourceCheckout {
                 request.commit_sha.as_str().into(),
             ],
             true,
+            credential,
         )
         .await?;
         self.git(
@@ -137,6 +167,7 @@ impl GitSourceCheckout {
                 "FETCH_HEAD".into(),
             ],
             false,
+            None,
         )
         .await?;
         let commit_sha = one_line(
@@ -150,6 +181,7 @@ impl GitSourceCheckout {
                     "HEAD^{commit}".into(),
                 ],
                 false,
+                None,
             )
             .await?,
             "Git returned an invalid checked-out commit",
@@ -166,6 +198,7 @@ impl GitSourceCheckout {
                 &hooks,
                 vec!["rev-parse".into(), "--verify".into(), "HEAD^{tree}".into()],
                 false,
+                None,
             )
             .await?,
             "Git returned an invalid tree ID",
@@ -185,6 +218,7 @@ impl GitSourceCheckout {
                     "HEAD".into(),
                 ],
                 false,
+                None,
             )
             .await?;
         let manifest = GitTreeManifest::parse(&tree, self.max_files, self.max_bytes)?;
@@ -199,6 +233,7 @@ impl GitSourceCheckout {
                     "--untracked-files=all".into(),
                 ],
                 false,
+                None,
             )
             .await?;
         if !status.is_empty() {
@@ -292,9 +327,16 @@ impl GitSourceCheckout {
         hooks: &Path,
         args: Vec<OsString>,
         provider_access: bool,
+        credential: Option<&SourceProviderCredential>,
     ) -> Result<Vec<u8>, SourceCheckoutError> {
         self.commands
-            .run(working_directory, home, hooks, &args)
+            .run(
+                working_directory,
+                home,
+                hooks,
+                &args,
+                credential.map(SourceProviderCredential::expose_token),
+            )
             .await
             .map_err(|error| map_git_error(error, provider_access))
     }
@@ -302,7 +344,7 @@ impl GitSourceCheckout {
     fn remote(&self, request: &SourceCheckoutRequest) -> OsString {
         #[cfg(test)]
         if let Some(remote) = &self.test_remote {
-            return remote.as_os_str().to_owned();
+            return remote.clone();
         }
         format!("{}.git", request.repository.canonical_url()).into()
     }
@@ -313,6 +355,7 @@ impl ISourceCheckout for GitSourceCheckout {
     async fn checkout(
         &self,
         request: &SourceCheckoutRequest,
+        credential: Option<&SourceProviderCredential>,
     ) -> Result<CheckedOutSource, SourceCheckoutError> {
         validate_request(request)?;
         let root = ensure_root(&self.root).await?;
@@ -322,11 +365,13 @@ impl ISourceCheckout for GitSourceCheckout {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => return Err(storage("could not inspect source checkout path")),
         }
+        validate_credential(request, credential, self.timeout)?;
         let staging = root.join(format!(".{}-{}.tmp", request.checkout_id, Uuid::now_v7()));
         tokio::fs::create_dir(&staging)
             .await
             .map_err(|_| storage("could not create source checkout staging directory"))?;
-        let prepared = tokio::time::timeout(self.timeout, self.prepare(request, &staging)).await;
+        let prepared =
+            tokio::time::timeout(self.timeout, self.prepare(request, &staging, credential)).await;
         match prepared {
             Err(_) => {
                 remove_staging(&staging).await;
@@ -438,6 +483,25 @@ fn validate_request(request: &SourceCheckoutRequest) -> Result<(), SourceCheckou
     Ok(())
 }
 
+fn validate_credential(
+    request: &SourceCheckoutRequest,
+    credential: Option<&SourceProviderCredential>,
+    timeout: Duration,
+) -> Result<(), SourceCheckoutError> {
+    if credential.is_some_and(|credential| {
+        !credential.authorizes(
+            &request.repository,
+            chrono::Utc::now(),
+            chrono::Duration::from_std(timeout).unwrap_or_else(|_| chrono::Duration::minutes(10)),
+        )
+    }) {
+        return Err(SourceCheckoutError::Unavailable(
+            "source provider credential is unavailable".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn map_git_error(error: GitCommandError, provider_access: bool) -> SourceCheckoutError {
     if provider_access {
         SourceCheckoutError::Unavailable(
@@ -471,6 +535,10 @@ fn integrity(message: impl Into<String>) -> SourceCheckoutError {
 fn storage(message: impl Into<String>) -> SourceCheckoutError {
     SourceCheckoutError::Storage(message.into())
 }
+
+#[cfg(test)]
+#[path = "git_source_checkout_auth_tests.rs"]
+mod auth_tests;
 
 #[cfg(test)]
 #[path = "git_source_checkout_tests.rs"]

@@ -75,6 +75,7 @@ dependencies = [
  "object_store",
  "rcgen",
  "reqwest",
+ "ring",
  "rustls",
  "rustls-pemfile",
  "serde",

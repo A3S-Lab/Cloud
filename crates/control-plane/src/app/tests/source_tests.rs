@@ -854,6 +854,7 @@ async fn idempotency_replay_never_resolves_an_accepted_moving_branch_again() -> 
         async fn resolve(
             &self,
             request: &SourceResolutionRequest,
+            _credential: Option<&crate::modules::sources::domain::SourceProviderCredential>,
         ) -> std::result::Result<ResolvedSource, SourceResolutionError> {
             let call = self.calls.fetch_add(1, Ordering::SeqCst);
             let commit = if call == 0 { COMMIT_A } else { COMMIT_B };

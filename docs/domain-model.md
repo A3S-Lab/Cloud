@@ -22,7 +22,7 @@ distributes committed facts after the corresponding database transaction.
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
 | Asset release | An immutable, versioned publication of one asset revision and artifact. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
-| Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; it is not yet a tenant subscription or source revision. |
+| Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Workload | Environment-scoped desired long-running service. It is not an Asset. |
 | Workload revision | Immutable desired runtime specification derived from one source. |
@@ -256,10 +256,12 @@ tables directly. Audit records are append-only and separate from event delivery.
 - OAuth code, client secret, user access/refresh token, PKCE verifier, and
   provider response bytes are transient and never enter the aggregate,
   PostgreSQL, event payload, response, or error.
-- A connection establishes installation/account ownership only. Repository
-  subscriptions are separate environment-owned aggregates;
-  installation-token issuance, private-repository checkout, and lifecycle
-  reconciliation remain independent future workflows.
+- A connection remains durable installation/account ownership only; it stores
+  no credential. Anonymous source failure may use that same tenant authority to
+  issue one short-lived, repository-bound, read-only installation token for
+  resolution or checkout. Repository subscriptions are separate
+  environment-owned aggregates, and provider lifecycle reconciliation remains
+  an independent future workflow.
 
 ### GitHub repository subscription
 
@@ -319,9 +321,11 @@ tables directly. Audit records are append-only and separate from event delivery.
 - `(provider, delivery_id)` identifies one provider fact. Replaying the exact
   payload returns the first fact; reusing the key with another payload or typed
   identity conflicts atomically.
-- The inbox is provider-level and does not apply an environment repository
-  policy, resolve a tenant subscription, emit an outbox fact, or create a
-  source revision, build, or deployment.
+- The inbox identity remains provider-level. Only first acceptance joins exact
+  active subscriptions by installation, repository, and branch, then creates
+  each matching environment/recipe revision, tenant delivery reservation, and
+  `source.revision.accepted` outbox fact in the same transaction. Replay never
+  re-runs fanout. It still does not create a build or deployment.
 - The provider delivery is distinct from an optional
   `ExternalSourceRevision` webhook reservation supplied through the
   authenticated tenant mutation.
@@ -615,18 +619,20 @@ mutable reference again.
 
 The implemented G0 boundary persists `ExternalSourceRevision` before a build
 exists. Its REST boundary enforces exact repository policy, resolves a typed
-public GitHub branch, tag, or full commit through a provider-neutral port, and
-accepts the resulting immutable object ID with
+GitHub branch, tag, or full commit anonymously first and through verified
+installation authority only when required, and accepts the resulting immutable
+object ID with
 `a3s.cloud.build-recipe.v1`. A separate public GitHub endpoint
 HMAC-authenticates exact raw requests and durably deduplicates typed branch
 pushes in a provider-level inbox. A newly accepted delivery atomically selects
 only active subscriptions with the exact installation, repository, and branch,
 then creates one immutable revision/outbox fact for each matching environment
 and recipe without resolving the branch again. Replay does not re-run fanout.
-The implemented secure checkout port
-materializes an accepted public commit under bounded isolated Git
-configuration, removes `.git`, and records an immutable filesystem digest for
-replay. The implemented Artifact-owned Build service can consume a
+The implemented secure checkout port materializes an accepted commit under
+bounded isolated Git configuration, supplies an optional repository-bound
+token only through a transient Git HTTP header, removes `.git`, and records an
+immutable filesystem digest for credential-free replay. The implemented
+Artifact-owned Build service can consume a
 caller-supplied materialized source and recipe through rootless BuildKit, then
 validate and atomically receipt a local OCI layout. It does not yet coordinate
 or revalidate the checkout, publish the image, record provenance, or hand a
@@ -634,10 +640,13 @@ digest to Workloads. A separate implemented GitHub App connection aggregate
 verifies and exclusively assigns an installation/account to one Cloud
 organization using single-use state, OAuth user authority, and PKCE. The
 separate `GithubRepositorySubscription` aggregate provides explicit repository
-authority and retained active/inactive lifecycle, but the connection still does
-not supply checkout credentials. Installation-token/private-repository
-authentication, provider lifecycle reconciliation, and the complete
-source-to-artifact operation remain later G0 work.
+authority and retained active/inactive lifecycle. Anonymous source resolution
+may use the connection to issue one repository-scoped read-only installation
+token; token and App key material are never durable. Local issuer, resolver,
+and real Git smart-HTTP fixtures cover the private path, while the
+operator-credential external GitHub gate remains unexecuted. Provider lifecycle
+reconciliation and the complete source-to-artifact operation remain later G0
+work.
 
 ## 6. State models
 

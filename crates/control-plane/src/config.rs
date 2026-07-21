@@ -122,6 +122,7 @@ pub struct SourcesConfig {
     pub github_app_slug: String,
     pub github_app_client_id: String,
     pub github_app_client_secret_env: String,
+    pub github_app_private_key_env: String,
     pub github_app_callback_url: String,
     pub github_connection_state_ttl_ms: u64,
     pub allowed_repositories: Vec<String>,
@@ -345,6 +346,7 @@ impl CloudConfig {
                 "github_app_slug",
                 "github_app_client_id",
                 "github_app_client_secret_env",
+                "github_app_private_key_env",
                 "github_app_callback_url",
                 "github_connection_state_ttl_ms",
                 "allowed_repositories",
@@ -488,6 +490,7 @@ impl CloudConfig {
                 github_app_slug: string(sources, "github_app_slug")?,
                 github_app_client_id: string(sources, "github_app_client_id")?,
                 github_app_client_secret_env: string(sources, "github_app_client_secret_env")?,
+                github_app_private_key_env: string(sources, "github_app_private_key_env")?,
                 github_app_callback_url: string(sources, "github_app_callback_url")?,
                 github_connection_state_ttl_ms: integer(sources, "github_connection_state_ttl_ms")?,
                 allowed_repositories: string_list(sources, "allowed_repositories")?,
@@ -929,6 +932,7 @@ impl CloudConfig {
                 &sources.github_app_slug,
                 &sources.github_app_client_id,
                 &sources.github_app_client_secret_env,
+                &sources.github_app_private_key_env,
                 &sources.github_app_callback_url,
             ]
             .into_iter()
@@ -953,6 +957,12 @@ impl CloudConfig {
         if !valid_env_name(&sources.github_app_client_secret_env) {
             return Err(ConfigError::Invalid(
                 "sources.github_app_client_secret_env must be an uppercase environment variable name"
+                    .into(),
+            ));
+        }
+        if !valid_env_name(&sources.github_app_private_key_env) {
+            return Err(ConfigError::Invalid(
+                "sources.github_app_private_key_env must be an uppercase environment variable name"
                     .into(),
             ));
         }
@@ -1380,6 +1390,7 @@ sources {
   github_app_slug = "a3s-cloud-test"
   github_app_client_id = "Iv1.test-client"
   github_app_client_secret_env = "A3S_CLOUD_GITHUB_APP_CLIENT_SECRET"
+  github_app_private_key_env = "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
   github_app_callback_url = "https://cloud.example.test/api/v1/source-connections/github/callback"
   github_connection_state_ttl_ms = 600000
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
@@ -1463,6 +1474,10 @@ security {
         assert!(config.sources.github_app_enabled);
         assert_eq!(config.sources.github_app_slug, "a3s-cloud-test");
         assert_eq!(
+            config.sources.github_app_private_key_env,
+            "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
+        );
+        assert_eq!(
             config.sources.github_app_callback_url,
             "https://cloud.example.test/api/v1/source-connections/github/callback"
         );
@@ -1494,6 +1509,7 @@ security {
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
         assert!(!config.sources.github_app_enabled);
         assert!(config.sources.github_app_slug.is_empty());
+        assert!(config.sources.github_app_private_key_env.is_empty());
         assert_eq!(config.logs.retention_ms, 604_800_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
     }
@@ -1573,6 +1589,11 @@ security {
         ))
         .is_err());
         assert!(CloudConfig::parse(&VALID.replace(
+            "github_app_private_key_env = \"A3S_CLOUD_GITHUB_APP_PRIVATE_KEY\"",
+            "github_app_private_key_env = \"github-private-key\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
             "https://cloud.example.test/api/v1/source-connections/github/callback",
             "http://cloud.example.test/api/v1/source-connections/github/callback"
         ))
@@ -1596,6 +1617,10 @@ security {
             .replace(
                 "github_app_client_secret_env = \"A3S_CLOUD_GITHUB_APP_CLIENT_SECRET\"",
                 "github_app_client_secret_env = \"\"",
+            )
+            .replace(
+                "github_app_private_key_env = \"A3S_CLOUD_GITHUB_APP_PRIVATE_KEY\"",
+                "github_app_private_key_env = \"\"",
             )
             .replace(
                 "github_app_callback_url = \"https://cloud.example.test/api/v1/source-connections/github/callback\"",

@@ -98,6 +98,54 @@ fn repository_policy_is_allowlisted_and_deny_wins() {
 }
 
 #[test]
+fn provider_credentials_are_short_lived_repository_bound_and_redacted() {
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    let repository = GitRepository::parse(GitProvider::Github, "https://github.com/a3s-lab/cloud")
+        .expect("repository");
+    let other = GitRepository::parse(
+        GitProvider::Github,
+        "https://github.com/a3s-lab/private-cloud",
+    )
+    .expect("other repository");
+    let issued_at = Utc::now();
+    let token = "fixture-installation-token";
+    let credential = SourceProviderCredential::new(
+        &repository,
+        zeroize::Zeroizing::new(token.into()),
+        issued_at,
+        issued_at + chrono::Duration::hours(1),
+    )
+    .expect("provider credential");
+
+    assert_send_sync::<SourceProviderCredential>();
+    assert_eq!(credential.provider(), GitProvider::Github);
+    assert_eq!(credential.repository_identity(), repository.identity());
+    assert!(credential.authorizes(&repository, issued_at, chrono::Duration::seconds(30)));
+    assert!(!credential.authorizes(&other, issued_at, chrono::Duration::seconds(30)));
+    assert!(!credential.authorizes(
+        &repository,
+        issued_at + chrono::Duration::minutes(60),
+        chrono::Duration::zero()
+    ));
+    assert!(!format!("{credential:?}").contains(token));
+    assert!(SourceProviderCredential::new(
+        &repository,
+        zeroize::Zeroizing::new("bad\ntoken".into()),
+        issued_at,
+        issued_at + chrono::Duration::hours(1),
+    )
+    .is_err());
+    assert!(SourceProviderCredential::new(
+        &repository,
+        zeroize::Zeroizing::new("fixture".into()),
+        issued_at,
+        issued_at + chrono::Duration::hours(2),
+    )
+    .is_err());
+}
+
+#[test]
 fn dockerfile_recipe_is_path_safe_ordered_and_digest_stable() {
     let first = BuildRecipe::dockerfile(
         BuildRecipe::SCHEMA,

@@ -242,6 +242,7 @@ pub(super) fn config() -> CloudConfig {
             github_app_slug: String::new(),
             github_app_client_id: String::new(),
             github_app_client_secret_env: String::new(),
+            github_app_private_key_env: String::new(),
             github_app_callback_url: String::new(),
             github_connection_state_ttl_ms: 600_000,
             allowed_repositories: vec!["https://github.com/A3S-Lab/Cloud".into()],

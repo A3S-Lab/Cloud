@@ -22,7 +22,10 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
     let checkout = fixture.checkout(&checkout_root, 1_000);
     let checkout_id = Uuid::now_v7();
     let request = source_request(checkout_id, &first_commit);
-    let accepted = checkout.checkout(&request).await.expect("pinned checkout");
+    let accepted = checkout
+        .checkout(&request, None)
+        .await
+        .expect("pinned checkout");
 
     assert_eq!(accepted.checkout_id, checkout_id);
     assert_eq!(accepted.commit_sha.as_str(), first_commit);
@@ -35,11 +38,14 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
     assert!(!accepted.directory.join(".git").exists());
     assert!(accepted.content_digest.starts_with("sha256:"));
 
-    let replay = checkout.checkout(&request).await.expect("checkout replay");
+    let replay = checkout
+        .checkout(&request, None)
+        .await
+        .expect("checkout replay");
     assert_eq!(replay, accepted);
 
     let conflict = checkout
-        .checkout(&source_request(checkout_id, &second_commit))
+        .checkout(&source_request(checkout_id, &second_commit), None)
         .await
         .expect_err("conflicting checkout");
     assert!(matches!(conflict, SourceCheckoutError::Conflict));
@@ -48,7 +54,7 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
         .await
         .expect("tamper with checkout");
     let tampered = checkout
-        .checkout(&request)
+        .checkout(&request, None)
         .await
         .expect_err("tampered checkout");
     assert!(matches!(tampered, SourceCheckoutError::Integrity(_)));
@@ -72,7 +78,7 @@ async fn checkout_rejects_source_trees_that_exceed_the_file_limit() {
     let checkout = fixture.checkout(&checkout_root, 1);
 
     let error = checkout
-        .checkout(&source_request(Uuid::now_v7(), &commit))
+        .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("file limit");
     assert!(matches!(error, SourceCheckoutError::Integrity(_)));
@@ -95,7 +101,7 @@ async fn checkout_rejects_source_trees_that_exceed_the_content_limit() {
     .expect("checkout adapter");
 
     let error = checkout
-        .checkout(&source_request(Uuid::now_v7(), &commit))
+        .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("content limit");
     assert!(matches!(error, SourceCheckoutError::Integrity(_)));
@@ -115,7 +121,7 @@ async fn checkout_rejects_symlinks_that_escape_the_source_root() {
     let checkout = fixture.checkout(&checkout_root, 1_000);
 
     let error = checkout
-        .checkout(&source_request(Uuid::now_v7(), &commit))
+        .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("escaping symlink");
     assert!(matches!(error, SourceCheckoutError::Integrity(_)));
@@ -136,7 +142,10 @@ async fn checkout_preserves_symlinks_that_remain_inside_the_source_root() {
     let checkout = fixture.checkout(&checkout_root, 1_000);
     let request = source_request(Uuid::now_v7(), &commit);
 
-    let accepted = checkout.checkout(&request).await.expect("internal symlink");
+    let accepted = checkout
+        .checkout(&request, None)
+        .await
+        .expect("internal symlink");
     assert_eq!(
         tokio::fs::read_link(accepted.directory.join("link.txt"))
             .await
@@ -144,7 +153,10 @@ async fn checkout_preserves_symlinks_that_remain_inside_the_source_root() {
         std::path::PathBuf::from("target.txt")
     );
     assert_eq!(
-        checkout.checkout(&request).await.expect("symlink replay"),
+        checkout
+            .checkout(&request, None)
+            .await
+            .expect("symlink replay"),
         accepted
     );
 }
@@ -183,7 +195,7 @@ async fn checkout_rejects_gitlinks_without_initializing_submodules() {
     let checkout = fixture.checkout(&checkout_root, 1_000);
 
     let error = checkout
-        .checkout(&source_request(Uuid::now_v7(), &commit))
+        .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("submodule");
     assert!(matches!(error, SourceCheckoutError::Integrity(_)));
@@ -196,10 +208,13 @@ async fn real_github_checkout_materializes_the_resolved_commit_without_git_metad
     let resolver = GithubSourceResolver::new(Duration::from_secs(15)).expect("GitHub resolver");
     let repository = github_repository();
     let resolved = resolver
-        .resolve(&SourceResolutionRequest {
-            repository: repository.clone(),
-            reference: GitReference::parse("branch", "main").expect("main branch"),
-        })
+        .resolve(
+            &SourceResolutionRequest {
+                repository: repository.clone(),
+                reference: GitReference::parse("branch", "main").expect("main branch"),
+            },
+            None,
+        )
         .await
         .expect("public GitHub branch");
     let directory = tempfile::tempdir().expect("public checkout directory");
@@ -215,14 +230,17 @@ async fn real_github_checkout_materializes_the_resolved_commit_without_git_metad
             .expect("checkout request");
 
     let accepted = checkout
-        .checkout(&request)
+        .checkout(&request, None)
         .await
         .expect("public Git checkout");
     assert_eq!(accepted.commit_sha, resolved.commit_sha);
     assert!(accepted.directory.join("README.md").is_file());
     assert!(!accepted.directory.join(".git").exists());
     assert_eq!(
-        checkout.checkout(&request).await.expect("public replay"),
+        checkout
+            .checkout(&request, None)
+            .await
+            .expect("public replay"),
         accepted
     );
     checkout
@@ -231,7 +249,7 @@ async fn real_github_checkout_materializes_the_resolved_commit_without_git_metad
         .expect("public checkout cleanup");
 }
 
-fn source_request(checkout_id: Uuid, commit: &str) -> SourceCheckoutRequest {
+pub(super) fn source_request(checkout_id: Uuid, commit: &str) -> SourceCheckoutRequest {
     SourceCheckoutRequest::new(
         checkout_id,
         github_repository(),
@@ -240,14 +258,14 @@ fn source_request(checkout_id: Uuid, commit: &str) -> SourceCheckoutRequest {
     .expect("checkout request")
 }
 
-struct GitFixture {
-    root: TempDir,
+pub(super) struct GitFixture {
+    pub(super) root: TempDir,
     remote: std::path::PathBuf,
     work: std::path::PathBuf,
 }
 
 impl GitFixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let root = tempfile::tempdir().expect("Git fixture");
         let remote = root.path().join("remote.git");
         let work = root.path().join("work");
@@ -262,7 +280,7 @@ impl GitFixture {
         Self { root, remote, work }
     }
 
-    fn checkout(&self, root: &Path, max_files: usize) -> GitSourceCheckout {
+    pub(super) fn checkout(&self, root: &Path, max_files: usize) -> GitSourceCheckout {
         GitSourceCheckout::for_test(
             root,
             Duration::from_secs(10),
@@ -273,7 +291,7 @@ impl GitFixture {
         .expect("checkout adapter")
     }
 
-    fn commit(&self, name: &str, content: &str, message: &str) -> String {
+    pub(super) fn commit(&self, name: &str, content: &str, message: &str) -> String {
         std::fs::write(self.work.join(name), content).expect("write Git fixture");
         git(&self.work, &["add", "--", name]);
         git(&self.work, &["commit", "--quiet", "-m", message]);
@@ -286,7 +304,7 @@ impl GitFixture {
         git_output(&self.work, &["rev-parse", "HEAD"])
     }
 
-    fn push_main(&self) {
+    pub(super) fn push_main(&self) {
         git(
             &self.work,
             &["push", "--quiet", "--force", "origin", "main"],
@@ -328,7 +346,7 @@ fn github_repository() -> GitRepository {
         .expect("GitHub repository")
 }
 
-fn assert_staging_is_empty(root: &Path) {
+pub(super) fn assert_staging_is_empty(root: &Path) {
     let entries = std::fs::read_dir(root)
         .expect("checkout root")
         .collect::<Result<Vec<_>, _>>()
