@@ -2,4 +2,7 @@ mod request;
 mod response;
 
 pub use request::ResolveSourceRevisionRequest;
-pub use response::{SourceRevisionResponse, SourceWebhookResponse};
+pub use response::{
+    GithubConnectionInstallResponse, GithubConnectionResponse, SourceRevisionResponse,
+    SourceWebhookResponse,
+};

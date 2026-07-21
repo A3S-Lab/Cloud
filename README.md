@@ -152,6 +152,12 @@ API command
   into a durable provider-level inbox, replay the same delivery and payload,
   and reject delivery-ID reuse with different bytes without storing the raw
   payload or secret
+- **Tenant-Scoped GitHub App Connection**: Start an installation from an
+  organization-authorized API, bind setup and OAuth callbacks with expiring
+  single-use state plus PKCE, verify the installation through the transient
+  GitHub user-token intersection, and persist only durable numeric
+  installation/account/user identities with global installation/account
+  ownership
 - **Validated OCI Build Boundary**: Bind one immutable build ID to a checked-out
   content digest and recipe, invoke BuildKit through an Artifact-owned typed
   port with Unix, mTLS, or explicit loopback-conformance transport, export an
@@ -180,7 +186,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress now authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes in a provider-level inbox without storing payloads or secrets. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Repository subscriptions, tenant fanout, GitHub App/private-repository authentication, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` signed-webhook-inbox slice) |
+| Source delivery | Canonical GitHub repository identities, closed exact repository policy, typed public branch/tag/commit resolution, immutable commit verification, versioned Dockerfile recipes, recipe digests, tenant-scoped PostgreSQL revisions, replay-before-resolution idempotency, source-revision delivery reservation, and bounded exact-commit checkout with isolated Git configuration, immutable content receipts, submodule/escaping-symlink rejection, and a real public GitHub gate are implemented. Public GitHub ingress authenticates exact raw bodies with HMAC-SHA256 and durably deduplicates typed branch pushes in a provider-level inbox without storing payloads or secrets. An organization-scoped GitHub App installation flow now uses expiring single-use state, OAuth plus PKCE, transient user-token verification, durable numeric identities, and exclusive installation/account ownership without persisting OAuth credentials. The Artifacts context owns a typed local-context Build service with authenticated-remote transport policy, atomic output replay, full OCI graph validation, and a real rootless BuildKit gate. Repository subscriptions, tenant fanout, installation-token authentication and private-repository checkout, lifecycle reconciliation, webhook fanout, checkout/build Flow orchestration through a Runtime Task, network isolation, registry publication, provenance, and push-to-deploy remain | In progress (`G0` GitHub connection slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -306,14 +312,77 @@ gitlinks and symlinks that escape the source root, removes `.git`, and commits
 an immutable credential-free SHA-256 content receipt. Reusing a checkout ID
 revalidates that content; another repository or commit conflicts. The real
 GitHub CI gate resolves `main`, materializes that exact commit, and verifies
-metadata-free replay. Build-operation wiring, GitHub App credentials, and
-private-repository access remain later G0 slices.
+metadata-free replay. Build-operation wiring, GitHub installation-token
+authentication, and private-repository access remain later G0 slices.
 
 List accepted revisions with:
 
 ```text
 GET /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions
 ```
+
+### Connect a GitHub App installation
+
+The first GitHub connection slice binds one GitHub App installation/account to
+one Cloud organization. Enable it only after registering these exact GitHub App
+URLs:
+
+```text
+Setup URL:    https://cloud.example.com/api/v1/source-connections/github/setup
+Callback URL: https://cloud.example.com/api/v1/source-connections/github/callback
+```
+
+Set the App slug, client ID, callback URL, and the environment-variable name
+that carries the client secret in the `sources` ACL block. The client secret
+itself stays outside ACL:
+
+```acl
+sources {
+  github_app_enabled = true
+  github_app_slug = "a3s-cloud"
+  github_app_client_id = "Iv1.example"
+  github_app_client_secret_env = "A3S_CLOUD_GITHUB_APP_CLIENT_SECRET"
+  github_app_callback_url = "https://cloud.example.com/api/v1/source-connections/github/callback"
+  github_connection_state_ttl_ms = 600000
+
+  # Existing source settings remain required here.
+  github_request_timeout_ms = 10000
+  github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+  github_webhook_max_body_bytes = 1048576
+  allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
+  denied_repositories = []
+}
+```
+
+Begin the browser flow with an organization token carrying `source:write`:
+
+```text
+POST /api/v1/organizations/{organization_id}/source-connections/github
+GET  /api/v1/organizations/{organization_id}/source-connections/github
+```
+
+The POST returns GitHub's installation URL. GitHub then calls the public setup
+URL, Cloud advances the browser to OAuth with S256 PKCE, and GitHub returns to
+the public callback. Installation and OAuth state are independent 32-byte
+random values; PostgreSQL stores only their SHA-256 digests. The PKCE verifier
+exists only in a short-lived `Secure`, `HttpOnly`, `SameSite=Lax` cookie.
+Cloud exchanges the code using the current client-secret environment value,
+calls `GET /user` and bounded pages of `GET /user/installations`, and accepts
+the setup-provided installation ID only if that transient user token can access
+it. The OAuth code, client secret, user/refresh tokens, and PKCE verifier are
+never persisted.
+
+One Cloud organization may own one GitHub connection, and a GitHub
+installation or account may belong to only one Cloud organization. The durable
+record contains numeric installation, account, and verifying-user IDs plus
+display logins, and completion emits
+`source.github-connection.created`. API and callback responses are
+non-cacheable.
+
+This slice establishes installation ownership only. It does not create
+repository subscriptions, mint installation tokens, authenticate checkout,
+enable private repositories, reconcile installation lifecycle changes, or fan
+out webhooks to tenants.
 
 ### Receive a signed GitHub webhook
 
@@ -508,6 +577,12 @@ deployment and Edge policies are split across independent boundaries:
 | `sources.github_request_timeout_ms` | Bound for one public GitHub API request |
 | `sources.github_webhook_secret_env` | Uppercase environment-variable name containing the 32- to 512-byte GitHub HMAC secret; read for every request to permit rotation |
 | `sources.github_webhook_max_body_bytes` | Accepted signed webhook body limit from 1 KiB through 2 MiB |
+| `sources.github_app_enabled` | Explicit GitHub App connection switch; when false, all App fields must be empty and connection attempts return unavailable |
+| `sources.github_app_slug` | Lowercase bounded slug used only to construct GitHub's fixed App installation URL |
+| `sources.github_app_client_id` | Public GitHub App OAuth client ID |
+| `sources.github_app_client_secret_env` | Uppercase environment-variable name carrying the OAuth client secret; the value is read transiently for each callback |
+| `sources.github_app_callback_url` | Exact public HTTPS callback ending in `/api/v1/source-connections/github/callback` |
+| `sources.github_connection_state_ttl_ms` | Shared 1- to 30-minute bound for the single-use installation/OAuth flow |
 | `sources.allowed_repositories` | Exact HTTPS GitHub repository allowlist; it must be nonempty |
 | `sources.denied_repositories` | Exact HTTPS GitHub repository denylist; denial takes precedence |
 | `edge.entrypoint_address` | Address rendered into the complete traffic snapshot |

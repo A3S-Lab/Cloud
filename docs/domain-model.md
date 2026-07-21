@@ -72,13 +72,16 @@ Primary aggregates:
 
 ### 3.3 External sources
 
-Owns authenticated source-provider delivery facts and immutable external
-application source revisions accepted after provider resolution. It
-deliberately does not own hosted A3S assets, mutable provider refs, repository
-credentials, build execution, artifacts, or deployments.
+Owns tenant-to-provider installation identity, authenticated source-provider
+delivery facts, and immutable external application source revisions accepted
+after provider resolution. It deliberately does not own hosted A3S assets,
+mutable provider refs, durable provider credentials, build execution,
+artifacts, or deployments.
 
 Primary aggregates:
 
+- `GithubConnection`
+- `GithubConnectionFlow`
 - `ExternalSourceRevision`
 - `SourceWebhookDelivery`
 
@@ -86,7 +89,10 @@ The initial provider is GitHub. Provider adapters may resolve convenient refs,
 but the aggregate accepts only a canonical repository identity, a full commit
 object ID, and an explicit versioned build recipe. The provider-level webhook
 inbox authenticates and deduplicates typed branch-push facts but does not infer
-tenant ownership or initiate source delivery.
+tenant ownership or initiate source delivery. Separately, the GitHub App
+connection flow verifies one installation through OAuth user authority and
+records tenant ownership without yet creating repository subscriptions or
+checkout credentials.
 
 ### 3.4 Asset hosting
 
@@ -228,6 +234,29 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Environment names are unique within one project.
 - Environment deletion requires all workloads to reach a terminal stopped or
   explicitly orphaned state.
+
+### GitHub source connection
+
+- A Cloud organization owns at most one GitHub connection. A numeric GitHub
+  installation ID and an `(account_kind, account_id)` identity may each belong
+  to at most one Cloud organization.
+- Installation setup and OAuth are two stages of one expiring flow. Each stage
+  has an independent random 32-byte state, PostgreSQL stores only its SHA-256
+  digest, and advancing or completing a stage makes it single-use.
+- The setup-provided installation ID is untrusted until the OAuth user token
+  can see that exact ID through GitHub's user-installations API.
+- S256 PKCE binds the OAuth callback. Only the verifier digest is durable; the
+  verifier itself exists in a short-lived secure, HTTP-only, same-site cookie.
+- Completion stores durable numeric installation, account, and verifying-user
+  IDs, account kind, display logins, and connection time in the same
+  transaction as `source.github-connection.created`.
+- OAuth code, client secret, user access/refresh token, PKCE verifier, and
+  provider response bytes are transient and never enter the aggregate,
+  PostgreSQL, event payload, response, or error.
+- A connection establishes installation/account ownership only. Repository
+  subscriptions, installation-token issuance, private-repository checkout,
+  lifecycle reconciliation, and webhook fanout are independent future
+  aggregates/workflows.
 
 ### External source revision
 
@@ -576,9 +605,13 @@ replay. The implemented Artifact-owned Build service can consume a
 caller-supplied materialized source and recipe through rootless BuildKit, then
 validate and atomically receipt a local OCI layout. It does not yet coordinate
 or revalidate the checkout, publish the image, record provenance, or hand a
-digest to Workloads. Repository subscriptions, GitHub App/private-repository
-authentication, and the complete source-to-artifact operation remain later G0
-work.
+digest to Workloads. A separate implemented GitHub App connection aggregate
+verifies and exclusively assigns an installation/account to one Cloud
+organization using single-use state, OAuth user authority, and PKCE, but it
+does not bind repositories or supply checkout credentials. Repository
+subscriptions, installation-token/private-repository authentication, lifecycle
+reconciliation, webhook fanout, and the complete source-to-artifact operation
+remain later G0 work.
 
 ## 6. State models
 
@@ -685,6 +718,8 @@ Gateway revision.
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
+| Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
+| Verified GitHub installation/account ownership and verifying-user identity | PostgreSQL GitHub source-connection table; no OAuth credential |
 | Provider webhook delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
 | Asset repository refs and objects | Git repository store |
@@ -720,6 +755,7 @@ carry a versioned envelope:
 ```text
 identity.organization.created
 project.environment.created
+source.github-connection.created
 source.revision.accepted
 asset.asset.created
 asset.release.published

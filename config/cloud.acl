@@ -62,6 +62,12 @@ sources {
   github_request_timeout_ms = 10000
   github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
   github_webhook_max_body_bytes = 1048576
+  github_app_enabled = false
+  github_app_slug = ""
+  github_app_client_id = ""
+  github_app_client_secret_env = ""
+  github_app_callback_url = ""
+  github_connection_state_ttl_ms = 600000
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }

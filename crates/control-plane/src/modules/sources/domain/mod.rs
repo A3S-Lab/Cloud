@@ -8,21 +8,24 @@ pub mod value_objects;
 mod tests;
 
 pub use entities::{
-    ExternalSourceRevision, NewExternalSourceRevision, NewSourceWebhookDelivery,
-    SourceWebhookDelivery,
+    ExternalSourceRevision, GithubConnection, GithubConnectionFlow, GithubConnectionFlowError,
+    GithubConnectionFlowStage, NewExternalSourceRevision, NewGithubConnection,
+    NewSourceWebhookDelivery, SourceWebhookDelivery,
 };
-pub use events::SourceRevisionAccepted;
+pub use events::{GithubConnectionCreated, SourceRevisionAccepted};
 pub use repositories::{
-    AcceptSourceRevision, ISourceRevisionRepository, ISourceWebhookRepository,
-    WebhookDeliveryReservation,
+    AcceptSourceRevision, CompleteGithubConnection, IGithubConnectionRepository,
+    ISourceRevisionRepository, ISourceWebhookRepository, WebhookDeliveryReservation,
 };
 pub use services::{
-    CheckedOutSource, ISourceCheckout, ISourceResolver, ISourceWebhookVerifier, ResolvedSource,
-    SourceCheckoutError, SourceCheckoutRequest, SourceRepositoryPolicy, SourceResolutionError,
-    SourceResolutionRequest, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
-    VerifiedSourcePush, VerifiedSourceWebhook,
+    CheckedOutSource, GithubAppAuthorizationError, GithubInstallationVerificationRequest,
+    IGithubAppAuthorizationService, ISourceCheckout, ISourceResolver, ISourceWebhookVerifier,
+    ResolvedSource, SourceCheckoutError, SourceCheckoutRequest, SourceRepositoryPolicy,
+    SourceResolutionError, SourceResolutionRequest, SourceWebhookVerificationError,
+    SourceWebhookVerificationRequest, VerifiedGithubInstallation, VerifiedSourcePush,
+    VerifiedSourceWebhook,
 };
 pub use value_objects::{
     BuildPlatform, BuildRecipe, GitCommitSha, GitProvider, GitReference, GitRepository,
-    GithubInstallationId, WebhookDeliveryId,
+    GithubAccountId, GithubAccountKind, GithubInstallationId, GithubLogin, WebhookDeliveryId,
 };

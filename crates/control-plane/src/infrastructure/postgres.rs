@@ -237,6 +237,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/022_source_webhook_inbox.sql"
             )),
         ),
+        Migration::new(
+            "023",
+            "GitHub source connections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/023_github_source_connections.sql"
+            )),
+        ),
     ]
 }
 

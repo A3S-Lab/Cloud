@@ -39,6 +39,9 @@ pub fn application_error_response(
         ApplicationError::NotFound(message) => (404, "NOT_FOUND", message),
         ApplicationError::Conflict(message) => (409, "CONFLICT", message),
         ApplicationError::Forbidden(message) => (403, "FORBIDDEN", message),
+        ApplicationError::Unavailable(_) => {
+            (503, "SERVICE_UNAVAILABLE", "Service unavailable".into())
+        }
         ApplicationError::Internal(_) => {
             (500, "INTERNAL_SERVER_ERROR", "Internal server error".into())
         }
@@ -65,7 +68,7 @@ impl ExceptionFilter for ApiErrorFilter {
         context: ExecutionContext,
         error: BootError,
     ) -> BoxFuture<'static, Result<Option<BootResponse>>> {
-        Box::pin(async move { error_response(error, request_id(&context)).map(Some) })
+        Box::pin(async move { boot_error_response(error, request_id(&context)).map(Some) })
     }
 }
 
@@ -104,7 +107,7 @@ fn success_response(response: BootResponse, request_id: Uuid) -> Result<BootResp
     )
 }
 
-fn error_response(error: BootError, request_id: Uuid) -> Result<BootResponse> {
+pub(crate) fn boot_error_response(error: BootError, request_id: Uuid) -> Result<BootResponse> {
     let status = error.http_status_code();
     let message = if status >= 500 {
         "Internal server error".to_owned()
@@ -128,16 +131,25 @@ fn copy_headers(
     mut target: BootResponse,
     request_id: Uuid,
 ) -> Result<BootResponse> {
-    for (name, value) in source.header_entries() {
-        if name.eq_ignore_ascii_case("content-type")
-            || name.eq_ignore_ascii_case("content-length")
-            || name.eq_ignore_ascii_case("x-request-id")
-        {
+    for (name, value) in &source.headers {
+        if replaced_header(name) {
+            continue;
+        }
+        target = target.with_header(name, value);
+    }
+    for (name, value) in &source.appended_headers {
+        if replaced_header(name) {
             continue;
         }
         target = target.append_header(name, value);
     }
     Ok(target.with_header("x-request-id", request_id.to_string()))
+}
+
+fn replaced_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case("content-type")
+        || name.eq_ignore_ascii_case("content-length")
+        || name.eq_ignore_ascii_case("x-request-id")
 }
 
 fn status_code(error: &BootError) -> &'static str {

@@ -114,6 +114,7 @@ impl NodeControlHttpError {
                 message,
                 false,
             ),
+            ApplicationError::Unavailable(message) => Self::unavailable(request_id, message),
             ApplicationError::Internal(message) => Self::internal(request_id, message),
         }
     }

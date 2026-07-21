@@ -1,5 +1,9 @@
+mod github_connection_install_response;
+mod github_connection_response;
 mod source_revision_response;
 mod source_webhook_response;
 
+pub use github_connection_install_response::GithubConnectionInstallResponse;
+pub use github_connection_response::GithubConnectionResponse;
 pub use source_revision_response::SourceRevisionResponse;
 pub use source_webhook_response::SourceWebhookResponse;

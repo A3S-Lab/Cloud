@@ -56,7 +56,9 @@ fn stream_error(error: ApplicationError) -> BootError {
         ApplicationError::Invalid(message) => BootError::BadRequest(message),
         ApplicationError::NotFound(message) => BootError::NotFound(message),
         ApplicationError::Forbidden(message) => BootError::Forbidden(message),
-        ApplicationError::Conflict(_) | ApplicationError::Internal(_) => {
+        ApplicationError::Conflict(_)
+        | ApplicationError::Unavailable(_)
+        | ApplicationError::Internal(_) => {
             BootError::Internal("live workload log query failed".into())
         }
     }

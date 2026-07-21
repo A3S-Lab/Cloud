@@ -1,7 +1,364 @@
 use super::*;
+use base64::Engine;
 
 const COMMIT_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+#[tokio::test]
+async fn disabled_github_connection_is_sanitized_and_creates_no_flow() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let connections = Arc::new(InMemoryGithubConnectionRepository::new());
+    let app = build_test_application_with_source_dependencies(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::clone(&connections),
+        Arc::new(crate::modules::sources::GithubAppClient::disabled()),
+    )?;
+    let organization = bootstrap_organization(&app, "disabled-github-app-org", "Acme").await?;
+    let path = format!("/api/v1/organizations/{organization}/source-connections/github");
+
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, path)
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+        )
+        .await?;
+
+    assert_eq!(response.status(), 503);
+    assert_no_store(&response);
+    let body = response_json(&response)?;
+    assert_eq!(body["statusCode"], "SERVICE_UNAVAILABLE");
+    assert_eq!(body["message"], "Service unavailable");
+    assert!(!String::from_utf8_lossy(response.body()).contains("not configured"));
+    assert!(connections.flows().await.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn github_installation_connection_is_tenant_scoped_user_verified_and_secretless() -> Result<()>
+{
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let connections = Arc::new(InMemoryGithubConnectionRepository::new());
+    let app = build_test_application_with_github_connections(
+        identity,
+        projects,
+        Arc::clone(&connections),
+    )?;
+    let organization = bootstrap_organization(&app, "github-connection-org", "Acme").await?;
+    create_api_token(
+        &app,
+        &organization,
+        "github-project-only-token",
+        "project-only",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::PROJECT_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "github-source-token",
+        "source-only",
+        SOURCE_TOKEN,
+        &[ApiTokenScope::SOURCE_WRITE],
+        None,
+    )
+    .await?;
+    let path = format!("/api/v1/organizations/{organization}/source-connections/github");
+
+    let unauthenticated = app.call(BootRequest::new(HttpMethod::Post, &path)).await?;
+    assert_eq!(unauthenticated.status(), 401);
+    assert_no_store(&unauthenticated);
+    let wrong_scope = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &path)
+                .with_header("authorization", format!("Bearer {PROJECT_TOKEN}")),
+        )
+        .await?;
+    assert_eq!(wrong_scope.status(), 403);
+    assert_no_store(&wrong_scope);
+
+    let started = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &path)
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+        )
+        .await?;
+    assert_eq!(started.status(), 201);
+    assert_no_store(&started);
+    let started_body = response_json(&started)?;
+    let installation_url = started_body["data"]["installationUrl"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("install response has no URL".into()))?;
+    let installation_state = url_query(installation_url, "state")?;
+    assert_eq!(installation_state.len(), 43);
+    let persisted = connections.flows().await;
+    assert_eq!(persisted.len(), 1);
+    assert!(!persisted[0].state_digest.contains(&installation_state));
+    assert_eq!(persisted[0].pkce_verifier_digest, None);
+
+    let spoofed = app
+        .call(BootRequest::new(
+            HttpMethod::Get,
+            format!(
+                "/api/v1/source-connections/github/setup?installation_id=42&state={}",
+                "z".repeat(43)
+            ),
+        ))
+        .await?;
+    assert_eq!(spoofed.status(), 422);
+    assert_no_store(&spoofed);
+
+    let setup = app
+        .call(BootRequest::new(
+            HttpMethod::Get,
+            format!(
+                "/api/v1/source-connections/github/setup?installation_id=42&state={installation_state}&setup_action=install"
+            ),
+        ))
+        .await?;
+    assert_eq!(setup.status(), 303);
+    assert_no_store(&setup);
+    let authorization_url = setup
+        .location()
+        .ok_or_else(|| BootError::Internal("setup response has no redirect".into()))?;
+    let oauth_state = url_query(authorization_url, "state")?;
+    let challenge = url_query(authorization_url, "code_challenge")?;
+    assert_eq!(oauth_state.len(), 43);
+    assert_eq!(challenge.len(), 43);
+    assert_eq!(
+        url_query(authorization_url, "code_challenge_method")?,
+        "S256"
+    );
+    let pkce_verifier = response_cookie(&setup, "a3s_github_oauth_pkce")?;
+    assert_eq!(pkce_verifier.len(), 43);
+    assert_eq!(
+        challenge,
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(Sha256::digest(pkce_verifier.as_bytes()))
+    );
+    let pkce_cookie_header = setup
+        .header_values("set-cookie")
+        .into_iter()
+        .find(|value| value.starts_with("a3s_github_oauth_pkce="))
+        .ok_or_else(|| BootError::Internal("setup response has no PKCE cookie".into()))?;
+    for attribute in [
+        "Path=/api/v1/source-connections/github/callback",
+        "HttpOnly",
+        "Secure",
+        "SameSite=Lax",
+        "Max-Age=",
+    ] {
+        assert!(pkce_cookie_header.contains(attribute), "{attribute}");
+    }
+    let persisted = connections.flows().await;
+    assert!(!persisted[0].state_digest.contains(&oauth_state));
+    assert!(!persisted[0]
+        .pkce_verifier_digest
+        .as_deref()
+        .unwrap_or_default()
+        .contains(&pkce_verifier));
+
+    let setup_replay = app
+        .call(BootRequest::new(
+            HttpMethod::Get,
+            format!(
+                "/api/v1/source-connections/github/setup?installation_id=42&state={installation_state}"
+            ),
+        ))
+        .await?;
+    assert_eq!(setup_replay.status(), 422);
+    assert_no_store(&setup_replay);
+
+    let callback_path =
+        format!("/api/v1/source-connections/github/callback?code=valid-code&state={oauth_state}");
+    let missing_cookie = app
+        .call(BootRequest::new(HttpMethod::Get, &callback_path))
+        .await?;
+    assert_eq!(missing_cookie.status(), 400);
+    assert_no_store(&missing_cookie);
+    let malformed_query_secret = "fixture-oauth-code-must-not-escape";
+    let malformed_query = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!(
+                    "/api/v1/source-connections/github/callback?code={malformed_query_secret}&state=%"
+                ),
+            )
+            .with_header(
+                "cookie",
+                format!("a3s_github_oauth_pkce={pkce_verifier}"),
+            ),
+        )
+        .await?;
+    assert_eq!(malformed_query.status(), 422);
+    assert_no_store(&malformed_query);
+    assert!(!String::from_utf8_lossy(malformed_query.body()).contains(malformed_query_secret));
+    let rejected_code = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!(
+                    "/api/v1/source-connections/github/callback?code=rejected-code&state={oauth_state}"
+                ),
+            )
+            .with_header(
+                "cookie",
+                format!("a3s_github_oauth_pkce={pkce_verifier}"),
+            ),
+        )
+        .await?;
+    assert_eq!(rejected_code.status(), 422);
+    assert_no_store(&rejected_code);
+
+    let connected = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &callback_path)
+                .with_header("cookie", format!("a3s_github_oauth_pkce={pkce_verifier}")),
+        )
+        .await?;
+    assert_eq!(connected.status(), 201);
+    assert_no_store(&connected);
+    let connected_body = response_json(&connected)?;
+    assert_eq!(connected_body["data"]["provider"], "github");
+    assert_eq!(connected_body["data"]["installationId"], 42);
+    assert_eq!(connected_body["data"]["account"]["id"], 100);
+    assert_eq!(connected_body["data"]["account"]["type"], "organization");
+    assert_eq!(connected_body["data"]["verifiedBy"]["id"], 200);
+    let response_text = String::from_utf8_lossy(connected.body());
+    assert!(!response_text.contains("valid-code"));
+    assert!(!response_text.contains(&pkce_verifier));
+    assert!(connected
+        .header_values("set-cookie")
+        .iter()
+        .any(|value| value.contains("Max-Age=0")));
+    assert_eq!(
+        connections
+            .outbox_events()
+            .await
+            .iter()
+            .filter(|event| event.event_key == "source.github-connection.created")
+            .count(),
+        1
+    );
+
+    let callback_replay = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &callback_path)
+                .with_header("cookie", format!("a3s_github_oauth_pkce={pkce_verifier}")),
+        )
+        .await?;
+    assert_eq!(callback_replay.status(), 409);
+    assert_no_store(&callback_replay);
+    let found = app.call(get_as(&path, ADMIN_TOKEN)).await?;
+    assert_eq!(found.status(), 200);
+    assert_no_store(&found);
+    assert_eq!(response_json(&found)?["data"]["installationId"], 42);
+    let duplicate_for_organization = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &path)
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+        )
+        .await?;
+    assert_eq!(duplicate_for_organization.status(), 409);
+    assert_no_store(&duplicate_for_organization);
+
+    let other_organization =
+        create_organization(&app, "github-connection-other-org", "Other").await?;
+    let other_path =
+        format!("/api/v1/organizations/{other_organization}/source-connections/github");
+    let cross_tenant = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &other_path)
+                .with_header("authorization", format!("Bearer {SOURCE_TOKEN}")),
+        )
+        .await?;
+    assert_eq!(cross_tenant.status(), 403);
+    assert_no_store(&cross_tenant);
+    let other_started = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &other_path)
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+        )
+        .await?;
+    let other_started_body = response_json(&other_started)?;
+    let other_installation_url = other_started_body["data"]["installationUrl"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("second install response has no URL".into()))?;
+    let other_installation_state = url_query(other_installation_url, "state")?;
+    let other_setup = app
+        .call(BootRequest::new(
+            HttpMethod::Get,
+            format!(
+                "/api/v1/source-connections/github/setup?installation_id=42&state={other_installation_state}"
+            ),
+        ))
+        .await?;
+    let other_authorization_url = other_setup
+        .location()
+        .ok_or_else(|| BootError::Internal("second setup response has no redirect".into()))?;
+    let other_oauth_state = url_query(other_authorization_url, "state")?;
+    let other_verifier = response_cookie(&other_setup, "a3s_github_oauth_pkce")?;
+    let duplicate_installation = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!(
+                    "/api/v1/source-connections/github/callback?code=valid-code&state={other_oauth_state}"
+                ),
+            )
+            .with_header(
+                "cookie",
+                format!("a3s_github_oauth_pkce={other_verifier}"),
+            ),
+        )
+        .await?;
+    assert_eq!(duplicate_installation.status(), 409);
+    assert_no_store(&duplicate_installation);
+    assert_eq!(
+        app.call(get_as(&other_path, ADMIN_TOKEN)).await?.status(),
+        404
+    );
+    Ok(())
+}
+
+fn url_query(url: &str, name: &str) -> Result<String> {
+    url::Url::parse(url)
+        .map_err(|error| BootError::Internal(format!("invalid test URL: {error}")))?
+        .query_pairs()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.into_owned())
+        .ok_or_else(|| BootError::Internal(format!("test URL has no {name} parameter")))
+}
+
+fn response_cookie(response: &BootResponse, name: &str) -> Result<String> {
+    response
+        .header_values("set-cookie")
+        .into_iter()
+        .find_map(|header| {
+            header
+                .split(';')
+                .next()
+                .and_then(|pair| pair.split_once('='))
+                .filter(|(cookie_name, _)| *cookie_name == name)
+                .map(|(_, value)| value.to_owned())
+        })
+        .ok_or_else(|| BootError::Internal(format!("response has no {name} cookie")))
+}
+
+fn assert_no_store(response: &BootResponse) {
+    assert_eq!(response.header("cache-control"), Some("no-store"));
+    assert_eq!(response.header("pragma"), Some("no-cache"));
+    assert_eq!(response.header("referrer-policy"), Some("no-referrer"));
+}
 
 #[tokio::test]
 async fn signed_github_push_is_public_bounded_and_durably_deduplicated() -> Result<()> {
