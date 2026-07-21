@@ -27,8 +27,8 @@ use a3s_cloud_node_agent::{
     NodeRuntimeBinding,
 };
 use a3s_runtime::contract::{
-    ArtifactRef, RuntimeActionRequest, RuntimeApplyRequest, RuntimeObservation,
-    RuntimeOutputArtifact, RuntimeUnitState,
+    ArtifactRef, RuntimeActionRequest, RuntimeApplyRequest, RuntimeLogQuery, RuntimeLogStream,
+    RuntimeObservation, RuntimeOutputArtifact, RuntimeUnitSpec, RuntimeUnitState,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
@@ -57,6 +57,16 @@ const DEFAULT_NAMESPACE: &str = "cloud-buildkit-gate";
 const DEFAULT_VOLUME_ID: &str = "a3s-cloud-buildkit-v0-31-2";
 const BUILDER_DIGEST: &str =
     "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b";
+const NETWORK_CHECK_SCRIPT: &str = concat!(
+    "/bin/busybox --list | /bin/busybox grep -qx wget || { ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_MISSING_WGET >&2; exit 41; }; ",
+    "if /bin/busybox test -e /sys/class/net/eth0; then ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_ETH0_PRESENT >&2; exit 42; fi; ",
+    "if /bin/busybox wget -T 1 -q -O /dev/null http://1.1.1.1/; then ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_EGRESS_REACHABLE >&2; exit 43; fi; ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_PASS",
+);
+const TASK_DIAGNOSTIC_BYTES: usize = 32 * 1024;
 
 #[tokio::test]
 #[ignore = "requires Docker, a rootless BuildKit socket volume, and an authenticated OCI registry"]
@@ -93,13 +103,15 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         busybox_binary.starts_with(b"\x7fELF") && busybox_binary.len() <= 16 * 1024 * 1024,
         "Runtime BuildKit gate BusyBox fixture is not a bounded ELF executable",
     )?;
-    let dockerfile =
+    let dockerfile = format!(
         "FROM scratch AS network-check\n\
          COPY busybox /bin/busybox\n\
-         RUN [\"/bin/busybox\", \"sh\", \"-ceu\", \"/bin/busybox --list | /bin/busybox grep -qx wget; test ! -e /sys/class/net/eth0; ! /bin/busybox wget -T 1 -q -O /dev/null http://1.1.1.1/\"]\n\
+         RUN [\"/bin/busybox\", \"sh\", \"-c\", {}]\n\
          FROM scratch\n\
          COPY --from=network-check /bin/busybox /network-check\n\
-         COPY message.txt /message.txt\n";
+         COPY message.txt /message.txt\n",
+        serde_json::to_string(NETWORK_CHECK_SCRIPT)?,
+    );
     let source_archive = directory_archive(&[
         ("Dockerfile", dockerfile.as_bytes(), 0o644),
         ("busybox", busybox_binary.as_slice(), 0o755),
@@ -174,7 +186,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
     let executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(root.path().join("journal"), node_id)?,
-        runtime,
+        Arc::clone(&runtime),
     )
     .with_artifacts(artifact_manager);
 
@@ -198,13 +210,19 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
     let acknowledgement = executor.execute(apply_command).await?;
     let observation = applied_observation(acknowledgement.outcome)?;
     let resource_id = observation.provider_resource_id.clone();
+    let task_diagnostics = if observation.state == RuntimeUnitState::Succeeded {
+        None
+    } else {
+        Some(runtime_task_diagnostics(runtime.as_ref(), &spec).await)
+    };
 
     let verification = async {
         require(
             observation.state == RuntimeUnitState::Succeeded,
             format!(
-                "Runtime BuildKit Task did not succeed: {:?}",
-                observation.failure
+                "Runtime BuildKit Task did not succeed: {:?}; bounded Runtime logs: {}",
+                observation.failure,
+                task_diagnostics.as_deref().unwrap_or("not captured"),
             ),
         )?;
         require(
@@ -373,6 +391,44 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         "Runtime BuildKit publication did not complete the durable build",
     )?;
     Ok(())
+}
+
+async fn runtime_task_diagnostics(runtime: &dyn RuntimeClient, spec: &RuntimeUnitSpec) -> String {
+    let query = RuntimeLogQuery {
+        schema: RuntimeLogQuery::SCHEMA.into(),
+        unit_id: spec.unit_id.clone(),
+        generation: spec.generation,
+        cursor: None,
+        limit: 512,
+        stream: None,
+    };
+    let chunks = match runtime.logs(&query).await {
+        Ok(chunks) => chunks,
+        Err(error) => return format!("log retrieval failed: {error}"),
+    };
+    if chunks.is_empty() {
+        return "no Runtime log records".into();
+    }
+    let mut diagnostics = String::new();
+    for chunk in chunks {
+        diagnostics.push_str(match chunk.stream {
+            RuntimeLogStream::Stdout => "[stdout] ",
+            RuntimeLogStream::Stderr => "[stderr] ",
+        });
+        diagnostics.push_str(&chunk.data);
+        if !chunk.data.ends_with('\n') {
+            diagnostics.push('\n');
+        }
+        if diagnostics.len() >= TASK_DIAGNOSTIC_BYTES {
+            break;
+        }
+    }
+    let mut end = diagnostics.len().min(TASK_DIAGNOSTIC_BYTES);
+    while !diagnostics.is_char_boundary(end) {
+        end -= 1;
+    }
+    diagnostics.truncate(end);
+    diagnostics
 }
 
 struct RegistryGate {
