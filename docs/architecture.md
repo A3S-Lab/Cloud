@@ -147,6 +147,17 @@ Builds and migrations use the same client with Task units. Agent and MCP are
 ordinary Service units at this boundary; Skill is an immutable input binding,
 not a runnable Runtime class.
 
+The planned Inference profile follows the same boundary. Runtime may advertise
+generic accelerator capabilities and enforcement modes, accept exact device
+bindings, mount Artifacts, and report allocation evidence. Models, inference
+backends, tensor/pipeline parallelism, model routes, usage, Inference scaling
+intent, and the Workloads-owned effective autoscaling policy remain Cloud
+concepts. A typed backend compiler converts an immutable
+Inference deployment revision into an inference-managed Workload execution
+plan; neither Runtime nor the node agent branches on `vllm`, `power`, or `ray`.
+The complete design and release gates are in
+[`inference-plan.md`](inference-plan.md).
+
 Runtime deliberately does not own:
 
 - tenants, projects, environments, assets, or releases;
@@ -218,6 +229,7 @@ inside the same transaction.
 | Artifacts | register, verify, sign, retain artifact | OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation, drain/revoke node | certificate authority, node control |
 | Workloads | create revision, deploy, stop, update, roll back | scheduler, Runtime dispatch, Flow |
+| Inference (planned I0) | register model/backend revisions, create/revise/scale model service, publish model route | artifact resolver, managed Workloads, Fleet inventory, Edge target sets, Identity principals, metrics |
 | Edge | claim domain, publish/remove route | DNS verifier, Gateway publisher, ACME |
 | Data | provision database/volume, back up, restore | Runtime dispatch, object store |
 | Secrets | create version, bind, rotate, revoke | envelope encryption, node secret delivery |
@@ -369,6 +381,15 @@ chain, exact reload, trusted DNS/SNI HTTPS request, and durable revision against
 a loopback upstream. Production DNS/CA adapters, automated renewal, and
 revocation-driven route convergence remain E0 work.
 
+I0 extends this projection from one upstream to complete healthy target sets.
+Inference owns model aliases, primary/fallback intent, access policy, and usage
+semantics; Edge owns transport targets and Gateway revision state. OpenAI model
+selection runs in an optional Gateway inference-dispatch stage, not in a
+control-plane HTTP handler. Gateway receives only complete, versioned ACL
+snapshots, forwards only healthy Workload revisions explicitly allowed by the
+current prior/candidate rollout generation, and durably spools ordered usage
+facts without becoming the authority for models or tenants.
+
 ## 9. Source, build, and asset hosting
 
 The generic source pipeline is:
@@ -470,9 +491,10 @@ boundaries satisfy these requirements.
 | A3S Gateway | Required for public routes | Proxy, TLS, ACME, atomic reload target |
 | A3S Box | Conditional | Stronger Agent/MCP isolation where selected |
 | A3S Observer / Sentry | Conditional | Telemetry or wire security after boundary review |
+| A3S Power | Optional after I0 backend conformance | One typed inference backend; never model, placement, or device authority |
 | A3S Lane | Not initially used | Flow's PostgreSQL task leases already own durable work |
 | AHP | Excluded | No required Cloud capability |
-| A3S Code, Memory, Search, Power, Bench, Updater | Not product dependencies | No capability in the first Cloud loop |
+| A3S Code, Memory, Search, Bench, Updater | Not product dependencies | No capability in the first Cloud loop |
 
 The A3S dependency list is not the complete infrastructure design. Build,
 artifact, key-management, certificate, telemetry, and storage capabilities are

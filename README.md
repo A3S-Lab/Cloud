@@ -501,6 +501,7 @@ Design references:
 - [Domain Model](docs/domain-model.md)
 - [Technical Architecture](docs/architecture.md)
 - [Development Plan](docs/development-plan.md)
+- [Inference Platform Plan](docs/inference-plan.md)
 
 ## License
 
