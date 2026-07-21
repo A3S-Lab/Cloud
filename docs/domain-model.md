@@ -811,8 +811,9 @@ Gateway revision.
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
-| Verified GitHub installation/account ownership and verifying-user identity | PostgreSQL GitHub source-connection table; no OAuth credential |
-| Provider webhook delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
+| Verified GitHub installation/account ownership, verifying-user identity, explicit status, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential |
+| Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
+| Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
@@ -848,6 +849,7 @@ carry a versioned envelope:
 identity.organization.created
 project.environment.created
 source.github-connection.created
+source.github-connection.reconciled
 source.github-repository-subscription.created
 source.github-repository-subscription.deactivated
 source.revision.accepted
