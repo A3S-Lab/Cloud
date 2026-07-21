@@ -116,9 +116,10 @@ async fn postgres_foundation_is_migrated_atomic_and_idempotent(
         return Ok(());
     };
     let isolated = IsolatedPostgresDatabase::create(&admin_url).await?;
-    let result = AssertUnwindSafe(exercise_postgres_foundation(isolated.url().to_owned()))
-        .catch_unwind()
-        .await;
+    // Keep the large end-to-end future off the libtest worker stack while its
+    // process-death probes exercise nested Runtime and Flow recovery paths.
+    let foundation = Box::pin(exercise_postgres_foundation(isolated.url().to_owned()));
+    let result = AssertUnwindSafe(foundation).catch_unwind().await;
     let cleanup = isolated.cleanup().await;
 
     match result {
