@@ -79,6 +79,105 @@ fn ignores_authenticated_non_push_and_deleted_push_events() {
 }
 
 #[test]
+fn verifies_installation_and_account_lifecycle_events_as_typed_changes() {
+    let verifier = verifier(1024 * 1024);
+    for (event, delivery, body, expected_action) in [
+        (
+            "installation",
+            "delivery-suspend",
+            json!({
+                "action": "suspend",
+                "installation": {
+                    "id": 42,
+                    "account": {"id": 100, "login": "A3S-Lab", "type": "Organization"}
+                },
+                "sender": {"id": 200, "login": "octocat"}
+            }),
+            "suspend",
+        ),
+        (
+            "installation_target",
+            "delivery-rename",
+            json!({
+                "action": "renamed",
+                "installation": {"id": 42},
+                "account": {"id": 100, "login": "A3S-Platform", "type": "Organization"},
+                "changes": {"login": {"from": "A3S-Lab"}},
+                "target_type": "Organization"
+            }),
+            "renamed",
+        ),
+        (
+            "github_app_authorization",
+            "delivery-revoked",
+            json!({
+                "action": "revoked",
+                "sender": {"id": 200, "login": "octocat"}
+            }),
+            "revoked",
+        ),
+    ] {
+        let body = serde_json::to_vec(&body).expect("lifecycle payload");
+        let signature = signature(SECRET, &body);
+        let verified = verifier
+            .verify(request(event, delivery, &signature, &body))
+            .expect("signed lifecycle webhook");
+        let VerifiedSourceWebhook::GithubConnectionLifecycle(lifecycle) = verified else {
+            panic!("expected connection lifecycle");
+        };
+        assert_eq!(lifecycle.delivery_id.as_str(), delivery);
+        assert_eq!(lifecycle.change.event_name(), event);
+        assert_eq!(lifecycle.change.action_name(), expected_action);
+        assert_eq!(lifecycle.payload_digest.len(), 71);
+    }
+}
+
+#[test]
+fn ignores_non_state_installation_actions_and_rejects_confused_lifecycle_identity() {
+    let verifier = verifier(1024 * 1024);
+    let created = serde_json::to_vec(&json!({
+        "action": "created",
+        "installation": {
+            "id": 42,
+            "account": {"id": 100, "login": "A3S-Lab", "type": "Organization"}
+        },
+        "sender": {"id": 200, "login": "octocat"}
+    }))
+    .expect("created payload");
+    let created_signature = signature(SECRET, &created);
+    assert!(matches!(
+        verifier
+            .verify(request(
+                "installation",
+                "delivery-created",
+                &created_signature,
+                &created,
+            ))
+            .expect("signed created webhook"),
+        VerifiedSourceWebhook::Ignored
+    ));
+
+    let confused = serde_json::to_vec(&json!({
+        "action": "renamed",
+        "installation": {"id": 42},
+        "account": {"id": 100, "login": "A3S-Platform", "type": "Organization"},
+        "changes": {"login": {"from": "A3S-Lab"}},
+        "target_type": "User"
+    }))
+    .expect("confused payload");
+    let confused_signature = signature(SECRET, &confused);
+    assert!(matches!(
+        verifier.verify(request(
+            "installation_target",
+            "delivery-confused",
+            &confused_signature,
+            &confused,
+        )),
+        Err(SourceWebhookVerificationError::Invalid(_))
+    ));
+}
+
+#[test]
 fn rejects_oversize_or_confused_repository_payloads() {
     let verifier = verifier(1024);
     let oversized = vec![b'x'; 1025];

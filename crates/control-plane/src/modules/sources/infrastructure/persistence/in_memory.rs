@@ -269,6 +269,7 @@ impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
             .values()
             .filter(|subscription| {
                 subscription.is_active()
+                    && Some(subscription.connection_id) == request.authoritative_connection_id
                     && subscription.installation_id == delivery.installation_id
                     && subscription.repository == delivery.repository
                     && subscription.branch_name() == delivery.reference.value()

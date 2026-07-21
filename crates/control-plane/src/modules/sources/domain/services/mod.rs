@@ -23,5 +23,5 @@ pub use source_resolver::{
 };
 pub use source_webhook_verifier::{
     ISourceWebhookVerifier, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
-    VerifiedSourcePush, VerifiedSourceWebhook,
+    VerifiedGithubConnectionLifecycle, VerifiedSourcePush, VerifiedSourceWebhook,
 };

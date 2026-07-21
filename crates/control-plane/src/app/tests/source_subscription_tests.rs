@@ -451,7 +451,7 @@ async fn github_repository_subscription_scope_hierarchy_and_inputs_fail_closed()
     Ok(())
 }
 
-fn github_subscription_request(branch: &str, target: Option<&str>) -> Value {
+pub(super) fn github_subscription_request(branch: &str, target: Option<&str>) -> Value {
     json!({
         "repository": {
             "provider": "github",
@@ -469,7 +469,7 @@ fn github_subscription_request(branch: &str, target: Option<&str>) -> Value {
     })
 }
 
-fn github_push_payload_for_binding(
+pub(super) fn github_push_payload_for_binding(
     full_name: &str,
     html_url: &str,
     installation_id: u64,

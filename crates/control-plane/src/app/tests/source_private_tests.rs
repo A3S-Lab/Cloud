@@ -284,7 +284,7 @@ fn private_source_application(
     )
 }
 
-async fn connect_github_installation(
+pub(super) async fn connect_github_installation(
     app: &a3s_boot::BootApplication,
     organization: &str,
 ) -> Result<()> {
@@ -356,7 +356,7 @@ async fn create_source_path(
     ))
 }
 
-fn source_request(delivery_id: &str) -> Value {
+pub(super) fn source_request(delivery_id: &str) -> Value {
     json!({
         "repository": {
             "provider": "github",

@@ -1,7 +1,8 @@
-use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
+use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, SourceConnectionId};
 use crate::modules::sources::domain::{
-    CompleteGithubConnection, GithubConnection, GithubConnectionFlow, GithubConnectionFlowError,
-    IGithubConnectionRepository,
+    CompleteGithubConnection, GitProvider, GithubConnection, GithubConnectionFlow,
+    GithubConnectionFlowError, GithubConnectionLifecycleAcceptance, GithubConnectionReconciled,
+    GithubInstallationId, IGithubConnectionRepository, ReconcileGithubConnectionLifecycle,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -14,11 +15,21 @@ pub struct InMemoryGithubConnectionRepository {
     state: RwLock<State>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct State {
     flows: BTreeMap<OrganizationId, GithubConnectionFlow>,
-    connections: BTreeMap<OrganizationId, GithubConnection>,
+    connections: BTreeMap<SourceConnectionId, GithubConnection>,
+    lifecycle_inbox: BTreeMap<(String, String), LifecycleReceipt>,
     outbox: Vec<DomainEventEnvelope>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct LifecycleReceipt {
+    event: String,
+    action: String,
+    subject_kind: String,
+    subject_id: u64,
+    payload_digest: String,
 }
 
 impl InMemoryGithubConnectionRepository {
@@ -33,6 +44,16 @@ impl InMemoryGithubConnectionRepository {
     pub async fn outbox_events(&self) -> Vec<DomainEventEnvelope> {
         self.state.read().await.outbox.clone()
     }
+
+    pub async fn connections(&self) -> Vec<GithubConnection> {
+        self.state
+            .read()
+            .await
+            .connections
+            .values()
+            .cloned()
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -42,7 +63,9 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
         flow: GithubConnectionFlow,
     ) -> Result<GithubConnectionFlow, RepositoryError> {
         let mut state = self.state.write().await;
-        if state.connections.contains_key(&flow.organization_id) {
+        if state.connections.values().any(|connection| {
+            connection.organization_id == flow.organization_id && connection.blocks_reconnection()
+        }) {
             return Err(RepositoryError::Conflict(
                 "organization already has a GitHub source connection".into(),
             ));
@@ -116,6 +139,14 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
         &self,
         request: CompleteGithubConnection,
     ) -> Result<GithubConnection, RepositoryError> {
+        if !request.connection.is_authoritative()
+            || request.connection.aggregate_version != 1
+            || request.connection.updated_at != request.connection.connected_at
+        {
+            return Err(RepositoryError::Conflict(
+                "new GitHub connection is not active at its initial version".into(),
+            ));
+        }
         let mut state = self.state.write().await;
         let organization_id = state
             .flows
@@ -129,13 +160,13 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
                 "GitHub connection flow organization changed".into(),
             ));
         }
-        if state.connections.contains_key(&organization_id)
-            || state.connections.values().any(|connection| {
-                connection.installation_id == request.connection.installation_id
+        if state.connections.values().any(|connection| {
+            connection.blocks_reconnection()
+                && (connection.organization_id == organization_id
+                    || connection.installation_id == request.connection.installation_id
                     || (connection.account_kind == request.connection.account_kind
-                        && connection.account_id == request.connection.account_id)
-            })
-        {
+                        && connection.account_id == request.connection.account_id))
+        }) {
             return Err(RepositoryError::Conflict(
                 "GitHub installation or account is already connected".into(),
             ));
@@ -152,7 +183,7 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
         flow.complete(request.completed_at).map_err(flow_error)?;
         state
             .connections
-            .insert(organization_id, request.connection.clone());
+            .insert(request.connection.id, request.connection.clone());
         state.outbox.push(request.event);
         Ok(request.connection)
     }
@@ -161,14 +192,111 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
         &self,
         organization_id: OrganizationId,
     ) -> Result<Option<GithubConnection>, RepositoryError> {
+        Ok(current_connection(
+            self.state.read().await.connections.values(),
+            organization_id,
+        ))
+    }
+
+    async fn find_authoritative_by_installation(
+        &self,
+        installation_id: GithubInstallationId,
+    ) -> Result<Option<GithubConnection>, RepositoryError> {
         Ok(self
             .state
             .read()
             .await
             .connections
-            .get(&organization_id)
+            .values()
+            .find(|connection| {
+                connection.installation_id == installation_id && connection.is_authoritative()
+            })
             .cloned())
     }
+
+    async fn reconcile_lifecycle(
+        &self,
+        request: ReconcileGithubConnectionLifecycle,
+    ) -> Result<GithubConnectionLifecycleAcceptance, RepositoryError> {
+        if request.lifecycle.provider != GitProvider::Github
+            || !valid_payload_digest(&request.lifecycle.payload_digest)
+        {
+            return Err(RepositoryError::Conflict(
+                "GitHub connection lifecycle delivery is invalid".into(),
+            ));
+        }
+        let mut state = self.state.write().await;
+        let key = (
+            request.lifecycle.provider.as_str().to_owned(),
+            request.lifecycle.delivery_id.as_str().to_owned(),
+        );
+        let receipt = LifecycleReceipt {
+            event: request.lifecycle.change.event_name().into(),
+            action: request.lifecycle.change.action_name().into(),
+            subject_kind: request.lifecycle.change.subject_kind().into(),
+            subject_id: request.lifecycle.change.subject_id(),
+            payload_digest: request.lifecycle.payload_digest.clone(),
+        };
+        if let Some(existing) = state.lifecycle_inbox.get(&key) {
+            if existing != &receipt {
+                return Err(RepositoryError::Conflict(
+                    "GitHub lifecycle delivery ID was reused with another payload".into(),
+                ));
+            }
+            return Ok(GithubConnectionLifecycleAcceptance {
+                replayed: true,
+                connections: Vec::new(),
+            });
+        }
+        let mut next = state.clone();
+        next.lifecycle_inbox.insert(key, receipt);
+        let mut reconciled = Vec::new();
+        for connection in next.connections.values_mut() {
+            if connection
+                .reconcile(&request.lifecycle.change, request.received_at)
+                .map_err(RepositoryError::Storage)?
+            {
+                next.outbox.push(
+                    GithubConnectionReconciled::envelope(connection, request.correlation_id)
+                        .map_err(|error| RepositoryError::Storage(error.to_string()))?,
+                );
+                reconciled.push(connection.clone());
+            }
+        }
+        reconciled.sort_by_key(|connection| (connection.organization_id, connection.id));
+        *state = next;
+        Ok(GithubConnectionLifecycleAcceptance {
+            replayed: false,
+            connections: reconciled,
+        })
+    }
+}
+
+fn current_connection<'a>(
+    connections: impl Iterator<Item = &'a GithubConnection>,
+    organization_id: OrganizationId,
+) -> Option<GithubConnection> {
+    connections
+        .filter(|connection| connection.organization_id == organization_id)
+        .max_by_key(|connection| {
+            (
+                connection.blocks_reconnection(),
+                connection.connected_at,
+                connection.id,
+            )
+        })
+        .cloned()
+}
+
+fn valid_payload_digest(value: &str) -> bool {
+    value
+        .strip_prefix("sha256:")
+        .is_some_and(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        })
 }
 
 fn flow_error(error: GithubConnectionFlowError) -> RepositoryError {

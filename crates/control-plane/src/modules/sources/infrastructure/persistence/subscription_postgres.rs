@@ -92,6 +92,27 @@ impl ISourceSubscriptionRepository for PostgresSourceSubscriptionRepository {
                             replayed: true,
                         });
                     }
+                    let installation_id = as_i64(request.subscription.installation_id)?;
+                    if fetch_optional::<i32, _>(
+                        transaction,
+                        sql_query::<i32>(
+                            "select 1 from github_source_connections where organization_id = ",
+                        )
+                        .bind(request.subscription.organization_id.as_uuid())
+                        .append(" and id = ")
+                        .bind(request.subscription.connection_id.as_uuid())
+                        .append(" and installation_id = ")
+                        .bind(installation_id)
+                        .append(" and status = 'active' for share"),
+                    )
+                    .await?
+                    .is_none()
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "GitHub source connection is not active".into(),
+                        )
+                        .into());
+                    }
                     let inserted = execute(
                         transaction,
                         sql_query::<()>(
@@ -107,7 +128,7 @@ impl ISourceSubscriptionRepository for PostgresSourceSubscriptionRepository {
                         .append(", ")
                         .bind(request.subscription.connection_id.as_uuid())
                         .append(", ")
-                        .bind(as_i64(request.subscription.installation_id)?)
+                        .bind(installation_id)
                         .append(", ")
                         .bind(request.subscription.repository.provider().as_str())
                         .append(", ")
@@ -337,6 +358,13 @@ fn active_identity_query(
 pub(super) fn select_columns() -> a3s_orm::SqlQuery<GithubRepositorySubscriptionRow> {
     sql_query::<GithubRepositorySubscriptionRow>(
         "select organization_id, project_id, environment_id, id, connection_id, installation_id, repository_provider, repository_url, repository_identity, branch_name, recipe, recipe_digest, status, aggregate_version, created_at, deactivated_at from github_repository_subscriptions",
+    )
+}
+
+pub(super) fn select_columns_for_authoritative_fanout(
+) -> a3s_orm::SqlQuery<GithubRepositorySubscriptionRow> {
+    sql_query::<GithubRepositorySubscriptionRow>(
+        "select s.organization_id, s.project_id, s.environment_id, s.id, s.connection_id, s.installation_id, s.repository_provider, s.repository_url, s.repository_identity, s.branch_name, s.recipe, s.recipe_digest, s.status, s.aggregate_version, s.created_at, s.deactivated_at from github_repository_subscriptions s join github_source_connections c on c.organization_id = s.organization_id and c.id = s.connection_id and c.installation_id = s.installation_id",
     )
 }
 

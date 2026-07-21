@@ -12,7 +12,9 @@ pub struct GithubConnectionResponse {
     pub installation_id: u64,
     pub account: GithubAccountResponse,
     pub verified_by: GithubUserResponse,
+    pub status: String,
     pub connected_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,7 +49,9 @@ impl From<GithubConnection> for GithubConnectionResponse {
                 id: connection.verified_by_user_id.as_u64(),
                 login: connection.verified_by_user_login.as_str().into(),
             },
+            status: connection.status.as_str().into(),
             connected_at: connection.connected_at,
+            updated_at: connection.updated_at,
         }
     }
 }

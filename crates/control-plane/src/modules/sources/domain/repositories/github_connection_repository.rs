@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
 use crate::modules::sources::domain::entities::{GithubConnection, GithubConnectionFlow};
+use crate::modules::sources::domain::{GithubInstallationId, VerifiedGithubConnectionLifecycle};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -10,6 +11,19 @@ pub struct CompleteGithubConnection {
     pub connection: GithubConnection,
     pub event: DomainEventEnvelope,
     pub completed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReconcileGithubConnectionLifecycle {
+    pub lifecycle: VerifiedGithubConnectionLifecycle,
+    pub correlation_id: Uuid,
+    pub received_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GithubConnectionLifecycleAcceptance {
+    pub replayed: bool,
+    pub connections: Vec<GithubConnection>,
 }
 
 #[async_trait]
@@ -44,4 +58,14 @@ pub trait IGithubConnectionRepository: Send + Sync {
         &self,
         organization_id: OrganizationId,
     ) -> Result<Option<GithubConnection>, RepositoryError>;
+
+    async fn find_authoritative_by_installation(
+        &self,
+        installation_id: GithubInstallationId,
+    ) -> Result<Option<GithubConnection>, RepositoryError>;
+
+    async fn reconcile_lifecycle(
+        &self,
+        request: ReconcileGithubConnectionLifecycle,
+    ) -> Result<GithubConnectionLifecycleAcceptance, RepositoryError>;
 }

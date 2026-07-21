@@ -1,7 +1,9 @@
 use crate::modules::sources::domain::{
-    GitCommitSha, GitProvider, GitReference, GitRepository, GithubInstallationId,
+    GitCommitSha, GitProvider, GitReference, GitRepository, GithubAccountId, GithubAccountKind,
+    GithubConnectionLifecycleChange, GithubInstallationAccount, GithubInstallationId, GithubLogin,
     ISourceWebhookVerifier, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
-    VerifiedSourcePush, VerifiedSourceWebhook, WebhookDeliveryId,
+    VerifiedGithubConnectionLifecycle, VerifiedSourcePush, VerifiedSourceWebhook,
+    WebhookDeliveryId,
 };
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
@@ -129,8 +131,89 @@ impl GithubWebhookVerifier {
             installation_id,
             reference,
             commit_sha,
-            payload_digest: format!("sha256:{:x}", Sha256::digest(body)),
+            payload_digest: payload_digest(body),
         }))
+    }
+
+    fn parse_connection_lifecycle(
+        &self,
+        event: &str,
+        delivery_id: &str,
+        body: &[u8],
+    ) -> Result<VerifiedSourceWebhook, SourceWebhookVerificationError> {
+        let action: GithubActionPayload = serde_json::from_slice(body)
+            .map_err(|_| invalid("body is not a valid GitHub lifecycle payload"))?;
+        let change = match (event, action.action.as_str()) {
+            ("installation", "suspend" | "unsuspend" | "deleted") => {
+                let payload: GithubInstallationLifecyclePayload = serde_json::from_slice(body)
+                    .map_err(|_| invalid("GitHub installation lifecycle payload is invalid"))?;
+                let installation_id = GithubInstallationId::parse(payload.installation.id)
+                    .map_err(|_| invalid("installation ID is invalid"))?;
+                let account = parse_account(payload.installation.account)?;
+                match payload.action.as_str() {
+                    "suspend" => GithubConnectionLifecycleChange::InstallationSuspended {
+                        installation_id,
+                        account,
+                    },
+                    "unsuspend" => GithubConnectionLifecycleChange::InstallationUnsuspended {
+                        installation_id,
+                        account,
+                    },
+                    "deleted" => GithubConnectionLifecycleChange::InstallationDeleted {
+                        installation_id,
+                        account,
+                    },
+                    _ => {
+                        return Err(invalid(
+                            "GitHub installation lifecycle action changed while decoding",
+                        ))
+                    }
+                }
+            }
+            ("installation_target", "renamed") => {
+                let payload: GithubInstallationTargetPayload = serde_json::from_slice(body)
+                    .map_err(|_| invalid("GitHub installation-target payload is invalid"))?;
+                let installation_id = GithubInstallationId::parse(payload.installation.id)
+                    .map_err(|_| invalid("installation ID is invalid"))?;
+                let target_kind = GithubAccountKind::parse(&payload.target_type)
+                    .map_err(|_| invalid("installation target type is invalid"))?;
+                let account = parse_account(payload.account)?;
+                if account.kind != target_kind {
+                    return Err(invalid(
+                        "installation target type does not match the account identity",
+                    ));
+                }
+                GithubConnectionLifecycleChange::InstallationTargetRenamed {
+                    installation_id,
+                    account,
+                    previous_login: GithubLogin::parse(payload.changes.login.from)
+                        .map_err(|_| invalid("previous installation login is invalid"))?,
+                }
+            }
+            ("github_app_authorization", "revoked") => {
+                let payload: GithubAuthorizationLifecyclePayload = serde_json::from_slice(body)
+                    .map_err(|_| invalid("GitHub authorization lifecycle payload is invalid"))?;
+                GithubConnectionLifecycleChange::UserAuthorizationRevoked {
+                    user_id: GithubAccountId::parse(payload.sender.id)
+                        .map_err(|_| invalid("verifying user ID is invalid"))?,
+                    user_login: GithubLogin::parse(payload.sender.login)
+                        .map_err(|_| invalid("verifying user login is invalid"))?,
+                }
+            }
+            ("installation" | "installation_target" | "github_app_authorization", _) => {
+                return Ok(VerifiedSourceWebhook::Ignored)
+            }
+            _ => return Ok(VerifiedSourceWebhook::Ignored),
+        };
+        Ok(VerifiedSourceWebhook::GithubConnectionLifecycle(
+            VerifiedGithubConnectionLifecycle {
+                provider: GitProvider::Github,
+                delivery_id: WebhookDeliveryId::parse(delivery_id)
+                    .map_err(|_| invalid("delivery ID is invalid"))?,
+                change,
+                payload_digest: payload_digest(body),
+            },
+        ))
     }
 }
 
@@ -154,11 +237,73 @@ impl ISourceWebhookVerifier for GithubWebhookVerifier {
             });
         }
         self.authenticate(request.signature, request.body)?;
-        if request.event != "push" {
-            return Ok(VerifiedSourceWebhook::Ignored);
+        match request.event {
+            "push" => self.parse_push(request.delivery_id, request.body),
+            "installation" | "installation_target" | "github_app_authorization" => {
+                self.parse_connection_lifecycle(request.event, request.delivery_id, request.body)
+            }
+            _ => Ok(VerifiedSourceWebhook::Ignored),
         }
-        self.parse_push(request.delivery_id, request.body)
     }
+}
+
+#[derive(Deserialize)]
+struct GithubActionPayload {
+    action: String,
+}
+
+#[derive(Deserialize)]
+struct GithubInstallationLifecyclePayload {
+    action: String,
+    installation: GithubLifecycleInstallation,
+}
+
+#[derive(Deserialize)]
+struct GithubLifecycleInstallation {
+    id: u64,
+    account: GithubLifecycleAccount,
+}
+
+#[derive(Deserialize)]
+struct GithubLifecycleInstallationIdentity {
+    id: u64,
+}
+
+#[derive(Deserialize)]
+struct GithubLifecycleAccount {
+    id: u64,
+    login: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct GithubInstallationTargetPayload {
+    installation: GithubLifecycleInstallationIdentity,
+    account: GithubLifecycleAccount,
+    changes: GithubLoginChanges,
+    target_type: String,
+}
+
+#[derive(Deserialize)]
+struct GithubLoginChanges {
+    login: GithubPreviousLogin,
+}
+
+#[derive(Deserialize)]
+struct GithubPreviousLogin {
+    from: String,
+}
+
+#[derive(Deserialize)]
+struct GithubAuthorizationLifecyclePayload {
+    sender: GithubLifecycleUser,
+}
+
+#[derive(Deserialize)]
+struct GithubLifecycleUser {
+    id: u64,
+    login: String,
 }
 
 #[derive(Deserialize)]
@@ -180,6 +325,23 @@ struct GithubRepositoryPayload {
 #[derive(Deserialize)]
 struct GithubInstallationPayload {
     id: u64,
+}
+
+fn parse_account(
+    account: GithubLifecycleAccount,
+) -> Result<GithubInstallationAccount, SourceWebhookVerificationError> {
+    Ok(GithubInstallationAccount {
+        id: GithubAccountId::parse(account.id)
+            .map_err(|_| invalid("installation account ID is invalid"))?,
+        login: GithubLogin::parse(account.login)
+            .map_err(|_| invalid("installation account login is invalid"))?,
+        kind: GithubAccountKind::parse(&account.kind)
+            .map_err(|_| invalid("installation account type is invalid"))?,
+    })
+}
+
+fn payload_digest(body: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(body))
 }
 
 fn decode_signature(value: &str) -> Option<[u8; 32]> {

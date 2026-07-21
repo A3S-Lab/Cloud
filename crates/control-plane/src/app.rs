@@ -66,7 +66,7 @@ use crate::modules::sources::{
     ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
     PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
     PostgresSourceSubscriptionRepository, PrepareGithubConnectionOauthHandler,
-    ResolveExternalSourceRevisionHandler, SourcesModule,
+    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -597,6 +597,8 @@ fn build_application_with_health(
     let begin_github_connections = Arc::clone(&github_connections);
     let prepare_github_connections = Arc::clone(&github_connections);
     let complete_github_connections = Arc::clone(&github_connections);
+    let accept_webhook_connections = Arc::clone(&github_connections);
+    let reconcile_github_connections = Arc::clone(&github_connections);
     let create_subscription_connections = Arc::clone(&github_connections);
     let resolve_github_connections = Arc::clone(&github_connections);
     let get_github_connections = github_connections;
@@ -709,7 +711,13 @@ fn build_application_with_health(
                     ),
                 )
                 .command_handler::<crate::modules::sources::AcceptSourceWebhookDelivery, _>(
-                    AcceptSourceWebhookDeliveryHandler::new(accept_source_webhooks),
+                    AcceptSourceWebhookDeliveryHandler::new(
+                        accept_source_webhooks,
+                        accept_webhook_connections,
+                    ),
+                )
+                .command_handler::<crate::modules::sources::ReconcileGithubConnectionLifecycle, _>(
+                    ReconcileGithubConnectionLifecycleHandler::new(reconcile_github_connections),
                 )
                 .command_handler::<crate::modules::sources::CreateGithubRepositorySubscription, _>(
                     CreateGithubRepositorySubscriptionHandler::new(

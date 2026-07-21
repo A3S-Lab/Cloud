@@ -429,3 +429,89 @@ fn github_connection_uses_durable_numeric_identities_and_safe_event_data() {
     assert!(GithubLogin::parse("bad/login").is_err());
     assert!(GithubAccountKind::parse("Enterprise").is_err());
 }
+
+#[test]
+fn github_connection_lifecycle_is_fail_closed_terminal_and_reconnectable() {
+    let connected_at = Utc::now();
+    let mut connection = GithubConnection::connect(NewGithubConnection {
+        id: SourceConnectionId::new(),
+        organization_id: OrganizationId::new(),
+        installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+        account_id: GithubAccountId::parse(100).expect("account ID"),
+        account_login: GithubLogin::parse("A3S-Lab").expect("account login"),
+        account_kind: GithubAccountKind::Organization,
+        verified_by_user_id: GithubAccountId::parse(200).expect("user ID"),
+        verified_by_user_login: GithubLogin::parse("octocat").expect("user login"),
+        connected_at,
+    })
+    .expect("GitHub connection");
+    let renamed_account = GithubInstallationAccount {
+        id: connection.account_id,
+        login: GithubLogin::parse("A3S-Platform").expect("renamed login"),
+        kind: connection.account_kind,
+    };
+
+    assert!(connection.is_authoritative());
+    assert!(connection
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationTargetRenamed {
+                installation_id: connection.installation_id,
+                account: renamed_account.clone(),
+                previous_login: GithubLogin::parse("A3S-Lab").expect("previous login"),
+            },
+            connected_at + chrono::Duration::seconds(1),
+        )
+        .expect("rename"));
+    assert_eq!(connection.account_login, renamed_account.login);
+    assert_eq!(connection.aggregate_version, 2);
+
+    assert!(connection
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationSuspended {
+                installation_id: connection.installation_id,
+                account: renamed_account.clone(),
+            },
+            connected_at + chrono::Duration::seconds(2),
+        )
+        .expect("suspend"));
+    assert_eq!(connection.status, GithubConnectionStatus::Suspended);
+    assert!(!connection.is_authoritative());
+    assert!(connection.blocks_reconnection());
+
+    assert!(connection
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationUnsuspended {
+                installation_id: connection.installation_id,
+                account: renamed_account.clone(),
+            },
+            connected_at + chrono::Duration::seconds(3),
+        )
+        .expect("unsuspend"));
+    assert_eq!(connection.status, GithubConnectionStatus::Active);
+
+    assert!(connection
+        .reconcile(
+            &GithubConnectionLifecycleChange::UserAuthorizationRevoked {
+                user_id: connection.verified_by_user_id,
+                user_login: connection.verified_by_user_login.clone(),
+            },
+            connected_at + chrono::Duration::seconds(4),
+        )
+        .expect("authorization revocation"));
+    assert_eq!(
+        connection.status,
+        GithubConnectionStatus::VerificationRevoked
+    );
+    assert!(!connection.blocks_reconnection());
+    let terminal_version = connection.aggregate_version;
+    assert!(!connection
+        .reconcile(
+            &GithubConnectionLifecycleChange::InstallationUnsuspended {
+                installation_id: connection.installation_id,
+                account: renamed_account,
+            },
+            connected_at + chrono::Duration::seconds(5),
+        )
+        .expect("terminal state"));
+    assert_eq!(connection.aggregate_version, terminal_version);
+}

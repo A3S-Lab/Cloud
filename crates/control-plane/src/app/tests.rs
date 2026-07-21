@@ -33,6 +33,7 @@ use uuid::Uuid;
 
 mod platform_tests;
 mod secret_tests;
+mod source_lifecycle_tests;
 mod source_private_tests;
 mod source_subscription_tests;
 mod source_tests;

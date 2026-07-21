@@ -158,7 +158,8 @@ impl CommandHandler<ResolveExternalSourceRevision> for ResolveExternalSourceRevi
                 Err(SourceResolutionError::Unavailable) => {
                     let connection = match github_connections.find(command.organization_id).await {
                         Ok(Some(connection))
-                            if connection.organization_id == command.organization_id =>
+                            if connection.organization_id == command.organization_id
+                                && connection.is_authoritative() =>
                         {
                             connection
                         }
