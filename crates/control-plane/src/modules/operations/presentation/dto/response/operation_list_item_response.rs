@@ -19,6 +19,10 @@ pub struct OperationListItemResponse {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rollback_source_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_source_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_run_id: Option<Uuid>,
 }
 
 impl From<OperationRecord> for OperationListItemResponse {
@@ -27,6 +31,18 @@ impl From<OperationRecord> for OperationListItemResponse {
             .request
             .input
             .get("rollbackSourceRevisionId")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok());
+        let external_source_revision_id = record
+            .request
+            .input
+            .get("externalSourceRevisionId")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok());
+        let build_run_id = record
+            .request
+            .input
+            .get("buildRunId")
             .and_then(serde_json::Value::as_str)
             .and_then(|value| Uuid::parse_str(value).ok());
         let projection = record.projection;
@@ -47,6 +63,8 @@ impl From<OperationRecord> for OperationListItemResponse {
                 .map_or(record.request.requested_at, |value| value.updated_at),
             error: projection.and_then(|value| value.error),
             rollback_source_revision_id,
+            external_source_revision_id,
+            build_run_id,
         }
     }
 }
@@ -60,7 +78,7 @@ mod tests {
     use chrono::Utc;
 
     #[test]
-    fn exposes_only_explicit_rollback_lineage() {
+    fn exposes_only_explicit_deployment_lineage() {
         let source_revision_id = Uuid::now_v7();
         let rollback = response(serde_json::json!({
             "rollbackSourceRevisionId": source_revision_id,
@@ -71,11 +89,26 @@ mod tests {
             source_revision_id.to_string()
         );
 
+        let external_source_revision_id = Uuid::now_v7();
+        let build_run_id = Uuid::now_v7();
+        let external = response(serde_json::json!({
+            "externalSourceRevisionId": external_source_revision_id,
+            "buildRunId": build_run_id,
+        }));
+        let external = serde_json::to_value(external).expect("serialize external operation");
+        assert_eq!(
+            external["externalSourceRevisionId"],
+            external_source_revision_id.to_string()
+        );
+        assert_eq!(external["buildRunId"], build_run_id.to_string());
+
         let ordinary = serde_json::to_value(response(serde_json::json!({})))
             .expect("serialize ordinary operation");
-        assert!(ordinary
-            .as_object()
-            .is_some_and(|value| !value.contains_key("rollbackSourceRevisionId")));
+        assert!(ordinary.as_object().is_some_and(|value| {
+            !value.contains_key("rollbackSourceRevisionId")
+                && !value.contains_key("externalSourceRevisionId")
+                && !value.contains_key("buildRunId")
+        }));
     }
 
     fn response(input: serde_json::Value) -> OperationListItemResponse {

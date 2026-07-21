@@ -5,6 +5,7 @@ use crate::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
+use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -504,6 +505,28 @@ fn build_test_application_with_all_repositories(
     )
 }
 
+fn build_test_application_with_external_builds(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    builds: Arc<InMemoryBuildRunRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        builds,
+    )
+}
+
 fn build_test_application_with_source_resolver(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -577,6 +600,33 @@ fn build_test_application_with_source_dependencies_and_tokens(
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        github_connections,
+        github_authorization,
+        github_installation_tokens,
+        Arc::new(InMemoryBuildRunRepository::new()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies_and_tokens_and_builds(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    builds: Arc<dyn IBuildRunRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -605,6 +655,7 @@ fn build_test_application_with_source_dependencies_and_tokens(
             projects: projects.clone(),
             environments: projects,
             workloads: workload_port,
+            builds,
             routes,
             secrets,
             sources,

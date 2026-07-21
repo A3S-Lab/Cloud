@@ -39,6 +39,10 @@ pub struct WorkloadRevisionResponse {
     pub template_digest: Option<String>,
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_source_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_run_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -117,6 +121,14 @@ impl From<WorkloadQueryResult> for WorkloadResponse {
 
 impl From<WorkloadRevision> for WorkloadRevisionResponse {
     fn from(revision: WorkloadRevision) -> Self {
+        let external_source_revision_id = revision
+            .external_build
+            .as_ref()
+            .map(|reference| reference.source_revision_id.as_uuid());
+        let build_run_id = revision
+            .external_build
+            .as_ref()
+            .map(|reference| reference.build_run_id.as_uuid());
         let requested_template = revision.request.clone().into();
         let (artifact_uri, artifact_digest, artifact_media_type) = revision
             .template
@@ -141,6 +153,8 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
             template_digest: revision.template_digest,
             created_at: revision.created_at,
             resolved_at: revision.resolved_at,
+            external_source_revision_id,
+            build_run_id,
         }
     }
 }

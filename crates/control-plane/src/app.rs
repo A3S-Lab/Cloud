@@ -80,12 +80,12 @@ use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
-    CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
-    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler,
-    StopWorkloadHandler, UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler,
-    WorkloadsModule,
+    CancelDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
+    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowRuntime,
+    GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadRuntimeControl,
+    ListWorkloadsHandler, OciRegistryArtifactResolver, PostgresWorkloadRepository,
+    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
+    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -515,6 +515,7 @@ pub async fn build_application_with_source_resolver(
             projects: projects.clone(),
             environments: projects,
             workloads,
+            builds,
             routes,
             secrets,
             sources,
@@ -569,6 +570,7 @@ struct ApplicationDependencies {
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    builds: Arc<dyn IBuildRunRepository>,
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
@@ -603,6 +605,7 @@ fn build_application_with_health(
         projects,
         environments,
         workloads,
+        builds,
         routes,
         secrets,
         sources,
@@ -629,6 +632,7 @@ fn build_application_with_health(
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
     let workload_environments = Arc::clone(&environments);
+    let source_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
@@ -638,7 +642,9 @@ fn build_application_with_health(
     let subscription_query_environments = Arc::clone(&environments);
     let github_connection_organizations = Arc::clone(&organizations);
     let create_workloads = Arc::clone(&workloads);
+    let source_create_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
+    let source_workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
     let update_workload_secrets = Arc::clone(&secrets);
     let rollback_workloads = Arc::clone(&workloads);
@@ -684,7 +690,9 @@ fn build_application_with_health(
     let list_secrets = Arc::clone(&secrets);
     let get_secrets = secrets;
     let accept_sources = Arc::clone(&sources);
+    let source_workload_sources = Arc::clone(&sources);
     let list_sources = sources;
+    let source_workload_builds = builds;
     let accept_source_webhooks = source_webhooks;
     let create_source_subscriptions = Arc::clone(&source_subscriptions);
     let deactivate_source_subscriptions = Arc::clone(&source_subscriptions);
@@ -854,6 +862,15 @@ fn build_application_with_health(
                         workload_environments,
                         create_workloads,
                         workload_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::workloads::CreateSourceWorkloadDeployment, _>(
+                    CreateSourceWorkloadDeploymentHandler::new(
+                        source_workload_environments,
+                        source_workload_sources,
+                        source_workload_builds,
+                        source_create_workloads,
+                        source_workload_secrets,
                     ),
                 )
                 .command_handler::<crate::modules::workloads::UpdateWorkloadDeployment, _>(

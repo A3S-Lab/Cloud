@@ -710,6 +710,16 @@ fn validate_bundle(request: &CreateDeploymentBundle) -> Result<(), RepositoryErr
         || request.operation.organization_id != request.workload.organization_id
         || request.operation.subject.kind() != "deployment"
         || request.operation.subject.id() != request.deployment.id.as_uuid()
+        || request
+            .revision
+            .external_build
+            .as_ref()
+            .is_some_and(|external| {
+                request.revision.template.is_none()
+                    || external.organization_id != request.workload.organization_id
+                    || external.project_id != request.workload.project_id
+                    || external.environment_id != request.workload.environment_id
+            })
     {
         return Err(RepositoryError::Conflict(
             "deployment creation bundle has inconsistent identities".into(),
