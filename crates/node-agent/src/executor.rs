@@ -1,6 +1,7 @@
 use crate::{
     CommandJournalError, FileCommandJournal, GatewaySnapshotInstallError,
-    GatewaySnapshotInstallOutcome, GatewaySnapshotInstaller, JournalDecision,
+    GatewaySnapshotInstallOutcome, GatewaySnapshotInstaller, JournalDecision, NodeArtifactError,
+    NodeArtifactManager,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandEnvelope, NodeCommandFailure, NodeCommandOutcome,
@@ -15,6 +16,7 @@ pub struct CommandExecutor {
     journal: FileCommandJournal,
     runtime: Arc<dyn RuntimeClient>,
     gateway: Arc<dyn GatewaySnapshotInstaller>,
+    artifacts: Option<Arc<NodeArtifactManager>>,
 }
 
 impl CommandExecutor {
@@ -31,7 +33,13 @@ impl CommandExecutor {
             journal,
             runtime,
             gateway,
+            artifacts: None,
         }
+    }
+
+    pub fn with_artifacts(mut self, artifacts: Arc<NodeArtifactManager>) -> Self {
+        self.artifacts = Some(artifacts);
+        self
     }
 
     pub async fn execute(
@@ -76,7 +84,15 @@ impl CommandExecutor {
     ) -> Result<NodeCommandResult, DispatchError> {
         match &envelope.payload {
             NodeCommandPayload::RuntimeApply { request } => {
-                let observation = self.runtime.apply(request).await?;
+                if let Some(artifacts) = &self.artifacts {
+                    artifacts.prepare_command(envelope).await?;
+                }
+                let mut observation = self.runtime.apply(request).await?;
+                if let Some(artifacts) = &self.artifacts {
+                    observation = artifacts
+                        .publish_command_outputs(envelope, &observation)
+                        .await?;
+                }
                 Ok(NodeCommandResult::RuntimeApplied {
                     observation: Box::new(observation),
                 })
@@ -160,6 +176,7 @@ impl GatewaySnapshotInstaller for RuntimeOnlyGatewayInstaller {
 enum DispatchError {
     Runtime(RuntimeError),
     Gateway(GatewaySnapshotInstallError),
+    Artifact(NodeArtifactError),
 }
 
 impl From<RuntimeError> for DispatchError {
@@ -171,6 +188,12 @@ impl From<RuntimeError> for DispatchError {
 impl From<GatewaySnapshotInstallError> for DispatchError {
     fn from(error: GatewaySnapshotInstallError) -> Self {
         Self::Gateway(error)
+    }
+}
+
+impl From<NodeArtifactError> for DispatchError {
+    fn from(error: NodeArtifactError) -> Self {
+        Self::Artifact(error)
     }
 }
 
@@ -244,6 +267,29 @@ fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
                 NodeCommandOutcome::Rejected { failure }
             }
         }
+        DispatchError::Artifact(error) => artifact_failure(error),
+    }
+}
+
+fn artifact_failure(error: NodeArtifactError) -> NodeCommandOutcome {
+    let (status, code, retryable) = match &error {
+        NodeArtifactError::Invalid(_) => (FailureStatus::Rejected, "invalid_artifact", false),
+        NodeArtifactError::Integrity(_) => (FailureStatus::Failed, "artifact_integrity", false),
+        NodeArtifactError::Storage(_) => (FailureStatus::Failed, "artifact_storage", true),
+        NodeArtifactError::Transport(_) => (
+            FailureStatus::Failed,
+            "artifact_transport",
+            error.retryable(),
+        ),
+    };
+    let failure = NodeCommandFailure {
+        code: code.into(),
+        message: sanitize_error(&error.to_string()),
+        retryable,
+    };
+    match status {
+        FailureStatus::Rejected => NodeCommandOutcome::Rejected { failure },
+        FailureStatus::Failed => NodeCommandOutcome::Failed { failure },
     }
 }
 

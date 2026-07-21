@@ -77,7 +77,11 @@ receipt. The Artifacts context also owns a deterministic PostgreSQL-backed
 `BuildRun` aggregate and a crash-gap reconciler that reserves one build per
 accepted revision and enqueues one exact `cloud.build@1` operation. Its typed
 Build service exports and fully validates a local OCI image layout; a dedicated
-gate exercises it against the digest-pinned rootless BuildKit image. A
+gate exercises it against the digest-pinned rootless BuildKit image. The
+node-control boundary now also provides command-bound mTLS Artifact streaming:
+the control plane stores content-addressed directory archives, and the node
+agent verifies, safely materializes, mounts, captures, replays, and reclaims
+their exact Runtime input/output identities. A
 tenant-scoped GitHub App connection boundary now binds one
 verified installation/account to one Cloud organization using single-use
 installation and OAuth state, S256 PKCE, and transient GitHub user-token
@@ -95,7 +99,7 @@ implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
 gate has not been run without provider credentials. Periodic authoritative
-provider polling and checkout-time lifecycle revalidation, isolated build
+provider polling and checkout-time lifecycle revalidation, Build Flow
 orchestration, registry publication, and provenance remain unimplemented.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
@@ -926,6 +930,37 @@ tenant ownership, and optimistic conflicts. The production worker deliberately
 does not run this reconciler until `cloud.build@1` has a registered Flow runtime;
 otherwise the generic operation coordinator would truthfully reject an unknown
 workflow rather than execute an isolated build.
+
+The Artifact transport prerequisite is implemented below that Flow boundary.
+Typed download and upload requests bind the authenticated node, durable command
+ID, Runtime specification digest, exact mount or output name, media type,
+SHA-256 digest, and byte size. The mTLS node-control API authorizes those fields
+against the persisted unexpired `RuntimeApply` command before opening a blob or
+accepting a body. It streams raw bytes rather than base64, returns explicit
+length/content/digest metadata, applies a total transfer deadline, and persists
+content-addressed blobs plus atomic replay receipts. A blob/receipt crash gap
+is repaired only after the bytes are rehashed.
+
+The node agent independently verifies downloaded and captured bytes before
+admission. Its persistent cache separates immutable read-only blobs from
+spec-bound mount/output receipts. Directory archives are planned and hashed
+before extraction, reject absolute or parent paths, escaping links, devices,
+FIFOs, duplicates, non-directory ancestors, and configured entry/file/expanded
+limits, and are reverified by path, type, content, link identity, and
+permissions after restart. Artifact views are reference-counted by durable spec
+receipts; Runtime removal deletes the view and reclaims only blobs with no
+remaining reference.
+
+Docker advertises `MountKind::Artifact` and `OutputArtifacts`; node startup
+binds this manager before it begins command processing. Artifact inputs become
+exact read-only host binds. A successful finite Task is archived through the
+Docker API into its declared named output, then the command executor uploads
+the verified node-local blob and replaces the local URI with the control-plane
+content URI. Exact command replay, node/client restart, inspection, and removal
+retain or retire the same output identity.
+This closes the transport boundary, not `cloud.build@1`: checkout replay,
+BuildKit invocation, network policy, publication, and deployment handoff still
+belong to the Build Flow runtime.
 
 The Artifact-owned `IBuildService` accepts one immutable build ID, an absolute
 materialized source directory, the source content receipt digest, and the

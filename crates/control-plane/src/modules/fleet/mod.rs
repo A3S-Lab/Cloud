@@ -10,7 +10,7 @@ pub use application::{
     EnrollNodeResult, GetNode, GetNodeHandler, IGatewayAcknowledgementProjector,
     IssueEnrollmentToken, IssueEnrollmentTokenHandler, IssueEnrollmentTokenResult,
     LeaseNodeCommands, LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogCompactionWorker,
-    LogRetentionWorker, NodeQueryResult, RecordGatewayAcknowledgement,
+    LogRetentionWorker, NodeArtifactAuthorizer, NodeQueryResult, RecordGatewayAcknowledgement,
     RecordGatewayAcknowledgementHandler, RecordNodeLogChunks, RecordNodeLogChunksHandler,
     RecordNodeObservations, RecordNodeObservationsHandler, RotateNodeCertificate,
     RotateNodeCertificateHandler, RotateNodeCertificateResult,

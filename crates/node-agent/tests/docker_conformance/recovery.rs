@@ -50,7 +50,9 @@ impl DockerConformanceFixture {
             })?;
 
         self.restart_provider().await?;
-        let restarted_driver = Arc::new(connect_driver(&self.namespace, self.node_id).await?);
+        let restarted_driver = Arc::new(
+            connect_driver(&self.namespace, self.node_id, self.artifacts.manager()).await?,
+        );
         let record = self.store.load(&spec.unit_id).await?;
         let mut provider_observation = None;
         for _ in 0..60 {

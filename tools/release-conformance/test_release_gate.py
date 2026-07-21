@@ -40,6 +40,34 @@ class ReleaseGateContractTests(unittest.TestCase):
             cloud_config,
         )
 
+    def test_generated_configs_bound_artifact_storage_and_transfer(self) -> None:
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        cloud_config = runner.split(
+            'cat >"$config_dir/cloud.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+        node_config = runner.split(
+            'cat >"$config_dir/node.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+
+        self.assertIn(
+            """artifacts {
+  store_dir = "$state_dir/artifacts"
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
+}""",
+            cloud_config,
+        )
+        self.assertIn("artifact_transfer_timeout_ms = 900000", node_config)
+        self.assertIn(
+            """artifacts {
+  max_blob_bytes = 1073741824
+  max_entries = 100000
+  max_file_bytes = 1073741824
+  max_expanded_bytes = 4294967296
+}""",
+            node_config,
+        )
+
     def test_service_template_binds_the_exact_digest_and_release_marker(self) -> None:
         digest = f"sha256:{'a' * 64}"
         template = MODULE.service_template(

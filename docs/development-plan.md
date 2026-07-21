@@ -687,6 +687,24 @@ The current independently testable G0 slices are implemented:
   same `cloud.build@1` request. The isolated PostgreSQL gate covers concurrent
   reservation, crash-gap repair, exact operation replay, stale writes, forged
   ownership, and tenant/environment isolation.
+- Typed node Artifact download/upload contracts bind the authenticated node,
+  command, Runtime spec digest, exact mount/output, digest, media type, and
+  size. The mTLS node-control endpoints authorize against the persisted
+  unexpired `RuntimeApply` command and stream raw bytes under a total deadline.
+- The control plane stores content-addressed blobs with hash/length admission,
+  exact replay, same-length tamper detection, and blob-before-receipt crash-gap
+  repair. The node agent independently verifies and seals blobs, persists
+  spec-bound receipts, revalidates materialized trees after restart, and
+  reference-collects blobs when Runtime specs are removed.
+- Directory Artifact extraction rejects absolute/parent paths, escaping
+  symlinks or hardlinks, devices, FIFOs, duplicate paths, non-directory
+  ancestors, and configured entry/file/expanded limits. Files and directories
+  are mounted read-only; planned and extracted content hashes must agree.
+- Docker advertises Artifact mounts and output Artifacts, binds exact
+  materialized inputs read-only, captures declared successful Task outputs via
+  the Docker archive API, and preserves output identity through replay,
+  reconstructed clients/drivers, and removal. The exported Docker conformance
+  fixture now exercises both capability profiles.
 - The BuildKit adapter accepts Unix or mTLS endpoints and permits
   unauthenticated TCP only through an explicit literal-loopback conformance
   constructor. It runs `buildctl` with an empty home and no credential, SSH,
@@ -707,8 +725,9 @@ These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
 ownership of a GitHub installation,
 authoritative repository subscription/fanout, credential-safe checkout,
-durable build intent/crash-gap repair, and a real local-context BuildKit/OCI
-engine boundary, not the G0 integration gate.
+durable build intent/crash-gap repair, command-bound mTLS Artifact transport,
+restart-safe Docker inputs/outputs, and a real local-context BuildKit/OCI engine
+boundary, not the G0 integration gate.
 Subscriptions create revision authority but not checkout authority. The Build
 service binds but does not recompute the checkout digest, and the rootless
 worker does not by itself prove deny-by-default build networking.
@@ -1267,7 +1286,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> Runtime Task plus registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> Build Flow Runtime plus registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
