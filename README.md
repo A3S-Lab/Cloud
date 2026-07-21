@@ -213,7 +213,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, and authoritative digest-only registry publication are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; legacy `cloud.build@1` remains registered only to drain upgrade-invalidated work safely. Unit protocol gates cover single and multi-platform graphs, Basic/Bearer authentication, hostile responses, partial publication, and crash replay; CI pushes through an authenticated private Distribution registry. A real Runtime/BuildKit/Docker gate still requires an operator-provisioned shared socket volume and has not been executed in this workspace. Periodic authoritative provider polling, checkout-time lifecycle revalidation, external private-repository certification, provenance/SBOM/signing, source-to-deployment handoff, build logs/API/Web, and cache trust gates remain | In progress (`G0` registry-publication slice) |
+| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, and authoritative digest-only registry publication are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; legacy `cloud.build@1` remains registered only to drain upgrade-invalidated work safely. Unit protocol gates cover single and multi-platform graphs, Basic/Bearer authentication, hostile responses, partial publication, and crash replay. The combined Linux gate provisions the exact shared rootless BuildKit socket volume and an authenticated private Distribution registry, then drives the real Runtime Task through dual network denial, Artifact capture, full OCI validation, digest-only push, remote graph verification, idempotent replay, and cleanup. Periodic authoritative provider polling, checkout-time lifecycle revalidation, external private-repository certification, provenance/SBOM/signing, source-to-deployment handoff, build logs/API/Web, and cache trust gates remain | In progress (`G0` runtime-registry gate) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -1032,7 +1032,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, replay/cancellation adoption, and cleanup are implemented; authoritative polling, operator BuildKit evidence, provenance/SBOM/signing, deployment handoff, build surfaces, cache trust, and external private-repository evidence remain) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, a combined authenticated Runtime/BuildKit/Registry gate, replay/cancellation adoption, and cleanup are implemented; authoritative polling, provenance/SBOM/signing, deployment handoff, build surfaces, cache trust, and external private-repository evidence remain) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
@@ -1128,15 +1128,16 @@ rollback, and Secret-rotation restart recovery after the committed version
 boundary. Because this suite deliberately has no public-network route, its
 PostgreSQL fixture accepts only typed full commit references through a
 deterministic test resolver; the dedicated GitHub source-resolution and Linux
-Secret/log jobs exercise the production GitHub adapter. One rootless BuildKit
-job certifies the typed local-context adapter. A separate operator gate now
-projects the production `cloud.build@2` Task, runs it through the real node
-command journal and Docker Runtime, verifies the exact read-only socket volume,
-Docker network mode `none`, BuildKit `force-network-mode=none`, a failed `wget`
-attempt inside `RUN`, Artifact upload, full OCI validation, and Runtime removal.
-That operator gate alone does not claim publication, but the separate private
-Distribution CI gate now exercises authenticated graph push, remote
-verification, and idempotent replay through the production publisher. The real Docker
+Secret/log jobs exercise the production GitHub adapter. The `Runtime BuildKit
+private Registry` job certifies the typed local-context adapter, provisions the
+exact operator socket volume and an authenticated private Distribution
+registry, then projects the production `cloud.build@2` Task and runs it through
+the real node command journal and Docker Runtime. It verifies the exact
+read-only socket mount, Docker network mode `none`, BuildKit
+`force-network-mode=none`, a failed `wget` attempt inside `RUN`, Artifact upload,
+full OCI validation, deterministic target derivation, authenticated graph push,
+remote verification, idempotent publication replay, Runtime removal, and a
+terminal successful BuildRun. The real Docker
 update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the
@@ -1203,19 +1204,30 @@ unprivileged, drop all capabilities, and mount only the socket volume read-only.
 Volume capability advertisement alone is insufficient evidence that this exact
 socket volume and daemon exist.
 
-Run the gate, then remove the dedicated daemon and volume:
+Provide an authenticated registry origin with an explicit port, run the gate,
+then remove the dedicated daemon and volume. HTTP is accepted only for a local
+conformance fixture; production publication requires HTTPS. The test converts
+the supplied username and password into the production credential schema only
+for the bounded publication attempt and removes that environment material on
+exit:
 
 ```bash
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT=1 \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE="$A3S_BUILDKIT_NAMESPACE" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_VOLUME_ID="$A3S_BUILDKIT_VOLUME_ID" \
-cargo test -p a3s-cloud-control-plane \
-  real_runtime_task_builds_with_network_none_and_rejects_network_access \
-  -- --ignored --nocapture
+A3S_CLOUD_TEST_REGISTRY_URL="$A3S_REGISTRY_URL" \
+A3S_CLOUD_TEST_REGISTRY_USERNAME="$A3S_REGISTRY_USERNAME" \
+A3S_CLOUD_TEST_REGISTRY_PASSWORD="$A3S_REGISTRY_PASSWORD" \
+cargo test -p a3s-cloud-control-plane --lib \
+  modules::artifacts::infrastructure::build_flow::tests::runtime_gate::real_runtime_task_builds_publishes_and_rejects_network_access \
+  -- --ignored --exact --nocapture --test-threads=1
 
 docker rm -f a3s-cloud-buildkit-gate-daemon
 docker volume rm "$A3S_BUILDKIT_VOLUME"
 ```
+
+CI creates both fixtures from digest-pinned images and rejects anonymous
+registry access before running this same gate.
 
 The PostgreSQL integration test treats the supplied URL as an administration
 connection, creates a uniquely named database for the run, and force-removes it

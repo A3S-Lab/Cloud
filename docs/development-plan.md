@@ -96,7 +96,7 @@ Status as of 2026-07-21:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, and replay/cancellation adoption are implemented. Provenance, source-to-deployment handoff, operator BuildKit evidence, external private-provider evidence, and product build surfaces still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, and replay/cancellation adoption are implemented. Provenance, source-to-deployment handoff, external private-provider evidence, and product build surfaces still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -736,9 +736,13 @@ The current independently testable G0 slices are implemented:
   private Distribution fixture exercises authenticated push, remote lookup,
   and idempotent replay through the production adapter.
 - A dedicated Linux gate starts the digest-pinned `moby/buildkit` 0.31.2
-  rootless image, proves its non-root image user, builds a network-independent
-  scratch fixture through the production adapter, validates the OCI output,
-  and replays it without reexecution.
+  rootless image on the exact operator Unix socket volume, proves its non-root
+  image user, and retains the typed local-context adapter build and replay
+  check. The same job provisions an authenticated private Distribution
+  registry and runs the production Runtime Task through Artifact capture, full
+  graph validation, deterministic publication targeting, authenticated push,
+  remote verification, idempotent replay, removal, and terminal BuildRun
+  completion.
 - `cloud.build@1/@2` are registered in the production Flow router alongside
   `cloud.deployment@1/@2` and `cloud.workload.stop@1`. New work uses v2; v1 is
   retained only to drain upgrade-invalidated builds without rewriting
@@ -762,12 +766,15 @@ The current independently testable G0 slices are implemented:
   does not duplicate prepare, apply, validate, publish, remove, or completion
   side effects. Flow-event-loss and push/cancellation race tests prove an exact
   completed push is adopted without changing its target.
-- An ignored real gate drives the exact projected Task through the node command
-  journal, Docker Runtime, Artifact transport, and OCI validator. Its Dockerfile
-  succeeds only when a BuildKit `RUN` has no `eth0` and a `wget` attempt fails.
-  The gate requires an operator-provisioned rootless BuildKit socket volume;
-  evidence has not been recorded in this workspace because no Docker daemon is
-  available.
+- The combined real gate drives the exact projected Task through the node
+  command journal, Docker Runtime, Artifact transport, OCI validator, and
+  production registry publisher. Its Dockerfile succeeds only when a BuildKit
+  `RUN` has no `eth0` and a `wget` attempt fails. CI provisions the exact named
+  volume and shared Unix socket, rejects anonymous registry access, verifies the
+  complete remote digest graph twice, and removes the Runtime Task and fixture
+  volume. BuildKit endpoint and cache details remain outside Runtime contracts;
+  G0 still requires an explicit recipe, while automatic stack detection is a
+  P0 input that may propose but never silently replace that contract.
 
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
@@ -780,9 +787,9 @@ publication.
 Lifecycle reconciliation is currently driven only by signed webhook receipt;
 periodic authoritative provider polling, missed/out-of-order repair, delayed
 pre-reconnection delivery disambiguation, and checkout-time revalidation are
-not yet implemented. External private-provider certification, operator evidence
-for the Runtime/BuildKit gate, provenance/SBOM/signing, deployment handoff,
-cache trust, build operations/logs, and web surfaces remain required.
+not yet implemented. External private-provider certification,
+provenance/SBOM/signing, deployment handoff, cache trust, build
+operations/logs, and web surfaces remain required.
 
 ### Work
 
@@ -797,14 +804,6 @@ cache trust, build operations/logs, and web surfaces remain required.
   operator-visible reconciliation failure semantics.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
-- Provision the exact Docker named volume and rootless BuildKit Unix socket,
-  then run and record the implemented Runtime Task gate on the dedicated Linux
-  runner. Volume capability alone is not readiness evidence. G0 continues to
-  require an explicit recipe; automatic stack detection is a P0 input that may
-  propose, but never silently replace, this contract.
-- Extend the independently verified Runtime/BuildKit and registry-publication
-  gates into one operator run. BuildKit endpoint, Dockerfile, buildpack, and
-  cache details must continue not to leak into Runtime contracts.
 - Record source, recipe, builder, platform, SBOM, signature, and artifact
   provenance for the already published digest.
 - Add content-addressed build caching without allowing cache hits to weaken
