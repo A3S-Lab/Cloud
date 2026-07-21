@@ -9,6 +9,7 @@ import type {
   Project,
   Route,
   ServiceTemplate,
+  SourceWorkloadTemplate,
   StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
@@ -96,6 +97,27 @@ export class CloudApi {
       `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/deployments`,
       idempotencyKey,
       { template },
+      signal
+    );
+  }
+
+  deploySourceRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    sourceRevisionId: string,
+    name: string,
+    template: SourceWorkloadTemplate,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/source-revisions/${encodeURIComponent(sourceRevisionId)}/workloads`,
+      idempotencyKey,
+      { name, template },
       signal
     );
   }

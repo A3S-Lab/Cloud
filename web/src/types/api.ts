@@ -54,6 +54,8 @@ export interface Operation {
   updatedAt: string;
   error: string | null;
   rollbackSourceRevisionId?: string;
+  externalSourceRevisionId?: string;
+  buildRunId?: string;
 }
 
 export interface ServiceTemplate {
@@ -64,6 +66,8 @@ export interface ServiceTemplate {
   ports: ServicePort[];
   health: HttpHealthCheck;
 }
+
+export type SourceWorkloadTemplate = Omit<ServiceTemplate, 'artifact'>;
 
 export interface OciArtifactReference {
   uri: string;
@@ -124,6 +128,8 @@ export interface WorkloadRevision {
   templateDigest: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  externalSourceRevisionId?: string;
+  buildRunId?: string;
 }
 
 export interface DeploymentOperation {
@@ -233,6 +239,8 @@ export interface WorkloadDeploymentResult {
   requestedAt: string;
   replayed: boolean;
   rollbackSourceRevisionId?: string;
+  externalSourceRevisionId?: string;
+  buildRunId?: string;
 }
 
 export interface Workload {
