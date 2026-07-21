@@ -165,13 +165,20 @@ jobs:
           buildkit_namespace=cloud-buildkit-gate
           buildkit_volume_id=a3s-cloud-buildkit-v0-31-2
           buildkit_volume="a3s-${buildkit_namespace}-volume-$(printf '%s' "$buildkit_volume_id" | sha256sum | cut -c1-16)"
+          busybox_fixture=a3s-cloud-buildkit-busybox-fixture
+          busybox_rootfs="$RUNNER_TEMP/a3s-cloud-buildkit-busybox-rootfs.tar"
           docker pull "$buildkit_image"
           docker pull --platform linux/amd64 "$busybox_image"
-          docker run --rm --platform linux/amd64 --user 0 --entrypoint /bin/sh \
-            --volume "$RUNNER_TEMP:/a3s-fixtures" \
-            "$busybox_image" \
-            -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-busybox && chmod 0555 /a3s-fixtures/a3s-cloud-buildkit-busybox'
-          [[ -s $RUNNER_TEMP/a3s-cloud-buildkit-busybox ]]
+          docker create --name "$busybox_fixture" --platform linux/amd64 \
+            "$busybox_image"
+          docker export --output "$busybox_rootfs" "$busybox_fixture"
+          docker rm "$busybox_fixture"
+          chmod 0444 "$busybox_rootfs"
+          rootfs_bytes=$(stat --format '%s' "$busybox_rootfs")
+          (( rootfs_bytes > 0 && rootfs_bytes <= 16777216 ))
+          tar --list --file "$busybox_rootfs" \
+            bin/busybox lib/ld-linux-x86-64.so.2 lib/libc.so.6 lib64
+          ! docker container inspect "$busybox_fixture" >/dev/null 2>&1
           docker volume create "$buildkit_volume"
           docker run --rm --user 0 --entrypoint /bin/sh \
             --volume "$buildkit_volume:/run/user/1000/a3s-buildkit" \
@@ -266,7 +273,7 @@ jobs:
 
       - name: Run the Runtime-to-Registry production gate
         env:
-          A3S_CLOUD_TEST_BUSYBOX_BINARY: ${{ runner.temp }}/a3s-cloud-buildkit-busybox
+          A3S_CLOUD_TEST_BUSYBOX_ROOTFS: ${{ runner.temp }}/a3s-cloud-buildkit-busybox-rootfs.tar
           A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
           A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
           A3S_CLOUD_TEST_REGISTRY_URL: http://127.0.0.1:50030/
@@ -294,6 +301,7 @@ jobs:
             --filter label=a3s.cloud.namespace=cloud-buildkit-gate)
           [[ -z $managed_containers ]] || \
             docker rm --force $managed_containers || true
+          docker rm --force a3s-cloud-buildkit-busybox-fixture || true
           docker logs a3s-cloud-buildkit || true
           docker logs a3s-cloud-build-registry || true
           docker rm --force a3s-cloud-buildkit || true
@@ -303,7 +311,8 @@ jobs:
           docker volume rm "$buildkit_volume" || true
           ! docker volume inspect "$buildkit_volume" >/dev/null 2>&1
           rm -rf "$RUNNER_TEMP/a3s-cloud-build-registry-auth"
-          rm -f "$RUNNER_TEMP/a3s-cloud-buildkit-busybox" "$RUNNER_TEMP/buildctl"
+          rm -f "$RUNNER_TEMP/a3s-cloud-buildkit-busybox-rootfs.tar" \
+            "$RUNNER_TEMP/buildctl"
 
   gateway-managed-tls:
     name: Gateway managed TLS

@@ -47,8 +47,12 @@ use std::time::Duration as StdDuration;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
+mod busybox_rootfs;
+
+use busybox_rootfs::validate_busybox_rootfs;
+
 const GATE_ENV: &str = "A3S_CLOUD_TEST_RUNTIME_BUILDKIT";
-const BUSYBOX_BINARY_ENV: &str = "A3S_CLOUD_TEST_BUSYBOX_BINARY";
+const BUSYBOX_ROOTFS_ENV: &str = "A3S_CLOUD_TEST_BUSYBOX_ROOTFS";
 const REGISTRY_URL_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_URL";
 const REGISTRY_USERNAME_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_USERNAME";
 const REGISTRY_PASSWORD_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_PASSWORD";
@@ -98,14 +102,11 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         root.path().join("control-plane-artifacts"),
         1024 * 1024 * 1024,
     )?);
-    let busybox_binary = tokio::fs::read(required_environment(BUSYBOX_BINARY_ENV)?).await?;
-    require(
-        busybox_binary.starts_with(b"\x7fELF") && busybox_binary.len() <= 16 * 1024 * 1024,
-        "Runtime BuildKit gate BusyBox fixture is not a bounded ELF executable",
-    )?;
+    let busybox_rootfs = tokio::fs::read(required_environment(BUSYBOX_ROOTFS_ENV)?).await?;
+    validate_busybox_rootfs(&busybox_rootfs)?;
     let dockerfile = format!(
         "FROM scratch AS network-check\n\
-         COPY busybox /bin/busybox\n\
+         ADD busybox-rootfs.tar /\n\
          RUN [\"/bin/busybox\", \"sh\", \"-c\", {}]\n\
          FROM scratch\n\
          COPY --from=network-check /bin/busybox /network-check\n\
@@ -114,7 +115,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
     );
     let source_archive = directory_archive(&[
         ("Dockerfile", dockerfile.as_bytes(), 0o644),
-        ("busybox", busybox_binary.as_slice(), 0o755),
+        ("busybox-rootfs.tar", busybox_rootfs.as_slice(), 0o444),
         (
             "message.txt",
             b"A3S Cloud Runtime BuildKit network-none gate\n",

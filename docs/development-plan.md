@@ -770,13 +770,15 @@ The current independently testable G0 slices are implemented:
   command journal, Docker Runtime, Artifact transport, OCI validator, and
   production registry publisher. Its Dockerfile succeeds only when a BuildKit
   `RUN` has no `eth0` and a `wget` attempt fails. CI provisions the exact named
-  volume and shared Unix socket, extracts a digest-pinned linux/amd64 BusyBox
-  executable into a scratch-only offline context, rejects anonymous registry
-  access, verifies the complete remote digest graph twice, and removes the
-  Runtime Task and fixture volume. BuildKit endpoint and cache details remain
-  outside Runtime contracts; G0 still requires an explicit recipe, while
-  automatic stack detection is a P0 input that may propose but never silently
-  replace that contract.
+  volume and shared Unix socket, exports the bounded root filesystem of a
+  digest-pinned linux/amd64 BusyBox fixture into a scratch-only offline context,
+  rejects anonymous registry access, verifies the complete remote digest graph
+  twice, and removes the Runtime Task and fixture volume. The root filesystem
+  carries BusyBox and its exact dynamic-loader closure without base-image
+  resolution. BuildKit endpoint and cache details remain outside Runtime
+  contracts; G0 still requires an explicit recipe, while automatic stack
+  detection is a P0 input that may propose but never silently replace that
+  contract.
 
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant

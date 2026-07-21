@@ -1184,14 +1184,14 @@ export A3S_BUILDKIT_NAMESPACE=cloud-buildkit-gate
 export A3S_BUILDKIT_VOLUME_ID=a3s-cloud-buildkit-v0-31-2
 export A3S_BUILDKIT_IMAGE='moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b'
 export A3S_BUSYBOX_IMAGE='busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
-export A3S_BUSYBOX_BINARY=/tmp/a3s-cloud-buildkit-gate-busybox
+export A3S_BUSYBOX_ROOTFS=/tmp/a3s-cloud-buildkit-gate-busybox-rootfs.tar
 export A3S_BUILDKIT_VOLUME="a3s-${A3S_BUILDKIT_NAMESPACE}-volume-$(printf %s "$A3S_BUILDKIT_VOLUME_ID" | sha256sum | cut -c1-16)"
 
 docker pull --platform linux/amd64 "$A3S_BUSYBOX_IMAGE"
-docker run --rm --platform linux/amd64 --user 0 --entrypoint sh \
-  -v /tmp:/a3s-fixtures \
-  "$A3S_BUSYBOX_IMAGE" \
-  -ceu 'cp /bin/busybox /a3s-fixtures/a3s-cloud-buildkit-gate-busybox && chmod 0555 /a3s-fixtures/a3s-cloud-buildkit-gate-busybox'
+A3S_BUSYBOX_CONTAINER=$(docker create --platform linux/amd64 "$A3S_BUSYBOX_IMAGE")
+docker export --output "$A3S_BUSYBOX_ROOTFS" "$A3S_BUSYBOX_CONTAINER"
+docker rm "$A3S_BUSYBOX_CONTAINER"
+chmod 0444 "$A3S_BUSYBOX_ROOTFS"
 docker volume create "$A3S_BUILDKIT_VOLUME"
 docker run --rm --user 0 --entrypoint sh \
   -v "$A3S_BUILDKIT_VOLUME:/run/user/1000/a3s-buildkit" \
@@ -1220,7 +1220,7 @@ exit:
 
 ```bash
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT=1 \
-A3S_CLOUD_TEST_BUSYBOX_BINARY="$A3S_BUSYBOX_BINARY" \
+A3S_CLOUD_TEST_BUSYBOX_ROOTFS="$A3S_BUSYBOX_ROOTFS" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE="$A3S_BUILDKIT_NAMESPACE" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_VOLUME_ID="$A3S_BUILDKIT_VOLUME_ID" \
 A3S_CLOUD_TEST_REGISTRY_URL="$A3S_REGISTRY_URL" \
@@ -1232,14 +1232,15 @@ cargo test -p a3s-cloud-control-plane --lib \
 
 docker rm -f a3s-cloud-buildkit-gate-daemon
 docker volume rm "$A3S_BUILDKIT_VOLUME"
-rm -f "$A3S_BUSYBOX_BINARY"
+rm -f "$A3S_BUSYBOX_ROOTFS"
 ```
 
-CI creates both fixtures from digest-pinned images, extracts the pinned
-linux/amd64 BusyBox executable into the otherwise scratch-only build context,
-and rejects anonymous registry access before running this same gate. BuildKit
-therefore performs no base-image resolution through the network-isolated
-Runtime client.
+CI creates both fixtures from digest-pinned images, exports the bounded pinned
+linux/amd64 BusyBox root filesystem into the otherwise scratch-only build
+context, and rejects anonymous registry access before running this same gate.
+The root filesystem supplies the executable and its exact dynamic-loader
+closure without resolving a base image. BuildKit therefore performs no image
+resolution through the network-isolated Runtime client.
 
 The PostgreSQL integration test treats the supplied URL as an administration
 connection, creates a uniquely named database for the run, and force-removes it
