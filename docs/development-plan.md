@@ -590,9 +590,10 @@ The current independently testable G0 slices are implemented:
   authenticates the exact raw bytes with canonical lowercase HMAC-SHA256 before
   interpreting provider data. Bearer authentication cannot bypass the proof.
 - Deleted/non-branch pushes, unsupported lifecycle actions, and unrelated
-  authenticated events are acknowledged without persistence. A branch push is reduced to typed provider, delivery,
-  canonical repository, installation, branch, commit, payload-digest, and
-  receipt-time fields; raw payload and secret material are never durable.
+  authenticated events are acknowledged without persistence. A branch push is
+  reduced to typed provider, delivery, canonical repository, installation,
+  branch, commit, payload-digest, and receipt-time fields; raw payload and
+  secret material are never durable.
 - The PostgreSQL provider inbox atomically replays the same delivery and exact
   payload while rejecting delivery-ID reuse with changed bytes or typed
   identity. Unit, API, and PostgreSQL integration tests cover signature

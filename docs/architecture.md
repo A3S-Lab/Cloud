@@ -767,8 +767,8 @@ proof.
 The durable connection does not enumerate repositories or contain a token.
 After anonymous resolution reports unavailable, the application may use only
 the same tenant's active verified installation ID to mint a bounded App JWT and
-request one repository-scoped installation token with `contents: read`. The App PEM key
-is read from its configured environment variable for each attempt. The
+request one repository-scoped installation token with `contents: read`. The
+App PEM key is read from its configured environment variable for each attempt. The
 provider must confirm selected-repository scope and only read-only contents plus
 implicit metadata permission. Any issuance or authenticated-provider
 failure collapses to the same unavailable source result. Repository binding and
@@ -810,13 +810,14 @@ signature syntax is exactly `sha256=` plus 64 lowercase hexadecimal digits.
 Bearer authentication cannot substitute for or bypass this proof.
 
 Deleted pushes, non-branch refs, unsupported lifecycle actions, and unrelated
-authenticated events are acknowledged without persistence. A branch push is reduced to the GitHub
-provider, bounded delivery ID, canonical repository identity, positive
-installation ID, safe branch, full commit object ID, exact-payload SHA-256
-digest, and canonical receipt time. The PostgreSQL inbox is keyed by provider
-and delivery ID. An exact-payload replay returns the stored fact; reusing the
-key with any changed typed identity or raw-body digest conflicts in the same
-transaction. Neither secret material nor the raw payload is stored.
+authenticated events are acknowledged without persistence. A branch push is
+reduced to the GitHub provider, bounded delivery ID, canonical repository
+identity, positive installation ID, safe branch, full commit object ID,
+exact-payload SHA-256 digest, and canonical receipt time. The PostgreSQL inbox
+is keyed by provider and delivery ID. An exact-payload replay returns the
+stored fact; reusing the key with any changed typed identity or raw-body digest
+conflicts in the same transaction. Neither secret material nor the raw payload
+is stored.
 
 Only a newly inserted push delivery may fan out. Before the transaction, Cloud
 resolves the currently authoritative connection ID for the installation. In

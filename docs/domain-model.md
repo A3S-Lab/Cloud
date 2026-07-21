@@ -671,8 +671,8 @@ may use only an active connection to issue one repository-scoped read-only
 installation token; token and App key material are never durable. Signed
 provider lifecycle facts reconcile explicit connection status, retain terminal
 history, and prevent old subscriptions from inheriting a fresh connection.
-Local issuer, resolver,
-and real Git smart-HTTP fixtures cover the private path, while the
+Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
+while the
 operator-credential external GitHub gate remains unexecuted. Authoritative
 provider polling and the complete source-to-artifact operation remain later G0
 work.
@@ -683,10 +683,9 @@ work.
 
 ```text
 active <-> suspended
-   |          |
-   +----------+-> verification_revoked
-   +----------+-> installation_deleted
-   +----------+-> account_changed
+active | suspended -> verification_revoked
+active | suspended -> installation_deleted
+active | suspended -> account_changed
 ```
 
 Only `active` is authoritative. `active` and `suspended` are current states and

@@ -426,8 +426,8 @@ change can remain usable until GitHub expires or revokes it.
 
 ### Subscribe an environment to a GitHub repository
 
-After the organization has an active verified GitHub connection, create an exact
-repository binding for an environment:
+After the organization has an active verified GitHub connection, create an
+exact repository binding for an environment:
 
 ```text
 POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github
@@ -528,10 +528,10 @@ PostgreSQL transaction selects only active subscriptions whose installation,
 canonical repository, exact branch, and exact active connection ID all match.
 It locks both the binding and connection, so a concurrent lifecycle transition
 either precedes fanout and suppresses it or follows the committed delivery.
-Each authoritative
-environment/recipe binding creates one immutable `ExternalSourceRevision` and
-one `source.revision.accepted` outbox fact. Multiple recipes or environments
-fan out independently; unmatched deliveries create no tenant revision.
+Each authoritative environment/recipe binding creates one immutable
+`ExternalSourceRevision` and one `source.revision.accepted` outbox fact.
+Multiple recipes or environments fan out independently; unmatched deliveries
+create no tenant revision.
 
 Supported lifecycle deliveries use a separate typed inbox containing only
 event/action, installation or user subject, payload digest, and receipt time.
