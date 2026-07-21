@@ -90,11 +90,11 @@ alter table build_runs
                 = publication_target #> '{descriptor,size}'
             and published_artifact ->> 'uri'
                 = 'oci://'
-                    || publication_target ->> 'registry'
+                    || (publication_target ->> 'registry')
                     || '/'
-                    || publication_target ->> 'repository'
+                    || (publication_target ->> 'repository')
                     || '@'
-                    || publication_target #>> '{descriptor,digest}'
+                    || (publication_target #>> '{descriptor,digest}')
         )
     ),
     add constraint build_runs_publishing_state_check check (
