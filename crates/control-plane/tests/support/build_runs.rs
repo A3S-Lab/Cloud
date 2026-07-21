@@ -1,5 +1,7 @@
 use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
-use a3s_cloud_control_plane::modules::artifacts::application::BuildRunReconciler;
+use a3s_cloud_control_plane::modules::artifacts::application::{
+    BuildRunReconciler, BUILD_WORKFLOW_VERSION,
+};
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
     OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
@@ -144,7 +146,7 @@ pub async fn exercise_build_run_persistence(
     assert_eq!(operation.subject.kind(), "build_run");
     assert_eq!(operation.subject.id(), build_id.as_uuid());
     assert_eq!(operation.workflow.name(), "cloud.build");
-    assert_eq!(operation.workflow.version(), "1");
+    assert_eq!(operation.workflow.version(), BUILD_WORKFLOW_VERSION);
     assert_eq!(
         operation.input["buildRunId"],
         serde_json::Value::String(build_id.to_string())
