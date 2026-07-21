@@ -662,8 +662,16 @@ Artifact-owned Build service can consume a
 caller-supplied materialized source and recipe through rootless BuildKit, then
 validate and atomically receipt a local OCI layout. It does not yet coordinate
 or revalidate the checkout, publish the image, record provenance, or hand a
-digest to Workloads. A separate implemented GitHub App connection aggregate
-verifies and exclusively assigns an installation/account to one Cloud
+digest to Workloads. The Artifacts context now also owns one deterministic
+`BuildRun` per accepted source revision. It binds tenant/environment ownership,
+the exact `cloud.build@1` operation, immutable input and Runtime artifact
+identities, assigned node and command identities, validated OCI output,
+terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
+operation replay, and optimistic single-transition saves prevent duplicate or
+forged logical builds across process loss. The reconciler remains disabled in
+the production worker until the Build Flow runtime can execute that operation
+as an isolated Runtime Task. A separate implemented GitHub App connection
+aggregate verifies and exclusively assigns an installation/account to one Cloud
 organization using single-use state, OAuth user authority, and PKCE. The
 separate `GithubRepositorySubscription` aggregate provides explicit repository
 authority and retained active/inactive lifecycle. Anonymous source resolution
@@ -674,10 +682,29 @@ history, and prevent old subscriptions from inheriting a fresh connection.
 Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
 while the
 operator-credential external GitHub gate remains unexecuted. Authoritative
-provider polling and the complete source-to-artifact operation remain later G0
-work.
+provider polling and Runtime execution of the complete source-to-artifact
+operation remain later G0 work.
 
 ## 6. State models
+
+### Build run state
+
+```text
+queued -> preparing -> prepared -> scheduled -> running -> validating
+  |          |            |           |           |           |
+  +----------+------------+-----------+-----------+-----------+-> cancelling
+  +----------+------------+-----------+-----------+-----------+-> cleanup_pending
+
+validating -> cleanup_pending -> succeeded
+cancelling -> cleanup_pending -> cancelled
+cleanup_pending -> failed | cancelled
+```
+
+Failure or cancellation before Runtime dispatch may terminate without a
+cleanup command. Once a Runtime Task command exists, terminal state requires a
+durable cleanup command identity. Successful completion requires a validated
+OCI graph whose artifact exactly matches the collected Runtime output. Exact
+transition replay changes neither version nor timestamps.
 
 ### GitHub source connection state
 

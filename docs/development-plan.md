@@ -676,6 +676,17 @@ The current independently testable G0 slices are implemented:
   binds an immutable build ID, absolute materialized source directory, checkout
   content digest, and accepted recipe without exposing BuildKit semantics to
   Sources or Runtime.
+- One deterministic tenant-owned `BuildRun` is reserved for every accepted
+  source revision. Its operation ID is the build ID, and its aggregate records
+  exact input, node/command, Runtime output, validated OCI result,
+  cancellation/failure, cleanup, timestamps, and optimistic version.
+  Repository saves accept only one aggregate-generated transition; exact
+  replay changes no timestamp or version.
+- Concurrent PostgreSQL reservation creates one build, and a dedicated
+  reconciler repairs the source-commit-to-operation crash gap by enqueuing the
+  same `cloud.build@1` request. The isolated PostgreSQL gate covers concurrent
+  reservation, crash-gap repair, exact operation replay, stale writes, forged
+  ownership, and tenant/environment isolation.
 - The BuildKit adapter accepts Unix or mTLS endpoints and permits
   unauthenticated TCP only through an explicit literal-loopback conformance
   constructor. It runs `buildctl` with an empty home and no credential, SSH,
@@ -695,18 +706,21 @@ The current independently testable G0 slices are implemented:
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
 ownership of a GitHub installation,
-authoritative repository subscription/fanout, credential-safe checkout, and a
-real local-context BuildKit/OCI engine boundary, not the G0 integration gate.
+authoritative repository subscription/fanout, credential-safe checkout,
+durable build intent/crash-gap repair, and a real local-context BuildKit/OCI
+engine boundary, not the G0 integration gate.
 Subscriptions create revision authority but not checkout authority. The Build
 service binds but does not recompute the checkout digest, and the rootless
 worker does not by itself prove deny-by-default build networking.
 Lifecycle reconciliation is currently driven only by signed webhook receipt;
 periodic authoritative provider polling, missed/out-of-order repair, delayed
 pre-reconnection delivery disambiguation, and checkout-time revalidation are
-not yet implemented. External private-provider certification, build-operation
-checkout replay, Runtime Task orchestration, registry publication, provenance,
-deployment handoff, build operations/logs, cancellation, and web surfaces
-remain required.
+not yet implemented. The build-run reconciler is deliberately not enabled in
+the production worker until `cloud.build@1` has a registered Flow runtime;
+otherwise the generic operation coordinator would reject the unknown workflow.
+External private-provider certification, build-operation checkout replay,
+Runtime Task orchestration, registry publication, provenance, deployment
+handoff, build operations/logs, cancellation, and web surfaces remain required.
 
 ### Work
 
@@ -1160,7 +1174,7 @@ Later gates extend the same fault-injection discipline:
 
 | # | Durable boundary | Owning gate | Required outcome |
 | ---: | --- | --- | --- |
-| 10 | Source revision commit before build run creation | `G0` | Reconciliation starts one build for the accepted commit and recipe |
+| 10 | Source revision commit before build run creation | `G0` | The durable repository/reconciler gate now reserves one deterministic build and repairs the operation enqueue gap; promotion to current evidence waits for the registered Build Flow plus process-death gate |
 | 11 | OCI push before artifact and provenance projection | `G0` | The pushed digest is adopted exactly once or explicitly garbage-collected |
 | 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
 | 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
@@ -1253,7 +1267,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> Runtime Task plus registry publication -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> Runtime Task plus registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

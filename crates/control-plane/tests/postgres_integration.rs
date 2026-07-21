@@ -36,6 +36,8 @@ use uuid::Uuid;
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/build_runs.rs"]
+mod build_runs_support;
 #[path = "support/cancellation.rs"]
 mod cancellation_support;
 #[path = "support/deployment_flow.rs"]
@@ -154,6 +156,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists github_connection_flows cascade;
              drop table if exists source_webhook_inbox cascade;
              drop table if exists source_webhook_deliveries cascade;
+             drop table if exists build_runs cascade;
              drop table if exists external_source_revisions cascade;
              drop table if exists secret_rotation_reconciliations cascade;
              drop table if exists secret_rotation_restarts cascade;
@@ -205,7 +208,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 25);
+    assert_eq!(applied, 26);
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -438,6 +441,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "026",
+                "durable source build runs",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/026_build_runs.sql"
+                )),
+            ),
+            Migration::new(
+                "027",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -769,6 +780,15 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(source_rows, 1);
     assert_eq!(delivery_rows, 1);
     assert_eq!(source_events, 1);
+
+    build_runs_support::exercise_build_run_persistence(
+        &executor,
+        &organization_id,
+        &project_id,
+        &environment_id,
+        &response_id(&source)?,
+    )
+    .await?;
 
     source_subscription_support::exercise_source_subscriptions(
         &app,

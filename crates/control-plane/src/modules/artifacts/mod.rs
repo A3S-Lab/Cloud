@@ -1,7 +1,12 @@
+pub mod application;
 pub mod domain;
 pub mod infrastructure;
 
 pub use domain::{
-    BuildServiceError, BuiltOciArtifact, IBuildService, OciBuildRequest, OciDescriptor,
+    BuildArtifact, BuildRun, BuildRunStatus, BuildServiceError, BuiltOciArtifact,
+    IBuildRunRepository, IBuildService, OciBuildRequest, OciDescriptor, ValidatedOciBuildOutput,
 };
-pub use infrastructure::{BuildkitBuildService, BuildkitConnection};
+pub use infrastructure::{
+    BuildkitBuildService, BuildkitConnection, InMemoryBuildRunRepository,
+    PostgresBuildRunRepository,
+};

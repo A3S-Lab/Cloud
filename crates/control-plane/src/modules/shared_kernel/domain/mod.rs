@@ -6,7 +6,7 @@ mod timestamp;
 
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
-    ApiTokenId, DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId,
+    ApiTokenId, BuildRunId, DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId,
     GatewayCertificateId, NodeCertificateId, NodeCommandId, NodeId, OperationId, OrganizationId,
     ProjectId, RouteId, SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId,
     WorkloadId, WorkloadRevisionId,
