@@ -16,7 +16,8 @@ use a3s_cloud_control_plane::modules::operations::{
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, OrganizationId};
 use a3s_cloud_control_plane::modules::sources::domain::{
-    GitReference, ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
+    GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
+    SourceResolutionRequest,
 };
 use a3s_cloud_control_plane::{
     build_application, infrastructure::connect_and_migrate, CloudConfig,
@@ -69,6 +70,7 @@ impl ISourceResolver for OfflineCommitSourceResolver {
     async fn resolve(
         &self,
         request: &SourceResolutionRequest,
+        _credential: Option<&SourceProviderCredential>,
     ) -> Result<ResolvedSource, SourceResolutionError> {
         let GitReference::Commit(commit_sha) = &request.reference else {
             return Err(SourceResolutionError::Unavailable);

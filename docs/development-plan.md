@@ -538,7 +538,7 @@ The current independently testable G0 slices are implemented:
   the organization/project/environment hierarchy. Source revisions, events,
   and idempotency responses contain no credential value or reference.
 - The mutation accepts a typed branch, tag, or full commit and resolves it
-  through a provider-neutral source port. The public GitHub adapter uses a
+  through a provider-neutral source port. The GitHub adapter uses a
   fixed HTTPS origin, disables redirects, confirms the exact repository,
   requires an exact ref response, peels annotated tags with a bounded chain,
   and verifies the returned full commit.
@@ -616,6 +616,18 @@ The current independently testable G0 slices are implemented:
   multi-recipe fanout, inactive exclusion, and secretless state. The isolated
   PostgreSQL gate covers schema ownership, active uniqueness, fanout replay,
   outbox atomic rollback, lifecycle, and secretless database/event state.
+- Anonymous source resolution remains the first attempt. Only anonymous
+  `Unavailable` may look up the same organization's verified connection, issue
+  a newly signed GitHub App JWT, request one exact repository with
+  `contents: read`, and retry with the returned short-lived Bearer credential.
+  Public success, anonymous provider/protocol errors, missing or cross-tenant
+  connection, and idempotency replay never issue a token.
+- The App PEM key is read from its configured environment variable for every
+  issuance. The provider response must confirm selected-repository scope and
+  only read-only contents plus implicit metadata permission. Credential values
+  are repository-bound, non-cloneable, non-serializable, zeroizing, strictly
+  expiring, and redacted from `Debug`; issuance and authenticated-provider
+  errors are collapsed before the API boundary.
 - A provider-neutral checkout port accepts only the canonical repository, full
   accepted commit, and immutable checkout ID. The Git adapter uses a fresh
   bounded staging directory and isolated empty Git home, disables redirects,
@@ -629,6 +641,13 @@ The current independently testable G0 slices are implemented:
 - Unit tests cover moving-branch pinning, immutable replay, tampering, limits,
   gitlinks, and escaping symlinks. The public GitHub CI job also materializes
   the just-resolved commit and verifies metadata-free replay.
+- Private HTTPS checkout supplies `x-access-token:TOKEN` only as a transient
+  Basic header through Git's `--config-env=http.extraHeader`; credentials never
+  enter repository URLs, arguments, receipts, or replay. A real local smart-HTTP
+  Git backend proves exact header transport and credential-free replay. An
+  ignored test composes real GitHub token issuance, authenticated resolution,
+  checkout, and replay from operator-supplied environment values; no external
+  private-repository pass is claimed because those credentials are unavailable.
 - The Artifacts context owns a provider-neutral `IBuildService`. Its request
   binds an immutable build ID, absolute materialized source directory, checkout
   content digest, and accepted recipe without exposing BuildKit semantics to
@@ -649,23 +668,25 @@ The current independently testable G0 slices are implemented:
   scratch fixture through the production adapter, validates the OCI output,
   and replays it without reexecution.
 
-These slices establish source persistence, public resolution, authenticated
-provider ingress, verified tenant ownership of a GitHub installation,
-authoritative repository subscription/fanout, secure public checkout, and a
+These slices establish source persistence, anonymous-first and
+installation-token resolution, authenticated provider ingress, verified tenant
+ownership of a GitHub installation,
+authoritative repository subscription/fanout, credential-safe checkout, and a
 real local-context BuildKit/OCI engine boundary, not the G0 integration gate.
 Subscriptions create revision authority but not checkout authority. The Build
 service binds but does not recompute the checkout digest, and the rootless
 worker does not by itself prove deny-by-default build networking.
-Installation-token/private-repository authentication, installation lifecycle
-reconciliation, build-operation checkout replay, Runtime Task orchestration,
-registry publication, provenance, deployment handoff, build operations/logs,
+External private-provider certification, installation lifecycle reconciliation,
+build-operation checkout replay, Runtime Task orchestration, registry
+publication, provenance, deployment handoff, build operations/logs,
 cancellation, and web surfaces remain required.
 
 ### Work
 
-- Add short-lived GitHub App installation-token issuance and complete
-  private-repository resolution/checkout with a real installation-token gate;
-  never persist the token or private key material in source state.
+- Provision an operator-controlled GitHub App/private repository and run the
+  implemented installation-token resolution/checkout gate. Do not promote the
+  local fixture evidence to external-provider certification until that pass is
+  recorded; never persist token or private-key material in source state.
 - Reconcile installation suspension, deletion, account transfer, and revoked
   authorization before fanout or checkout, with explicit operator-visible
   connection state and retry semantics.

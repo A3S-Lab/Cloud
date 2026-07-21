@@ -31,6 +31,7 @@ class ReleaseGateContractTests(unittest.TestCase):
   github_app_slug = ""
   github_app_client_id = ""
   github_app_client_secret_env = ""
+  github_app_private_key_env = ""
   github_app_callback_url = ""
   github_connection_state_ttl_ms = 600000
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]

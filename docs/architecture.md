@@ -63,15 +63,17 @@ Docker node, then certifies bootstrap through A→B→cloned-A TLS cutover, orde
 resumable logs, durable stop, source cleanliness, host-inventory equality, and
 credential-safe cleanup. This closes the first release. The current G0 slices
 add a Sources context with canonical GitHub repository identities, an exact
-allow/deny policy, provider-neutral public branch/tag/commit resolution, full
+allow/deny policy, provider-neutral anonymous-first branch/tag/commit
+resolution, full
 immutable commit IDs, explicit digest-bound Dockerfile recipes, atomic webhook
 source-identity reservation, PostgreSQL persistence, and tenant-scoped REST
 acceptance/query. A separate public GitHub ingress authenticates the exact raw
 body with HMAC-SHA256 and stores only a typed branch-push identity and payload
 digest in a durable provider-level replay inbox. A provider-neutral checkout
-port and Git adapter fetch an accepted public commit under isolated Git
-configuration, reject unsafe tree entries, strip `.git`, and commit an
-immutable content receipt. The Artifacts context also owns a typed Build
+port and Git adapter fetch an accepted commit under isolated Git configuration,
+accept an ephemeral repository-bound credential only for the provider fetch,
+reject unsafe tree entries, strip `.git`, and commit an immutable content
+receipt. The Artifacts context also owns a typed Build
 service whose BuildKit adapter exports and fully validates a local OCI image
 layout; a dedicated gate exercises it against the digest-pinned rootless
 BuildKit image. A tenant-scoped GitHub App connection boundary now binds one
@@ -81,9 +83,13 @@ verification. The build coordinator does not yet join those boundaries or run
 the client through a Runtime Task. Environment-owned repository subscriptions
 now bind that verified installation to exact repository/branch/recipe policy,
 and the provider inbox atomically fans out immutable revisions only through
-active matches. Installation-token/private-repository authentication,
-installation lifecycle reconciliation, isolated build orchestration, registry
-publication, and provenance remain unimplemented.
+active matches. Installation-token authentication and private checkout are
+implemented with local provider evidence: the App PEM key and token are
+materialized only per attempt, and no credential enters source state, URLs,
+receipts, responses, or events. The operator-supplied real private-repository
+gate has not been run without provider credentials. Installation lifecycle
+reconciliation, isolated build orchestration, registry publication, and
+provenance remain unimplemented.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -743,10 +749,16 @@ connection time. The tenant GET returns that record, while flow responses use
 no-store and no-referrer policy. Explicitly disabled GitHub App ACL fields
 construct a closed unavailable adapter rather than partial provider behavior.
 
-The connection does not enumerate repositories, mint installation JWTs/tokens,
-authenticate source resolution or checkout, enable private repositories, or
-reconcile suspension/deletion/account transfer. Repository binding and fanout
-are separate transactions beneath this verified ownership record.
+The durable connection does not enumerate repositories or contain a token.
+After anonymous resolution reports unavailable, the application may use the
+same tenant's verified installation ID to mint a bounded App JWT and request
+one repository-scoped installation token with `contents: read`. The App PEM key
+is read from its configured environment variable for each attempt. The
+provider must confirm selected-repository scope and only read-only contents plus
+implicit metadata permission. Any issuance or authenticated-provider
+failure collapses to the same unavailable source result. Repository binding and
+fanout remain separate transactions beneath this verified ownership record;
+suspension, deletion, and account-transfer reconciliation are not implemented.
 
 An environment-owned `GithubRepositorySubscription` binds the organization's
 verified connection and installation to one canonical GitHub repository, one
@@ -809,7 +821,7 @@ authenticated mutation-time entry to the same tenant reservation invariant.
 `POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
 normalizes an exact GitHub HTTPS locator, enforces the configured exact
 allow/deny policy, and resolves the reference through a provider-neutral port.
-The public GitHub adapter uses only the fixed HTTPS API origin, disables
+The GitHub adapter uses only the fixed HTTPS API origin, disables
 redirects, confirms the response repository identity, requires exact ref
 echoing, bounds annotated-tag peeling, and verifies full commit IDs. The
 application checks for an idempotent response before contacting the provider;
@@ -818,26 +830,37 @@ canonical digest, and atomically stores the environment-owned immutable
 revision, idempotency response, optional webhook repository-plus-commit
 reservation, and `source.revision.accepted` outbox fact. Natural identity is
 environment, repository, commit, and recipe digest. Mutable ref names and
-credential references are not durable source-revision state. The GitHub App
-connection records verified installation ownership but does not yet supply an
-installation token to this resolver. Private-repository authentication and the
-coordinated BuildKit operation remain subsequent G0 boundaries.
+credential references are not durable source-revision state. Resolution is
+anonymous first. Only an anonymous `Unavailable` result may look up the same
+organization's verified GitHub connection, issue one short-lived credential
+bound to the canonical repository, and retry with a Bearer header. Public
+success, non-availability provider failures, and idempotency replay never issue
+a token. Token-service and authenticated-provider errors are sanitized so even
+a defective adapter cannot reflect a credential. The coordinated BuildKit
+operation remains a subsequent G0 boundary.
 
 The provider-neutral source-checkout port accepts only a canonical repository,
 one full commit object ID, and an immutable checkout ID. Its Git adapter uses a
 fresh staging directory and empty Git home, disables system/global
 configuration, redirects, credential helpers, hooks, unsafe protocols, tags,
-and recursive submodules, and fetches the accepted object ID directly. It
+and recursive submodules, and fetches the accepted object ID directly. A valid
+repository-bound credential is converted to transient Basic authentication for
+`x-access-token:TOKEN` and supplied only through Git's
+`--config-env=http.extraHeader=...`; it never enters the remote URL or argument
+list. The adapter
 requires the detached `HEAD` and tree to match, bounds file count, content
 bytes, command output, and total time, rejects unsupported Git tree modes,
 gitlinks, unsafe paths, and symlinks that escape the checkout root, then
 removes `.git`. Atomic publication records the repository, commit, Git tree,
 and a deterministic SHA-256 filesystem digest without credentials. Replaying
 the same checkout ID recomputes that digest; another source identity conflicts
-and mutated content fails integrity validation. The dedicated public GitHub CI
-gate resolves a branch and exercises this exact checkout and replay boundary.
-It does not yet start a build operation or establish private-repository
-evidence.
+and mutated content fails integrity validation. Existing checkout replay never
+requires a credential because it performs no provider access. The dedicated
+public GitHub CI gate resolves a branch and exercises checkout/replay. A local
+smart-HTTP Git fixture proves authenticated fetch, exact header transport, and
+credential-free receipt/replay. The ignored real GitHub App test is ready for
+operator credentials but has not produced external private-repository
+evidence. The boundary does not yet start a build operation.
 
 The Artifact-owned `IBuildService` accepts one immutable build ID, an absolute
 materialized source directory, the source content receipt digest, and the

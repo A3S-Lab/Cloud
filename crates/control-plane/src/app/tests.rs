@@ -16,9 +16,10 @@ use crate::modules::secrets::{
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
+    GithubInstallationTokenError, GithubInstallationTokenRequest,
     GithubInstallationVerificationRequest, GithubLogin, IGithubAppAuthorizationService,
-    ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
-    VerifiedGithubInstallation,
+    ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
+    SourceResolutionRequest, VerifiedGithubInstallation,
 };
 use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
@@ -32,6 +33,7 @@ use uuid::Uuid;
 
 mod platform_tests;
 mod secret_tests;
+mod source_private_tests;
 mod source_subscription_tests;
 mod source_tests;
 mod workload_tests;
@@ -58,6 +60,7 @@ impl ISourceResolver for TestSourceResolver {
     async fn resolve(
         &self,
         request: &SourceResolutionRequest,
+        _credential: Option<&SourceProviderCredential>,
     ) -> std::result::Result<ResolvedSource, SourceResolutionError> {
         let commit_sha = match &request.reference {
             GitReference::Commit(commit_sha) => commit_sha.clone(),
@@ -293,6 +296,7 @@ fn config() -> CloudConfig {
             github_app_slug: "a3s-cloud-test".into(),
             github_app_client_id: "Iv1.test-client".into(),
             github_app_client_secret_env: "A3S_CLOUD_GITHUB_APP_CLIENT_SECRET".into(),
+            github_app_private_key_env: "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY".into(),
             github_app_callback_url:
                 "https://cloud.example.test/api/v1/source-connections/github/callback".into(),
             github_connection_state_ttl_ms: 600_000,
@@ -508,6 +512,31 @@ fn build_test_application_with_source_dependencies(
     github_connections: Arc<InMemoryGithubConnectionRepository>,
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        github_connections,
+        github_authorization,
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies_and_tokens(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -543,6 +572,7 @@ fn build_test_application_with_source_dependencies(
             source_subscriptions,
             github_connections,
             github_authorization,
+            github_installation_tokens,
             source_resolver,
             source_webhook_verifier: Arc::new(
                 GithubWebhookVerifier::for_test(GITHUB_WEBHOOK_SECRET, 1024 * 1024)

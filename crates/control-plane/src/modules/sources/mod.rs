@@ -44,6 +44,7 @@ pub use infrastructure::persistence::{
     PostgresSourceSubscriptionRepository,
 };
 pub use infrastructure::{
-    GitSourceCheckout, GithubAppClient, GithubSourceResolver, GithubWebhookVerifier,
+    GitSourceCheckout, GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver,
+    GithubWebhookVerifier,
 };
 pub use presentation::SourcesModule;

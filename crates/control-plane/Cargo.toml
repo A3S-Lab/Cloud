@@ -29,6 +29,7 @@ http-body-util.workspace = true
 object_store.workspace = true
 rcgen.workspace = true
 reqwest.workspace = true
+ring.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
 serde.workspace = true

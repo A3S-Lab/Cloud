@@ -1,4 +1,6 @@
-use crate::modules::sources::domain::{GitCommitSha, GitReference, GitRepository};
+use crate::modules::sources::domain::{
+    GitCommitSha, GitReference, GitRepository, SourceProviderCredential,
+};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,5 +30,6 @@ pub trait ISourceResolver: Send + Sync {
     async fn resolve(
         &self,
         request: &SourceResolutionRequest,
+        credential: Option<&SourceProviderCredential>,
     ) -> Result<ResolvedSource, SourceResolutionError>;
 }

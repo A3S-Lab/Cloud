@@ -1,4 +1,4 @@
-use crate::modules::sources::domain::{GitCommitSha, GitRepository};
+use crate::modules::sources::domain::{GitCommitSha, GitRepository, SourceProviderCredential};
 use async_trait::async_trait;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -58,6 +58,7 @@ pub trait ISourceCheckout: Send + Sync {
     async fn checkout(
         &self,
         request: &SourceCheckoutRequest,
+        credential: Option<&SourceProviderCredential>,
     ) -> Result<CheckedOutSource, SourceCheckoutError>;
 
     async fn remove(&self, checkout_id: Uuid) -> Result<(), SourceCheckoutError>;

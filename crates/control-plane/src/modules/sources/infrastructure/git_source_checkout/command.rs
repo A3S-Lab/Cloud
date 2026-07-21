@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -5,8 +7,10 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
+use zeroize::Zeroizing;
 
 const MAX_COMMAND_OUTPUT_BYTES: usize = 32 * 1024 * 1024;
+const GIT_HTTP_EXTRA_HEADER_ENV: &str = "A3S_CLOUD_GIT_HTTP_EXTRA_HEADER";
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum GitCommandError {
@@ -26,17 +30,20 @@ pub(super) struct GitCommandRunner {
     executable: PathBuf,
     timeout: Duration,
     allow_file_protocol: bool,
+    allow_http_protocol: bool,
 }
 
 impl GitCommandRunner {
     pub(super) fn discover(
         timeout: Duration,
         allow_file_protocol: bool,
+        allow_http_protocol: bool,
     ) -> Result<Self, GitCommandError> {
         Ok(Self {
             executable: find_executable("git")?,
             timeout,
             allow_file_protocol,
+            allow_http_protocol,
         })
     }
 
@@ -46,7 +53,15 @@ impl GitCommandRunner {
         home: &Path,
         hooks: &Path,
         args: &[OsString],
+        provider_token: Option<&str>,
     ) -> Result<Vec<u8>, GitCommandError> {
+        let authentication_header = provider_token.map(|token| {
+            let credentials = Zeroizing::new(format!("x-access-token:{token}"));
+            Zeroizing::new(format!(
+                "Authorization: Basic {}",
+                STANDARD.encode(credentials.as_bytes())
+            ))
+        });
         let mut command = Command::new(&self.executable);
         command
             .current_dir(working_directory)
@@ -90,12 +105,25 @@ impl GitCommandRunner {
                 "protocol.file.allow=never"
             })
             .arg("-c")
+            .arg(if self.allow_http_protocol {
+                "protocol.http.allow=always"
+            } else {
+                "protocol.http.allow=never"
+            })
+            .arg("-c")
             .arg("submodule.recurse=false")
-            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        if let Some(header) = authentication_header.as_ref() {
+            command
+                .env(GIT_HTTP_EXTRA_HEADER_ENV, header.as_str())
+                .arg(format!(
+                    "--config-env=http.extraHeader={GIT_HTTP_EXTRA_HEADER_ENV}"
+                ));
+        }
+        command.args(args);
         let mut child = command.spawn().map_err(|_| GitCommandError::Spawn)?;
         let stdout = child.stdout.take().ok_or(GitCommandError::Spawn)?;
         let stderr = child.stderr.take().ok_or(GitCommandError::Spawn)?;

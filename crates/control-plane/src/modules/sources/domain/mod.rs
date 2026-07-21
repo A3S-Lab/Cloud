@@ -24,12 +24,13 @@ pub use repositories::{
     ISourceWebhookRepository, SourceWebhookAcceptance, WebhookDeliveryReservation,
 };
 pub use services::{
-    CheckedOutSource, GithubAppAuthorizationError, GithubInstallationVerificationRequest,
-    IGithubAppAuthorizationService, ISourceCheckout, ISourceResolver, ISourceWebhookVerifier,
-    ResolvedSource, SourceCheckoutError, SourceCheckoutRequest, SourceRepositoryPolicy,
-    SourceResolutionError, SourceResolutionRequest, SourceWebhookVerificationError,
-    SourceWebhookVerificationRequest, VerifiedGithubInstallation, VerifiedSourcePush,
-    VerifiedSourceWebhook,
+    CheckedOutSource, GithubAppAuthorizationError, GithubInstallationTokenError,
+    GithubInstallationTokenRequest, GithubInstallationVerificationRequest,
+    IGithubAppAuthorizationService, IGithubInstallationTokenService, ISourceCheckout,
+    ISourceResolver, ISourceWebhookVerifier, ResolvedSource, SourceCheckoutError,
+    SourceCheckoutRequest, SourceProviderCredential, SourceRepositoryPolicy, SourceResolutionError,
+    SourceResolutionRequest, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
+    VerifiedGithubInstallation, VerifiedSourcePush, VerifiedSourceWebhook,
 };
 pub use value_objects::{
     BuildPlatform, BuildRecipe, GitCommitSha, GitProvider, GitReference, GitRepository,

@@ -6,9 +6,10 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, SourceRevisionId};
 use crate::modules::sources::domain::{
     AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitProvider, GitReference,
-    GitRepository, ISourceResolver, ISourceRevisionRepository, NewExternalSourceRevision,
-    SourceRepositoryPolicy, SourceResolutionError, SourceResolutionRequest, SourceRevisionAccepted,
-    WebhookDeliveryId, WebhookDeliveryReservation,
+    GitRepository, GithubInstallationTokenRequest, IGithubConnectionRepository,
+    IGithubInstallationTokenService, ISourceResolver, ISourceRevisionRepository,
+    NewExternalSourceRevision, SourceRepositoryPolicy, SourceResolutionError,
+    SourceResolutionRequest, SourceRevisionAccepted, WebhookDeliveryId, WebhookDeliveryReservation,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use serde::Serialize;
@@ -17,6 +18,8 @@ use std::sync::Arc;
 pub struct ResolveExternalSourceRevisionHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
+    github_connections: Arc<dyn IGithubConnectionRepository>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
     resolver: Arc<dyn ISourceResolver>,
     policy: Arc<SourceRepositoryPolicy>,
 }
@@ -25,12 +28,16 @@ impl ResolveExternalSourceRevisionHandler {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         sources: Arc<dyn ISourceRevisionRepository>,
+        github_connections: Arc<dyn IGithubConnectionRepository>,
+        github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
         resolver: Arc<dyn ISourceResolver>,
         policy: Arc<SourceRepositoryPolicy>,
     ) -> Self {
         Self {
             environments,
             sources,
+            github_connections,
+            github_installation_tokens,
             resolver,
             policy,
         }
@@ -48,6 +55,8 @@ impl CommandHandler<ResolveExternalSourceRevision> for ResolveExternalSourceRevi
     > {
         let environments = Arc::clone(&self.environments);
         let sources = Arc::clone(&self.sources);
+        let github_connections = Arc::clone(&self.github_connections);
+        let github_installation_tokens = Arc::clone(&self.github_installation_tokens);
         let resolver = Arc::clone(&self.resolver);
         let policy = Arc::clone(&self.policy);
         Box::pin(async move {
@@ -140,14 +149,45 @@ impl CommandHandler<ResolveExternalSourceRevision> for ResolveExternalSourceRevi
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let resolved = match resolver
-                .resolve(&SourceResolutionRequest {
-                    repository: repository.clone(),
-                    reference,
-                })
-                .await
-            {
+            let resolution_request = SourceResolutionRequest {
+                repository: repository.clone(),
+                reference,
+            };
+            let resolved = match resolver.resolve(&resolution_request, None).await {
                 Ok(value) => value,
+                Err(SourceResolutionError::Unavailable) => {
+                    let connection = match github_connections.find(command.organization_id).await {
+                        Ok(Some(connection))
+                            if connection.organization_id == command.organization_id =>
+                        {
+                            connection
+                        }
+                        Ok(_) => return Ok(Err(private_source_unavailable())),
+                        Err(_) => {
+                            return Ok(Err(ApplicationError::Internal(
+                                "source connection lookup failed".into(),
+                            )))
+                        }
+                    };
+                    let credential = match github_installation_tokens
+                        .issue(GithubInstallationTokenRequest {
+                            installation_id: connection.installation_id,
+                            repository: repository.clone(),
+                            requested_at: chrono::Utc::now(),
+                        })
+                        .await
+                    {
+                        Ok(credential) => credential,
+                        Err(_) => return Ok(Err(private_source_unavailable())),
+                    };
+                    match resolver
+                        .resolve(&resolution_request, Some(&credential))
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(_) => return Ok(Err(private_source_unavailable())),
+                    }
+                }
                 Err(error) => return Ok(Err(resolution_error(error))),
             };
             if resolved.repository != repository {
@@ -216,4 +256,8 @@ fn resolution_error(error: SourceResolutionError) -> ApplicationError {
         SourceResolutionError::ProviderUnavailable(message)
         | SourceResolutionError::Protocol(message) => ApplicationError::Internal(message),
     }
+}
+
+fn private_source_unavailable() -> ApplicationError {
+    ApplicationError::NotFound("source repository or reference is unavailable".into())
 }
