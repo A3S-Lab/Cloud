@@ -132,6 +132,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "a3s-cloud-web-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "http-body-util",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "a3s-event"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
