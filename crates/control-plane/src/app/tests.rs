@@ -33,6 +33,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+mod build_tests;
 mod platform_tests;
 mod secret_tests;
 mod source_lifecycle_tests;

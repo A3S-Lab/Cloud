@@ -11,6 +11,7 @@ impl ApiTokenScope {
     pub const ENVIRONMENT_WRITE: &'static str = "environment:write";
     pub const NODE_WRITE: &'static str = "node:write";
     pub const WORKLOAD_WRITE: &'static str = "workload:write";
+    pub const BUILD_WRITE: &'static str = "build:write";
     pub const ROUTE_WRITE: &'static str = "route:write";
     pub const SECRET_WRITE: &'static str = "secret:write";
     pub const SOURCE_WRITE: &'static str = "source:write";
@@ -47,6 +48,7 @@ impl ApiTokenScope {
             Self::ENVIRONMENT_WRITE,
             Self::NODE_WRITE,
             Self::WORKLOAD_WRITE,
+            Self::BUILD_WRITE,
             Self::ROUTE_WRITE,
             Self::SECRET_WRITE,
             Self::SOURCE_WRITE,

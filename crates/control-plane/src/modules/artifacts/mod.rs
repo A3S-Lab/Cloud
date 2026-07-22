@@ -1,7 +1,12 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
+pub mod presentation;
 
+pub use application::{
+    CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildRun, GetBuildRunHandler,
+    ListBuildRuns, ListBuildRunsHandler,
+};
 pub use domain::{
     BuildArtifact, BuildArtifactPublicationError, BuildInputPreparationError,
     BuildOutputValidationError, BuildRun, BuildRunStatus, BuildServiceError, BuiltOciArtifact,
@@ -17,3 +22,4 @@ pub use infrastructure::{
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
     RuntimeBuildOutputValidator, SourceBuildInputPreparer,
 };
+pub use presentation::ArtifactsModule;

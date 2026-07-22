@@ -1,7 +1,8 @@
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
-    BuildFlowRuntime, BuildFlowRuntimeDependencies, IBuildArtifactPublisher, IBuildInputPreparer,
-    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, LocalNodeArtifactStore,
+    ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
+    GetBuildRunHandler, IBuildArtifactPublisher, IBuildInputPreparer, IBuildOutputValidator,
+    IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler, LocalNodeArtifactStore,
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
     RuntimeBuildOutputValidator, SourceBuildInputPreparer,
 };
@@ -711,6 +712,9 @@ fn build_application_with_health(
     let accept_sources = Arc::clone(&sources);
     let source_workload_sources = Arc::clone(&sources);
     let list_sources = sources;
+    let cancel_builds = Arc::clone(&builds);
+    let list_builds = Arc::clone(&builds);
+    let get_builds = Arc::clone(&builds);
     let source_workload_builds = builds;
     let accept_source_webhooks = source_webhooks;
     let create_source_subscriptions = Arc::clone(&source_subscriptions);
@@ -907,6 +911,9 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::workloads::StopWorkload, _>(
                     StopWorkloadHandler::new(stop_workloads),
                 )
+                .command_handler::<crate::modules::artifacts::CancelBuildRun, _>(
+                    CancelBuildRunHandler::new(cancel_builds),
+                )
                 .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
                     CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
                 )
@@ -984,6 +991,12 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),
                 )
+                .query_handler::<crate::modules::artifacts::ListBuildRuns, _>(
+                    ListBuildRunsHandler::new(list_builds),
+                )
+                .query_handler::<crate::modules::artifacts::GetBuildRun, _>(
+                    GetBuildRunHandler::new(get_builds),
+                )
                 .query_handler::<crate::modules::workloads::ListWorkloads, _>(
                     ListWorkloadsHandler::new(
                         list_workloads,
@@ -1040,6 +1053,7 @@ fn build_application_with_health(
         .import(ProjectsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
+        .import(ArtifactsModule)
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

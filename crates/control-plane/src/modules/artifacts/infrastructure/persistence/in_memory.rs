@@ -1,7 +1,10 @@
 use crate::modules::artifacts::domain::repositories::validate_build_run_transition;
-use crate::modules::artifacts::domain::{BuildRun, IBuildRunRepository};
+use crate::modules::artifacts::domain::{
+    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle,
+};
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
+    RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -18,6 +21,7 @@ struct State {
     builds: BTreeMap<(OrganizationId, BuildRunId), BuildRun>,
     revisions: BTreeMap<SourceRevisionId, PendingRevision>,
     started_operations: BTreeSet<BuildRunId>,
+    cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
 }
 
 #[derive(Clone)]
@@ -151,6 +155,7 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<BuildRun>, RepositoryError> {
         let mut builds = self
             .state
@@ -165,8 +170,62 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             })
             .cloned()
             .collect::<Vec<_>>();
-        builds.sort_by_key(|build| (build.requested_at, build.id));
+        builds.sort_by_key(|build| std::cmp::Reverse((build.requested_at, build.id)));
+        builds.truncate(limit.max(1));
         Ok(builds)
+    }
+
+    async fn request_cancellation(
+        &self,
+        request: RequestBuildCancellationBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let key = (
+            request.idempotency.scope.clone(),
+            request.idempotency.key.clone(),
+        );
+        if let Some((digest, build_run)) = state.cancellation_idempotency.get(&key) {
+            if digest != &request.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: build_run.clone(),
+                replayed: true,
+            });
+        }
+        let storage_key = (request.build_run.organization_id, request.build_run.id);
+        let current = state
+            .builds
+            .get(&storage_key)
+            .ok_or(RepositoryError::NotFound)?;
+        validate_build_run_transition(current, &request.build_run, request.expected_version)?;
+        state.builds.insert(storage_key, request.build_run.clone());
+        state.cancellation_idempotency.insert(
+            key,
+            (
+                request.idempotency.request_digest,
+                request.build_run.clone(),
+            ),
+        );
+        Ok(IdempotentWrite {
+            value: request.build_run,
+            replayed: false,
+        })
+    }
+
+    async fn replay_cancellation(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError> {
+        let state = self.state.read().await;
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some((digest, build_run)) = state.cancellation_idempotency.get(&key) else {
+            return Ok(None);
+        };
+        if digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        Ok(Some(build_run.clone()))
     }
 
     async fn save(
@@ -287,6 +346,79 @@ mod tests {
         assert_eq!(
             repository.find(OrganizationId::new(), preparing.id).await,
             Err(RepositoryError::NotFound)
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_is_atomic_and_replays_only_the_same_idempotent_request() {
+        let repository = InMemoryBuildRunRepository::new();
+        let organization_id = OrganizationId::new();
+        let source_revision_id = SourceRevisionId::new();
+        let requested_at = Utc::now();
+        repository
+            .add_source_revision(
+                organization_id,
+                ProjectId::new(),
+                EnvironmentId::new(),
+                source_revision_id,
+                requested_at,
+            )
+            .await;
+        let queued = repository
+            .reserve_pending(1, requested_at)
+            .await
+            .expect("reserve build")
+            .pop()
+            .expect("queued build");
+        let mut cancelling = queued.clone();
+        cancelling
+            .request_cancellation(requested_at + Duration::milliseconds(1))
+            .expect("request cancellation");
+        let idempotency = IdempotencyRequest::new(
+            format!("build-runs/{}/cancellation", queued.id),
+            "cancel-once",
+            queued.id.to_string().as_bytes(),
+        )
+        .expect("idempotency");
+        let request = RequestBuildCancellationBundle {
+            build_run: cancelling.clone(),
+            expected_version: queued.aggregate_version,
+            idempotency: idempotency.clone(),
+        };
+
+        let accepted = repository
+            .request_cancellation(request.clone())
+            .await
+            .expect("accept cancellation");
+        assert!(!accepted.replayed);
+        assert_eq!(accepted.value, cancelling);
+        let replayed = repository
+            .request_cancellation(request)
+            .await
+            .expect("replay cancellation");
+        assert!(replayed.replayed);
+        assert_eq!(replayed.value, cancelling);
+        assert_eq!(
+            repository
+                .replay_cancellation(&idempotency)
+                .await
+                .expect("load replay"),
+            Some(cancelling.clone())
+        );
+
+        let conflicting =
+            IdempotencyRequest::new(idempotency.scope, idempotency.key, b"different input")
+                .expect("conflicting idempotency");
+        assert_eq!(
+            repository.replay_cancellation(&conflicting).await,
+            Err(RepositoryError::IdempotencyConflict)
+        );
+        assert_eq!(
+            repository
+                .find(organization_id, queued.id)
+                .await
+                .expect("stored cancellation"),
+            cancelling
         );
     }
 }

@@ -1,9 +1,17 @@
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
+    RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+
+#[derive(Clone)]
+pub struct RequestBuildCancellationBundle {
+    pub build_run: BuildRun,
+    pub expected_version: u64,
+    pub idempotency: IdempotencyRequest,
+}
 
 #[async_trait]
 pub trait IBuildRunRepository: Send + Sync {
@@ -35,7 +43,18 @@ pub trait IBuildRunRepository: Send + Sync {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<BuildRun>, RepositoryError>;
+
+    async fn request_cancellation(
+        &self,
+        request: RequestBuildCancellationBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError>;
+
+    async fn replay_cancellation(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError>;
 
     async fn save(
         &self,
