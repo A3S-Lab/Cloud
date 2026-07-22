@@ -115,9 +115,9 @@ jobs:
             -- --ignored --exact --nocapture --test-threads=1
 
   rootless-buildkit:
-    name: Rootless BuildKit OCI output
+    name: Runtime BuildKit private Registry
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -158,15 +158,40 @@ jobs:
           fi
           [[ ! -r $restriction ]] || [[ $(< "$restriction") == 0 ]]
 
-      - name: Start digest-pinned rootless BuildKit on an ephemeral loopback endpoint
+      - name: Start digest-pinned rootless BuildKit on the operator socket volume
         run: |
           buildkit_image=docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b
+          busybox_image=docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          buildkit_namespace=cloud-buildkit-gate
+          buildkit_volume_id=a3s-cloud-buildkit-v0-31-2
+          buildkit_volume="a3s-${buildkit_namespace}-volume-$(printf '%s' "$buildkit_volume_id" | sha256sum | cut -c1-16)"
+          busybox_fixture=a3s-cloud-buildkit-busybox-fixture
+          busybox_rootfs="$RUNNER_TEMP/a3s-cloud-buildkit-busybox-rootfs.tar"
           docker pull "$buildkit_image"
+          docker pull --platform linux/amd64 "$busybox_image"
+          docker create --name "$busybox_fixture" --platform linux/amd64 \
+            "$busybox_image"
+          docker export --output "$busybox_rootfs" "$busybox_fixture"
+          docker rm "$busybox_fixture"
+          chmod 0444 "$busybox_rootfs"
+          rootfs_bytes=$(stat --format '%s' "$busybox_rootfs")
+          (( rootfs_bytes > 0 && rootfs_bytes <= 16777216 ))
+          tar --list --file "$busybox_rootfs" \
+            bin/busybox lib/ld-linux-x86-64.so.2 lib/libc.so.6 lib64
+          ! docker container inspect "$busybox_fixture" >/dev/null 2>&1
+          docker volume create "$buildkit_volume"
+          docker run --rm --user 0 --entrypoint /bin/sh \
+            --volume "$buildkit_volume:/run/user/1000/a3s-buildkit" \
+            "$buildkit_image" \
+            -ceu 'chown 1000:1000 /run/user/1000/a3s-buildkit'
           docker run --detach --privileged \
             --name a3s-cloud-buildkit \
             --publish 127.0.0.1:12340:1234 \
+            --volume "$buildkit_volume:/run/user/1000/a3s-buildkit" \
             "$buildkit_image" \
-            --addr tcp://0.0.0.0:1234
+            --addr unix:///run/user/1000/a3s-buildkit/buildkitd.sock \
+            --addr tcp://0.0.0.0:1234 \
+            --oci-worker-no-process-sandbox
           [[ $(docker inspect --format '{{.Config.User}}' a3s-cloud-buildkit) == 1000:1000 ]]
           docker cp a3s-cloud-buildkit:/usr/bin/buildctl "$RUNNER_TEMP/buildctl"
           chmod 0700 "$RUNNER_TEMP/buildctl"
@@ -191,6 +216,51 @@ jobs:
             exit 1
           fi
           [[ $(docker exec a3s-cloud-buildkit id -u) == 1000 ]]
+          docker exec a3s-cloud-buildkit \
+            test -S /run/user/1000/a3s-buildkit/buildkitd.sock
+
+      - name: Start authenticated private Registry
+        env:
+          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
+          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
+        run: |
+          registry_image=registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          htpasswd_image=httpd:2.4.63-alpine@sha256:cc34b8bdde6ee55ea52db9819baa13ea36e4c7447eb7595db9ea720d1831851e
+          docker pull "$registry_image"
+          docker pull "$htpasswd_image"
+          auth_directory="$RUNNER_TEMP/a3s-cloud-build-registry-auth"
+          install -d -m 0700 "$auth_directory"
+          docker run --rm \
+            --entrypoint /usr/local/apache2/bin/htpasswd \
+            "$htpasswd_image" -Bbn \
+            "$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
+            "$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
+            >"$auth_directory/htpasswd"
+          docker run --detach --rm \
+            --name a3s-cloud-build-registry \
+            --publish 127.0.0.1:50030:5000 \
+            --mount "type=bind,source=$auth_directory,target=/auth,readonly" \
+            --tmpfs /var/lib/registry:rw,nosuid,nodev,noexec,size=1073741824 \
+            --env REGISTRY_AUTH=htpasswd \
+            --env REGISTRY_AUTH_HTPASSWD_REALM="A3S Cloud build acceptance" \
+            --env REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
+            "$registry_image"
+          ready=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error --max-time 2 \
+              --user "$A3S_CLOUD_TEST_REGISTRY_USERNAME:$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
+              http://127.0.0.1:50030/v2/ >/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 0.5
+          done
+          if [[ $ready != true ]]; then
+            docker logs a3s-cloud-build-registry
+            exit 1
+          fi
+          [[ $(curl --silent --output /dev/null --write-out '%{http_code}' \
+            http://127.0.0.1:50030/v2/) == 401 ]]
 
       - name: Build and validate a real OCI image layout
         env:
@@ -201,12 +271,48 @@ jobs:
             modules::artifacts::infrastructure::buildkit_build_service::tests::real_rootless_buildkit_builds_and_validates_oci_layout \
             -- --ignored --exact --nocapture --test-threads=1
 
-      - name: Stop rootless BuildKit
+      - name: Run the Runtime-to-Registry production gate
+        env:
+          A3S_CLOUD_TEST_BUSYBOX_ROOTFS: ${{ runner.temp }}/a3s-cloud-buildkit-busybox-rootfs.tar
+          A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
+          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
+          A3S_CLOUD_TEST_REGISTRY_URL: http://127.0.0.1:50030/
+          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
+          A3S_CLOUD_TEST_RUNTIME_BUILDKIT: "1"
+          A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE: cloud-buildkit-gate
+          A3S_CLOUD_TEST_RUNTIME_BUILDKIT_VOLUME_ID: a3s-cloud-buildkit-v0-31-2
+        run: |
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::artifacts::infrastructure::build_flow::tests::runtime_gate::real_runtime_task_builds_publishes_and_rejects_network_access \
+            -- --ignored --exact --nocapture --test-threads=1
+          managed_containers=$(docker ps --all --quiet \
+            --filter label=a3s.cloud.managed=true \
+            --filter label=a3s.cloud.namespace=cloud-buildkit-gate)
+          if [[ -n $managed_containers ]]; then
+            docker inspect $managed_containers
+            exit 1
+          fi
+
+      - name: Stop BuildKit and Registry fixtures
         if: always()
         run: |
+          managed_containers=$(docker ps --all --quiet \
+            --filter label=a3s.cloud.managed=true \
+            --filter label=a3s.cloud.namespace=cloud-buildkit-gate)
+          [[ -z $managed_containers ]] || \
+            docker rm --force $managed_containers || true
+          docker rm --force a3s-cloud-buildkit-busybox-fixture || true
           docker logs a3s-cloud-buildkit || true
+          docker logs a3s-cloud-build-registry || true
           docker rm --force a3s-cloud-buildkit || true
-          rm -f "$RUNNER_TEMP/buildctl"
+          docker rm --force a3s-cloud-build-registry || true
+          buildkit_volume_id=a3s-cloud-buildkit-v0-31-2
+          buildkit_volume="a3s-cloud-buildkit-gate-volume-$(printf '%s' "$buildkit_volume_id" | sha256sum | cut -c1-16)"
+          docker volume rm "$buildkit_volume" || true
+          ! docker volume inspect "$buildkit_volume" >/dev/null 2>&1
+          rm -rf "$RUNNER_TEMP/a3s-cloud-build-registry-auth"
+          rm -f "$RUNNER_TEMP/a3s-cloud-buildkit-busybox-rootfs.tar" \
+            "$RUNNER_TEMP/buildctl"
 
   gateway-managed-tls:
     name: Gateway managed TLS
