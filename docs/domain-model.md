@@ -810,9 +810,13 @@ while the
 operator-credential external GitHub gate remains unexecuted. GitHub offers no
 tokenless current-user App-grant query, so signed authorization-revocation
 delivery remains authoritative without persisting OAuth tokens.
-Provenance/SBOM/signing, build logs, retry as a new BuildRun/Operation attempt,
+BuildRun log queries and resumable streams resolve the aggregate's private node
+and deterministic Runtime target internally, then reuse the Fleet-owned durable
+log sequence, object, gap, retention, and compaction model. Public projections
+bind BuildRun and Operation lineage without exposing node or Runtime unit
+identity. Provenance/SBOM/signing, retry as a new BuildRun/Operation attempt,
 and cache trust remain later G0 work; authenticated registry publication and
-BuildRun status/cancellation surfaces are exercised independently.
+BuildRun status/cancellation/log surfaces are exercised independently.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,
