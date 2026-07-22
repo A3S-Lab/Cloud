@@ -99,9 +99,9 @@ Installation-token authentication and private checkout are
 implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
-gate has not been run without provider credentials. Periodic authoritative
-provider polling, checkout-time lifecycle revalidation, and provenance remain
-unimplemented. The published-build deployment handoff is implemented: it
+gate has not been run without provider credentials. External private-provider
+certification and provenance remain unimplemented. The published-build
+deployment handoff is implemented: it
 accepts an artifact-free service template only for the exact tenant-owned
 source revision whose deterministic BuildRun succeeded with a remotely verified
 digest, then reuses `cloud.deployment@2` with durable source/build lineage.
@@ -966,6 +966,15 @@ reconciler before the generic operation coordinator; a closed Flow router keeps
 `cloud.deployment@1/@2`, `cloud.workload.stop@1`, and `cloud.build@1/@2` on their
 own Runtime implementations.
 
+The Artifacts presentation layer exposes environment-scoped BuildRun lists and
+tenant-scoped detail. Its public projection includes source/Operation lineage,
+status, timestamps, validated OCI metadata, publication state, and bounded
+failure, while excluding node/command identities and internal input or Runtime
+Artifact URIs. `build:write` cancellation persists the aggregate transition
+and idempotency response atomically. It is deliberately cooperative: the Flow
+continues through publication-race adoption, Runtime removal, and checkout
+cleanup before projecting a terminal cancellation.
+
 The Artifact transport prerequisite is implemented below that Flow boundary.
 Typed download and upload requests bind the authenticated node, durable command
 ID, Runtime specification digest, exact mount or output name, media type,
@@ -1046,7 +1055,8 @@ without `eth0` and a failed `wget` attempt while the overall build succeeds.
 CI provisions the operator-controlled rootless BuildKit socket volume and
 authenticated registry for this implemented gate. Authoritative registry
 publication and explicit published-build deployment are implemented. Cache
-trust, provenance, and complete build status/log surfaces remain later slices.
+trust, provenance, build logs, and retry-as-new-attempt remain later slices;
+BuildRun status and cancellation API/web controls are implemented.
 
 Hosted assets follow a separate publication chain:
 

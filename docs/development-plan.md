@@ -123,7 +123,7 @@ Status as of 2026-07-22:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, explicit published-build deployment through `cloud.deployment@2`, periodic installation/account authority polling, and fresh private-credential/checkout revalidation are implemented. Provenance/SBOM/signing, external private-provider evidence, cache trust, and complete build status/log/cancel/retry surfaces still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, explicit published-build deployment through `cloud.deployment@2`, periodic installation/account authority polling, fresh private-credential/checkout revalidation, and BuildRun status/cancellation API and web controls are implemented. Provenance/SBOM/signing, external private-provider evidence, cache trust, build logs, and retry-as-new-attempt still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -854,9 +854,12 @@ webhooks remain the immediate lifecycle path, periodic provider inspection
 repairs installation/account drift, and every private credential requires a
 fresh successful check. Verifying-user OAuth revocation remains signed-webhook
 authoritative because no tokenless GitHub query exists and user tokens are not
-persisted. External private-provider certification, provenance/SBOM/signing,
-cache trust, and complete build status, log, cancellation, retry, and product
-web surfaces remain required.
+persisted. Environment-scoped BuildRun list and tenant-scoped detail queries,
+atomic idempotent cancellation, public response redaction, and the
+corresponding polled web status/control surface are implemented. External
+private-provider certification, provenance/SBOM/signing, cache trust, build
+logs, retry as a new BuildRun/Operation attempt, and the remaining product
+surfaces are still required.
 
 ### Work
 
@@ -873,9 +876,10 @@ web surfaces remain required.
 - Keep source and registry credentials as secret references. They may be
   materialized only inside the bounded build attempt and must not enter source
   revisions, Flow history, logs, cache keys, or provenance documents.
-- Add build logs, cancellation and retry controls, provenance, and complete
-  build status surfaces. Preserve the implemented source/build lineage in
-  Workload and Operation API/web projections.
+- Add build logs and retry-as-new-attempt controls, provenance, and the
+  remaining build surfaces. Preserve the implemented source/build lineage in
+  BuildRun, Workload, and Operation API/web projections; keep cancellation
+  cooperative so publication-race adoption and cleanup remain authoritative.
 
 ### Exit gate
 
