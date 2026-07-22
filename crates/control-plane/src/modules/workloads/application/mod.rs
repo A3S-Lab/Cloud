@@ -4,6 +4,10 @@ pub mod queries;
 pub use commands::cancel_deployment::{
     CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult,
 };
+pub use commands::create_source_workload_deployment::{
+    CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
+    CreateSourceWorkloadDeploymentResult, SourceWorkloadTemplate,
+};
 pub use commands::create_workload_deployment::{
     CreateWorkloadDeployment, CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult,
 };

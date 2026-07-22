@@ -100,12 +100,16 @@ implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
 gate has not been run without provider credentials. Periodic authoritative
-provider polling and checkout-time lifecycle revalidation, provenance, and
-deployment handoff remain unimplemented. Registry publication is implemented
-and covered by hostile-protocol fixtures plus an authenticated private
-Distribution CI gate. The real
-Runtime/BuildKit gate exists but still requires recorded evidence from an
-operator-provisioned shared socket volume.
+provider polling, checkout-time lifecycle revalidation, and provenance remain
+unimplemented. The published-build deployment handoff is implemented: it
+accepts an artifact-free service template only for the exact tenant-owned
+source revision whose deterministic BuildRun succeeded with a remotely verified
+digest, then reuses `cloud.deployment@2` with durable source/build lineage.
+Registry publication is implemented and covered by hostile-protocol fixtures
+plus an authenticated private Distribution CI gate. The combined
+Runtime/BuildKit/Registry gate provisions the operator-controlled shared socket
+volume and records the exact isolated Task, publication, replay, and cleanup
+evidence.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -990,9 +994,17 @@ the verified node-local blob and replaces the local URI with the control-plane
 content URI. Exact command replay, node/client restart, inspection, and removal
 retain or retire the same output identity. The registered `cloud.build@2` Flow
 now composes this transport with checkout replay, BuildKit execution, OCI
-validation, authoritative registry publication, and cleanup. Deployment
-handoff remains a later Workload boundary; `cloud.build@1` is retained only to
-drain upgrade-invalidated work without changing its persisted step history.
+validation, authoritative registry publication, and cleanup. A separate
+Workload command resolves only the deterministic successful BuildRun for the
+exact organization, project, environment, and source revision, converts its
+verified publication to a digest-pinned Workload artifact, and reuses
+`cloud.deployment@2`. Its idempotency identity covers the BuildRun, published
+digest, name, and complete artifact-free service template. The resulting
+revision retains an `ExternalBuildReference` across rollback and Secret
+rotation so Workload and Operation projections expose the originating source
+revision and build without trusting a caller-supplied artifact locator.
+`cloud.build@1` is retained only to drain upgrade-invalidated work without
+changing its persisted step history.
 
 The Artifact-owned `IBuildService` accepts one immutable build ID, an absolute
 materialized source directory, the source content receipt digest, and the
@@ -1031,9 +1043,10 @@ so a crash cannot duplicate apply or removal.
 The Runtime gate uses the exact projector, node command journal, Docker driver,
 Artifact upload, and OCI validator. Its Dockerfile requires a `RUN` environment
 without `eth0` and a failed `wget` attempt while the overall build succeeds.
-This gate is implemented but still needs an operator-provisioned rootless
-BuildKit socket volume on a Docker runner. Registry push, cache trust,
-provenance, logs, and deployment handoff remain later slices.
+CI provisions the operator-controlled rootless BuildKit socket volume and
+authenticated registry for this implemented gate. Authoritative registry
+publication and explicit published-build deployment are implemented. Cache
+trust, provenance, and complete build status/log surfaces remain later slices.
 
 Hosted assets follow a separate publication chain:
 

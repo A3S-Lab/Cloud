@@ -1,6 +1,7 @@
 use super::SecretBinding;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, SecretId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, BuildRunId, EnvironmentId, OrganizationId, ProjectId, SecretId,
+    SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -367,6 +368,30 @@ fn oci_artifact_repository(artifact: &OciArtifact) -> Result<&str, String> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExternalBuildReference {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub source_revision_id: SourceRevisionId,
+    pub build_run_id: BuildRunId,
+}
+
+impl ExternalBuildReference {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.source_revision_id.as_uuid().is_nil()
+            || self.build_run_id.as_uuid().is_nil()
+        {
+            return Err("external build reference identity is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkloadRevision {
     pub id: WorkloadRevisionId,
     pub workload_id: WorkloadId,
@@ -377,6 +402,8 @@ pub struct WorkloadRevision {
     pub template_digest: Option<String>,
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_build: Option<ExternalBuildReference>,
 }
 
 impl WorkloadRevision {
@@ -411,7 +438,22 @@ impl WorkloadRevision {
             template_digest: Some(template_digest),
             created_at,
             resolved_at: Some(created_at),
+            external_build: None,
         })
+    }
+
+    pub fn create_from_external_build(
+        id: WorkloadRevisionId,
+        workload_id: WorkloadId,
+        generation: u64,
+        template: ServiceTemplate,
+        external_build: ExternalBuildReference,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        external_build.validate()?;
+        let mut revision = Self::create(id, workload_id, generation, template, created_at)?;
+        revision.external_build = Some(external_build);
+        Ok(revision)
     }
 
     pub fn request(
@@ -436,7 +478,24 @@ impl WorkloadRevision {
             template_digest: None,
             created_at,
             resolved_at: None,
+            external_build: None,
         })
+    }
+
+    pub(crate) fn restore_external_build(
+        &mut self,
+        external_build: ExternalBuildReference,
+    ) -> Result<(), String> {
+        external_build.validate()?;
+        self.resolved_template()?;
+        match &self.external_build {
+            Some(existing) if existing == &external_build => Ok(()),
+            Some(_) => Err("external build reference is immutable".into()),
+            None => {
+                self.external_build = Some(external_build);
+                Ok(())
+            }
+        }
     }
 
     pub fn resolve(
@@ -477,13 +536,15 @@ impl WorkloadRevision {
         if id == self.id || generation <= self.generation || created_at < self.created_at {
             return Err("rollback revision identity or ordering is invalid".into());
         }
-        Self::create(
+        let mut revision = Self::create(
             id,
             self.workload_id,
             generation,
             self.resolved_template()?.clone(),
             created_at,
-        )
+        )?;
+        revision.external_build = self.external_build.clone();
+        Ok(revision)
     }
 
     pub fn restart_for_secret_rotation(
@@ -519,7 +580,9 @@ impl WorkloadRevision {
         if !advanced {
             return Err("workload revision has no older binding for this Secret".into());
         }
-        Self::create(id, self.workload_id, generation, template, created_at)
+        let mut revision = Self::create(id, self.workload_id, generation, template, created_at)?;
+        revision.external_build = self.external_build.clone();
+        Ok(revision)
     }
 
     pub fn runtime_unit_id(&self) -> String {

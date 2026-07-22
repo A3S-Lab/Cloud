@@ -740,9 +740,15 @@ immutable `OciPublicationTarget`, pushes blobs and manifests by digest, verifies
 the complete remote graph, and records one matching `PublishedOciArtifact`.
 Publication replay may adopt only that exact target; cancellation wins the
 terminal status but preserves evidence of a push that already completed. It
-does not yet record provenance or hand the published digest to Workloads. The Artifacts context
-owns one deterministic
-`BuildRun` per accepted source revision. It binds tenant/environment ownership,
+does not yet record provenance. The published digest can be handed to
+Workloads only through an artifact-free command that resolves the exact
+tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
+`cloud.deployment@2`. That revision stores an `ExternalBuildReference` binding
+the organization, project, environment, source revision, and BuildRun; derived
+rollback and Secret-rotation revisions preserve the reference, while ordinary
+manual Workload revisions do not invent one. The Artifacts context owns one
+deterministic `BuildRun` per accepted source revision. It binds
+tenant/environment ownership,
 the exact `cloud.build@2` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
 publication target/result, terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
@@ -762,8 +768,9 @@ history, and prevent old subscriptions from inheriting a fresh connection.
 Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
 while the
 operator-credential external GitHub gate remains unexecuted. Authoritative
-provider polling, provenance, and source-to-deployment handoff remain later G0
-work; authenticated registry publication is exercised independently in CI.
+provider polling, checkout-time lifecycle revalidation, provenance/SBOM/signing,
+complete build status/log surfaces, and cache trust remain later G0 work;
+authenticated registry publication is exercised independently in CI.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,

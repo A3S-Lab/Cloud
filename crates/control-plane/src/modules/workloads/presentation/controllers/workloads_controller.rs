@@ -1,15 +1,16 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, OrganizationId, ProjectId,
+    DeploymentId, EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::workloads::application::{
-    CancelDeployment, CreateWorkloadDeployment, RollbackWorkloadDeployment, StopWorkload,
-    UpdateWorkloadDeployment,
+    CancelDeployment, CreateSourceWorkloadDeployment, CreateWorkloadDeployment,
+    RollbackWorkloadDeployment, StopWorkload, UpdateWorkloadDeployment,
 };
 use crate::modules::workloads::presentation::dto::{
-    CancelDeploymentResponse, CreateWorkloadRequest, RollbackWorkloadRequest,
-    UpdateWorkloadRequest, WorkloadDeploymentResponse, WorkloadStopResponse,
+    CancelDeploymentResponse, CreateSourceWorkloadRequest, CreateWorkloadRequest,
+    RollbackWorkloadRequest, UpdateWorkloadRequest, WorkloadDeploymentResponse,
+    WorkloadStopResponse,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -21,6 +22,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
+    let source_bus = Arc::clone(&bus);
     let cancel_bus = Arc::clone(&bus);
     let stop_bus = Arc::clone(&bus);
     let update_bus = Arc::clone(&bus);
@@ -45,6 +47,47 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             organization_id,
                             project_id,
                             environment_id,
+                            name: body.name,
+                            template: body.template.into(),
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.bundle.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &WorkloadDeploymentResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions/{source_revision_id}/workloads",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&source_bus);
+                async move {
+                    let body: CreateSourceWorkloadRequest = request.json_with_content_type()?;
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let environment_id =
+                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let source_revision_id = SourceRevisionId::from_uuid(
+                        request.param_as::<Uuid>("source_revision_id")?,
+                    );
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateSourceWorkloadDeployment {
+                            organization_id,
+                            project_id,
+                            environment_id,
+                            source_revision_id,
                             name: body.name,
                             template: body.template.into(),
                             idempotency_key,

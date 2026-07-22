@@ -4,19 +4,22 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult, CreateWorkloadDeployment,
+    CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult,
+    CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
+    CreateSourceWorkloadDeploymentResult, CreateWorkloadDeployment,
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, GetWorkloadLogs,
     GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, RollbackWorkloadDeployment,
-    RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult, StopWorkload,
-    StopWorkloadHandler, StopWorkloadResult, UpdateWorkloadDeployment,
+    RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult, SourceWorkloadTemplate,
+    StopWorkload, StopWorkloadHandler, StopWorkloadResult, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadLogGapReason,
     WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
 };
 pub use domain::entities::{
-    Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
-    RequestedServiceTemplate, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
-    ServiceResources, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
+    Deployment, DeploymentStatus, ExternalBuildReference, HttpHealthCheck, OciArtifact,
+    OciArtifactReference, RequestedServiceTemplate, SecretBinding, SecretBindingTarget,
+    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadDesiredState,
+    WorkloadRevision,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadStopRequested,

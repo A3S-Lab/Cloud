@@ -60,6 +60,12 @@ export function DeploymentTimeline({ workload, operations }: DeploymentTimelineP
                         : shortId(operation.rollbackSourceRevisionId)}
                     </p>
                   ) : null}
+                  {deployment.revision.externalSourceRevisionId && deployment.revision.buildRunId ? (
+                    <p className='timeline-lineage'>
+                      Source {shortId(deployment.revision.externalSourceRevisionId)} · build{' '}
+                      {shortId(deployment.revision.buildRunId)}
+                    </p>
+                  ) : null}
                   <dl className='timeline-facts'>
                     <div>
                       <dt>Requested</dt>

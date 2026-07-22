@@ -213,7 +213,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, and authoritative digest-only registry publication are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; legacy `cloud.build@1` remains registered only to drain upgrade-invalidated work safely. Unit protocol gates cover single and multi-platform graphs, Basic/Bearer authentication, hostile responses, partial publication, and crash replay. The combined Linux gate provisions the exact shared rootless BuildKit socket volume and an authenticated private Distribution registry, then drives the real Runtime Task through dual network denial, Artifact capture, full OCI validation, digest-only push, remote graph verification, idempotent replay, and cleanup. Periodic authoritative provider polling, checkout-time lifecycle revalidation, external private-repository certification, provenance/SBOM/signing, source-to-deployment handoff, build logs/API/Web, and cache trust gates remain | In progress (`G0` runtime-registry gate) |
+| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, authoritative digest-only registry publication, and explicit published-build-to-Workload deployment are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; the deployment handoff binds the exact tenant, source revision, BuildRun, published digest, and artifact-free service template before reusing `cloud.deployment@2`. Unit and PostgreSQL gates cover terminal-state rejection, tenant isolation, replay, durable trace reconstruction, and atomic rollback. Periodic authoritative provider polling, checkout-time lifecycle revalidation, external private-repository certification, provenance/SBOM/signing, complete build status/log surfaces, and cache trust gates remain | In progress (`G0` deployment-handoff slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -361,7 +361,70 @@ the control plane rehashes the Artifact and validates its complete reachable
 OCI graph. It then persists a deterministic digest-only publication target,
 streams and verifies the graph in the configured OCI registry, and records the
 published descriptor before deterministic Runtime removal and checkout cleanup.
-Provenance and deployment handoff remain separate G0 boundaries.
+Provenance remains a separate G0 boundary. A succeeded publication can now be
+handed to the existing Workload deployment path explicitly.
+
+### Deploy a published source build
+
+After the source revision's deterministic BuildRun reaches `succeeded`, create
+one resolved Workload revision without resubmitting or trusting an artifact
+locator:
+
+```text
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions/{source_revision_id}/workloads
+```
+
+```bash
+curl --request POST \
+  "http://127.0.0.1:8080/api/v1/organizations/${A3S_CLOUD_ORGANIZATION_ID}/projects/${A3S_CLOUD_PROJECT_ID}/environments/${A3S_CLOUD_ENVIRONMENT_ID}/source-revisions/${A3S_CLOUD_SOURCE_REVISION_ID}/workloads" \
+  --header "authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}" \
+  --header "content-type: application/json" \
+  --header "idempotency-key: deploy-source-api-1" \
+  --data '{
+    "name": "api",
+    "template": {
+      "process": {
+        "command": [],
+        "args": [],
+        "workingDirectory": null,
+        "environment": {}
+      },
+      "secrets": [],
+      "resources": {
+        "cpuMillis": 500,
+        "memoryBytes": 268435456,
+        "pids": 128,
+        "ephemeralStorageBytes": null
+      },
+      "ports": [{"name": "http", "containerPort": 8080}],
+      "health": {
+        "portName": "http",
+        "path": "/health",
+        "intervalMs": 1000,
+        "timeoutMs": 500,
+        "healthyThreshold": 1,
+        "unhealthyThreshold": 3,
+        "stabilizationWindowMs": 5000
+      }
+    }
+  }'
+```
+
+The template deliberately has no `artifact` field. Cloud loads the exact
+tenant-owned source revision and BuildRun, accepts only a terminal successful
+build with a verified `PublishedOciArtifact`, converts that descriptor into a
+digest-pinned Workload artifact, and invokes `cloud.deployment@2`. The response
+and every Workload revision projection expose `externalSourceRevisionId` and
+`buildRunId`; deployment Operation projections expose the same lineage.
+Rollback and Secret-rotation-derived revisions retain it.
+
+The mutation requires `workload:write`. A new deployment returns `202`; an
+exact replay returns `200`. The idempotency digest binds the source revision,
+BuildRun, published digest, workload name, and complete artifact-free template.
+Reusing the key with changed input returns `409`. A queued, failed, cancelled,
+or not-yet-reserved build returns `409` without creating Workload, revision,
+Operation, outbox, or idempotency state. A source outside the exact
+organization/project/environment hierarchy returns `404`.
 
 List accepted revisions with:
 
@@ -1032,7 +1095,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, a combined authenticated Runtime/BuildKit/Registry gate, replay/cancellation adoption, and cleanup are implemented; authoritative polling, provenance/SBOM/signing, deployment handoff, build surfaces, cache trust, and external private-repository evidence remain) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, a combined authenticated Runtime/BuildKit/Registry gate, replay/cancellation adoption, cleanup, and explicit published-build deployment through `cloud.deployment@2` are implemented; authoritative polling, provenance/SBOM/signing, complete build surfaces, cache trust, and external private-repository evidence remain) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |

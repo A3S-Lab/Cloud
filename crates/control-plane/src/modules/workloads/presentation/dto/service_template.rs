@@ -2,6 +2,7 @@ use crate::modules::workloads::domain::entities::{
     HttpHealthCheck, OciArtifactReference, RequestedServiceTemplate, SecretBinding,
     SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources,
 };
+use crate::modules::workloads::SourceWorkloadTemplate;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -10,6 +11,18 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ServiceTemplateDto {
     pub artifact: OciArtifactReferenceDto,
+    #[serde(default)]
+    pub process: ServiceProcessDto,
+    #[serde(default)]
+    pub secrets: Vec<SecretBindingDto>,
+    pub resources: ServiceResourcesDto,
+    pub ports: Vec<ServicePortDto>,
+    pub health: HttpHealthCheckDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceWorkloadTemplateDto {
     #[serde(default)]
     pub process: ServiceProcessDto,
     #[serde(default)]
@@ -90,6 +103,64 @@ impl From<ServiceTemplateDto> for RequestedServiceTemplate {
                 uri: template.artifact.uri,
                 expected_digest: template.artifact.expected_digest,
             },
+            process: ServiceProcess {
+                command: template.process.command,
+                args: template.process.args,
+                working_directory: template.process.working_directory,
+                environment: template.process.environment,
+            },
+            secrets: template
+                .secrets
+                .into_iter()
+                .map(|binding| SecretBinding {
+                    name: binding.name,
+                    secret_id: crate::modules::shared_kernel::domain::SecretId::from_uuid(
+                        binding.secret_id,
+                    ),
+                    version: binding.version,
+                    target: match binding.target {
+                        SecretBindingTargetDto::Environment { variable } => {
+                            SecretBindingTarget::Environment { variable }
+                        }
+                        SecretBindingTargetDto::File { path, mode } => {
+                            SecretBindingTarget::File { path, mode }
+                        }
+                        SecretBindingTargetDto::RegistryCredential => {
+                            SecretBindingTarget::RegistryCredential
+                        }
+                    },
+                })
+                .collect(),
+            resources: ServiceResources {
+                cpu_millis: template.resources.cpu_millis,
+                memory_bytes: template.resources.memory_bytes,
+                pids: template.resources.pids,
+                ephemeral_storage_bytes: template.resources.ephemeral_storage_bytes,
+            },
+            ports: template
+                .ports
+                .into_iter()
+                .map(|port| ServicePort {
+                    name: port.name,
+                    container_port: port.container_port,
+                })
+                .collect(),
+            health: HttpHealthCheck {
+                port_name: template.health.port_name,
+                path: template.health.path,
+                interval_ms: template.health.interval_ms,
+                timeout_ms: template.health.timeout_ms,
+                healthy_threshold: template.health.healthy_threshold,
+                unhealthy_threshold: template.health.unhealthy_threshold,
+                stabilization_window_ms: template.health.stabilization_window_ms,
+            },
+        }
+    }
+}
+
+impl From<SourceWorkloadTemplateDto> for SourceWorkloadTemplate {
+    fn from(template: SourceWorkloadTemplateDto) -> Self {
+        Self {
             process: ServiceProcess {
                 command: template.process.command,
                 args: template.process.args,

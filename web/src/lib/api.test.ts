@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ServiceTemplate } from '../types/api';
+import type { ServiceTemplate, SourceWorkloadTemplate } from '../types/api';
 import { CloudApi, type CloudApiError } from './api';
 
 afterEach(() => {
@@ -249,6 +249,22 @@ describe('CloudApi', () => {
 
     await api.updateWorkload('organization', 'workload / one', template, 'web-update:key');
     await api.rollbackWorkload('organization', 'workload / one', 'revision / one', 'web-rollback:key');
+    const sourceTemplate: SourceWorkloadTemplate = {
+      process: template.process,
+      secrets: template.secrets,
+      resources: template.resources,
+      ports: template.ports,
+      health: template.health,
+    };
+    await api.deploySourceRevision(
+      'organization',
+      'project / one',
+      'production',
+      'source / one',
+      'api',
+      sourceTemplate,
+      'web-source-deploy:key'
+    );
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       '/api/v1/organizations/organization/workloads/workload%20%2F%20one/deployments'
@@ -270,6 +286,15 @@ describe('CloudApi', () => {
       expect.objectContaining({
         body: JSON.stringify({ revisionId: 'revision / one' }),
         headers: expect.objectContaining({ 'Idempotency-Key': 'web-rollback:key' }),
+      })
+    );
+    expect(fetchMock.mock.calls[2][0]).toBe(
+      '/api/v1/organizations/organization/projects/project%20%2F%20one/environments/production/source-revisions/source%20%2F%20one/workloads'
+    );
+    expect(fetchMock.mock.calls[2][1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ name: 'api', template: sourceTemplate }),
+        headers: expect.objectContaining({ 'Idempotency-Key': 'web-source-deploy:key' }),
       })
     );
   });

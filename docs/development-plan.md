@@ -114,7 +114,7 @@ for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-21:
+Status as of 2026-07-22:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ Status as of 2026-07-21:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, and replay/cancellation adoption are implemented. Provenance, source-to-deployment handoff, external private-provider evidence, and product build surfaces still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, and explicit published-build deployment through `cloud.deployment@2` are implemented. Authoritative provider polling and checkout-time revalidation, provenance/SBOM/signing, external private-provider evidence, cache trust, and complete product build surfaces still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -816,13 +816,16 @@ authoritative repository subscription/fanout, credential-safe checkout,
 durable build intent/crash-gap repair, command-bound mTLS Artifact transport,
 restart-safe Docker inputs/outputs, a real local-context BuildKit/OCI engine
 boundary, the production isolated Build Flow, and authoritative registry
-publication.
+publication, and explicit artifact-free deployment of a successful published
+BuildRun through the existing Workload path. The deployment handoff durably
+binds tenant, source revision, BuildRun, published digest, and resulting
+Workload revision; rollback and Secret rotation preserve that lineage.
 Lifecycle reconciliation is currently driven only by signed webhook receipt;
 periodic authoritative provider polling, missed/out-of-order repair, delayed
 pre-reconnection delivery disambiguation, and checkout-time revalidation are
 not yet implemented. External private-provider certification,
-provenance/SBOM/signing, deployment handoff, cache trust, build
-operations/logs, and web surfaces remain required.
+provenance/SBOM/signing, cache trust, and complete build status, log, and
+product web surfaces remain required.
 
 ### Work
 
@@ -844,13 +847,15 @@ operations/logs, and web surfaces remain required.
 - Keep source and registry credentials as secret references. They may be
   materialized only inside the bounded build attempt and must not enter source
   revisions, Flow history, logs, cache keys, or provenance documents.
-- Add build logs, cancellation, retry, provenance, and
-  source-to-deployment traceability to the API and web UI.
+- Add build logs, cancellation and retry controls, provenance, and complete
+  build status surfaces. Preserve the implemented source/build lineage in
+  Workload and Operation API/web projections.
 
 ### Exit gate
 
 - Moving a branch after request acceptance cannot change the built commit.
-- Duplicate webhook delivery creates one logical build/deployment request.
+- Duplicate webhook delivery creates one logical build request; replaying the
+  same explicit published-build handoff creates one logical deployment.
 - Build timeout, cancellation, Runtime restart, registry failure, cache
   corruption, and invalid provenance all terminate truthfully and are retryable
   through a new operation where appropriate.
@@ -1390,7 +1395,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> registry publication -> combined operator gate evidence -> provenance, deployment handoff, and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> registry publication -> combined operator gate evidence -> deployment handoff -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
