@@ -697,3 +697,6 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Verify production SPA delivery
+        run: ../tools/web/verify_spa_delivery.sh

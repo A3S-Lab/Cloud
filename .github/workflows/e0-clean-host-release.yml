@@ -12,8 +12,12 @@ on:
       - config/**
       - crates/**
       - docs/**
+      - deploy/web/**
+      - justfile
       - tools/release-conformance/**
       - tools/runtime-conformance/runtime-revision
+      - tools/web/**
+      - web/**
   pull_request:
     paths:
       - .github/workflows/e0-clean-host-release.yml
@@ -23,8 +27,12 @@ on:
       - config/**
       - crates/**
       - docs/**
+      - deploy/web/**
+      - justfile
       - tools/release-conformance/**
       - tools/runtime-conformance/runtime-revision
+      - tools/web/**
+      - web/**
   workflow_dispatch:
 
 permissions:
@@ -71,6 +79,10 @@ jobs:
 
       - name: Install A3S Gateway 1.0.12
         run: cargo install a3s-gateway --version 1.0.12 --locked
+
+      - name: Validate Cloud Web Gateway profile
+        working-directory: apps/cloud
+        run: a3s-gateway validate --config deploy/web/gateway.acl
 
       - name: Verify disposable Linux release host
         env:

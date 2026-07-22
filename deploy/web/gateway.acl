@@ -1,0 +1,53 @@
+entrypoints "cloud" {
+  address = "127.0.0.1:8088"
+}
+
+routers "cloud-api-root" {
+  rule = "Path(`/api`)"
+  service = "cloud-api"
+  entrypoints = ["cloud"]
+  priority = 110
+}
+
+routers "cloud-api" {
+  rule = "PathPrefix(`/api/`)"
+  service = "cloud-api"
+  entrypoints = ["cloud"]
+  priority = 100
+}
+
+routers "cloud-web" {
+  rule = "PathPrefix(`/`)"
+  service = "cloud-web"
+  entrypoints = ["cloud"]
+  priority = 10
+}
+
+services "cloud-api" {
+  load_balancer {
+    strategy = "round-robin"
+    request_timeout = "30s"
+    servers = [{ url = "http://127.0.0.1:8080" }]
+  }
+}
+
+services "cloud-web" {
+  load_balancer {
+    strategy = "round-robin"
+    request_timeout = "30s"
+    servers = [{ url = "http://127.0.0.1:3011" }]
+    health_check {
+      path = "/healthz"
+      interval = "5s"
+      timeout = "2s"
+      unhealthy_threshold = 3
+      healthy_threshold = 1
+    }
+  }
+}
+
+observability {
+  metrics_enabled = true
+  access_log_enabled = true
+  tracing_enabled = true
+}
