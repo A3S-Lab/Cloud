@@ -1,6 +1,8 @@
 import type {
   ApiEnvelope,
   ApiErrorEnvelope,
+  BuildRun,
+  CancelBuildRunResult,
   CancelDeploymentResult,
   Environment,
   GatewayCertificate,
@@ -56,6 +58,27 @@ export class CloudApi {
 
   listOperations(organizationId: string, signal?: AbortSignal): Promise<Operation[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/operations?limit=100`, signal);
+  }
+
+  listBuildRuns(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<BuildRun[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/build-runs?limit=100`,
+      signal
+    );
+  }
+
+  getBuildRun(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildRun> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
+      signal
+    );
   }
 
   listWorkloads(
@@ -145,6 +168,19 @@ export class CloudApi {
   ): Promise<CancelDeploymentResult> {
     return this.delete(
       `/organizations/${encodeURIComponent(organizationId)}/deployments/${encodeURIComponent(deploymentId)}`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  cancelBuildRun(
+    organizationId: string,
+    buildRunId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<CancelBuildRunResult> {
+    return this.delete(
+      `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
       idempotencyKey,
       signal
     );

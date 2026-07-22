@@ -4,6 +4,7 @@ import { App } from './app';
 import './styles.css';
 import './styles/workloads.css';
 import './styles/workload-operations.css';
+import './styles/builds.css';
 
 const root = document.getElementById('root');
 

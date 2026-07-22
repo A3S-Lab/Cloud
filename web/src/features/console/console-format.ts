@@ -8,7 +8,7 @@ export function formatRelative(value: string): string {
   const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
   if (elapsed < 60_000) return 'just now';
   if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m ago`;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -18,7 +18,7 @@ export function formatRelative(value: string): string {
 
 export function formatTimestamp(value: string | null): string {
   if (!value) return 'Not recorded';
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

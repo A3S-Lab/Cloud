@@ -2,6 +2,7 @@ import { CircleDot, LogOut, PanelRightClose, PanelRightOpen, Radio, RotateCw } f
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudApi } from '../../lib/api';
 import type {
+  BuildRun,
   Environment,
   GatewayCertificate,
   Operation,
@@ -14,6 +15,7 @@ import type {
 import { LiveLogPanel } from '../logs/live-log-panel';
 import { useOperationStream } from '../operations/use-operation-stream';
 import { streamLabel } from './console-format';
+import { BuildRunPanel } from './build-run-panel';
 import { ContextBar } from './context-bar';
 import { DeploymentTimeline } from './deployment-timeline';
 import { EdgeStatusPanel } from './edge-status-panel';
@@ -43,6 +45,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [environmentId, setEnvironmentId] = useState(() => sessionStorage.getItem(ENVIRONMENT_KEY) ?? '');
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [buildRuns, setBuildRuns] = useState<BuildRun[]>([]);
   const [dismissedOperationIds, setDismissedOperationIds] = useState<ReadonlySet<string>>(() => new Set());
   const [workloads, setWorkloads] = useState<Workload[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -52,6 +55,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancellingDeploymentId, setCancellingDeploymentId] = useState<string | null>(null);
+  const [cancellingBuildRunId, setCancellingBuildRunId] = useState<string | null>(null);
   const [stoppingWorkloadId, setStoppingWorkloadId] = useState<string | null>(null);
 
   const acceptSnapshot = useCallback((snapshot: Operation[]) => {
@@ -86,6 +90,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     if (!organizationId) {
       setProjects([]);
       setOperations([]);
+      setBuildRuns([]);
       setCertificates([]);
       setWorkloads([]);
       setRoutes([]);
@@ -168,6 +173,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     if (!organizationId || !projectId || !environmentId) {
       setWorkloads([]);
       setRoutes([]);
+      setBuildRuns([]);
       setWorkloadId('');
       return;
     }
@@ -178,13 +184,15 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       if (refreshing) return;
       refreshing = true;
       try {
-        const [workloadItems, routeItems] = await Promise.all([
+        const [workloadItems, routeItems, buildItems] = await Promise.all([
           api.listWorkloads(organizationId, projectId, environmentId, controller.signal),
           api.listRoutes(organizationId, projectId, environmentId, controller.signal),
+          api.listBuildRuns(organizationId, projectId, environmentId, controller.signal),
         ]);
         if (stopped) return;
         setWorkloads(workloadItems);
         setRoutes(routeItems);
+        setBuildRuns(buildItems);
         setWorkloadId((current) => selectExisting(current, workloadItems));
         setError(null);
       } catch (cause) {
@@ -206,14 +214,16 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     if (!organizationId || !projectId || !environmentId) {
       throw new Error('Choose an organization, project, and environment first.');
     }
-    const [workloadItems, routeItems, certificateItems, operationItems] = await Promise.all([
+    const [workloadItems, routeItems, buildItems, certificateItems, operationItems] = await Promise.all([
       api.listWorkloads(organizationId, projectId, environmentId),
       api.listRoutes(organizationId, projectId, environmentId),
+      api.listBuildRuns(organizationId, projectId, environmentId),
       api.listGatewayCertificates(organizationId),
       api.listOperations(organizationId),
     ]);
     setWorkloads(workloadItems);
     setRoutes(routeItems);
+    setBuildRuns(buildItems);
     setCertificates(certificateItems);
     setOperations(operationItems);
     setWorkloadId((current) => selectExisting(current, workloadItems));
@@ -286,6 +296,20 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       setError(messageFrom(cause));
     } finally {
       setStoppingWorkloadId(null);
+    }
+  };
+
+  const cancelBuildRun = async (buildRunId: string) => {
+    if (!organizationId) return;
+    setCancellingBuildRunId(buildRunId);
+    try {
+      await api.cancelBuildRun(organizationId, buildRunId, `web-cancel-build:${buildRunId}`);
+      await refreshAuthoritativeProjections();
+      setError(null);
+    } catch (cause) {
+      setError(messageFrom(cause));
+    } finally {
+      setCancellingBuildRunId(null);
     }
   };
 
@@ -376,6 +400,12 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           <InfrastructureCard deployment={latestDeployment} routes={selectedRoutes} />
           <AssetCatalogCard />
         </section>
+
+        <BuildRunPanel
+          buildRuns={buildRuns}
+          cancellingBuildRunId={cancellingBuildRunId}
+          onCancel={cancelBuildRun}
+        />
 
         <section className='workload-detail-grid' aria-label='Selected workload details'>
           <DeploymentTimeline workload={selectedWorkload} operations={operations} />

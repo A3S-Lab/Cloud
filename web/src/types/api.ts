@@ -58,6 +58,75 @@ export interface Operation {
   buildRunId?: string;
 }
 
+export type BuildRunStatus =
+  | 'queued'
+  | 'preparing'
+  | 'prepared'
+  | 'scheduled'
+  | 'running'
+  | 'validating'
+  | 'publishing'
+  | 'cancelling'
+  | 'cleanup_pending'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+
+export interface OciDescriptor {
+  mediaType: string;
+  digest: string;
+  size: number;
+}
+
+export interface ValidatedOciBuildOutput {
+  descriptor: OciDescriptor;
+  platforms: string[];
+  contentBytes: number;
+  blobCount: number;
+}
+
+export interface OciPublicationTarget {
+  registry: string;
+  repository: string;
+  descriptor: OciDescriptor;
+}
+
+export interface PublishedOciArtifact {
+  uri: string;
+  digest: string;
+  mediaType: string;
+  sizeBytes: number;
+}
+
+export interface BuildRun {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  id: string;
+  sourceRevisionId: string;
+  operationId: string;
+  status: BuildRunStatus;
+  sourceContentDigest: string | null;
+  output: ValidatedOciBuildOutput | null;
+  publicationTarget: OciPublicationTarget | null;
+  publishedArtifact: PublishedOciArtifact | null;
+  failure: string | null;
+  aggregateVersion: number;
+  requestedAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  cancellationRequestedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface CancelBuildRunResult {
+  buildRunId: string;
+  operationId: string;
+  status: BuildRunStatus;
+  cancellationRequestedAt: string | null;
+  replayed: boolean;
+}
+
 export interface ServiceTemplate {
   artifact: OciArtifactReference;
   process: ServiceProcess;

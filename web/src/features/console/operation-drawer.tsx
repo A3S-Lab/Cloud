@@ -57,11 +57,14 @@ export function OperationDrawer({
                 {operation.rollbackSourceRevisionId ? (
                   <small>rollback source {shortId(operation.rollbackSourceRevisionId)}</small>
                 ) : null}
-                {operation.externalSourceRevisionId && operation.buildRunId ? (
+                {operation.externalSourceRevisionId ? (
                   <small>
-                    source {shortId(operation.externalSourceRevisionId)} · build{' '}
-                    {shortId(operation.buildRunId)}
+                    source {shortId(operation.externalSourceRevisionId)}
+                    {operation.buildRunId ? ` · build ${shortId(operation.buildRunId)}` : ''}
                   </small>
+                ) : null}
+                {!operation.externalSourceRevisionId && operation.buildRunId ? (
+                  <small>build {shortId(operation.buildRunId)}</small>
                 ) : null}
                 <small>
                   seq {operation.lastSequence} · {formatRelative(operation.updatedAt)}
