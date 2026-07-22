@@ -341,6 +341,29 @@ inside the same transaction.
 | Secrets | create version, bind, rotate, revoke | envelope encryption, node secret delivery |
 | Operations | start/cancel operation, rebuild projection | A3S Flow, audit, notification |
 
+### 4.1 Management web delivery
+
+The production React output is not served by the control-plane API and A3S
+Gateway does not read application files. `a3s-cloud-web-server` is a bounded
+private HTTP service for the immutable `web/dist` tree. It provides exact
+content types, non-cached HTML entrypoints, immutable caching for hashed
+assets, client-route fallback, path containment, and browser security headers.
+It reserves `/api` so bypassing Gateway cannot turn an API request into an HTML
+success response.
+
+The shipped Gateway ACL profile is the public same-origin boundary. Exact
+`/api` and `/api/*` routers have higher priority and preserve the request path
+to the control plane; the catch-all router sends every other path to the SPA
+service. Gateway owns the listener, observability, and deployment TLS while
+both upstreams remain private. This avoids embedding generated frontend bytes
+in the business API, avoids a second public origin and CORS policy, and does not
+require Cloud to deploy its own UI as a tenant Workload during first bootstrap.
+
+Local development intentionally remains separate: the Rsbuild server owns hot
+reload and proxies `/api` directly. The monorepo `just cloud` command starts the
+API and development web process under one signal boundary; `just
+cloud-gateway` exercises the production topology after building the SPA.
+
 ## 5. Data and consistency ownership
 
 PostgreSQL is authoritative for aggregates, desired state, idempotency records,

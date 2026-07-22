@@ -16,6 +16,7 @@ on:
       - justfile
       - tools/release-conformance/**
       - tools/runtime-conformance/runtime-revision
+      - tools/dev/**
       - tools/web/**
       - web/**
   pull_request:
@@ -31,6 +32,7 @@ on:
       - justfile
       - tools/release-conformance/**
       - tools/runtime-conformance/runtime-revision
+      - tools/dev/**
       - tools/web/**
       - web/**
   workflow_dispatch:

@@ -219,7 +219,7 @@ API command
 | Reachability | Route ownership, production DNS TXT ownership verification and explicit revocation, a Vault-backed production Gateway PKI adapter, managed TLS provisioning, automated renewal/revocation convergence, delayed obsolete-serial revocation, routed Gateway validation, complete snapshot publication, reload-before-acknowledgement process-death recovery, exact acknowledgement projection, and byte-preserving routed update and rollback cutover | Complete (`E0` slice) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, provider-and-agent-death recovery during rotated apply with exact container reattachment and receipt replay, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
-| Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
+| Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, browser-local terminal cleanup, and a production SPA server behind a same-origin A3S Gateway API/web profile | Complete (`E0` slice plus management-web delivery) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
 | Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, periodic installation/account authority polling, fresh private-credential and checkout-time revalidation, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, authoritative digest-only registry publication, explicit published-build-to-Workload deployment, tenant-scoped BuildRun list/detail/log queries, resumable BuildRun log streaming, atomic idempotent cancellation, and the corresponding polled web status/control surface are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; the deployment handoff binds the exact tenant, source revision, BuildRun, published digest, and artifact-free service template before reusing `cloud.deployment@2`. Unit and PostgreSQL gates cover terminal-state rejection and repair, tenant isolation, replay, durable trace reconstruction, and atomic rollback. External private-provider certification, provenance/SBOM/signing, retry-as-new-attempt, and cache trust gates remain | In progress (`G0` build-logs slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
@@ -243,6 +243,19 @@ API command
 
 Start the pinned local PostgreSQL and NATS profile, then run Cloud from this
 repository directory. Database migrations are applied during startup.
+
+From the A3S monorepo root, the shortest development path starts the pinned
+dependencies, API, and hot-reloading web console together:
+
+```bash
+just cloud
+```
+
+The command prints an ephemeral bootstrap token when one was not supplied,
+keeps both foreground services under one signal boundary, and leaves the
+dependency containers running for fast restarts. Run `just cloud-down` from
+this repository to stop those dependencies. Set `A3S_CLOUD_POSTGRES_URL` to
+skip Docker and use an existing PostgreSQL instance.
 
 ```bash
 docker compose \
@@ -851,6 +864,38 @@ bun run dev
 The development server listens on `127.0.0.1:3010` and proxies `/api` to
 `http://127.0.0.1:8080`. Set `A3S_CLOUD_API_ORIGIN` to use another control-plane
 origin, then sign in with the API token created during bootstrap.
+
+### Serve the production SPA through A3S Gateway
+
+Build the browser assets, run the bounded production SPA server on a private
+listener, and expose the SPA and API through one Gateway origin:
+
+```bash
+cd web
+bun install --frozen-lockfile
+bun run build
+cd ..
+
+cargo run -p a3s-cloud-web-server -- \
+  --listen 127.0.0.1:3011 \
+  --root web/dist
+
+a3s-gateway validate --config deploy/web/gateway.acl
+a3s-gateway --config deploy/web/gateway.acl
+```
+
+The shipped loopback profile serves the console at `http://127.0.0.1:8088`,
+routes only `/api` and `/api/*` to the control plane, and sends every other path
+to the SPA server. The SPA server provides client-route fallback, immutable
+hashed-asset caching, non-cached entrypoints, exact content types, traversal
+protection, and browser security headers. Configure an operator-owned TLS
+entrypoint before changing the Gateway listener to a non-loopback address. See
+[`deploy/web/README.md`](deploy/web/README.md) for the boundary and startup
+contract.
+
+After installing A3S Gateway 1.0.12 or later, the complete local delivery path
+can also be started from this repository with `just cloud-gateway`. Set
+`A3S_GATEWAY_BIN` when the binary is not on `PATH`.
 
 ## Configuration
 
