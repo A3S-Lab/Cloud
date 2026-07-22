@@ -1,4 +1,5 @@
 mod build_run_commands_controller;
+mod build_run_log_stream;
 mod build_run_queries_controller;
 
 pub use build_run_commands_controller::build_run_commands_controller;

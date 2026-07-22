@@ -1,10 +1,10 @@
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
-    GetBuildRunHandler, IBuildArtifactPublisher, IBuildInputPreparer, IBuildOutputValidator,
-    IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler, LocalNodeArtifactStore,
-    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
-    RuntimeBuildOutputValidator, SourceBuildInputPreparer,
+    GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler,
+    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    PostgresBuildRunRepository, RuntimeBuildOutputValidator, SourceBuildInputPreparer,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
@@ -694,6 +694,7 @@ fn build_application_with_health(
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
     let workload_log_metadata = Arc::clone(&node_control);
+    let build_log_metadata = Arc::clone(&node_control);
     let gateway_commands = node_control;
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
@@ -715,6 +716,7 @@ fn build_application_with_health(
     let cancel_builds = Arc::clone(&builds);
     let list_builds = Arc::clone(&builds);
     let get_builds = Arc::clone(&builds);
+    let get_build_logs = Arc::clone(&builds);
     let source_workload_builds = builds;
     let accept_source_webhooks = source_webhooks;
     let create_source_subscriptions = Arc::clone(&source_subscriptions);
@@ -742,6 +744,7 @@ fn build_application_with_health(
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
+    let build_log_store = Arc::clone(&log_chunks);
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
     let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
@@ -996,6 +999,13 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::artifacts::GetBuildRun, _>(
                     GetBuildRunHandler::new(get_builds),
+                )
+                .query_handler::<crate::modules::artifacts::GetBuildRunLogs, _>(
+                    GetBuildRunLogsHandler::new(
+                        get_build_logs,
+                        build_log_metadata,
+                        build_log_store,
+                    ),
                 )
                 .query_handler::<crate::modules::workloads::ListWorkloads, _>(
                     ListWorkloadsHandler::new(

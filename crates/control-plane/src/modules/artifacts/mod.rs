@@ -4,8 +4,9 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildRun, GetBuildRunHandler,
-    ListBuildRuns, ListBuildRunsHandler,
+    BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildRun,
+    GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler, ListBuildRuns,
+    ListBuildRunsHandler,
 };
 pub use domain::{
     BuildArtifact, BuildArtifactPublicationError, BuildInputPreparationError,

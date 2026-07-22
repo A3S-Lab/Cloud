@@ -99,11 +99,21 @@ pub struct BuildRun {
 }
 
 impl BuildRun {
+    pub const RUNTIME_GENERATION: u64 = 1;
+
     pub fn id_for(source_revision_id: SourceRevisionId) -> BuildRunId {
         BuildRunId::from_uuid(Uuid::new_v5(
             &BUILD_RUN_NAMESPACE,
             source_revision_id.as_uuid().as_bytes(),
         ))
+    }
+
+    pub fn runtime_unit_id_for(build_run_id: BuildRunId) -> String {
+        format!("cloud-build-{build_run_id}")
+    }
+
+    pub fn runtime_unit_id(&self) -> String {
+        Self::runtime_unit_id_for(self.id)
     }
 
     pub fn reserve(

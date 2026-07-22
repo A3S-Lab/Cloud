@@ -1,25 +1,17 @@
 use super::GetWorkloadLogs;
-use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogCompactionRange,
-    NodeLogGapMetadata,
-};
-use crate::modules::fleet::domain::services::{
-    ILogChunkStore, LogChunkStoreError, RetrievedLogChunk,
-};
+use crate::modules::fleet::application::{NodeLogReadQuery, NodeLogReader};
+use crate::modules::fleet::domain::repositories::INodeControlRepository;
+use crate::modules::fleet::domain::services::ILogChunkStore;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
-use crate::modules::workloads::application::queries::{
-    WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
-};
+use crate::modules::workloads::application::queries::WorkloadLogPage;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CqrsContext, QueryHandler};
-use a3s_cloud_contracts::NodeLogChunkReport;
 use std::sync::Arc;
 
 pub struct GetWorkloadLogsHandler {
     workloads: Arc<dyn IWorkloadRepository>,
-    metadata: Arc<dyn INodeControlRepository>,
-    objects: Arc<dyn ILogChunkStore>,
+    logs: NodeLogReader,
 }
 
 impl GetWorkloadLogsHandler {
@@ -30,8 +22,7 @@ impl GetWorkloadLogsHandler {
     ) -> Self {
         Self {
             workloads,
-            metadata,
-            objects,
+            logs: NodeLogReader::new(metadata, objects),
         }
     }
 }
@@ -43,8 +34,7 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkloadLogPage>>> {
         let workloads = Arc::clone(&self.workloads);
-        let metadata = Arc::clone(&self.metadata);
-        let objects = Arc::clone(&self.objects);
+        let logs = self.logs.clone();
         Box::pin(async move {
             if query.limit == 0 || query.limit > 256 {
                 return Ok(Err(ApplicationError::Invalid(
@@ -92,140 +82,30 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                     next_after_sequence: None,
                 }));
             };
-            let fetch_limit = usize::from(query.limit) + 1;
-            let metadata_query = NodeLogChunkQuery {
-                node_id,
-                unit_id: unit_id.clone(),
-                generation: revision.generation,
-                after_sequence: query.after_sequence,
-                limit: fetch_limit,
-                stream: query.stream,
-            };
-            let mut chunks = match metadata.list_log_chunks(metadata_query.clone()).await {
-                Ok(chunks) => chunks,
-                Err(error) => return Ok(Err(error.into())),
-            };
-            let gaps = match metadata.list_log_gaps(metadata_query.clone()).await {
-                Ok(gaps) => gaps,
-                Err(error) => return Ok(Err(error.into())),
-            };
-            let ranges = match metadata.list_log_compaction_ranges(metadata_query).await {
-                Ok(ranges) => ranges,
-                Err(error) => return Ok(Err(error.into())),
-            };
-            let source_has_more = chunks.len() > usize::from(query.limit)
-                || gaps.len() > usize::from(query.limit)
-                || ranges.len() > usize::from(query.limit);
-            chunks.retain(|chunk| {
-                !ranges.iter().any(|range| {
-                    (range.first_sequence..=range.through_sequence).contains(&chunk.sequence)
+            let page = match logs
+                .read(NodeLogReadQuery {
+                    node_id,
+                    unit_id,
+                    generation: revision.generation,
+                    after_sequence: query.after_sequence,
+                    limit: query.limit,
+                    stream: query.stream,
                 })
-            });
-            let mut stored = chunks
-                .into_iter()
-                .map(StoredLogRecord::Chunk)
-                .chain(gaps.into_iter().map(StoredLogRecord::ProviderGap))
-                .chain(ranges.into_iter().map(StoredLogRecord::Compacted))
-                .collect::<Vec<_>>();
-            stored.sort_by_key(|record| record.first_sequence());
-            let has_more = source_has_more || stored.len() > usize::from(query.limit);
-            if has_more {
-                stored.truncate(usize::from(query.limit));
-            }
-            let next_after_sequence = has_more
-                .then(|| stored.last().map(StoredLogRecord::through_sequence))
-                .flatten();
-            let mut records = Vec::with_capacity(stored.len());
-            for stored in stored {
-                let chunk = match stored {
-                    StoredLogRecord::Chunk(chunk) => chunk,
-                    StoredLogRecord::Compacted(range) => {
-                        records.push(WorkloadLogRecord::CompactedGap { range });
-                        continue;
-                    }
-                    StoredLogRecord::ProviderGap(metadata) => {
-                        records.push(WorkloadLogRecord::ProviderGap { metadata });
-                        continue;
-                    }
-                };
-                if chunk.retained_at.is_some() {
-                    records.push(WorkloadLogRecord::Gap {
-                        metadata: chunk,
-                        reason: WorkloadLogGapReason::Retained,
-                    });
-                    continue;
-                }
-                let object = match objects.get(&chunk.object_key, &chunk.checksum).await {
-                    Ok(object) => object,
-                    Err(LogChunkStoreError::Unavailable(_)) => {
-                        return Ok(Err(ApplicationError::Internal(
-                            "workload log object storage is unavailable".into(),
-                        )))
-                    }
-                    Err(LogChunkStoreError::Invalid(_) | LogChunkStoreError::Conflict(_)) => {
-                        RetrievedLogChunk::Corrupt
-                    }
-                };
-                records.push(match object {
-                    RetrievedLogChunk::Found(report) if report_matches(&report, &chunk) => {
-                        WorkloadLogRecord::Data(report.chunk)
-                    }
-                    RetrievedLogChunk::Found(_) | RetrievedLogChunk::Corrupt => {
-                        WorkloadLogRecord::Gap {
-                            metadata: chunk,
-                            reason: WorkloadLogGapReason::Corrupt,
-                        }
-                    }
-                    RetrievedLogChunk::Missing => WorkloadLogRecord::Gap {
-                        metadata: chunk,
-                        reason: WorkloadLogGapReason::Missing,
-                    },
-                });
-            }
+                .await
+            {
+                Ok(page) => page,
+                Err(error) => return Ok(Err(error)),
+            };
             Ok(Ok(WorkloadLogPage {
                 workload_id: workload.id,
                 revision_id: revision.id,
-                node_id: Some(node_id),
-                unit_id,
-                generation: revision.generation,
-                records,
-                next_after_sequence,
+                node_id: Some(page.node_id),
+                unit_id: page.unit_id,
+                generation: page.generation,
+                records: page.records,
+                next_after_sequence: page.next_after_sequence,
             }))
         })
-    }
-}
-
-fn report_matches(report: &NodeLogChunkReport, metadata: &NodeLogChunkMetadata) -> bool {
-    report.unit_id == metadata.unit_id
-        && report.generation == metadata.generation
-        && report.chunk.cursor == metadata.cursor
-        && report.chunk.sequence == metadata.sequence
-        && report.chunk.observed_at_ms == metadata.observed_at_ms
-        && report.chunk.stream == metadata.stream
-        && report.checksum == metadata.checksum
-}
-
-enum StoredLogRecord {
-    Chunk(NodeLogChunkMetadata),
-    ProviderGap(NodeLogGapMetadata),
-    Compacted(NodeLogCompactionRange),
-}
-
-impl StoredLogRecord {
-    const fn first_sequence(&self) -> u64 {
-        match self {
-            Self::Chunk(chunk) => chunk.sequence,
-            Self::ProviderGap(gap) => gap.sequence,
-            Self::Compacted(range) => range.first_sequence,
-        }
-    }
-
-    const fn through_sequence(&self) -> u64 {
-        match self {
-            Self::Chunk(chunk) => chunk.sequence,
-            Self::ProviderGap(gap) => gap.sequence,
-            Self::Compacted(range) => range.through_sequence,
-        }
     }
 }
 

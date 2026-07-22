@@ -99,6 +99,8 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         requested_at,
     );
     assert_eq!(build.id, BuildRun::id_for(source_revision_id));
+    assert_eq!(build.runtime_unit_id(), format!("cloud-build-{}", build.id));
+    assert_eq!(BuildRun::RUNTIME_GENERATION, 1);
     assert_eq!(build.id.as_uuid(), build.operation_id.as_uuid());
 
     build
