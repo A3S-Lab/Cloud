@@ -26,6 +26,8 @@ pub(super) async fn exercise_github_connection_persistence(
     let repository = PostgresGithubConnectionRepository::new(executor.clone());
     let database = Database::new(PostgresDialect, executor.clone());
     let connected_at = Utc::now();
+    let connected_at = connected_at
+        - Duration::nanoseconds(i64::from(connected_at.timestamp_subsec_nanos() % 1_000));
 
     let (flow, oauth_state_digest, pkce_verifier_digest) = prepare_github_flow(
         &repository,
