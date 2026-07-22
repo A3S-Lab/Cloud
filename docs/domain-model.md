@@ -781,8 +781,14 @@ the exact `cloud.build@2` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
 publication target/result, terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
 operation replay, and optimistic single-transition saves prevent duplicate or
-forged logical builds across process loss. The production worker runs the
-BuildRun reconciler and a closed Flow router dispatches only the supported
+forged logical builds across process loss. Environment list and tenant detail
+queries expose only public build lineage, status, OCI metadata, publication,
+failure, and timestamps; node/command identities and internal Artifact URIs
+remain private. A `build:write` cancellation request atomically advances the
+aggregate and records its idempotency response, while the Build Flow remains
+responsible for publication-race adoption and cleanup before terminal state.
+The production worker runs the BuildRun reconciler and a closed Flow router
+dispatches only the supported
 deployment, workload-stop, and build workflow identities. A separate
 implemented GitHub App connection
 aggregate verifies and exclusively assigns an installation/account to one Cloud
@@ -804,9 +810,9 @@ while the
 operator-credential external GitHub gate remains unexecuted. GitHub offers no
 tokenless current-user App-grant query, so signed authorization-revocation
 delivery remains authoritative without persisting OAuth tokens.
-Provenance/SBOM/signing, complete build status/log/cancel/retry surfaces, and
-cache trust remain later G0 work; authenticated registry publication is
-exercised independently in CI.
+Provenance/SBOM/signing, build logs, retry as a new BuildRun/Operation attempt,
+and cache trust remain later G0 work; authenticated registry publication and
+BuildRun status/cancellation surfaces are exercised independently.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,

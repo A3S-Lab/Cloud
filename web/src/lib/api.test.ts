@@ -119,6 +119,47 @@ describe('CloudApi', () => {
     );
   });
 
+  it('lists and cancels build runs within the selected tenant context', async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string | URL | Request) => {
+      const path = String(input);
+      const data = path.includes('/projects/')
+        ? []
+        : {
+            buildRunId: 'build / one',
+            operationId: 'operation-1',
+            status: 'cancelling',
+            cancellationRequestedAt: '2026-07-22T00:00:00Z',
+            replayed: false,
+          };
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ code: path.includes('/projects/') ? 200 : 202, message: 'Success', data }),
+          { status: path.includes('/projects/') ? 200 : 202, headers: { 'content-type': 'application/json' } }
+        )
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new CloudApi('a3s_secret');
+
+    await api.listBuildRuns('organization', 'project / one', 'production');
+    const cancelled = await api.cancelBuildRun('organization', 'build / one', 'web-cancel-build:build-1');
+
+    expect(cancelled.status).toBe('cancelling');
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/organizations/organization/projects/project%20%2F%20one/environments/production/build-runs?limit=100'
+    );
+    expect(fetchMock.mock.calls[1]).toEqual([
+      '/api/v1/organizations/organization/build-runs/build%20%2F%20one',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer a3s_secret',
+          'Idempotency-Key': 'web-cancel-build:build-1',
+        }),
+      }),
+    ]);
+  });
+
   it('stops one active workload through its own durable operation', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

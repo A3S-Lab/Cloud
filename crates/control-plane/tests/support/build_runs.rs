@@ -3,6 +3,7 @@ use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
 use a3s_cloud_control_plane::modules::artifacts::application::{
     BuildRunReconciler, BUILD_WORKFLOW_VERSION,
 };
+use a3s_cloud_control_plane::modules::artifacts::domain::RequestBuildCancellationBundle;
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
     OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
@@ -12,8 +13,8 @@ use a3s_cloud_control_plane::modules::operations::{
     IOperationRepository, PostgresOperationRepository,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
-    SourceRevisionId,
+    EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
+    ProjectId, RepositoryError, SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::BuildPlatform;
 use a3s_cloud_control_plane::modules::workloads::{
@@ -109,6 +110,13 @@ pub async fn exercise_build_run_persistence(
     assert_eq!(reserved[0].organization_id, organization_id);
     assert_eq!(reserved[0].project_id, project_id);
     assert_eq!(reserved[0].environment_id, environment_id);
+    assert_eq!(
+        builds
+            .list(organization_id, project_id, environment_id, 1)
+            .await?
+            .as_slice(),
+        reserved.as_slice()
+    );
 
     assert_eq!(
         builds
@@ -127,7 +135,7 @@ pub async fn exercise_build_run_persistence(
         Err(RepositoryError::NotFound)
     ));
     assert!(builds
-        .list(organization_id, project_id, EnvironmentId::new())
+        .list(organization_id, project_id, EnvironmentId::new(), 100)
         .await?
         .is_empty());
 
@@ -565,6 +573,107 @@ pub async fn exercise_build_run_persistence(
         .execute(
             sql_query::<()>("delete from operation_requests where operation_id = ")
                 .bind(operation_id.as_uuid()),
+        )
+        .await?;
+    let cancellation_source_revision_id = SourceRevisionId::new();
+    let cancellation_accepted_at = chrono::Utc::now();
+    let inserted = database
+        .execute(
+            sql_query::<()>(
+                "insert into external_source_revisions (organization_id, project_id, environment_id, id, repository_provider, repository_url, repository_identity, commit_sha, recipe, recipe_digest, aggregate_version, accepted_at) select organization_id, project_id, environment_id, ",
+            )
+            .bind(cancellation_source_revision_id.as_uuid())
+            .append(", repository_provider, repository_url, repository_identity, ")
+            .bind("1111111111111111111111111111111111111111")
+            .append(", recipe, recipe_digest, 1, ")
+            .bind(cancellation_accepted_at)
+            .append(" from external_source_revisions where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and id = ")
+            .bind(source_revision_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(inserted.rows_affected, 1);
+    let queued_for_cancellation = builds
+        .reserve_pending(1, cancellation_accepted_at)
+        .await?
+        .pop()
+        .ok_or("cancellation build was not reserved")?;
+    assert_eq!(
+        queued_for_cancellation.id,
+        BuildRun::id_for(cancellation_source_revision_id)
+    );
+    let mut cancelling = queued_for_cancellation.clone();
+    cancelling.request_cancellation(cancellation_accepted_at + Duration::milliseconds(1))?;
+    let idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{organization_id}/build-runs/{}/cancellation",
+            queued_for_cancellation.id
+        ),
+        "postgres-cancel-build",
+        queued_for_cancellation.id.to_string().as_bytes(),
+    )?;
+    let cancellation = RequestBuildCancellationBundle {
+        build_run: cancelling.clone(),
+        expected_version: queued_for_cancellation.aggregate_version,
+        idempotency: idempotency.clone(),
+    };
+    let (left, right) = tokio::join!(
+        builds.request_cancellation(cancellation.clone()),
+        builds.request_cancellation(cancellation),
+    );
+    let cancellations = [left?, right?];
+    assert_eq!(
+        cancellations
+            .iter()
+            .filter(|result| result.replayed)
+            .count(),
+        1
+    );
+    assert!(cancellations
+        .iter()
+        .all(|result| result.value == cancelling));
+    assert_eq!(
+        builds.replay_cancellation(&idempotency).await?,
+        Some(cancelling.clone())
+    );
+    let conflicting_idempotency = IdempotencyRequest::new(
+        idempotency.scope.clone(),
+        idempotency.key.clone(),
+        b"different cancellation",
+    )?;
+    assert_eq!(
+        builds.replay_cancellation(&conflicting_idempotency).await,
+        Err(RepositoryError::IdempotencyConflict)
+    );
+    assert_eq!(
+        builds
+            .find(organization_id, queued_for_cancellation.id)
+            .await?,
+        cancelling
+    );
+    database
+        .execute(
+            sql_query::<()>("delete from idempotency_records where scope_key = ")
+                .bind(idempotency.scope)
+                .append(" and idempotency_key = ")
+                .bind(idempotency.key),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from build_runs where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(queued_for_cancellation.id.as_uuid()),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from external_source_revisions where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(cancellation_source_revision_id.as_uuid()),
         )
         .await?;
     database
