@@ -337,6 +337,11 @@ fn config() -> CloudConfig {
             github_app_callback_url:
                 "https://cloud.example.test/api/v1/source-connections/github/callback".into(),
             github_connection_state_ttl_ms: 600_000,
+            github_authority_reconcile_interval_ms: 10_000,
+            github_authority_poll_interval_ms: 300_000,
+            github_authority_retry_initial_ms: 1_000,
+            github_authority_retry_max_ms: 60_000,
+            github_authority_batch_size: 100,
             checkout_dir: ".a3s/test-source-checkouts".into(),
             checkout_timeout_ms: 10_000,
             checkout_max_files: 10_000,

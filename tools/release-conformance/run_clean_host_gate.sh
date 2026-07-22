@@ -646,6 +646,11 @@ sources {
   github_app_private_key_env = ""
   github_app_callback_url = ""
   github_connection_state_ttl_ms = 600000
+  github_authority_reconcile_interval_ms = 10000
+  github_authority_poll_interval_ms = 300000
+  github_authority_retry_initial_ms = 1000
+  github_authority_retry_max_ms = 60000
+  github_authority_batch_size = 100
   checkout_dir = "$state_dir/source-checkouts"
   checkout_timeout_ms = 120000
   checkout_max_files = 100000

@@ -5,7 +5,7 @@ mod source_webhook_repository;
 
 pub use github_connection_repository::{
     CompleteGithubConnection, GithubConnectionLifecycleAcceptance, IGithubConnectionRepository,
-    ReconcileGithubConnectionLifecycle,
+    PersistGithubProviderReconciliation, ReconcileGithubConnectionLifecycle,
 };
 pub use source_revision_repository::{
     AcceptSourceRevision, ISourceRevisionRepository, WebhookDeliveryReservation,

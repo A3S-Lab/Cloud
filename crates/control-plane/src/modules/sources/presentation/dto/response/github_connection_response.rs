@@ -13,6 +13,7 @@ pub struct GithubConnectionResponse {
     pub account: GithubAccountResponse,
     pub verified_by: GithubUserResponse,
     pub status: String,
+    pub provider_authority: GithubProviderAuthorityResponse,
     pub connected_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -33,6 +34,16 @@ pub struct GithubUserResponse {
     pub login: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubProviderAuthorityResponse {
+    pub checked_at: DateTime<Utc>,
+    pub check_attempted_at: DateTime<Utc>,
+    pub next_check_at: DateTime<Utc>,
+    pub consecutive_failures: u32,
+    pub last_error: Option<String>,
+}
+
 impl From<GithubConnection> for GithubConnectionResponse {
     fn from(connection: GithubConnection) -> Self {
         Self {
@@ -50,6 +61,15 @@ impl From<GithubConnection> for GithubConnectionResponse {
                 login: connection.verified_by_user_login.as_str().into(),
             },
             status: connection.status.as_str().into(),
+            provider_authority: GithubProviderAuthorityResponse {
+                checked_at: connection.provider_checked_at,
+                check_attempted_at: connection.provider_check_attempted_at,
+                next_check_at: connection.provider_next_check_at,
+                consecutive_failures: connection.provider_check_failures,
+                last_error: connection
+                    .provider_check_error
+                    .map(|error| error.as_str().into()),
+            },
             connected_at: connection.connected_at,
             updated_at: connection.updated_at,
         }

@@ -76,6 +76,15 @@ async fn signed_lifecycle_gates_authority_replays_and_requires_explicit_reconnec
     let initial = response_json(&app.call(get_as(&connection_path, ADMIN_TOKEN)).await?)?;
     assert_eq!(initial["data"]["status"], "active");
     assert_eq!(initial["data"]["connectedAt"], initial["data"]["updatedAt"]);
+    assert_eq!(
+        initial["data"]["providerAuthority"]["checkedAt"],
+        initial["data"]["connectedAt"]
+    );
+    assert_eq!(
+        initial["data"]["providerAuthority"]["consecutiveFailures"],
+        0
+    );
+    assert!(initial["data"]["providerAuthority"]["lastError"].is_null());
     let initial_connection_id = initial["data"]["id"].clone();
     let subscriptions_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/source-subscriptions/github"

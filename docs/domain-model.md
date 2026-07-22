@@ -103,7 +103,10 @@ installation to one canonical repository, exact branch, and recipe. The
 provider inbox authenticates and deduplicates typed branch-push facts; only a
 new delivery may create revisions through matching active subscriptions.
 Connection, subscription, inbox, and revision state contain no durable provider
-credential.
+credential. A bounded installation-authority reconciler polls GitHub with an
+App JWT and persists only typed lifecycle/account observations plus generic
+check health. The same authority boundary is required immediately before any
+private-repository credential is issued.
 
 ### 3.4 Asset hosting
 
@@ -291,7 +294,8 @@ tables directly. Audit records are append-only and separate from event delivery.
   verifier itself exists in a short-lived secure, HTTP-only, same-site cookie.
 - Completion stores durable numeric installation, account, and verifying-user
   IDs, account kind, display logins, `active` status, aggregate version, and
-  connection/update time in the same transaction as
+  connection/update time plus initial provider-check timestamps in the same
+  transaction as
   `source.github-connection.created`.
 - OAuth code, client secret, user access/refresh token, PKCE verifier, and
   provider response bytes are transient and never enter the aggregate,
@@ -301,15 +305,36 @@ tables directly. Audit records are append-only and separate from event delivery.
   issue one short-lived, repository-bound, read-only installation token for
   resolution or checkout only while status is `active`. Repository
   subscriptions are separate environment-owned aggregates.
+- Due active/suspended connections are inspected through
+  `GET /app/installations/{installation_id}` using a fresh App JWT. Successful
+  observations reconcile suspension, login, deletion, and exact numeric account
+  identity. Provider uncertainty records a generic bounded retry state without
+  granting authority; malformed or identity-confused responses fail closed.
+- Last successful check, last attempted check, next check, consecutive failures,
+  and a closed error category are durable. Saves compare the expected aggregate
+  version and atomically emit `source.github-connection.reconciled` only when
+  lifecycle or account-login state changed.
+- Private token issuance requires a fresh successful observation for the exact
+  organization, connection, and installation and then rechecks `active` state.
+  The underlying issuer is never called when provider authority is unavailable
+  or terminal, so both authenticated resolution and checkout fail closed.
 - Signed installation suspend/unsuspend/delete, installation-target rename, and
   verifying-user App-authorization revocation facts reconcile only current
   connections. Same numeric account identity may update its login; account
   ID/kind mismatch fails closed. Each changed aggregate advances its version
   and emits `source.github-connection.reconciled` atomically with the state.
-- `verification_revoked`, `installation_deleted`, and `account_changed` are
-  terminal for one connection ID. A fresh installation/OAuth flow creates a
-  new ID and never transfers subscriptions from the historical connection.
-  Webhooks cannot reactivate terminal state.
+- `verification_revoked` is immediately terminal. A webhook-produced
+  `installation_deleted` or `account_changed` status remains eligible for
+  provider confirmation while its last successful check predates the webhook;
+  this repairs a delayed fact when GitHub still reports the exact active or
+  suspended installation. A provider-confirmed deletion/account drift is
+  terminal for that connection ID. A fresh installation/OAuth flow creates a
+  new ID and never transfers subscriptions from the historical connection;
+  optimistic versions and current-connection uniqueness prevent an old repair
+  from changing the replacement.
+- GitHub exposes no tokenless API for querying the verifying user's current App
+  OAuth grant. User access/refresh tokens remain non-durable, so signed
+  `github_app_authorization.revoked` delivery is authoritative for that state.
 
 ### GitHub repository subscription
 
@@ -385,10 +410,13 @@ tables directly. Audit records are append-only and separate from event delivery.
   commits every state/outbox change with the receipt. Exact replay changes
   nothing; reuse with a changed action, subject, or digest conflicts. Raw body
   and credentials remain absent.
-- Lifecycle ordering is webhook-receipt driven. Periodic provider polling,
-  missed/out-of-order repair, delayed pre-reconnection delivery
-  disambiguation, and checkout-time authoritative revalidation remain outside
-  this implemented slice.
+- Immediate lifecycle ordering is webhook-receipt and aggregate-version driven.
+  Periodic App-JWT installation inspection repairs missed/out-of-order
+  installation and account facts; terminal webhook observations that postdate
+  the last provider check are revalidated. Every private credential requires a
+  fresh successful inspection before authenticated resolution or checkout.
+  Verifying-user OAuth revocation remains signed-webhook authoritative because
+  user tokens are deliberately non-durable.
 - The provider delivery is distinct from an optional
   `ExternalSourceRevision` webhook reservation supplied through the
   authenticated tenant mutation.
@@ -764,13 +792,21 @@ authority and retained active/inactive lifecycle. Anonymous source resolution
 may use only an active connection to issue one repository-scoped read-only
 installation token; token and App key material are never durable. Signed
 provider lifecycle facts reconcile explicit connection status, retain terminal
-history, and prevent old subscriptions from inheriting a fresh connection.
+history, and prevent old subscriptions from inheriting a fresh connection. A
+bounded App-JWT worker also polls the exact installation/account, persists
+generic check health with capped retry, repairs missed or delayed lifecycle
+facts through optimistic saves, and emits an event only for lifecycle/account
+change. The private-credential decorator requires the same fresh authority
+check for the exact organization, connection, and installation before either
+authenticated resolution or checkout can issue a token.
 Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
 while the
-operator-credential external GitHub gate remains unexecuted. Authoritative
-provider polling, checkout-time lifecycle revalidation, provenance/SBOM/signing,
-complete build status/log surfaces, and cache trust remain later G0 work;
-authenticated registry publication is exercised independently in CI.
+operator-credential external GitHub gate remains unexecuted. GitHub offers no
+tokenless current-user App-grant query, so signed authorization-revocation
+delivery remains authoritative without persisting OAuth tokens.
+Provenance/SBOM/signing, complete build status/log/cancel/retry surfaces, and
+cache trust remain later G0 work; authenticated registry publication is
+exercised independently in CI.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,
@@ -819,12 +855,18 @@ active <-> suspended
 active | suspended -> verification_revoked
 active | suspended -> installation_deleted
 active | suspended -> account_changed
+installation_deleted* | account_changed* -> provider observation
 ```
 
 Only `active` is authoritative. `active` and `suspended` are current states and
 block another connection for the organization, installation, or account.
-Terminal states never transition within the same aggregate; reconnection is a
-new aggregate after fresh provider proof.
+`verification_revoked` and provider-confirmed deletion/account drift never
+transition within the same aggregate; reconnection is a new aggregate after
+fresh provider proof. `*` marks a terminal webhook observation whose successful
+provider check still predates the webhook. Its provider observation may repair
+the same aggregate to the currently reported active/suspended state or confirm
+deletion/account drift as terminal. A concurrent replacement connection wins
+the uniqueness/CAS boundary and cannot be mutated by that repair.
 
 ### GitHub repository subscription state
 
@@ -943,7 +985,7 @@ Gateway revision.
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
-| Verified GitHub installation/account ownership, verifying-user identity, explicit status, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential |
+| Verified GitHub installation/account ownership, verifying-user identity, explicit status, provider-check health/backoff, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential or raw provider body |
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
 | Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |

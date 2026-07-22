@@ -159,13 +159,15 @@ API command
   GitHub user-token intersection, and persist only durable numeric
   installation/account/user identities with global installation/account
   ownership; signed suspend, unsuspend, deletion, rename, and verifying-user
-  revocation deliveries version explicit connection state while retaining
-  terminal history
+  revocation deliveries plus bounded App-JWT installation polling reconcile
+  explicit connection state while retaining terminal history
 - **Ephemeral Private GitHub Access**: Sign bounded GitHub App JWTs from a PEM
-  key read per attempt, request one repository with read-only contents access,
-  bind the returned short-lived token to that canonical repository, and pass it
-  only to authenticated resolution or one isolated Git fetch; tokens, keys,
-  URLs, receipts, responses, events, and source state remain credential-free
+  key read per attempt, freshly confirm the exact installation/account before
+  every private credential, request one repository with read-only contents
+  access, bind the returned short-lived token to that canonical repository, and
+  pass it only to authenticated resolution or one isolated Git fetch; tokens,
+  keys, URLs, receipts, responses, events, and source state remain
+  credential-free
 - **Durable Build Intent**: Reserve one deterministic, tenant-owned build run
   for each accepted source revision, bind it to one `cloud.build@2` operation,
   enforce exact replay and optimistic state transitions, and repair the
@@ -213,7 +215,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, authoritative digest-only registry publication, and explicit published-build-to-Workload deployment are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; the deployment handoff binds the exact tenant, source revision, BuildRun, published digest, and artifact-free service template before reusing `cloud.deployment@2`. Unit and PostgreSQL gates cover terminal-state rejection, tenant isolation, replay, durable trace reconstruction, and atomic rollback. Periodic authoritative provider polling, checkout-time lifecycle revalidation, external private-repository certification, provenance/SBOM/signing, complete build status/log surfaces, and cache trust gates remain | In progress (`G0` deployment-handoff slice) |
+| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, periodic installation/account authority polling, fresh private-credential and checkout-time revalidation, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, authoritative digest-only registry publication, and explicit published-build-to-Workload deployment are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; the deployment handoff binds the exact tenant, source revision, BuildRun, published digest, and artifact-free service template before reusing `cloud.deployment@2`. Unit and PostgreSQL gates cover terminal-state rejection and repair, tenant isolation, replay, durable trace reconstruction, and atomic rollback. External private-provider certification, provenance/SBOM/signing, complete build status/log/cancel/retry surfaces, and cache trust gates remain | In progress (`G0` provider-authority slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -456,6 +458,11 @@ sources {
   github_app_private_key_env = "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
   github_app_callback_url = "https://cloud.example.com/api/v1/source-connections/github/callback"
   github_connection_state_ttl_ms = 600000
+  github_authority_reconcile_interval_ms = 10000
+  github_authority_poll_interval_ms = 300000
+  github_authority_retry_initial_ms = 1000
+  github_authority_retry_max_ms = 60000
+  github_authority_batch_size = 100
 
   # Existing source settings remain required here.
   github_request_timeout_ms = 10000
@@ -489,7 +496,8 @@ GitHub installation or account may belong to only one Cloud organization. The
 durable record contains numeric installation, account, and verifying-user IDs,
 display logins, explicit status, connection/update times, and aggregate
 version. Completion emits `source.github-connection.created`; the GET response
-includes `status` and `updatedAt`. API and callback responses are non-cacheable.
+includes `status`, `updatedAt`, and `providerAuthority` check, retry, failure,
+and next-check metadata. API and callback responses are non-cacheable.
 
 Only `active` is provider authority. `suspended` blocks credentials, new
 subscriptions, and push fanout but also blocks a second connection until GitHub
@@ -515,11 +523,25 @@ Cloud may use only an active connection to request one short-lived token for
 the exact allowlisted repository and retry resolution. The checkout adapter
 accepts the same repository-bound credential for one fetch. After the
 source-revision request commits, the asynchronous Build Flow coordinates that
-checkout and isolated build. Lifecycle state is currently webhook-driven;
-periodic provider polling, a fresh provider check immediately before checkout,
-and disambiguation of delayed pre-reconnection deliveries remain later work. A
-credential already issued before a state change can remain usable until GitHub
-expires or revokes it.
+checkout and isolated build. A bounded worker signs a fresh App JWT and polls
+`GET /app/installations/{installation_id}` to repair missed suspension,
+unsuspension, deletion, account-identity, and login changes. It persists the
+last successful check, attempted check, next check, consecutive failures, and a
+generic operator-visible error with bounded exponential retry. A provider
+confirmation that the installation was deleted or its numeric account identity
+changed is terminal. A delayed terminal webhook is rechecked; optimistic
+versioning and current-connection uniqueness prevent it from mutating a newly
+verified replacement connection.
+
+Every private credential request performs the same provider check first and
+requires the exact organization, connection, installation, and still-active
+account. Provider uncertainty fails closed before token issuance, covering both
+authenticated ref resolution and checkout. GitHub exposes no tokenless API for
+querying a user's current App OAuth grant, and Cloud deliberately does not
+persist user access or refresh tokens. Verifying-user authorization revocation
+therefore remains authoritative through the signed
+`github_app_authorization.revoked` webhook. A credential already issued before
+a state change can remain usable until GitHub expires or revokes it.
 
 ### Subscribe an environment to a GitHub repository
 
@@ -635,9 +657,11 @@ event/action, installation or user subject, payload digest, and receipt time.
 The first delivery reconciles matching current connections and atomically emits
 `source.github-connection.reconciled`; exact replay is a no-op, and changed
 payload reuse conflicts. Lifecycle state gates private-token fallback,
-subscription creation, and PostgreSQL fanout. It does not yet poll GitHub for
-missed/out-of-order deliveries or coordinate a fresh provider check with
-checkout.
+subscription creation, and PostgreSQL fanout. Periodic App-JWT installation
+polling repairs missed or out-of-order installation/account facts, while every
+private credential issuance requires a fresh successful provider check before
+authenticated resolution or checkout. Signed authorization-revocation delivery
+remains authoritative for the non-durable verifying-user OAuth grant.
 
 An exact provider replay is stopped by the inbox and never evaluates bindings
 again, so it cannot duplicate revisions/events or retroactively pick up a
@@ -804,16 +828,21 @@ deployment and Edge policies are split across independent boundaries:
 | `registry.publication_credential_env` | Uppercase environment-variable reference containing registry credential JSON; required in production |
 | `registry.publication_allow_anonymous` | Development-only opt-in for anonymous publication; mutually exclusive with a credential reference |
 | `registry.publication_timeout_ms` | Durable deadline for new push attempts; read-only outcome reconciliation may continue afterward |
-| `sources.github_request_timeout_ms` | Bound for one GitHub API request, including App-token issuance and authenticated resolution |
+| `sources.github_request_timeout_ms` | Bound for one GitHub API request, including authority inspection, App-token issuance, and authenticated resolution |
 | `sources.github_webhook_secret_env` | Uppercase environment-variable name containing the 32- to 512-byte GitHub HMAC secret; read for every request to permit rotation |
 | `sources.github_webhook_max_body_bytes` | Accepted signed webhook body limit from 1 KiB through 2 MiB |
 | `sources.github_app_enabled` | Explicit GitHub App connection switch; when false, all App fields must be empty and connection attempts return unavailable |
 | `sources.github_app_slug` | Lowercase bounded slug used only to construct GitHub's fixed App installation URL |
 | `sources.github_app_client_id` | Public GitHub App OAuth client ID |
 | `sources.github_app_client_secret_env` | Uppercase environment-variable name carrying the OAuth client secret; the value is read transiently for each callback |
-| `sources.github_app_private_key_env` | Uppercase environment-variable name carrying the PEM App private key; the value is read transiently for every installation-token request |
+| `sources.github_app_private_key_env` | Uppercase environment-variable name carrying the PEM App private key; the value is read transiently for every authority check and installation-token request |
 | `sources.github_app_callback_url` | Exact public HTTPS callback ending in `/api/v1/source-connections/github/callback` |
 | `sources.github_connection_state_ttl_ms` | Shared 1- to 30-minute bound for the single-use installation/OAuth flow |
+| `sources.github_authority_reconcile_interval_ms` | Worker scan interval for due GitHub installation authority checks; positive and at most 60 seconds |
+| `sources.github_authority_poll_interval_ms` | Successful GitHub installation/account polling cadence; at least the scan interval and at most 24 hours |
+| `sources.github_authority_retry_initial_ms` | Initial retry delay after an unavailable or invalid GitHub authority response |
+| `sources.github_authority_retry_max_ms` | Maximum exponential authority-check retry delay; at least the initial delay and no longer than the poll interval |
+| `sources.github_authority_batch_size` | Maximum due connections inspected per reconciliation scan; from 1 through 10,000 |
 | `sources.allowed_repositories` | Exact HTTPS GitHub repository allowlist; it must be nonempty |
 | `sources.denied_repositories` | Exact HTTPS GitHub repository denylist; denial takes precedence |
 | `edge.entrypoint_address` | Address rendered into the complete traffic snapshot |
@@ -1095,7 +1124,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, a combined authenticated Runtime/BuildKit/Registry gate, replay/cancellation adoption, cleanup, and explicit published-build deployment through `cloud.deployment@2` are implemented; authoritative polling, provenance/SBOM/signing, complete build surfaces, cache trust, and external private-repository evidence remain) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, periodic installation/account authority polling, fresh private-credential and checkout revalidation, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, a combined authenticated Runtime/BuildKit/Registry gate, replay/cancellation adoption, cleanup, and explicit published-build deployment through `cloud.deployment@2` are implemented; provenance/SBOM/signing, complete build status/log/cancel/retry surfaces, cache trust, and external private-provider evidence remain) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |

@@ -26,6 +26,12 @@ pub struct GithubConnectionLifecycleAcceptance {
     pub connections: Vec<GithubConnection>,
 }
 
+pub struct PersistGithubProviderReconciliation {
+    pub connection: GithubConnection,
+    pub expected_version: u64,
+    pub event: Option<DomainEventEnvelope>,
+}
+
 #[async_trait]
 pub trait IGithubConnectionRepository: Send + Sync {
     async fn begin_flow(
@@ -63,6 +69,17 @@ pub trait IGithubConnectionRepository: Send + Sync {
         &self,
         installation_id: GithubInstallationId,
     ) -> Result<Option<GithubConnection>, RepositoryError>;
+
+    async fn find_provider_check_candidates(
+        &self,
+        due_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GithubConnection>, RepositoryError>;
+
+    async fn save_provider_reconciliation(
+        &self,
+        request: PersistGithubProviderReconciliation,
+    ) -> Result<GithubConnection, RepositoryError>;
 
     async fn reconcile_lifecycle(
         &self,
