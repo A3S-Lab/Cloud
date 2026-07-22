@@ -1,5 +1,7 @@
 use super::*;
-use crate::modules::shared_kernel::domain::{OrganizationId, SourceConnectionId};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, OrganizationId, SourceConnectionId,
+};
 use crate::modules::sources::domain::{
     CompleteGithubConnection, GitProvider, GithubAccountId, GithubAccountKind,
     GithubConnectionFlow, GithubConnectionLifecycleChange, GithubConnectionStatus,
@@ -43,7 +45,7 @@ impl IGithubInstallationAuthorityProvider for ProviderFixture {
 
 #[tokio::test]
 async fn periodic_authority_repairs_missed_suspend_and_unsuspend() {
-    let connected_at = Utc::now();
+    let connected_at = canonical_timestamp(Utc::now());
     let repository = Arc::new(InMemoryGithubConnectionRepository::new());
     let connection = connect(&repository, connected_at).await;
     let account = account(&connection, "A3S-Platform");
@@ -100,7 +102,7 @@ async fn periodic_authority_repairs_missed_suspend_and_unsuspend() {
 
 #[tokio::test]
 async fn on_demand_authority_fails_closed_and_persists_bounded_backoff() {
-    let connected_at = Utc::now();
+    let connected_at = canonical_timestamp(Utc::now());
     let repository = Arc::new(InMemoryGithubConnectionRepository::new());
     let connection = connect(&repository, connected_at).await;
     let provider = Arc::new(ProviderFixture::new([
@@ -176,7 +178,7 @@ async fn authoritative_deletion_and_account_change_are_terminal() {
             GithubConnectionStatus::AccountChanged,
         ),
     ] {
-        let connected_at = Utc::now();
+        let connected_at = canonical_timestamp(Utc::now());
         let repository = Arc::new(InMemoryGithubConnectionRepository::new());
         let connection = connect(&repository, connected_at).await;
         let observation = match authority {
@@ -217,7 +219,7 @@ async fn authoritative_deletion_and_account_change_are_terminal() {
 
 #[tokio::test]
 async fn provider_repairs_an_unconfirmed_delayed_terminal_webhook() {
-    let connected_at = Utc::now();
+    let connected_at = canonical_timestamp(Utc::now());
     let repository = Arc::new(InMemoryGithubConnectionRepository::new());
     let connection = connect(&repository, connected_at).await;
     let lifecycle_at = connected_at + ChronoDuration::seconds(1);
