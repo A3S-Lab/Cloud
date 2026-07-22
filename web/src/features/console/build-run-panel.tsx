@@ -1,16 +1,24 @@
-import { Ban, Boxes, Hammer } from 'lucide-react';
+import { Ban, Boxes, Hammer, SquareTerminal } from 'lucide-react';
 import type { BuildRun, BuildRunStatus } from '../../types/api';
 import { compactDigest, formatRelative, humanize, shortId } from './console-format';
 
 interface BuildRunPanelProps {
   buildRuns: BuildRun[];
+  selectedBuildRunId: string | null;
   cancellingBuildRunId: string | null;
+  onSelect: (buildRunId: string) => void;
   onCancel: (buildRunId: string) => void;
 }
 
 const TERMINAL_STATUSES = new Set<BuildRunStatus>(['succeeded', 'failed', 'cancelled']);
 
-export function BuildRunPanel({ buildRuns, cancellingBuildRunId, onCancel }: BuildRunPanelProps) {
+export function BuildRunPanel({
+  buildRuns,
+  selectedBuildRunId,
+  cancellingBuildRunId,
+  onSelect,
+  onCancel,
+}: BuildRunPanelProps) {
   const ordered = [...buildRuns].sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
 
   return (
@@ -35,8 +43,9 @@ export function BuildRunPanel({ buildRuns, cancellingBuildRunId, onCancel }: Bui
           {ordered.map((buildRun) => {
             const terminal = TERMINAL_STATUSES.has(buildRun.status);
             const cancelling = cancellingBuildRunId === buildRun.id || buildRun.status === 'cancelling';
+            const selected = selectedBuildRunId === buildRun.id;
             return (
-              <article className='build-run-item' key={buildRun.id}>
+              <article className={`build-run-item${selected ? ' selected' : ''}`} key={buildRun.id}>
                 <div className='build-run-heading'>
                   <div>
                     <strong>Build {shortId(buildRun.id)}</strong>
@@ -76,8 +85,16 @@ export function BuildRunPanel({ buildRuns, cancellingBuildRunId, onCancel }: Bui
                   <code className='build-artifact-uri'>{buildRun.publishedArtifact.uri}</code>
                 ) : null}
                 {buildRun.failure ? <output className='build-run-failure'>{buildRun.failure}</output> : null}
-                {!terminal ? (
-                  <div className='build-run-actions'>
+                <div className='build-run-actions'>
+                  <button
+                    className='secondary-button compact'
+                    type='button'
+                    aria-pressed={selected}
+                    onClick={() => onSelect(buildRun.id)}
+                  >
+                    <SquareTerminal size={13} /> {selected ? 'Viewing logs' : 'View logs'}
+                  </button>
+                  {!terminal ? (
                     <button
                       className='danger-button compact'
                       type='button'
@@ -86,8 +103,8 @@ export function BuildRunPanel({ buildRuns, cancellingBuildRunId, onCancel }: Bui
                     >
                       <Ban size={13} /> {cancelling ? 'Cancelling' : 'Cancel build'}
                     </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </article>
             );
           })}

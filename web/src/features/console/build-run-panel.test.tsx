@@ -24,12 +24,15 @@ describe('BuildRunPanel', () => {
     const host = document.getElementById('root');
     if (!host) throw new Error('test root is missing');
     const onCancel = vi.fn();
+    const onSelect = vi.fn();
     root = createRoot(host);
     await act(async () => {
       root?.render(
         <BuildRunPanel
           buildRuns={[buildRun('running'), buildRun('succeeded', 'build-succeeded')]}
+          selectedBuildRunId='build-running'
           cancellingBuildRunId={null}
+          onSelect={onSelect}
           onCancel={onCancel}
         />
       );
@@ -43,6 +46,12 @@ describe('BuildRunPanel', () => {
     expect(cancelButtons).toHaveLength(1);
     await act(async () => cancelButtons[0]?.click());
     expect(onCancel).toHaveBeenCalledWith('build-running');
+    const viewButtons = [...host.querySelectorAll('button')].filter((button) =>
+      button.textContent?.includes('View logs')
+    );
+    expect(viewButtons).toHaveLength(1);
+    await act(async () => viewButtons[0]?.click());
+    expect(onSelect).toHaveBeenCalledWith('build-succeeded');
   });
 });
 

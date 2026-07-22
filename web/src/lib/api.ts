@@ -220,6 +220,17 @@ export class CloudApi {
     );
   }
 
+  buildRunLogStreamUrl(organizationId: string, buildRunId: string, stream?: WorkloadLogStreamFilter): string {
+    const query = new URLSearchParams({ limit: '16' });
+    if (stream) {
+      query.set('stream', stream);
+    }
+    return (
+      `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}` +
+      `/build-runs/${encodeURIComponent(buildRunId)}/logs/stream?${query.toString()}`
+    );
+  }
+
   private async get<T>(path: string, signal?: AbortSignal): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       headers: {

@@ -350,4 +350,15 @@ describe('CloudApi', () => {
     );
     expect(url).not.toContain('a3s_secret');
   });
+
+  it('builds a tenant-scoped build-log URL without putting the token in it', () => {
+    const api = new CloudApi('a3s_secret');
+
+    const url = api.buildRunLogStreamUrl('organization / one', 'build / one', 'stdout');
+
+    expect(url).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/build-runs/build%20%2F%20one/logs/stream?limit=16&stream=stdout'
+    );
+    expect(url).not.toContain('a3s_secret');
+  });
 });
