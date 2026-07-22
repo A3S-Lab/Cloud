@@ -1,8 +1,14 @@
-use super::super::{BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime};
+use super::super::{
+    BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
+};
+use crate::modules::artifacts::application::{
+    BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
+};
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildInputPreparationError, BuildOutputValidationError, BuildRun,
-    IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository, OciDescriptor,
-    PreparedBuildInput, ValidatedOciBuildOutput,
+    BuildArtifact, BuildArtifactPublicationError, BuildInputPreparationError,
+    BuildOutputValidationError, BuildRun, IBuildArtifactPublisher, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, OciDescriptor, OciPublicationRequest,
+    OciPublicationTarget, PreparedBuildInput, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
@@ -38,6 +44,7 @@ use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 pub(super) const BUILDER_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
@@ -50,6 +57,7 @@ pub(super) struct BuildFixture {
     pub nodes: Arc<InMemoryNodeRepository>,
     pub inputs: Arc<RecordingInputPreparer>,
     pub outputs: Arc<RecordingOutputValidator>,
+    pub publisher: Arc<RecordingPublisher>,
     pub node_id: NodeId,
     pub agent_instance_id: Uuid,
     pub capabilities: RuntimeCapabilities,
@@ -115,19 +123,24 @@ impl BuildFixture {
             runtime_output,
             output_failure,
         ));
+        let publisher = Arc::new(RecordingPublisher::new());
         let build_port: Arc<dyn IBuildRunRepository> = builds.clone();
         let source_port: Arc<dyn ISourceRevisionRepository> = sources.clone();
         let input_port: Arc<dyn IBuildInputPreparer> = inputs.clone();
         let output_port: Arc<dyn IBuildOutputValidator> = outputs.clone();
+        let publisher_port: Arc<dyn IBuildArtifactPublisher> = publisher.clone();
         let node_port: Arc<dyn INodeRepository> = nodes.clone();
         let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
         let runtime = BuildFlowRuntime::new(
-            build_port,
-            source_port,
-            input_port,
-            output_port,
-            node_port,
-            control_port,
+            BuildFlowRuntimeDependencies {
+                builds: build_port,
+                sources: source_port,
+                inputs: input_port,
+                outputs: output_port,
+                publisher: publisher_port,
+                nodes: node_port,
+                node_control: control_port,
+            },
             config()?,
         );
         Ok(Self {
@@ -138,6 +151,7 @@ impl BuildFixture {
             nodes,
             inputs,
             outputs,
+            publisher,
             node_id,
             agent_instance_id,
             capabilities,
@@ -168,6 +182,7 @@ pub(super) fn config() -> Result<BuildFlowConfig, String> {
         observation_poll_ms: 1,
         convergence_timeout_ms: 60_000,
         cleanup_timeout_ms: 30_000,
+        publication_timeout_ms: 30_000,
         cpu_millis: 1_000,
         memory_bytes: 512 * 1024 * 1024,
         pids: 256,
@@ -176,7 +191,21 @@ pub(super) fn config() -> Result<BuildFlowConfig, String> {
 }
 
 pub(super) fn workflow_spec() -> WorkflowSpec {
-    WorkflowSpec::rust_embedded("cloud.build", "1", "a3s-cloud", "main")
+    WorkflowSpec::rust_embedded(
+        BUILD_WORKFLOW_NAME,
+        BUILD_WORKFLOW_VERSION,
+        "a3s-cloud",
+        "main",
+    )
+}
+
+pub(super) fn legacy_workflow_spec() -> WorkflowSpec {
+    WorkflowSpec::rust_embedded(
+        BUILD_WORKFLOW_NAME,
+        LEGACY_BUILD_WORKFLOW_VERSION,
+        "a3s-cloud",
+        "main",
+    )
 }
 
 pub(super) fn artifact(digest_character: char, size_bytes: u64) -> Result<BuildArtifact, String> {
@@ -537,6 +566,90 @@ impl IBuildOutputValidator for RecordingOutputValidator {
             content_bytes: 2048,
             blob_count: 3,
         })
+    }
+}
+
+pub(super) struct RecordingPublisher {
+    publications: AtomicUsize,
+    lookups: AtomicUsize,
+    published: AtomicBool,
+    pause_next_publication: AtomicBool,
+    publication_started: Notify,
+    publication_release: Notify,
+}
+
+impl RecordingPublisher {
+    fn new() -> Self {
+        Self {
+            publications: AtomicUsize::new(0),
+            lookups: AtomicUsize::new(0),
+            published: AtomicBool::new(false),
+            pause_next_publication: AtomicBool::new(false),
+            publication_started: Notify::new(),
+            publication_release: Notify::new(),
+        }
+    }
+
+    pub(super) fn publications(&self) -> usize {
+        self.publications.load(Ordering::SeqCst)
+    }
+
+    pub(super) fn lookups(&self) -> usize {
+        self.lookups.load(Ordering::SeqCst)
+    }
+
+    pub(super) fn pause_next_publication(&self) {
+        self.pause_next_publication.store(true, Ordering::SeqCst);
+    }
+
+    pub(super) async fn wait_for_publication(&self) {
+        self.publication_started.notified().await;
+    }
+
+    pub(super) fn resume_publication(&self) {
+        self.publication_release.notify_one();
+    }
+}
+
+#[async_trait]
+impl IBuildArtifactPublisher for RecordingPublisher {
+    fn target_for(
+        &self,
+        build: &BuildRun,
+    ) -> Result<OciPublicationTarget, BuildArtifactPublicationError> {
+        let output = build.output.as_ref().ok_or_else(|| {
+            BuildArtifactPublicationError::Invalid("test build output is missing".into())
+        })?;
+        OciPublicationTarget::new(
+            "registry.example",
+            format!("a3s-cloud/builds/{}", build.id),
+            output.descriptor.clone(),
+        )
+        .map_err(BuildArtifactPublicationError::Invalid)
+    }
+
+    async fn find(
+        &self,
+        request: &OciPublicationRequest,
+    ) -> Result<Option<PublishedOciArtifact>, BuildArtifactPublicationError> {
+        self.lookups.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .published
+            .load(Ordering::SeqCst)
+            .then(|| PublishedOciArtifact::from_target(&request.target)))
+    }
+
+    async fn publish(
+        &self,
+        request: &OciPublicationRequest,
+    ) -> Result<PublishedOciArtifact, BuildArtifactPublicationError> {
+        self.publications.fetch_add(1, Ordering::SeqCst);
+        self.published.store(true, Ordering::SeqCst);
+        if self.pause_next_publication.swap(false, Ordering::SeqCst) {
+            self.publication_started.notify_one();
+            self.publication_release.notified().await;
+        }
+        Ok(PublishedOciArtifact::from_target(&request.target))
     }
 }
 

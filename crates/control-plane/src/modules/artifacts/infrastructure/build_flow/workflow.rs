@@ -2,16 +2,21 @@ use super::types::{
     BuildFlowInput, CleanupDispatchStepInput, CleanupDispatchStepOutput, CleanupObserveStepInput,
     CleanupObserveStepOutput, CompleteStepInput, CompleteStepOutput, DispatchStepInput,
     DispatchStepOutput, FailStepInput, FailStepOutput, ObserveStepInput, ObserveStepOutput,
-    PrepareStepOutput, ScheduleStepInput, ScheduleStepOutput, ScheduledBuild, ValidateStepInput,
+    PreparePublicationStepInput, PreparePublicationStepOutput, PrepareStepOutput, PublishStepInput,
+    PublishStepOutput, ScheduleStepInput, ScheduleStepOutput, ScheduledBuild, ValidateStepInput,
     ValidateStepOutput,
 };
 use super::BuildFlowConfig;
-use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
+use crate::modules::artifacts::application::{
+    BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
+};
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
 const PREPARE_STEP_ID: &str = "prepare";
 const DISPATCH_STEP_ID: &str = "dispatch";
 const VALIDATE_STEP_ID: &str = "validate";
+const PREPARE_PUBLICATION_STEP_ID: &str = "publication-target";
+const PUBLISH_STEP_ID: &str = "publish";
 const FAIL_STEP_ID: &str = "fail";
 const COMPLETE_STEP_ID: &str = "complete";
 
@@ -19,14 +24,22 @@ pub(super) fn replay(
     config: &BuildFlowConfig,
     invocation: WorkflowInvocation,
 ) -> a3s_flow::Result<RuntimeCommand> {
-    if invocation.spec.name != BUILD_WORKFLOW_NAME
-        || invocation.spec.version != BUILD_WORKFLOW_VERSION
-    {
+    if invocation.spec.name != BUILD_WORKFLOW_NAME {
         return Err(FlowError::Runtime(format!(
             "Cloud has no build workflow runtime for {}@{}",
             invocation.spec.name, invocation.spec.version
         )));
     }
+    let requires_publication = match invocation.spec.version.as_str() {
+        BUILD_WORKFLOW_VERSION => true,
+        LEGACY_BUILD_WORKFLOW_VERSION => false,
+        _ => {
+            return Err(FlowError::Runtime(format!(
+                "Cloud has no build workflow runtime for {}@{}",
+                invocation.spec.name, invocation.spec.version
+            )))
+        }
+    };
     let context = invocation.context();
     let input = context.input_as::<BuildFlowInput>()?;
     if let Some(completed) = context.step_output_as::<CompleteStepOutput>(COMPLETE_STEP_ID)? {
@@ -107,28 +120,95 @@ pub(super) fn replay(
                         Progress::Command(command) => return Ok(command),
                     };
                     if let Some(artifact) = artifact {
-                        match context.step_output_as::<ValidateStepOutput>(VALIDATE_STEP_ID)? {
-                            Some(ValidateStepOutput::Ready { .. }) => {
-                                terminal_intent = Some(TerminalIntent::Success)
-                            }
-                            Some(ValidateStepOutput::Failed { reason }) => {
-                                return failure_command(config, &context, &input, reason)
-                            }
-                            Some(ValidateStepOutput::CancellationRequested) => {
-                                terminal_intent = Some(TerminalIntent::Cancellation)
-                            }
-                            None => {
-                                return stage_or_failure(
-                                    config,
-                                    &context,
-                                    &input,
-                                    VALIDATE_STEP_ID,
-                                    "build_validate_output",
-                                    &ValidateStepInput {
-                                        flow: input.clone(),
-                                        artifact,
-                                    },
-                                )
+                        let output =
+                            match context.step_output_as::<ValidateStepOutput>(VALIDATE_STEP_ID)? {
+                                Some(ValidateStepOutput::Ready { output }) => Some(output),
+                                Some(ValidateStepOutput::Failed { reason }) => {
+                                    return failure_command(config, &context, &input, reason)
+                                }
+                                Some(ValidateStepOutput::CancellationRequested) => {
+                                    terminal_intent = Some(TerminalIntent::Cancellation);
+                                    None
+                                }
+                                None => {
+                                    return stage_or_failure(
+                                        config,
+                                        &context,
+                                        &input,
+                                        VALIDATE_STEP_ID,
+                                        "build_validate_output",
+                                        &ValidateStepInput {
+                                            flow: input.clone(),
+                                            artifact,
+                                        },
+                                    )
+                                }
+                            };
+                        if let Some(output) = output {
+                            if !requires_publication {
+                                terminal_intent = Some(TerminalIntent::Success);
+                            } else {
+                                let publication = match context
+                                    .step_output_as::<PreparePublicationStepOutput>(
+                                        PREPARE_PUBLICATION_STEP_ID,
+                                    )? {
+                                    Some(PreparePublicationStepOutput::Ready {
+                                        target,
+                                        deadline_at,
+                                    }) => Some((target, deadline_at)),
+                                    Some(PreparePublicationStepOutput::Failed { reason }) => {
+                                        return failure_command(config, &context, &input, reason)
+                                    }
+                                    Some(PreparePublicationStepOutput::CancellationRequested) => {
+                                        terminal_intent = Some(TerminalIntent::Cancellation);
+                                        None
+                                    }
+                                    None => {
+                                        return stage_or_failure(
+                                            config,
+                                            &context,
+                                            &input,
+                                            PREPARE_PUBLICATION_STEP_ID,
+                                            "build_prepare_publication",
+                                            &PreparePublicationStepInput {
+                                                flow: input.clone(),
+                                                output: output.clone(),
+                                            },
+                                        )
+                                    }
+                                };
+                                if let Some((target, deadline_at)) = publication {
+                                    match context
+                                        .step_output_as::<PublishStepOutput>(PUBLISH_STEP_ID)?
+                                    {
+                                        Some(PublishStepOutput::Ready { .. }) => {
+                                            terminal_intent = Some(TerminalIntent::Success)
+                                        }
+                                        Some(PublishStepOutput::Failed { reason }) => {
+                                            return failure_command(
+                                                config, &context, &input, reason,
+                                            )
+                                        }
+                                        Some(PublishStepOutput::CancellationRequested {
+                                            ..
+                                        }) => terminal_intent = Some(TerminalIntent::Cancellation),
+                                        None => {
+                                            return stage_or_failure(
+                                                config,
+                                                &context,
+                                                &input,
+                                                PUBLISH_STEP_ID,
+                                                "build_publish_output",
+                                                &PublishStepInput {
+                                                    flow: input.clone(),
+                                                    output,
+                                                    target,
+                                                    deadline_at,
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

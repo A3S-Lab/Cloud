@@ -142,6 +142,7 @@ pub(super) async fn complete(
         build_run_id: build.id,
         status: build.status,
         output: build.output,
+        published_artifact: build.published_artifact,
         failure: build.failure,
         finished_at: build
             .finished_at

@@ -133,7 +133,7 @@ registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
 The implemented G0 build boundary lives here rather than in Sources or Runtime.
-Its typed Build service and `cloud.build@1` Flow bind a build ID, checked-out
+Its typed Build service and `cloud.build@2` Flow bind a build ID, checked-out
 content digest, recipe, Runtime Task identity, and validated OCI root descriptor
 to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
 and requested platform before accepting the result. Registry locations,
@@ -735,13 +735,17 @@ The production Build Flow now coordinates this service boundary through an
 isolated Runtime Task: it replays the checkout, verifies package-time identity,
 admits immutable input bytes, selects a compatible node, applies independent
 Runtime and BuildKit network denials, validates the Runtime output, and removes
-the Task and checkout before terminal completion. It does not yet publish the
-image, record provenance, or hand a digest to Workloads. The Artifacts context
+the Task and checkout before terminal completion. Before cleanup it binds an
+immutable `OciPublicationTarget`, pushes blobs and manifests by digest, verifies
+the complete remote graph, and records one matching `PublishedOciArtifact`.
+Publication replay may adopt only that exact target; cancellation wins the
+terminal status but preserves evidence of a push that already completed. It
+does not yet record provenance or hand the published digest to Workloads. The Artifacts context
 owns one deterministic
 `BuildRun` per accepted source revision. It binds tenant/environment ownership,
-the exact `cloud.build@1` operation, immutable input and Runtime artifact
+the exact `cloud.build@2` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
-terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
+publication target/result, terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
 operation replay, and optimistic single-transition saves prevent duplicate or
 forged logical builds across process loss. The production worker runs the
 BuildRun reconciler and a closed Flow router dispatches only the supported
@@ -758,8 +762,8 @@ history, and prevent old subscriptions from inheriting a fresh connection.
 Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
 while the
 operator-credential external GitHub gate remains unexecuted. Authoritative
-provider polling, registry publication, provenance, and source-to-deployment
-handoff remain later G0 work.
+provider polling, provenance, and source-to-deployment handoff remain later G0
+work; authenticated registry publication is exercised independently in CI.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,

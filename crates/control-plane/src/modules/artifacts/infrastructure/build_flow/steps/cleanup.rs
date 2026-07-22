@@ -31,7 +31,7 @@ pub(super) async fn dispatch(
     }
     if !matches!(
         build.status,
-        BuildRunStatus::Validating | BuildRunStatus::Cancelling | BuildRunStatus::CleanupPending
+        BuildRunStatus::Publishing | BuildRunStatus::Cancelling | BuildRunStatus::CleanupPending
     ) {
         return Err(FlowError::Runtime(format!(
             "build cannot clean up from {}",

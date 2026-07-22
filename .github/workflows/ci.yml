@@ -442,16 +442,21 @@ jobs:
           docker image rm --force "$image_id"
           ! docker image inspect "$private_reference" >/dev/null 2>&1
 
-      - name: Exercise PostgreSQL-backed Secret injection and redacted logs
+      - name: Exercise registry publication, PostgreSQL Secrets, and redacted logs
         env:
           A3S_CLOUD_TEST_DOCKER: "1"
           A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
           A3S_CLOUD_TEST_POSTGRES_URL: postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/postgres
+          A3S_CLOUD_TEST_REGISTRY_URL: http://127.0.0.1:50030/
           A3S_CLOUD_TEST_SECRET_MEMORY_DIR: /dev/shm/a3s-cloud/ci-secret-logs
           A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
           A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
         run: |
           install -d -m 0700 "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR"
+          cargo test -p a3s-cloud-control-plane \
+            --test oci_registry_integration --locked \
+            real_private_registry_publishes_and_replays_a_validated_oci_graph \
+            -- --exact --nocapture --test-threads=1
           cargo test -p a3s-cloud-control-plane --test postgres_integration --locked --no-run
           test_binary=$(find target/debug/deps -maxdepth 1 -type f \
             -name 'postgres_integration-*' -perm -111 -print -quit)

@@ -318,6 +318,11 @@ fn config() -> CloudConfig {
         registry: RegistryConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
+            publication_registry: "127.0.0.1:5000".into(),
+            publication_repository_prefix: "a3s-cloud/builds".into(),
+            publication_credential_env: String::new(),
+            publication_allow_anonymous: true,
+            publication_timeout_ms: 60_000,
         },
         sources: SourcesConfig {
             github_request_timeout_ms: 10_000,

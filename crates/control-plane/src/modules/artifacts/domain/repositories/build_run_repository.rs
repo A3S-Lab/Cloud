@@ -94,6 +94,16 @@ pub(crate) fn validate_build_run_transition(
                 candidate.record_validated_output(output.clone(), at)
             })
         })
+        || next.publication_target.as_ref().is_some_and(|target| {
+            matches_transition(existing, next, |candidate| {
+                candidate.begin_publication(target.clone(), at)
+            })
+        })
+        || next.published_artifact.as_ref().is_some_and(|artifact| {
+            matches_transition(existing, next, |candidate| {
+                candidate.record_published_artifact(artifact.clone(), at)
+            })
+        })
         || next.failure.as_ref().is_some_and(|failure| {
             matches_transition(existing, next, |candidate| {
                 candidate.record_failure(failure.clone(), at)

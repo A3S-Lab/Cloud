@@ -9,7 +9,8 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 pub const BUILD_WORKFLOW_NAME: &str = "cloud.build";
-pub const BUILD_WORKFLOW_VERSION: &str = "1";
+pub const BUILD_WORKFLOW_VERSION: &str = "2";
+pub const LEGACY_BUILD_WORKFLOW_VERSION: &str = "1";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BuildRunReconcileReport {

@@ -3,6 +3,7 @@ use crate::modules::artifacts::domain::{
     BuildArtifact, BuildOutputValidationError, BuildServiceError, IBuildOutputValidator,
     INodeArtifactStore, NodeArtifactStoreError, ValidatedOciBuildOutput,
 };
+use crate::modules::sources::domain::BuildPlatform;
 use crate::modules::sources::domain::BuildRecipe;
 use a3s_cloud_contracts::{validate_cloud_artifact, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
 use a3s_runtime::contract::ArtifactRef;
@@ -27,6 +28,17 @@ pub struct RuntimeBuildOutputValidator {
     max_expanded_bytes: u64,
     max_blobs: usize,
     max_oci_bytes: u64,
+}
+
+pub(super) struct MaterializedRuntimeBuildOutput {
+    staging_directory: PathBuf,
+    pub(super) validated: ValidatedBuildkitOutput,
+}
+
+impl MaterializedRuntimeBuildOutput {
+    pub(super) async fn cleanup(self) {
+        let _ = tokio::fs::remove_dir_all(self.staging_directory).await;
+    }
 }
 
 impl RuntimeBuildOutputValidator {
@@ -157,6 +169,57 @@ impl RuntimeBuildOutputValidator {
         })??;
         locate_export_root(&extracted)
     }
+
+    async fn materialize_validated(
+        &self,
+        artifact: &BuildArtifact,
+        expected_platforms: &[BuildPlatform],
+    ) -> Result<MaterializedRuntimeBuildOutput, BuildOutputValidationError> {
+        let root = ensure_staging_root(&self.staging_root).await?;
+        let staging = root.join(Uuid::now_v7().to_string());
+        tokio::fs::create_dir(&staging).await.map_err(storage)?;
+        let result = async {
+            let exported = self.materialize(artifact, &staging).await?;
+            validate_exported_output(
+                &exported,
+                expected_platforms,
+                self.max_blobs,
+                self.max_oci_bytes,
+            )
+            .await
+            .map_err(map_build_error)
+        }
+        .await;
+        match result {
+            Ok(validated) => Ok(MaterializedRuntimeBuildOutput {
+                staging_directory: staging,
+                validated,
+            }),
+            Err(error) => {
+                let _ = tokio::fs::remove_dir_all(&staging).await;
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) async fn materialize_validated_output(
+        &self,
+        expected: &ValidatedOciBuildOutput,
+    ) -> Result<MaterializedRuntimeBuildOutput, BuildOutputValidationError> {
+        expected
+            .validate()
+            .map_err(BuildOutputValidationError::Invalid)?;
+        let materialized = self
+            .materialize_validated(&expected.artifact, &expected.platforms)
+            .await?;
+        if validated_output(&expected.artifact, &materialized.validated) != *expected {
+            materialized.cleanup().await;
+            return Err(BuildOutputValidationError::Integrity(
+                "Runtime OCI output changed after validation".into(),
+            ));
+        }
+        Ok(materialized)
+    }
 }
 
 #[async_trait]
@@ -170,35 +233,23 @@ impl IBuildOutputValidator for RuntimeBuildOutputValidator {
             .clone()
             .validate()
             .map_err(BuildOutputValidationError::Invalid)?;
-        let root = ensure_staging_root(&self.staging_root).await?;
-        let staging = root.join(Uuid::now_v7().to_string());
-        tokio::fs::create_dir(&staging).await.map_err(storage)?;
-        let result = async {
-            let exported = self.materialize(artifact, &staging).await?;
-            let validated = validate_exported_output(
-                &exported,
-                recipe.platforms(),
-                self.max_blobs,
-                self.max_oci_bytes,
-            )
-            .await
-            .map_err(map_build_error)?;
-            Ok(validated_output(artifact, validated))
-        }
-        .await;
-        let _ = tokio::fs::remove_dir_all(&staging).await;
-        result
+        let materialized = self
+            .materialize_validated(artifact, recipe.platforms())
+            .await?;
+        let output = validated_output(artifact, &materialized.validated);
+        materialized.cleanup().await;
+        Ok(output)
     }
 }
 
 fn validated_output(
     artifact: &BuildArtifact,
-    output: ValidatedBuildkitOutput,
+    output: &ValidatedBuildkitOutput,
 ) -> ValidatedOciBuildOutput {
     ValidatedOciBuildOutput {
         artifact: artifact.clone(),
-        descriptor: output.descriptor,
-        platforms: output.platforms,
+        descriptor: output.descriptor.clone(),
+        platforms: output.platforms.clone(),
         content_bytes: output.content_bytes,
         blob_count: output.blob_count,
     }

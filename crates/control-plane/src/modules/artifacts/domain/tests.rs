@@ -1,6 +1,6 @@
 use super::{
-    BuildArtifact, BuildRun, BuildRunStatus, OciBuildRequest, OciDescriptor,
-    ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, BuildRunStatus, OciBuildRequest, OciDescriptor, OciPublicationTarget,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
@@ -193,27 +193,50 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         .record_validated_output(output.clone(), requested_at + Duration::milliseconds(13))
         .expect("replay validated output");
     assert_eq!(build, validated);
+    let target = OciPublicationTarget::new(
+        "registry.example",
+        format!("a3s-cloud/builds/{}", build.id),
+        output.descriptor.clone(),
+    )
+    .expect("publication target");
+    build
+        .begin_publication(target.clone(), requested_at + Duration::milliseconds(14))
+        .expect("begin publication");
+    let publishing = build.clone();
+    build
+        .begin_publication(target.clone(), requested_at + Duration::milliseconds(15))
+        .expect("replay publication target");
+    assert_eq!(build, publishing);
+    let published = PublishedOciArtifact::from_target(&target);
+    build
+        .record_published_artifact(published.clone(), requested_at + Duration::milliseconds(16))
+        .expect("record publication");
+    let projected = build.clone();
+    build
+        .record_published_artifact(published.clone(), requested_at + Duration::milliseconds(17))
+        .expect("replay publication");
+    assert_eq!(build, projected);
     let cleanup_command_id = NodeCommandId::new();
     build
         .begin_cleanup(
             cleanup_command_id,
-            requested_at + Duration::milliseconds(14),
+            requested_at + Duration::milliseconds(18),
         )
         .expect("begin cleanup");
     let cleanup = build.clone();
     build
         .begin_cleanup(
             cleanup_command_id,
-            requested_at + Duration::milliseconds(15),
+            requested_at + Duration::milliseconds(19),
         )
         .expect("replay cleanup");
     assert_eq!(build, cleanup);
     build
-        .complete(requested_at + Duration::milliseconds(16))
+        .complete(requested_at + Duration::milliseconds(20))
         .expect("complete");
     let completed = build.clone();
     build
-        .complete(requested_at + Duration::milliseconds(17))
+        .complete(requested_at + Duration::milliseconds(21))
         .expect("replay completion");
     assert_eq!(build, completed);
 
@@ -221,7 +244,29 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
     assert_eq!(build.node_id, Some(node_id));
     assert_eq!(build.command_id, Some(command_id));
     assert_eq!(build.output, Some(output));
+    assert_eq!(build.publication_target, Some(target));
+    assert_eq!(build.published_artifact, Some(published));
     BuildRun::restore(build).expect("restore valid build run");
+}
+
+#[test]
+fn build_run_records_a_completed_publication_across_cancellation() {
+    let now = Utc::now();
+    let mut build = publishing_build(now);
+    let target = build
+        .publication_target
+        .clone()
+        .expect("publication target");
+    build
+        .request_cancellation(now + Duration::milliseconds(8))
+        .expect("request cancellation");
+    let published = PublishedOciArtifact::from_target(&target);
+    build
+        .record_published_artifact(published.clone(), now + Duration::milliseconds(9))
+        .expect("adopt publication after cancellation");
+    assert_eq!(build.status, BuildRunStatus::Cancelling);
+    assert_eq!(build.published_artifact, Some(published));
+    BuildRun::restore(build).expect("restore cancelling published build");
 }
 
 #[test]
@@ -283,4 +328,65 @@ fn artifact(fill: char) -> BuildArtifact {
         1024,
     )
     .expect("artifact")
+}
+
+fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
+    let mut build = BuildRun::reserve(
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        SourceRevisionId::new(),
+        now,
+    );
+    build
+        .begin_preparation(now + Duration::milliseconds(1))
+        .expect("preparing build");
+    build
+        .record_input(
+            format!("sha256:{}", "b".repeat(64)),
+            artifact('a'),
+            now + Duration::milliseconds(2),
+        )
+        .expect("prepared input");
+    build
+        .schedule(
+            NodeId::new(),
+            format!("sha256:{}", "c".repeat(64)),
+            now + Duration::milliseconds(3),
+        )
+        .expect("scheduled build");
+    build
+        .dispatch(NodeCommandId::new(), now + Duration::milliseconds(4))
+        .expect("dispatched build");
+    let runtime_output = artifact('d');
+    build
+        .begin_validation(runtime_output.clone(), now + Duration::milliseconds(5))
+        .expect("validating build");
+    let output = ValidatedOciBuildOutput {
+        artifact: runtime_output,
+        descriptor: OciDescriptor::new(
+            "application/vnd.oci.image.manifest.v1+json",
+            format!("sha256:{}", "e".repeat(64)),
+            123,
+        )
+        .expect("descriptor"),
+        platforms: vec![BuildPlatform::parse("linux/amd64").expect("platform")],
+        content_bytes: 456,
+        blob_count: 3,
+    };
+    build
+        .record_validated_output(output.clone(), now + Duration::milliseconds(6))
+        .expect("validated output");
+    build
+        .begin_publication(
+            OciPublicationTarget::new(
+                "registry.example",
+                format!("a3s-cloud/builds/{}", build.id),
+                output.descriptor,
+            )
+            .expect("publication target"),
+            now + Duration::milliseconds(7),
+        )
+        .expect("publishing build");
+    build
 }

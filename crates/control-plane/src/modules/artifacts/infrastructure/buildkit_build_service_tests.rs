@@ -1,5 +1,5 @@
 use super::metadata::read_buildkit_descriptor;
-use super::oci_layout::{validate_oci_layout, OciLayoutLimits};
+use super::oci_layout::{descriptor_depths, validate_oci_layout, OciLayoutLimits};
 use super::{BuildkitBuildService, BuildkitConnection};
 use crate::modules::artifacts::domain::{
     BuildServiceError, IBuildService, OciBuildRequest, OciDescriptor,
@@ -7,6 +7,7 @@ use crate::modules::artifacts::domain::{
 use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::TempDir;
@@ -23,6 +24,24 @@ fn buildkit_connection_rejects_unauthenticated_remote_tcp() {
     assert!(BuildkitConnection::insecure_loopback_for_conformance("tcp://192.0.2.1:1234").is_err());
     assert!(BuildkitConnection::unix("unix:///run/buildkit/buildkitd.sock").is_ok());
     assert!(BuildkitConnection::unix("tcp://127.0.0.1:1234").is_err());
+}
+
+#[test]
+fn publication_depths_follow_the_longest_path_through_a_shared_manifest_graph() {
+    let dependencies = HashMap::from([
+        (
+            "root".to_owned(),
+            vec!["shared".to_owned(), "branch".to_owned()],
+        ),
+        ("branch".to_owned(), vec!["shared".to_owned()]),
+        ("shared".to_owned(), vec!["child".to_owned()]),
+    ]);
+
+    let depths = descriptor_depths("root", &dependencies).expect("descriptor depths");
+    assert_eq!(depths["root"], 0);
+    assert_eq!(depths["branch"], 1);
+    assert_eq!(depths["shared"], 2);
+    assert_eq!(depths["child"], 3);
 }
 
 #[tokio::test]

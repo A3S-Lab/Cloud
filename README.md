@@ -167,7 +167,7 @@ API command
   only to authenticated resolution or one isolated Git fetch; tokens, keys,
   URLs, receipts, responses, events, and source state remain credential-free
 - **Durable Build Intent**: Reserve one deterministic, tenant-owned build run
-  for each accepted source revision, bind it to one `cloud.build@1` operation,
+  for each accepted source revision, bind it to one `cloud.build@2` operation,
   enforce exact replay and optimistic state transitions, and repair the
   source-commit-to-operation crash gap without duplicating logical work
 - **Isolated Build Flow**: Replay the exact accepted Git checkout into a
@@ -186,6 +186,11 @@ API command
   OCI image layout, verify the BuildKit descriptor plus every referenced
   SHA-256 blob and requested platform, and atomically replay or reject the
   resulting content receipt
+- **Authoritative OCI Publication**: Persist one deterministic registry,
+  repository, digest, media type, and size before any push; revalidate the
+  complete local graph, stream blobs before child manifests and the root,
+  verify every registry descriptor, and adopt an already-pushed graph across
+  Flow event loss, transient responses, cancellation races, or process replay
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
@@ -208,7 +213,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, and full OCI graph validation are implemented. The production worker now reconciles each revision into `cloud.build@1`; that Flow performs credential-free checkout replay, deterministic input packaging, capability-based Task placement, a digest-pinned BuildKit Runtime Task with two independent network denials, exact output admission/validation, deterministic Runtime removal, and checkout cleanup. Crash-window tests prove dispatch replay does not duplicate Runtime apply/remove side effects. A real Runtime/BuildKit/Docker gate is implemented but requires an operator-provisioned shared socket volume and has not been executed in this workspace. Periodic authoritative provider polling and checkout-time lifecycle revalidation, external private-repository certification, registry publication, provenance/SBOM/signing, build logs/UI, and push-to-deploy remain | In progress (`G0` isolated build slice) |
+| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, and authoritative digest-only registry publication are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; legacy `cloud.build@1` remains registered only to drain upgrade-invalidated work safely. Unit protocol gates cover single and multi-platform graphs, Basic/Bearer authentication, hostile responses, partial publication, and crash replay; CI pushes through an authenticated private Distribution registry. A real Runtime/BuildKit/Docker gate still requires an operator-provisioned shared socket volume and has not been executed in this workspace. Periodic authoritative provider polling, checkout-time lifecycle revalidation, external private-repository certification, provenance/SBOM/signing, source-to-deployment handoff, build logs/API/Web, and cache trust gates remain | In progress (`G0` registry-publication slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -344,7 +349,7 @@ The public GitHub CI gate and local authenticated smart-HTTP fixture exercise
 these boundaries. An ignored operator-supplied test covers the real private
 GitHub path, but no external private-repository result is claimed here.
 The Artifacts context reserves one deterministic durable build run for this
-revision and the production worker repairs the source-commit-to-`cloud.build@1`
+revision and the production worker repairs the source-commit-to-`cloud.build@2`
 operation crash gap exactly once. The registered Build Flow replays the
 credential-free checkout, packages and admits a deterministic source Artifact,
 selects only a node that supports the complete Runtime Task profile and builder
@@ -353,9 +358,10 @@ socket mounts are read-only; the client container uses Runtime
 `NetworkMode::None`, while every BuildKit `RUN` uses
 `force-network-mode=none`. Docker captures the declared OCI directory output,
 the control plane rehashes the Artifact and validates its complete reachable
-OCI graph, and terminal completion follows deterministic Runtime removal plus
-checkout cleanup. Registry publication and deployment handoff remain separate
-G0 boundaries.
+OCI graph. It then persists a deterministic digest-only publication target,
+streams and verifies the graph in the configured OCI registry, and records the
+published descriptor before deterministic Runtime removal and checkout cleanup.
+Provenance and deployment handoff remain separate G0 boundaries.
 
 List accepted revisions with:
 
@@ -730,6 +736,11 @@ deployment and Edge policies are split across independent boundaries:
 | `artifacts.max_expanded_bytes` (node agent) | Maximum total expanded bytes admitted from one archive |
 | `registry.request_timeout_ms` | Timeout for one registry request |
 | `registry.insecure_hosts` | Explicit development-only HTTP registry allowlist |
+| `registry.publication_registry` | Exact host and optional port receiving built OCI graphs |
+| `registry.publication_repository_prefix` | Lowercase repository prefix for tenant/project/environment/build-scoped publication |
+| `registry.publication_credential_env` | Uppercase environment-variable reference containing registry credential JSON; required in production |
+| `registry.publication_allow_anonymous` | Development-only opt-in for anonymous publication; mutually exclusive with a credential reference |
+| `registry.publication_timeout_ms` | Durable deadline for new push attempts; read-only outcome reconciliation may continue afterward |
 | `sources.github_request_timeout_ms` | Bound for one GitHub API request, including App-token issuance and authenticated resolution |
 | `sources.github_webhook_secret_env` | Uppercase environment-variable name containing the 32- to 512-byte GitHub HMAC secret; read for every request to permit rotation |
 | `sources.github_webhook_max_body_bytes` | Accepted signed webhook body limit from 1 KiB through 2 MiB |
@@ -1021,7 +1032,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@1` Runtime Task execution, dual network denial, OCI validation, and cleanup are implemented; authoritative polling, operator gate evidence, registry publication, provenance, deployment handoff, and external private-repository evidence remain) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, replay/cancellation adoption, and cleanup are implemented; authoritative polling, operator BuildKit evidence, provenance/SBOM/signing, deployment handoff, build surfaces, cache trust, and external private-repository evidence remain) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
@@ -1119,11 +1130,13 @@ PostgreSQL fixture accepts only typed full commit references through a
 deterministic test resolver; the dedicated GitHub source-resolution and Linux
 Secret/log jobs exercise the production GitHub adapter. One rootless BuildKit
 job certifies the typed local-context adapter. A separate operator gate now
-projects the production `cloud.build@1` Task, runs it through the real node
+projects the production `cloud.build@2` Task, runs it through the real node
 command journal and Docker Runtime, verifies the exact read-only socket volume,
 Docker network mode `none`, BuildKit `force-network-mode=none`, a failed `wget`
 attempt inside `RUN`, Artifact upload, full OCI validation, and Runtime removal.
-It does not claim registry publication. The real Docker
+That operator gate alone does not claim publication, but the separate private
+Distribution CI gate now exercises authenticated graph push, remote
+verification, and idempotent replay through the production publisher. The real Docker
 update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the
