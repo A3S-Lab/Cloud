@@ -228,6 +228,7 @@ API command
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
 | Stateful platform | Databases, volumes, verified backup/restore, and stateful Compose mappings | Planned (`S0`) |
 | Production scale | Replicas, multi-node placement, Gateway target sets, HA, and measured autoscaling | Planned (`H0`) |
+| Inference gateway | OpenAI-compatible data plane, certified local and external Providers, model and key self-service, weighted routing and fallback, usage showback, and grant-derived consumer, project-steward, and platform-operator console modes | Planned (`I0`) |
 
 ## Quick Start
 
@@ -1244,6 +1245,7 @@ security model, consistency boundaries, and failure recovery.
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
 | S0 — Stateful platform | Explicit databases and volumes with fencing, backup, restore, and retention | Planned |
 | H0 — Production scale | Durable replicas, multi-node placement, Gateway replication, HA, and measured autoscaling | Planned |
+| I0 — Inference gateway | OpenAI-compatible model serving, certified Providers, scoped keys, weighted routing and fallback, route diagnostics, usage showback, and a role-focused console over C0 grants | Planned |
 
 E0 is the first verified usable release: one control plane, one Linux node,
 Docker-backed stateless workloads, and a repeatable end-to-end deployment on a
@@ -1254,7 +1256,10 @@ cutover, durable stop, and exact cleanup back to the host baseline.
 With E0 verified, G0 source delivery, C0 control surfaces, and S0 stateful
 foundations may advance as independent lanes. P0 builds on G0, A0 reuses the
 same build and deployment path, and H0 scales only the single-node semantics
-proven by the earlier gates.
+proven by the earlier gates. I0 is an optional inference profile that composes
+those C0 and H0 foundations; its self-service console and Provider breadth stay
+planned until their real authorization, protocol, Secret-isolation, usage, and
+recovery gates pass.
 
 Cloud intentionally does not own a built-in mail server, a separate native
 desktop feature set, or commercial billing. A3S Gateway owns edge transport,
