@@ -83,6 +83,18 @@ class ReleaseGateContractTests(unittest.TestCase):
             cloud_config,
         )
 
+    def test_generated_cloud_config_contains_build_evidence_signing(self) -> None:
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        cloud_config = runner.split(
+            'cat >"$config_dir/cloud.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+
+        self.assertIn('build_evidence_signing = "local"', cloud_config)
+        self.assertIn(
+            'vault_build_evidence_signing_key = "a3s-cloud-build-evidence"',
+            cloud_config,
+        )
+
     def test_generated_configs_bound_artifact_storage_and_transfer(self) -> None:
         runner = RUNNER_PATH.read_text(encoding="utf-8")
         cloud_config = runner.split(
