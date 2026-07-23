@@ -66,7 +66,8 @@ export function ArchifyScene({ selection, onClearSelection, onSelect }: ArchifyS
     };
   };
 
-  const artifactUrl = `${import.meta.env.BASE_URL}${ARCHIFY_ARTIFACT_PATH}?theme=dark`;
+  const basePath = import.meta.env.A3S_ARCHITECTURE_BASE_PATH ?? import.meta.env.BASE_URL ?? '/';
+  const artifactUrl = `${basePath}${ARCHIFY_ARTIFACT_PATH}?theme=dark`;
 
   return (
     <section className='archify-viewport' aria-label='A3S Cloud interactive 2D architecture'>

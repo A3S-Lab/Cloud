@@ -9,6 +9,9 @@ export default defineConfig({
     entry: {
       index: './src/main.tsx',
     },
+    define: {
+      'import.meta.env.A3S_ARCHITECTURE_BASE_PATH': JSON.stringify(assetPrefix),
+    },
   },
   html: {
     template: './index.html',

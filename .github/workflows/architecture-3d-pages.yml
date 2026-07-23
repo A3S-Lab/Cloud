@@ -71,6 +71,9 @@ jobs:
           test -f dist/index.html
           test -f dist/.nojekyll
           grep --fixed-strings "/${repository_name}/static/" dist/index.html
+          grep --recursive --fixed-strings \
+            "/${repository_name}/archify/a3s-cloud.architecture.html" \
+            dist/static/js
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
