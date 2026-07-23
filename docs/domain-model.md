@@ -139,9 +139,9 @@ The implemented G0 build boundary lives here rather than in Sources or Runtime.
 Its typed Build service and `cloud.build@2` Flow bind a build ID, checked-out
 content digest, recipe, Runtime Task identity, and validated OCI root descriptor
 to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
-and requested platform before accepting the result. Registry locations,
-provenance, signatures, and published OCI artifact state remain subsequent
-boundaries. The node-transfer store
+and requested platform before accepting the result. Registry publication state
+is bound to the validated OCI result; provenance, SBOMs, and signatures remain
+subsequent boundaries. The node-transfer store
 persists command-scoped directory archives by digest so Runtime input/output
 bytes can cross the existing mTLS node boundary without pretending that cache
 objects are published OCI artifacts.
@@ -774,19 +774,25 @@ tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
 `cloud.deployment@2`. That revision stores an `ExternalBuildReference` binding
 the organization, project, environment, source revision, and BuildRun; derived
 rollback and Secret-rotation revisions preserve the reference, while ordinary
-manual Workload revisions do not invent one. The Artifacts context owns one
-deterministic `BuildRun` per accepted source revision. It binds
-tenant/environment ownership,
-the exact `cloud.build@2` operation, immutable input and Runtime artifact
+manual Workload revisions do not invent one. The Artifacts context owns a
+deterministic initial `BuildRun` per accepted source revision plus a linear
+sequence of deterministic retry attempts. Every retry has a fresh BuildRun and
+Operation ID, records its attempt and immediate parent BuildRun, and retains the
+exact source revision. Each aggregate binds tenant/environment ownership, the
+exact `cloud.build@2` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
-publication target/result, terminal outcome, and cleanup. Concurrent PostgreSQL reservation, exact
-operation replay, and optimistic single-transition saves prevent duplicate or
-forged logical builds across process loss. Environment list and tenant detail
-queries expose only public build lineage, status, OCI metadata, publication,
-failure, and timestamps; node/command identities and internal Artifact URIs
-remain private. A `build:write` cancellation request atomically advances the
-aggregate and records its idempotency response, while the Build Flow remains
-responsible for publication-race adoption and cleanup before terminal state.
+publication target/result, terminal outcome, and cleanup. Concurrent PostgreSQL
+reservation, atomic retry creation, exact operation replay, and optimistic
+single-transition saves prevent duplicate or forged logical builds across
+process loss. Environment list and tenant detail queries expose only public
+build and attempt lineage, status, OCI metadata, publication, failure, and
+timestamps; node/command identities and internal Artifact URIs remain private.
+A `build:write` cancellation request atomically advances the aggregate and
+records its idempotency response, while the Build Flow remains responsible for
+publication-race adoption and cleanup before terminal state. A separate
+idempotent `build:write` retry command accepts only failed or cancelled runs,
+atomically creates at most one child BuildRun and new Operation for a parent,
+and replays the same child for the same request.
 The production worker runs the BuildRun reconciler and a closed Flow router
 dispatches only the supported
 deployment, workload-stop, and build workflow identities. A separate
@@ -813,10 +819,10 @@ delivery remains authoritative without persisting OAuth tokens.
 BuildRun log queries and resumable streams resolve the aggregate's private node
 and deterministic Runtime target internally, then reuse the Fleet-owned durable
 log sequence, object, gap, retention, and compaction model. Public projections
-bind BuildRun and Operation lineage without exposing node or Runtime unit
-identity. Provenance/SBOM/signing, retry as a new BuildRun/Operation attempt,
-and cache trust remain later G0 work; authenticated registry publication and
-BuildRun status/cancellation/log surfaces are exercised independently.
+bind BuildRun, attempt, parent, and Operation lineage without exposing node or
+Runtime unit identity. Provenance/SBOM/signing and cache trust remain later G0
+work; authenticated registry publication and BuildRun
+status/cancellation/retry/log surfaces are exercised independently.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,

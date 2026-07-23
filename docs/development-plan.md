@@ -114,7 +114,7 @@ for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-22:
+Status as of 2026-07-23:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ Status as of 2026-07-22:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, explicit published-build deployment through `cloud.deployment@2`, periodic installation/account authority polling, fresh private-credential/checkout revalidation, and BuildRun status/cancellation/log API and web controls are implemented. Provenance/SBOM/signing, external private-provider evidence, cache trust, and retry-as-new-attempt still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, explicit published-build deployment through `cloud.deployment@2`, periodic installation/account authority polling, fresh private-credential/checkout revalidation, and BuildRun status/cancellation/retry/log API and web controls are implemented. Provenance/SBOM/signing, external private-provider evidence, and cache trust still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -746,19 +746,22 @@ The current independently testable G0 slices are implemented:
   binds an immutable build ID, absolute materialized source directory, checkout
   content digest, and accepted recipe without exposing BuildKit semantics to
   Sources or Runtime.
-- One deterministic tenant-owned `BuildRun` is reserved for every accepted
-  source revision. Its operation ID is the build ID, and its aggregate records
-  exact input, node/command, Runtime output, validated OCI result, immutable
-  publication target, verified published artifact, cancellation/failure,
-  cleanup, timestamps, and optimistic version.
+- One deterministic tenant-owned initial `BuildRun` is reserved for every
+  accepted source revision. A failed or cancelled run may create one
+  deterministic child attempt with a fresh BuildRun and Operation ID while
+  preserving the exact source revision and parent lineage. Each aggregate
+  records its attempt, parent, exact input, node/command, Runtime output,
+  validated OCI result, immutable publication target, verified published
+  artifact, cancellation/failure, cleanup, timestamps, and optimistic version.
   Repository saves accept only one aggregate-generated transition; exact
   replay changes no timestamp or version.
 - Concurrent PostgreSQL reservation creates one build, and a dedicated
   reconciler repairs the source-commit-to-operation crash gap by enqueuing the
   same `cloud.build@2` request. The isolated PostgreSQL gate covers concurrent
-  reservation, crash-gap repair, exact operation replay, stale writes, forged
-  ownership, tenant/environment isolation, the complete publication state
-  round trip, and rejection of multi-transition saves.
+  reservation, crash-gap repair, exact operation replay, retry concurrency,
+  one-child parent lineage, stale writes, forged ownership,
+  tenant/environment isolation, the complete publication state round trip, and
+  rejection of multi-transition saves.
 - Typed node Artifact download/upload contracts bind the authenticated node,
   command, Runtime spec digest, exact mount/output, digest, media type, and
   size. The mTLS node-control endpoints authorize against the persisted
@@ -867,16 +870,18 @@ repairs installation/account drift, and every private credential requires a
 fresh successful check. Verifying-user OAuth revocation remains signed-webhook
 authoritative because no tokenless GitHub query exists and user tokens are not
 persisted. Environment-scoped BuildRun list and tenant-scoped detail queries,
-atomic idempotent cancellation, public response redaction, and the
-corresponding polled web status/control surface are implemented. Tenant-scoped
-BuildRun log pages and resumable SSE reuse the same durable node log metadata,
-local/S3 objects, sequence cursors, retention gaps, and provider discontinuity
-records as Workload logs while keeping node and internal Runtime identities out
-of the public response. The web console provides BuildRun selection, stream
-filtering, bounded deduplication, and last-event-ID recovery. External
-private-provider certification, provenance/SBOM/signing, cache trust, retry as
-a new BuildRun/Operation attempt, and the remaining product surfaces are still
-required.
+atomic idempotent cancellation and retry-as-new-attempt commands, public
+response redaction, and the corresponding polled web status/control surface are
+implemented. Retry accepts only failed or cancelled runs, creates one fresh
+BuildRun and Operation for each parent, preserves the exact source revision,
+and records attempt and parent lineage. Tenant-scoped BuildRun log pages and
+resumable SSE reuse the same durable node log metadata, local/S3 objects,
+sequence cursors, retention gaps, and provider discontinuity records as
+Workload logs while keeping node and internal Runtime identities out of the
+public response. The web console provides BuildRun selection, cancellation and
+retry controls, stream filtering, bounded deduplication, and last-event-ID
+recovery. External private-provider certification, provenance/SBOM/signing,
+cache trust, and the remaining product surfaces are still required.
 
 ### Work
 
@@ -893,10 +898,10 @@ required.
 - Keep source and registry credentials as secret references. They may be
   materialized only inside the bounded build attempt and must not enter source
   revisions, Flow history, logs, cache keys, or provenance documents.
-- Add retry-as-new-attempt controls, provenance, and the remaining build
-  surfaces. Preserve the implemented source/build lineage in
-  BuildRun, Workload, and Operation API/web projections; keep cancellation
-  cooperative so publication-race adoption and cleanup remain authoritative.
+- Add provenance and the remaining build surfaces. Preserve the implemented
+  source/build/attempt lineage in BuildRun, Workload, and Operation API/web
+  projections; keep cancellation cooperative so publication-race adoption and
+  cleanup remain authoritative.
 
 ### Exit gate
 

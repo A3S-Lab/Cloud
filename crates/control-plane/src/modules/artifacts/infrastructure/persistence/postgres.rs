@@ -2,10 +2,13 @@ use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, store_idempotency, transaction_error,
     PostgresPersistenceError,
 };
-use crate::modules::artifacts::domain::repositories::validate_build_run_transition;
+use crate::modules::artifacts::domain::repositories::{
+    validate_build_run_retry, validate_build_run_transition,
+};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciPublicationTarget,
-    PublishedOciArtifact, RequestBuildCancellationBundle, ValidatedOciBuildOutput,
+    PublishedOciArtifact, RequestBuildCancellationBundle, RequestBuildRetryBundle,
+    ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
@@ -19,7 +22,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.runtime_spec_digest, b.runtime_output_artifact, b.output, b.publication_target, b.published_artifact, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
+const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.runtime_spec_digest, b.runtime_output_artifact, b.output, b.publication_target, b.published_artifact, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
 
 type PendingRevisionRow = (Uuid, Uuid, Uuid, Uuid, DateTime<Utc>);
 
@@ -125,7 +128,8 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                     .append(" where b.organization_id = ")
                     .bind(organization_id.as_uuid())
                     .append(" and b.source_revision_id = ")
-                    .bind(source_revision_id.as_uuid()),
+                    .bind(source_revision_id.as_uuid())
+                    .append(" order by b.attempt desc limit 1"),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
@@ -149,7 +153,7 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                     .bind(project_id.as_uuid())
                     .append(" and b.environment_id = ")
                     .bind(environment_id.as_uuid())
-                    .append(" order by b.requested_at desc, b.id desc limit ")
+                    .append(" order by b.requested_at desc, b.attempt desc, b.id desc limit ")
                     .bind(limit.max(1)),
             )
             .await
@@ -202,6 +206,84 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
     }
 
     async fn replay_cancellation(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    Ok(idempotency_replay::<BuildRun>(transaction, &idempotency)
+                        .await?
+                        .map(|replay| replay.value))
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn request_retry(
+        &self,
+        request: RequestBuildRetryBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(replay) =
+                        idempotency_replay::<BuildRun>(transaction, &request.idempotency).await?
+                    {
+                        return Ok(IdempotentWrite {
+                            value: replay.value,
+                            replayed: true,
+                        });
+                    }
+                    let previous_id = request.retry.retry_of_build_run_id.ok_or_else(|| {
+                        PostgresPersistenceError::Repository(RepositoryError::Conflict(
+                            "build retry has no parent".into(),
+                        ))
+                    })?;
+                    let previous = find_build_for_update(
+                        transaction,
+                        request.retry.organization_id,
+                        previous_id,
+                    )
+                    .await?;
+                    validate_build_run_retry(
+                        &previous,
+                        &request.retry,
+                        request.expected_previous_version,
+                    )
+                    .map_err(PostgresPersistenceError::Repository)?;
+                    let existing_retry = fetch_optional::<BuildRunRow, _>(
+                        transaction,
+                        sql_query::<BuildRunRow>(SELECT_BUILDS)
+                            .append(" where b.organization_id = ")
+                            .bind(request.retry.organization_id.as_uuid())
+                            .append(" and b.retry_of_build_run_id = ")
+                            .bind(previous_id.as_uuid())
+                            .append(" for update"),
+                    )
+                    .await?;
+                    if existing_retry.is_some() {
+                        return Err(PostgresPersistenceError::Repository(
+                            RepositoryError::Conflict(
+                                "build run already has a retry attempt".into(),
+                            ),
+                        ));
+                    }
+                    insert_build(transaction, &request.retry).await?;
+                    store_idempotency(transaction, &request.idempotency, &request.retry).await?;
+                    Ok(IdempotentWrite {
+                        value: request.retry,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_retry(
         &self,
         idempotency: &IdempotencyRequest,
     ) -> Result<Option<BuildRun>, RepositoryError> {
@@ -362,7 +444,7 @@ async fn insert_build(
     let inserted = execute(
         transaction,
         sql_query::<()>(
-            "insert into build_runs (organization_id, project_id, environment_id, id, source_revision_id, operation_id, status, aggregate_version, requested_at, updated_at) values (",
+            "insert into build_runs (organization_id, project_id, environment_id, id, source_revision_id, attempt, retry_of_build_run_id, operation_id, status, aggregate_version, requested_at, updated_at) values (",
         )
         .bind(build.organization_id.as_uuid())
         .append(", ")
@@ -373,6 +455,10 @@ async fn insert_build(
         .bind(build.id.as_uuid())
         .append(", ")
         .bind(build.source_revision_id.as_uuid())
+        .append(", ")
+        .bind(build.attempt)
+        .append(", ")
+        .bind(build.retry_of_build_run_id.map(BuildRunId::as_uuid))
         .append(", ")
         .bind(build.operation_id.as_uuid())
         .append(", ")
@@ -404,6 +490,8 @@ struct BuildRunRow {
     environment_id: Uuid,
     id: Uuid,
     source_revision_id: Uuid,
+    attempt: u32,
+    retry_of_build_run_id: Option<Uuid>,
     operation_id: Uuid,
     status: String,
     source_content_digest: Option<String>,
@@ -433,25 +521,27 @@ impl FromRow for BuildRunRow {
             environment_id: decode(row, 2)?,
             id: decode(row, 3)?,
             source_revision_id: decode(row, 4)?,
-            operation_id: decode(row, 5)?,
-            status: decode(row, 6)?,
-            source_content_digest: decode(row, 7)?,
-            input_artifact: decode(row, 8)?,
-            node_id: decode(row, 9)?,
-            command_id: decode(row, 10)?,
-            cleanup_command_id: decode(row, 11)?,
-            runtime_spec_digest: decode(row, 12)?,
-            runtime_output_artifact: decode(row, 13)?,
-            output: decode(row, 14)?,
-            publication_target: decode(row, 15)?,
-            published_artifact: decode(row, 16)?,
-            failure: decode(row, 17)?,
-            aggregate_version: decode(row, 18)?,
-            requested_at: decode(row, 19)?,
-            updated_at: decode(row, 20)?,
-            started_at: decode(row, 21)?,
-            cancellation_requested_at: decode(row, 22)?,
-            finished_at: decode(row, 23)?,
+            attempt: decode(row, 5)?,
+            retry_of_build_run_id: decode(row, 6)?,
+            operation_id: decode(row, 7)?,
+            status: decode(row, 8)?,
+            source_content_digest: decode(row, 9)?,
+            input_artifact: decode(row, 10)?,
+            node_id: decode(row, 11)?,
+            command_id: decode(row, 12)?,
+            cleanup_command_id: decode(row, 13)?,
+            runtime_spec_digest: decode(row, 14)?,
+            runtime_output_artifact: decode(row, 15)?,
+            output: decode(row, 16)?,
+            publication_target: decode(row, 17)?,
+            published_artifact: decode(row, 18)?,
+            failure: decode(row, 19)?,
+            aggregate_version: decode(row, 20)?,
+            requested_at: decode(row, 21)?,
+            updated_at: decode(row, 22)?,
+            started_at: decode(row, 23)?,
+            cancellation_requested_at: decode(row, 24)?,
+            finished_at: decode(row, 25)?,
         })
     }
 }
@@ -479,6 +569,8 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         environment_id: EnvironmentId::from_uuid(row.environment_id),
         id: BuildRunId::from_uuid(row.id),
         source_revision_id: SourceRevisionId::from_uuid(row.source_revision_id),
+        attempt: row.attempt,
+        retry_of_build_run_id: row.retry_of_build_run_id.map(BuildRunId::from_uuid),
         operation_id: OperationId::from_uuid(row.operation_id),
         status: BuildRunStatus::parse(&row.status)
             .map_err(|error| corrupt(format!("build status is invalid: {error}")))?,

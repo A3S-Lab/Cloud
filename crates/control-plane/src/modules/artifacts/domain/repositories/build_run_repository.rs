@@ -13,6 +13,13 @@ pub struct RequestBuildCancellationBundle {
     pub idempotency: IdempotencyRequest,
 }
 
+#[derive(Clone)]
+pub struct RequestBuildRetryBundle {
+    pub retry: BuildRun,
+    pub expected_previous_version: u64,
+    pub idempotency: IdempotencyRequest,
+}
+
 #[async_trait]
 pub trait IBuildRunRepository: Send + Sync {
     async fn reserve_pending(
@@ -56,11 +63,38 @@ pub trait IBuildRunRepository: Send + Sync {
         idempotency: &IdempotencyRequest,
     ) -> Result<Option<BuildRun>, RepositoryError>;
 
+    async fn request_retry(
+        &self,
+        request: RequestBuildRetryBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError>;
+
+    async fn replay_retry(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError>;
+
     async fn save(
         &self,
         build_run: BuildRun,
         expected_version: u64,
     ) -> Result<BuildRun, RepositoryError>;
+}
+
+pub(crate) fn validate_build_run_retry(
+    previous: &BuildRun,
+    retry: &BuildRun,
+    expected_previous_version: u64,
+) -> Result<(), RepositoryError> {
+    if previous.aggregate_version != expected_previous_version {
+        return Err(transition_conflict());
+    }
+    let expected =
+        BuildRun::retry(previous, retry.requested_at).map_err(|_| transition_conflict())?;
+    if expected == *retry {
+        Ok(())
+    } else {
+        Err(transition_conflict())
+    }
 }
 
 pub(crate) fn validate_build_run_transition(

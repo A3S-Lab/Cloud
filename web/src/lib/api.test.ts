@@ -119,18 +119,28 @@ describe('CloudApi', () => {
     );
   });
 
-  it('lists and cancels build runs within the selected tenant context', async () => {
+  it('lists, cancels, and retries build runs within the selected tenant context', async () => {
     const fetchMock = vi.fn().mockImplementation((input: string | URL | Request) => {
       const path = String(input);
       const data = path.includes('/projects/')
         ? []
-        : {
-            buildRunId: 'build / one',
-            operationId: 'operation-1',
-            status: 'cancelling',
-            cancellationRequestedAt: '2026-07-22T00:00:00Z',
-            replayed: false,
-          };
+        : path.endsWith('/retry')
+          ? {
+              buildRunId: 'build-2',
+              operationId: 'operation-2',
+              sourceRevisionId: 'source-1',
+              attempt: 2,
+              retryOfBuildRunId: 'build / one',
+              status: 'queued',
+              replayed: false,
+            }
+          : {
+              buildRunId: 'build / one',
+              operationId: 'operation-1',
+              status: 'cancelling',
+              cancellationRequestedAt: '2026-07-22T00:00:00Z',
+              replayed: false,
+            };
       return Promise.resolve(
         new Response(
           JSON.stringify({ code: path.includes('/projects/') ? 200 : 202, message: 'Success', data }),
@@ -143,8 +153,10 @@ describe('CloudApi', () => {
 
     await api.listBuildRuns('organization', 'project / one', 'production');
     const cancelled = await api.cancelBuildRun('organization', 'build / one', 'web-cancel-build:build-1');
+    const retried = await api.retryBuildRun('organization', 'build / one', 'web-retry-build:build-1');
 
     expect(cancelled.status).toBe('cancelling');
+    expect(retried.attempt).toBe(2);
     expect(fetchMock.mock.calls[0][0]).toBe(
       '/api/v1/organizations/organization/projects/project%20%2F%20one/environments/production/build-runs?limit=100'
     );
@@ -155,6 +167,16 @@ describe('CloudApi', () => {
         headers: expect.objectContaining({
           Authorization: 'Bearer a3s_secret',
           'Idempotency-Key': 'web-cancel-build:build-1',
+        }),
+      }),
+    ]);
+    expect(fetchMock.mock.calls[2]).toEqual([
+      '/api/v1/organizations/organization/build-runs/build%20%2F%20one/retry',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer a3s_secret',
+          'Idempotency-Key': 'web-retry-build:build-1',
         }),
       }),
     ]);

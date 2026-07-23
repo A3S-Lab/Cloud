@@ -1,4 +1,4 @@
-import { Ban, Boxes, Hammer, SquareTerminal } from 'lucide-react';
+import { Ban, Boxes, Hammer, RotateCcw, SquareTerminal } from 'lucide-react';
 import type { BuildRun, BuildRunStatus } from '../../types/api';
 import { compactDigest, formatRelative, humanize, shortId } from './console-format';
 
@@ -6,8 +6,10 @@ interface BuildRunPanelProps {
   buildRuns: BuildRun[];
   selectedBuildRunId: string | null;
   cancellingBuildRunId: string | null;
+  retryingBuildRunId: string | null;
   onSelect: (buildRunId: string) => void;
   onCancel: (buildRunId: string) => void;
+  onRetry: (buildRunId: string) => void;
 }
 
 const TERMINAL_STATUSES = new Set<BuildRunStatus>(['succeeded', 'failed', 'cancelled']);
@@ -16,8 +18,10 @@ export function BuildRunPanel({
   buildRuns,
   selectedBuildRunId,
   cancellingBuildRunId,
+  retryingBuildRunId,
   onSelect,
   onCancel,
+  onRetry,
 }: BuildRunPanelProps) {
   const ordered = [...buildRuns].sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
 
@@ -43,12 +47,16 @@ export function BuildRunPanel({
           {ordered.map((buildRun) => {
             const terminal = TERMINAL_STATUSES.has(buildRun.status);
             const cancelling = cancellingBuildRunId === buildRun.id || buildRun.status === 'cancelling';
+            const retryable = buildRun.status === 'failed' || buildRun.status === 'cancelled';
+            const retrying = retryingBuildRunId === buildRun.id;
             const selected = selectedBuildRunId === buildRun.id;
             return (
               <article className={`build-run-item${selected ? ' selected' : ''}`} key={buildRun.id}>
                 <div className='build-run-heading'>
                   <div>
-                    <strong>Build {shortId(buildRun.id)}</strong>
+                    <strong>
+                      Build {shortId(buildRun.id)} · Attempt {buildRun.attempt}
+                    </strong>
                     <small>
                       source {shortId(buildRun.sourceRevisionId)} · {formatRelative(buildRun.updatedAt)}
                     </small>
@@ -102,6 +110,16 @@ export function BuildRunPanel({
                       onClick={() => onCancel(buildRun.id)}
                     >
                       <Ban size={13} /> {cancelling ? 'Cancelling' : 'Cancel build'}
+                    </button>
+                  ) : null}
+                  {retryable ? (
+                    <button
+                      className='secondary-button compact'
+                      type='button'
+                      disabled={retrying}
+                      onClick={() => onRetry(buildRun.id)}
+                    >
+                      <RotateCcw size={13} /> {retrying ? 'Retrying' : 'Retry build'}
                     </button>
                   ) : null}
                 </div>

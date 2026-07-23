@@ -3,7 +3,9 @@ use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
 use a3s_cloud_control_plane::modules::artifacts::application::{
     BuildRunReconciler, BUILD_WORKFLOW_VERSION,
 };
-use a3s_cloud_control_plane::modules::artifacts::domain::RequestBuildCancellationBundle;
+use a3s_cloud_control_plane::modules::artifacts::domain::{
+    RequestBuildCancellationBundle, RequestBuildRetryBundle,
+};
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
     OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
@@ -652,6 +654,92 @@ pub async fn exercise_build_run_persistence(
             .await?,
         cancelling
     );
+    let mut cancelled = cancelling.clone();
+    cancelled.complete(cancellation_accepted_at + Duration::milliseconds(2))?;
+    let cancelled = builds.save(cancelled, cancelling.aggregate_version).await?;
+    let retry = BuildRun::retry(
+        &cancelled,
+        cancellation_accepted_at + Duration::milliseconds(3),
+    )?;
+    let retry_idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{organization_id}/build-runs/{}/retry",
+            cancelled.id
+        ),
+        "postgres-retry-build",
+        cancelled.id.to_string().as_bytes(),
+    )?;
+    let retry_request = RequestBuildRetryBundle {
+        retry: retry.clone(),
+        expected_previous_version: cancelled.aggregate_version,
+        idempotency: retry_idempotency.clone(),
+    };
+    let (left, right) = tokio::join!(
+        builds.request_retry(retry_request.clone()),
+        builds.request_retry(retry_request),
+    );
+    let retries = [left?, right?];
+    assert_eq!(retries.iter().filter(|result| result.replayed).count(), 1);
+    assert!(retries.iter().all(|result| result.value == retry));
+    assert_eq!(
+        builds.replay_retry(&retry_idempotency).await?,
+        Some(retry.clone())
+    );
+    assert_eq!(
+        builds
+            .find_by_source_revision(organization_id, cancellation_source_revision_id)
+            .await?,
+        Some(retry.clone())
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from build_runs where organization_id = ",)
+                    .bind(organization_id.as_uuid())
+                    .append(" and source_revision_id = ")
+                    .bind(cancellation_source_revision_id.as_uuid()),
+            )
+            .await?,
+        2
+    );
+    let conflicting_retry_idempotency = IdempotencyRequest::new(
+        retry_idempotency.scope.clone(),
+        retry_idempotency.key.clone(),
+        b"different retry",
+    )?;
+    assert_eq!(
+        builds.replay_retry(&conflicting_retry_idempotency).await,
+        Err(RepositoryError::IdempotencyConflict)
+    );
+    let duplicate_retry = RequestBuildRetryBundle {
+        retry: retry.clone(),
+        expected_previous_version: cancelled.aggregate_version,
+        idempotency: IdempotencyRequest::new(
+            retry_idempotency.scope.clone(),
+            "postgres-retry-build-again",
+            cancelled.id.to_string().as_bytes(),
+        )?,
+    };
+    assert!(matches!(
+        builds.request_retry(duplicate_retry).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    database
+        .execute(
+            sql_query::<()>("delete from idempotency_records where scope_key = ")
+                .bind(retry_idempotency.scope)
+                .append(" and idempotency_key = ")
+                .bind(retry_idempotency.key),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from build_runs where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(retry.id.as_uuid()),
+        )
+        .await?;
     database
         .execute(
             sql_query::<()>("delete from idempotency_records where scope_key = ")

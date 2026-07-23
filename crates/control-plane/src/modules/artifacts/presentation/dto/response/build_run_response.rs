@@ -13,6 +13,8 @@ pub struct BuildRunResponse {
     pub environment_id: Uuid,
     pub id: Uuid,
     pub source_revision_id: Uuid,
+    pub attempt: u32,
+    pub retry_of_build_run_id: Option<Uuid>,
     pub operation_id: Uuid,
     pub status: BuildRunStatus,
     pub source_content_digest: Option<String>,
@@ -36,6 +38,8 @@ impl From<BuildRun> for BuildRunResponse {
             environment_id: build_run.environment_id.as_uuid(),
             id: build_run.id.as_uuid(),
             source_revision_id: build_run.source_revision_id.as_uuid(),
+            attempt: build_run.attempt,
+            retry_of_build_run_id: build_run.retry_of_build_run_id.map(|id| id.as_uuid()),
             operation_id: build_run.operation_id.as_uuid(),
             status: build_run.status,
             source_content_digest: build_run.source_content_digest,
@@ -130,6 +134,8 @@ mod tests {
         let encoded = serde_json::to_value(BuildRunResponse::from(build)).expect("response");
         assert_eq!(encoded["status"], "queued");
         assert!(encoded.get("sourceRevisionId").is_some());
+        assert_eq!(encoded["attempt"], 1);
+        assert!(encoded["retryOfBuildRunId"].is_null());
         assert!(encoded.get("operationId").is_some());
         assert!(encoded.get("cancellationRequestedAt").is_some());
         assert!(encoded.get("source_revision_id").is_none());

@@ -6,7 +6,9 @@ pub use entities::{
     BuildArtifact, BuildRun, BuildRunStatus, OciPublicationRequest, OciPublicationTarget,
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
-pub use repositories::{IBuildRunRepository, RequestBuildCancellationBundle};
+pub use repositories::{
+    IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
+};
 pub use services::{
     BuildArtifactPublicationError, BuildInputPreparationError, BuildOutputValidationError,
     BuildServiceError, BuiltOciArtifact, IBuildArtifactPublisher, IBuildInputPreparer,

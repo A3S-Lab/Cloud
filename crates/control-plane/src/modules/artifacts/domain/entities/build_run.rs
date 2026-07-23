@@ -77,6 +77,8 @@ pub struct BuildRun {
     pub environment_id: EnvironmentId,
     pub id: BuildRunId,
     pub source_revision_id: SourceRevisionId,
+    pub attempt: u32,
+    pub retry_of_build_run_id: Option<BuildRunId>,
     pub operation_id: OperationId,
     pub status: BuildRunStatus,
     pub source_content_digest: Option<String>,
@@ -108,6 +110,25 @@ impl BuildRun {
         ))
     }
 
+    pub fn id_for_attempt(
+        source_revision_id: SourceRevisionId,
+        attempt: u32,
+    ) -> Result<BuildRunId, String> {
+        if attempt == 0 {
+            return Err("build attempt must be positive".into());
+        }
+        if attempt == 1 {
+            return Ok(Self::id_for(source_revision_id));
+        }
+        let mut identity = [0_u8; 20];
+        identity[..16].copy_from_slice(source_revision_id.as_uuid().as_bytes());
+        identity[16..].copy_from_slice(&attempt.to_be_bytes());
+        Ok(BuildRunId::from_uuid(Uuid::new_v5(
+            &BUILD_RUN_NAMESPACE,
+            &identity,
+        )))
+    }
+
     pub fn runtime_unit_id_for(build_run_id: BuildRunId) -> String {
         format!("cloud-build-{build_run_id}")
     }
@@ -131,6 +152,8 @@ impl BuildRun {
             environment_id,
             id,
             source_revision_id,
+            attempt: 1,
+            retry_of_build_run_id: None,
             operation_id: OperationId::from_uuid(id.as_uuid()),
             status: BuildRunStatus::Queued,
             source_content_digest: None,
@@ -151,6 +174,55 @@ impl BuildRun {
             cancellation_requested_at: None,
             finished_at: None,
         }
+    }
+
+    pub fn retry(previous: &Self, requested_at: DateTime<Utc>) -> Result<Self, String> {
+        previous.validate()?;
+        if !matches!(
+            previous.status,
+            BuildRunStatus::Failed | BuildRunStatus::Cancelled
+        ) {
+            return Err("only a failed or cancelled build run can be retried".into());
+        }
+        let requested_at = canonical_timestamp(requested_at);
+        if requested_at < previous.updated_at {
+            return Err("build retry time regressed".into());
+        }
+        let attempt = previous
+            .attempt
+            .checked_add(1)
+            .ok_or_else(|| "build attempt overflowed".to_owned())?;
+        let id = Self::id_for_attempt(previous.source_revision_id, attempt)?;
+        let retry = Self {
+            organization_id: previous.organization_id,
+            project_id: previous.project_id,
+            environment_id: previous.environment_id,
+            id,
+            source_revision_id: previous.source_revision_id,
+            attempt,
+            retry_of_build_run_id: Some(previous.id),
+            operation_id: OperationId::from_uuid(id.as_uuid()),
+            status: BuildRunStatus::Queued,
+            source_content_digest: None,
+            input_artifact: None,
+            node_id: None,
+            command_id: None,
+            cleanup_command_id: None,
+            runtime_spec_digest: None,
+            runtime_output_artifact: None,
+            output: None,
+            publication_target: None,
+            published_artifact: None,
+            failure: None,
+            aggregate_version: 1,
+            requested_at,
+            updated_at: requested_at,
+            started_at: None,
+            cancellation_requested_at: None,
+            finished_at: None,
+        };
+        retry.validate()?;
+        Ok(retry)
     }
 
     pub fn restore(mut self) -> Result<Self, String> {
@@ -444,8 +516,18 @@ impl BuildRun {
     }
 
     fn validate(&self) -> Result<(), String> {
+        let expected_id = Self::id_for_attempt(self.source_revision_id, self.attempt)?;
+        let expected_retry = if self.attempt == 1 {
+            None
+        } else {
+            Some(Self::id_for_attempt(
+                self.source_revision_id,
+                self.attempt - 1,
+            )?)
+        };
         if self.aggregate_version == 0
-            || self.id != Self::id_for(self.source_revision_id)
+            || self.id != expected_id
+            || self.retry_of_build_run_id != expected_retry
             || self.operation_id.as_uuid() != self.id.as_uuid()
             || self.updated_at < self.requested_at
             || self.started_at.is_some_and(|at| at < self.requested_at)
