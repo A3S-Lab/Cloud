@@ -35,6 +35,7 @@ pub(super) fn project_task_spec(
                 | BuildRunStatus::Scheduled
                 | BuildRunStatus::Running
                 | BuildRunStatus::Validating
+                | BuildRunStatus::Publishing
                 | BuildRunStatus::Cancelling
                 | BuildRunStatus::CleanupPending
                 | BuildRunStatus::Succeeded
@@ -61,8 +62,8 @@ pub(super) fn project_task_spec(
     environment.insert("LC_ALL".into(), "C".into());
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
-        unit_id: format!("cloud-build-{}", build.id),
-        generation: 1,
+        unit_id: build.runtime_unit_id(),
+        generation: BuildRun::RUNTIME_GENERATION,
         class: RuntimeUnitClass::Task,
         artifact: config.builder.clone(),
         process: RuntimeProcessSpec {

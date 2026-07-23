@@ -7,7 +7,7 @@ mod workflow;
 mod tests;
 
 use crate::modules::artifacts::domain::{
-    IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    IBuildArtifactPublisher, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::sources::domain::ISourceRevisionRepository;
@@ -27,6 +27,7 @@ pub struct BuildFlowConfigOptions {
     pub observation_poll_ms: u64,
     pub convergence_timeout_ms: u64,
     pub cleanup_timeout_ms: u64,
+    pub publication_timeout_ms: u64,
     pub cpu_millis: u64,
     pub memory_bytes: u64,
     pub pids: u32,
@@ -43,6 +44,7 @@ pub struct BuildFlowConfig {
     pub observation_poll: chrono::Duration,
     pub convergence_timeout: chrono::Duration,
     pub cleanup_timeout: chrono::Duration,
+    pub publication_timeout: chrono::Duration,
     pub cpu_millis: u64,
     pub memory_bytes: u64,
     pub pids: u32,
@@ -61,6 +63,7 @@ impl BuildFlowConfig {
             observation_poll_ms,
             convergence_timeout_ms,
             cleanup_timeout_ms,
+            publication_timeout_ms,
             cpu_millis,
             memory_bytes,
             pids,
@@ -77,6 +80,7 @@ impl BuildFlowConfig {
                 observation_poll_ms,
                 convergence_timeout_ms,
                 cleanup_timeout_ms,
+                publication_timeout_ms,
                 cpu_millis,
                 memory_bytes,
                 output_max_bytes,
@@ -97,6 +101,7 @@ impl BuildFlowConfig {
             observation_poll: chrono_duration(observation_poll_ms)?,
             convergence_timeout: chrono_duration(convergence_timeout_ms)?,
             cleanup_timeout: chrono_duration(cleanup_timeout_ms)?,
+            publication_timeout: chrono_duration(publication_timeout_ms)?,
             cpu_millis,
             memory_bytes,
             pids,
@@ -140,31 +145,45 @@ fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 }
 
 #[derive(Clone)]
+pub struct BuildFlowRuntimeDependencies {
+    pub builds: Arc<dyn IBuildRunRepository>,
+    pub sources: Arc<dyn ISourceRevisionRepository>,
+    pub inputs: Arc<dyn IBuildInputPreparer>,
+    pub outputs: Arc<dyn IBuildOutputValidator>,
+    pub publisher: Arc<dyn IBuildArtifactPublisher>,
+    pub nodes: Arc<dyn INodeRepository>,
+    pub node_control: Arc<dyn INodeControlRepository>,
+}
+
+#[derive(Clone)]
 pub struct BuildFlowRuntime {
     pub(super) builds: Arc<dyn IBuildRunRepository>,
     pub(super) sources: Arc<dyn ISourceRevisionRepository>,
     pub(super) inputs: Arc<dyn IBuildInputPreparer>,
     pub(super) outputs: Arc<dyn IBuildOutputValidator>,
+    pub(super) publisher: Arc<dyn IBuildArtifactPublisher>,
     pub(super) nodes: Arc<dyn INodeRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
     pub(super) config: BuildFlowConfig,
 }
 
 impl BuildFlowRuntime {
-    pub fn new(
-        builds: Arc<dyn IBuildRunRepository>,
-        sources: Arc<dyn ISourceRevisionRepository>,
-        inputs: Arc<dyn IBuildInputPreparer>,
-        outputs: Arc<dyn IBuildOutputValidator>,
-        nodes: Arc<dyn INodeRepository>,
-        node_control: Arc<dyn INodeControlRepository>,
-        config: BuildFlowConfig,
-    ) -> Self {
+    pub fn new(dependencies: BuildFlowRuntimeDependencies, config: BuildFlowConfig) -> Self {
+        let BuildFlowRuntimeDependencies {
+            builds,
+            sources,
+            inputs,
+            outputs,
+            publisher,
+            nodes,
+            node_control,
+        } = dependencies;
         Self {
             builds,
             sources,
             inputs,
             outputs,
+            publisher,
             nodes,
             node_control,
             config,

@@ -144,6 +144,11 @@ pub struct BuildsConfig {
 pub struct RegistryConfig {
     pub request_timeout_ms: u64,
     pub insecure_hosts: Vec<String>,
+    pub publication_registry: String,
+    pub publication_repository_prefix: String,
+    pub publication_credential_env: String,
+    pub publication_allow_anonymous: bool,
+    pub publication_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +163,11 @@ pub struct SourcesConfig {
     pub github_app_private_key_env: String,
     pub github_app_callback_url: String,
     pub github_connection_state_ttl_ms: u64,
+    pub github_authority_reconcile_interval_ms: u64,
+    pub github_authority_poll_interval_ms: u64,
+    pub github_authority_retry_initial_ms: u64,
+    pub github_authority_retry_max_ms: u64,
+    pub github_authority_batch_size: usize,
     pub checkout_dir: String,
     pub checkout_timeout_ms: u64,
     pub checkout_max_files: usize,
@@ -406,7 +416,18 @@ impl CloudConfig {
             ],
         )?;
         let registry = one_block(&document, "registry")?;
-        validate_block(registry, &["request_timeout_ms", "insecure_hosts"])?;
+        validate_block(
+            registry,
+            &[
+                "request_timeout_ms",
+                "insecure_hosts",
+                "publication_registry",
+                "publication_repository_prefix",
+                "publication_credential_env",
+                "publication_allow_anonymous",
+                "publication_timeout_ms",
+            ],
+        )?;
         let sources = one_block(&document, "sources")?;
         validate_block(
             sources,
@@ -421,6 +442,11 @@ impl CloudConfig {
                 "github_app_private_key_env",
                 "github_app_callback_url",
                 "github_connection_state_ttl_ms",
+                "github_authority_reconcile_interval_ms",
+                "github_authority_poll_interval_ms",
+                "github_authority_retry_initial_ms",
+                "github_authority_retry_max_ms",
+                "github_authority_batch_size",
                 "checkout_dir",
                 "checkout_timeout_ms",
                 "checkout_max_files",
@@ -586,6 +612,11 @@ impl CloudConfig {
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
                 insecure_hosts: string_list(registry, "insecure_hosts")?,
+                publication_registry: string(registry, "publication_registry")?,
+                publication_repository_prefix: string(registry, "publication_repository_prefix")?,
+                publication_credential_env: string(registry, "publication_credential_env")?,
+                publication_allow_anonymous: boolean(registry, "publication_allow_anonymous")?,
+                publication_timeout_ms: integer(registry, "publication_timeout_ms")?,
             },
             sources: SourcesConfig {
                 github_request_timeout_ms: integer(sources, "github_request_timeout_ms")?,
@@ -598,6 +629,20 @@ impl CloudConfig {
                 github_app_private_key_env: string(sources, "github_app_private_key_env")?,
                 github_app_callback_url: string(sources, "github_app_callback_url")?,
                 github_connection_state_ttl_ms: integer(sources, "github_connection_state_ttl_ms")?,
+                github_authority_reconcile_interval_ms: integer(
+                    sources,
+                    "github_authority_reconcile_interval_ms",
+                )?,
+                github_authority_poll_interval_ms: integer(
+                    sources,
+                    "github_authority_poll_interval_ms",
+                )?,
+                github_authority_retry_initial_ms: integer(
+                    sources,
+                    "github_authority_retry_initial_ms",
+                )?,
+                github_authority_retry_max_ms: integer(sources, "github_authority_retry_max_ms")?,
+                github_authority_batch_size: integer(sources, "github_authority_batch_size")?,
                 checkout_dir: string(sources, "checkout_dir")?,
                 checkout_timeout_ms: integer(sources, "checkout_timeout_ms")?,
                 checkout_max_files: integer(sources, "checkout_max_files")?,
@@ -701,6 +746,7 @@ impl CloudConfig {
                 observation_poll_ms: self.builds.observation_poll_ms,
                 convergence_timeout_ms: self.builds.convergence_timeout_ms,
                 cleanup_timeout_ms: self.builds.cleanup_timeout_ms,
+                publication_timeout_ms: self.registry.publication_timeout_ms,
                 cpu_millis: self.builds.cpu_millis,
                 memory_bytes: self.builds.memory_bytes,
                 pids: self.builds.pids,
@@ -867,6 +913,8 @@ impl CloudConfig {
             .map_err(|error| ConfigError::Invalid(format!("builds is invalid: {error}")))?;
         if self.registry.request_timeout_ms == 0
             || self.registry.request_timeout_ms > 60_000
+            || self.registry.publication_timeout_ms == 0
+            || self.registry.publication_timeout_ms > 7_200_000
             || self.registry.insecure_hosts.len() > 64
             || self.registry.insecure_hosts.iter().any(|host| {
                 host.is_empty()
@@ -887,10 +935,49 @@ impl CloudConfig {
                 "registry.insecure_hosts cannot contain duplicates".into(),
             ));
         }
+        crate::modules::artifacts::domain::entities::validate_registry(
+            &self.registry.publication_registry,
+        )
+        .and_then(|_| {
+            crate::modules::artifacts::domain::entities::validate_repository_prefix(
+                &self.registry.publication_repository_prefix,
+            )
+        })
+        .map_err(|error| {
+            ConfigError::Invalid(format!("registry publication is invalid: {error}"))
+        })?;
+        if self.registry.publication_allow_anonymous
+            != self.registry.publication_credential_env.is_empty()
+            || (!self.registry.publication_credential_env.is_empty()
+                && !valid_env_name(&self.registry.publication_credential_env))
+            || (self.security.profile == SecurityProfile::Production
+                && (self.registry.publication_allow_anonymous
+                    || self
+                        .registry
+                        .insecure_hosts
+                        .contains(&self.registry.publication_registry)))
+        {
+            return Err(ConfigError::Invalid(
+                "registry publication requires exactly one credential environment reference or development-only anonymous mode; production requires authenticated HTTPS"
+                    .into(),
+            ));
+        }
         if self.sources.github_request_timeout_ms == 0
             || self.sources.github_request_timeout_ms > 60_000
             || !(1024..=2 * 1024 * 1024).contains(&self.sources.github_webhook_max_body_bytes)
             || !(60_000..=1_800_000).contains(&self.sources.github_connection_state_ttl_ms)
+            || self.sources.github_authority_reconcile_interval_ms == 0
+            || self.sources.github_authority_reconcile_interval_ms > 60_000
+            || self.sources.github_authority_poll_interval_ms
+                < self.sources.github_authority_reconcile_interval_ms
+            || self.sources.github_authority_poll_interval_ms > 86_400_000
+            || self.sources.github_authority_retry_initial_ms == 0
+            || self.sources.github_authority_retry_max_ms
+                < self.sources.github_authority_retry_initial_ms
+            || self.sources.github_authority_retry_max_ms
+                > self.sources.github_authority_poll_interval_ms
+            || self.sources.github_authority_batch_size == 0
+            || self.sources.github_authority_batch_size > 10_000
             || !valid_data_path(&self.sources.checkout_dir)
             || self.sources.checkout_dir == self.builds.input_staging_dir
             || self.sources.checkout_dir == self.builds.output_staging_dir
@@ -903,7 +990,7 @@ impl CloudConfig {
             || self.sources.denied_repositories.len() > 256
         {
             return Err(ConfigError::Invalid(
-                "sources requires bounded GitHub and checkout timings, a normalized isolated checkout path, bounded checkout files/bytes, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
+                "sources requires bounded GitHub authority, webhook, connection, and checkout schedules, a normalized isolated checkout path, bounded checkout files/bytes, a 1024-byte to 2-MiB webhook body limit, a 1-30 minute connection-state TTL, and at most 256 exact allowlisted and denied repositories"
                     .into(),
             ));
         }
@@ -1606,6 +1693,11 @@ builds {
 registry {
   request_timeout_ms = 10000
   insecure_hosts = ["127.0.0.1:5000"]
+  publication_registry = "127.0.0.1:5000"
+  publication_repository_prefix = "a3s-cloud/builds"
+  publication_credential_env = ""
+  publication_allow_anonymous = true
+  publication_timeout_ms = 600000
 }
 sources {
   github_request_timeout_ms = 10000
@@ -1618,6 +1710,11 @@ sources {
   github_app_private_key_env = "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
   github_app_callback_url = "https://cloud.example.test/api/v1/source-connections/github/callback"
   github_connection_state_ttl_ms = 600000
+  github_authority_reconcile_interval_ms = 10000
+  github_authority_poll_interval_ms = 300000
+  github_authority_retry_initial_ms = 1000
+  github_authority_retry_max_ms = 60000
+  github_authority_batch_size = 100
   checkout_dir = ".a3s/cloud/source-checkouts"
   checkout_timeout_ms = 120000
   checkout_max_files = 100000
@@ -1716,6 +1813,9 @@ security {
             "https://cloud.example.test/api/v1/source-connections/github/callback"
         );
         assert_eq!(config.sources.github_connection_state_ttl_ms, 600_000);
+        assert_eq!(config.sources.github_authority_poll_interval_ms, 300_000);
+        assert_eq!(config.sources.github_authority_retry_max_ms, 60_000);
+        assert_eq!(config.sources.github_authority_batch_size, 100);
         assert_eq!(config.sources.checkout_max_files, 100_000);
         assert_eq!(config.logs.storage_provider, LogStorageProviderKind::Local);
         assert_eq!(config.logs.retention_batch_size, 256);
@@ -1742,6 +1842,7 @@ security {
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
+        assert_eq!(config.sources.github_authority_poll_interval_ms, 300_000);
         assert!(!config.sources.github_app_enabled);
         assert!(config.sources.github_app_slug.is_empty());
         assert!(config.sources.github_app_private_key_env.is_empty());
@@ -1771,6 +1872,11 @@ security {
         ))
         .is_err());
         assert!(CloudConfig::parse(&VALID.replace(
+            "publication_registry = \"127.0.0.1:5000\"",
+            "publication_registry = \"registry.example:invalid\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
             "certificate_reconciliation_interval_ms = 60000",
             "certificate_reconciliation_interval_ms = 604800001"
         ))
@@ -1778,6 +1884,12 @@ security {
         assert!(CloudConfig::parse(
             &VALID.replace("profile = \"development\"", "profile = \"production\"")
         )
+        .is_err());
+        let oversized_publication_prefix = vec!["a".repeat(125); 7].join("/");
+        assert!(CloudConfig::parse(&VALID.replace(
+            "publication_repository_prefix = \"a3s-cloud/builds\"",
+            &format!("publication_repository_prefix = \"{oversized_publication_prefix}\"")
+        ))
         .is_err());
         assert!(CloudConfig::parse(
             &VALID.replace("retention_poll_ms = 60000", "retention_poll_ms = 604800001")
@@ -1838,6 +1950,26 @@ security {
             "github_connection_state_ttl_ms = 59999"
         ))
         .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_reconcile_interval_ms = 10000",
+            "github_authority_reconcile_interval_ms = 0"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_poll_interval_ms = 300000",
+            "github_authority_poll_interval_ms = 9999"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_retry_max_ms = 60000",
+            "github_authority_retry_max_ms = 999"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "github_authority_batch_size = 100",
+            "github_authority_batch_size = 0"
+        ))
+        .is_err());
         assert!(CloudConfig::parse(
             &VALID.replace("github_app_enabled = true", "github_app_enabled = false")
         )
@@ -1883,8 +2015,41 @@ security {
                 "  certificate_authority = \"vault\"",
             )
             .replace("key_encryption = \"local\"", "key_encryption = \"vault\"")
-            .replace("storage_provider = \"local\"", "storage_provider = \"s3\"");
+            .replace("storage_provider = \"local\"", "storage_provider = \"s3\"")
+            .replace(
+                "insecure_hosts = [\"127.0.0.1:5000\"]",
+                "insecure_hosts = []",
+            )
+            .replace(
+                "publication_registry = \"127.0.0.1:5000\"",
+                "publication_registry = \"registry.example.test\"",
+            )
+            .replace(
+                "publication_credential_env = \"\"",
+                "publication_credential_env = \"A3S_CLOUD_REGISTRY_CREDENTIAL\"",
+            )
+            .replace(
+                "publication_allow_anonymous = true",
+                "publication_allow_anonymous = false",
+            );
         assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(&production_s3.replace(
+            "insecure_hosts = []",
+            "insecure_hosts = [\"registry.example.test\"]"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(
+            &production_s3
+                .replace(
+                    "publication_credential_env = \"A3S_CLOUD_REGISTRY_CREDENTIAL\"",
+                    "publication_credential_env = \"\""
+                )
+                .replace(
+                    "publication_allow_anonymous = false",
+                    "publication_allow_anonymous = true"
+                )
+        )
+        .is_err());
         assert!(CloudConfig::parse(&production_s3.replace(
             "gateway_certificate_authority = \"vault\"",
             "gateway_certificate_authority = \"local\""

@@ -159,17 +159,23 @@ API command
   GitHub user-token intersection, and persist only durable numeric
   installation/account/user identities with global installation/account
   ownership; signed suspend, unsuspend, deletion, rename, and verifying-user
-  revocation deliveries version explicit connection state while retaining
-  terminal history
+  revocation deliveries plus bounded App-JWT installation polling reconcile
+  explicit connection state while retaining terminal history
 - **Ephemeral Private GitHub Access**: Sign bounded GitHub App JWTs from a PEM
-  key read per attempt, request one repository with read-only contents access,
-  bind the returned short-lived token to that canonical repository, and pass it
-  only to authenticated resolution or one isolated Git fetch; tokens, keys,
-  URLs, receipts, responses, events, and source state remain credential-free
+  key read per attempt, freshly confirm the exact installation/account before
+  every private credential, request one repository with read-only contents
+  access, bind the returned short-lived token to that canonical repository, and
+  pass it only to authenticated resolution or one isolated Git fetch; tokens,
+  keys, URLs, receipts, responses, events, and source state remain
+  credential-free
 - **Durable Build Intent**: Reserve one deterministic, tenant-owned build run
-  for each accepted source revision, bind it to one `cloud.build@1` operation,
+  for each accepted source revision, bind it to one `cloud.build@2` operation,
   enforce exact replay and optimistic state transitions, and repair the
   source-commit-to-operation crash gap without duplicating logical work
+- **Authoritative Build Operations**: List environment build runs, inspect one
+  tenant-owned build without exposing node-local Artifact locations, request
+  cooperative cancellation through an atomic idempotent command, and follow
+  the same build lineage in the web console and operation stream
 - **Isolated Build Flow**: Replay the exact accepted Git checkout into a
   content-addressed input Artifact, select a Task-capable node, run a
   digest-pinned BuildKit client with both Runtime `NetworkMode::None` and
@@ -186,14 +192,21 @@ API command
   OCI image layout, verify the BuildKit descriptor plus every referenced
   SHA-256 blob and requested platform, and atomically replay or reject the
   resulting content receipt
+- **Authoritative OCI Publication**: Persist one deterministic registry,
+  repository, digest, media type, and size before any push; revalidate the
+  complete local graph, stream blobs before child manifests and the root,
+  verify every registry descriptor, and adopt an already-pushed graph across
+  Flow event loss, transient responses, cancellation races, or process replay
 - **Operation Streaming**: Expose tenant-scoped snapshots and resumable
   server-sent events with stable content-derived event identifiers
 - **Web Console**: Sign in with a session-scoped API token, select the active
   organization, project, and environment, inspect the authoritative deployment
-  timeline plus route/certificate state, edit a complete immutable template
-  with field-level differences, roll back to an eligible activated revision,
-  locally dismiss terminal operation projections, and follow observed Runtime
-  health plus bounded stdout/stderr records with explicit gaps
+  timeline plus route/certificate and BuildRun state, cancel an active build,
+  select a BuildRun and follow its bounded ordered stdout/stderr stream,
+  edit a complete immutable template with field-level differences, roll back to
+  an eligible activated revision, locally dismiss terminal operation
+  projections, and follow observed Runtime health plus bounded stdout/stderr
+  records with explicit gaps
 
 ### Delivery capability matrix
 
@@ -206,9 +219,9 @@ API command
 | Reachability | Route ownership, production DNS TXT ownership verification and explicit revocation, a Vault-backed production Gateway PKI adapter, managed TLS provisioning, automated renewal/revocation convergence, delayed obsolete-serial revocation, routed Gateway validation, complete snapshot publication, reload-before-acknowledgement process-death recovery, exact acknowledgement projection, and byte-preserving routed update and rollback cutover | Complete (`E0` slice) |
 | Secrets | Encrypted tenant-scoped resources, immutable rotation/revocation, typed environment/file/registry-credential workload bindings, transient authenticated manifest resolution, assigned-node mTLS materialization, metadata-only APIs/events, reference-only durable state, authenticated private-image pulls, environment and `0400` tmpfs-file injection, post-commit automatic restart orchestration, concurrent replay/process-loss recovery, provider-and-agent-death recovery during rotated apply with exact container reattachment and receipt replay, causal checkpoints, and final durable-state plaintext scans are implemented; the production paths are exercised by the isolated PostgreSQL and Linux/Docker gates | Complete (`E0` slice) |
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
-| Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, and browser-local terminal cleanup | Complete (`E0` slice) |
+| Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, browser-local terminal cleanup, and a production SPA server behind a same-origin A3S Gateway API/web profile | Complete (`E0` slice plus management-web delivery) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, and full OCI graph validation are implemented. The production worker now reconciles each revision into `cloud.build@1`; that Flow performs credential-free checkout replay, deterministic input packaging, capability-based Task placement, a digest-pinned BuildKit Runtime Task with two independent network denials, exact output admission/validation, deterministic Runtime removal, and checkout cleanup. Crash-window tests prove dispatch replay does not duplicate Runtime apply/remove side effects. A real Runtime/BuildKit/Docker gate is implemented but requires an operator-provisioned shared socket volume and has not been executed in this workspace. Periodic authoritative provider polling and checkout-time lifecycle revalidation, external private-repository certification, registry publication, provenance/SBOM/signing, build logs/UI, and push-to-deploy remain | In progress (`G0` isolated build slice) |
+| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, periodic installation/account authority polling, fresh private-credential and checkout-time revalidation, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun reservation, command-bound Artifact transport, full OCI graph validation, authoritative digest-only registry publication, explicit published-build-to-Workload deployment, tenant-scoped BuildRun list/detail/log queries, resumable BuildRun log streaming, atomic idempotent cancellation, and the corresponding polled web status/control surface are implemented. The production `cloud.build@2` Flow persists the publication target before push, verifies the remote graph, adopts ambiguous pushes across replay and cancellation races, then removes the Runtime Task and checkout; the deployment handoff binds the exact tenant, source revision, BuildRun, published digest, and artifact-free service template before reusing `cloud.deployment@2`. Unit and PostgreSQL gates cover terminal-state rejection and repair, tenant isolation, replay, durable trace reconstruction, and atomic rollback. External private-provider certification, provenance/SBOM/signing, retry-as-new-attempt, and cache trust gates remain | In progress (`G0` build-logs slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -231,6 +244,19 @@ API command
 
 Start the pinned local PostgreSQL and NATS profile, then run Cloud from this
 repository directory. Database migrations are applied during startup.
+
+From the A3S monorepo root, the shortest development path starts the pinned
+dependencies, API, and hot-reloading web console together:
+
+```bash
+just cloud
+```
+
+The command prints an ephemeral bootstrap token when one was not supplied,
+keeps both foreground services under one signal boundary, and leaves the
+dependency containers running for fast restarts. Run `just cloud-down` from
+this repository to stop those dependencies. Set `A3S_CLOUD_POSTGRES_URL` to
+skip Docker and use an existing PostgreSQL instance.
 
 ```bash
 docker compose \
@@ -345,7 +371,7 @@ The public GitHub CI gate and local authenticated smart-HTTP fixture exercise
 these boundaries. An ignored operator-supplied test covers the real private
 GitHub path, but no external private-repository result is claimed here.
 The Artifacts context reserves one deterministic durable build run for this
-revision and the production worker repairs the source-commit-to-`cloud.build@1`
+revision and the production worker repairs the source-commit-to-`cloud.build@2`
 operation crash gap exactly once. The registered Build Flow replays the
 credential-free checkout, packages and admits a deterministic source Artifact,
 selects only a node that supports the complete Runtime Task profile and builder
@@ -354,9 +380,121 @@ socket mounts are read-only; the client container uses Runtime
 `NetworkMode::None`, while every BuildKit `RUN` uses
 `force-network-mode=none`. Docker captures the declared OCI directory output,
 the control plane rehashes the Artifact and validates its complete reachable
-OCI graph, and terminal completion follows deterministic Runtime removal plus
-checkout cleanup. Registry publication and deployment handoff remain separate
-G0 boundaries.
+OCI graph. It then persists a deterministic digest-only publication target,
+streams and verifies the graph in the configured OCI registry, and records the
+published descriptor before deterministic Runtime removal and checkout cleanup.
+Provenance remains a separate G0 boundary. A succeeded publication can now be
+handed to the existing Workload deployment path explicitly.
+
+### Inspect and cancel build runs
+
+List the authoritative BuildRuns for one environment or inspect one exact
+tenant-owned build:
+
+```text
+GET /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/build-runs
+GET /api/v1/organizations/{organization_id}/build-runs/{build_run_id}
+```
+
+The response contains source and Operation lineage, status, timestamps,
+validated OCI descriptor/platform statistics, publication target, published
+artifact, and a bounded failure reason. It deliberately omits node and command
+identities plus input and Runtime-output Artifact URIs. The web console polls
+the selected environment and presents the same projection. List queries default
+to 50 records, accept `limit=1..200`, and return newest builds first; the web
+console requests the latest 100.
+
+Request cooperative cancellation with:
+
+```text
+DELETE /api/v1/organizations/{organization_id}/build-runs/{build_run_id}
+```
+
+The mutation requires `build:write` and an `idempotency-key` header. A newly
+persisted request returns `202`; an exact replay returns `200`, while key reuse
+with different input or a second cancellation intent conflicts. Cancellation
+does not bypass the Build Flow: publication-race adoption, Runtime removal, and
+checkout cleanup still complete before the BuildRun becomes terminal.
+
+Read the ordered Runtime output for one tenant-owned BuildRun or follow it as a
+resumable server-sent event stream:
+
+```text
+GET /api/v1/organizations/{organization_id}/build-runs/{build_run_id}/logs?cursor=v1:42&limit=100&stream=stdout
+GET /api/v1/organizations/{organization_id}/build-runs/{build_run_id}/logs/stream?cursor=v1:42&limit=16&stream=stderr
+```
+
+Both endpoints reuse the durable node log metadata and configured local/S3
+object store. Records retain their total delivery sequence, source cursor,
+stdout/stderr identity, and explicit missing, corrupt, retained, compacted, or
+provider-discontinuity gaps. `Last-Event-ID` takes precedence over the SSE
+query cursor. The public response binds only the BuildRun, Operation, Runtime
+generation, records, and next cursor; node identity and the internal Runtime
+unit ID remain private. The web console selects the newest BuildRun by default,
+allows another run to be selected, reconnects from the last event ID, and keeps
+at most 500 deduplicated ordered records in browser memory.
+
+### Deploy a published source build
+
+After the source revision's deterministic BuildRun reaches `succeeded`, create
+one resolved Workload revision without resubmitting or trusting an artifact
+locator:
+
+```text
+POST /api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions/{source_revision_id}/workloads
+```
+
+```bash
+curl --request POST \
+  "http://127.0.0.1:8080/api/v1/organizations/${A3S_CLOUD_ORGANIZATION_ID}/projects/${A3S_CLOUD_PROJECT_ID}/environments/${A3S_CLOUD_ENVIRONMENT_ID}/source-revisions/${A3S_CLOUD_SOURCE_REVISION_ID}/workloads" \
+  --header "authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}" \
+  --header "content-type: application/json" \
+  --header "idempotency-key: deploy-source-api-1" \
+  --data '{
+    "name": "api",
+    "template": {
+      "process": {
+        "command": [],
+        "args": [],
+        "workingDirectory": null,
+        "environment": {}
+      },
+      "secrets": [],
+      "resources": {
+        "cpuMillis": 500,
+        "memoryBytes": 268435456,
+        "pids": 128,
+        "ephemeralStorageBytes": null
+      },
+      "ports": [{"name": "http", "containerPort": 8080}],
+      "health": {
+        "portName": "http",
+        "path": "/health",
+        "intervalMs": 1000,
+        "timeoutMs": 500,
+        "healthyThreshold": 1,
+        "unhealthyThreshold": 3,
+        "stabilizationWindowMs": 5000
+      }
+    }
+  }'
+```
+
+The template deliberately has no `artifact` field. Cloud loads the exact
+tenant-owned source revision and BuildRun, accepts only a terminal successful
+build with a verified `PublishedOciArtifact`, converts that descriptor into a
+digest-pinned Workload artifact, and invokes `cloud.deployment@2`. The response
+and every Workload revision projection expose `externalSourceRevisionId` and
+`buildRunId`; deployment Operation projections expose the same lineage.
+Rollback and Secret-rotation-derived revisions retain it.
+
+The mutation requires `workload:write`. A new deployment returns `202`; an
+exact replay returns `200`. The idempotency digest binds the source revision,
+BuildRun, published digest, workload name, and complete artifact-free template.
+Reusing the key with changed input returns `409`. A queued, failed, cancelled,
+or not-yet-reserved build returns `409` without creating Workload, revision,
+Operation, outbox, or idempotency state. A source outside the exact
+organization/project/environment hierarchy returns `404`.
 
 List accepted revisions with:
 
@@ -388,6 +526,11 @@ sources {
   github_app_private_key_env = "A3S_CLOUD_GITHUB_APP_PRIVATE_KEY"
   github_app_callback_url = "https://cloud.example.com/api/v1/source-connections/github/callback"
   github_connection_state_ttl_ms = 600000
+  github_authority_reconcile_interval_ms = 10000
+  github_authority_poll_interval_ms = 300000
+  github_authority_retry_initial_ms = 1000
+  github_authority_retry_max_ms = 60000
+  github_authority_batch_size = 100
 
   # Existing source settings remain required here.
   github_request_timeout_ms = 10000
@@ -421,7 +564,8 @@ GitHub installation or account may belong to only one Cloud organization. The
 durable record contains numeric installation, account, and verifying-user IDs,
 display logins, explicit status, connection/update times, and aggregate
 version. Completion emits `source.github-connection.created`; the GET response
-includes `status` and `updatedAt`. API and callback responses are non-cacheable.
+includes `status`, `updatedAt`, and `providerAuthority` check, retry, failure,
+and next-check metadata. API and callback responses are non-cacheable.
 
 Only `active` is provider authority. `suspended` blocks credentials, new
 subscriptions, and push fanout but also blocks a second connection until GitHub
@@ -447,11 +591,25 @@ Cloud may use only an active connection to request one short-lived token for
 the exact allowlisted repository and retry resolution. The checkout adapter
 accepts the same repository-bound credential for one fetch. After the
 source-revision request commits, the asynchronous Build Flow coordinates that
-checkout and isolated build. Lifecycle state is currently webhook-driven;
-periodic provider polling, a fresh provider check immediately before checkout,
-and disambiguation of delayed pre-reconnection deliveries remain later work. A
-credential already issued before a state change can remain usable until GitHub
-expires or revokes it.
+checkout and isolated build. A bounded worker signs a fresh App JWT and polls
+`GET /app/installations/{installation_id}` to repair missed suspension,
+unsuspension, deletion, account-identity, and login changes. It persists the
+last successful check, attempted check, next check, consecutive failures, and a
+generic operator-visible error with bounded exponential retry. A provider
+confirmation that the installation was deleted or its numeric account identity
+changed is terminal. A delayed terminal webhook is rechecked; optimistic
+versioning and current-connection uniqueness prevent it from mutating a newly
+verified replacement connection.
+
+Every private credential request performs the same provider check first and
+requires the exact organization, connection, installation, and still-active
+account. Provider uncertainty fails closed before token issuance, covering both
+authenticated ref resolution and checkout. GitHub exposes no tokenless API for
+querying a user's current App OAuth grant, and Cloud deliberately does not
+persist user access or refresh tokens. Verifying-user authorization revocation
+therefore remains authoritative through the signed
+`github_app_authorization.revoked` webhook. A credential already issued before
+a state change can remain usable until GitHub expires or revokes it.
 
 ### Subscribe an environment to a GitHub repository
 
@@ -567,9 +725,11 @@ event/action, installation or user subject, payload digest, and receipt time.
 The first delivery reconciles matching current connections and atomically emits
 `source.github-connection.reconciled`; exact replay is a no-op, and changed
 payload reuse conflicts. Lifecycle state gates private-token fallback,
-subscription creation, and PostgreSQL fanout. It does not yet poll GitHub for
-missed/out-of-order deliveries or coordinate a fresh provider check with
-checkout.
+subscription creation, and PostgreSQL fanout. Periodic App-JWT installation
+polling repairs missed or out-of-order installation/account facts, while every
+private credential issuance requires a fresh successful provider check before
+authenticated resolution or checkout. Signed authorization-revocation delivery
+remains authoritative for the non-durable verifying-user OAuth grant.
 
 An exact provider replay is stopped by the inbox and never evaluates bindings
 again, so it cannot duplicate revisions/events or retroactively pick up a
@@ -706,6 +866,38 @@ The development server listens on `127.0.0.1:3010` and proxies `/api` to
 `http://127.0.0.1:8080`. Set `A3S_CLOUD_API_ORIGIN` to use another control-plane
 origin, then sign in with the API token created during bootstrap.
 
+### Serve the production SPA through A3S Gateway
+
+Build the browser assets, run the bounded production SPA server on a private
+listener, and expose the SPA and API through one Gateway origin:
+
+```bash
+cd web
+bun install --frozen-lockfile
+bun run build
+cd ..
+
+cargo run -p a3s-cloud-web-server -- \
+  --listen 127.0.0.1:3011 \
+  --root web/dist
+
+a3s-gateway validate --config deploy/web/gateway.acl
+a3s-gateway --config deploy/web/gateway.acl
+```
+
+The shipped loopback profile serves the console at `http://127.0.0.1:8088`,
+routes only `/api` and `/api/*` to the control plane, and sends every other path
+to the SPA server. The SPA server provides client-route fallback, immutable
+hashed-asset caching, non-cached entrypoints, exact content types, traversal
+protection, and browser security headers. Configure an operator-owned TLS
+entrypoint before changing the Gateway listener to a non-loopback address. See
+[`deploy/web/README.md`](deploy/web/README.md) for the boundary and startup
+contract.
+
+After installing A3S Gateway 1.0.12 or later, the complete local delivery path
+can also be started from this repository with `just cloud-gateway`. Set
+`A3S_GATEWAY_BIN` when the binary is not on `PATH`.
+
 ## Configuration
 
 Cloud validates a closed A3S ACL configuration at startup. Unknown fields and
@@ -731,16 +923,26 @@ deployment and Edge policies are split across independent boundaries:
 | `artifacts.max_expanded_bytes` (node agent) | Maximum total expanded bytes admitted from one archive |
 | `registry.request_timeout_ms` | Timeout for one registry request |
 | `registry.insecure_hosts` | Explicit development-only HTTP registry allowlist |
-| `sources.github_request_timeout_ms` | Bound for one GitHub API request, including App-token issuance and authenticated resolution |
+| `registry.publication_registry` | Exact host and optional port receiving built OCI graphs |
+| `registry.publication_repository_prefix` | Lowercase repository prefix for tenant/project/environment/build-scoped publication |
+| `registry.publication_credential_env` | Uppercase environment-variable reference containing registry credential JSON; required in production |
+| `registry.publication_allow_anonymous` | Development-only opt-in for anonymous publication; mutually exclusive with a credential reference |
+| `registry.publication_timeout_ms` | Durable deadline for new push attempts; read-only outcome reconciliation may continue afterward |
+| `sources.github_request_timeout_ms` | Bound for one GitHub API request, including authority inspection, App-token issuance, and authenticated resolution |
 | `sources.github_webhook_secret_env` | Uppercase environment-variable name containing the 32- to 512-byte GitHub HMAC secret; read for every request to permit rotation |
 | `sources.github_webhook_max_body_bytes` | Accepted signed webhook body limit from 1 KiB through 2 MiB |
 | `sources.github_app_enabled` | Explicit GitHub App connection switch; when false, all App fields must be empty and connection attempts return unavailable |
 | `sources.github_app_slug` | Lowercase bounded slug used only to construct GitHub's fixed App installation URL |
 | `sources.github_app_client_id` | Public GitHub App OAuth client ID |
 | `sources.github_app_client_secret_env` | Uppercase environment-variable name carrying the OAuth client secret; the value is read transiently for each callback |
-| `sources.github_app_private_key_env` | Uppercase environment-variable name carrying the PEM App private key; the value is read transiently for every installation-token request |
+| `sources.github_app_private_key_env` | Uppercase environment-variable name carrying the PEM App private key; the value is read transiently for every authority check and installation-token request |
 | `sources.github_app_callback_url` | Exact public HTTPS callback ending in `/api/v1/source-connections/github/callback` |
 | `sources.github_connection_state_ttl_ms` | Shared 1- to 30-minute bound for the single-use installation/OAuth flow |
+| `sources.github_authority_reconcile_interval_ms` | Worker scan interval for due GitHub installation authority checks; positive and at most 60 seconds |
+| `sources.github_authority_poll_interval_ms` | Successful GitHub installation/account polling cadence; at least the scan interval and at most 24 hours |
+| `sources.github_authority_retry_initial_ms` | Initial retry delay after an unavailable or invalid GitHub authority response |
+| `sources.github_authority_retry_max_ms` | Maximum exponential authority-check retry delay; at least the initial delay and no longer than the poll interval |
+| `sources.github_authority_batch_size` | Maximum due connections inspected per reconciliation scan; from 1 through 10,000 |
 | `sources.allowed_repositories` | Exact HTTPS GitHub repository allowlist; it must be nonempty |
 | `sources.denied_repositories` | Exact HTTPS GitHub repository denylist; denial takes precedence |
 | `edge.entrypoint_address` | Address rendered into the complete traffic snapshot |
@@ -1022,7 +1224,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@1` Runtime Task execution, dual network denial, OCI validation, and cleanup are implemented; authoritative polling, operator gate evidence, registry publication, provenance, deployment handoff, and external private-repository evidence remain) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, periodic installation/account authority polling, fresh private-credential and checkout revalidation, deterministic BuildRun/operation reconciliation, command-bound Artifact transport, production `cloud.build@2` Runtime Task execution, dual network denial, full OCI validation, authoritative digest-only registry publication, a combined authenticated Runtime/BuildKit/Registry gate, replay/cancellation adoption, cleanup, explicit published-build deployment through `cloud.deployment@2`, and BuildRun status/cancellation/log API and web controls are implemented; provenance/SBOM/signing, retry-as-new-attempt, cache trust, and external private-provider evidence remain) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
@@ -1122,13 +1324,16 @@ rollback, and Secret-rotation restart recovery after the committed version
 boundary. Because this suite deliberately has no public-network route, its
 PostgreSQL fixture accepts only typed full commit references through a
 deterministic test resolver; the dedicated GitHub source-resolution and Linux
-Secret/log jobs exercise the production GitHub adapter. One rootless BuildKit
-job certifies the typed local-context adapter. A separate operator gate now
-projects the production `cloud.build@1` Task, runs it through the real node
-command journal and Docker Runtime, verifies the exact read-only socket volume,
-Docker network mode `none`, BuildKit `force-network-mode=none`, a failed `wget`
-attempt inside `RUN`, Artifact upload, full OCI validation, and Runtime removal.
-It does not claim registry publication. The real Docker
+Secret/log jobs exercise the production GitHub adapter. The `Runtime BuildKit
+private Registry` job certifies the typed local-context adapter, provisions the
+exact operator socket volume and an authenticated private Distribution
+registry, then projects the production `cloud.build@2` Task and runs it through
+the real node command journal and Docker Runtime. It verifies the exact
+read-only socket mount, Docker network mode `none`, BuildKit
+`force-network-mode=none`, a failed `wget` attempt inside `RUN`, Artifact upload,
+full OCI validation, deterministic target derivation, authenticated graph push,
+remote verification, idempotent publication replay, Runtime removal, and a
+terminal successful BuildRun. The real Docker
 update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the
@@ -1174,8 +1379,15 @@ with the same digest-pinned image used by `config/cloud.acl`:
 export A3S_BUILDKIT_NAMESPACE=cloud-buildkit-gate
 export A3S_BUILDKIT_VOLUME_ID=a3s-cloud-buildkit-v0-31-2
 export A3S_BUILDKIT_IMAGE='moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b'
+export A3S_BUSYBOX_IMAGE='busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
+export A3S_BUSYBOX_ROOTFS=/tmp/a3s-cloud-buildkit-gate-busybox-rootfs.tar
 export A3S_BUILDKIT_VOLUME="a3s-${A3S_BUILDKIT_NAMESPACE}-volume-$(printf %s "$A3S_BUILDKIT_VOLUME_ID" | sha256sum | cut -c1-16)"
 
+docker pull --platform linux/amd64 "$A3S_BUSYBOX_IMAGE"
+A3S_BUSYBOX_CONTAINER=$(docker create --platform linux/amd64 "$A3S_BUSYBOX_IMAGE")
+docker export --output "$A3S_BUSYBOX_ROOTFS" "$A3S_BUSYBOX_CONTAINER"
+docker rm "$A3S_BUSYBOX_CONTAINER"
+chmod 0444 "$A3S_BUSYBOX_ROOTFS"
 docker volume create "$A3S_BUILDKIT_VOLUME"
 docker run --rm --user 0 --entrypoint sh \
   -v "$A3S_BUILDKIT_VOLUME:/run/user/1000/a3s-buildkit" \
@@ -1195,19 +1407,36 @@ unprivileged, drop all capabilities, and mount only the socket volume read-only.
 Volume capability advertisement alone is insufficient evidence that this exact
 socket volume and daemon exist.
 
-Run the gate, then remove the dedicated daemon and volume:
+Provide an authenticated registry origin with an explicit port, run the gate,
+then remove the dedicated daemon and volume. HTTP is accepted only for a local
+conformance fixture; production publication requires HTTPS. The test converts
+the supplied username and password into the production credential schema only
+for the bounded publication attempt and removes that environment material on
+exit:
 
 ```bash
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT=1 \
+A3S_CLOUD_TEST_BUSYBOX_ROOTFS="$A3S_BUSYBOX_ROOTFS" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE="$A3S_BUILDKIT_NAMESPACE" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_VOLUME_ID="$A3S_BUILDKIT_VOLUME_ID" \
-cargo test -p a3s-cloud-control-plane \
-  real_runtime_task_builds_with_network_none_and_rejects_network_access \
-  -- --ignored --nocapture
+A3S_CLOUD_TEST_REGISTRY_URL="$A3S_REGISTRY_URL" \
+A3S_CLOUD_TEST_REGISTRY_USERNAME="$A3S_REGISTRY_USERNAME" \
+A3S_CLOUD_TEST_REGISTRY_PASSWORD="$A3S_REGISTRY_PASSWORD" \
+cargo test -p a3s-cloud-control-plane --lib \
+  modules::artifacts::infrastructure::build_flow::tests::runtime_gate::real_runtime_task_builds_publishes_and_rejects_network_access \
+  -- --ignored --exact --nocapture --test-threads=1
 
 docker rm -f a3s-cloud-buildkit-gate-daemon
 docker volume rm "$A3S_BUILDKIT_VOLUME"
+rm -f "$A3S_BUSYBOX_ROOTFS"
 ```
+
+CI creates both fixtures from digest-pinned images, exports the bounded pinned
+linux/amd64 BusyBox root filesystem into the otherwise scratch-only build
+context, and rejects anonymous registry access before running this same gate.
+The root filesystem supplies the executable and its exact dynamic-loader
+closure without resolving a base image. BuildKit therefore performs no image
+resolution through the network-isolated Runtime client.
 
 The PostgreSQL integration test treats the supplied URL as an administration
 connection, creates a uniquely named database for the run, and force-removes it

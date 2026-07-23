@@ -1,6 +1,6 @@
 use crate::modules::workloads::application::{
-    CreateWorkloadDeploymentResult, RollbackWorkloadDeploymentResult,
-    UpdateWorkloadDeploymentResult,
+    CreateSourceWorkloadDeploymentResult, CreateWorkloadDeploymentResult,
+    RollbackWorkloadDeploymentResult, UpdateWorkloadDeploymentResult,
 };
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use chrono::{DateTime, Utc};
@@ -27,7 +27,17 @@ pub struct WorkloadDeploymentResponse {
     pub requested_at: DateTime<Utc>,
     pub replayed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_source_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_run_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rollback_source_revision_id: Option<Uuid>,
+}
+
+impl From<CreateSourceWorkloadDeploymentResult> for WorkloadDeploymentResponse {
+    fn from(result: CreateSourceWorkloadDeploymentResult) -> Self {
+        Self::from_bundle(result.bundle, None)
+    }
 }
 
 impl From<CreateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
@@ -50,6 +60,16 @@ impl From<UpdateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
 
 impl WorkloadDeploymentResponse {
     fn from_bundle(bundle: DeploymentBundle, rollback_source_revision_id: Option<Uuid>) -> Self {
+        let external_source_revision_id = bundle
+            .revision
+            .external_build
+            .as_ref()
+            .map(|reference| reference.source_revision_id.as_uuid());
+        let build_run_id = bundle
+            .revision
+            .external_build
+            .as_ref()
+            .map(|reference| reference.build_run_id.as_uuid());
         Self {
             organization_id: bundle.workload.organization_id.as_uuid(),
             project_id: bundle.workload.project_id.as_uuid(),
@@ -70,6 +90,8 @@ impl WorkloadDeploymentResponse {
             template_digest: bundle.revision.template_digest,
             requested_at: bundle.deployment.requested_at,
             replayed: bundle.replayed,
+            external_source_revision_id,
+            build_run_id,
             rollback_source_revision_id,
         }
     }

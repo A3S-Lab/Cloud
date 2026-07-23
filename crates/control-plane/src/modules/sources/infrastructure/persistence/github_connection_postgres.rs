@@ -7,8 +7,8 @@ use crate::modules::sources::domain::{
     CompleteGithubConnection, GitProvider, GithubAccountId, GithubAccountKind, GithubConnection,
     GithubConnectionFlow, GithubConnectionFlowError, GithubConnectionFlowStage,
     GithubConnectionLifecycleAcceptance, GithubConnectionReconciled, GithubConnectionStatus,
-    GithubInstallationId, GithubLogin, IGithubConnectionRepository,
-    ReconcileGithubConnectionLifecycle,
+    GithubInstallationId, GithubLogin, GithubProviderCheckError, IGithubConnectionRepository,
+    PersistGithubProviderReconciliation, ReconcileGithubConnectionLifecycle,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
@@ -42,6 +42,11 @@ struct GithubConnectionRow {
     aggregate_version: u64,
     connected_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    provider_checked_at: DateTime<Utc>,
+    provider_check_attempted_at: DateTime<Utc>,
+    provider_next_check_at: DateTime<Utc>,
+    provider_check_failures: u64,
+    provider_check_error: Option<String>,
 }
 
 struct GithubConnectionLifecycleRow {
@@ -83,6 +88,11 @@ impl FromRow for GithubConnectionRow {
             aggregate_version: decode(row, 9)?,
             connected_at: decode(row, 10)?,
             updated_at: decode(row, 11)?,
+            provider_checked_at: decode(row, 12)?,
+            provider_check_attempted_at: decode(row, 13)?,
+            provider_next_check_at: decode(row, 14)?,
+            provider_check_failures: decode(row, 15)?,
+            provider_check_error: decode(row, 16)?,
         })
     }
 }
@@ -279,6 +289,11 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
         if !request.connection.is_authoritative()
             || request.connection.aggregate_version != 1
             || request.connection.updated_at != request.connection.connected_at
+            || request.connection.provider_checked_at != request.connection.connected_at
+            || request.connection.provider_check_attempted_at != request.connection.connected_at
+            || request.connection.provider_next_check_at != request.connection.connected_at
+            || request.connection.provider_check_failures != 0
+            || request.connection.provider_check_error.is_some()
         {
             return Err(RepositoryError::Conflict(
                 "new GitHub connection is not active at its initial version".into(),
@@ -317,7 +332,7 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
                     let insert = execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into github_source_connections (organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, status, aggregate_version, connected_at, updated_at) values (",
+                            "insert into github_source_connections (organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, status, aggregate_version, connected_at, updated_at, provider_checked_at, provider_check_attempted_at, provider_next_check_at, provider_check_failures, provider_check_error) values (",
                         )
                         .bind(request.connection.organization_id.as_uuid())
                         .append(", ")
@@ -342,6 +357,21 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
                         .bind(request.connection.connected_at)
                         .append(", ")
                         .bind(request.connection.updated_at)
+                        .append(", ")
+                        .bind(request.connection.provider_checked_at)
+                        .append(", ")
+                        .bind(request.connection.provider_check_attempted_at)
+                        .append(", ")
+                        .bind(request.connection.provider_next_check_at)
+                        .append(", ")
+                        .bind(request.connection.provider_check_failures)
+                        .append(", ")
+                        .bind(
+                            request
+                                .connection
+                                .provider_check_error
+                                .map(GithubProviderCheckError::as_str),
+                        )
                         .append(")"),
                     )
                     .await;
@@ -413,6 +443,107 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
             .map(map_connection)
             .transpose()
             .map_err(persistence_error)
+    }
+
+    async fn find_provider_check_candidates(
+        &self,
+        due_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GithubConnection>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let limit = i64::try_from(limit).map_err(|_| {
+            RepositoryError::Storage("GitHub provider check limit exceeds PostgreSQL bigint".into())
+        })?;
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_all_as(
+                connection_select_query()
+                    .append(" where (status in ('active', 'suspended') or (status in ('installation_deleted', 'account_changed') and provider_checked_at < updated_at)) and provider_next_check_at <= ")
+                    .bind(due_at)
+                    .append(
+                        " order by provider_next_check_at asc, organization_id asc, id asc limit ",
+                    )
+                    .bind(limit),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .rows
+            .into_iter()
+            .map(map_connection)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(persistence_error)
+    }
+
+    async fn save_provider_reconciliation(
+        &self,
+        request: PersistGithubProviderReconciliation,
+    ) -> Result<GithubConnection, RepositoryError> {
+        let next_version = request.expected_version.checked_add(1).ok_or_else(|| {
+            RepositoryError::Conflict("GitHub connection aggregate version overflowed".into())
+        })?;
+        if request.connection.aggregate_version != next_version {
+            return Err(RepositoryError::Conflict(
+                "GitHub provider reconciliation has an invalid aggregate version".into(),
+            ));
+        }
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let update = execute(
+                        transaction,
+                        sql_query::<()>("update github_source_connections set account_login = ")
+                            .bind(request.connection.account_login.as_str())
+                            .append(", status = ")
+                            .bind(request.connection.status.as_str())
+                            .append(", aggregate_version = ")
+                            .bind(request.connection.aggregate_version)
+                            .append(", updated_at = ")
+                            .bind(request.connection.updated_at)
+                            .append(", provider_checked_at = ")
+                            .bind(request.connection.provider_checked_at)
+                            .append(", provider_check_attempted_at = ")
+                            .bind(request.connection.provider_check_attempted_at)
+                            .append(", provider_next_check_at = ")
+                            .bind(request.connection.provider_next_check_at)
+                            .append(", provider_check_failures = ")
+                            .bind(request.connection.provider_check_failures)
+                            .append(", provider_check_error = ")
+                            .bind(
+                                request
+                                    .connection
+                                    .provider_check_error
+                                    .map(GithubProviderCheckError::as_str),
+                            )
+                            .append(" where id = ")
+                            .bind(request.connection.id.as_uuid())
+                            .append(" and organization_id = ")
+                            .bind(request.connection.organization_id.as_uuid())
+                            .append(" and installation_id = ")
+                            .bind(as_i64(request.connection.installation_id)?)
+                            .append(" and aggregate_version = ")
+                            .bind(request.expected_version),
+                    )
+                    .await;
+                    match update {
+                        Ok(rows) => require_one_row("provider-reconciled GitHub connection", rows)?,
+                        Err(error) if is_unique_violation(&error) => {
+                            return Err(RepositoryError::Conflict(
+                                "GitHub provider reconciliation conflicts with current authority"
+                                    .into(),
+                            )
+                            .into())
+                        }
+                        Err(error) => return Err(error),
+                    }
+                    if let Some(event) = request.event.as_ref() {
+                        store_outbox(transaction, event).await?;
+                    }
+                    Ok(request.connection)
+                })
+            })
+            .await
+            .map_err(transaction_error)
     }
 
     async fn reconcile_lifecycle(
@@ -540,6 +671,8 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
                             .bind(connection.aggregate_version)
                             .append(", updated_at = ")
                             .bind(connection.updated_at)
+                            .append(", provider_next_check_at = ")
+                            .bind(connection.provider_next_check_at)
                             .append(" where id = ")
                             .bind(connection.id.as_uuid())
                             .append(" and aggregate_version = ")
@@ -567,7 +700,7 @@ impl IGithubConnectionRepository for PostgresGithubConnectionRepository {
 
 fn connection_select_query() -> a3s_orm::SqlQuery<GithubConnectionRow> {
     sql_query::<GithubConnectionRow>(
-        "select organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, status, aggregate_version, connected_at, updated_at from github_source_connections",
+        "select organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, status, aggregate_version, connected_at, updated_at, provider_checked_at, provider_check_attempted_at, provider_next_check_at, provider_check_failures, provider_check_error from github_source_connections",
     )
 }
 
@@ -643,6 +776,20 @@ fn map_connection(row: GithubConnectionRow) -> Result<GithubConnection, Postgres
         aggregate_version: row.aggregate_version,
         connected_at: row.connected_at,
         updated_at: row.updated_at,
+        provider_checked_at: row.provider_checked_at,
+        provider_check_attempted_at: row.provider_check_attempted_at,
+        provider_next_check_at: row.provider_next_check_at,
+        provider_check_failures: u32::try_from(row.provider_check_failures).map_err(|_| {
+            PostgresPersistenceError::Invariant(
+                "stored GitHub provider failure count exceeds u32".into(),
+            )
+        })?,
+        provider_check_error: row
+            .provider_check_error
+            .as_deref()
+            .map(GithubProviderCheckError::parse)
+            .transpose()
+            .map_err(PostgresPersistenceError::Invariant)?,
     })
     .map_err(PostgresPersistenceError::Invariant)
 }

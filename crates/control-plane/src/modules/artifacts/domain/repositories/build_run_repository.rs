@@ -1,9 +1,17 @@
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
+    RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+
+#[derive(Clone)]
+pub struct RequestBuildCancellationBundle {
+    pub build_run: BuildRun,
+    pub expected_version: u64,
+    pub idempotency: IdempotencyRequest,
+}
 
 #[async_trait]
 pub trait IBuildRunRepository: Send + Sync {
@@ -35,7 +43,18 @@ pub trait IBuildRunRepository: Send + Sync {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<BuildRun>, RepositoryError>;
+
+    async fn request_cancellation(
+        &self,
+        request: RequestBuildCancellationBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError>;
+
+    async fn replay_cancellation(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError>;
 
     async fn save(
         &self,
@@ -92,6 +111,16 @@ pub(crate) fn validate_build_run_transition(
         || next.output.as_ref().is_some_and(|output| {
             matches_transition(existing, next, |candidate| {
                 candidate.record_validated_output(output.clone(), at)
+            })
+        })
+        || next.publication_target.as_ref().is_some_and(|target| {
+            matches_transition(existing, next, |candidate| {
+                candidate.begin_publication(target.clone(), at)
+            })
+        })
+        || next.published_artifact.as_ref().is_some_and(|artifact| {
+            matches_transition(existing, next, |candidate| {
+                candidate.record_published_artifact(artifact.clone(), at)
             })
         })
         || next.failure.as_ref().is_some_and(|failure| {

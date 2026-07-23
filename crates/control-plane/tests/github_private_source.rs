@@ -1,3 +1,4 @@
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{OrganizationId, SourceConnectionId};
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitProvider, GitReference, GitRepository, GithubInstallationId, GithubInstallationTokenRequest,
     IGithubInstallationTokenService, ISourceCheckout, ISourceResolver, SourceCheckoutRequest,
@@ -30,6 +31,8 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
             .map_err(test_error)?;
     let credential = issuer
         .issue(GithubInstallationTokenRequest {
+            organization_id: OrganizationId::new(),
+            connection_id: SourceConnectionId::new(),
             installation_id: GithubInstallationId::parse(installation_id).map_err(test_error)?,
             repository: repository.clone(),
             requested_at: Utc::now(),

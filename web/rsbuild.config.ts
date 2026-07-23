@@ -12,6 +12,7 @@ export default defineConfig({
   },
   html: {
     title: 'A3S Cloud',
+    favicon: './src/assets/favicon.svg',
     meta: {
       description: 'Operate applications and A3S assets on infrastructure you own',
       'theme-color': '#101713',

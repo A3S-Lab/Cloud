@@ -1,8 +1,10 @@
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
-    BuildFlowRuntime, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
-    INodeArtifactStore, LocalNodeArtifactStore, PostgresBuildRunRepository,
-    RuntimeBuildOutputValidator, SourceBuildInputPreparer,
+    ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
+    GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler,
+    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    PostgresBuildRunRepository, RuntimeBuildOutputValidator, SourceBuildInputPreparer,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
@@ -60,31 +62,33 @@ use crate::modules::secrets::{
     RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
 };
 use crate::modules::sources::domain::{
-    IGithubAppAuthorizationService, IGithubConnectionRepository, IGithubInstallationTokenService,
-    ISourceCheckout, ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
+    IGithubAppAuthorizationService, IGithubConnectionAuthorityService, IGithubConnectionRepository,
+    IGithubInstallationAuthorityProvider, IGithubInstallationTokenService, ISourceCheckout,
+    ISourceResolver, ISourceRevisionRepository, ISourceSubscriptionRepository,
     ISourceWebhookRepository, ISourceWebhookVerifier, SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
     AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
     CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
     DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GitSourceCheckout,
-    GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
-    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
-    PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
-    PostgresSourceSubscriptionRepository, PrepareGithubConnectionOauthHandler,
-    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler, SourcesModule,
+    GithubAppClient, GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer,
+    GithubSourceResolver, GithubWebhookVerifier, ListGithubRepositorySubscriptionsHandler,
+    ListSourceRevisionsHandler, PostgresGithubConnectionRepository,
+    PostgresSourceRevisionRepository, PostgresSourceSubscriptionRepository,
+    PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
+    ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
-    CancelDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
-    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler,
-    StopWorkloadHandler, UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler,
-    WorkloadsModule,
+    CancelDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
+    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowRuntime,
+    GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadRuntimeControl,
+    ListWorkloadsHandler, OciRegistryArtifactResolver, PostgresWorkloadRepository,
+    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
+    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -223,19 +227,35 @@ pub async fn build_application_with_source_resolver(
         } else {
             Arc::new(GithubAppClient::disabled())
         };
-    let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> =
-        if config.sources.github_app_enabled {
-            Arc::new(
-                GithubInstallationTokenIssuer::new(
-                    Duration::from_millis(config.sources.github_request_timeout_ms),
-                    config.sources.github_app_client_id.clone(),
-                    config.sources.github_app_private_key_env.clone(),
-                )
-                .map_err(ControlPlaneStartupError::Sources)?,
-            )
-        } else {
-            Arc::new(GithubInstallationTokenIssuer::disabled())
-        };
+    let github_installation_client = Arc::new(if config.sources.github_app_enabled {
+        GithubInstallationTokenIssuer::new(
+            Duration::from_millis(config.sources.github_request_timeout_ms),
+            config.sources.github_app_client_id.clone(),
+            config.sources.github_app_private_key_env.clone(),
+        )
+        .map_err(ControlPlaneStartupError::Sources)?
+    } else {
+        GithubInstallationTokenIssuer::disabled()
+    });
+    let github_installation_tokens_raw: Arc<dyn IGithubInstallationTokenService> =
+        github_installation_client.clone();
+    let github_authority_provider: Arc<dyn IGithubInstallationAuthorityProvider> =
+        github_installation_client;
+    let github_authority_reconciler = GithubConnectionAuthorityReconciler::new(
+        Arc::clone(&github_connections),
+        github_authority_provider,
+        Duration::from_millis(config.sources.github_authority_reconcile_interval_ms),
+        Duration::from_millis(config.sources.github_authority_poll_interval_ms),
+        Duration::from_millis(config.sources.github_authority_retry_initial_ms),
+        Duration::from_millis(config.sources.github_authority_retry_max_ms),
+        config.sources.github_authority_batch_size,
+    )
+    .map_err(ControlPlaneStartupError::Sources)?;
+    let github_authority: Arc<dyn IGithubConnectionAuthorityService> =
+        Arc::new(github_authority_reconciler.clone());
+    let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> = Arc::new(
+        RevalidatingGithubInstallationTokens::new(github_authority, github_installation_tokens_raw),
+    );
     let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
         GitSourceCheckout::new(
             &config.sources.checkout_dir,
@@ -257,7 +277,7 @@ pub async fn build_application_with_source_resolver(
         )
         .map_err(ControlPlaneStartupError::Build)?,
     );
-    let build_outputs: Arc<dyn IBuildOutputValidator> = Arc::new(
+    let runtime_build_outputs = Arc::new(
         RuntimeBuildOutputValidator::new(
             Arc::clone(&node_artifacts),
             &config.builds.output_staging_dir,
@@ -268,6 +288,26 @@ pub async fn build_application_with_source_resolver(
             config.builds.oci_max_bytes,
         )
         .map_err(ControlPlaneStartupError::Build)?,
+    );
+    let build_outputs: Arc<dyn IBuildOutputValidator> = runtime_build_outputs.clone();
+    let build_publisher: Arc<dyn IBuildArtifactPublisher> = Arc::new(
+        OciRegistryArtifactPublisher::new(
+            runtime_build_outputs,
+            Duration::from_millis(config.registry.request_timeout_ms),
+            config
+                .registry
+                .insecure_hosts
+                .iter()
+                .filter(|host| *host == &config.registry.publication_registry)
+                .cloned(),
+            OciRegistryArtifactPublisherOptions {
+                registry: config.registry.publication_registry.clone(),
+                repository_prefix: config.registry.publication_repository_prefix.clone(),
+                credential_env: config.registry.publication_credential_env.clone(),
+                allow_anonymous: config.registry.publication_allow_anonymous,
+            },
+        )
+        .map_err(ControlPlaneStartupError::Registry)?,
     );
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
@@ -353,12 +393,15 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let build_runtime = BuildFlowRuntime::new(
-        Arc::clone(&builds),
-        Arc::clone(&sources),
-        build_inputs,
-        build_outputs,
-        Arc::clone(&nodes),
-        Arc::clone(&node_control),
+        BuildFlowRuntimeDependencies {
+            builds: Arc::clone(&builds),
+            sources: Arc::clone(&sources),
+            inputs: build_inputs,
+            outputs: build_outputs,
+            publisher: build_publisher,
+            nodes: Arc::clone(&nodes),
+            node_control: Arc::clone(&node_control),
+        },
         config
             .build_flow_config()
             .map_err(ControlPlaneStartupError::Build)?,
@@ -491,6 +534,7 @@ pub async fn build_application_with_source_resolver(
             projects: projects.clone(),
             environments: projects,
             workloads,
+            builds,
             routes,
             secrets,
             sources,
@@ -527,6 +571,7 @@ pub async fn build_application_with_source_resolver(
         application,
         ControlPlaneWorkers::new(
             run_operations.then_some(build_run_reconciler),
+            run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
@@ -545,6 +590,7 @@ struct ApplicationDependencies {
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    builds: Arc<dyn IBuildRunRepository>,
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
@@ -579,6 +625,7 @@ fn build_application_with_health(
         projects,
         environments,
         workloads,
+        builds,
         routes,
         secrets,
         sources,
@@ -605,6 +652,7 @@ fn build_application_with_health(
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
     let workload_environments = Arc::clone(&environments);
+    let source_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
@@ -614,7 +662,9 @@ fn build_application_with_health(
     let subscription_query_environments = Arc::clone(&environments);
     let github_connection_organizations = Arc::clone(&organizations);
     let create_workloads = Arc::clone(&workloads);
+    let source_create_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
+    let source_workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
     let update_workload_secrets = Arc::clone(&secrets);
     let rollback_workloads = Arc::clone(&workloads);
@@ -644,6 +694,7 @@ fn build_application_with_health(
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
     let workload_log_metadata = Arc::clone(&node_control);
+    let build_log_metadata = Arc::clone(&node_control);
     let gateway_commands = node_control;
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
@@ -660,7 +711,13 @@ fn build_application_with_health(
     let list_secrets = Arc::clone(&secrets);
     let get_secrets = secrets;
     let accept_sources = Arc::clone(&sources);
+    let source_workload_sources = Arc::clone(&sources);
     let list_sources = sources;
+    let cancel_builds = Arc::clone(&builds);
+    let list_builds = Arc::clone(&builds);
+    let get_builds = Arc::clone(&builds);
+    let get_build_logs = Arc::clone(&builds);
+    let source_workload_builds = builds;
     let accept_source_webhooks = source_webhooks;
     let create_source_subscriptions = Arc::clone(&source_subscriptions);
     let deactivate_source_subscriptions = Arc::clone(&source_subscriptions);
@@ -687,6 +744,7 @@ fn build_application_with_health(
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
+    let build_log_store = Arc::clone(&log_chunks);
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
     let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
@@ -832,6 +890,15 @@ fn build_application_with_health(
                         workload_secrets,
                     ),
                 )
+                .command_handler::<crate::modules::workloads::CreateSourceWorkloadDeployment, _>(
+                    CreateSourceWorkloadDeploymentHandler::new(
+                        source_workload_environments,
+                        source_workload_sources,
+                        source_workload_builds,
+                        source_create_workloads,
+                        source_workload_secrets,
+                    ),
+                )
                 .command_handler::<crate::modules::workloads::UpdateWorkloadDeployment, _>(
                     UpdateWorkloadDeploymentHandler::new(update_workloads, update_workload_secrets),
                 )
@@ -846,6 +913,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workloads::StopWorkload, _>(
                     StopWorkloadHandler::new(stop_workloads),
+                )
+                .command_handler::<crate::modules::artifacts::CancelBuildRun, _>(
+                    CancelBuildRunHandler::new(cancel_builds),
                 )
                 .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
                     CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
@@ -924,6 +994,19 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::operations::ListOperations, _>(
                     ListOperationsHandler::new(operations),
                 )
+                .query_handler::<crate::modules::artifacts::ListBuildRuns, _>(
+                    ListBuildRunsHandler::new(list_builds),
+                )
+                .query_handler::<crate::modules::artifacts::GetBuildRun, _>(
+                    GetBuildRunHandler::new(get_builds),
+                )
+                .query_handler::<crate::modules::artifacts::GetBuildRunLogs, _>(
+                    GetBuildRunLogsHandler::new(
+                        get_build_logs,
+                        build_log_metadata,
+                        build_log_store,
+                    ),
+                )
                 .query_handler::<crate::modules::workloads::ListWorkloads, _>(
                     ListWorkloadsHandler::new(
                         list_workloads,
@@ -980,6 +1063,7 @@ fn build_application_with_health(
         .import(ProjectsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
+        .import(ArtifactsModule)
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

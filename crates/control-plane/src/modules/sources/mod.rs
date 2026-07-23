@@ -3,6 +3,10 @@ pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
 
+pub use application::{
+    GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
+};
+
 pub use application::commands::accept_source_webhook_delivery::{
     AcceptSourceWebhookDelivery, AcceptSourceWebhookDeliveryHandler,
     AcceptSourceWebhookDeliveryResult,
@@ -48,6 +52,6 @@ pub use infrastructure::persistence::{
 };
 pub use infrastructure::{
     GitSourceCheckout, GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver,
-    GithubWebhookVerifier,
+    GithubWebhookVerifier, RevalidatingGithubInstallationTokens,
 };
 pub use presentation::SourcesModule;

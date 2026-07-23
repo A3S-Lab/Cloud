@@ -1,3 +1,4 @@
+use crate::infrastructure::{required_registry_header, OciRegistryClient, OciRegistryClientError};
 use crate::modules::secrets::domain::{
     secret_encryption_context, ISecretEncryptionService, ISecretRepository,
 };
@@ -7,24 +8,21 @@ use crate::modules::workloads::domain::services::{
 };
 use a3s_cloud_contracts::RegistryCredentialMaterial;
 use async_trait::async_trait;
-use reqwest::header::{
-    HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, WWW_AUTHENTICATE,
-};
-use reqwest::{Client, Response, StatusCode, Url};
-use serde::Deserialize;
-use std::collections::BTreeSet;
+use reqwest::header::CONTENT_TYPE;
+use reqwest::{Response, StatusCode, Url};
 use std::sync::Arc;
 use std::time::Duration;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
+
+#[cfg(test)]
+use reqwest::header::{HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 
 const DOCKER_CONTENT_DIGEST: &str = "docker-content-digest";
 const MANIFEST_ACCEPT: &str = "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json";
-const MAX_TOKEN_RESPONSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone)]
 pub struct OciRegistryArtifactResolver {
-    client: Client,
-    insecure_hosts: BTreeSet<String>,
+    client: OciRegistryClient,
     registry_secret_material: Option<RegistrySecretMaterialAccess>,
 }
 
@@ -39,22 +37,8 @@ impl OciRegistryArtifactResolver {
         request_timeout: Duration,
         insecure_hosts: impl IntoIterator<Item = String>,
     ) -> Result<Self, String> {
-        if request_timeout.is_zero() {
-            return Err("OCI registry request timeout must be positive".into());
-        }
-        let insecure_hosts = insecure_hosts.into_iter().collect::<BTreeSet<_>>();
-        if insecure_hosts.iter().any(|host| !valid_registry_host(host)) {
-            return Err("OCI insecure registry hosts must be explicit host[:port] values".into());
-        }
-        let client = Client::builder()
-            .timeout(request_timeout)
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent("a3s-cloud-control-plane/0.1")
-            .build()
-            .map_err(|error| format!("could not build OCI registry client: {error}"))?;
         Ok(Self {
-            client,
-            insecure_hosts,
+            client: OciRegistryClient::new(request_timeout, insecure_hosts)?,
             registry_secret_material: None,
         })
     }
@@ -71,168 +55,41 @@ impl OciRegistryArtifactResolver {
         self
     }
 
-    fn manifest_url(
-        &self,
-        registry: &str,
-        repository: &str,
-        manifest_reference: &str,
-    ) -> Result<Url, OciArtifactResolutionError> {
-        let scheme = if self.insecure_hosts.contains(registry) {
-            "http"
-        } else {
-            "https"
-        };
-        Url::parse(&format!(
-            "{scheme}://{registry}/v2/{repository}/manifests/{manifest_reference}"
-        ))
-        .map_err(|error| OciArtifactResolutionError::InvalidReference(error.to_string()))
-    }
-
     async fn request_manifest(
         &self,
         url: Url,
         repository: &str,
         registry_credential: Option<&OciRegistryCredentialReference>,
     ) -> Result<Response, OciArtifactResolutionError> {
-        let response = self
+        match self
             .client
-            .head(url.clone())
-            .header(ACCEPT, MANIFEST_ACCEPT)
-            .send()
+            .head_manifest(url.clone(), repository, "pull", None, MANIFEST_ACCEPT)
             .await
-            .map_err(registry_error)?;
-        if response.status() != StatusCode::UNAUTHORIZED {
-            return Ok(response);
+        {
+            Ok(response) => return Ok(response),
+            Err(OciRegistryClientError::Unauthorized) if registry_credential.is_some() => {}
+            Err(error) => return Err(map_registry_client_error(error)),
         }
-        let challenge = response
-            .headers()
-            .get(WWW_AUTHENTICATE)
-            .ok_or(OciArtifactResolutionError::Unauthorized)?;
-        if authentication_scheme_is(challenge, "Basic")? {
-            let credential = self
-                .materialize_registry_credential(registry_credential)
-                .await?;
-            return self
-                .client
-                .head(url)
-                .header(ACCEPT, MANIFEST_ACCEPT)
-                .basic_auth(credential.username(), Some(credential.password()))
-                .send()
-                .await
-                .map_err(registry_error);
-        }
-        if authentication_scheme_is(challenge, "Bearer")? {
-            let credential = match registry_credential {
-                Some(reference) => Some(
-                    self.materialize_registry_credential(Some(reference))
-                        .await?,
-                ),
-                None => None,
-            };
-            let token = self
-                .bearer_token(challenge, repository, credential.as_ref())
-                .await?;
-            let authorization_value = Zeroizing::new(format!("Bearer {}", token.as_str()));
-            let mut authorization = HeaderValue::from_bytes(authorization_value.as_bytes())
-                .map_err(|_| {
-                    OciArtifactResolutionError::Protocol(
-                        "registry returned an invalid bearer token".into(),
-                    )
-                })?;
-            authorization.set_sensitive(true);
-            return self
-                .client
-                .head(url)
-                .header(ACCEPT, MANIFEST_ACCEPT)
-                .header(AUTHORIZATION, authorization)
-                .send()
-                .await
-                .map_err(registry_error);
-        }
-        Err(OciArtifactResolutionError::Unauthorized)
+        let credential = self
+            .materialize_registry_credential(registry_credential)
+            .await?;
+        self.client
+            .head_manifest(url, repository, "pull", Some(&credential), MANIFEST_ACCEPT)
+            .await
+            .map_err(map_registry_client_error)
     }
 
+    #[cfg(test)]
     async fn bearer_token(
         &self,
         challenge: &HeaderValue,
         repository: &str,
         credential: Option<&RegistryCredentialMaterial>,
     ) -> Result<Zeroizing<String>, OciArtifactResolutionError> {
-        let challenge = challenge
-            .to_str()
-            .map_err(|_| OciArtifactResolutionError::Unauthorized)?;
-        let parameters = parse_bearer_challenge(challenge)?;
-        let realm = parameters
-            .get("realm")
-            .ok_or(OciArtifactResolutionError::Unauthorized)?;
-        let mut url = Url::parse(realm).map_err(|_| OciArtifactResolutionError::Unauthorized)?;
-        if url.scheme() != "https"
-            && !(url.scheme() == "http"
-                && url
-                    .host_str()
-                    .map(|host| {
-                        let authority = url
-                            .port()
-                            .map(|port| format!("{host}:{port}"))
-                            .unwrap_or_else(|| host.to_owned());
-                        self.insecure_hosts.contains(&authority)
-                    })
-                    .unwrap_or(false))
-        {
-            return Err(OciArtifactResolutionError::Unauthorized);
-        }
-        {
-            let mut query = url.query_pairs_mut();
-            if let Some(service) = parameters.get("service") {
-                query.append_pair("service", service);
-            }
-            query.append_pair("scope", &format!("repository:{repository}:pull"));
-        }
-        let mut request = self.client.get(url);
-        if let Some(credential) = credential {
-            request = request.basic_auth(credential.username(), Some(credential.password()));
-        }
-        let response = request.send().await.map_err(registry_error)?;
-        if !response.status().is_success() {
-            return Err(OciArtifactResolutionError::Unauthorized);
-        }
-        if response
-            .headers()
-            .get(CONTENT_LENGTH)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<usize>().ok())
-            .is_some_and(|length| length > MAX_TOKEN_RESPONSE_BYTES)
-        {
-            return Err(OciArtifactResolutionError::Protocol(
-                "registry token response exceeds the supported size".into(),
-            ));
-        }
-        let body = Zeroizing::new(response.bytes().await.map_err(registry_error)?.to_vec());
-        if body.len() > MAX_TOKEN_RESPONSE_BYTES {
-            return Err(OciArtifactResolutionError::Protocol(
-                "registry token response exceeds the supported size".into(),
-            ));
-        }
-        let mut token: TokenResponse = serde_json::from_slice(&body).map_err(|error| {
-            OciArtifactResolutionError::Protocol(format!(
-                "registry token response is invalid: {error}"
-            ))
-        })?;
-        let token = token
-            .token
-            .take()
-            .or_else(|| token.access_token.take())
-            .ok_or_else(|| {
-                OciArtifactResolutionError::Protocol(
-                    "registry token response omitted its token".into(),
-                )
-            })?;
-        if token.is_empty() || token.len() > 64 * 1024 || token.contains(['\0', '\r', '\n']) {
-            return Err(OciArtifactResolutionError::Protocol(
-                "registry returned an invalid bearer token".into(),
-            ));
-        }
-        Ok(Zeroizing::new(token))
+        self.client
+            .bearer_token(challenge, repository, "pull", credential)
+            .await
+            .map_err(map_registry_client_error)
     }
 
     async fn materialize_registry_credential(
@@ -332,7 +189,9 @@ impl IOciArtifactResolver for OciRegistryArtifactResolver {
             .map_err(OciArtifactResolutionError::InvalidReference)?;
         let response = self
             .request_manifest(
-                self.manifest_url(registry, repository, manifest_reference)?,
+                self.client
+                    .manifest_url(registry, repository, manifest_reference)
+                    .map_err(map_registry_client_error)?,
                 repository,
                 registry_credential,
             )
@@ -349,8 +208,10 @@ impl IOciArtifactResolver for OciRegistryArtifactResolver {
                 )))
             }
         }
-        let digest = required_header(response.headers(), DOCKER_CONTENT_DIGEST)?;
-        let media_type = required_header(response.headers(), CONTENT_TYPE.as_str())?
+        let digest = required_registry_header(response.headers(), DOCKER_CONTENT_DIGEST)
+            .map_err(map_registry_client_error)?;
+        let media_type = required_registry_header(response.headers(), CONTENT_TYPE.as_str())
+            .map_err(map_registry_client_error)?
             .split(';')
             .next()
             .unwrap_or_default()
@@ -381,87 +242,17 @@ impl IOciArtifactResolver for OciRegistryArtifactResolver {
     }
 }
 
-#[derive(Deserialize)]
-struct TokenResponse {
-    token: Option<String>,
-    access_token: Option<String>,
-}
-
-impl Drop for TokenResponse {
-    fn drop(&mut self) {
-        if let Some(token) = &mut self.token {
-            token.zeroize();
+fn map_registry_client_error(error: OciRegistryClientError) -> OciArtifactResolutionError {
+    match error {
+        OciRegistryClientError::Invalid(message) => {
+            OciArtifactResolutionError::InvalidReference(message)
         }
-        if let Some(token) = &mut self.access_token {
-            token.zeroize();
+        OciRegistryClientError::Unauthorized => OciArtifactResolutionError::Unauthorized,
+        OciRegistryClientError::Protocol(message) => OciArtifactResolutionError::Protocol(message),
+        OciRegistryClientError::Transport(message) | OciRegistryClientError::Storage(message) => {
+            OciArtifactResolutionError::Registry(message)
         }
     }
-}
-
-fn required_header(headers: &HeaderMap, name: &str) -> Result<String, OciArtifactResolutionError> {
-    headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| !value.is_empty() && value.len() <= 4096)
-        .map(str::to_owned)
-        .ok_or_else(|| {
-            OciArtifactResolutionError::Protocol(format!(
-                "registry response omitted a valid {name} header"
-            ))
-        })
-}
-
-fn parse_bearer_challenge(
-    challenge: &str,
-) -> Result<std::collections::BTreeMap<String, String>, OciArtifactResolutionError> {
-    let (scheme, parameters) = challenge
-        .split_once(' ')
-        .ok_or(OciArtifactResolutionError::Unauthorized)?;
-    if !scheme.eq_ignore_ascii_case("Bearer") {
-        return Err(OciArtifactResolutionError::Unauthorized);
-    }
-    let mut result = std::collections::BTreeMap::new();
-    for parameter in parameters.split(',') {
-        let (key, value) = parameter
-            .trim()
-            .split_once('=')
-            .ok_or(OciArtifactResolutionError::Unauthorized)?;
-        let value = value
-            .strip_prefix('"')
-            .and_then(|value| value.strip_suffix('"'))
-            .ok_or(OciArtifactResolutionError::Unauthorized)?;
-        if key.is_empty()
-            || value.is_empty()
-            || value.contains(['\0', '\r', '\n', '"'])
-            || result.insert(key.to_owned(), value.to_owned()).is_some()
-        {
-            return Err(OciArtifactResolutionError::Unauthorized);
-        }
-    }
-    Ok(result)
-}
-
-fn authentication_scheme_is(
-    challenge: &HeaderValue,
-    expected: &str,
-) -> Result<bool, OciArtifactResolutionError> {
-    let challenge = challenge
-        .to_str()
-        .map_err(|_| OciArtifactResolutionError::Unauthorized)?;
-    Ok(challenge
-        .split_ascii_whitespace()
-        .next()
-        .is_some_and(|scheme| scheme.eq_ignore_ascii_case(expected)))
-}
-
-fn valid_registry_host(host: &str) -> bool {
-    !host.is_empty()
-        && host.len() <= 255
-        && !host.contains(['/', '@', '\\', '\0', '\r', '\n', ' ', '\t'])
-}
-
-fn registry_error(error: reqwest::Error) -> OciArtifactResolutionError {
-    OciArtifactResolutionError::Registry(error.to_string())
 }
 
 #[cfg(test)]
@@ -648,7 +439,7 @@ mod tests {
             .await
             .expect("authenticated digest");
         assert_eq!(artifact.digest, digest);
-        assert_eq!(state.anonymous_requests.load(Ordering::SeqCst), 3);
+        assert_eq!(state.anonymous_requests.load(Ordering::SeqCst), 4);
         assert_eq!(state.authenticated_requests.load(Ordering::SeqCst), 1);
         server.abort();
     }

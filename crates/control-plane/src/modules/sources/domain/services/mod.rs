@@ -1,4 +1,5 @@
 mod github_app_authorization;
+mod github_connection_authority;
 mod github_installation_token;
 mod source_checkout;
 mod source_provider_credential;
@@ -9,6 +10,11 @@ mod source_webhook_verifier;
 pub use github_app_authorization::{
     GithubAppAuthorizationError, GithubInstallationVerificationRequest,
     IGithubAppAuthorizationService, VerifiedGithubInstallation,
+};
+pub use github_connection_authority::{
+    GithubConnectionAuthorityError, GithubConnectionAuthorityRequest,
+    GithubInstallationAuthorityError, GithubInstallationAuthorityRequest,
+    IGithubConnectionAuthorityService, IGithubInstallationAuthorityProvider,
 };
 pub use github_installation_token::{
     GithubInstallationTokenError, GithubInstallationTokenRequest, IGithubInstallationTokenService,

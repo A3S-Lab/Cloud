@@ -5,6 +5,7 @@ use crate::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
+use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -32,6 +33,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+mod build_tests;
 mod platform_tests;
 mod secret_tests;
 mod source_lifecycle_tests;
@@ -318,6 +320,11 @@ fn config() -> CloudConfig {
         registry: RegistryConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
+            publication_registry: "127.0.0.1:5000".into(),
+            publication_repository_prefix: "a3s-cloud/builds".into(),
+            publication_credential_env: String::new(),
+            publication_allow_anonymous: true,
+            publication_timeout_ms: 60_000,
         },
         sources: SourcesConfig {
             github_request_timeout_ms: 10_000,
@@ -331,6 +338,11 @@ fn config() -> CloudConfig {
             github_app_callback_url:
                 "https://cloud.example.test/api/v1/source-connections/github/callback".into(),
             github_connection_state_ttl_ms: 600_000,
+            github_authority_reconcile_interval_ms: 10_000,
+            github_authority_poll_interval_ms: 300_000,
+            github_authority_retry_initial_ms: 1_000,
+            github_authority_retry_max_ms: 60_000,
+            github_authority_batch_size: 100,
             checkout_dir: ".a3s/test-source-checkouts".into(),
             checkout_timeout_ms: 10_000,
             checkout_max_files: 10_000,
@@ -499,6 +511,28 @@ fn build_test_application_with_all_repositories(
     )
 }
 
+fn build_test_application_with_external_builds(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    builds: Arc<InMemoryBuildRunRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        builds,
+    )
+}
+
 fn build_test_application_with_source_resolver(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -572,6 +606,33 @@ fn build_test_application_with_source_dependencies_and_tokens(
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        github_connections,
+        github_authorization,
+        github_installation_tokens,
+        Arc::new(InMemoryBuildRunRepository::new()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies_and_tokens_and_builds(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    builds: Arc<dyn IBuildRunRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -600,6 +661,7 @@ fn build_test_application_with_source_dependencies_and_tokens(
             projects: projects.clone(),
             environments: projects,
             workloads: workload_port,
+            builds,
             routes,
             secrets,
             sources,

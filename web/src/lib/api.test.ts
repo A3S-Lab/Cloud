@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ServiceTemplate } from '../types/api';
+import type { ServiceTemplate, SourceWorkloadTemplate } from '../types/api';
 import { CloudApi, type CloudApiError } from './api';
 
 afterEach(() => {
@@ -117,6 +117,47 @@ describe('CloudApi', () => {
         }),
       })
     );
+  });
+
+  it('lists and cancels build runs within the selected tenant context', async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string | URL | Request) => {
+      const path = String(input);
+      const data = path.includes('/projects/')
+        ? []
+        : {
+            buildRunId: 'build / one',
+            operationId: 'operation-1',
+            status: 'cancelling',
+            cancellationRequestedAt: '2026-07-22T00:00:00Z',
+            replayed: false,
+          };
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ code: path.includes('/projects/') ? 200 : 202, message: 'Success', data }),
+          { status: path.includes('/projects/') ? 200 : 202, headers: { 'content-type': 'application/json' } }
+        )
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new CloudApi('a3s_secret');
+
+    await api.listBuildRuns('organization', 'project / one', 'production');
+    const cancelled = await api.cancelBuildRun('organization', 'build / one', 'web-cancel-build:build-1');
+
+    expect(cancelled.status).toBe('cancelling');
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/organizations/organization/projects/project%20%2F%20one/environments/production/build-runs?limit=100'
+    );
+    expect(fetchMock.mock.calls[1]).toEqual([
+      '/api/v1/organizations/organization/build-runs/build%20%2F%20one',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer a3s_secret',
+          'Idempotency-Key': 'web-cancel-build:build-1',
+        }),
+      }),
+    ]);
   });
 
   it('stops one active workload through its own durable operation', async () => {
@@ -249,6 +290,22 @@ describe('CloudApi', () => {
 
     await api.updateWorkload('organization', 'workload / one', template, 'web-update:key');
     await api.rollbackWorkload('organization', 'workload / one', 'revision / one', 'web-rollback:key');
+    const sourceTemplate: SourceWorkloadTemplate = {
+      process: template.process,
+      secrets: template.secrets,
+      resources: template.resources,
+      ports: template.ports,
+      health: template.health,
+    };
+    await api.deploySourceRevision(
+      'organization',
+      'project / one',
+      'production',
+      'source / one',
+      'api',
+      sourceTemplate,
+      'web-source-deploy:key'
+    );
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       '/api/v1/organizations/organization/workloads/workload%20%2F%20one/deployments'
@@ -272,6 +329,15 @@ describe('CloudApi', () => {
         headers: expect.objectContaining({ 'Idempotency-Key': 'web-rollback:key' }),
       })
     );
+    expect(fetchMock.mock.calls[2][0]).toBe(
+      '/api/v1/organizations/organization/projects/project%20%2F%20one/environments/production/source-revisions/source%20%2F%20one/workloads'
+    );
+    expect(fetchMock.mock.calls[2][1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ name: 'api', template: sourceTemplate }),
+        headers: expect.objectContaining({ 'Idempotency-Key': 'web-source-deploy:key' }),
+      })
+    );
   });
 
   it('builds a scoped live-log URL without putting the token in it', () => {
@@ -281,6 +347,17 @@ describe('CloudApi', () => {
 
     expect(url).toBe(
       '/api/v1/organizations/organization%20%2F%20one/workloads/workload%20%2F%20one/revisions/revision%20%2F%20one/logs/stream?limit=16&stream=stderr'
+    );
+    expect(url).not.toContain('a3s_secret');
+  });
+
+  it('builds a tenant-scoped build-log URL without putting the token in it', () => {
+    const api = new CloudApi('a3s_secret');
+
+    const url = api.buildRunLogStreamUrl('organization / one', 'build / one', 'stdout');
+
+    expect(url).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/build-runs/build%20%2F%20one/logs/stream?limit=16&stream=stdout'
     );
     expect(url).not.toContain('a3s_secret');
   });

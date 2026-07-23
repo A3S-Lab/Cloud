@@ -269,6 +269,30 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/026_build_runs.sql"
             )),
         ),
+        Migration::new(
+            "027",
+            "durable OCI build publications",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/027_build_publications.sql"
+            )),
+        ),
+        Migration::new(
+            "028",
+            "external build workload handoff",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/028_external_build_workload_handoff.sql"
+            )),
+        ),
+        Migration::new(
+            "029",
+            "GitHub provider authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/029_github_provider_authority.sql"
+            )),
+        ),
     ]
 }
 

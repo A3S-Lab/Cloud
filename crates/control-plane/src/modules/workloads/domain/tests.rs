@@ -1,7 +1,8 @@
 use super::entities::*;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, BuildRunId, DeploymentId, EnvironmentId, NodeCommandId, NodeId,
+    OperationId, OrganizationId, ProjectId, ResourceName, SecretId, SourceRevisionId, WorkloadId,
+    WorkloadRevisionId,
 };
 use chrono::{Duration, Timelike, Utc};
 use std::collections::BTreeMap;
@@ -156,6 +157,81 @@ fn revision_requires_a_digest_bound_oci_artifact_and_has_a_stable_digest() {
         2,
         non_canonical,
         created_at,
+    )
+    .is_err());
+}
+
+#[test]
+fn external_build_trace_is_validated_and_preserved_by_derived_revisions() {
+    let workload_id = WorkloadId::new();
+    let secret_id = SecretId::new();
+    let created_at = Utc::now();
+    let reference = ExternalBuildReference {
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        environment_id: EnvironmentId::new(),
+        source_revision_id: SourceRevisionId::new(),
+        build_run_id: BuildRunId::new(),
+    };
+    let mut source_template = template('a');
+    source_template.secrets = vec![SecretBinding {
+        name: "database-url".into(),
+        secret_id,
+        version: 1,
+        target: SecretBindingTarget::Environment {
+            variable: "DATABASE_URL".into(),
+        },
+    }];
+    let source = WorkloadRevision::create_from_external_build(
+        WorkloadRevisionId::new(),
+        workload_id,
+        1,
+        source_template,
+        reference.clone(),
+        created_at,
+    )
+    .expect("external-build revision");
+    assert_eq!(source.external_build.as_ref(), Some(&reference));
+
+    let rollback = source
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            2,
+            created_at + Duration::seconds(1),
+        )
+        .expect("rollback revision");
+    assert_eq!(rollback.external_build.as_ref(), Some(&reference));
+
+    let restarted = source
+        .restart_for_secret_rotation(
+            WorkloadRevisionId::new(),
+            3,
+            secret_id,
+            2,
+            created_at + Duration::seconds(2),
+        )
+        .expect("Secret-rotation revision");
+    assert_eq!(restarted.external_build.as_ref(), Some(&reference));
+
+    let ordinary = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload_id,
+        4,
+        template('b'),
+        created_at + Duration::seconds(3),
+    )
+    .expect("ordinary revision");
+    assert_eq!(ordinary.external_build, None);
+
+    let mut invalid = reference;
+    invalid.build_run_id = BuildRunId::from_uuid(uuid::Uuid::nil());
+    assert!(WorkloadRevision::create_from_external_build(
+        WorkloadRevisionId::new(),
+        workload_id,
+        5,
+        template('c'),
+        invalid,
+        created_at + Duration::seconds(4),
     )
     .is_err());
 }

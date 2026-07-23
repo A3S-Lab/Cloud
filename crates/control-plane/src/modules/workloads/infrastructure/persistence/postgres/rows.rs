@@ -1,10 +1,10 @@
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId,
-    RepositoryError, ResourceName, WorkloadId, WorkloadRevisionId,
+    BuildRunId, DeploymentId, EnvironmentId, NodeCommandId, NodeId, OperationId, OrganizationId,
+    ProjectId, RepositoryError, ResourceName, SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentStatus, RequestedServiceTemplate, ServiceTemplate, Workload,
-    WorkloadDesiredState, WorkloadRevision,
+    Deployment, DeploymentStatus, ExternalBuildReference, RequestedServiceTemplate,
+    ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
 };
 use a3s_orm::{DecodeError, FromRow, FromValue, Row};
 use chrono::{DateTime, Utc};
@@ -12,7 +12,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 pub(super) const SELECT_WORKLOADS: &str = "select id, organization_id, project_id, environment_id, name, desired_state, active_revision_id, aggregate_version, created_at, updated_at from workloads";
-pub(super) const SELECT_REVISIONS: &str = "select r.id, r.workload_id, r.generation, r.resolution_state, r.artifact_source_uri, r.expected_artifact_digest, r.template_request, r.request_digest, r.artifact_uri, r.artifact_digest, r.artifact_media_type, r.template, r.template_digest, r.created_at, r.resolved_at from workload_revisions r";
+pub(super) const SELECT_REVISIONS: &str = "select r.id, r.workload_id, r.generation, r.resolution_state, r.artifact_source_uri, r.expected_artifact_digest, r.template_request, r.request_digest, r.artifact_uri, r.artifact_digest, r.artifact_media_type, r.template, r.template_digest, r.created_at, r.resolved_at, r.external_build_organization_id, r.external_build_project_id, r.external_build_environment_id, r.external_source_revision_id, r.external_build_run_id from workload_revisions r";
 pub(super) const SELECT_DEPLOYMENTS: &str = "select id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, retirement_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at from deployments";
 
 pub(super) struct WorkloadRow {
@@ -44,6 +44,11 @@ pub(super) struct RevisionRow {
     template_digest: Option<String>,
     created_at: DateTime<Utc>,
     resolved_at: Option<DateTime<Utc>>,
+    external_build_organization_id: Option<Uuid>,
+    external_build_project_id: Option<Uuid>,
+    external_build_environment_id: Option<Uuid>,
+    external_source_revision_id: Option<Uuid>,
+    external_build_run_id: Option<Uuid>,
 }
 
 pub(super) struct DeploymentRow {
@@ -86,7 +91,9 @@ from_row!(RevisionRow, {
     artifact_source_uri: 4, expected_artifact_digest: 5, template_request: 6,
     request_digest: 7, artifact_uri: 8, artifact_digest: 9,
     artifact_media_type: 10, template: 11, template_digest: 12, created_at: 13,
-    resolved_at: 14,
+    resolved_at: 14, external_build_organization_id: 15,
+    external_build_project_id: 16, external_build_environment_id: 17,
+    external_source_revision_id: 18, external_build_run_id: 19,
 });
 from_row!(DeploymentRow, {
     id: 0, organization_id: 1, workload_id: 2, revision_id: 3, operation_id: 4,
@@ -123,6 +130,33 @@ pub(super) fn workload(row: WorkloadRow) -> Result<Workload, RepositoryError> {
 }
 
 pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryError> {
+    let external_build = match (
+        row.external_build_organization_id,
+        row.external_build_project_id,
+        row.external_build_environment_id,
+        row.external_source_revision_id,
+        row.external_build_run_id,
+    ) {
+        (None, None, None, None, None) => None,
+        (
+            Some(organization_id),
+            Some(project_id),
+            Some(environment_id),
+            Some(source_revision_id),
+            Some(build_run_id),
+        ) => Some(ExternalBuildReference {
+            organization_id: OrganizationId::from_uuid(organization_id),
+            project_id: ProjectId::from_uuid(project_id),
+            environment_id: EnvironmentId::from_uuid(environment_id),
+            source_revision_id: SourceRevisionId::from_uuid(source_revision_id),
+            build_run_id: BuildRunId::from_uuid(build_run_id),
+        }),
+        _ => {
+            return Err(corrupt(
+                "workload revision external build reference is incomplete",
+            ))
+        }
+    };
     let request: RequestedServiceTemplate = serde_json::from_value(row.template_request)
         .map_err(|error| corrupt(format!("workload template request is invalid: {error}")))?;
     if request.artifact.uri != row.artifact_source_uri
@@ -152,10 +186,7 @@ pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryE
                 && row.artifact_media_type.is_none()
                 && row.template.is_none()
                 && row.template_digest.is_none()
-                && row.resolved_at.is_none() =>
-        {
-            Ok(revision)
-        }
+                && row.resolved_at.is_none() => {}
         "resolved" => {
             let template: ServiceTemplate = serde_json::from_value(
                 row.template
@@ -185,12 +216,23 @@ pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryE
                     "workload revision template digest does not match its template",
                 ));
             }
-            Ok(revision)
         }
-        _ => Err(corrupt(
-            "workload revision resolution state does not match its resolved fields",
-        )),
+        _ => {
+            return Err(corrupt(
+                "workload revision resolution state does not match its resolved fields",
+            ))
+        }
     }
+    if let Some(external_build) = external_build {
+        revision
+            .restore_external_build(external_build)
+            .map_err(|error| {
+                corrupt(format!(
+                    "workload revision external build reference is invalid: {error}"
+                ))
+            })?;
+    }
+    Ok(revision)
 }
 
 pub(super) fn deployment(row: DeploymentRow) -> Result<Deployment, RepositoryError> {

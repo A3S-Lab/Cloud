@@ -262,6 +262,11 @@ pub(super) fn config() -> CloudConfig {
         registry: RegistryConfig {
             request_timeout_ms: 10_000,
             insecure_hosts: vec!["127.0.0.1:5000".into()],
+            publication_registry: "127.0.0.1:5000".into(),
+            publication_repository_prefix: "a3s-cloud/builds".into(),
+            publication_credential_env: String::new(),
+            publication_allow_anonymous: true,
+            publication_timeout_ms: 60_000,
         },
         sources: SourcesConfig {
             github_request_timeout_ms: 10_000,
@@ -274,6 +279,11 @@ pub(super) fn config() -> CloudConfig {
             github_app_private_key_env: String::new(),
             github_app_callback_url: String::new(),
             github_connection_state_ttl_ms: 600_000,
+            github_authority_reconcile_interval_ms: 10_000,
+            github_authority_poll_interval_ms: 300_000,
+            github_authority_retry_initial_ms: 1_000,
+            github_authority_retry_max_ms: 60_000,
+            github_authority_batch_size: 100,
             checkout_dir: ".a3s/integration-source-checkouts".into(),
             checkout_timeout_ms: 10_000,
             checkout_max_files: 10_000,

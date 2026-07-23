@@ -95,6 +95,8 @@ impl SourceBuildInputPreparer {
                 let credential = self
                     .installation_tokens
                     .issue(GithubInstallationTokenRequest {
+                        organization_id: connection.organization_id,
+                        connection_id: connection.id,
                         installation_id: connection.installation_id,
                         repository: revision.repository.clone(),
                         requested_at: chrono::Utc::now(),

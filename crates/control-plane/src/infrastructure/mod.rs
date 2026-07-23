@@ -1,4 +1,5 @@
 mod flow;
+mod oci_registry_client;
 mod postgres;
 mod vault_client;
 
@@ -8,6 +9,9 @@ pub use flow::{
 };
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 
+pub(crate) use oci_registry_client::{
+    required_registry_header, OciRegistryClient, OciRegistryClientError,
+};
 pub(crate) use postgres::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
     is_unique_violation, lock_idempotency_key, require_one_row, store_idempotency, store_outbox,

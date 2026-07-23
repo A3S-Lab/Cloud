@@ -1,4 +1,7 @@
-use crate::modules::artifacts::domain::{BuildArtifact, BuildRunStatus, ValidatedOciBuildOutput};
+use crate::modules::artifacts::domain::{
+    BuildArtifact, BuildRunStatus, OciPublicationTarget, PublishedOciArtifact,
+    ValidatedOciBuildOutput,
+};
 use crate::modules::shared_kernel::domain::{
     BuildRunId, NodeCommandId, NodeId, OrganizationId, SourceRevisionId,
 };
@@ -130,6 +133,49 @@ pub(super) enum ValidateStepOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PreparePublicationStepInput {
+    pub flow: BuildFlowInput,
+    pub output: ValidatedOciBuildOutput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum PreparePublicationStepOutput {
+    Ready {
+        target: OciPublicationTarget,
+        deadline_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+    CancellationRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PublishStepInput {
+    pub flow: BuildFlowInput,
+    pub output: ValidatedOciBuildOutput,
+    pub target: OciPublicationTarget,
+    pub deadline_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum PublishStepOutput {
+    Ready {
+        artifact: PublishedOciArtifact,
+    },
+    Failed {
+        reason: String,
+    },
+    CancellationRequested {
+        artifact: Option<PublishedOciArtifact>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct FailStepInput {
     pub flow: BuildFlowInput,
     pub reason: String,
@@ -215,6 +261,7 @@ pub(super) struct CompleteStepOutput {
     pub build_run_id: BuildRunId,
     pub status: BuildRunStatus,
     pub output: Option<ValidatedOciBuildOutput>,
+    pub published_artifact: Option<PublishedOciArtifact>,
     pub failure: Option<String>,
     pub finished_at: DateTime<Utc>,
 }

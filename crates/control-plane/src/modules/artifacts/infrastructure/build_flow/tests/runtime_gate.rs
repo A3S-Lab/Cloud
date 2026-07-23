@@ -1,11 +1,15 @@
 use super::super::task_spec::{project_task_spec, BUILDKIT_SOCKET_ROOT};
 use super::super::{BuildFlowConfig, BuildFlowConfigOptions};
 use crate::modules::artifacts::domain::{
-    BuildArtifact, IBuildOutputValidator, INodeArtifactStore, NodeArtifactDescriptor,
+    BuildArtifact, BuildRunStatus, IBuildArtifactPublisher, IBuildOutputValidator,
+    INodeArtifactStore, NodeArtifactDescriptor, OciPublicationRequest,
 };
-use crate::modules::artifacts::{LocalNodeArtifactStore, RuntimeBuildOutputValidator};
+use crate::modules::artifacts::{
+    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    RuntimeBuildOutputValidator,
+};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
+    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{
     BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository,
@@ -14,7 +18,8 @@ use crate::modules::sources::domain::{
 use a3s_cloud_contracts::{
     artifact_uri, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    NodeCommandPayload, NodeCommandResult, RegistryCredentialMaterial,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_node_agent::{
     ArtifactConfig, CommandExecutor, DockerConfig, DockerRuntimeDriver, DownloadedNodeArtifact,
@@ -22,34 +27,54 @@ use a3s_cloud_node_agent::{
     NodeRuntimeBinding,
 };
 use a3s_runtime::contract::{
-    ArtifactRef, RuntimeActionRequest, RuntimeApplyRequest, RuntimeObservation,
-    RuntimeOutputArtifact, RuntimeUnitState,
+    ArtifactRef, RuntimeActionRequest, RuntimeApplyRequest, RuntimeLogQuery, RuntimeLogStream,
+    RuntimeObservation, RuntimeOutputArtifact, RuntimeUnitSpec, RuntimeUnitState,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
 };
 use async_trait::async_trait;
+use bollard::errors::Error as DockerError;
 use bollard::{Docker, API_DEFAULT_VERSION};
 use chrono::{Duration, Utc};
+use reqwest::Url;
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
+mod busybox_rootfs;
+
+use busybox_rootfs::validate_busybox_rootfs;
+
 const GATE_ENV: &str = "A3S_CLOUD_TEST_RUNTIME_BUILDKIT";
+const BUSYBOX_ROOTFS_ENV: &str = "A3S_CLOUD_TEST_BUSYBOX_ROOTFS";
+const REGISTRY_URL_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_URL";
+const REGISTRY_USERNAME_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_USERNAME";
+const REGISTRY_PASSWORD_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_PASSWORD";
+const PUBLICATION_CREDENTIAL_ENV: &str = "A3S_CLOUD_TEST_RUNTIME_PUBLICATION_CREDENTIAL";
 const DEFAULT_NAMESPACE: &str = "cloud-buildkit-gate";
 const DEFAULT_VOLUME_ID: &str = "a3s-cloud-buildkit-v0-31-2";
 const BUILDER_DIGEST: &str =
     "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b";
-const BUSYBOX_DIGEST: &str =
-    "sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662";
+const NETWORK_CHECK_SCRIPT: &str = concat!(
+    "/bin/busybox --list | /bin/busybox grep -qx wget || { ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_MISSING_WGET >&2; exit 41; }; ",
+    "if /bin/busybox test -e /sys/class/net/eth0; then ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_ETH0_PRESENT >&2; exit 42; fi; ",
+    "if /bin/busybox wget -T 1 -q -O /dev/null http://1.1.1.1/; then ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_EGRESS_REACHABLE >&2; exit 43; fi; ",
+    "/bin/busybox echo A3S_NETWORK_CHECK_PASS",
+);
+const TASK_DIAGNOSTIC_BYTES: usize = 32 * 1024;
 
 #[tokio::test]
-#[ignore = "requires Docker plus an operator-provisioned rootless BuildKit socket volume"]
-async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
+#[ignore = "requires Docker, a rootless BuildKit socket volume, and an authenticated OCI registry"]
+async fn real_runtime_task_builds_publishes_and_rejects_network_access(
 ) -> Result<(), Box<dyn Error>> {
     if std::env::var(GATE_ENV).as_deref() != Ok("1") {
         return Ok(());
@@ -77,15 +102,20 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         root.path().join("control-plane-artifacts"),
         1024 * 1024 * 1024,
     )?);
+    let busybox_rootfs = tokio::fs::read(required_environment(BUSYBOX_ROOTFS_ENV)?).await?;
+    validate_busybox_rootfs(&busybox_rootfs)?;
     let dockerfile = format!(
-        "FROM docker.io/library/busybox@{BUSYBOX_DIGEST} AS network-check\n\
-         RUN command -v wget >/dev/null && test ! -e /sys/class/net/eth0 && ! wget -T 1 -q -O /dev/null http://1.1.1.1/\n\
+        "FROM scratch AS network-check\n\
+         ADD busybox-rootfs.tar /\n\
+         RUN [\"/bin/busybox\", \"sh\", \"-c\", {}]\n\
          FROM scratch\n\
          COPY --from=network-check /bin/busybox /network-check\n\
-         COPY message.txt /message.txt\n"
+         COPY message.txt /message.txt\n",
+        serde_json::to_string(NETWORK_CHECK_SCRIPT)?,
     );
     let source_archive = directory_archive(&[
         ("Dockerfile", dockerfile.as_bytes(), 0o644),
+        ("busybox-rootfs.tar", busybox_rootfs.as_slice(), 0o444),
         (
             "message.txt",
             b"A3S Cloud Runtime BuildKit network-none gate\n",
@@ -99,7 +129,7 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         &source_archive,
     )
     .await?;
-    let (build, revision) = prepared_build(input)?;
+    let (mut build, revision) = prepared_build(input)?;
     let config = BuildFlowConfig::new(BuildFlowConfigOptions {
         builder: ArtifactRef {
             uri: format!("oci://docker.io/moby/buildkit@{BUILDER_DIGEST}"),
@@ -113,6 +143,7 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         observation_poll_ms: 100,
         convergence_timeout_ms: 300_000,
         cleanup_timeout_ms: 60_000,
+        publication_timeout_ms: 60_000,
         cpu_millis: 2_000,
         memory_bytes: 1024 * 1024 * 1024,
         pids: 512,
@@ -120,6 +151,11 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
     })?;
     let spec = project_task_spec(&config, &build, &revision)?;
     let node_id = Uuid::now_v7();
+    build.schedule(
+        NodeId::from_uuid(node_id),
+        spec.digest()?,
+        build.updated_at + Duration::milliseconds(1),
+    )?;
     let transport: Arc<dyn NodeArtifactTransport> =
         Arc::new(LocalArtifactTransport::new(Arc::clone(&artifacts)));
     let artifact_manager = Arc::new(NodeArtifactManager::new(
@@ -151,7 +187,7 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
     let executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(root.path().join("journal"), node_id)?,
-        runtime,
+        Arc::clone(&runtime),
     )
     .with_artifacts(artifact_manager);
 
@@ -168,22 +204,33 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
             request: Box::new(apply),
         },
     )?;
+    build.dispatch(
+        NodeCommandId::from_uuid(apply_command.command_id),
+        build.updated_at + Duration::milliseconds(1),
+    )?;
     let acknowledgement = executor.execute(apply_command).await?;
     let observation = applied_observation(acknowledgement.outcome)?;
+    let resource_id = observation.provider_resource_id.clone();
+    let task_diagnostics = if observation.state == RuntimeUnitState::Succeeded {
+        None
+    } else {
+        Some(runtime_task_diagnostics(runtime.as_ref(), &spec).await)
+    };
 
     let verification = async {
         require(
             observation.state == RuntimeUnitState::Succeeded,
             format!(
-                "Runtime BuildKit Task did not succeed: {:?}",
-                observation.failure
+                "Runtime BuildKit Task did not succeed: {:?}; bounded Runtime logs: {}",
+                observation.failure,
+                task_diagnostics.as_deref().unwrap_or("not captured"),
             ),
         )?;
         require(
             observation.outputs.len() == 1,
             "Runtime BuildKit Task did not publish exactly one output Artifact",
         )?;
-        let resource_id = observation.provider_resource_id.as_deref().ok_or_else(|| {
+        let resource_id = resource_id.as_deref().ok_or_else(|| {
             std::io::Error::other("Runtime BuildKit Task omitted its Docker resource identity")
         })?;
         let container = docker.inspect_container(resource_id, None).await?;
@@ -220,7 +267,11 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
             output.artifact.media_type.clone(),
             output.size_bytes,
         )?;
-        let validator = RuntimeBuildOutputValidator::new(
+        build.begin_validation(
+            artifact.clone(),
+            build.updated_at + Duration::milliseconds(1),
+        )?;
+        let validator = Arc::new(RuntimeBuildOutputValidator::new(
             Arc::clone(&artifacts),
             root.path().join("validation"),
             512 * 1024 * 1024,
@@ -228,15 +279,53 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
             1024 * 1024 * 1024,
             10_000,
             1024 * 1024 * 1024,
-        )?;
+        )?);
         let validated = validator.validate(&artifact, &revision.recipe).await?;
         require(
             validated.platforms.len() == 1 && validated.platforms[0].as_str() == "linux/amd64",
             "validated Runtime BuildKit output changed the requested platform",
         )?;
+        build.record_validated_output(
+            validated.clone(),
+            build.updated_at + Duration::milliseconds(1),
+        )?;
+
+        let registry = RegistryGate::from_environment()?;
+        let publisher = OciRegistryArtifactPublisher::new(
+            Arc::clone(&validator),
+            StdDuration::from_secs(30),
+            registry.insecure_hosts.clone(),
+            OciRegistryArtifactPublisherOptions {
+                registry: registry.authority.clone(),
+                repository_prefix: "a3s-cloud/runtime-buildkit-gates".into(),
+                credential_env: registry.credential.name().into(),
+                allow_anonymous: false,
+            },
+        )?;
+        let target = publisher.target_for(&build)?;
+        build.begin_publication(target.clone(), build.updated_at + Duration::milliseconds(1))?;
+        let request = OciPublicationRequest::new(target.clone(), validated)?;
+        let published = publisher.publish(&request).await?;
+        require(
+            published.uri == target.uri(),
+            "Runtime BuildKit publication changed its digest-only target",
+        )?;
+        require(
+            publisher.find(&request).await? == Some(published.clone()),
+            "Runtime BuildKit publication was not remotely verifiable",
+        )?;
+        require(
+            publisher.publish(&request).await? == published,
+            "Runtime BuildKit publication replay changed its result",
+        )?;
+        build.record_published_artifact(published, build.updated_at + Duration::milliseconds(1))?;
         Ok::<(), Box<dyn Error>>(())
     }
     .await;
+    let credential_cleanup = require(
+        std::env::var_os(PUBLICATION_CREDENTIAL_ENV).is_none(),
+        "Runtime BuildKit publication credential environment was not removed",
+    );
 
     let removal = RuntimeActionRequest {
         schema: RuntimeActionRequest::SCHEMA.into(),
@@ -250,8 +339,18 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         2,
         NodeCommandPayload::RuntimeRemove { request: removal },
     )?;
+    let build_cleanup = if verification.is_ok() {
+        build.begin_cleanup(
+            NodeCommandId::from_uuid(remove_command.command_id),
+            build.updated_at + Duration::milliseconds(1),
+        )
+    } else {
+        Ok(())
+    };
     let removal_result = executor.execute(remove_command).await;
     verification?;
+    credential_cleanup?;
+    build_cleanup?;
     let removal_ack = removal_result?;
     require(
         matches!(
@@ -262,7 +361,155 @@ async fn real_runtime_task_builds_with_network_none_and_rejects_network_access(
         ),
         "Runtime BuildKit Task cleanup did not return a removal receipt",
     )?;
+    match docker
+        .inspect_container(
+            resource_id.as_deref().ok_or_else(|| {
+                std::io::Error::other("Runtime BuildKit cleanup omitted its resource identity")
+            })?,
+            None,
+        )
+        .await
+    {
+        Err(DockerError::DockerResponseServerError {
+            status_code: 404, ..
+        }) => {}
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "Runtime BuildKit Task still exists after its removal receipt",
+            )
+            .into())
+        }
+        Err(error) => {
+            return Err(std::io::Error::other(format!(
+                "could not verify Runtime BuildKit Task removal: {error}"
+            ))
+            .into())
+        }
+    }
+    build.complete(build.updated_at + Duration::milliseconds(1))?;
+    require(
+        build.status == BuildRunStatus::Succeeded,
+        "Runtime BuildKit publication did not complete the durable build",
+    )?;
     Ok(())
+}
+
+async fn runtime_task_diagnostics(runtime: &dyn RuntimeClient, spec: &RuntimeUnitSpec) -> String {
+    let query = RuntimeLogQuery {
+        schema: RuntimeLogQuery::SCHEMA.into(),
+        unit_id: spec.unit_id.clone(),
+        generation: spec.generation,
+        cursor: None,
+        limit: 512,
+        stream: None,
+    };
+    let chunks = match runtime.logs(&query).await {
+        Ok(chunks) => chunks,
+        Err(error) => return format!("log retrieval failed: {error}"),
+    };
+    if chunks.is_empty() {
+        return "no Runtime log records".into();
+    }
+    let mut diagnostics = String::new();
+    for chunk in chunks {
+        diagnostics.push_str(match chunk.stream {
+            RuntimeLogStream::Stdout => "[stdout] ",
+            RuntimeLogStream::Stderr => "[stderr] ",
+        });
+        diagnostics.push_str(&chunk.data);
+        if !chunk.data.ends_with('\n') {
+            diagnostics.push('\n');
+        }
+        if diagnostics.len() >= TASK_DIAGNOSTIC_BYTES {
+            break;
+        }
+    }
+    let mut end = diagnostics.len().min(TASK_DIAGNOSTIC_BYTES);
+    while !diagnostics.is_char_boundary(end) {
+        end -= 1;
+    }
+    diagnostics.truncate(end);
+    diagnostics
+}
+
+struct RegistryGate {
+    authority: String,
+    insecure_hosts: Vec<String>,
+    credential: RegistryCredentialEnvironment,
+}
+
+impl RegistryGate {
+    fn from_environment() -> Result<Self, Box<dyn Error>> {
+        let url = Url::parse(&required_environment(REGISTRY_URL_ENV)?)?;
+        require(
+            matches!(url.scheme(), "http" | "https")
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.path() == "/"
+                && url.query().is_none()
+                && url.fragment().is_none(),
+            "Runtime BuildKit registry URL must be an HTTP(S) origin",
+        )?;
+        let host = url.host_str().ok_or_else(|| {
+            std::io::Error::other("Runtime BuildKit registry URL omitted its host")
+        })?;
+        let port = url.port().ok_or_else(|| {
+            std::io::Error::other("Runtime BuildKit registry URL requires an explicit port")
+        })?;
+        let authority = if host.contains(':') {
+            format!("[{host}]:{port}")
+        } else {
+            format!("{host}:{port}")
+        };
+        let insecure_hosts = if url.scheme() == "http" {
+            vec![authority.clone()]
+        } else {
+            Vec::new()
+        };
+        let credential = RegistryCredentialEnvironment::install(
+            required_environment(REGISTRY_USERNAME_ENV)?,
+            required_environment(REGISTRY_PASSWORD_ENV)?,
+        )?;
+        Ok(Self {
+            authority,
+            insecure_hosts,
+            credential,
+        })
+    }
+}
+
+struct RegistryCredentialEnvironment;
+
+impl RegistryCredentialEnvironment {
+    fn install(username: String, password: String) -> Result<Self, Box<dyn Error>> {
+        require(
+            std::env::var_os(PUBLICATION_CREDENTIAL_ENV).is_none(),
+            "Runtime BuildKit publication credential environment is already occupied",
+        )?;
+        let material = serde_json::to_string(&serde_json::json!({
+            "schema": RegistryCredentialMaterial::SCHEMA,
+            "username": username,
+            "password": password,
+        }))?;
+        RegistryCredentialMaterial::parse(material.as_bytes())?;
+        std::env::set_var(PUBLICATION_CREDENTIAL_ENV, material);
+        Ok(Self)
+    }
+
+    fn name(&self) -> &'static str {
+        PUBLICATION_CREDENTIAL_ENV
+    }
+}
+
+impl Drop for RegistryCredentialEnvironment {
+    fn drop(&mut self) {
+        std::env::remove_var(PUBLICATION_CREDENTIAL_ENV);
+    }
+}
+
+fn required_environment(name: &str) -> Result<String, std::io::Error> {
+    std::env::var(name)
+        .map_err(|_| std::io::Error::other(format!("required gate environment {name} is missing")))
 }
 
 fn prepared_build(

@@ -1,7 +1,10 @@
 use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::sources::domain::{
-    GitProvider, GithubInstallationTokenError, GithubInstallationTokenRequest,
-    IGithubInstallationTokenService, SourceProviderCredential,
+    GitProvider, GithubAccountId, GithubAccountKind, GithubInstallationAccount,
+    GithubInstallationAuthorityError, GithubInstallationAuthorityRequest,
+    GithubInstallationTokenError, GithubInstallationTokenRequest, GithubLogin,
+    GithubProviderAuthority, IGithubInstallationAuthorityProvider, IGithubInstallationTokenService,
+    SourceProviderCredential,
 };
 use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -131,6 +134,14 @@ impl GithubInstallationTokenIssuer {
             .as_ref()
             .ok_or(GithubInstallationTokenError::NotConfigured)
     }
+
+    fn require_authority_enabled(
+        &self,
+    ) -> Result<&EnabledGithubInstallationTokenIssuer, GithubInstallationAuthorityError> {
+        self.enabled
+            .as_ref()
+            .ok_or(GithubInstallationAuthorityError::NotConfigured)
+    }
 }
 
 #[async_trait]
@@ -185,7 +196,9 @@ impl IGithubInstallationTokenService for GithubInstallationTokenIssuer {
                 )))
             }
         }
-        let response_body = read_bounded_body(&mut response).await?;
+        let response_body = read_bounded_body(&mut response)
+            .await
+            .map_err(map_token_response_error)?;
         let token_response: InstallationTokenResponse = serde_json::from_slice(&response_body)
             .map_err(|_| protocol("GitHub installation-token response JSON is invalid"))?;
         if token_response.repository_selection.as_deref() != Some("selected")
@@ -215,6 +228,82 @@ impl IGithubInstallationTokenService for GithubInstallationTokenIssuer {
             token_response.expires_at,
         )
         .map_err(|error| protocol(format!("GitHub installation token is invalid: {error}")))
+    }
+}
+
+#[async_trait]
+impl IGithubInstallationAuthorityProvider for GithubInstallationTokenIssuer {
+    async fn inspect(
+        &self,
+        request: GithubInstallationAuthorityRequest,
+    ) -> Result<GithubProviderAuthority, GithubInstallationAuthorityError> {
+        let enabled = self.require_authority_enabled()?;
+        let checked_at = canonical_timestamp(request.checked_at);
+        let jwt = enabled
+            .app_jwt(checked_at)
+            .map_err(map_authority_signing_error)?;
+        let installation_id = request.installation_id.as_u64().to_string();
+        let mut url = enabled.api_base.clone();
+        url.path_segments_mut()
+            .map_err(|_| authority_protocol("GitHub API URL cannot contain path segments"))?
+            .clear()
+            .extend(["app", "installations", &installation_id]);
+        let mut response = enabled
+            .client
+            .get(url)
+            .bearer_auth(jwt.as_str())
+            .send()
+            .await
+            .map_err(|_| GithubInstallationAuthorityError::Unavailable)?;
+        match response.status() {
+            StatusCode::OK => {}
+            StatusCode::NOT_FOUND => {
+                return Ok(GithubProviderAuthority::deleted(request.installation_id))
+            }
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS => {
+                return Err(GithubInstallationAuthorityError::Unavailable)
+            }
+            status if status.is_server_error() => {
+                return Err(GithubInstallationAuthorityError::Unavailable)
+            }
+            status => {
+                return Err(authority_protocol(format!(
+                    "GitHub installation endpoint returned unexpected HTTP {status}"
+                )))
+            }
+        }
+        let response_body = read_bounded_body(&mut response)
+            .await
+            .map_err(map_authority_response_error)?;
+        let installation: InstallationAuthorityResponse = serde_json::from_slice(&response_body)
+            .map_err(|_| authority_protocol("GitHub installation response JSON is invalid"))?;
+        let observed_installation_id =
+            crate::modules::sources::domain::GithubInstallationId::parse(installation.id).map_err(
+                |error| authority_protocol(format!("GitHub installation ID is invalid: {error}")),
+            )?;
+        if observed_installation_id != request.installation_id {
+            return Err(authority_protocol(
+                "GitHub installation response changed the requested identity",
+            ));
+        }
+        let account = installation.account.ok_or_else(|| {
+            authority_protocol("GitHub installation response did not contain an account")
+        })?;
+        Ok(GithubProviderAuthority::available(
+            observed_installation_id,
+            GithubInstallationAccount {
+                id: GithubAccountId::parse(account.id).map_err(|error| {
+                    authority_protocol(format!("GitHub account ID is invalid: {error}"))
+                })?,
+                login: GithubLogin::parse(account.login).map_err(|error| {
+                    authority_protocol(format!("GitHub account login is invalid: {error}"))
+                })?,
+                kind: GithubAccountKind::parse(&account.kind).map_err(|error| {
+                    authority_protocol(format!("GitHub account type is invalid: {error}"))
+                })?,
+            },
+            installation.suspended_at.is_some(),
+        ))
     }
 }
 
@@ -330,14 +419,35 @@ struct InstallationTokenResponse {
     repository_selection: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct InstallationAuthorityResponse {
+    id: u64,
+    account: Option<InstallationAccountResponse>,
+    #[serde(default)]
+    suspended_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct InstallationAccountResponse {
+    id: u64,
+    login: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+enum GithubResponseReadError {
+    Unavailable,
+    TooLarge,
+}
+
 async fn read_bounded_body(
     response: &mut reqwest::Response,
-) -> Result<Zeroizing<Vec<u8>>, GithubInstallationTokenError> {
+) -> Result<Zeroizing<Vec<u8>>, GithubResponseReadError> {
     if response
         .content_length()
         .is_some_and(|length| length > MAX_RESPONSE_BYTES)
     {
-        return Err(protocol("GitHub response exceeded the size limit"));
+        return Err(GithubResponseReadError::TooLarge);
     }
     let mut body = Zeroizing::new(Vec::with_capacity(
         response
@@ -348,18 +458,51 @@ async fn read_bounded_body(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|_| GithubInstallationTokenError::Unavailable)?
+        .map_err(|_| GithubResponseReadError::Unavailable)?
     {
         if body
             .len()
             .checked_add(chunk.len())
             .is_none_or(|length| length as u64 > MAX_RESPONSE_BYTES)
         {
-            return Err(protocol("GitHub response exceeded the size limit"));
+            return Err(GithubResponseReadError::TooLarge);
         }
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+fn map_token_response_error(error: GithubResponseReadError) -> GithubInstallationTokenError {
+    match error {
+        GithubResponseReadError::Unavailable => GithubInstallationTokenError::Unavailable,
+        GithubResponseReadError::TooLarge => protocol("GitHub response exceeded the size limit"),
+    }
+}
+
+fn map_authority_response_error(
+    error: GithubResponseReadError,
+) -> GithubInstallationAuthorityError {
+    match error {
+        GithubResponseReadError::Unavailable => GithubInstallationAuthorityError::Unavailable,
+        GithubResponseReadError::TooLarge => {
+            authority_protocol("GitHub response exceeded the size limit")
+        }
+    }
+}
+
+fn map_authority_signing_error(
+    error: GithubInstallationTokenError,
+) -> GithubInstallationAuthorityError {
+    match error {
+        GithubInstallationTokenError::NotConfigured => {
+            GithubInstallationAuthorityError::NotConfigured
+        }
+        GithubInstallationTokenError::Unavailable => GithubInstallationAuthorityError::Unavailable,
+        GithubInstallationTokenError::Forbidden => GithubInstallationAuthorityError::Unavailable,
+        GithubInstallationTokenError::Protocol(message) => {
+            GithubInstallationAuthorityError::Protocol(message)
+        }
+    }
 }
 
 fn valid_client_id(value: &str) -> bool {
@@ -389,6 +532,10 @@ fn valid_endpoint(url: &Url, allow_http: bool) -> bool {
 
 fn protocol(message: impl Into<String>) -> GithubInstallationTokenError {
     GithubInstallationTokenError::Protocol(message.into())
+}
+
+fn authority_protocol(message: impl Into<String>) -> GithubInstallationAuthorityError {
+    GithubInstallationAuthorityError::Protocol(message.into())
 }
 
 #[cfg(test)]

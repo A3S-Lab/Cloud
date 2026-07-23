@@ -2,7 +2,8 @@ use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, Sou
 use crate::modules::sources::domain::{
     CompleteGithubConnection, GitProvider, GithubConnection, GithubConnectionFlow,
     GithubConnectionFlowError, GithubConnectionLifecycleAcceptance, GithubConnectionReconciled,
-    GithubInstallationId, IGithubConnectionRepository, ReconcileGithubConnectionLifecycle,
+    GithubInstallationId, IGithubConnectionRepository, PersistGithubProviderReconciliation,
+    ReconcileGithubConnectionLifecycle,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -142,6 +143,11 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
         if !request.connection.is_authoritative()
             || request.connection.aggregate_version != 1
             || request.connection.updated_at != request.connection.connected_at
+            || request.connection.provider_checked_at != request.connection.connected_at
+            || request.connection.provider_check_attempted_at != request.connection.connected_at
+            || request.connection.provider_next_check_at != request.connection.connected_at
+            || request.connection.provider_check_failures != 0
+            || request.connection.provider_check_error.is_some()
         {
             return Err(RepositoryError::Conflict(
                 "new GitHub connection is not active at its initial version".into(),
@@ -217,6 +223,69 @@ impl IGithubConnectionRepository for InMemoryGithubConnectionRepository {
                 connection.installation_id == installation_id && connection.is_authoritative()
             })
             .cloned())
+    }
+
+    async fn find_provider_check_candidates(
+        &self,
+        due_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GithubConnection>, RepositoryError> {
+        let mut connections = self
+            .state
+            .read()
+            .await
+            .connections
+            .values()
+            .filter(|connection| {
+                connection.needs_provider_check() && connection.provider_next_check_at <= due_at
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        connections.sort_by_key(|connection| {
+            (
+                connection.provider_next_check_at,
+                connection.organization_id,
+                connection.id,
+            )
+        });
+        connections.truncate(limit);
+        Ok(connections)
+    }
+
+    async fn save_provider_reconciliation(
+        &self,
+        request: PersistGithubProviderReconciliation,
+    ) -> Result<GithubConnection, RepositoryError> {
+        let mut state = self.state.write().await;
+        let current = state
+            .connections
+            .get(&request.connection.id)
+            .ok_or(RepositoryError::NotFound)?;
+        if current.aggregate_version != request.expected_version
+            || request.connection.aggregate_version
+                != request.expected_version.checked_add(1).ok_or_else(|| {
+                    RepositoryError::Conflict(
+                        "GitHub connection aggregate version overflowed".into(),
+                    )
+                })?
+            || current.organization_id != request.connection.organization_id
+            || current.installation_id != request.connection.installation_id
+            || current.account_id != request.connection.account_id
+            || current.account_kind != request.connection.account_kind
+            || current.verified_by_user_id != request.connection.verified_by_user_id
+            || current.connected_at != request.connection.connected_at
+        {
+            return Err(RepositoryError::Conflict(
+                "GitHub provider reconciliation lost its connection version".into(),
+            ));
+        }
+        state
+            .connections
+            .insert(request.connection.id, request.connection.clone());
+        if let Some(event) = request.event {
+            state.outbox.push(event);
+        }
+        Ok(request.connection)
     }
 
     async fn reconcile_lifecycle(

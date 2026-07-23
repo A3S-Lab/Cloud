@@ -4,7 +4,7 @@ use super::super::types::{
 };
 use super::super::{flow_error, BuildFlowRuntime};
 use super::common::{load_build, load_revision, next_poll, project_spec, timestamp_millis};
-use crate::modules::artifacts::domain::BuildRunStatus;
+use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
@@ -31,7 +31,7 @@ pub(super) async fn dispatch(
     }
     if !matches!(
         build.status,
-        BuildRunStatus::Validating | BuildRunStatus::Cancelling | BuildRunStatus::CleanupPending
+        BuildRunStatus::Publishing | BuildRunStatus::Cancelling | BuildRunStatus::CleanupPending
     ) {
         return Err(FlowError::Runtime(format!(
             "build cannot clean up from {}",
@@ -166,8 +166,9 @@ pub(super) async fn observe(
         match acknowledgement.outcome {
             NodeCommandOutcome::Succeeded { result } => match *result {
                 NodeCommandResult::RuntimeRemoved { removal }
-                    if removal.unit_id == format!("cloud-build-{}", input.flow.build_run_id)
-                        && removal.generation == 1 =>
+                    if removal.unit_id
+                        == BuildRun::runtime_unit_id_for(input.flow.build_run_id)
+                        && removal.generation == BuildRun::RUNTIME_GENERATION =>
                 {
                     return Ok(CleanupObserveStepOutput::Ready {
                         cleaned_at: acknowledgement.completed_at,

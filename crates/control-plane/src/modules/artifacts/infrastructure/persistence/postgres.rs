@@ -1,13 +1,15 @@
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, store_idempotency, transaction_error,
+    PostgresPersistenceError,
 };
 use crate::modules::artifacts::domain::repositories::validate_build_run_transition;
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciPublicationTarget,
+    PublishedOciArtifact, RequestBuildCancellationBundle, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId,
-    RepositoryError, SourceRevisionId,
+    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
+    OperationId, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
@@ -17,7 +19,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.runtime_spec_digest, b.runtime_output_artifact, b.output, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
+const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.runtime_spec_digest, b.runtime_output_artifact, b.output, b.publication_target, b.published_artifact, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
 
 type PendingRevisionRow = (Uuid, Uuid, Uuid, Uuid, DateTime<Utc>);
 
@@ -136,6 +138,7 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<BuildRun>, RepositoryError> {
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
@@ -146,7 +149,8 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                     .bind(project_id.as_uuid())
                     .append(" and b.environment_id = ")
                     .bind(environment_id.as_uuid())
-                    .append(" order by b.requested_at asc, b.id asc"),
+                    .append(" order by b.requested_at desc, b.id desc limit ")
+                    .bind(limit.max(1)),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
@@ -154,6 +158,64 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
             .into_iter()
             .map(map_row)
             .collect()
+    }
+
+    async fn request_cancellation(
+        &self,
+        request: RequestBuildCancellationBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(replay) =
+                        idempotency_replay::<BuildRun>(transaction, &request.idempotency).await?
+                    {
+                        return Ok(IdempotentWrite {
+                            value: replay.value,
+                            replayed: true,
+                        });
+                    }
+                    let existing = find_build_for_update(
+                        transaction,
+                        request.build_run.organization_id,
+                        request.build_run.id,
+                    )
+                    .await?;
+                    validate_build_run_transition(
+                        &existing,
+                        &request.build_run,
+                        request.expected_version,
+                    )
+                    .map_err(PostgresPersistenceError::Repository)?;
+                    let build_run =
+                        persist_build(transaction, &request.build_run, request.expected_version)
+                            .await?;
+                    store_idempotency(transaction, &request.idempotency, &build_run).await?;
+                    Ok(IdempotentWrite {
+                        value: build_run,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_cancellation(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    Ok(idempotency_replay::<BuildRun>(transaction, &idempotency)
+                        .await?
+                        .map(|replay| replay.value))
+                })
+            })
+            .await
+            .map_err(transaction_error)
     }
 
     async fn save(
@@ -165,114 +227,132 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    let existing = fetch_optional::<BuildRunRow, _>(
-                        transaction,
-                        sql_query::<BuildRunRow>(SELECT_BUILDS)
-                            .append(" where b.organization_id = ")
-                            .bind(build_run.organization_id.as_uuid())
-                            .append(" and b.id = ")
-                            .bind(build_run.id.as_uuid())
-                            .append(" for update"),
-                    )
-                    .await?
-                    .ok_or(PostgresPersistenceError::Repository(
-                        RepositoryError::NotFound,
-                    ))?;
                     let existing =
-                        map_row(existing).map_err(PostgresPersistenceError::Repository)?;
+                        find_build_for_update(transaction, build_run.organization_id, build_run.id)
+                            .await?;
                     validate_build_run_transition(&existing, &build_run, expected_version)
                         .map_err(PostgresPersistenceError::Repository)?;
-                    let input_artifact = json_value(build_run.input_artifact.as_ref())?;
-                    let runtime_output_artifact =
-                        json_value(build_run.runtime_output_artifact.as_ref())?;
-                    let output = json_value(build_run.output.as_ref())?;
-                    let updated = execute(
-                        transaction,
-                        sql_query::<()>("update build_runs set status = ")
-                            .bind(build_run.status.as_str())
-                            .append(", source_content_digest = ")
-                            .bind(build_run.source_content_digest.as_deref())
-                            .append(", input_artifact = ")
-                            .bind(input_artifact)
-                            .append(", node_id = ")
-                            .bind(build_run.node_id.map(NodeId::as_uuid))
-                            .append(", command_id = ")
-                            .bind(build_run.command_id.map(NodeCommandId::as_uuid))
-                            .append(", cleanup_command_id = ")
-                            .bind(build_run.cleanup_command_id.map(NodeCommandId::as_uuid))
-                            .append(", runtime_spec_digest = ")
-                            .bind(build_run.runtime_spec_digest.as_deref())
-                            .append(", runtime_output_artifact = ")
-                            .bind(runtime_output_artifact)
-                            .append(", output = ")
-                            .bind(output)
-                            .append(", failure = ")
-                            .bind(build_run.failure.as_deref())
-                            .append(", aggregate_version = ")
-                            .bind(build_run.aggregate_version)
-                            .append(", updated_at = ")
-                            .bind(build_run.updated_at)
-                            .append(", started_at = ")
-                            .bind(build_run.started_at)
-                            .append(", cancellation_requested_at = ")
-                            .bind(build_run.cancellation_requested_at)
-                            .append(", finished_at = ")
-                            .bind(build_run.finished_at)
-                            .append(" where organization_id = ")
-                            .bind(build_run.organization_id.as_uuid())
-                            .append(" and id = ")
-                            .bind(build_run.id.as_uuid())
-                            .append(" and aggregate_version = ")
-                            .bind(expected_version),
-                    )
-                    .await?;
-                    match updated {
-                        1 => {}
-                        0 => {
-                            let exists = fetch_optional::<i32, _>(
-                                transaction,
-                                sql_query::<i32>(
-                                    "select 1 from build_runs where organization_id = ",
-                                )
-                                .bind(build_run.organization_id.as_uuid())
-                                .append(" and id = ")
-                                .bind(build_run.id.as_uuid()),
-                            )
-                            .await?
-                            .is_some();
-                            return Err(if exists {
-                                RepositoryError::Conflict("build run changed concurrently".into())
-                            } else {
-                                RepositoryError::NotFound
-                            }
-                            .into());
-                        }
-                        rows => {
-                            return Err(PostgresPersistenceError::Invariant(format!(
-                                "updating build run affected {rows} rows"
-                            )))
-                        }
-                    }
-                    let row = fetch_optional::<BuildRunRow, _>(
-                        transaction,
-                        sql_query::<BuildRunRow>(SELECT_BUILDS)
-                            .append(" where b.organization_id = ")
-                            .bind(build_run.organization_id.as_uuid())
-                            .append(" and b.id = ")
-                            .bind(build_run.id.as_uuid()),
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        PostgresPersistenceError::Invariant(
-                            "updated build run could not be reloaded".into(),
-                        )
-                    })?;
-                    map_row(row).map_err(PostgresPersistenceError::Repository)
+                    persist_build(transaction, &build_run, expected_version).await
                 })
             })
             .await
             .map_err(transaction_error)
     }
+}
+
+async fn find_build_for_update(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    build_run_id: BuildRunId,
+) -> Result<BuildRun, PostgresPersistenceError> {
+    let row = fetch_optional::<BuildRunRow, _>(
+        transaction,
+        sql_query::<BuildRunRow>(SELECT_BUILDS)
+            .append(" where b.organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and b.id = ")
+            .bind(build_run_id.as_uuid())
+            .append(" for update"),
+    )
+    .await?
+    .ok_or(PostgresPersistenceError::Repository(
+        RepositoryError::NotFound,
+    ))?;
+    map_row(row).map_err(PostgresPersistenceError::Repository)
+}
+
+async fn persist_build(
+    transaction: &a3s_orm::PostgresTransaction,
+    build_run: &BuildRun,
+    expected_version: u64,
+) -> Result<BuildRun, PostgresPersistenceError> {
+    let input_artifact = json_value(build_run.input_artifact.as_ref())?;
+    let runtime_output_artifact = json_value(build_run.runtime_output_artifact.as_ref())?;
+    let output = json_value(build_run.output.as_ref())?;
+    let publication_target = json_value(build_run.publication_target.as_ref())?;
+    let published_artifact = json_value(build_run.published_artifact.as_ref())?;
+    let updated = execute(
+        transaction,
+        sql_query::<()>("update build_runs set status = ")
+            .bind(build_run.status.as_str())
+            .append(", source_content_digest = ")
+            .bind(build_run.source_content_digest.as_deref())
+            .append(", input_artifact = ")
+            .bind(input_artifact)
+            .append(", node_id = ")
+            .bind(build_run.node_id.map(NodeId::as_uuid))
+            .append(", command_id = ")
+            .bind(build_run.command_id.map(NodeCommandId::as_uuid))
+            .append(", cleanup_command_id = ")
+            .bind(build_run.cleanup_command_id.map(NodeCommandId::as_uuid))
+            .append(", runtime_spec_digest = ")
+            .bind(build_run.runtime_spec_digest.as_deref())
+            .append(", runtime_output_artifact = ")
+            .bind(runtime_output_artifact)
+            .append(", output = ")
+            .bind(output)
+            .append(", publication_target = ")
+            .bind(publication_target)
+            .append(", published_artifact = ")
+            .bind(published_artifact)
+            .append(", failure = ")
+            .bind(build_run.failure.as_deref())
+            .append(", aggregate_version = ")
+            .bind(build_run.aggregate_version)
+            .append(", updated_at = ")
+            .bind(build_run.updated_at)
+            .append(", started_at = ")
+            .bind(build_run.started_at)
+            .append(", cancellation_requested_at = ")
+            .bind(build_run.cancellation_requested_at)
+            .append(", finished_at = ")
+            .bind(build_run.finished_at)
+            .append(" where organization_id = ")
+            .bind(build_run.organization_id.as_uuid())
+            .append(" and id = ")
+            .bind(build_run.id.as_uuid())
+            .append(" and aggregate_version = ")
+            .bind(expected_version),
+    )
+    .await?;
+    match updated {
+        1 => {}
+        0 => {
+            let exists = fetch_optional::<i32, _>(
+                transaction,
+                sql_query::<i32>("select 1 from build_runs where organization_id = ")
+                    .bind(build_run.organization_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(build_run.id.as_uuid()),
+            )
+            .await?
+            .is_some();
+            return Err(if exists {
+                RepositoryError::Conflict("build run changed concurrently".into())
+            } else {
+                RepositoryError::NotFound
+            }
+            .into());
+        }
+        rows => {
+            return Err(PostgresPersistenceError::Invariant(format!(
+                "updating build run affected {rows} rows"
+            )))
+        }
+    }
+    let row = fetch_optional::<BuildRunRow, _>(
+        transaction,
+        sql_query::<BuildRunRow>(SELECT_BUILDS)
+            .append(" where b.organization_id = ")
+            .bind(build_run.organization_id.as_uuid())
+            .append(" and b.id = ")
+            .bind(build_run.id.as_uuid()),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("updated build run could not be reloaded".into())
+    })?;
+    map_row(row).map_err(PostgresPersistenceError::Repository)
 }
 
 async fn insert_build(
@@ -334,6 +414,8 @@ struct BuildRunRow {
     runtime_spec_digest: Option<String>,
     runtime_output_artifact: Option<Value>,
     output: Option<Value>,
+    publication_target: Option<Value>,
+    published_artifact: Option<Value>,
     failure: Option<String>,
     aggregate_version: u64,
     requested_at: DateTime<Utc>,
@@ -361,13 +443,15 @@ impl FromRow for BuildRunRow {
             runtime_spec_digest: decode(row, 12)?,
             runtime_output_artifact: decode(row, 13)?,
             output: decode(row, 14)?,
-            failure: decode(row, 15)?,
-            aggregate_version: decode(row, 16)?,
-            requested_at: decode(row, 17)?,
-            updated_at: decode(row, 18)?,
-            started_at: decode(row, 19)?,
-            cancellation_requested_at: decode(row, 20)?,
-            finished_at: decode(row, 21)?,
+            publication_target: decode(row, 15)?,
+            published_artifact: decode(row, 16)?,
+            failure: decode(row, 17)?,
+            aggregate_version: decode(row, 18)?,
+            requested_at: decode(row, 19)?,
+            updated_at: decode(row, 20)?,
+            started_at: decode(row, 21)?,
+            cancellation_requested_at: decode(row, 22)?,
+            finished_at: decode(row, 23)?,
         })
     }
 }
@@ -385,6 +469,10 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
     let runtime_output_artifact =
         decode_json::<BuildArtifact>(row.runtime_output_artifact, "Runtime output artifact")?;
     let output = decode_json::<ValidatedOciBuildOutput>(row.output, "validated output")?;
+    let publication_target =
+        decode_json::<OciPublicationTarget>(row.publication_target, "publication target")?;
+    let published_artifact =
+        decode_json::<PublishedOciArtifact>(row.published_artifact, "published artifact")?;
     BuildRun::restore(BuildRun {
         organization_id: OrganizationId::from_uuid(row.organization_id),
         project_id: ProjectId::from_uuid(row.project_id),
@@ -402,6 +490,8 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         runtime_spec_digest: row.runtime_spec_digest,
         runtime_output_artifact,
         output,
+        publication_target,
+        published_artifact,
         failure: row.failure,
         aggregate_version: row.aggregate_version,
         requested_at: row.requested_at,

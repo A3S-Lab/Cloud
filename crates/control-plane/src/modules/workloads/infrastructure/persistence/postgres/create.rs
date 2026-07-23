@@ -118,6 +118,12 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
         || event.organization_id != workload.organization_id.as_uuid()
         || event.aggregate_id != deployment.id.as_uuid()
         || event.aggregate_version != deployment.aggregate_version
+        || revision.external_build.as_ref().is_some_and(|external| {
+            revision.template.is_none()
+                || external.organization_id != workload.organization_id
+                || external.project_id != workload.project_id
+                || external.environment_id != workload.environment_id
+        })
     {
         return Err(RepositoryError::Conflict(
             "deployment creation bundle has inconsistent identities or state".into(),
@@ -232,10 +238,11 @@ async fn insert_revision(
         .as_ref()
         .map(serde_json::to_value)
         .transpose()?;
+    let external_build = revision.external_build.as_ref();
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into workload_revisions (id, workload_id, generation, resolution_state, artifact_source_uri, expected_artifact_digest, template_request, request_digest, artifact_uri, artifact_digest, artifact_media_type, template, template_digest, created_at, resolved_at) values (",
+            "insert into workload_revisions (id, workload_id, generation, resolution_state, artifact_source_uri, expected_artifact_digest, template_request, request_digest, artifact_uri, artifact_digest, artifact_media_type, template, template_digest, created_at, resolved_at, external_build_organization_id, external_build_project_id, external_build_environment_id, external_source_revision_id, external_build_run_id) values (",
         )
         .bind(revision.id.as_uuid())
         .append(", ")
@@ -270,6 +277,16 @@ async fn insert_revision(
         .bind(revision.created_at)
         .append(", ")
         .bind(revision.resolved_at)
+        .append(", ")
+        .bind(external_build.map(|reference| reference.organization_id.as_uuid()))
+        .append(", ")
+        .bind(external_build.map(|reference| reference.project_id.as_uuid()))
+        .append(", ")
+        .bind(external_build.map(|reference| reference.environment_id.as_uuid()))
+        .append(", ")
+        .bind(external_build.map(|reference| reference.source_revision_id.as_uuid()))
+        .append(", ")
+        .bind(external_build.map(|reference| reference.build_run_id.as_uuid()))
         .append(")"),
     )
     .await;

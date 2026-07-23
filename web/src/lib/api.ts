@@ -1,6 +1,8 @@
 import type {
   ApiEnvelope,
   ApiErrorEnvelope,
+  BuildRun,
+  CancelBuildRunResult,
   CancelDeploymentResult,
   Environment,
   GatewayCertificate,
@@ -9,6 +11,7 @@ import type {
   Project,
   Route,
   ServiceTemplate,
+  SourceWorkloadTemplate,
   StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
@@ -57,6 +60,27 @@ export class CloudApi {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/operations?limit=100`, signal);
   }
 
+  listBuildRuns(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<BuildRun[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/build-runs?limit=100`,
+      signal
+    );
+  }
+
+  getBuildRun(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildRun> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
+      signal
+    );
+  }
+
   listWorkloads(
     organizationId: string,
     projectId: string,
@@ -100,6 +124,27 @@ export class CloudApi {
     );
   }
 
+  deploySourceRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    sourceRevisionId: string,
+    name: string,
+    template: SourceWorkloadTemplate,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/source-revisions/${encodeURIComponent(sourceRevisionId)}/workloads`,
+      idempotencyKey,
+      { name, template },
+      signal
+    );
+  }
+
   rollbackWorkload(
     organizationId: string,
     workloadId: string,
@@ -123,6 +168,19 @@ export class CloudApi {
   ): Promise<CancelDeploymentResult> {
     return this.delete(
       `/organizations/${encodeURIComponent(organizationId)}/deployments/${encodeURIComponent(deploymentId)}`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  cancelBuildRun(
+    organizationId: string,
+    buildRunId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<CancelBuildRunResult> {
+    return this.delete(
+      `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
       idempotencyKey,
       signal
     );
@@ -159,6 +217,17 @@ export class CloudApi {
       `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}` +
       `/workloads/${encodeURIComponent(workloadId)}` +
       `/revisions/${encodeURIComponent(revisionId)}/logs/stream?${query.toString()}`
+    );
+  }
+
+  buildRunLogStreamUrl(organizationId: string, buildRunId: string, stream?: WorkloadLogStreamFilter): string {
+    const query = new URLSearchParams({ limit: '16' });
+    if (stream) {
+      query.set('stream', stream);
+    }
+    return (
+      `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}` +
+      `/build-runs/${encodeURIComponent(buildRunId)}/logs/stream?${query.toString()}`
     );
   }
 

@@ -5,6 +5,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::OciArtifact;
 
 mod rollback;
+mod source_build;
 
 #[tokio::test]
 async fn workload_update_api_requires_an_active_revision_and_creates_one_idempotent_generation(
