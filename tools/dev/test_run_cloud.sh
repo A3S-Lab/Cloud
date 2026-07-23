@@ -23,7 +23,7 @@ if [[ $exit_code -eq 0 ]]; then
   printf '%s\n' 'supervision fixture unexpectedly succeeded' >&2
   exit 1
 fi
-if ! printf '%s\n' "$output" | rg --quiet 'Cloud API exited with status 1'; then
+if [[ $output != *'Cloud API exited with status 1'* ]]; then
   printf '%s\n' "$output" >&2
   printf '%s\n' 'launcher did not report the failed API process' >&2
   exit 1
