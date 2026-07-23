@@ -86,8 +86,11 @@ flowchart LR
     H01 --> H02[H0.2 private target projection]
     I02A --> I02BC[I0.2b/c Gateway data plane and usage]
     H02 --> I02BC
+    I02BC --> I02D[I0.2d external Provider targets]
+    I02D --> I02E[I0.2e gateway self-service and governance]
+    C0 --> I02E
     H02 --> H03[H0.3 multi-node placement and network]
-    I02BC --> I034[I0.3/4 multi-node inference]
+    I02E --> I034[I0.3/4 multi-node inference]
     H03 --> I034
     P0 --> H04[H0.4 production deployment and HA]
     C0 --> H04
@@ -149,6 +152,7 @@ authoritative model:
 | Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
 | Generic accelerator inventory, claims, and enforcement | `I0.0`/`I0.1` with `H0` placement ownership | Extend Runtime, Fleet, and Workloads without introducing model or backend semantics into their core contracts |
 | Model catalog, inference deployment, model routes, and usage | `I0` | Add a separate Inference bounded context that compiles into managed Workloads and Edge target sets |
+| Enterprise inference-gateway self-service and governance | `C0` + `I0.2d`/`I0.2e` | C0 owns principals, grants, role-focused navigation, authorized search, and project attribution; I0 owns provider certification, model/key self-service, route diagnostics, API exploration, and usage showback |
 | Edge caching and transport optimization | `E0`/`H0` | A3S Gateway owns HTTP, TLS, compression, and cache mechanics; Cloud owns desired policy |
 | Mail hosting, native desktop, and commercial billing | Outside core | Use integrations or separately owned products; do not couple them to workload orchestration |
 
@@ -921,6 +925,13 @@ The management MCP endpoint in this milestone is not an A0 hosted MCP asset.
 It is another authenticated interface to Cloud application commands and
 queries; hosted MCP releases remain ordinary deployable workloads.
 
+Enterprise AI gateway products such as
+[TokenHub](https://github.com/astaxie/TokenHub) are useful product references
+for role-focused self-service, provider and route diagnostics, project-scoped
+keys, and usage showback. Cloud adopts those outcomes through C0 and I0 without
+pursuing TokenHub API or UI compatibility, a SQLite-first topology, or embedded
+commercial billing.
+
 ### Work
 
 - Version the public REST and OpenAPI contracts, define compatibility and
@@ -946,6 +957,18 @@ queries; hosted MCP releases remain ordinary deployable workloads.
   roles, invitations, and explicit project/environment/node grants. Platform
   administration remains a separate role and cannot be inferred from
   organization ownership.
+- Add grant-derived console modes for consumers, project stewards, and platform
+  operators, plus one tenant-authorized global search over registered resource
+  projections. These modes change navigation and default queries only; they are
+  not new authorization roles, and hidden navigation never substitutes for a
+  command/query guard. Optional product profiles such as I0 register their own
+  cards and searches only after their exit gates pass.
+- Add a bounded project attribution profile containing a business owner
+  reference, an optional external cost-attribution code, and validated labels.
+  Audit and product usage facts snapshot the applicable project/environment and
+  attribution reference so later metadata changes never rewrite history.
+  Pricing, balance, invoice, settlement, and entitlement authority remain in a
+  separately deployed service/profile.
 - Add in-app, signed webhook, external SMTP, and Slack-compatible notification
   adapters over transactional outbox facts. Notification delivery is
   deduplicated, retryable, rate-limited, and never an operation authority.
@@ -973,6 +996,15 @@ queries; hosted MCP releases remain ordinary deployable workloads.
 - A read-only MCP client cannot discover or invoke mutation tools. A
   project-scoped client cannot act on another project even when it guesses an
   identifier or supplies a forged organization context.
+- Consumer, project-steward, and platform-operator console fixtures expose only
+  resources returned by the same authorized queries used by REST and CLI.
+  Global search, counts, empty states, timing, and deep links do not reveal a
+  denied resource, and changing presentation mode never changes effective
+  grants.
+- Updating a project attribution profile affects only future audit and usage
+  facts. Historical records retain the exact prior attribution reference, and
+  export fixtures contain no Secret, prompt, response, or commercial balance
+  data.
 - Notification retry and provider outage create one logical notification and
   never change deployment state. Payloads and audit exports pass secret
   redaction fixtures.
@@ -1366,11 +1398,11 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | --- | --- | --- |
 | Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> operator gate evidence -> registry publication -> provenance and build UI |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
-| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity -> `C0.2` scoped MCP -> `C0.3` membership/notifications/audit -> `C0.4` exec/terminal |
+| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped MCP -> `C0.3` membership/role-focused console/attribution/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
 | Stateful platform | `E0` | `S0` local volume -> PostgreSQL -> backup/restore -> additional engines and remote volume provider |
 | Production scale | `P0`, `C0`, `A0`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
-| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening |
+| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` enterprise gateway self-service/governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth |
 
 The lane table expresses dependency, not a promise of equal staffing or calendar
 dates. The next slice is always the smallest vertical behavior that can pass a

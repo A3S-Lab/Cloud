@@ -19,8 +19,9 @@ distributes committed facts after the corresponding database transaction.
 
 | Term | Meaning |
 | --- | --- |
-| Organization | Tenant and billing/security boundary. |
+| Organization | Tenant and security boundary. Commercial billing remains externally owned. |
 | Project | Product grouping owned by one organization. |
+| Project attribution profile | Immutable project showback metadata containing a business-owner reference, optional external cost-attribution code, and validated labels; it is not a price or billing account. |
 | Environment | Isolated desired-state namespace such as production or staging. |
 | Asset | Hosted reusable A3S unit. Its kind is exactly Agent, MCP, or Skill. |
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
@@ -69,9 +70,12 @@ Primary aggregates:
 
 ### 3.2 Projects
 
-Owns `Project` and `Environment`. An environment belongs to exactly one project
-and carries configuration isolation boundaries. Deleting an environment is a
-workflow, not a cascade hidden inside one request transaction.
+Owns `Project`, its current immutable attribution-profile reference, and
+`Environment`. An environment belongs to exactly one project and carries
+configuration isolation boundaries. Deleting an environment is a workflow,
+not a cascade hidden inside one request transaction. Project attribution is
+non-monetary metadata for audit and usage showback; this context does not own
+pricing, balances, invoices, settlement, tax, or commercial entitlements.
 
 Primary aggregates:
 
@@ -273,6 +277,10 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 - Project names are unique within one organization.
 - Environment names are unique within one project.
+- Each accepted project-attribution update creates a new immutable reference.
+  It contains a tenant-local business-owner reference, an optional external
+  cost-attribution code, and validated bounded labels; changing the current
+  reference never rewrites an audit or usage fact that selected an older one.
 - Environment deletion requires all workloads to reach a terminal stopped or
   explicitly orphaned state.
 
@@ -693,8 +701,12 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A usage record is append-only and deduplicated by stable request/event ID.
   Missing or interrupted usage is represented explicitly and never converted
   to zero.
+- A usage record snapshots its project, environment, and the immutable project
+  attribution reference effective when the request starts. Later attribution
+  updates never rewrite that historical selection.
 - Prompts, responses, plaintext provider credentials, and commercial price or
-  balance state do not enter the usage ledger.
+  balance state do not enter the usage ledger; Inference owns no invoice,
+  settlement, tax, checkout, or commercial-entitlement authority.
 
 ## 5. Source model
 
@@ -931,6 +943,7 @@ Gateway revision.
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
+| Current project attribution reference and immutable business-owner, external cost-attribution code, and label revisions | PostgreSQL Projects tables |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
 | Verified GitHub installation/account ownership, verifying-user identity, explicit status, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential |
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
@@ -944,7 +957,7 @@ Gateway revision.
 | Workload replicas, placement members, accelerator reservations and claims | PostgreSQL Workloads tables |
 | Accelerator inventory and node Artifact-cache observations | Node agent plus PostgreSQL Fleet projection |
 | Raw accelerator and inference time-series metrics | Configured metrics backend |
-| Inference request, attempt and token usage facts | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
+| Inference request, attempt and token usage facts, including the request-time project/environment and immutable attribution reference | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
 | Operation history | A3S Flow PostgreSQL event store |
 | Operation summary | Rebuildable PostgreSQL projection |
 | Provider resource and live health | Node agent plus Runtime provider |
@@ -1033,5 +1046,6 @@ The first architecture does not implement:
 - a second deployment engine for Agent or MCP workloads.
 
 Planned I0 also excludes model training/fine-tuning orchestration, unisolated
-soft GPU overcommit, price/balance/invoice settlement, and vendor support based
-only on unverified capability advertisement.
+soft GPU overcommit, price catalogs, monetary credits/balances, checkout,
+invoices, settlement, tax and commercial-entitlement authority, and vendor
+support based only on unverified capability advertisement.
