@@ -18,6 +18,11 @@ when its exit evidence passes against real dependencies. Later milestones do
 not compensate for an unproven Runtime contract, lost-operation recovery, or a
 mock-only deployment path.
 
+The [Cloud and Gateway product roadmap](../ROADMAP.md) is
+authoritative for the boundary between the Cloud control plane and Gateway data
+plane. This document owns Cloud delivery detail and reuses that boundary
+without creating a second Gateway control loop.
+
 The roadmap has three delivery horizons:
 
 | Horizon | Required gates | Product outcome |

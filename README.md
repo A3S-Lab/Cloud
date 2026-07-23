@@ -1,21 +1,22 @@
 # A3S Cloud
 
 <p align="center">
-  <strong>Self-Hosted Cloud for Applications and AI Workloads</strong>
+  <strong>Self-Hosted Control Plane for Applications, Agents, and Model-Serving Workloads</strong>
 </p>
 
 <p align="center">
-  <em>Deploy, route, observe, update, and roll back workloads on infrastructure you own</em>
+  <em>Durable desired state, governed self-service, and convergent operations on infrastructure you own</em>
 </p>
 
 <p align="center">
   <a href="#overview">Overview</a> •
+  <a href="#gateway-relationship">Gateway Relationship</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#configuration">Configuration</a> •
   <a href="#platform-model">Platform Model</a> •
   <a href="#architecture">Architecture</a> •
-  <a href="#delivery-roadmap">Delivery Roadmap</a> •
+  <a href="ROADMAP.md">Roadmap</a> •
   <a href="#development">Development</a>
 </p>
 
@@ -23,11 +24,12 @@
 
 ## Overview
 
-**A3S Cloud** is a self-hosted platform for deploying applications and A3S
-workloads to operator-owned Linux infrastructure. Organizations, projects, and
-environments define its tenancy boundary. PostgreSQL stores desired state, A3S
-Flow advances durable operations, and node agents converge A3S Runtime resources
-with the requested state.
+**A3S Cloud** is a self-hosted control plane for applications, Agents, MCP
+services, and model-serving workloads on operator-owned infrastructure.
+Organizations, projects, and environments define its tenancy boundary.
+PostgreSQL stores desired state, A3S Flow advances durable operations, and node
+agents converge A3S Runtime resources and A3S Gateway snapshots with the
+requested state.
 
 Cloud is designed around observable convergence rather than request-time
 orchestration. An accepted command commits intent and returns an operation. The
@@ -39,6 +41,23 @@ before dispatching work, while Linux nodes establish outbound mTLS connections,
 apply provider-neutral A3S Runtime requests, and report observations back to the
 control plane. API latency is therefore independent from deployment duration,
 and recovery starts from persisted state instead of process memory.
+
+### Gateway relationship
+
+| Product | Position | Authority |
+| --- | --- | --- |
+| **A3S Cloud** | Self-hosted control plane | Tenancy, identity, catalogs, desired replicas, placement, rollout, autoscaling, complete Gateway policy, usage ledger, and management surfaces |
+| **A3S Gateway** | AI traffic and protocol data plane | Transport, TLS, streaming, local policy enforcement, healthy endpoint selection, atomic snapshot application, and data-plane telemetry |
+
+Cloud never proxies provider bytes or sits on the per-request authorization
+path. In Cloud-managed deployments, Gateway never becomes a second scheduler,
+rollout controller, autoscaling authority, or business-state database.
+Standalone Gateway remains an independent product with an operator-owned ACL
+source of truth.
+
+The [Product Roadmap](ROADMAP.md) is the ownership source of truth and
+coordinates delivery through the existing `E0`, `H0`, `I0`, `C0`, and `A0`
+gates.
 
 ### Operation model
 
@@ -1267,7 +1286,8 @@ TLS, compression, and cache mechanics; Cloud owns versioned desired policy and
 exact applied-state projection.
 
 See the [Development Plan](docs/development-plan.md) for milestone order and
-acceptance criteria.
+acceptance criteria, and the [Product Roadmap](ROADMAP.md) for the cross-product
+ownership contract and joint release gates.
 
 ## Repository
 
@@ -1593,6 +1613,7 @@ Design references:
 - [Technical Architecture](docs/architecture.md)
 - [Development Plan](docs/development-plan.md)
 - [Inference Platform Plan](docs/inference-plan.md)
+- [Product Roadmap](ROADMAP.md)
 
 ## License
 
