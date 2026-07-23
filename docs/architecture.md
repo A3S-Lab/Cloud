@@ -1055,8 +1055,10 @@ without `eth0` and a failed `wget` attempt while the overall build succeeds.
 CI provisions the operator-controlled rootless BuildKit socket volume and
 authenticated registry for this implemented gate. Authoritative registry
 publication and explicit published-build deployment are implemented. Cache
-trust, provenance, build logs, and retry-as-new-attempt remain later slices;
-BuildRun status and cancellation API/web controls are implemented.
+trust, provenance, and retry-as-new-attempt remain later slices. BuildRun
+status, cancellation, ordered log page/SSE, and web controls are implemented;
+the log projection reuses Fleet metadata and object storage while redacting
+node and internal Runtime identities.
 
 Hosted assets follow a separate publication chain:
 

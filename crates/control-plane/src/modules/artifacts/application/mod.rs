@@ -7,4 +7,7 @@ pub use build_run_reconciler::{
     LEGACY_BUILD_WORKFLOW_VERSION,
 };
 pub use commands::{CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult};
-pub use queries::{GetBuildRun, GetBuildRunHandler, ListBuildRuns, ListBuildRunsHandler};
+pub use queries::{
+    BuildRunLogPage, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler,
+    ListBuildRuns, ListBuildRunsHandler,
+};

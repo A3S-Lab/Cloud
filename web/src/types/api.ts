@@ -127,6 +127,14 @@ export interface CancelBuildRunResult {
   replayed: boolean;
 }
 
+export interface BuildRunLogsPage {
+  buildRunId: string;
+  operationId: string;
+  generation: number;
+  records: WorkloadLogRecord[];
+  nextCursor: string | null;
+}
+
 export interface ServiceTemplate {
   artifact: OciArtifactReference;
   process: ServiceProcess;

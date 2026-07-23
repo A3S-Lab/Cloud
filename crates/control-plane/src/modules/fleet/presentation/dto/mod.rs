@@ -2,4 +2,4 @@ pub mod request;
 pub mod response;
 
 pub use request::{ChangeNodeStateRequest, IssueEnrollmentTokenRequest};
-pub use response::{EnrollmentTokenResponse, NodeResponse};
+pub use response::{EnrollmentTokenResponse, NodeLogRecordResponse, NodeResponse};

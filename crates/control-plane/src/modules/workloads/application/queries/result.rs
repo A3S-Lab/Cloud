@@ -1,10 +1,10 @@
-use crate::modules::fleet::domain::repositories::{
-    NodeLogChunkMetadata, NodeLogCompactionRange, NodeLogGapMetadata, RuntimeObservationRecord,
+pub use crate::modules::fleet::application::{
+    NodeLogGapReason as WorkloadLogGapReason, NodeLogRecord as WorkloadLogRecord,
 };
+use crate::modules::fleet::domain::repositories::RuntimeObservationRecord;
 use crate::modules::operations::domain::entities::OperationProjection;
 use crate::modules::shared_kernel::domain::{NodeId, WorkloadId, WorkloadRevisionId};
 use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
-use a3s_runtime::contract::RuntimeLogChunk;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeploymentQueryResult {
@@ -19,31 +19,6 @@ pub struct WorkloadQueryResult {
     pub workload: Workload,
     pub revisions: Vec<WorkloadRevision>,
     pub deployments: Vec<DeploymentQueryResult>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkloadLogGapReason {
-    Missing,
-    Corrupt,
-    Retained,
-    Compacted,
-    ProviderCursorLost,
-    ProviderDisconnected,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkloadLogRecord {
-    Data(RuntimeLogChunk),
-    Gap {
-        metadata: NodeLogChunkMetadata,
-        reason: WorkloadLogGapReason,
-    },
-    CompactedGap {
-        range: NodeLogCompactionRange,
-    },
-    ProviderGap {
-        metadata: NodeLogGapMetadata,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

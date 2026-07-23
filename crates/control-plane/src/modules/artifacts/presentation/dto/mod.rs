@@ -1,3 +1,3 @@
 mod response;
 
-pub use response::{BuildRunResponse, CancelBuildRunResponse};
+pub use response::{BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse};

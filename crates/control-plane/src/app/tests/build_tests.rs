@@ -129,6 +129,29 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
     assert_eq!(detail.status(), 200);
     assert_eq!(response_json(&detail)?["data"]["aggregateVersion"], 1);
 
+    let logs_path = format!("{detail_path}/logs");
+    let logs = app.call(get_as(&logs_path, ADMIN_TOKEN)).await?;
+    assert_eq!(logs.status(), 200);
+    let logs = response_json(&logs)?;
+    assert_eq!(logs["data"]["buildRunId"], queued.id.to_string());
+    assert_eq!(logs["data"]["operationId"], queued.operation_id.to_string());
+    assert_eq!(logs["data"]["generation"], 1);
+    assert_eq!(logs["data"]["records"].as_array().map(Vec::len), Some(0));
+    assert!(logs["data"]["nextCursor"].is_null());
+    assert!(logs["data"].get("nodeId").is_none());
+    assert!(logs["data"].get("unitId").is_none());
+
+    let invalid_cursor = app
+        .call(get_as(format!("{logs_path}?cursor=invalid"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(invalid_cursor.status(), 400);
+    for invalid_query in ["limit=0", "limit=257"] {
+        let invalid = app
+            .call(get_as(format!("{logs_path}?{invalid_query}"), ADMIN_TOKEN))
+            .await?;
+        assert_eq!(invalid.status(), 422);
+    }
+
     let forbidden = app
         .call(delete_as(
             &detail_path,
@@ -218,14 +241,18 @@ async fn build_run_detail_hides_cross_tenant_and_unknown_identities() -> Result<
         .ok_or_else(|| BootError::Internal("cross-tenant build was not reserved".into()))?;
 
     for build_run_id in [cross_tenant.id, BuildRunId::new()] {
-        let response = app
-            .call(get_as(
-                format!("/api/v1/organizations/{organization}/build-runs/{build_run_id}"),
-                ADMIN_TOKEN,
-            ))
-            .await?;
-        assert_eq!(response.status(), 404);
-        assert_eq!(response_json(&response)?["statusCode"], "NOT_FOUND");
+        for suffix in ["", "/logs"] {
+            let response = app
+                .call(get_as(
+                    format!(
+                        "/api/v1/organizations/{organization}/build-runs/{build_run_id}{suffix}"
+                    ),
+                    ADMIN_TOKEN,
+                ))
+                .await?;
+            assert_eq!(response.status(), 404);
+            assert_eq!(response_json(&response)?["statusCode"], "NOT_FOUND");
+        }
     }
     Ok(())
 }
