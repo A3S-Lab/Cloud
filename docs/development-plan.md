@@ -508,6 +508,14 @@ Complete the first user-visible release loop.
   route/certificate state, commits complete-template updates after field-level
   comparison, offers only eligible activated rollback sources, and dismisses
   terminal operations locally without deleting durable history.
+- Implemented post-E0: the production SPA build is served from a private,
+  fail-fast Rust service with history fallback, bounded content types, cache
+  policy, path containment, security headers, and a product favicon. A3S
+  Gateway 1.0.12 validates the same-origin profile that routes exact `/api`
+  paths to the control plane and everything else to the SPA. CI exercises the
+  real built assets, deep-link fallback, headers, API isolation, process
+  cleanup, and Gateway ACL validation; `just cloud` supervises the local API
+  and hot-reloading web process from the monorepo root.
 
 ### Exit gate
 
@@ -535,6 +543,10 @@ Complete the first user-visible release loop.
   health, and Gateway paths. Process death after candidate activation but before
   retirement dispatch reconstructs to one cleanup command and no false terminal
   success.
+- The production management SPA opens through the Gateway origin, a direct
+  client route returns the same entrypoint, hashed assets retain immutable
+  cache headers, `/api` cannot fall through to HTML, and stopping the launcher
+  leaves no API or web child process.
 - The full scenario runs from a clean machine in CI and on a separately managed
   Linux host; screenshots or mocks are not release evidence.
 
