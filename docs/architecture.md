@@ -130,13 +130,6 @@ The following decisions are fixed for the first architecture:
 
 ## 2. System shape
 
-The rendered overview distinguishes the verified R0-E0 single-node core from
-the in-progress G0 source path and later product profiles. Open the
-[high-resolution PNG](assets/a3s-cloud-architecture.png) when a raster export
-is preferable.
-
-![A3S Cloud architecture](assets/a3s-cloud-architecture.svg)
-
 ```mermaid
 flowchart LR
     browser[Web browser] --> web[React web]
