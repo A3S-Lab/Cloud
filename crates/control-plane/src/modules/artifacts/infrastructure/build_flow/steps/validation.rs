@@ -85,9 +85,13 @@ pub(super) async fn fail(
             failed_at: build.finished_at.unwrap_or(build.updated_at),
         });
     }
-    if build.cancellation_requested_at.is_some() {
+    if build.cancellation_requested_at.is_some()
+        && !(build.evidence_required
+            && build.published_artifact.is_some()
+            && build.evidence.is_none())
+    {
         return Err(FlowError::Runtime(
-            "cancelling build cannot record a failure".into(),
+            "cancelling build can fail only when required published evidence is missing".into(),
         ));
     }
     if let Some(existing) = &build.failure {

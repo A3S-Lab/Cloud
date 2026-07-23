@@ -5,10 +5,11 @@ use crate::modules::artifacts::application::{
     BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
 };
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildArtifactPublicationError, BuildInputPreparationError,
-    BuildOutputValidationError, BuildRun, IBuildArtifactPublisher, IBuildInputPreparer,
-    IBuildOutputValidator, IBuildRunRepository, OciDescriptor, OciPublicationRequest,
-    OciPublicationTarget, PreparedBuildInput, PublishedOciArtifact, ValidatedOciBuildOutput,
+    BuildArtifact, BuildArtifactPublicationError, BuildEvidence, BuildEvidenceGenerationError,
+    BuildInputPreparationError, BuildOutputValidationError, BuildRun, IBuildArtifactPublisher,
+    IBuildEvidenceGenerator, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    OciDescriptor, OciPublicationRequest, OciPublicationTarget, PreparedBuildInput,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
@@ -58,6 +59,7 @@ pub(super) struct BuildFixture {
     pub inputs: Arc<RecordingInputPreparer>,
     pub outputs: Arc<RecordingOutputValidator>,
     pub publisher: Arc<RecordingPublisher>,
+    pub evidence: Arc<RecordingEvidenceGenerator>,
     pub node_id: NodeId,
     pub agent_instance_id: Uuid,
     pub capabilities: RuntimeCapabilities,
@@ -124,11 +126,13 @@ impl BuildFixture {
             output_failure,
         ));
         let publisher = Arc::new(RecordingPublisher::new());
+        let evidence = Arc::new(RecordingEvidenceGenerator::new());
         let build_port: Arc<dyn IBuildRunRepository> = builds.clone();
         let source_port: Arc<dyn ISourceRevisionRepository> = sources.clone();
         let input_port: Arc<dyn IBuildInputPreparer> = inputs.clone();
         let output_port: Arc<dyn IBuildOutputValidator> = outputs.clone();
         let publisher_port: Arc<dyn IBuildArtifactPublisher> = publisher.clone();
+        let evidence_port: Arc<dyn IBuildEvidenceGenerator> = evidence.clone();
         let node_port: Arc<dyn INodeRepository> = nodes.clone();
         let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
         let runtime = BuildFlowRuntime::new(
@@ -138,6 +142,7 @@ impl BuildFixture {
                 inputs: input_port,
                 outputs: output_port,
                 publisher: publisher_port,
+                evidence: evidence_port,
                 nodes: node_port,
                 node_control: control_port,
             },
@@ -152,6 +157,7 @@ impl BuildFixture {
             inputs,
             outputs,
             publisher,
+            evidence,
             node_id,
             agent_instance_id,
             capabilities,
@@ -650,6 +656,70 @@ impl IBuildArtifactPublisher for RecordingPublisher {
             self.publication_release.notified().await;
         }
         Ok(PublishedOciArtifact::from_target(&request.target))
+    }
+}
+
+pub(super) struct RecordingEvidenceGenerator {
+    generations: AtomicUsize,
+    failure: std::sync::Mutex<Option<BuildEvidenceGenerationError>>,
+    next_failure: std::sync::Mutex<Option<BuildEvidenceGenerationError>>,
+}
+
+impl RecordingEvidenceGenerator {
+    fn new() -> Self {
+        Self {
+            generations: AtomicUsize::new(0),
+            failure: std::sync::Mutex::new(None),
+            next_failure: std::sync::Mutex::new(None),
+        }
+    }
+
+    pub(super) fn generations(&self) -> usize {
+        self.generations.load(Ordering::SeqCst)
+    }
+
+    pub(super) fn fail_with(&self, failure: BuildEvidenceGenerationError) {
+        *self.failure.lock().expect("evidence failure lock") = Some(failure);
+    }
+
+    pub(super) fn fail_once_with(&self, failure: BuildEvidenceGenerationError) {
+        *self
+            .next_failure
+            .lock()
+            .expect("one-shot evidence failure lock") = Some(failure);
+    }
+}
+
+#[async_trait]
+impl IBuildEvidenceGenerator for RecordingEvidenceGenerator {
+    async fn generate(
+        &self,
+        build: &BuildRun,
+        revision: &ExternalSourceRevision,
+        attested_at: chrono::DateTime<Utc>,
+    ) -> Result<BuildEvidence, BuildEvidenceGenerationError> {
+        self.generations.fetch_add(1, Ordering::SeqCst);
+        if let Some(failure) = self
+            .next_failure
+            .lock()
+            .expect("one-shot evidence failure lock")
+            .take()
+        {
+            return Err(failure);
+        }
+        if let Some(failure) = self.failure.lock().expect("evidence failure lock").clone() {
+            return Err(failure);
+        }
+        if build.organization_id != revision.organization_id
+            || build.project_id != revision.project_id
+            || build.environment_id != revision.environment_id
+            || build.source_revision_id != revision.id
+        {
+            return Err(BuildEvidenceGenerationError::Invalid(
+                "test evidence source changed identity".into(),
+            ));
+        }
+        Ok(crate::modules::artifacts::domain::test_support::evidence_for(build, attested_at))
     }
 }
 

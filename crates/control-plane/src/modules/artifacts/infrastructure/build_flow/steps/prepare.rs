@@ -117,6 +117,8 @@ pub(super) async fn prepare(
             | BuildRunStatus::Scheduled
             | BuildRunStatus::Running
             | BuildRunStatus::Validating
+            | BuildRunStatus::Publishing
+            | BuildRunStatus::Attesting
             | BuildRunStatus::CleanupPending
             | BuildRunStatus::Succeeded
     ) {

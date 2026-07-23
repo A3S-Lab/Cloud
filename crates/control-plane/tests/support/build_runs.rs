@@ -1,4 +1,5 @@
 use super::postgres_fixture::{get_as, post_json, response_json, ADMIN_TOKEN};
+use crate::build_evidence_support::evidence_for;
 use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
 use a3s_cloud_control_plane::modules::artifacts::application::{
     BuildRunReconciler, BUILD_WORKFLOW_VERSION,
@@ -15,8 +16,8 @@ use a3s_cloud_control_plane::modules::operations::{
     IOperationRepository, PostgresOperationRepository,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ProjectId, RepositoryError, SourceRevisionId,
+    BuildRunId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
+    OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::BuildPlatform;
 use a3s_cloud_control_plane::modules::workloads::{
@@ -24,6 +25,8 @@ use a3s_cloud_control_plane::modules::workloads::{
 };
 use a3s_cloud_control_plane::ControlPlane;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use chrono::Duration;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -274,22 +277,15 @@ pub async fn exercise_build_run_persistence(
         publishing.updated_at + Duration::milliseconds(1),
     )?;
     let published = builds.save(published, publishing.aggregate_version).await?;
-    let mut cleaning = published.clone();
-    cleaning.begin_cleanup(
+    let published = Box::pin(attest_and_complete_published_build(
+        &builds,
+        executor,
+        organization_id,
+        build_id,
+        published,
         cleanup_command_id,
-        published.updated_at + Duration::milliseconds(1),
-    )?;
-    let cleaning = builds.save(cleaning, published.aggregate_version).await?;
-    let mut succeeded = cleaning.clone();
-    succeeded.complete(cleaning.updated_at + Duration::milliseconds(1))?;
-    let succeeded = builds.save(succeeded, cleaning.aggregate_version).await?;
-    assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
-    assert_eq!(builds.find(organization_id, build_id).await?, succeeded);
-
-    let published = succeeded
-        .published_artifact
-        .as_ref()
-        .ok_or("succeeded build omitted its published artifact")?;
+    ))
+    .await?;
     let source_workload_path = format!(
         "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions/{source_revision_id}/workloads"
     );
@@ -786,6 +782,129 @@ pub async fn exercise_build_run_persistence(
         )
         .await?;
     Ok(())
+}
+
+async fn attest_and_complete_published_build(
+    builds: &Arc<PostgresBuildRunRepository>,
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    build_id: BuildRunId,
+    published: BuildRun,
+    cleanup_command_id: NodeCommandId,
+) -> Result<PublishedOciArtifact, Box<dyn std::error::Error>> {
+    let database = Database::new(PostgresDialect, executor.clone());
+    let mut attesting = published.clone();
+    attesting.begin_attestation(published.updated_at + Duration::milliseconds(1))?;
+    let attesting = builds.save(attesting, published.aggregate_version).await?;
+    assert_eq!(attesting.status, BuildRunStatus::Attesting);
+    assert!(attesting.evidence.is_none());
+    assert_eq!(builds.find(organization_id, build_id).await?, attesting);
+
+    let mut attested = attesting.clone();
+    let attested_at = attesting.updated_at + Duration::milliseconds(1);
+    let evidence = evidence_for(&attesting, attested_at)?;
+    attested.record_evidence(evidence.clone(), attested_at)?;
+    let attested = builds.save(attested, attesting.aggregate_version).await?;
+    assert_eq!(attested.evidence.as_deref(), Some(&evidence));
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<serde_json::Value>(
+                    "select evidence from build_runs where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build_id.as_uuid()),
+            )
+            .await?,
+        serde_json::to_value(&evidence)?
+    );
+
+    let mut cleaning = attested.clone();
+    cleaning.begin_cleanup(
+        cleanup_command_id,
+        attested.updated_at + Duration::milliseconds(1),
+    )?;
+    let cleaning = builds.save(cleaning, attested.aggregate_version).await?;
+    let mut succeeded = cleaning.clone();
+    succeeded.complete(cleaning.updated_at + Duration::milliseconds(1))?;
+    let succeeded = builds.save(succeeded, cleaning.aggregate_version).await?;
+    assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
+    assert_eq!(succeeded.evidence.as_deref(), Some(&evidence));
+    assert_eq!(builds.find(organization_id, build_id).await?, succeeded);
+    assert!(
+        database
+            .execute(
+                sql_query::<()>("update build_runs set evidence = null where organization_id = ",)
+                    .bind(organization_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(build_id.as_uuid()),
+            )
+            .await
+            .is_err(),
+        "PostgreSQL accepted a succeeded evidence-required build without evidence"
+    );
+    assert!(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update build_runs set evidence = jsonb_set(evidence, '{verificationState}', '\"unverified\"'::jsonb) where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build_id.as_uuid()),
+            )
+            .await
+            .is_err(),
+        "PostgreSQL accepted a non-verified build evidence document"
+    );
+    assert!(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update build_runs set evidence = evidence #- '{signingKey,publicKey}' where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build_id.as_uuid()),
+            )
+            .await
+            .is_err(),
+        "PostgreSQL accepted build evidence without an Ed25519 public key"
+    );
+    assert_eq!(builds.find(organization_id, build_id).await?, succeeded);
+
+    let mut tampered_evidence = evidence.clone();
+    tampered_evidence.envelope.signatures[0].signature = STANDARD.encode([0_u8; 64]);
+    database
+        .execute(
+            sql_query::<()>("update build_runs set evidence = ")
+                .bind(serde_json::to_value(&tampered_evidence)?)
+                .append(" where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build_id.as_uuid()),
+        )
+        .await?;
+    assert!(
+        builds.find(organization_id, build_id).await.is_err(),
+        "repository restore accepted a tampered build evidence signature"
+    );
+    database
+        .execute(
+            sql_query::<()>("update build_runs set evidence = ")
+                .bind(serde_json::to_value(&evidence)?)
+                .append(" where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(builds.find(organization_id, build_id).await?, succeeded);
+    succeeded
+        .published_artifact
+        .clone()
+        .ok_or_else(|| "succeeded build omitted its published artifact".into())
 }
 
 fn build_artifact(

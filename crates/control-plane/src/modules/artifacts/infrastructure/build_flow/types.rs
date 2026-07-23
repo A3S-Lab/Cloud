@@ -176,6 +176,27 @@ pub(super) enum PublishStepOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AttestStepInput {
+    pub flow: BuildFlowInput,
+    pub artifact: PublishedOciArtifact,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum AttestStepOutput {
+    Ready {
+        sbom_digest: String,
+        provenance_digest: String,
+        key_id: String,
+        attested_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct FailStepInput {
     pub flow: BuildFlowInput,
     pub reason: String,

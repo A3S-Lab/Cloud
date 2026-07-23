@@ -6,9 +6,9 @@ use crate::modules::artifacts::domain::repositories::{
     validate_build_run_retry, validate_build_run_transition,
 };
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciPublicationTarget,
-    PublishedOciArtifact, RequestBuildCancellationBundle, RequestBuildRetryBundle,
-    ValidatedOciBuildOutput,
+    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, IBuildRunRepository,
+    OciPublicationTarget, PublishedOciArtifact, RequestBuildCancellationBundle,
+    RequestBuildRetryBundle, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
@@ -22,7 +22,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.runtime_spec_digest, b.runtime_output_artifact, b.output, b.publication_target, b.published_artifact, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
+const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.runtime_spec_digest, b.runtime_output_artifact, b.output, b.publication_target, b.published_artifact, b.evidence_required, b.evidence, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
 
 type PendingRevisionRow = (Uuid, Uuid, Uuid, Uuid, DateTime<Utc>);
 
@@ -353,6 +353,7 @@ async fn persist_build(
     let output = json_value(build_run.output.as_ref())?;
     let publication_target = json_value(build_run.publication_target.as_ref())?;
     let published_artifact = json_value(build_run.published_artifact.as_ref())?;
+    let evidence = json_value(build_run.evidence.as_ref())?;
     let updated = execute(
         transaction,
         sql_query::<()>("update build_runs set status = ")
@@ -377,6 +378,10 @@ async fn persist_build(
             .bind(publication_target)
             .append(", published_artifact = ")
             .bind(published_artifact)
+            .append(", evidence_required = ")
+            .bind(build_run.evidence_required)
+            .append(", evidence = ")
+            .bind(evidence)
             .append(", failure = ")
             .bind(build_run.failure.as_deref())
             .append(", aggregate_version = ")
@@ -444,7 +449,7 @@ async fn insert_build(
     let inserted = execute(
         transaction,
         sql_query::<()>(
-            "insert into build_runs (organization_id, project_id, environment_id, id, source_revision_id, attempt, retry_of_build_run_id, operation_id, status, aggregate_version, requested_at, updated_at) values (",
+            "insert into build_runs (organization_id, project_id, environment_id, id, source_revision_id, attempt, retry_of_build_run_id, operation_id, status, evidence_required, aggregate_version, requested_at, updated_at) values (",
         )
         .bind(build.organization_id.as_uuid())
         .append(", ")
@@ -463,6 +468,8 @@ async fn insert_build(
         .bind(build.operation_id.as_uuid())
         .append(", ")
         .bind(build.status.as_str())
+        .append(", ")
+        .bind(build.evidence_required)
         .append(", ")
         .bind(build.aggregate_version)
         .append(", ")
@@ -504,6 +511,8 @@ struct BuildRunRow {
     output: Option<Value>,
     publication_target: Option<Value>,
     published_artifact: Option<Value>,
+    evidence_required: bool,
+    evidence: Option<Value>,
     failure: Option<String>,
     aggregate_version: u64,
     requested_at: DateTime<Utc>,
@@ -535,13 +544,15 @@ impl FromRow for BuildRunRow {
             output: decode(row, 16)?,
             publication_target: decode(row, 17)?,
             published_artifact: decode(row, 18)?,
-            failure: decode(row, 19)?,
-            aggregate_version: decode(row, 20)?,
-            requested_at: decode(row, 21)?,
-            updated_at: decode(row, 22)?,
-            started_at: decode(row, 23)?,
-            cancellation_requested_at: decode(row, 24)?,
-            finished_at: decode(row, 25)?,
+            evidence_required: decode(row, 19)?,
+            evidence: decode(row, 20)?,
+            failure: decode(row, 21)?,
+            aggregate_version: decode(row, 22)?,
+            requested_at: decode(row, 23)?,
+            updated_at: decode(row, 24)?,
+            started_at: decode(row, 25)?,
+            cancellation_requested_at: decode(row, 26)?,
+            finished_at: decode(row, 27)?,
         })
     }
 }
@@ -563,6 +574,8 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         decode_json::<OciPublicationTarget>(row.publication_target, "publication target")?;
     let published_artifact =
         decode_json::<PublishedOciArtifact>(row.published_artifact, "published artifact")?;
+    let evidence =
+        decode_json::<BuildEvidence>(row.evidence, "supply-chain evidence")?.map(Box::new);
     BuildRun::restore(BuildRun {
         organization_id: OrganizationId::from_uuid(row.organization_id),
         project_id: ProjectId::from_uuid(row.project_id),
@@ -584,6 +597,8 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         output,
         publication_target,
         published_artifact,
+        evidence_required: row.evidence_required,
+        evidence,
         failure: row.failure,
         aggregate_version: row.aggregate_version,
         requested_at: row.requested_at,

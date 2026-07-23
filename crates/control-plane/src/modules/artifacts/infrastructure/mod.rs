@@ -1,3 +1,5 @@
+mod build_evidence_generator;
+mod build_evidence_signing;
 mod build_flow;
 mod buildkit_build_service;
 mod local_node_artifact_store;
@@ -6,6 +8,8 @@ mod persistence;
 mod runtime_build_output_validator;
 mod source_build_input_preparer;
 
+pub use build_evidence_generator::RuntimeBuildEvidenceGenerator;
+pub use build_evidence_signing::{LocalBuildEvidenceSigner, VaultBuildEvidenceSigner};
 pub use build_flow::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
 };

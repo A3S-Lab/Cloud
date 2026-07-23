@@ -301,6 +301,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/030_build_run_attempts.sql"
             )),
         ),
+        Migration::new(
+            "031",
+            "verified build evidence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/031_build_evidence.sql"
+            )),
+        ),
     ]
 }
 

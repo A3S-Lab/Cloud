@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::artifacts::domain::test_support::evidence_for;
 use crate::modules::artifacts::{
     BuildArtifact, BuildRun, InMemoryBuildRunRepository, OciDescriptor, OciPublicationTarget,
     PublishedOciArtifact, ValidatedOciBuildOutput,
@@ -384,6 +385,23 @@ async fn succeed_build(
     at += chrono::Duration::milliseconds(1);
     build
         .record_published_artifact(PublishedOciArtifact::from_target(&target), at)
+        .map_err(BootError::Internal)?;
+    let mut build = builds
+        .save(build, previous)
+        .await
+        .map_err(repository_error)?;
+    let previous = build.aggregate_version;
+    at += chrono::Duration::milliseconds(1);
+    build.begin_attestation(at).map_err(BootError::Internal)?;
+    let mut build = builds
+        .save(build, previous)
+        .await
+        .map_err(repository_error)?;
+    let previous = build.aggregate_version;
+    at += chrono::Duration::milliseconds(1);
+    let evidence = evidence_for(&build, at);
+    build
+        .record_evidence(evidence, at)
         .map_err(BootError::Internal)?;
     let mut build = builds
         .save(build, previous)

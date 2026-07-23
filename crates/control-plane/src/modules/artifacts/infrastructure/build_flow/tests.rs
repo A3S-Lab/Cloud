@@ -12,6 +12,7 @@ use a3s_cloud_contracts::NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE;
 use a3s_runtime::contract::{ArtifactRef, NetworkMode, RuntimeMountSource, RuntimeUnitClass};
 use chrono::Utc;
 
+mod attestation;
 mod flow;
 mod runtime_gate;
 mod support;

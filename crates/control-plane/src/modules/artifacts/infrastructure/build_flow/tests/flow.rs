@@ -192,9 +192,11 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
     assert_eq!(completed.cleanup_command_id, Some(expected_cleanup_id));
     assert!(completed.publication_target.is_some());
     assert!(completed.published_artifact.is_some());
+    assert!(completed.evidence.is_some());
     assert!(completed.finished_at.is_some());
     assert_eq!(fixture.outputs.validations(), 1);
     assert_eq!(fixture.publisher.publications(), 1);
+    assert_eq!(fixture.evidence.generations(), 1);
     assert_eq!(fixture.inputs.removals(), 1);
 
     let history_length = store.list(&run_id).await?.len();
@@ -205,6 +207,7 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
     assert_eq!(fixture.inputs.prepares(), 1);
     assert_eq!(fixture.outputs.validations(), 1);
     assert_eq!(fixture.publisher.publications(), 1);
+    assert_eq!(fixture.evidence.generations(), 1);
     assert_eq!(fixture.inputs.removals(), 1);
     Ok(())
 }
@@ -342,8 +345,10 @@ async fn cancellation_racing_a_completed_push_adopts_the_published_artifact(
         .await?;
     assert_eq!(reconciled.status, BuildRunStatus::CleanupPending);
     assert!(reconciled.published_artifact.is_some());
+    assert!(reconciled.evidence.is_some());
     assert_eq!(fixture.publisher.publications(), 1);
     assert_eq!(fixture.publisher.lookups(), 1);
+    assert_eq!(fixture.evidence.generations(), 1);
 
     let cleanup_lease = lease(
         &fixture.nodes,
@@ -373,6 +378,7 @@ async fn cancellation_racing_a_completed_push_adopts_the_published_artifact(
         .await?;
     assert_eq!(cancelled.status, BuildRunStatus::Cancelled);
     assert!(cancelled.published_artifact.is_some());
+    assert!(cancelled.evidence.is_some());
     Ok(())
 }
 
@@ -526,7 +532,7 @@ async fn flow_rejects_operation_and_source_ownership_changes_before_checkout(
     Ok(())
 }
 
-async fn acknowledge_removal(
+pub(super) async fn acknowledge_removal(
     fixture: &BuildFixture,
     command: &a3s_cloud_contracts::NodeCommandEnvelope,
     request: &a3s_runtime::contract::RuntimeActionRequest,

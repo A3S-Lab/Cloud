@@ -1,11 +1,12 @@
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
-    GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildInputPreparer,
-    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler,
-    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
-    PostgresBuildRunRepository, RetryBuildRunHandler, RuntimeBuildOutputValidator,
-    SourceBuildInputPreparer,
+    GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildEvidenceGenerator,
+    IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, LocalNodeArtifactStore,
+    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
+    RetryBuildRunHandler, RuntimeBuildEvidenceGenerator, RuntimeBuildOutputValidator,
+    SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
@@ -178,6 +179,7 @@ pub async fn build_application_with_source_resolver(
     let vault_credentials = config.vault_credentials()?;
     let (certificate_authority, key_encryption) =
         security_providers(&config, vault_credentials.as_ref())?;
+    let build_evidence_signer = build_evidence_signer(&config, vault_credentials.as_ref()).await?;
     let gateway_certificate_authority =
         gateway_certificate_authority(&config, vault_credentials.as_ref())?;
     let log_chunks = log_chunk_store(&config)?;
@@ -278,6 +280,9 @@ pub async fn build_application_with_source_resolver(
         )
         .map_err(ControlPlaneStartupError::Build)?,
     );
+    let build_flow_config = config
+        .build_flow_config()
+        .map_err(ControlPlaneStartupError::Build)?;
     let runtime_build_outputs = Arc::new(
         RuntimeBuildOutputValidator::new(
             Arc::clone(&node_artifacts),
@@ -293,7 +298,7 @@ pub async fn build_application_with_source_resolver(
     let build_outputs: Arc<dyn IBuildOutputValidator> = runtime_build_outputs.clone();
     let build_publisher: Arc<dyn IBuildArtifactPublisher> = Arc::new(
         OciRegistryArtifactPublisher::new(
-            runtime_build_outputs,
+            Arc::clone(&runtime_build_outputs),
             Duration::from_millis(config.registry.request_timeout_ms),
             config
                 .registry
@@ -309,6 +314,14 @@ pub async fn build_application_with_source_resolver(
             },
         )
         .map_err(ControlPlaneStartupError::Registry)?,
+    );
+    let build_evidence: Arc<dyn IBuildEvidenceGenerator> = Arc::new(
+        RuntimeBuildEvidenceGenerator::new(
+            runtime_build_outputs,
+            build_evidence_signer,
+            build_flow_config.builder.clone(),
+        )
+        .map_err(ControlPlaneStartupError::Build)?,
     );
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
@@ -400,12 +413,11 @@ pub async fn build_application_with_source_resolver(
             inputs: build_inputs,
             outputs: build_outputs,
             publisher: build_publisher,
+            evidence: build_evidence,
             nodes: Arc::clone(&nodes),
             node_control: Arc::clone(&node_control),
         },
-        config
-            .build_flow_config()
-            .map_err(ControlPlaneStartupError::Build)?,
+        build_flow_config,
     );
     let flow_runtime =
         FlowRuntimeRouter::new(Arc::new(deployment_runtime), Arc::new(build_runtime));
@@ -1279,6 +1291,37 @@ fn security_providers(
         }
     };
     Ok((certificate_authority, key_encryption))
+}
+
+async fn build_evidence_signer(
+    config: &CloudConfig,
+    credentials: Option<&(String, String)>,
+) -> std::result::Result<Arc<dyn IBuildEvidenceSigner>, ControlPlaneStartupError> {
+    match config.security.build_evidence_signing {
+        SecurityProviderKind::Local => Ok(Arc::new(
+            LocalBuildEvidenceSigner::load_or_create(
+                std::path::Path::new(&config.security.state_dir)
+                    .join("build-evidence/signing-key.pk8"),
+            )
+            .await
+            .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+        )),
+        SecurityProviderKind::Vault => {
+            let (address, token) = credentials.ok_or_else(|| {
+                ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
+            })?;
+            Ok(Arc::new(
+                VaultBuildEvidenceSigner::new(
+                    address,
+                    token,
+                    config.security.vault_transit_mount.clone(),
+                    config.security.vault_build_evidence_signing_key.clone(),
+                    Duration::from_millis(config.security.vault_timeout_ms),
+                )
+                .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+            ))
+        }
+    }
 }
 
 fn gateway_certificate_authority(

@@ -27,11 +27,7 @@ pub(super) async fn prepare(
         ));
     }
     if let Some(target) = &build.publication_target {
-        if !matches!(
-            build.status,
-            BuildRunStatus::Publishing | BuildRunStatus::Cancelling
-        ) || !target.matches_output(&input.output)
-        {
+        if !retains_publication_identity(build.status) || !target.matches_output(&input.output) {
             return Err(FlowError::Runtime(
                 "build publication target changed during replay".into(),
             ));
@@ -86,10 +82,7 @@ pub(super) async fn publish(
     }
     if build.output.as_ref() != Some(&input.output)
         || build.publication_target.as_ref() != Some(&input.target)
-        || !matches!(
-            build.status,
-            BuildRunStatus::Publishing | BuildRunStatus::Cancelling
-        )
+        || !retains_publication_identity(build.status)
     {
         return Err(FlowError::Runtime(
             "build publication changed its durable identity".into(),
@@ -191,5 +184,18 @@ fn terminal_error(error: &BuildArtifactPublicationError) -> bool {
             | BuildArtifactPublicationError::Integrity(_)
             | BuildArtifactPublicationError::Protocol(_)
             | BuildArtifactPublicationError::Registry(_)
+    )
+}
+
+fn retains_publication_identity(status: BuildRunStatus) -> bool {
+    matches!(
+        status,
+        BuildRunStatus::Publishing
+            | BuildRunStatus::Attesting
+            | BuildRunStatus::Cancelling
+            | BuildRunStatus::CleanupPending
+            | BuildRunStatus::Succeeded
+            | BuildRunStatus::Failed
+            | BuildRunStatus::Cancelled
     )
 }

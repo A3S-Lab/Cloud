@@ -1,11 +1,12 @@
 use super::super::task_spec::{project_task_spec, BUILDKIT_SOCKET_ROOT};
 use super::super::{BuildFlowConfig, BuildFlowConfigOptions};
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildRunStatus, IBuildArtifactPublisher, IBuildOutputValidator,
-    INodeArtifactStore, NodeArtifactDescriptor, OciPublicationRequest,
+    BuildArtifact, BuildRunStatus, IBuildArtifactPublisher, IBuildEvidenceGenerator,
+    IBuildOutputValidator, INodeArtifactStore, NodeArtifactDescriptor, OciPublicationRequest,
 };
 use crate::modules::artifacts::{
-    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    LocalBuildEvidenceSigner, LocalNodeArtifactStore, OciRegistryArtifactPublisher,
+    OciRegistryArtifactPublisherOptions, RuntimeBuildEvidenceGenerator,
     RuntimeBuildOutputValidator,
 };
 use crate::modules::shared_kernel::domain::{
@@ -319,6 +320,26 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
             "Runtime BuildKit publication replay changed its result",
         )?;
         build.record_published_artifact(published, build.updated_at + Duration::milliseconds(1))?;
+        build.begin_attestation(build.updated_at + Duration::milliseconds(1))?;
+        let signer = Arc::new(
+            LocalBuildEvidenceSigner::load_or_create(
+                root.path().join("build-evidence/signing-key.pk8"),
+            )
+            .await?,
+        );
+        let evidence_generator = RuntimeBuildEvidenceGenerator::new(
+            Arc::clone(&validator),
+            signer,
+            config.builder.clone(),
+        )?;
+        let evidence = evidence_generator
+            .generate(
+                &build,
+                &revision,
+                build.updated_at + Duration::milliseconds(1),
+            )
+            .await?;
+        build.record_evidence(evidence, build.updated_at + Duration::milliseconds(1))?;
         Ok::<(), Box<dyn Error>>(())
     }
     .await;

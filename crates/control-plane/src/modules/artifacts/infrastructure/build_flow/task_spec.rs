@@ -36,6 +36,7 @@ pub(super) fn project_task_spec(
                 | BuildRunStatus::Running
                 | BuildRunStatus::Validating
                 | BuildRunStatus::Publishing
+                | BuildRunStatus::Attesting
                 | BuildRunStatus::Cancelling
                 | BuildRunStatus::CleanupPending
                 | BuildRunStatus::Succeeded
