@@ -1195,6 +1195,11 @@ Node agent ───> A3S Runtime ───> Docker / containerd / A3S Box
    └──────────> observations and durable acknowledgements
 ```
 
+Explore the same ownership boundaries and end-to-end journeys in the
+[interactive 3D architecture](https://a3s-lab.github.io/Cloud/). Its
+[standalone Rsbuild source](architecture-3d/README.md) is versioned with Cloud
+and deployed through GitHub Pages.
+
 ### Ownership and recovery
 
 | Concern | Authority |
@@ -1285,6 +1290,7 @@ Cloud/
 │   ├── contracts/          # versioned public and node protocol types
 │   ├── control-plane/      # API, worker, reconciler, and event relay
 │   └── node-agent/         # outbound node process and Runtime adapters
+├── architecture-3d/        # Rsbuild and Three.js interactive system map
 ├── web/                    # React control-plane console
 └── docs/
 ```

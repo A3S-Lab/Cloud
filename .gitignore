@@ -6,6 +6,8 @@
 /web/node_modules/
 /web/dist/
 /web/.next/
+/architecture-3d/node_modules/
+/architecture-3d/dist/
 
 # Local configuration and credentials
 .env
