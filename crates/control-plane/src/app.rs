@@ -1,12 +1,12 @@
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
-    GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildEvidenceGenerator,
-    IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
-    INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, LocalNodeArtifactStore,
-    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
-    RetryBuildRunHandler, RuntimeBuildEvidenceGenerator, RuntimeBuildOutputValidator,
-    SourceBuildInputPreparer, VaultBuildEvidenceSigner,
+    GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher,
+    IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
+    IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner,
+    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    PostgresBuildRunRepository, RetryBuildRunHandler, RuntimeBuildEvidenceGenerator,
+    RuntimeBuildOutputValidator, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
@@ -730,6 +730,7 @@ fn build_application_with_health(
     let retry_builds = Arc::clone(&builds);
     let list_builds = Arc::clone(&builds);
     let get_builds = Arc::clone(&builds);
+    let get_build_evidence = Arc::clone(&builds);
     let get_build_logs = Arc::clone(&builds);
     let source_workload_builds = builds;
     let accept_source_webhooks = source_webhooks;
@@ -1016,6 +1017,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::artifacts::GetBuildRun, _>(
                     GetBuildRunHandler::new(get_builds),
+                )
+                .query_handler::<crate::modules::artifacts::GetBuildEvidence, _>(
+                    GetBuildEvidenceHandler::new(get_build_evidence),
                 )
                 .query_handler::<crate::modules::artifacts::GetBuildRunLogs, _>(
                     GetBuildRunLogsHandler::new(

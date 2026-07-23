@@ -126,7 +126,7 @@ Status as of 2026-07-23:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, deterministic registry target, authenticated digest-only publication, remote graph verification, combined Runtime/BuildKit/Registry evidence, replay/cancellation adoption, explicit published-build deployment through `cloud.deployment@2`, periodic installation/account authority polling, fresh private-credential/checkout revalidation, and BuildRun status/cancellation/retry/log API and web controls are implemented. Provenance/SBOM/signing, external private-provider evidence, and cache trust still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@2`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence, content-addressed cache trust, and the remaining production fault-injection gate still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -865,27 +865,33 @@ credential-safe checkout,
 durable build intent/crash-gap repair, command-bound mTLS Artifact transport,
 restart-safe Docker inputs/outputs, a real local-context BuildKit/OCI engine
 boundary, the production isolated Build Flow, and authoritative registry
-publication, and explicit artifact-free deployment of a successful published
-BuildRun through the existing Workload path. The deployment handoff durably
+publication. Before cleanup, the Flow now generates deterministic SPDX 2.3 and
+SLSA provenance, signs the DSSE PAE through a private local Ed25519 key or Vault
+Transit, verifies the exact returned public key and signature locally, and
+persists the immutable evidence with the BuildRun. Durable restore rechecks the
+signature and all derived digests. An explicit artifact-free deployment of a
+successful published BuildRun then uses the existing Workload path. The
+deployment handoff durably
 binds tenant, source revision, BuildRun, published digest, and resulting
 Workload revision; rollback and Secret rotation preserve that lineage. Signed
 webhooks remain the immediate lifecycle path, periodic provider inspection
 repairs installation/account drift, and every private credential requires a
 fresh successful check. Verifying-user OAuth revocation remains signed-webhook
 authoritative because no tokenless GitHub query exists and user tokens are not
-persisted. Environment-scoped BuildRun list and tenant-scoped detail queries,
-atomic idempotent cancellation and retry-as-new-attempt commands, public
-response redaction, and the corresponding polled web status/control surface are
-implemented. Retry accepts only failed or cancelled runs, creates one fresh
-BuildRun and Operation for each parent, preserves the exact source revision,
-and records attempt and parent lineage. Tenant-scoped BuildRun log pages and
-resumable SSE reuse the same durable node log metadata, local/S3 objects,
-sequence cursors, retention gaps, and provider discontinuity records as
-Workload logs while keeping node and internal Runtime identities out of the
+persisted. Environment-scoped BuildRun lists, tenant-scoped detail and evidence
+queries, atomic idempotent cancellation and retry-as-new-attempt commands,
+public response redaction, and the corresponding web status/control/evidence
+surface are implemented. Retry accepts only failed or cancelled runs, creates
+one fresh BuildRun and Operation for each parent, preserves the exact source
+revision, and records attempt and parent lineage. Tenant-scoped BuildRun log
+pages and resumable SSE reuse the same durable node log metadata, local/S3
+objects, sequence cursors, retention gaps, and provider discontinuity records
+as Workload logs while keeping node and internal Runtime identities out of the
 public response. The web console provides BuildRun selection, cancellation and
-retry controls, stream filtering, bounded deduplication, and last-event-ID
-recovery. External private-provider certification, provenance/SBOM/signing,
-cache trust, and the remaining product surfaces are still required.
+retry controls, signed-evidence summary/view/download, stream filtering,
+bounded deduplication, and last-event-ID recovery. External private-provider
+certification, cache trust, the signed-evidence production fault-injection run,
+and the remaining product surfaces are still required.
 
 ### Work
 
@@ -895,17 +901,18 @@ cache trust, and the remaining product surfaces are still required.
   recorded; never persist token or private-key material in source state.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
-- Record source, recipe, builder, platform, SBOM, signature, and artifact
-  provenance for the already published digest.
 - Add content-addressed build caching without allowing cache hits to weaken
   digest or provenance validation.
 - Keep source and registry credentials as secret references. They may be
   materialized only inside the bounded build attempt and must not enter source
   revisions, Flow history, logs, cache keys, or provenance documents.
-- Add provenance and the remaining build surfaces. Preserve the implemented
-  source/build/attempt lineage in BuildRun, Workload, and Operation API/web
-  projections; keep cancellation cooperative so publication-race adoption and
-  cleanup remain authoritative.
+- Run the production signed-evidence gate against an operator-controlled Vault
+  Transit key and registry. Inject process death after the remote push and
+  after evidence persistence, then prove replay preserves one publication,
+  one verified evidence document, and authoritative cleanup.
+- Add the remaining build surfaces without weakening the implemented
+  source/build/attempt/evidence lineage in BuildRun, Workload, and Operation
+  API/web projections.
 
 ### Exit gate
 
@@ -1384,7 +1391,7 @@ Later gates extend the same fault-injection discipline:
 | # | Durable boundary | Owning gate | Required outcome |
 | ---: | --- | --- | --- |
 | 10 | Source revision commit before build run creation | `G0` | The durable repository/reconciler gate reserves one deterministic build and repairs the operation enqueue gap; the registered Build Flow persists dispatch identity and restart tests prove apply/remove replay, while promotion to current evidence still requires the operator Runtime gate and OS process-death run |
-| 11 | OCI push before artifact and provenance projection | `G0` | Artifact adoption is implemented: deterministic Flow event-loss, transient-response, and cancellation/CAS race tests adopt the exact pushed graph once. Provenance projection and an OS process-death run remain before this row becomes release evidence |
+| 11 | OCI push before artifact and provenance projection | `G0` | Artifact adoption and signed-evidence projection are implemented: deterministic Flow event-loss, transient-response, cancellation/CAS, and attestation replay tests adopt the exact pushed graph and freeze one locally verified evidence document. An OS process-death run against the production registry/Vault boundary remains before this row becomes release evidence |
 | 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
 | 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
 | 14 | Remote exec start before session acknowledgement | `C0` | Reconnect adopts or terminates the exact bounded process and expires its grant |
@@ -1479,7 +1486,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> registry publication -> combined operator gate evidence -> deployment handoff -> provenance and build UI |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> registry publication -> locally verified signed evidence -> evidence API/web -> deployment handoff -> cache trust and final operator gates |
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped MCP -> `C0.3` membership/role-focused console/attribution/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |

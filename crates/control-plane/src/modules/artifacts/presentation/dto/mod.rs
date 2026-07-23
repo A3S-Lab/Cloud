@@ -1,5 +1,6 @@
 mod response;
 
 pub use response::{
-    BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse, RetryBuildRunResponse,
+    BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse,
+    RetryBuildRunResponse,
 };

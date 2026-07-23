@@ -1,6 +1,10 @@
 use super::build_run_log_stream::build_run_log_stream;
-use crate::modules::artifacts::application::{GetBuildRun, GetBuildRunLogs, ListBuildRuns};
-use crate::modules::artifacts::presentation::dto::{BuildRunLogsResponse, BuildRunResponse};
+use crate::modules::artifacts::application::{
+    GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns,
+};
+use crate::modules::artifacts::presentation::dto::{
+    BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,
+};
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
 use crate::presentation::application_error_response;
@@ -12,6 +16,7 @@ use uuid::Uuid;
 
 pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let get_bus = Arc::clone(&bus);
+    let get_evidence_bus = Arc::clone(&bus);
     let get_logs_bus = Arc::clone(&bus);
     let stream_logs_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
@@ -51,6 +56,29 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 .map(BuildRunResponse::from)
                                 .collect::<Vec<_>>(),
                         ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            "/{organization_id}/build-runs/{build_run_id}/evidence",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_evidence_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetBuildEvidence {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            build_run_id: BuildRunId::from_uuid(
+                                request.param_as::<Uuid>("build_run_id")?,
+                            ),
+                        })
+                        .await?
+                    {
+                        Ok(evidence) => BootResponse::json(&BuildEvidenceResponse::from(evidence)),
                         Err(error) => application_error_response(error, request_id),
                     }
                 }

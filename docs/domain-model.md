@@ -144,8 +144,11 @@ Its typed Build service and `cloud.build@2` Flow bind a build ID, checked-out
 content digest, recipe, Runtime Task identity, and validated OCI root descriptor
 to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
 and requested platform before accepting the result. Registry publication state
-is bound to the validated OCI result; provenance, SBOMs, and signatures remain
-subsequent boundaries. The node-transfer store
+is bound to the validated OCI result. Before cleanup, the Flow generates
+deterministic SPDX 2.3 and SLSA provenance documents, signs their DSSE PAE with
+an Ed25519 local or Vault Transit provider, verifies the exact public key and
+signature locally, and freezes the complete `BuildEvidence` on the BuildRun.
+The node-transfer store
 persists command-scoped directory archives by digest so Runtime input/output
 bytes can cross the existing mTLS node boundary without pretending that cache
 objects are published OCI artifacts.
@@ -779,8 +782,13 @@ the Task and checkout before terminal completion. Before cleanup it binds an
 immutable `OciPublicationTarget`, pushes blobs and manifests by digest, verifies
 the complete remote graph, and records one matching `PublishedOciArtifact`.
 Publication replay may adopt only that exact target; cancellation wins the
-terminal status but preserves evidence of a push that already completed. It
-does not yet record provenance. The published digest can be handed to
+terminal status but preserves evidence of a push that already completed. An
+attestation step then binds the source, canonical recipe, Runtime spec, builder,
+platform set, complete published descriptor, SPDX SBOM, SLSA provenance, DSSE
+envelope, and versioned signing-key identity. The aggregate accepts only a
+locally verified Ed25519 result, persists it before cleanup, and revalidates the
+signature plus every derived digest when restoring durable state. The published
+digest can be handed to
 Workloads only through an artifact-free command that resolves the exact
 tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
 `cloud.deployment@2`. That revision stores an `ExternalBuildReference` binding
@@ -793,12 +801,15 @@ Operation ID, records its attempt and immediate parent BuildRun, and retains the
 exact source revision. Each aggregate binds tenant/environment ownership, the
 exact `cloud.build@2` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
-publication target/result, terminal outcome, and cleanup. Concurrent PostgreSQL
+publication target/result, verified build evidence, terminal outcome, and
+cleanup. Concurrent PostgreSQL
 reservation, atomic retry creation, exact operation replay, and optimistic
 single-transition saves prevent duplicate or forged logical builds across
 process loss. Environment list and tenant detail queries expose only public
-build and attempt lineage, status, OCI metadata, publication, failure, and
-timestamps; node/command identities and internal Artifact URIs remain private.
+build and attempt lineage, status, OCI metadata, publication, a bounded evidence
+summary, failure, and timestamps. A separate tenant-scoped evidence query
+returns the immutable SPDX, provenance, DSSE envelope, and public signing-key
+identity; node/command identities and internal Artifact URIs remain private.
 A `build:write` cancellation request atomically advances the aggregate and
 records its idempotency response, while the Build Flow remains responsible for
 publication-race adoption and cleanup before terminal state. A separate
@@ -832,9 +843,9 @@ BuildRun log queries and resumable streams resolve the aggregate's private node
 and deterministic Runtime target internally, then reuse the Fleet-owned durable
 log sequence, object, gap, retention, and compaction model. Public projections
 bind BuildRun, attempt, parent, and Operation lineage without exposing node or
-Runtime unit identity. Provenance/SBOM/signing and cache trust remain later G0
-work; authenticated registry publication and BuildRun
-status/cancellation/retry/log surfaces are exercised independently.
+Runtime unit identity. Signed evidence generation, persistence, restoration,
+tenant API projection, and web inspection are implemented. Content-addressed
+cache trust and external private-provider certification remain later G0 work.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,

@@ -81,7 +81,10 @@ registered Flow replays and packages the credential-free checkout, selects a
 compatible node, dispatches a digest-pinned BuildKit client as a Runtime Task,
 validates the complete OCI output graph, persists a deterministic digest-only
 registry target, publishes and remotely verifies every reachable descriptor,
-and durably removes both the Task and checkout before terminal completion. The
+generates SPDX and SLSA documents, signs and locally verifies their DSSE
+envelope with an Ed25519 local or Vault Transit provider, persists the complete
+evidence, and durably removes both the Task and checkout before terminal
+completion. The
 node-control boundary now also provides command-bound mTLS Artifact streaming:
 the control plane stores content-addressed directory archives, and the node
 agent verifies, safely materializes, mounts, captures, replays, and reclaims
@@ -101,7 +104,8 @@ implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
 gate has not been run without provider credentials. External private-provider
-certification and provenance remain unimplemented. The published-build
+certification remains unimplemented. Signed build evidence is implemented and
+restored fail-closed from PostgreSQL. The published-build
 deployment handoff is implemented: it
 accepts an artifact-free service template only for an exact tenant-owned
 successful BuildRun whose source revision and remotely verified digest match,
@@ -1000,16 +1004,20 @@ own Runtime implementations.
 
 The Artifacts presentation layer exposes environment-scoped BuildRun lists and
 tenant-scoped detail. Its public projection includes source/Operation lineage,
-status, timestamps, validated OCI metadata, publication state, and bounded
-failure, while excluding node/command identities and internal input or Runtime
-Artifact URIs. `build:write` cancellation persists the aggregate transition
-and idempotency response atomically. It is deliberately cooperative: the Flow
-continues through publication-race adoption, Runtime removal, and checkout
-cleanup before projecting a terminal cancellation. The `build:write` retry
-endpoint atomically creates a queued child BuildRun and fresh Operation only
-for a failed or cancelled parent; exact request replay returns that same child,
-while another key or a second child conflicts. Public REST and web projections
-show the attempt number and parent BuildRun and offer retry only when eligible.
+status, timestamps, validated OCI metadata, publication state, a bounded
+evidence summary, and bounded failure, while excluding node/command identities
+and internal input or Runtime Artifact URIs. A tenant-scoped evidence resource
+returns the complete immutable SPDX, SLSA provenance, DSSE envelope, and public
+signing-key identity; the web console loads and downloads that JSON only on
+demand. `build:write` cancellation persists the aggregate transition and
+idempotency response atomically. It is deliberately cooperative: the Flow
+continues through publication-race adoption, attestation, Runtime removal, and
+checkout cleanup before projecting a terminal cancellation. The `build:write`
+retry endpoint atomically creates a queued child BuildRun and fresh Operation
+only for a failed or cancelled parent; exact request replay returns that same
+child, while another key or a second child conflicts. Public REST and web
+projections show the attempt number and parent BuildRun and offer retry only
+when eligible.
 
 The Artifact transport prerequisite is implemented below that Flow boundary.
 Typed download and upload requests bind the authenticated node, durable command
@@ -1090,11 +1098,12 @@ Artifact upload, and OCI validator. Its Dockerfile requires a `RUN` environment
 without `eth0` and a failed `wget` attempt while the overall build succeeds.
 CI provisions the operator-controlled rootless BuildKit socket volume and
 authenticated registry for this implemented gate. Authoritative registry
-publication and explicit published-build deployment are implemented. Cache
-trust and provenance remain later slices. BuildRun status, cancellation,
-retry-as-new-attempt, ordered log page/SSE, and web controls are implemented;
-the log projection reuses Fleet metadata and object storage while redacting
-node and internal Runtime identities.
+publication, locally verified signed evidence, evidence API/web inspection,
+and explicit published-build deployment are implemented. Cache trust and the
+remaining production fault-injection evidence are later slices. BuildRun
+status, cancellation, retry-as-new-attempt, ordered log page/SSE, and web
+controls are implemented; the log projection reuses Fleet metadata and object
+storage while redacting node and internal Runtime identities.
 
 Hosted assets follow a separate publication chain:
 
@@ -1137,8 +1146,9 @@ immutable inputs; they are not deployed alone.
   deployed service's network policy.
 - Node certificate revocation immediately prevents new command leases. Drain
   and revoke are different operations.
-- Artifact digest verification is mandatory; signing and provenance policy can
-  be tightened without changing workload identity.
+- Artifact digest verification is mandatory. A successful source build also
+  requires locally verified Ed25519-signed evidence bound to that digest;
+  admission policy can be tightened without changing workload identity.
 
 ## 11. API and web application
 

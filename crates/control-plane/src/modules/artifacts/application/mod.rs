@@ -11,6 +11,6 @@ pub use commands::{
     RetryBuildRunHandler, RetryBuildRunResult,
 };
 pub use queries::{
-    BuildRunLogPage, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler,
-    ListBuildRuns, ListBuildRunsHandler,
+    BuildRunLogPage, GetBuildEvidence, GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler,
+    GetBuildRunLogs, GetBuildRunLogsHandler, ListBuildRuns, ListBuildRunsHandler,
 };

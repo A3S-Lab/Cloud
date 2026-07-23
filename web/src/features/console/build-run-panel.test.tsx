@@ -48,6 +48,8 @@ describe('BuildRunPanel', () => {
     expect(host.textContent).toContain('Running');
     expect(host.textContent).toContain('Succeeded');
     expect(host.textContent).toContain('Attempt 1');
+    expect(host.textContent).toContain('Verified evidence');
+    expect(host.textContent).toContain('sha256:bbbbbbbb');
     const cancelButtons = [...host.querySelectorAll('button')].filter((button) =>
       button.textContent?.includes('Cancel build')
     );
@@ -61,7 +63,7 @@ describe('BuildRunPanel', () => {
     await act(async () => retryButtons[0]?.click());
     expect(onRetry).toHaveBeenCalledWith('build-failed');
     const viewButtons = [...host.querySelectorAll('button')].filter((button) =>
-      button.textContent?.includes('View logs')
+      button.textContent?.includes('Inspect run')
     );
     expect(viewButtons).toHaveLength(2);
     await act(async () => viewButtons[0]?.click());
@@ -84,6 +86,19 @@ function buildRun(status: BuildRunStatus, id = `build-${status}`): BuildRun {
     output: null,
     publicationTarget: null,
     publishedArtifact: null,
+    evidenceSummary:
+      status === 'succeeded'
+        ? {
+            schema: 'a3s.cloud.build-evidence.v1',
+            verificationState: 'verified',
+            sbomDigest: `sha256:${'b'.repeat(64)}`,
+            provenanceDigest: `sha256:${'c'.repeat(64)}`,
+            signingKeyAlgorithm: 'ed25519',
+            signingKeyId: `sha256:${'d'.repeat(64)}`,
+            signingKeyVersion: 2,
+            attestedAt: '2026-07-22T00:01:00Z',
+          }
+        : null,
     failure: null,
     aggregateVersion: 2,
     requestedAt: '2026-07-22T00:00:00Z',

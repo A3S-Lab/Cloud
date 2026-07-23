@@ -129,6 +129,11 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
     let detail = app.call(get_as(&detail_path, ADMIN_TOKEN)).await?;
     assert_eq!(detail.status(), 200);
     assert_eq!(response_json(&detail)?["data"]["aggregateVersion"], 1);
+    let evidence = app
+        .call(get_as(format!("{detail_path}/evidence"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(evidence.status(), 404);
+    assert_eq!(response_json(&evidence)?["statusCode"], "NOT_FOUND");
 
     let logs_path = format!("{detail_path}/logs");
     let logs = app.call(get_as(&logs_path, ADMIN_TOKEN)).await?;
@@ -311,7 +316,7 @@ async fn build_run_detail_hides_cross_tenant_and_unknown_identities() -> Result<
         .ok_or_else(|| BootError::Internal("cross-tenant build was not reserved".into()))?;
 
     for build_run_id in [cross_tenant.id, BuildRunId::new()] {
-        for suffix in ["", "/logs"] {
+        for suffix in ["", "/logs", "/evidence"] {
             let response = app
                 .call(get_as(
                     format!(

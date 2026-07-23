@@ -1,5 +1,6 @@
 use crate::modules::artifacts::domain::{
-    BuildRun, BuildRunStatus, OciPublicationTarget, PublishedOciArtifact, ValidatedOciBuildOutput,
+    BuildEvidence, BuildEvidenceVerificationState, BuildRun, BuildRunStatus, OciPublicationTarget,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -21,6 +22,7 @@ pub struct BuildRunResponse {
     pub output: Option<ValidatedOciBuildOutputResponse>,
     pub publication_target: Option<OciPublicationTarget>,
     pub published_artifact: Option<PublishedOciArtifact>,
+    pub evidence_summary: Option<BuildEvidenceSummaryResponse>,
     pub failure: Option<String>,
     pub aggregate_version: u64,
     pub requested_at: DateTime<Utc>,
@@ -32,6 +34,10 @@ pub struct BuildRunResponse {
 
 impl From<BuildRun> for BuildRunResponse {
     fn from(build_run: BuildRun) -> Self {
+        let evidence_summary = build_run
+            .evidence
+            .as_deref()
+            .map(BuildEvidenceSummaryResponse::from);
         Self {
             organization_id: build_run.organization_id.as_uuid(),
             project_id: build_run.project_id.as_uuid(),
@@ -46,6 +52,7 @@ impl From<BuildRun> for BuildRunResponse {
             output: build_run.output.map(ValidatedOciBuildOutputResponse::from),
             publication_target: build_run.publication_target,
             published_artifact: build_run.published_artifact,
+            evidence_summary,
             failure: build_run.failure,
             aggregate_version: build_run.aggregate_version,
             requested_at: build_run.requested_at,
@@ -53,6 +60,34 @@ impl From<BuildRun> for BuildRunResponse {
             started_at: build_run.started_at,
             cancellation_requested_at: build_run.cancellation_requested_at,
             finished_at: build_run.finished_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildEvidenceSummaryResponse {
+    pub schema: String,
+    pub verification_state: BuildEvidenceVerificationState,
+    pub sbom_digest: String,
+    pub provenance_digest: String,
+    pub signing_key_algorithm: String,
+    pub signing_key_id: String,
+    pub signing_key_version: Option<u32>,
+    pub attested_at: DateTime<Utc>,
+}
+
+impl From<&BuildEvidence> for BuildEvidenceSummaryResponse {
+    fn from(evidence: &BuildEvidence) -> Self {
+        Self {
+            schema: evidence.schema.clone(),
+            verification_state: evidence.verification_state,
+            sbom_digest: evidence.sbom_digest.clone(),
+            provenance_digest: evidence.provenance_digest.clone(),
+            signing_key_algorithm: evidence.signing_key.algorithm.clone(),
+            signing_key_id: evidence.signing_key.key_id.clone(),
+            signing_key_version: evidence.signing_key.key_version,
+            attested_at: evidence.attested_at,
         }
     }
 }

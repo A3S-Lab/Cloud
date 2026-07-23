@@ -113,6 +113,42 @@ async fn source_build_deployment_requires_one_owned_success_and_replays_exactly(
         .published_artifact
         .as_ref()
         .ok_or_else(|| BootError::Internal("succeeded test build has no publication".into()))?;
+    let expected_evidence = succeeded
+        .evidence
+        .as_deref()
+        .ok_or_else(|| BootError::Internal("succeeded test build has no evidence".into()))?;
+    let build_path = format!(
+        "/api/v1/organizations/{organization}/build-runs/{}",
+        succeeded.id
+    );
+    let build_detail = app.call(get_as(&build_path, ADMIN_TOKEN)).await?;
+    assert_eq!(build_detail.status(), 200);
+    let build_detail = response_json(&build_detail)?;
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["verificationState"],
+        "verified"
+    );
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["sbomDigest"],
+        expected_evidence.sbom_digest
+    );
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["provenanceDigest"],
+        expected_evidence.provenance_digest
+    );
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["signingKeyId"],
+        expected_evidence.signing_key.key_id
+    );
+    let evidence = app
+        .call(get_as(format!("{build_path}/evidence"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(evidence.status(), 200);
+    assert_eq!(
+        response_json(&evidence)?["data"],
+        serde_json::to_value(expected_evidence)
+            .map_err(|error| BootError::Internal(error.to_string()))?
+    );
     let accepted = app
         .call(post_json(
             &workload_path,

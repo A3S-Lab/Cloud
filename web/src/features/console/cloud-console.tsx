@@ -16,6 +16,7 @@ import { BuildRunLogPanel } from '../logs/build-run-log-panel';
 import { LiveLogPanel } from '../logs/live-log-panel';
 import { useOperationStream } from '../operations/use-operation-stream';
 import { streamLabel } from './console-format';
+import { BuildEvidencePanel } from './build-evidence-panel';
 import { BuildRunPanel } from './build-run-panel';
 import { ContextBar } from './context-bar';
 import { DeploymentTimeline } from './deployment-timeline';
@@ -433,6 +434,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           onCancel={cancelBuildRun}
           onRetry={retryBuildRun}
         />
+
+        <BuildEvidencePanel api={api} organizationId={organizationId || null} buildRun={selectedBuildRun} />
 
         <BuildRunLogPanel api={api} organizationId={organizationId || null} buildRun={selectedBuildRun} />
 

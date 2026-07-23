@@ -4,9 +4,10 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildRun,
-    GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler, ListBuildRuns,
-    ListBuildRunsHandler, RetryBuildRun, RetryBuildRunHandler, RetryBuildRunResult,
+    BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildEvidence,
+    GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs,
+    GetBuildRunLogsHandler, ListBuildRuns, ListBuildRunsHandler, RetryBuildRun,
+    RetryBuildRunHandler, RetryBuildRunResult,
 };
 pub use domain::{
     canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildArtifactPublicationError,
