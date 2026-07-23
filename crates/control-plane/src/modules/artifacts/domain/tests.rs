@@ -1,7 +1,7 @@
 use super::test_support::evidence_for;
 use super::{
     BuildArtifact, BuildRun, BuildRunStatus, OciBuildRequest, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
@@ -191,12 +191,21 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         content_bytes: 456,
         blob_count: 3,
     };
+    let cache = cache_for(&output);
     build
-        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(12))
+        .record_validated_output(
+            output.clone(),
+            Some(cache.clone()),
+            requested_at + Duration::milliseconds(12),
+        )
         .expect("record validated output");
     let validated = build.clone();
     build
-        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(13))
+        .record_validated_output(
+            output.clone(),
+            Some(cache),
+            requested_at + Duration::milliseconds(13),
+        )
         .expect("replay validated output");
     assert_eq!(build, validated);
     let target = OciPublicationTarget::new(
@@ -497,6 +506,22 @@ fn artifact(fill: char) -> BuildArtifact {
     .expect("artifact")
 }
 
+fn cache_for(output: &ValidatedOciBuildOutput) -> ValidatedBuildCache {
+    ValidatedBuildCache::new(
+        format!("sha256:{}", "9".repeat(64)),
+        output.artifact.clone(),
+        OciDescriptor::new(
+            "application/vnd.oci.image.index.v1+json",
+            format!("sha256:{}", "8".repeat(64)),
+            64,
+        )
+        .expect("cache descriptor"),
+        128,
+        2,
+    )
+    .expect("validated build cache")
+}
+
 fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
     let mut build = BuildRun::reserve(
         OrganizationId::new(),
@@ -541,8 +566,9 @@ fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
         content_bytes: 456,
         blob_count: 3,
     };
+    let cache = cache_for(&output);
     build
-        .record_validated_output(output.clone(), now + Duration::milliseconds(6))
+        .record_validated_output(output.clone(), Some(cache), now + Duration::milliseconds(6))
         .expect("validated output");
     build
         .begin_publication(

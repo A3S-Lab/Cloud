@@ -9,9 +9,9 @@ pub use entities::{
     PublishedOciArtifact, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
     SlsaInternalParameters, SlsaProvenancePredicate, SlsaProvenanceStatement,
     SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo,
-    SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedOciBuildOutput,
-    BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE,
-    SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
+    SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedBuildCache,
+    ValidatedOciBuildOutput, BUILD_CACHE_SCHEMA, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE,
+    IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use repositories::{
     IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
@@ -22,8 +22,8 @@ pub use services::{
     IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer,
     IBuildOutputValidator, IBuildService, INodeArtifactStore, NodeArtifactDescriptor,
     NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OciBuildRequest, OciDescriptor,
-    OpenNodeArtifact, PreparedBuildInput, VerifiedBuildEvidenceSignature,
-    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+    OpenNodeArtifact, PreparedBuildInput, ValidatedRuntimeBuildOutput,
+    VerifiedBuildEvidenceSignature, OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
 
 #[cfg(test)]

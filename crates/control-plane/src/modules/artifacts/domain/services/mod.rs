@@ -14,7 +14,9 @@ pub use build_evidence_signer::{
 pub use build_input_preparer::{
     BuildInputPreparationError, IBuildInputPreparer, PreparedBuildInput,
 };
-pub use build_output_validator::{BuildOutputValidationError, IBuildOutputValidator};
+pub use build_output_validator::{
+    BuildOutputValidationError, IBuildOutputValidator, ValidatedRuntimeBuildOutput,
+};
 pub use build_service::{
     BuildServiceError, BuiltOciArtifact, IBuildService, OciBuildRequest, OciDescriptor,
     OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,

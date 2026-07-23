@@ -223,7 +223,7 @@ API command
 | Logs | Restart-safe bounded node shipping, typed provider cursor-loss/source-disconnect recovery, monotonic delivery rebasing, Docker-bound Secret redaction, PostgreSQL chunk/gap metadata, verified filesystem/S3-compatible chunk objects, cursor paging, resumable bounded SSE and a 500-record web window, tenant isolation, configurable body retention, bounded tombstone compaction, explicit provider/missing/corrupt/retained/compacted gaps, Docker provider-restart cursor continuity, control-plane object-before-receipt process-death recovery, filesystem/REST corruption projection, and real MinIO corruption rejection are implemented | Complete (`E0` slice) |
 | Web operations | Authoritative deployment history, exact route/certificate projection, complete-template update differences and action, eligible manual rollback, operation lineage, browser-local terminal cleanup, and a production SPA server behind a same-origin A3S Gateway API/web profile | Complete (`E0` slice plus management-web delivery) |
 | Release conformance | Exact clean Cloud/Runtime release build, one real outbound Linux/Docker node, A→B→cloned-A TLS cutover, ordered and resumable logs, durable stop, source-cleanliness checks, host-inventory equality, and credential scanning | Verified (`E0`) |
-| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, periodic installation/account authority polling, fresh private-credential and checkout-time revalidation, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun attempts, command-bound Artifact transport, full OCI graph validation, authoritative digest-only registry publication, locally verified Ed25519-signed SPDX/SLSA evidence, explicit published-build-to-Workload deployment, tenant-scoped BuildRun/evidence/log queries, resumable BuildRun log streaming, atomic idempotent cancellation, retry lineage, and the corresponding web status/control/evidence surface are implemented. The production `cloud.build@3` Flow persists and remotely verifies the publication, freezes its exact SBOM, provenance, DSSE envelope, and signing-key identity before cleanup, and adopts ambiguous side effects across replay and cancellation races. Local development keys are persistent and private; production can delegate signing to Vault Transit while verifying the returned versioned Ed25519 key locally. External private-provider certification, content-addressed cache trust, and the remaining production fault-injection evidence still block G0 verification | In progress (`G0` signed-evidence slice) |
+| Source delivery | Canonical GitHub identities and exact repository policy, immutable source revisions and recipes, signed replay-safe provider ingress, tenant-owned GitHub App connections/subscriptions, periodic installation/account authority polling, fresh private-credential and checkout-time revalidation, ephemeral private-repository credentials, bounded exact-commit checkout, deterministic BuildRun attempts, command-bound Artifact transport, content-addressed BuildKit cache validation and retry reuse, full OCI graph validation, authoritative digest-only registry publication, locally verified Ed25519-signed SPDX/SLSA evidence, explicit published-build-to-Workload deployment, tenant-scoped BuildRun/evidence/log queries, resumable BuildRun log streaming, atomic idempotent cancellation, retry lineage, and the corresponding web status/control/evidence surface are implemented. The production `cloud.build@3` Flow persists and remotely verifies the publication, freezes its exact SBOM, provenance, DSSE envelope, signing-key identity, and validated cache graph before cleanup, and adopts ambiguous side effects across replay and cancellation races. The real gate removes the parent Task, prunes the BuildKit worker, imports only the read-only parent cache through bounded writable staging, and requires a genuine cache hit without weakening OCI or evidence validation. Local development keys are persistent and private; production can delegate signing to Vault Transit while verifying the returned versioned Ed25519 key locally. External private-provider certification and the remaining production fault-injection evidence still block G0 verification | In progress (`G0` cache-trust slice) |
 | Developer workflows | Stack detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import through typed desired state | Planned (`P0`) |
 | Control surfaces | Stable REST, Cloud CLI, management MCP, collaboration, notifications, audit, and bounded terminal access | Planned (`C0`) |
 | Releases | Immutable Agent, MCP, and Skill publication through the common deployment path | Planned (`A0`) |
@@ -1248,7 +1248,7 @@ security model, consistency boundaries, and failure recovery.
 | N0 — Node control | Enrollment, mTLS, command leases, observations, command journal, and Docker driver | Verified |
 | D0 — OCI deployment | Immutable workload revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
 | E0 — Reachable service | Edge desired state, managed TLS, encrypted Secret injection and rotation recovery, durable ordered logs, one-node immutable update, activation-before-retirement process-death recovery, cloned rollback, authoritative Web operations, and the exact clean-host Linux release loop through A3S Gateway 1.0.12 and one outbound Docker node | Verified |
-| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, periodic provider revalidation, deterministic BuildRun/retry reconciliation, command-bound Artifact transport, production `cloud.build@3` Runtime execution, dual network denial, full OCI validation, authoritative registry publication, replay/cancellation adoption, locally verified Ed25519-signed SPDX/SLSA evidence with local/Vault providers, evidence API/web download, cleanup, and explicit deployment through `cloud.deployment@2` are implemented; cache trust, external private-provider evidence, and the remaining production fault-injection gate remain) |
+| G0 — External source delivery | Pinned Git commits, isolated builds, OCI publication, provenance, and deployment through the existing workload path | In progress (source/recipe authority, private-capable exact checkout, signed subscription fanout, periodic provider revalidation, deterministic BuildRun/retry reconciliation, command-bound Artifact transport, production `cloud.build@3` Runtime execution, dual network denial, content-addressed cache trust with worker-pruned retry evidence, full OCI validation, authoritative registry publication, replay/cancellation adoption, locally verified Ed25519-signed SPDX/SLSA evidence with local/Vault providers, evidence API/web download, cleanup, and explicit deployment through `cloud.deployment@2` are implemented; external private-provider evidence and the remaining production fault-injection gate remain) |
 | P0 — Developer workflows | Detected build plans, web/worker/scheduled profiles, pull-request previews, monorepo affected sets, and closed Compose import | Planned |
 | C0 — Control surfaces | REST/CLI/MCP parity, team grants, notifications, audit, and outbound-protocol exec/terminal | Planned |
 | A0 — Release catalog | Agent and MCP release import, Skill bundle publication, and deployment through the common path | Planned |
@@ -1355,9 +1355,11 @@ registry, then projects the production `cloud.build@3` Task and runs it through
 the real node command journal and Docker Runtime. It verifies the exact
 read-only socket mount, Docker network mode `none`, BuildKit
 `force-network-mode=none`, a failed `wget` attempt inside `RUN`, Artifact upload,
-full OCI validation, deterministic target derivation, authenticated graph push,
-remote verification, idempotent publication replay, Runtime removal, and a
-terminal successful BuildRun. The real Docker
+full OCI and BuildKit cache validation, deterministic target derivation,
+authenticated graph push, remote verification, idempotent publication replay,
+Runtime removal, BuildKit worker pruning, a retry sourced only from the
+read-only parent cache, a real `CACHED` build step, refreshed graph validation,
+and a terminal successful child BuildRun. The real Docker
 update-and-rollback case deploys healthy A, proves an
 unhealthy B cannot replace it, activates a distinct healthy C, stops A only
 after C is selected, clones A into a new generation, and stops C only after the
@@ -1440,6 +1442,7 @@ exit:
 
 ```bash
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT=1 \
+A3S_CLOUD_TEST_BUILDKIT_CONTAINER=a3s-cloud-buildkit-gate-daemon \
 A3S_CLOUD_TEST_BUSYBOX_ROOTFS="$A3S_BUSYBOX_ROOTFS" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE="$A3S_BUILDKIT_NAMESPACE" \
 A3S_CLOUD_TEST_RUNTIME_BUILDKIT_VOLUME_ID="$A3S_BUILDKIT_VOLUME_ID" \
@@ -1454,6 +1457,15 @@ docker rm -f a3s-cloud-buildkit-gate-daemon
 docker volume rm "$A3S_BUILDKIT_VOLUME"
 rm -f "$A3S_BUSYBOX_ROOTFS"
 ```
+
+The gate first validates and cancels a cache-producing parent attempt, removes
+its Runtime Task, and prunes all BuildKit worker state. Its child attempt mounts
+the parent output Artifact read-only, copies only the already validated cache
+tree into a size-bounded non-executable tmpfs because BuildKit requires a
+writable local lock file, and imports that private staging copy. A pass requires
+the imported manifest, a real `CACHED` log record, identical OCI and cache
+graphs, authenticated publication, locally verified signed evidence, exact
+Runtime cleanup, and no managed-container residue.
 
 CI creates both fixtures from digest-pinned images, exports the bounded pinned
 linux/amd64 BusyBox root filesystem into the otherwise scratch-only build

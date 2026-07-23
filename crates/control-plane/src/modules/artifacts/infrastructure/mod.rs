@@ -1,3 +1,4 @@
+mod build_cache_validator;
 mod build_evidence_generator;
 mod build_evidence_signing;
 mod build_flow;

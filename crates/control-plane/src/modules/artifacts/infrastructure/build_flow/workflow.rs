@@ -9,7 +9,7 @@ use super::types::{
 use super::BuildFlowConfig;
 use crate::modules::artifacts::application::{
     BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
-    PREVIOUS_BUILD_WORKFLOW_VERSION,
+    PREVIOUS_BUILD_WORKFLOW_VERSION, SIGNED_BUILD_WORKFLOW_VERSION,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
@@ -34,6 +34,7 @@ pub(super) fn replay(
     }
     let (requires_publication, requires_evidence) = match invocation.spec.version.as_str() {
         BUILD_WORKFLOW_VERSION => (true, true),
+        SIGNED_BUILD_WORKFLOW_VERSION => (true, true),
         PREVIOUS_BUILD_WORKFLOW_VERSION => (true, false),
         LEGACY_BUILD_WORKFLOW_VERSION => (false, false),
         _ => {

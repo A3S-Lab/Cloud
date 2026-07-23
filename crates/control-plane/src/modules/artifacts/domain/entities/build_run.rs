@@ -1,4 +1,5 @@
 use super::build_artifact::{validate_sha256, BuildArtifact, ValidatedOciBuildOutput};
+use super::build_cache::ValidatedBuildCache;
 use super::build_evidence::BuildEvidence;
 use super::oci_publication::{OciPublicationTarget, PublishedOciArtifact};
 use crate::modules::shared_kernel::domain::{
@@ -93,6 +94,8 @@ pub struct BuildRun {
     pub runtime_spec_digest: Option<String>,
     pub runtime_output_artifact: Option<BuildArtifact>,
     pub output: Option<ValidatedOciBuildOutput>,
+    pub cache_required: bool,
+    pub cache: Option<ValidatedBuildCache>,
     pub publication_target: Option<OciPublicationTarget>,
     pub published_artifact: Option<PublishedOciArtifact>,
     pub evidence_required: bool,
@@ -170,6 +173,8 @@ impl BuildRun {
             runtime_spec_digest: None,
             runtime_output_artifact: None,
             output: None,
+            cache_required: true,
+            cache: None,
             publication_target: None,
             published_artifact: None,
             evidence_required: true,
@@ -219,6 +224,8 @@ impl BuildRun {
             runtime_spec_digest: None,
             runtime_output_artifact: None,
             output: None,
+            cache_required: true,
+            cache: None,
             publication_target: None,
             published_artifact: None,
             evidence_required: true,
@@ -333,9 +340,19 @@ impl BuildRun {
     pub fn record_validated_output(
         &mut self,
         output: ValidatedOciBuildOutput,
+        cache: Option<ValidatedBuildCache>,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
         output.validate()?;
+        if self.cache_required != cache.is_some() {
+            return Err("validated build cache does not match the build workflow contract".into());
+        }
+        if let Some(cache) = &cache {
+            cache.validate()?;
+            if cache.artifact != output.artifact {
+                return Err("validated build cache changed the Runtime output artifact".into());
+            }
+        }
         if self.status != BuildRunStatus::Validating {
             return Err("validated output requires a validating build run".into());
         }
@@ -344,12 +361,13 @@ impl BuildRun {
         }
         let at = self.canonical_time(at)?;
         if let Some(existing) = &self.output {
-            if existing != &output {
-                return Err("validated build output cannot change".into());
+            if existing != &output || self.cache != cache {
+                return Err("validated build output or cache cannot change".into());
             }
             return self.observe_time(at);
         }
         self.output = Some(output);
+        self.cache = cache;
         self.aggregate_version += 1;
         self.updated_at = at;
         Ok(())
@@ -647,6 +665,21 @@ impl BuildRun {
                 return Err("validated output changed the Runtime output artifact".into());
             }
         }
+        match &self.cache {
+            Some(cache) => {
+                if !self.cache_required {
+                    return Err("stored build cache is not required by this build run".into());
+                }
+                cache.validate()?;
+                if self.output.as_ref().map(|output| &output.artifact) != Some(&cache.artifact) {
+                    return Err("stored build cache changed the Runtime output artifact".into());
+                }
+            }
+            None if self.cache_required && self.output.is_some() => {
+                return Err("stored validated build output is missing its required cache".into())
+            }
+            None => {}
+        }
         if let Some(artifact) = &self.runtime_output_artifact {
             artifact.validate()?;
         }
@@ -730,6 +763,7 @@ impl BuildRun {
                     || self.command_id.is_some()
                     || self.runtime_output_artifact.is_some()
                     || self.output.is_some()
+                    || self.cache.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
                     || self.evidence.is_some()

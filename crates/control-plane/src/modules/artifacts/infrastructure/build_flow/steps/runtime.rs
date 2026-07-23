@@ -43,7 +43,7 @@ pub(super) async fn schedule(
         });
     }
     let revision = load_revision(runtime, &build).await?;
-    let spec = project_spec(runtime, &build, &revision)?;
+    let spec = project_spec(runtime, &build, &revision).await?;
     let spec_digest = spec
         .digest()
         .map_err(|error| flow_error("could not digest build Runtime Task", error))?;

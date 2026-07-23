@@ -144,7 +144,7 @@ pub(crate) fn validate_build_run_transition(
             })
         || next.output.as_ref().is_some_and(|output| {
             matches_transition(existing, next, |candidate| {
-                candidate.record_validated_output(output.clone(), at)
+                candidate.record_validated_output(output.clone(), next.cache.clone(), at)
             })
         })
         || next.publication_target.as_ref().is_some_and(|target| {

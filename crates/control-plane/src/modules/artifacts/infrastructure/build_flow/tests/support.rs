@@ -9,7 +9,8 @@ use crate::modules::artifacts::domain::{
     BuildInputPreparationError, BuildOutputValidationError, BuildRun, IBuildArtifactPublisher,
     IBuildEvidenceGenerator, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
     OciDescriptor, OciPublicationRequest, OciPublicationTarget, PreparedBuildInput,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
+    ValidatedRuntimeBuildOutput,
 };
 use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
@@ -284,7 +285,7 @@ pub(super) fn build_capabilities(supports_index: bool) -> RuntimeCapabilities {
         }],
         isolation_levels: vec![IsolationLevel::Container],
         network_modes: vec![NetworkMode::None],
-        mount_kinds: vec![MountKind::Artifact, MountKind::Volume],
+        mount_kinds: vec![MountKind::Artifact, MountKind::Volume, MountKind::Tmpfs],
         health_check_kinds: Vec::new(),
         resource_controls: vec![
             ResourceControl::Cpu,
@@ -550,7 +551,8 @@ impl IBuildOutputValidator for RecordingOutputValidator {
         &self,
         artifact: &BuildArtifact,
         recipe: &BuildRecipe,
-    ) -> Result<ValidatedOciBuildOutput, BuildOutputValidationError> {
+        expected_cache_key: Option<&str>,
+    ) -> Result<ValidatedRuntimeBuildOutput, BuildOutputValidationError> {
         self.validations.fetch_add(1, Ordering::SeqCst);
         if artifact != &self.artifact {
             return Err(BuildOutputValidationError::Integrity(
@@ -560,7 +562,7 @@ impl IBuildOutputValidator for RecordingOutputValidator {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        Ok(ValidatedOciBuildOutput {
+        let output = ValidatedOciBuildOutput {
             artifact: artifact.clone(),
             descriptor: OciDescriptor::new(
                 "application/vnd.oci.image.manifest.v1+json",
@@ -571,7 +573,25 @@ impl IBuildOutputValidator for RecordingOutputValidator {
             platforms: recipe.platforms().to_vec(),
             content_bytes: 2048,
             blob_count: 3,
-        })
+        };
+        let cache = expected_cache_key
+            .map(|key| {
+                ValidatedBuildCache::new(
+                    key,
+                    artifact.clone(),
+                    OciDescriptor::new(
+                        "application/vnd.oci.image.index.v1+json",
+                        format!("sha256:{}", "f".repeat(64)),
+                        256,
+                    )
+                    .map_err(BuildOutputValidationError::Invalid)?,
+                    1024,
+                    2,
+                )
+                .map_err(BuildOutputValidationError::Invalid)
+            })
+            .transpose()?;
+        Ok(ValidatedRuntimeBuildOutput { output, cache })
     }
 }
 

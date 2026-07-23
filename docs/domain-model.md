@@ -152,6 +152,15 @@ The node-transfer store
 persists command-scoped directory archives by digest so Runtime input/output
 bytes can cross the existing mTLS node boundary without pretending that cache
 objects are published OCI artifacts.
+Cache-required BuildRuns also persist one `ValidatedBuildCache`: a
+content-addressed key, the exact output Artifact, the BuildKit OCI cache root
+descriptor, reachable bytes, and blob count. The key binds immutable source,
+recipe/platform, builder, operator socket-volume, schema, tenant scope, and
+execution semantics. Validation rejects cache graph pollution, missing content,
+unsupported media types, incomplete ingest state, and any digest or size
+mismatch. A retry can use only the immediate terminal parent's matching cache;
+the parent Artifact remains read-only while a bounded private tmpfs supplies
+the lock file required by BuildKit's local importer.
 
 Primary aggregate:
 
@@ -800,9 +809,9 @@ sequence of deterministic retry attempts. Every retry has a fresh BuildRun and
 Operation ID, records its attempt and immediate parent BuildRun, and retains the
 exact source revision. Each aggregate binds tenant/environment ownership, the
 exact `cloud.build@3` operation, immutable input and Runtime artifact
-identities, assigned node and command identities, validated OCI output,
-publication target/result, verified build evidence, terminal outcome, and
-cleanup. Concurrent PostgreSQL
+identities, assigned node and command identities, validated OCI output and
+cache, publication target/result, verified build evidence, terminal outcome,
+and cleanup. Concurrent PostgreSQL
 reservation, atomic retry creation, exact operation replay, and optimistic
 single-transition saves prevent duplicate or forged logical builds across
 process loss. Environment list and tenant detail queries expose only public
@@ -845,7 +854,9 @@ log sequence, object, gap, retention, and compaction model. Public projections
 bind BuildRun, attempt, parent, and Operation lineage without exposing node or
 Runtime unit identity. Signed evidence generation, persistence, restoration,
 tenant API projection, and web inspection are implemented. Content-addressed
-cache trust and external private-provider certification remain later G0 work.
+cache trust is implemented with worker-pruned real retry evidence. External
+private-provider certification and the production signed-evidence
+fault-injection run remain G0 work.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,
@@ -882,8 +893,10 @@ cleanup_pending -> failed | cancelled
 Failure or cancellation before Runtime dispatch may terminate without a
 cleanup command. Once a Runtime Task command exists, terminal state requires a
 durable cleanup command identity. Successful completion requires a validated
-OCI graph whose artifact exactly matches the collected Runtime output. Exact
-transition replay changes neither version nor timestamps. Cleanup first
+OCI graph whose artifact exactly matches the collected Runtime output;
+cache-required runs also require a validated cache from that same Artifact.
+Cache reuse does not change the publication or signed-evidence requirements.
+Exact transition replay changes neither version nor timestamps. Cleanup first
 observes the deterministic Runtime removal receipt, then deletes the checkout;
 a build failure is persisted only after this cleanup path completes.
 

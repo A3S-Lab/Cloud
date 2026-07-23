@@ -24,7 +24,7 @@ impl DockerRuntimeDriver {
                 .download_from_container(
                     &container_id,
                     Some(DownloadFromContainerOptions {
-                        path: output.path.clone(),
+                        path: directory_contents_path(&output.path),
                     }),
                 )
                 .map_err(|error| std::io::Error::other(error.to_string()));
@@ -37,5 +37,23 @@ impl DockerRuntimeDriver {
             );
         }
         Ok(captured)
+    }
+}
+
+fn directory_contents_path(path: &str) -> String {
+    format!("{}/.", path.trim_end_matches('/'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::directory_contents_path;
+
+    #[test]
+    fn output_archives_capture_directory_contents_without_an_extra_root() {
+        assert_eq!(
+            directory_contents_path("/home/user/a3s-output"),
+            "/home/user/a3s-output/."
+        );
+        assert_eq!(directory_contents_path("/"), "/.");
     }
 }

@@ -1,9 +1,11 @@
 mod build_artifact;
+mod build_cache;
 mod build_evidence;
 mod build_run;
 mod oci_publication;
 
 pub use build_artifact::{BuildArtifact, ValidatedOciBuildOutput};
+pub use build_cache::{ValidatedBuildCache, BUILD_CACHE_SCHEMA};
 pub use build_evidence::{
     canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
     BuildEvidenceSigningKey, BuildEvidenceVerificationState, DsseEnvelope, DsseSignature,

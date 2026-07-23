@@ -2,7 +2,7 @@ use super::*;
 use crate::modules::artifacts::domain::test_support::evidence_for;
 use crate::modules::artifacts::{
     BuildArtifact, BuildRun, InMemoryBuildRunRepository, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, SourceRevisionId};
 use crate::modules::sources::domain::BuildPlatform;
@@ -393,10 +393,19 @@ async fn succeed_build(
         content_bytes: 1_024,
         blob_count: 3,
     };
+    let cache = ValidatedBuildCache::new(
+        digest('f'),
+        output.artifact.clone(),
+        OciDescriptor::new("application/vnd.oci.image.index.v1+json", digest('9'), 256)
+            .map_err(BootError::Internal)?,
+        512,
+        2,
+    )
+    .map_err(BootError::Internal)?;
     let previous = build.aggregate_version;
     at += chrono::Duration::milliseconds(1);
     build
-        .record_validated_output(output, at)
+        .record_validated_output(output, Some(cache), at)
         .map_err(BootError::Internal)?;
     let mut build = builds
         .save(build, previous)

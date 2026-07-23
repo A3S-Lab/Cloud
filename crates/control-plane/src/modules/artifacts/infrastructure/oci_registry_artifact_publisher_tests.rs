@@ -335,7 +335,7 @@ impl PublicationFixture {
                 .map(|(os, architecture)| format!("{os}/{architecture}"))
                 .collect(),
         )?;
-        let output = validator.validate(&artifact, &recipe).await?;
+        let output = validator.validate(&artifact, &recipe, None).await?.output;
         Ok(Self {
             _root: root,
             validator,

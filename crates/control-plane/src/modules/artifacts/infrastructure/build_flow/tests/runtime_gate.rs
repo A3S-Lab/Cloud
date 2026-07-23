@@ -1,4 +1,7 @@
-use super::super::task_spec::{project_task_spec, BUILDKIT_SOCKET_ROOT};
+use super::super::task_spec::{
+    build_cache_key, project_task_spec, BUILDKIT_ADDRESS, BUILDKIT_SOCKET_ROOT, CACHE_IMPORT_ROOT,
+    CACHE_ROOT,
+};
 use super::super::{BuildFlowConfig, BuildFlowConfigOptions};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildRunStatus, IBuildArtifactPublisher, IBuildEvidenceGenerator,
@@ -17,25 +20,22 @@ use crate::modules::sources::domain::{
     NewExternalSourceRevision,
 };
 use a3s_cloud_contracts::{
-    artifact_uri, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
-    NodeArtifactUploadRequest, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, RegistryCredentialMaterial,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    artifact_uri, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult, RegistryCredentialMaterial, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_node_agent::{
-    ArtifactConfig, CommandExecutor, DockerConfig, DockerRuntimeDriver, DownloadedNodeArtifact,
-    FileCommandJournal, NodeArtifactManager, NodeArtifactTransport, NodeControlClientError,
-    NodeRuntimeBinding,
+    ArtifactConfig, CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal,
+    NodeArtifactManager, NodeArtifactTransport, NodeRuntimeBinding,
 };
 use a3s_runtime::contract::{
     ArtifactRef, RuntimeActionRequest, RuntimeApplyRequest, RuntimeLogQuery, RuntimeLogStream,
-    RuntimeObservation, RuntimeOutputArtifact, RuntimeUnitSpec, RuntimeUnitState,
+    RuntimeObservation, RuntimeUnitSpec, RuntimeUnitState,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
 };
-use async_trait::async_trait;
 use bollard::errors::Error as DockerError;
+use bollard::models::MountTypeEnum;
 use bollard::{Docker, API_DEFAULT_VERSION};
 use chrono::{Duration, Utc};
 use reqwest::Url;
@@ -45,14 +45,18 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
-use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
+mod artifact_transport;
+mod buildkit_fixture;
 mod busybox_rootfs;
 
+use artifact_transport::LocalArtifactTransport;
+use buildkit_fixture::prune_buildkit_worker;
 use busybox_rootfs::validate_busybox_rootfs;
 
 const GATE_ENV: &str = "A3S_CLOUD_TEST_RUNTIME_BUILDKIT";
+const BUILDKIT_CONTAINER_ENV: &str = "A3S_CLOUD_TEST_BUILDKIT_CONTAINER";
 const BUSYBOX_ROOTFS_ENV: &str = "A3S_CLOUD_TEST_BUSYBOX_ROOTFS";
 const REGISTRY_URL_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_URL";
 const REGISTRY_USERNAME_ENV: &str = "A3S_CLOUD_TEST_REGISTRY_USERNAME";
@@ -150,7 +154,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         pids: 512,
         output_max_bytes: 512 * 1024 * 1024,
     })?;
-    let spec = project_task_spec(&config, &build, &revision)?;
+    let spec = project_task_spec(&config, &build, &revision, None)?;
     let node_id = Uuid::now_v7();
     build.schedule(
         NodeId::from_uuid(node_id),
@@ -281,65 +285,21 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
             10_000,
             1024 * 1024 * 1024,
         )?);
-        let validated = validator.validate(&artifact, &revision.recipe).await?;
+        let cache_key = build_cache_key(&config, &build, &revision)?;
+        let validated = validator
+            .validate(&artifact, &revision.recipe, Some(&cache_key))
+            .await?;
         require(
-            validated.platforms.len() == 1 && validated.platforms[0].as_str() == "linux/amd64",
+            validated.output.platforms.len() == 1
+                && validated.output.platforms[0].as_str() == "linux/amd64",
             "validated Runtime BuildKit output changed the requested platform",
         )?;
         build.record_validated_output(
-            validated.clone(),
+            validated.output.clone(),
+            validated.cache,
             build.updated_at + Duration::milliseconds(1),
         )?;
-
-        let registry = RegistryGate::from_environment()?;
-        let publisher = OciRegistryArtifactPublisher::new(
-            Arc::clone(&validator),
-            StdDuration::from_secs(30),
-            registry.insecure_hosts.clone(),
-            OciRegistryArtifactPublisherOptions {
-                registry: registry.authority.clone(),
-                repository_prefix: "a3s-cloud/runtime-buildkit-gates".into(),
-                credential_env: registry.credential.name().into(),
-                allow_anonymous: false,
-            },
-        )?;
-        let target = publisher.target_for(&build)?;
-        build.begin_publication(target.clone(), build.updated_at + Duration::milliseconds(1))?;
-        let request = OciPublicationRequest::new(target.clone(), validated)?;
-        let published = publisher.publish(&request).await?;
-        require(
-            published.uri == target.uri(),
-            "Runtime BuildKit publication changed its digest-only target",
-        )?;
-        require(
-            publisher.find(&request).await? == Some(published.clone()),
-            "Runtime BuildKit publication was not remotely verifiable",
-        )?;
-        require(
-            publisher.publish(&request).await? == published,
-            "Runtime BuildKit publication replay changed its result",
-        )?;
-        build.record_published_artifact(published, build.updated_at + Duration::milliseconds(1))?;
-        build.begin_attestation(build.updated_at + Duration::milliseconds(1))?;
-        let signer = Arc::new(
-            LocalBuildEvidenceSigner::load_or_create(
-                root.path().join("build-evidence/signing-key.pk8"),
-            )
-            .await?,
-        );
-        let evidence_generator = RuntimeBuildEvidenceGenerator::new(
-            Arc::clone(&validator),
-            signer,
-            config.builder.clone(),
-        )?;
-        let evidence = evidence_generator
-            .generate(
-                &build,
-                &revision,
-                build.updated_at + Duration::milliseconds(1),
-            )
-            .await?;
-        build.record_evidence(evidence, build.updated_at + Duration::milliseconds(1))?;
+        build.request_cancellation(build.updated_at + Duration::milliseconds(1))?;
         Ok::<(), Box<dyn Error>>(())
     }
     .await;
@@ -409,8 +369,325 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
     }
     build.complete(build.updated_at + Duration::milliseconds(1))?;
     require(
-        build.status == BuildRunStatus::Succeeded,
-        "Runtime BuildKit publication did not complete the durable build",
+        build.status == BuildRunStatus::Cancelled,
+        "cache-producing parent BuildRun did not terminate as cancelled",
+    )?;
+    let parent_cache = build
+        .cache
+        .clone()
+        .ok_or_else(|| std::io::Error::other("cancelled parent BuildRun omitted its cache"))?;
+    let parent_output = build
+        .output
+        .clone()
+        .ok_or_else(|| std::io::Error::other("cancelled parent BuildRun omitted its OCI output"))?;
+    let parent_source_digest = build.source_content_digest.clone().ok_or_else(|| {
+        std::io::Error::other("cancelled parent BuildRun omitted its source digest")
+    })?;
+    let parent_input = build
+        .input_artifact
+        .clone()
+        .ok_or_else(|| std::io::Error::other("cancelled parent BuildRun omitted its input"))?;
+
+    prune_buildkit_worker(&docker, &required_environment(BUILDKIT_CONTAINER_ENV)?).await?;
+
+    let mut retry = crate::modules::artifacts::BuildRun::retry(
+        &build,
+        build.updated_at + Duration::milliseconds(1),
+    )?;
+    retry.begin_preparation(retry.updated_at + Duration::milliseconds(1))?;
+    retry.record_input(
+        parent_source_digest,
+        parent_input,
+        retry.updated_at + Duration::milliseconds(1),
+    )?;
+    require(
+        build_cache_key(&config, &retry, &revision)? == parent_cache.key,
+        "retry cache key changed for the same immutable source and builder inputs",
+    )?;
+    let retry_spec = project_task_spec(&config, &retry, &revision, Some(&parent_cache))?;
+    retry.schedule(
+        NodeId::from_uuid(node_id),
+        retry_spec.digest()?,
+        retry.updated_at + Duration::milliseconds(1),
+    )?;
+    let retry_apply = RuntimeApplyRequest {
+        schema: RuntimeApplyRequest::SCHEMA.into(),
+        request_id: format!("runtime-buildkit-retry-apply-{}", Uuid::now_v7()),
+        deadline_at_ms: None,
+        spec: retry_spec.clone(),
+    };
+    let retry_apply_command = command(
+        node_id,
+        3,
+        NodeCommandPayload::RuntimeApply {
+            request: Box::new(retry_apply),
+        },
+    )?;
+    retry.dispatch(
+        NodeCommandId::from_uuid(retry_apply_command.command_id),
+        retry.updated_at + Duration::milliseconds(1),
+    )?;
+    let retry_acknowledgement = executor.execute(retry_apply_command).await?;
+    let retry_observation = applied_observation(retry_acknowledgement.outcome)?;
+    let retry_resource_id = retry_observation.provider_resource_id.clone();
+    let retry_diagnostics = runtime_task_diagnostics(runtime.as_ref(), &retry_spec).await;
+
+    let retry_verification = async {
+        require(
+            retry_observation.state == RuntimeUnitState::Succeeded,
+            format!(
+                "cache-importing Runtime BuildKit retry did not succeed: {:?}; bounded Runtime logs: {}",
+                retry_observation.failure, retry_diagnostics,
+            ),
+        )?;
+        require(
+            retry_observation.outputs.len() == 1,
+            "Runtime BuildKit retry did not publish exactly one output Artifact",
+        )?;
+        let resource_id = retry_resource_id.as_deref().ok_or_else(|| {
+            std::io::Error::other("Runtime BuildKit retry omitted its Docker resource identity")
+        })?;
+        let container = docker.inspect_container(resource_id, None).await?;
+        let host = container.host_config.ok_or_else(|| {
+            std::io::Error::other("Runtime BuildKit retry omitted host configuration")
+        })?;
+        require(
+            host.network_mode.as_deref() == Some("none"),
+            "Runtime BuildKit retry was not attached to Docker network mode none",
+        )?;
+        let binds = host.binds.unwrap_or_default();
+        let expected_socket_bind = format!("{expected_volume}:{BUILDKIT_SOCKET_ROOT}:ro");
+        require(
+            binds.iter().any(|binding| binding == &expected_socket_bind),
+            format!("Runtime BuildKit retry did not mount {expected_socket_bind:?}"),
+        )?;
+        let mounts = host.mounts.unwrap_or_default();
+        require(
+            mounts
+                .iter()
+                .any(|mount| {
+                    mount.target.as_deref() == Some(CACHE_ROOT)
+                        && mount.typ.as_ref() == Some(&MountTypeEnum::BIND)
+                        && mount.read_only == Some(true)
+                        && mount
+                            .source
+                            .as_deref()
+                            .is_some_and(|source| !source.is_empty())
+                }),
+            "Runtime BuildKit retry did not mount the parent cache Artifact read-only",
+        )?;
+        let expected_cache_import_tmpfs = format!(
+            "rw,noexec,nosuid,nodev,size={}",
+            parent_cache.artifact.size_bytes
+        );
+        require(
+            host.tmpfs
+                .unwrap_or_default()
+                .get(CACHE_IMPORT_ROOT)
+                .is_some_and(|options| options == &expected_cache_import_tmpfs),
+            "Runtime BuildKit retry did not use an exact bounded writable cache staging tmpfs",
+        )?;
+        let command = container
+            .config
+            .and_then(|config| config.cmd)
+            .unwrap_or_default();
+        let expected_cache_import = format!("type=local,src={CACHE_IMPORT_ROOT}/cache");
+        require(
+            command.windows(2).any(|arguments| {
+                arguments[0] == "--import-cache" && arguments[1] == expected_cache_import
+            }),
+            "Runtime BuildKit retry command omitted its local cache import",
+        )?;
+        require(
+            retry_diagnostics.contains("importing cache manifest from local:"),
+            format!(
+                "Runtime BuildKit retry did not parse the imported cache manifest: {retry_diagnostics}"
+            ),
+        )?;
+        require(
+            retry_diagnostics.lines().any(|line| line.ends_with(" CACHED")),
+            format!(
+                "Runtime BuildKit retry did not restore a cache hit after worker pruning: {retry_diagnostics}"
+            ),
+        )?;
+
+        let output = &retry_observation.outputs[0];
+        let artifact = BuildArtifact::new(
+            output.artifact.uri.clone(),
+            output.artifact.digest.clone(),
+            output.artifact.media_type.clone(),
+            output.size_bytes,
+        )?;
+        retry.begin_validation(
+            artifact.clone(),
+            retry.updated_at + Duration::milliseconds(1),
+        )?;
+        let validator = Arc::new(RuntimeBuildOutputValidator::new(
+            Arc::clone(&artifacts),
+            root.path().join("retry-validation"),
+            512 * 1024 * 1024,
+            100_000,
+            1024 * 1024 * 1024,
+            10_000,
+            1024 * 1024 * 1024,
+        )?);
+        let cache_key = build_cache_key(&config, &retry, &revision)?;
+        let validated = validator
+            .validate(&artifact, &revision.recipe, Some(&cache_key))
+            .await?;
+        require(
+            validated.output.descriptor == parent_output.descriptor
+                && validated.output.platforms == parent_output.platforms
+                && validated.output.content_bytes == parent_output.content_bytes
+                && validated.output.blob_count == parent_output.blob_count,
+            "cache-importing retry changed the validated OCI graph",
+        )?;
+        let retry_cache = validated.cache.as_ref().ok_or_else(|| {
+            std::io::Error::other("cache-importing retry omitted its refreshed cache")
+        })?;
+        require(
+            retry_cache.key == parent_cache.key
+                && retry_cache.descriptor == parent_cache.descriptor
+                && retry_cache.content_bytes == parent_cache.content_bytes
+                && retry_cache.blob_count == parent_cache.blob_count,
+            "cache-importing retry changed the validated cache graph",
+        )?;
+        retry.record_validated_output(
+            validated.output.clone(),
+            validated.cache,
+            retry.updated_at + Duration::milliseconds(1),
+        )?;
+
+        let registry = RegistryGate::from_environment()?;
+        let publisher = OciRegistryArtifactPublisher::new(
+            Arc::clone(&validator),
+            StdDuration::from_secs(30),
+            registry.insecure_hosts.clone(),
+            OciRegistryArtifactPublisherOptions {
+                registry: registry.authority.clone(),
+                repository_prefix: "a3s-cloud/runtime-buildkit-gates".into(),
+                credential_env: registry.credential.name().into(),
+                allow_anonymous: false,
+            },
+        )?;
+        let target = publisher.target_for(&retry)?;
+        retry.begin_publication(target.clone(), retry.updated_at + Duration::milliseconds(1))?;
+        let request = OciPublicationRequest::new(
+            target.clone(),
+            retry
+                .output
+                .clone()
+                .ok_or_else(|| std::io::Error::other("retry omitted validated OCI output"))?,
+        )?;
+        let published = publisher.publish(&request).await?;
+        require(
+            published.uri == target.uri(),
+            "Runtime BuildKit retry publication changed its digest-only target",
+        )?;
+        require(
+            publisher.find(&request).await? == Some(published.clone()),
+            "Runtime BuildKit retry publication was not remotely verifiable",
+        )?;
+        require(
+            publisher.publish(&request).await? == published,
+            "Runtime BuildKit retry publication replay changed its result",
+        )?;
+        retry.record_published_artifact(
+            published,
+            retry.updated_at + Duration::milliseconds(1),
+        )?;
+        retry.begin_attestation(retry.updated_at + Duration::milliseconds(1))?;
+        let signer = Arc::new(
+            LocalBuildEvidenceSigner::load_or_create(
+                root.path().join("build-evidence/signing-key.pk8"),
+            )
+            .await?,
+        );
+        let evidence_generator = RuntimeBuildEvidenceGenerator::new(
+            Arc::clone(&validator),
+            signer,
+            config.builder.clone(),
+        )?;
+        let evidence = evidence_generator
+            .generate(
+                &retry,
+                &revision,
+                retry.updated_at + Duration::milliseconds(1),
+            )
+            .await?;
+        retry.record_evidence(evidence, retry.updated_at + Duration::milliseconds(1))?;
+        Ok::<(), Box<dyn Error>>(())
+    }
+    .await;
+    let retry_credential_cleanup = require(
+        std::env::var_os(PUBLICATION_CREDENTIAL_ENV).is_none(),
+        "Runtime BuildKit retry publication credential environment was not removed",
+    );
+    let retry_removal = RuntimeActionRequest {
+        schema: RuntimeActionRequest::SCHEMA.into(),
+        request_id: format!("runtime-buildkit-retry-remove-{}", Uuid::now_v7()),
+        unit_id: retry_spec.unit_id,
+        generation: retry_spec.generation,
+        deadline_at_ms: None,
+    };
+    let retry_remove_command = command(
+        node_id,
+        4,
+        NodeCommandPayload::RuntimeRemove {
+            request: retry_removal,
+        },
+    )?;
+    let retry_cleanup = if retry_verification.is_ok() {
+        retry.begin_cleanup(
+            NodeCommandId::from_uuid(retry_remove_command.command_id),
+            retry.updated_at + Duration::milliseconds(1),
+        )
+    } else {
+        Ok(())
+    };
+    let retry_removal_result = executor.execute(retry_remove_command).await;
+    retry_verification?;
+    retry_credential_cleanup?;
+    retry_cleanup?;
+    let retry_removal_ack = retry_removal_result?;
+    require(
+        matches!(
+            retry_removal_ack.outcome,
+            NodeCommandOutcome::Succeeded {
+                result
+            } if matches!(*result, NodeCommandResult::RuntimeRemoved { .. })
+        ),
+        "Runtime BuildKit retry cleanup did not return a removal receipt",
+    )?;
+    match docker
+        .inspect_container(
+            retry_resource_id.as_deref().ok_or_else(|| {
+                std::io::Error::other("Runtime BuildKit retry cleanup omitted resource identity")
+            })?,
+            None,
+        )
+        .await
+    {
+        Err(DockerError::DockerResponseServerError {
+            status_code: 404, ..
+        }) => {}
+        Ok(_) => {
+            return Err(std::io::Error::other(
+                "Runtime BuildKit retry still exists after its removal receipt",
+            )
+            .into())
+        }
+        Err(error) => {
+            return Err(std::io::Error::other(format!(
+                "could not verify Runtime BuildKit retry removal: {error}"
+            ))
+            .into())
+        }
+    }
+    retry.complete(retry.updated_at + Duration::milliseconds(1))?;
+    require(
+        retry.status == BuildRunStatus::Succeeded,
+        "cache-importing retry did not complete publication and evidence",
     )?;
     Ok(())
 }
@@ -674,99 +951,4 @@ fn require(condition: bool, message: impl Into<String>) -> Result<(), Box<dyn Er
     } else {
         Err(std::io::Error::other(message.into()).into())
     }
-}
-
-struct LocalArtifactTransport {
-    artifacts: Arc<dyn INodeArtifactStore>,
-}
-
-impl LocalArtifactTransport {
-    fn new(artifacts: Arc<dyn INodeArtifactStore>) -> Self {
-        Self { artifacts }
-    }
-}
-
-#[async_trait]
-impl NodeArtifactTransport for LocalArtifactTransport {
-    async fn download(
-        &self,
-        request: &NodeArtifactDownloadRequest,
-        destination: &Path,
-        maximum_bytes: u64,
-    ) -> Result<DownloadedNodeArtifact, NodeControlClientError> {
-        request
-            .validate()
-            .map_err(NodeControlClientError::Invalid)?;
-        let artifact = request
-            .artifact()
-            .map_err(NodeControlClientError::Invalid)?;
-        let mut opened = self
-            .artifacts
-            .open(&artifact)
-            .await
-            .map_err(transport_error)?;
-        if opened.descriptor.size_bytes > maximum_bytes {
-            return Err(NodeControlClientError::Invalid(
-                "Runtime BuildKit input exceeds the node transfer bound".into(),
-            ));
-        }
-        let mut destination = tokio::fs::File::create(destination)
-            .await
-            .map_err(io_transport_error)?;
-        let copied = tokio::io::copy(&mut opened.reader, &mut destination)
-            .await
-            .map_err(io_transport_error)?;
-        destination.flush().await.map_err(io_transport_error)?;
-        if copied != opened.descriptor.size_bytes {
-            return Err(NodeControlClientError::Invalid(
-                "Runtime BuildKit input changed during transfer".into(),
-            ));
-        }
-        Ok(DownloadedNodeArtifact { size_bytes: copied })
-    }
-
-    async fn upload(
-        &self,
-        request: &NodeArtifactUploadRequest,
-        source: &Path,
-    ) -> Result<NodeArtifactUploadReceipt, NodeControlClientError> {
-        request
-            .validate()
-            .map_err(NodeControlClientError::Invalid)?;
-        let artifact = ArtifactRef {
-            uri: artifact_uri(&request.digest).map_err(NodeControlClientError::Invalid)?,
-            digest: request.digest.clone(),
-            media_type: request.media_type.clone(),
-        };
-        let descriptor = NodeArtifactDescriptor::new(artifact, request.size_bytes)
-            .map_err(NodeControlClientError::Invalid)?;
-        let file = tokio::fs::File::open(source)
-            .await
-            .map_err(io_transport_error)?;
-        let stored = self
-            .artifacts
-            .put(&descriptor, Box::pin(file))
-            .await
-            .map_err(transport_error)?;
-        Ok(NodeArtifactUploadReceipt {
-            schema: NodeArtifactUploadReceipt::SCHEMA.into(),
-            node_id: request.node_id,
-            command_id: request.command_id,
-            spec_digest: request.spec_digest.clone(),
-            artifact: RuntimeOutputArtifact {
-                name: request.output_name.clone(),
-                artifact: stored.descriptor.artifact,
-                size_bytes: stored.descriptor.size_bytes,
-            },
-            replayed: stored.replayed,
-        })
-    }
-}
-
-fn transport_error(error: impl std::fmt::Display) -> NodeControlClientError {
-    NodeControlClientError::Transport(error.to_string())
-}
-
-fn io_transport_error(error: std::io::Error) -> NodeControlClientError {
-    NodeControlClientError::Transport(error.to_string())
 }

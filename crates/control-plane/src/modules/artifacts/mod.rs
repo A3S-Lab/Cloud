@@ -22,10 +22,10 @@ pub use domain::{
     PublishedOciArtifact, RequestBuildRetryBundle, SlsaBuildDefinition, SlsaBuilder,
     SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
     SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum,
-    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship,
-    ValidatedOciBuildOutput, VerifiedBuildEvidenceSignature, BUILD_EVIDENCE_SCHEMA,
-    DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE,
-    SPDX_VERSION,
+    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedBuildCache,
+    ValidatedOciBuildOutput, ValidatedRuntimeBuildOutput, VerifiedBuildEvidenceSignature,
+    BUILD_CACHE_SCHEMA, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE,
+    SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use infrastructure::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,

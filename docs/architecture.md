@@ -105,7 +105,10 @@ materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
 gate has not been run without provider credentials. External private-provider
 certification remains unimplemented. Signed build evidence is implemented and
-restored fail-closed from PostgreSQL. The published-build
+restored fail-closed from PostgreSQL. Content-addressed BuildKit cache trust is
+implemented: cache-required BuildRuns persist an exact validated cache graph,
+and retries can stage only the matching immediate parent's read-only Artifact.
+The published-build
 deployment handoff is implemented: it
 accepts an artifact-free service template only for an exact tenant-owned
 successful BuildRun whose source revision and remotely verified digest match,
@@ -113,7 +116,9 @@ then reuses `cloud.deployment@2` with durable source/build lineage.
 Registry publication is implemented and covered by hostile-protocol fixtures
 plus an authenticated private Distribution CI gate. The combined
 Runtime/BuildKit/Registry gate provisions the operator-controlled shared socket
-volume and records the exact isolated Task, publication, replay, and cleanup
+volume, validates and removes a cache-producing parent, prunes the BuildKit
+worker, proves a child cache hit from the parent Artifact alone, then records
+the exact isolated Task, publication, signed evidence, replay, and cleanup
 evidence.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
@@ -788,8 +793,9 @@ source reference -> immutable revision -> build/provenance -> artifact digest
 
 External Git inputs resolve a branch or tag once, then build the pinned commit
 with a Runtime Task. OCI inputs resolve a tag once and deploy only the manifest
-digest. Build cache keys include source digest, recipe digest, builder digest,
-platform, and declared inputs.
+digest. Build cache keys include tenant scope, immutable source digest,
+canonical recipe digest and platforms, digest-pinned builder, operator
+BuildKit socket-volume identity, cache schema, and execution-semantics profile.
 
 The GitHub App connection boundary owns installation authorization, not
 repository subscription or checkout credentials. An organization-authorized
@@ -1042,10 +1048,13 @@ remaining reference.
 Docker advertises `MountKind::Artifact` and `OutputArtifacts`; node startup
 binds this manager before it begins command processing. Artifact inputs become
 exact read-only host binds. A successful finite Task is archived through the
-Docker API into its declared named output, then the command executor uploads
-the verified node-local blob and replaces the local URI with the control-plane
-content URI. Exact command replay, node/client restart, inspection, and removal
-retain or retire the same output identity. The registered `cloud.build@3` Flow
+Docker API with the declared directory contents at the Artifact root, then the
+command executor uploads the verified node-local blob and replaces the local
+URI with the control-plane content URI. The safe tar boundary accepts at most
+one leading empty `./` directory marker and does not expose a provider-specific
+basename when the Artifact is mounted again. Exact command replay, node/client
+restart, inspection, and removal retain or retire the same output identity.
+The registered `cloud.build@3` Flow
 now composes this transport with checkout replay, BuildKit execution, OCI
 validation, authoritative registry publication, and cleanup. A separate
 Workload command resolves only the deterministic successful BuildRun for the
@@ -1085,14 +1094,21 @@ materializes the exact commit anonymously or with one ephemeral installation
 token, packages deterministic archive bytes, admits them to the Artifact store,
 then performs an offline checkout receipt replay to reject package-time change.
 Only nodes advertising Task, container isolation, Artifact/Volume mounts,
-output Artifacts, resource controls, `NetworkMode::None`, and the builder media
-type are eligible. The projected Task mounts source and the BuildKit socket
-read-only, drops Runtime networking, and also passes
-`force-network-mode=none`; it accepts no secret, SSH, entitlement, or cache
-channel. Successful output is rehashed from the mTLS Artifact store and its
-complete OCI graph is validated before a deterministic `RuntimeRemove` command
-and checkout deletion. Flow history persists dispatch identities before replay,
-so a crash cannot duplicate apply or removal.
+Tmpfs mounts, output Artifacts, resource controls, `NetworkMode::None`, and the
+builder media type are eligible. The projected Task mounts source and the
+BuildKit socket read-only, drops Runtime networking, and also passes
+`force-network-mode=none`; it accepts no secret, SSH, or entitlement channel.
+Cache-required runs export a BuildKit OCI cache alongside the image output.
+The cache validator requires one exact reachable graph, supported media types,
+no missing or unreferenced blobs, and an empty ingest directory. A retry may
+mount only its immediate terminal parent's key-matching Artifact read-only. It
+copies the validated cache tree into a size-bounded, non-executable tmpfs
+because BuildKit needs a writable local lock, then imports only that staging
+copy. Successful output is rehashed from the mTLS Artifact store and its
+complete OCI and cache graphs are validated before a deterministic
+`RuntimeRemove` command and checkout deletion. Cache reuse never skips
+publication or signed-evidence generation. Flow history persists dispatch
+identities before replay, so a crash cannot duplicate apply or removal.
 
 The Runtime gate uses the exact projector, node command journal, Docker driver,
 Artifact upload, and OCI validator. Its Dockerfile requires a `RUN` environment
@@ -1100,11 +1116,16 @@ without `eth0` and a failed `wget` attempt while the overall build succeeds.
 CI provisions the operator-controlled rootless BuildKit socket volume and
 authenticated registry for this implemented gate. Authoritative registry
 publication, locally verified signed evidence, evidence API/web inspection,
-and explicit published-build deployment are implemented. Cache trust and the
-remaining production fault-injection evidence are later slices. BuildRun
-status, cancellation, retry-as-new-attempt, ordered log page/SSE, and web
-controls are implemented; the log projection reuses Fleet metadata and object
-storage while redacting node and internal Runtime identities.
+and explicit published-build deployment are implemented. The gate cancels and
+removes the cache-producing parent, prunes all worker state, requires the child
+to parse the imported cache manifest and emit a real `CACHED` record,
+revalidates identical OCI/cache graphs, publishes and signs the child, and
+leaves no managed Task. External private-provider certification and the
+remaining production signed-evidence fault-injection evidence are later G0
+slices. BuildRun status, cancellation, retry-as-new-attempt, ordered log
+page/SSE, and web controls are implemented; the log projection reuses Fleet
+metadata and object storage while redacting node and internal Runtime
+identities.
 
 Hosted assets follow a separate publication chain:
 

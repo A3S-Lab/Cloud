@@ -1,7 +1,9 @@
+use super::build_cache_validator::{validate_exported_cache, ValidatedCacheLayout};
 use super::buildkit_build_service::{validate_exported_output, ValidatedBuildkitOutput};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildOutputValidationError, BuildServiceError, IBuildOutputValidator,
-    INodeArtifactStore, NodeArtifactStoreError, ValidatedOciBuildOutput,
+    INodeArtifactStore, NodeArtifactStoreError, ValidatedBuildCache, ValidatedOciBuildOutput,
+    ValidatedRuntimeBuildOutput,
 };
 use crate::modules::sources::domain::BuildPlatform;
 use crate::modules::sources::domain::BuildRecipe;
@@ -33,6 +35,7 @@ pub struct RuntimeBuildOutputValidator {
 pub(super) struct MaterializedRuntimeBuildOutput {
     staging_directory: PathBuf,
     pub(super) validated: ValidatedBuildkitOutput,
+    cache: Option<ValidatedCacheLayout>,
 }
 
 impl MaterializedRuntimeBuildOutput {
@@ -174,26 +177,48 @@ impl RuntimeBuildOutputValidator {
         &self,
         artifact: &BuildArtifact,
         expected_platforms: &[BuildPlatform],
+        expected_cache_key: Option<&str>,
+        allow_unvalidated_cache: bool,
     ) -> Result<MaterializedRuntimeBuildOutput, BuildOutputValidationError> {
         let root = ensure_staging_root(&self.staging_root).await?;
         let staging = root.join(Uuid::now_v7().to_string());
         tokio::fs::create_dir(&staging).await.map_err(storage)?;
         let result = async {
             let exported = self.materialize(artifact, &staging).await?;
-            validate_exported_output(
+            let has_cache = has_cache_export(&exported)?;
+            let cache = match expected_cache_key {
+                Some(key) if has_cache => Some(
+                    validate_exported_cache(&exported, key, self.max_blobs, self.max_oci_bytes)
+                        .await?,
+                ),
+                Some(_) => {
+                    return Err(BuildOutputValidationError::Integrity(
+                        "Runtime build output omitted its required content-addressed cache".into(),
+                    ))
+                }
+                None if has_cache && !allow_unvalidated_cache => {
+                    return Err(BuildOutputValidationError::Integrity(
+                        "legacy Runtime build output unexpectedly contains a cache".into(),
+                    ))
+                }
+                None => None,
+            };
+            let validated = validate_exported_output(
                 &exported,
                 expected_platforms,
                 self.max_blobs,
                 self.max_oci_bytes,
             )
             .await
-            .map_err(map_build_error)
+            .map_err(map_build_error)?;
+            Ok((validated, cache))
         }
         .await;
         match result {
-            Ok(validated) => Ok(MaterializedRuntimeBuildOutput {
+            Ok((validated, cache)) => Ok(MaterializedRuntimeBuildOutput {
                 staging_directory: staging,
                 validated,
+                cache,
             }),
             Err(error) => {
                 let _ = tokio::fs::remove_dir_all(&staging).await;
@@ -210,7 +235,7 @@ impl RuntimeBuildOutputValidator {
             .validate()
             .map_err(BuildOutputValidationError::Invalid)?;
         let materialized = self
-            .materialize_validated(&expected.artifact, &expected.platforms)
+            .materialize_validated(&expected.artifact, &expected.platforms, None, true)
             .await?;
         if validated_output(&expected.artifact, &materialized.validated) != *expected {
             materialized.cleanup().await;
@@ -228,17 +253,32 @@ impl IBuildOutputValidator for RuntimeBuildOutputValidator {
         &self,
         artifact: &BuildArtifact,
         recipe: &BuildRecipe,
-    ) -> Result<ValidatedOciBuildOutput, BuildOutputValidationError> {
+        expected_cache_key: Option<&str>,
+    ) -> Result<ValidatedRuntimeBuildOutput, BuildOutputValidationError> {
         let recipe = recipe
             .clone()
             .validate()
             .map_err(BuildOutputValidationError::Invalid)?;
         let materialized = self
-            .materialize_validated(artifact, recipe.platforms())
+            .materialize_validated(artifact, recipe.platforms(), expected_cache_key, false)
             .await?;
         let output = validated_output(artifact, &materialized.validated);
+        let cache = materialized
+            .cache
+            .as_ref()
+            .map(|cache| {
+                ValidatedBuildCache::new(
+                    expected_cache_key.expect("validated cache key"),
+                    artifact.clone(),
+                    cache.descriptor.clone(),
+                    cache.content_bytes,
+                    cache.blob_count,
+                )
+                .map_err(BuildOutputValidationError::Integrity)
+            })
+            .transpose()?;
         materialized.cleanup().await;
-        Ok(output)
+        Ok(ValidatedRuntimeBuildOutput { output, cache })
     }
 }
 
@@ -276,15 +316,26 @@ fn extract_archive(
     let mut archive = tar::Archive::new(file);
     let mut paths = BTreeMap::<PathBuf, bool>::new();
     let mut expanded = 0_u64;
-    for (index, entry) in archive.entries().map_err(storage)?.enumerate() {
-        if index >= max_entries {
+    let mut has_explicit_root = false;
+    for entry in archive.entries().map_err(storage)? {
+        let mut entry = entry.map_err(storage)?;
+        let raw_path = entry.path().map_err(storage)?;
+        let kind = entry.header().entry_type();
+        if is_explicit_archive_root(&raw_path) {
+            if has_explicit_root || !paths.is_empty() || !kind.is_dir() || entry.size() != 0 {
+                return Err(BuildOutputValidationError::Integrity(
+                    "Runtime build output has an invalid explicit root entry".into(),
+                ));
+            }
+            has_explicit_root = true;
+            continue;
+        }
+        if paths.len() >= max_entries {
             return Err(BuildOutputValidationError::Invalid(
                 "Runtime build output exceeds its entry bound".into(),
             ));
         }
-        let mut entry = entry.map_err(storage)?;
-        let path = normalize_path(&entry.path().map_err(storage)?)?;
-        let kind = entry.header().entry_type();
+        let path = normalize_path(&raw_path)?;
         let is_directory = kind.is_dir();
         if !is_directory && !kind.is_file() {
             return Err(BuildOutputValidationError::Integrity(
@@ -373,21 +424,57 @@ fn has_exact_export_entries(root: &Path) -> Result<bool, BuildOutputValidationEr
         .map(|entry| entry.map(|entry| entry.file_name()).map_err(storage))
         .collect::<Result<Vec<_>, _>>()?;
     names.sort();
-    if names
-        != [
-            std::ffi::OsString::from("buildkit-metadata.json"),
-            std::ffi::OsString::from("oci"),
-        ]
-    {
+    let legacy = [
+        std::ffi::OsString::from("buildkit-metadata.json"),
+        std::ffi::OsString::from("oci"),
+    ];
+    let cached = [
+        std::ffi::OsString::from("build-cache.json"),
+        std::ffi::OsString::from("buildkit-metadata.json"),
+        std::ffi::OsString::from("cache"),
+        std::ffi::OsString::from("oci"),
+    ];
+    if names != legacy && names != cached {
         return Ok(false);
     }
     let metadata =
         std::fs::symlink_metadata(root.join("buildkit-metadata.json")).map_err(storage)?;
     let layout = std::fs::symlink_metadata(root.join("oci")).map_err(storage)?;
-    Ok(metadata.is_file()
+    let cache_shape = if names == cached {
+        let receipt = std::fs::symlink_metadata(root.join("build-cache.json")).map_err(storage)?;
+        let cache = std::fs::symlink_metadata(root.join("cache")).map_err(storage)?;
+        receipt.is_file()
+            && !receipt.file_type().is_symlink()
+            && cache.is_dir()
+            && !cache.file_type().is_symlink()
+    } else {
+        true
+    };
+    Ok(cache_shape
+        && metadata.is_file()
         && !metadata.file_type().is_symlink()
         && layout.is_dir()
         && !layout.file_type().is_symlink())
+}
+
+fn has_cache_export(root: &Path) -> Result<bool, BuildOutputValidationError> {
+    let receipt = std::fs::symlink_metadata(root.join("build-cache.json"));
+    let cache = std::fs::symlink_metadata(root.join("cache"));
+    match (receipt, cache) {
+        (Ok(receipt), Ok(cache)) => Ok(receipt.is_file()
+            && !receipt.file_type().is_symlink()
+            && cache.is_dir()
+            && !cache.file_type().is_symlink()),
+        (Err(receipt), Err(cache))
+            if receipt.kind() == std::io::ErrorKind::NotFound
+                && cache.kind() == std::io::ErrorKind::NotFound =>
+        {
+            Ok(false)
+        }
+        _ => Err(BuildOutputValidationError::Integrity(
+            "Runtime build cache export is incomplete".into(),
+        )),
+    }
 }
 
 fn normalize_path(path: &Path) -> Result<PathBuf, BuildOutputValidationError> {
@@ -417,6 +504,13 @@ fn normalize_path(path: &Path) -> Result<PathBuf, BuildOutputValidationError> {
         ));
     }
     Ok(normalized)
+}
+
+fn is_explicit_archive_root(path: &Path) -> bool {
+    path.as_os_str().is_empty()
+        || path
+            .components()
+            .all(|component| matches!(component, Component::CurDir))
 }
 
 fn validate_root(path: &Path) -> Result<(), String> {

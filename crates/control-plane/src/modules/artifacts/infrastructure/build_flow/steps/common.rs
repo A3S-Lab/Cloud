@@ -1,4 +1,4 @@
-use super::super::task_spec::project_task_spec;
+use super::super::task_spec::{build_cache_key, project_task_spec};
 use super::super::types::BuildFlowInput;
 use super::super::{flow_error, BuildFlowRuntime};
 use crate::modules::artifacts::domain::BuildRun;
@@ -50,13 +50,53 @@ pub(super) async fn load_revision(
     Ok(revision)
 }
 
-pub(super) fn project_spec(
+pub(super) async fn project_spec(
     runtime: &BuildFlowRuntime,
     build: &BuildRun,
     revision: &ExternalSourceRevision,
 ) -> a3s_flow::Result<RuntimeUnitSpec> {
-    project_task_spec(&runtime.config, build, revision)
+    let cache = load_parent_cache(runtime, build, revision).await?;
+    project_task_spec(&runtime.config, build, revision, cache.as_ref())
         .map_err(|error| flow_error("could not project build Runtime Task", error))
+}
+
+async fn load_parent_cache(
+    runtime: &BuildFlowRuntime,
+    build: &BuildRun,
+    revision: &ExternalSourceRevision,
+) -> a3s_flow::Result<Option<crate::modules::artifacts::domain::ValidatedBuildCache>> {
+    if !build.cache_required {
+        return Ok(None);
+    }
+    let Some(parent_id) = build.retry_of_build_run_id else {
+        return Ok(None);
+    };
+    let parent = runtime
+        .builds
+        .find(build.organization_id, parent_id)
+        .await
+        .map_err(|error| flow_error("could not load parent build cache", error))?;
+    if parent.organization_id != build.organization_id
+        || parent.project_id != build.project_id
+        || parent.environment_id != build.environment_id
+        || parent.source_revision_id != build.source_revision_id
+        || parent.id != parent_id
+        || parent.attempt.checked_add(1) != Some(build.attempt)
+        || !parent.status.is_terminal()
+    {
+        return Err(FlowError::Runtime(
+            "parent build cache does not match retry ownership".into(),
+        ));
+    }
+    let Some(cache) = parent.cache else {
+        return Ok(None);
+    };
+    let expected = build_cache_key(&runtime.config, build, revision)
+        .map_err(|error| flow_error("could not derive build cache identity", error))?;
+    if cache.key != expected {
+        return Ok(None);
+    }
+    Ok(Some(cache))
 }
 
 pub(super) fn next_poll(

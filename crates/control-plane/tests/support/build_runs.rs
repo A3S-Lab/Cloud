@@ -9,7 +9,7 @@ use a3s_cloud_control_plane::modules::artifacts::domain::{
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
-    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
+    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact, ValidatedBuildCache,
     ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::operations::{
@@ -242,8 +242,23 @@ pub async fn exercise_build_run_persistence(
         content_bytes: 2_048,
         blob_count: 3,
     };
+    let cache = ValidatedBuildCache::new(
+        format!("sha256:{}", "f".repeat(64)),
+        output.artifact.clone(),
+        OciDescriptor::new(
+            "application/vnd.oci.image.index.v1+json",
+            format!("sha256:{}", "9".repeat(64)),
+            256,
+        )?,
+        1_024,
+        2,
+    )?;
     let mut validated = validating.clone();
-    validated.record_validated_output(output, validating.updated_at + Duration::milliseconds(1))?;
+    validated.record_validated_output(
+        output,
+        Some(cache),
+        validating.updated_at + Duration::milliseconds(1),
+    )?;
     let validated = builds.save(validated, validating.aggregate_version).await?;
     let target = OciPublicationTarget::new(
         "registry.example.test",

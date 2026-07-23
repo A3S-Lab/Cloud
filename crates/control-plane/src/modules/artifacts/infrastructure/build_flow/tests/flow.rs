@@ -1,16 +1,18 @@
+use super::super::task_spec::CACHE_IMPORT_ROOT;
 use super::support::*;
 use crate::modules::artifacts::domain::{
-    BuildOutputValidationError, BuildRunStatus, IBuildRunRepository,
+    BuildEvidenceGenerationError, BuildOutputValidationError, BuildRun, BuildRunStatus,
+    IBuildRunRepository, RequestBuildRetryBundle,
 };
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, OrganizationId, ProjectId, SourceRevisionId,
+    EnvironmentId, IdempotencyRequest, NodeCommandId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
 };
 use a3s_flow::{FlowEngine, FlowError, FlowEventStore, WorkflowRunStatus};
-use a3s_runtime::contract::{NetworkMode, RuntimeRemoval};
+use a3s_runtime::contract::{NetworkMode, RuntimeMountSource, RuntimeRemoval};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -209,6 +211,128 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
     assert_eq!(fixture.publisher.publications(), 1);
     assert_eq!(fixture.evidence.generations(), 1);
     assert_eq!(fixture.inputs.removals(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn retry_imports_only_its_verified_parent_cache_as_a_read_only_artifact(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = BuildFixture::create(None).await?;
+    fixture
+        .evidence
+        .fail_with(BuildEvidenceGenerationError::Integrity(
+            "test attestation failure after cache validation".into(),
+        ));
+    let parent_run_id = fixture.build.operation_id.to_string();
+    let engine = FlowEngine::in_memory(Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(parent_run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    let apply_lease = lease(
+        &fixture.nodes,
+        fixture.node_id,
+        fixture.agent_instance_id,
+        0,
+    )
+    .await?;
+    let apply = apply_lease.commands.first().ok_or("missing parent apply")?;
+    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+        return Err("parent build command is not Runtime apply".into());
+    };
+    record_observation(
+        &fixture.nodes,
+        fixture.node_id,
+        fixture.agent_instance_id,
+        &fixture.capabilities,
+        apply,
+        succeeded_observation(&request.spec, fixture.outputs.artifact())?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let cleanup_lease = lease(
+        &fixture.nodes,
+        fixture.node_id,
+        fixture.agent_instance_id,
+        apply.sequence,
+    )
+    .await?;
+    let cleanup = cleanup_lease
+        .commands
+        .first()
+        .ok_or("missing parent cleanup")?;
+    let NodeCommandPayload::RuntimeRemove { request } = &cleanup.payload else {
+        return Err("parent cleanup command is not Runtime remove".into());
+    };
+    acknowledge_removal(&fixture, cleanup, request).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    let parent = fixture
+        .builds
+        .find(fixture.organization_id, fixture.build.id)
+        .await?;
+    assert_eq!(parent.status, BuildRunStatus::Failed);
+    let parent_cache = parent.cache.clone().ok_or("parent cache missing")?;
+
+    let retry = BuildRun::retry(&parent, Utc::now().max(parent.updated_at))?;
+    let idempotency = IdempotencyRequest::new(
+        format!("build-runs/{}/retry", parent.id),
+        "cache-retry",
+        parent.id.to_string().as_bytes(),
+    )?;
+    let retry = fixture
+        .builds
+        .request_retry(RequestBuildRetryBundle {
+            retry,
+            expected_previous_version: parent.aggregate_version,
+            idempotency,
+        })
+        .await?
+        .value;
+    let retry_run_id = retry.operation_id.to_string();
+    engine
+        .start_with_id(
+            retry_run_id,
+            workflow_spec(),
+            serde_json::json!({
+                "organizationId": retry.organization_id,
+                "buildRunId": retry.id,
+            }),
+        )
+        .await?;
+    let retry_lease = lease(
+        &fixture.nodes,
+        fixture.node_id,
+        fixture.agent_instance_id,
+        cleanup.sequence,
+    )
+    .await?;
+    let retry_apply = retry_lease.commands.first().ok_or("missing retry apply")?;
+    let NodeCommandPayload::RuntimeApply { request } = &retry_apply.payload else {
+        return Err("retry build command is not Runtime apply".into());
+    };
+    assert_eq!(request.spec.mounts.len(), 4);
+    assert!(request
+        .spec
+        .process
+        .args
+        .iter()
+        .any(|argument| argument == "--import-cache"));
+    assert!(matches!(
+        &request.spec.mounts[2].source,
+        RuntimeMountSource::Artifact { artifact }
+            if artifact.digest == parent_cache.artifact.digest
+                && request.spec.mounts[2].read_only
+    ));
+    assert!(matches!(
+        &request.spec.mounts[3].source,
+        RuntimeMountSource::Tmpfs { size_bytes }
+            if *size_bytes == parent_cache.artifact.size_bytes
+                && request.spec.mounts[3].target == CACHE_IMPORT_ROOT
+                && !request.spec.mounts[3].read_only
+    ));
     Ok(())
 }
 

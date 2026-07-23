@@ -25,6 +25,8 @@ const OCI_INDEX: &str = "application/vnd.oci.image.index.v1+json";
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 const OCI_CONFIG: &str = "application/vnd.oci.image.config.v1+json";
 const OCI_LAYER: &str = "application/vnd.oci.image.layer.v1.tar";
+const BUILDKIT_CACHE_CONFIG: &str = "application/vnd.buildkit.cacheconfig.v0";
+const BUILDKIT_CACHE_LAYER: &str = "application/vnd.oci.image.layer.v1.tar+gzip";
 
 #[tokio::test]
 async fn runtime_output_revalidates_the_complete_oci_graph_and_stored_bytes(
@@ -48,7 +50,7 @@ async fn runtime_output_revalidates_the_complete_oci_graph_and_stored_bytes(
     )?;
     let recipe = recipe()?;
 
-    let validated = validator.validate(&artifact, &recipe).await?;
+    let validated = validator.validate(&artifact, &recipe, None).await?.output;
     assert_eq!(validated.descriptor, descriptor);
     assert_eq!(validated.platforms, recipe.platforms());
     assert_eq!(validated.blob_count, 3);
@@ -60,7 +62,7 @@ async fn runtime_output_revalidates_the_complete_oci_graph_and_stored_bytes(
     bytes[0] ^= 0xff;
     std::fs::write(blob, bytes)?;
     assert!(matches!(
-        validator.validate(&artifact, &recipe).await,
+        validator.validate(&artifact, &recipe, None).await,
         Err(BuildOutputValidationError::Integrity(_))
     ));
     Ok(())
@@ -100,7 +102,135 @@ async fn runtime_output_rejects_non_file_archive_entries() -> Result<(), Box<dyn
         1024 * 1024,
     )?;
     assert!(matches!(
-        validator.validate(&artifact, &recipe()?).await,
+        validator.validate(&artifact, &recipe()?, None).await,
+        Err(BuildOutputValidationError::Integrity(_))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn runtime_output_accepts_only_the_expected_complete_buildkit_cache(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let cache_key = format!("sha256:{}", "7".repeat(64));
+    let export = root.path().join("export");
+    create_export(&export)?;
+    create_cache_export(&export, &cache_key)?;
+    let archive = root.path().join("cached-output.tar");
+    archive_directory(&export, &archive)?;
+    let store = Arc::new(LocalNodeArtifactStore::new(
+        root.path().join("store"),
+        64 * 1024 * 1024,
+    )?);
+    let artifact = admit(&store, &archive).await?;
+    let validator = RuntimeBuildOutputValidator::new(
+        store,
+        root.path().join("validation"),
+        64 * 1024 * 1024,
+        1_024,
+        64 * 1024 * 1024,
+        64,
+        64 * 1024 * 1024,
+    )?;
+
+    let validated = validator
+        .validate(&artifact, &recipe()?, Some(&cache_key))
+        .await?;
+    let cache = validated.cache.ok_or("validated output omitted cache")?;
+    assert_eq!(cache.key, cache_key);
+    assert_eq!(cache.artifact, artifact);
+    assert_eq!(
+        cache.descriptor.media_type(),
+        "application/vnd.oci.image.index.v1+json"
+    );
+    assert_eq!(cache.blob_count, 3);
+
+    assert!(matches!(
+        validator.validate(&artifact, &recipe()?, None).await,
+        Err(BuildOutputValidationError::Integrity(_))
+    ));
+    assert!(matches!(
+        validator
+            .validate(
+                &artifact,
+                &recipe()?,
+                Some(&format!("sha256:{}", "8".repeat(64))),
+            )
+            .await,
+        Err(BuildOutputValidationError::Integrity(_))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn runtime_output_rejects_cache_pollution_and_internal_digest_mismatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let cache_key = format!("sha256:{}", "7".repeat(64));
+    let store = Arc::new(LocalNodeArtifactStore::new(
+        root.path().join("store"),
+        64 * 1024 * 1024,
+    )?);
+    let validator = RuntimeBuildOutputValidator::new(
+        store.clone(),
+        root.path().join("validation"),
+        64 * 1024 * 1024,
+        1_024,
+        64 * 1024 * 1024,
+        64,
+        64 * 1024 * 1024,
+    )?;
+
+    let polluted = root.path().join("polluted");
+    create_export(&polluted)?;
+    create_cache_export(&polluted, &cache_key)?;
+    std::fs::write(
+        polluted.join("cache/blobs/sha256").join("0".repeat(64)),
+        b"unreferenced cache content",
+    )?;
+    let polluted_archive = root.path().join("polluted.tar");
+    archive_directory(&polluted, &polluted_archive)?;
+    let polluted_artifact = admit(&store, &polluted_archive).await?;
+    assert!(matches!(
+        validator
+            .validate(&polluted_artifact, &recipe()?, Some(&cache_key))
+            .await,
+        Err(BuildOutputValidationError::Integrity(_))
+    ));
+
+    let incomplete_ingest = root.path().join("incomplete-ingest");
+    create_export(&incomplete_ingest)?;
+    create_cache_export(&incomplete_ingest, &cache_key)?;
+    std::fs::write(
+        incomplete_ingest.join("cache/ingest/partial"),
+        b"incomplete cache ingestion",
+    )?;
+    let incomplete_ingest_archive = root.path().join("incomplete-ingest.tar");
+    archive_directory(&incomplete_ingest, &incomplete_ingest_archive)?;
+    let incomplete_ingest_artifact = admit(&store, &incomplete_ingest_archive).await?;
+    assert!(matches!(
+        validator
+            .validate(&incomplete_ingest_artifact, &recipe()?, Some(&cache_key))
+            .await,
+        Err(BuildOutputValidationError::Integrity(_))
+    ));
+
+    let mismatched = root.path().join("mismatched");
+    create_export(&mismatched)?;
+    let layer_digest = create_cache_export(&mismatched, &cache_key)?;
+    let layer = mismatched
+        .join("cache/blobs/sha256")
+        .join(layer_digest.strip_prefix("sha256:").ok_or("layer digest")?);
+    let mut bytes = std::fs::read(&layer)?;
+    bytes[0] ^= 0xff;
+    std::fs::write(layer, bytes)?;
+    let mismatched_archive = root.path().join("mismatched.tar");
+    archive_directory(&mismatched, &mismatched_archive)?;
+    let mismatched_artifact = admit(&store, &mismatched_archive).await?;
+    assert!(matches!(
+        validator
+            .validate(&mismatched_artifact, &recipe()?, Some(&cache_key))
+            .await,
         Err(BuildOutputValidationError::Integrity(_))
     ));
     Ok(())
@@ -130,7 +260,10 @@ async fn runtime_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_
         64 * 1024 * 1024,
     )?);
     let recipe = recipe()?;
-    let output = validator.validate(&runtime_artifact, &recipe).await?;
+    let output = validator
+        .validate(&runtime_artifact, &recipe, None)
+        .await?
+        .output;
     assert_eq!(output.descriptor, descriptor);
 
     let organization_id = OrganizationId::new();
@@ -155,6 +288,7 @@ async fn runtime_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_
         source_revision_id,
         requested_at,
     );
+    build.cache_required = false;
     build.begin_preparation(requested_at + Duration::milliseconds(1))?;
     build.record_input(
         format!("sha256:{}", "1".repeat(64)),
@@ -171,7 +305,7 @@ async fn runtime_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_
         requested_at + Duration::milliseconds(4),
     )?;
     build.begin_validation(runtime_artifact, requested_at + Duration::milliseconds(5))?;
-    build.record_validated_output(output, requested_at + Duration::milliseconds(6))?;
+    build.record_validated_output(output, None, requested_at + Duration::milliseconds(6))?;
     let target = OciPublicationTarget::new(
         "registry.example.test",
         format!("a3s-cloud/builds/{}", build.id),
@@ -343,8 +477,62 @@ fn create_export(
     Ok(descriptor)
 }
 
+fn create_cache_export(
+    export: &Path,
+    cache_key: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let cache = export.join("cache");
+    let blobs = cache.join("blobs/sha256");
+    std::fs::create_dir_all(&blobs)?;
+    std::fs::create_dir_all(cache.join("ingest"))?;
+    std::fs::write(
+        cache.join("oci-layout"),
+        br#"{"imageLayoutVersion":"1.0.0"}"#,
+    )?;
+    std::fs::write(
+        export.join("build-cache.json"),
+        serde_json::to_vec(&json!({
+            "schema": "a3s.cloud.build-cache.v1",
+            "key": cache_key,
+        }))?,
+    )?;
+    let layer = write_blob(
+        &blobs,
+        BUILDKIT_CACHE_LAYER,
+        b"trusted BuildKit cache layer\n",
+    )?;
+    let config = write_json_blob(
+        &blobs,
+        BUILDKIT_CACHE_CONFIG,
+        &json!({
+            "layers": [{"blob": layer["digest"]}],
+            "records": [],
+        }),
+    )?;
+    let manifest = write_json_blob(
+        &blobs,
+        OCI_MANIFEST,
+        &json!({
+            "schemaVersion": 2,
+            "mediaType": OCI_MANIFEST,
+            "config": config,
+            "layers": [layer],
+        }),
+    )?;
+    std::fs::write(
+        cache.join("index.json"),
+        serde_json::to_vec(&json!({
+            "schemaVersion": 2,
+            "mediaType": OCI_INDEX,
+            "manifests": [manifest],
+        }))?,
+    )?;
+    Ok(layer["digest"].as_str().ok_or("cache layer digest")?.into())
+}
+
 fn archive_directory(export: &Path, destination: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Builder::new(File::create(destination)?);
+    builder.append_dir(".", export)?;
     for directory in ["oci", "oci/blobs", "oci/blobs/sha256"] {
         builder.append_dir(directory, export.join(directory))?;
     }
@@ -362,6 +550,32 @@ fn archive_directory(export: &Path, destination: &Path) -> Result<(), Box<dyn st
             blob.path(),
             Path::new("oci/blobs/sha256").join(blob.file_name()),
         )?;
+    }
+    if export.join("cache").is_dir() {
+        for directory in ["cache", "cache/blobs", "cache/blobs/sha256", "cache/ingest"] {
+            builder.append_dir(directory, export.join(directory))?;
+        }
+        builder.append_path_with_name(export.join("build-cache.json"), "build-cache.json")?;
+        builder.append_path_with_name(export.join("cache/oci-layout"), "cache/oci-layout")?;
+        builder.append_path_with_name(export.join("cache/index.json"), "cache/index.json")?;
+        let mut cache_blobs =
+            std::fs::read_dir(export.join("cache/blobs/sha256"))?.collect::<Result<Vec<_>, _>>()?;
+        cache_blobs.sort_by_key(|entry| entry.file_name());
+        for blob in cache_blobs {
+            builder.append_path_with_name(
+                blob.path(),
+                Path::new("cache/blobs/sha256").join(blob.file_name()),
+            )?;
+        }
+        let mut ingest_entries =
+            std::fs::read_dir(export.join("cache/ingest"))?.collect::<Result<Vec<_>, _>>()?;
+        ingest_entries.sort_by_key(|entry| entry.file_name());
+        for entry in ingest_entries {
+            builder.append_path_with_name(
+                entry.path(),
+                Path::new("cache/ingest").join(entry.file_name()),
+            )?;
+        }
     }
     builder.finish()?;
     Ok(())
