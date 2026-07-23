@@ -1,0 +1,233 @@
+@media (max-width: 1120px) {
+  .roadmap-readout {
+    gap: 10px;
+  }
+
+  .roadmap-readout span {
+    font-size: 8px;
+  }
+
+  .simulation-panel {
+    width: calc(100% - 410px);
+  }
+
+  .node-inspector {
+    width: 350px;
+  }
+}
+
+@media (max-width: 880px) {
+  .top-bar {
+    gap: 14px;
+  }
+
+  .brand-lockup {
+    min-width: 205px;
+  }
+
+  .roadmap-readout span:nth-child(3) {
+    display: none;
+  }
+
+  .simulation-panel {
+    width: calc(100% - 370px);
+  }
+
+  .simulation-copy p,
+  .simulation-intro {
+    display: none;
+  }
+
+  .node-inspector {
+    width: 330px;
+  }
+
+  .interaction-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-shell {
+    min-height: 480px;
+  }
+
+  .top-bar {
+    height: 56px;
+    flex: 0 0 56px;
+    padding: 0 13px;
+  }
+
+  .brand-lockup {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .brand-lockup small,
+  .roadmap-readout,
+  .github-link span {
+    display: none;
+  }
+
+  .github-link {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .component-picker {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    padding: 10px;
+  }
+
+  .component-picker label {
+    display: none;
+  }
+
+  .select-wrap {
+    margin-top: 0;
+  }
+
+  .component-picker select {
+    height: 34px;
+  }
+
+  .status-legend,
+  .topology-legend {
+    display: none;
+  }
+
+  .simulation-panel {
+    top: 64px;
+    right: 10px;
+    bottom: auto;
+    left: 10px;
+    width: auto;
+    max-height: 272px;
+    padding: 9px;
+  }
+
+  .simulation-panel .panel-label,
+  .simulation-intro,
+  .path-filter {
+    display: none;
+  }
+
+  .simulation-heading {
+    justify-content: flex-end;
+  }
+
+  .simulation-entry-row {
+    margin-top: 0;
+  }
+
+  .scenario-buttons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .scenario-buttons button {
+    height: 29px;
+    padding: 0 4px;
+    font-size: 8px;
+  }
+
+  .simulation-stage {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px;
+  }
+
+  .simulation-copy p {
+    display: none;
+  }
+
+  .view-controls {
+    top: 292px;
+    right: 10px;
+    left: auto;
+    transform: none;
+  }
+
+  .view-controls button {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .view-controls button span {
+    display: none;
+  }
+
+  .node-inspector {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: min(50dvh, 460px);
+    padding: 14px 16px max(16px, env(safe-area-inset-bottom));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    box-shadow: 0 -24px 70px rgb(0 0 0 / 55%);
+  }
+
+  .inspector-drag-handle {
+    display: block;
+    width: 34px;
+    height: 3px;
+    flex: 0 0 3px;
+    margin: -5px auto 9px;
+    border-radius: 4px;
+    background: var(--cloud-line-strong);
+  }
+
+  .inspector-heading h2 {
+    font-size: 21px;
+  }
+
+  .inspector-summary {
+    margin-top: 12px;
+  }
+
+  .inspector-section {
+    margin-top: 13px;
+    padding-top: 12px;
+  }
+
+  .connection-list {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .webgl-fallback {
+    inset: 8px;
+    padding: 16px;
+  }
+}
+
+@media (max-height: 690px) and (min-width: 701px) {
+  .status-legend,
+  .simulation-copy p,
+  .simulation-intro {
+    display: none;
+  }
+
+  .component-picker,
+  .simulation-panel {
+    padding: 10px;
+  }
+
+  .inspector-section {
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+}
