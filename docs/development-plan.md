@@ -761,7 +761,7 @@ The current independently testable G0 slices are implemented:
   replay changes no timestamp or version.
 - Concurrent PostgreSQL reservation creates one build, and a dedicated
   reconciler repairs the source-commit-to-operation crash gap by enqueuing the
-  same `cloud.build@2` request. The isolated PostgreSQL gate covers concurrent
+  same `cloud.build@3` request. The isolated PostgreSQL gate covers concurrent
   reservation, crash-gap repair, exact operation replay, retry concurrency,
   one-child parent lineage, stale writes, forged ownership,
   tenant/environment isolation, the complete publication state round trip, and
@@ -819,11 +819,12 @@ The current independently testable G0 slices are implemented:
   graph validation, deterministic publication targeting, authenticated push,
   remote verification, idempotent replay, removal, and terminal BuildRun
   completion.
-- `cloud.build@1/@2` are registered in the production Flow router alongside
-  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. New work uses v2; v1 is
-  retained only to drain upgrade-invalidated builds without rewriting
-  persisted history. The worker-role BuildRun reconciler reserves revisions
-  and enqueues their deterministic operation before generic Flow coordination.
+- `cloud.build@1/@2/@3` are registered in the production Flow router alongside
+  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. New work uses v3; v2
+  replays publication-era runs without evidence, while v1 drains
+  upgrade-invalidated pre-publication runs without rewriting persisted history.
+  The worker-role BuildRun reconciler reserves revisions and enqueues their
+  deterministic operation before generic Flow coordination.
 - `SourceBuildInputPreparer` performs exact tenant/revision checks, ephemeral
   private checkout when needed, deterministic directory packaging, Artifact
   admission, and credential-free offline receipt replay to reject package-time

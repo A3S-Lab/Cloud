@@ -140,7 +140,7 @@ registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
 The implemented G0 build boundary lives here rather than in Sources or Runtime.
-Its typed Build service and `cloud.build@2` Flow bind a build ID, checked-out
+Its typed Build service and `cloud.build@3` Flow bind a build ID, checked-out
 content digest, recipe, Runtime Task identity, and validated OCI root descriptor
 to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
 and requested platform before accepting the result. Registry publication state
@@ -799,7 +799,7 @@ deterministic initial `BuildRun` per accepted source revision plus a linear
 sequence of deterministic retry attempts. Every retry has a fresh BuildRun and
 Operation ID, records its attempt and immediate parent BuildRun, and retains the
 exact source revision. Each aggregate binds tenant/environment ownership, the
-exact `cloud.build@2` operation, immutable input and Runtime artifact
+exact `cloud.build@3` operation, immutable input and Runtime artifact
 identities, assigned node and command identities, validated OCI output,
 publication target/result, verified build evidence, terminal outcome, and
 cleanup. Concurrent PostgreSQL
