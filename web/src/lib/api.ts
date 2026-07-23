@@ -9,6 +9,7 @@ import type {
   Operation,
   Organization,
   Project,
+  RetryBuildRunResult,
   Route,
   ServiceTemplate,
   SourceWorkloadTemplate,
@@ -181,6 +182,19 @@ export class CloudApi {
   ): Promise<CancelBuildRunResult> {
     return this.delete(
       `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  retryBuildRun(
+    organizationId: string,
+    buildRunId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<RetryBuildRunResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}/retry`,
       idempotencyKey,
       signal
     );

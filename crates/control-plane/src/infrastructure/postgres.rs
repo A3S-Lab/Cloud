@@ -293,6 +293,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/029_github_provider_authority.sql"
             )),
         ),
+        Migration::new(
+            "030",
+            "build run attempts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/030_build_run_attempts.sql"
+            )),
+        ),
     ]
 }
 

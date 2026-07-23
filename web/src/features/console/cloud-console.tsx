@@ -58,6 +58,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const [loading, setLoading] = useState(true);
   const [cancellingDeploymentId, setCancellingDeploymentId] = useState<string | null>(null);
   const [cancellingBuildRunId, setCancellingBuildRunId] = useState<string | null>(null);
+  const [retryingBuildRunId, setRetryingBuildRunId] = useState<string | null>(null);
   const [stoppingWorkloadId, setStoppingWorkloadId] = useState<string | null>(null);
 
   const acceptSnapshot = useCallback((snapshot: Operation[]) => {
@@ -320,6 +321,21 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     }
   };
 
+  const retryBuildRun = async (buildRunId: string) => {
+    if (!organizationId) return;
+    setRetryingBuildRunId(buildRunId);
+    try {
+      const retry = await api.retryBuildRun(organizationId, buildRunId, `web-retry-build:${buildRunId}`);
+      await refreshAuthoritativeProjections();
+      setSelectedBuildRunId(retry.buildRunId);
+      setError(null);
+    } catch (cause) {
+      setError(messageFrom(cause));
+    } finally {
+      setRetryingBuildRunId(null);
+    }
+  };
+
   const dismissTerminalOperations = (operationIds: string[]) => {
     setDismissedOperationIds((current) => {
       const next = new Set(current);
@@ -412,8 +428,10 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           buildRuns={buildRuns}
           selectedBuildRunId={selectedBuildRunId || null}
           cancellingBuildRunId={cancellingBuildRunId}
+          retryingBuildRunId={retryingBuildRunId}
           onSelect={setSelectedBuildRunId}
           onCancel={cancelBuildRun}
+          onRetry={retryBuildRun}
         />
 
         <BuildRunLogPanel api={api} organizationId={organizationId || null} buildRun={selectedBuildRun} />

@@ -1,6 +1,8 @@
-use crate::modules::artifacts::domain::repositories::validate_build_run_transition;
+use crate::modules::artifacts::domain::repositories::{
+    validate_build_run_retry, validate_build_run_transition,
+};
 use crate::modules::artifacts::domain::{
-    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle,
+    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use crate::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
@@ -22,6 +24,7 @@ struct State {
     revisions: BTreeMap<SourceRevisionId, PendingRevision>,
     started_operations: BTreeSet<BuildRunId>,
     cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
+    retry_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
 }
 
 #[derive(Clone)]
@@ -143,10 +146,11 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             .await
             .builds
             .values()
-            .find(|build| {
+            .filter(|build| {
                 build.organization_id == organization_id
                     && build.source_revision_id == source_revision_id
             })
+            .max_by_key(|build| build.attempt)
             .cloned())
     }
 
@@ -170,7 +174,8 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             })
             .cloned()
             .collect::<Vec<_>>();
-        builds.sort_by_key(|build| std::cmp::Reverse((build.requested_at, build.id)));
+        builds
+            .sort_by_key(|build| std::cmp::Reverse((build.requested_at, build.attempt, build.id)));
         builds.truncate(limit.max(1));
         Ok(builds)
     }
@@ -220,6 +225,73 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         let state = self.state.read().await;
         let key = (idempotency.scope.clone(), idempotency.key.clone());
         let Some((digest, build_run)) = state.cancellation_idempotency.get(&key) else {
+            return Ok(None);
+        };
+        if digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        Ok(Some(build_run.clone()))
+    }
+
+    async fn request_retry(
+        &self,
+        request: RequestBuildRetryBundle,
+    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let key = (
+            request.idempotency.scope.clone(),
+            request.idempotency.key.clone(),
+        );
+        if let Some((digest, build_run)) = state.retry_idempotency.get(&key) {
+            if digest != &request.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: build_run.clone(),
+                replayed: true,
+            });
+        }
+        let previous_id = request
+            .retry
+            .retry_of_build_run_id
+            .ok_or_else(|| RepositoryError::Conflict("build retry has no parent".into()))?;
+        let previous = state
+            .builds
+            .get(&(request.retry.organization_id, previous_id))
+            .ok_or(RepositoryError::NotFound)?;
+        validate_build_run_retry(previous, &request.retry, request.expected_previous_version)?;
+        if state.builds.values().any(|build| {
+            build.organization_id == request.retry.organization_id
+                && build.retry_of_build_run_id == Some(previous_id)
+        }) {
+            return Err(RepositoryError::Conflict(
+                "build run already has a retry attempt".into(),
+            ));
+        }
+        let storage_key = (request.retry.organization_id, request.retry.id);
+        if state.builds.contains_key(&storage_key) {
+            return Err(RepositoryError::Conflict(
+                "build retry identity already exists".into(),
+            ));
+        }
+        state.builds.insert(storage_key, request.retry.clone());
+        state.retry_idempotency.insert(
+            key,
+            (request.idempotency.request_digest, request.retry.clone()),
+        );
+        Ok(IdempotentWrite {
+            value: request.retry,
+            replayed: false,
+        })
+    }
+
+    async fn replay_retry(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<BuildRun>, RepositoryError> {
+        let state = self.state.read().await;
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some((digest, build_run)) = state.retry_idempotency.get(&key) else {
             return Ok(None);
         };
         if digest != &idempotency.request_digest {
@@ -420,5 +492,110 @@ mod tests {
                 .expect("stored cancellation"),
             cancelling
         );
+    }
+
+    #[tokio::test]
+    async fn retry_creates_one_new_attempt_and_replays_idempotently() {
+        let repository = InMemoryBuildRunRepository::new();
+        let organization_id = OrganizationId::new();
+        let source_revision_id = SourceRevisionId::new();
+        let requested_at = Utc::now();
+        repository
+            .add_source_revision(
+                organization_id,
+                ProjectId::new(),
+                EnvironmentId::new(),
+                source_revision_id,
+                requested_at,
+            )
+            .await;
+        let queued = repository
+            .reserve_pending(1, requested_at)
+            .await
+            .expect("reserve build")
+            .pop()
+            .expect("queued build");
+        let mut failed = queued.clone();
+        failed
+            .record_failure(
+                "builder timed out".into(),
+                requested_at + Duration::milliseconds(1),
+            )
+            .expect("record failure");
+        let failed = repository
+            .save(failed, queued.aggregate_version)
+            .await
+            .expect("save failure");
+        let mut completed = failed.clone();
+        completed
+            .complete(requested_at + Duration::milliseconds(2))
+            .expect("complete failure");
+        let completed = repository
+            .save(completed, failed.aggregate_version)
+            .await
+            .expect("save terminal failure");
+        let retry = BuildRun::retry(&completed, requested_at + Duration::milliseconds(3))
+            .expect("retry build");
+        let idempotency = IdempotencyRequest::new(
+            format!("build-runs/{}/retry", completed.id),
+            "retry-once",
+            completed.id.to_string().as_bytes(),
+        )
+        .expect("idempotency");
+        let request = RequestBuildRetryBundle {
+            retry: retry.clone(),
+            expected_previous_version: completed.aggregate_version,
+            idempotency: idempotency.clone(),
+        };
+
+        let accepted = repository
+            .request_retry(request.clone())
+            .await
+            .expect("accept retry");
+        assert!(!accepted.replayed);
+        assert_eq!(accepted.value, retry);
+        let replayed = repository
+            .request_retry(request)
+            .await
+            .expect("replay retry");
+        assert!(replayed.replayed);
+        assert_eq!(replayed.value, retry);
+        assert_eq!(
+            repository
+                .replay_retry(&idempotency)
+                .await
+                .expect("load replay"),
+            Some(retry.clone())
+        );
+        assert_eq!(
+            repository
+                .find_by_source_revision(organization_id, source_revision_id)
+                .await
+                .expect("find latest attempt"),
+            Some(retry.clone())
+        );
+        assert_eq!(
+            repository
+                .list(organization_id, retry.project_id, retry.environment_id, 10)
+                .await
+                .expect("list attempts")
+                .len(),
+            2
+        );
+
+        let another = RequestBuildRetryBundle {
+            retry,
+            expected_previous_version: completed.aggregate_version,
+            idempotency: IdempotencyRequest::new(
+                format!("build-runs/{}/retry", completed.id),
+                "retry-again",
+                completed.id.to_string().as_bytes(),
+            )
+            .expect("second idempotency"),
+        };
+        assert!(matches!(
+            repository.request_retry(another).await,
+            Err(RepositoryError::Conflict(_))
+        ));
     }
 }

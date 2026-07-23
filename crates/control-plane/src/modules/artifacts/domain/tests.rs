@@ -322,6 +322,50 @@ fn build_run_terminal_outcomes_are_truthful_and_idempotent() {
     assert!(BuildRun::restore(failed).is_ok());
 }
 
+#[test]
+fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
+    let now = Utc::now();
+    let mut failed = BuildRun::reserve(
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        SourceRevisionId::new(),
+        now,
+    );
+    failed
+        .record_failure("builder timed out".into(), now + Duration::milliseconds(1))
+        .expect("record failure");
+    failed
+        .complete(now + Duration::milliseconds(2))
+        .expect("complete failure");
+
+    let retry = BuildRun::retry(&failed, now + Duration::milliseconds(3)).expect("retry build");
+
+    assert_eq!(failed.attempt, 1);
+    assert_eq!(failed.retry_of_build_run_id, None);
+    assert_eq!(retry.attempt, 2);
+    assert_eq!(retry.retry_of_build_run_id, Some(failed.id));
+    assert_eq!(retry.source_revision_id, failed.source_revision_id);
+    assert_eq!(retry.status, BuildRunStatus::Queued);
+    assert_ne!(retry.id, failed.id);
+    assert_eq!(retry.id.as_uuid(), retry.operation_id.as_uuid());
+    assert_eq!(
+        retry.id,
+        BuildRun::id_for_attempt(failed.source_revision_id, 2).expect("attempt identity")
+    );
+    assert!(BuildRun::restore(retry).is_ok());
+
+    assert!(BuildRun::retry(&failed, now + Duration::milliseconds(1)).is_err());
+    let queued = BuildRun::reserve(
+        failed.organization_id,
+        failed.project_id,
+        failed.environment_id,
+        SourceRevisionId::new(),
+        now,
+    );
+    assert!(BuildRun::retry(&queued, now + Duration::milliseconds(3)).is_err());
+}
+
 fn artifact(fill: char) -> BuildArtifact {
     BuildArtifact::new(
         format!("a3s-cloud-blob://sha256/{}", fill.to_string().repeat(64)),

@@ -6,7 +6,7 @@ pub mod presentation;
 pub use application::{
     BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildRun,
     GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler, ListBuildRuns,
-    ListBuildRunsHandler,
+    ListBuildRunsHandler, RetryBuildRun, RetryBuildRunHandler, RetryBuildRunResult,
 };
 pub use domain::{
     BuildArtifact, BuildArtifactPublicationError, BuildInputPreparationError,
@@ -15,7 +15,7 @@ pub use domain::{
     IBuildService, INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader,
     NodeArtifactStoreError, NodeArtifactWrite, OciBuildRequest, OciDescriptor,
     OciPublicationRequest, OciPublicationTarget, OpenNodeArtifact, PreparedBuildInput,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    PublishedOciArtifact, RequestBuildRetryBundle, ValidatedOciBuildOutput,
 };
 pub use infrastructure::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::artifacts::{BuildRun, BuildRunStatus};
 use crate::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
@@ -208,6 +209,75 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
             .aggregate_version,
         2
     );
+
+    let cancelling = builds
+        .find(organization_id, queued.id)
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let mut cancelled = cancelling.clone();
+    cancelled
+        .complete(Utc::now())
+        .map_err(BootError::Internal)?;
+    let cancelled = builds
+        .save(cancelled, cancelling.aggregate_version)
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    assert_eq!(cancelled.status, BuildRunStatus::Cancelled);
+
+    let retry_path = format!("{detail_path}/retry");
+    let retry_forbidden = app
+        .call(post_json_as(
+            &retry_path,
+            "retry-with-source-scope",
+            json!({}),
+            SOURCE_ONLY_TOKEN,
+        ))
+        .await?;
+    assert_eq!(retry_forbidden.status(), 403);
+
+    let retry_accepted = app
+        .call(post_json(&retry_path, "retry-build", json!({})))
+        .await?;
+    assert_eq!(retry_accepted.status(), 202);
+    let retry_accepted = response_json(&retry_accepted)?;
+    let retry_id = BuildRun::id_for_attempt(source_revision_id, 2).map_err(BootError::Internal)?;
+    assert_eq!(retry_accepted["data"]["buildRunId"], retry_id.to_string());
+    assert_eq!(retry_accepted["data"]["operationId"], retry_id.to_string());
+    assert_eq!(retry_accepted["data"]["attempt"], 2);
+    assert_eq!(
+        retry_accepted["data"]["retryOfBuildRunId"],
+        queued.id.to_string()
+    );
+    assert_eq!(retry_accepted["data"]["status"], "queued");
+    assert_eq!(retry_accepted["data"]["replayed"], false);
+
+    let retry_replayed = app
+        .call(post_json(&retry_path, "retry-build", json!({})))
+        .await?;
+    assert_eq!(retry_replayed.status(), 200);
+    let retry_replayed = response_json(&retry_replayed)?;
+    assert_eq!(retry_replayed["data"]["buildRunId"], retry_id.to_string());
+    assert_eq!(retry_replayed["data"]["replayed"], true);
+
+    let duplicate_retry = app
+        .call(post_json(&retry_path, "retry-build-again", json!({})))
+        .await?;
+    assert_eq!(duplicate_retry.status(), 409);
+    let retry_nonterminal = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/build-runs/{retry_id}/retry"),
+            "retry-queued-build",
+            json!({}),
+        ))
+        .await?;
+    assert_eq!(retry_nonterminal.status(), 409);
+    let attempts = app.call(get_as(&list_path, ADMIN_TOKEN)).await?;
+    let attempts = response_json(&attempts)?;
+    assert_eq!(attempts["data"].as_array().map(Vec::len), Some(3));
+    assert_eq!(attempts["data"][0]["id"], newer.id.to_string());
+    assert_eq!(attempts["data"][1]["id"], retry_id.to_string());
+    assert_eq!(attempts["data"][1]["attempt"], 2);
+    assert_eq!(attempts["data"][2]["attempt"], 1);
     Ok(())
 }
 

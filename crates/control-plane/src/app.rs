@@ -4,7 +4,8 @@ use crate::modules::artifacts::{
     GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildInputPreparer,
     IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler,
     LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
-    PostgresBuildRunRepository, RuntimeBuildOutputValidator, SourceBuildInputPreparer,
+    PostgresBuildRunRepository, RetryBuildRunHandler, RuntimeBuildOutputValidator,
+    SourceBuildInputPreparer,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
@@ -714,6 +715,7 @@ fn build_application_with_health(
     let source_workload_sources = Arc::clone(&sources);
     let list_sources = sources;
     let cancel_builds = Arc::clone(&builds);
+    let retry_builds = Arc::clone(&builds);
     let list_builds = Arc::clone(&builds);
     let get_builds = Arc::clone(&builds);
     let get_build_logs = Arc::clone(&builds);
@@ -916,6 +918,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::artifacts::CancelBuildRun, _>(
                     CancelBuildRunHandler::new(cancel_builds),
+                )
+                .command_handler::<crate::modules::artifacts::RetryBuildRun, _>(
+                    RetryBuildRunHandler::new(retry_builds),
                 )
                 .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
                     CreateDomainClaimHandler::new(domain_environments, create_domain_claims),

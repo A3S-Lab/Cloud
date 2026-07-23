@@ -104,6 +104,8 @@ export interface BuildRun {
   environmentId: string;
   id: string;
   sourceRevisionId: string;
+  attempt: number;
+  retryOfBuildRunId: string | null;
   operationId: string;
   status: BuildRunStatus;
   sourceContentDigest: string | null;
@@ -124,6 +126,16 @@ export interface CancelBuildRunResult {
   operationId: string;
   status: BuildRunStatus;
   cancellationRequestedAt: string | null;
+  replayed: boolean;
+}
+
+export interface RetryBuildRunResult {
+  buildRunId: string;
+  operationId: string;
+  sourceRevisionId: string;
+  attempt: number;
+  retryOfBuildRunId: string;
+  status: BuildRunStatus;
   replayed: boolean;
 }
 
