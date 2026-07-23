@@ -55,9 +55,10 @@ rollout controller, autoscaling authority, or business-state database.
 Standalone Gateway remains an independent product with an operator-owned ACL
 source of truth.
 
-The [Product Roadmap](ROADMAP.md) is the ownership source of truth and
-coordinates delivery through the existing `E0`, `H0`, `I0`, `C0`, and `A0`
-gates.
+The [Product Roadmap](ROADMAP.md) summarizes the complete `R0` through `I0`
+portfolio, current gate status, dependencies, delivery order, and the Gateway
+ownership boundary. Detailed implementation and exit evidence remain in the
+owning development plans.
 
 ### Operation model
 
@@ -1285,9 +1286,10 @@ desktop feature set, or commercial billing. A3S Gateway owns edge transport,
 TLS, compression, and cache mechanics; Cloud owns versioned desired policy and
 exact applied-state projection.
 
-See the [Development Plan](docs/development-plan.md) for milestone order and
-acceptance criteria, and the [Product Roadmap](ROADMAP.md) for the cross-product
-ownership contract and joint release gates.
+See the [Product Roadmap](ROADMAP.md) for the complete product portfolio,
+current status, dependencies, and Gateway ownership boundary. See the
+[Development Plan](docs/development-plan.md) for detailed milestone
+implementation and acceptance criteria.
 
 ## Repository
 
@@ -1295,6 +1297,7 @@ Cloud is an app-local Rust workspace inside the A3S monorepo:
 
 ```text
 Cloud/
+├── ROADMAP.md              # product portfolio, status, and dependencies
 ├── Cargo.toml
 ├── config/
 │   ├── cloud.acl
@@ -1609,11 +1612,11 @@ bun run build
 
 Design references:
 
-- [Domain Model](docs/domain-model.md)
-- [Technical Architecture](docs/architecture.md)
+- [Product Roadmap](ROADMAP.md)
 - [Development Plan](docs/development-plan.md)
 - [Inference Platform Plan](docs/inference-plan.md)
-- [Product Roadmap](ROADMAP.md)
+- [Domain Model](docs/domain-model.md)
+- [Technical Architecture](docs/architecture.md)
 
 ## License
 

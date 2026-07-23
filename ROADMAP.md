@@ -1,338 +1,407 @@
-# A3S Cloud and A3S Gateway Product Roadmap
+# A3S Cloud Product Roadmap
 
-## 1. Purpose and authority
+## 1. Scope and document hierarchy
 
-This document is the product-positioning and ownership source of truth for the
-A3S Gateway and A3S Cloud relationship.
+**Status as of 2026-07-23.**
 
-- A3S Cloud is the self-hosted control plane for applications, agents, and
-  model-serving workloads.
-- A3S Gateway is the AI traffic and protocol data plane for standalone and
-  A3S Cloud-managed deployments.
+This is the product-level roadmap for A3S Cloud. It summarizes the complete
+Cloud portfolio, current gate status, dependencies, delivery order, and the
+boundary with A3S Gateway. It does not replace the detailed implementation
+plans.
 
-The plan is gate-driven, not date-driven. It reuses the existing `E0`, `H0`,
-`I0`, `C0`, and `A0` gates; it does not introduce a parallel milestone system.
-The Cloud [development plan](docs/development-plan.md) owns platform delivery
-details, the [inference plan](docs/inference-plan.md) owns model-serving contracts,
-and the Gateway
-[roadmap](https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md)
-owns Gateway-local execution details. If those documents disagree about which
-product owns a decision, this document controls the product boundary.
+| Document | Authority |
+| --- | --- |
+| This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
+| [Cloud development plan](docs/development-plan.md) | Detailed implementation sequence, exit criteria, provider evidence, recovery gates, and definition of done |
+| [Inference plan](docs/inference-plan.md) | Detailed `I0` domain, protocol, scheduling, Gateway, usage, and conformance contracts |
+| [Gateway roadmap](https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md) | Gateway-local current capability truth and implementation backlog |
 
-Capability statements use three meanings:
+The documents must change together when a product gate changes state. The
+owning detailed plan decides whether its exit evidence is sufficient to mark a
+gate verified; this roadmap then publishes that state without weakening or
+reinterpreting the gate.
+
+The roadmap is gate-driven, not date-driven:
 
 | State | Meaning |
 | --- | --- |
-| Verified | The owning real-provider, recovery, and release gates pass |
-| Experimental | An implementation exists, but its production exit evidence is incomplete |
-| Planned | The capability is unavailable until its named gate passes |
+| Verified | The complete real-provider, failure, recovery, cleanup, and release evidence passes |
+| In progress | A usable implementation slice exists, but named exit evidence remains |
+| Planned | The capability is unavailable until its owning gate passes |
 
-## 2. Product positioning
+## 2. Product position
 
-### 2.1 A3S Gateway
+**A3S Cloud is the self-hosted control plane for applications, Agents, MCP
+services, and model-serving workloads on operator-owned infrastructure.**
 
-**Positioning:** AI traffic and protocol data plane for standalone and A3S
-Cloud-managed deployments.
-
-Gateway is for operators who need one small, ACL-configured binary at the
-traffic boundary. It accepts connections, enforces a complete local policy
-snapshot, selects only eligible healthy endpoints, and relays long-lived AI
-traffic without placing the Cloud API in the request path.
-
-Gateway owns:
-
-- HTTP/1.1, HTTP/2, SSE, WebSocket, gRPC, TCP, UDP, and TLS transport;
-- host, path, header, method, and SNI routing;
-- streaming, timeout, retry-before-response, drain, and connection behavior;
-- active and passive endpoint health used for immediate local suppression;
-- load balancing among endpoints allowed by the applied snapshot;
-- OpenAI request parsing and model dispatch after `I0.2b`;
-- cached authorization and rate-policy enforcement after `I0.2b`;
-- a durable local request and attempt usage spool after `I0.2c`;
-- telemetry emission and exact applied-revision reporting; and
-- validation and atomic application of complete versioned ACL snapshots.
-
-Gateway does not own:
-
-- organizations, projects, environments, memberships, or durable grants;
-- model, provider, deployment, or credential catalogs;
-- plaintext inference or provider credential storage;
-- production desired replica count, placement, rollout, or autoscaling;
-- the long-term usage ledger, aggregation, showback, or billing; or
-- a second Cloud management UI, API, scheduler, or reconciliation database.
-
-### 2.2 A3S Cloud
-
-**Positioning:** self-hosted control plane for applications, agents, and
-model-serving workloads.
-
-Cloud is for platform operators who need durable desired state, self-service
-management, workload convergence, release safety, and governance on
-operator-owned infrastructure. PostgreSQL is authoritative for desired state;
-workers and node agents reconcile Runtime resources and Gateway snapshots until
-the exact requested state is observed.
+Cloud turns tenant-owned intent into durable, observable infrastructure state.
+PostgreSQL is authoritative for desired state, A3S Flow coordinates long-lived
+operations, node agents converge A3S Runtime resources, and A3S Gateway applies
+the complete traffic policy produced by Cloud.
 
 Cloud owns:
 
 - organizations, projects, environments, identity, membership, and grants;
-- applications, Agents, MCP assets, models, immutable revisions, providers,
-  and Secret references;
-- managed Workloads, inference deployments, desired replica count, placement,
-  rollout, and the sole production autoscaling evaluator;
-- model aliases, weighted and fallback policy, endpoint grants, and limits;
-- domain claims, TLS intent, logical Gateway scopes, complete snapshots, and
-  exact acknowledgement projection;
-- usage ingestion, deduplication, gaps, retention, ledger, rollups, and
-  showback;
-- durable operations, reconciliation, audit, API, CLI, management MCP, and web
-  surfaces; and
-- production installation, upgrades, high availability, and recovery.
+- immutable application, Agent, MCP, Skill, model, and provider revisions;
+- Workloads, desired replica count, placement, rollout, and the sole
+  production autoscaling evaluator;
+- source resolution, isolated builds, artifact publication, and release
+  provenance;
+- domains, TLS intent, logical Gateway scopes, complete traffic snapshots, and
+  exact applied-state projection;
+- databases, volumes, fencing, backup, restore, and retention after `S0`;
+- durable operations, audit, logs, usage ledgers, API, CLI, management MCP, and
+  web surfaces; and
+- installation, upgrades, high availability, disaster recovery, and
+  operational policy after `H0`.
 
 Cloud does not own:
 
-- per-request proxying or provider-byte forwarding;
-- SSE framing, WebSocket relay, or live protocol translation;
-- synchronous authorization callbacks from the Gateway hot path;
-- prompt, completion, or model bytes in PostgreSQL; or
-- commercial prices, balances, invoices, settlement, or managed-service plans.
+- per-request proxying, protocol framing, or provider-byte forwarding;
+- a second workload engine outside the common Workloads and Runtime path;
+- Kubernetes as an alternative Cloud scheduler;
+- raw provider configuration formats at the product boundary;
+- a built-in mail server or a separate native-desktop feature set; or
+- commercial prices, balances, invoices, settlement, and managed-service
+  plans.
 
-## 3. Two Gateway operating modes
+All Cloud product configuration uses closed, validated A3S ACL and is parsed
+and generated through `a3s-acl`.
 
-The Gateway product model has two deliberately separate operating modes.
+## 3. Current roadmap
+
+| Gate | Product outcome | State |
+| --- | --- | --- |
+| `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real Docker conformance | Verified |
+| `F0` — Foundation | Boot control plane, PostgreSQL, tenancy, identity, Flow operations, outbox, projections, API, and web shell | Verified |
+| `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and Docker driver | Verified |
+| `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
+| `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Verified |
+| `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
+| `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | Planned |
+| `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | Planned |
+| `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
+| `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | Planned |
+| `I0` — Inference profile | Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service | Planned |
+
+### 3.1 Verified baseline
+
+`R0` through `E0` form one cumulative verified release:
+
+```text
+general Runtime
+  -> durable Cloud desired state
+  -> outbound node control
+  -> digest-pinned deployment
+  -> managed HTTPS, logs, update, rollback, and clean-host recovery
+```
+
+Later work must reuse this path. A new interface, asset type, import format,
+accelerator, replica policy, or provider never creates a second deployment or
+reconciliation engine.
+
+### 3.2 Current in-progress gate
+
+`G0` currently includes:
+
+- canonical GitHub identities, repository policy, immutable source revisions,
+  and versioned build recipes;
+- signed replay-safe GitHub ingress, tenant-owned App connections,
+  subscriptions, lifecycle reconciliation, and short-lived private access;
+- exact-commit checkout, deterministic initial BuildRuns, retry-as-new-attempt
+  lineage, cancellation, log streaming, and web controls;
+- command-bound Artifact transport and isolated `cloud.build@2` Runtime Tasks;
+- complete OCI graph validation, deterministic registry targets,
+  authenticated digest-only publication, remote verification, replay adoption,
+  cleanup, and explicit deployment handoff to `cloud.deployment@2`.
+
+`G0` remains in progress until provenance/SBOM/signing, cache trust, and
+external private-provider certification pass their real evidence gates.
+
+## 4. Delivery horizons and dependencies
+
+| Horizon | Required gates | Product outcome |
+| --- | --- | --- |
+| Usable service platform | `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one stateless Service on one Linux node |
+| Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path |
+| Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable |
+
+Inference is an optional profile across these horizons, not a fourth deployment
+engine or delivery horizon. It may begin after `E0` and becomes production-ready
+only after its named `H0` and `C0` foundations pass.
+
+```mermaid
+flowchart LR
+    R0[Universal Runtime] --> F0[Cloud foundation]
+    F0 --> N0[Node control]
+    N0 --> D0[OCI deployment]
+    D0 --> E0[Reachable service]
+    E0 --> G0[Source delivery]
+    G0 --> P0[Developer workflows]
+    G0 --> A0[Agent MCP Skill releases]
+    E0 --> C0[Control surfaces]
+    E0 --> S0[Stateful platform]
+    E0 --> H01[H0.1 managed replicas and claims]
+    H01 --> H02[H0.2 private target projection]
+    H02 --> H03[H0.3 multi-node placement and network]
+    P0 --> H04[H0.4 production installation and HA]
+    C0 --> H04
+    A0 --> H04
+    S0 --> H04
+    H03 --> H04
+    H04 --> H05[H0.5 autoscaling and hardening]
+    E0 --> I00[I0.0 versioned contracts]
+    H01 --> I01[I0.1 accelerator substrate]
+    I00 --> I01
+    I01 --> I02[I0.2 single-node inference]
+    H02 --> I02
+    C0 --> I02E[I0.2e governed self-service]
+    I02 --> I02E
+    H03 --> I034[I0.3 and I0.4 multi-node inference]
+    I02E --> I034
+    H05 --> I05[I0.5 production hardening]
+    I034 --> I05
+```
+
+Dependency rules:
+
+- `G0`, `C0`, and `S0` may advance independently from the verified `E0`
+  baseline.
+- `P0` depends on the immutable source and build contracts from `G0`.
+- `A0` reuses `G0` source, Artifact, publication, and deployment contracts.
+- `H0.1` through `H0.3` may first be proven by an owning profile, but the full
+  `H0` product gate also requires the single-node `P0`, `C0`, `A0`, and `S0`
+  surfaces it must scale.
+- `I0` is an optional product profile, not another deployment engine. It
+  consumes Workloads, Fleet, Edge, Identity, Artifacts, Secrets, Operations,
+  and the named `H0`/`C0` foundations.
+
+## 5. Product delivery lanes
+
+### 5.1 `G0`: external source delivery
+
+Next outcome:
+
+1. finish provenance, SBOM, and signing without exposing source or registry
+   credentials;
+2. prove cache trust and invalidation boundaries;
+3. run the real external private-provider certification; and
+4. close the complete source-to-published-Workload release evidence.
+
+`G0` is complete only when an exact source revision produces a verifiable,
+signed, digest-addressed OCI graph, survives retry/cancellation/process death,
+deploys through the existing Workload path, and leaves no untracked provider
+resource or credential.
+
+### 5.2 `P0`: developer workflows
+
+Ordered delivery:
+
+1. Dockerfile and A3S build-plan detection;
+2. explicit web, worker, and scheduled Task/Service profiles;
+3. pull-request previews with bounded lifetime and cleanup;
+4. monorepo affected-set planning; and
+5. closed stateless Compose import, followed by `S0`-backed stateful mappings.
+
+Detection produces a reviewable proposal. Accepted build, route, storage, and
+deployment plans become explicit typed Cloud desired state; an external project
+format never becomes a second mutable source of truth.
+
+### 5.3 `C0`: control surfaces and team operations
+
+| Sub-gate | Outcome |
+| --- | --- |
+| `C0.1` | REST/CLI parity, stable errors, authorized search, and automation contracts |
+| `C0.2` | Scoped management MCP over the same commands and queries |
+| `C0.3` | Memberships, grants, role-focused console, attribution, notifications, and audit |
+| `C0.4` | Outbound-protocol exec and terminal with bounded sessions and full audit |
+
+No presentation surface owns business rules or bypasses tenant guards,
+idempotency, operations, or audit.
+
+### 5.4 `A0`: Agent, MCP, and Skill releases
+
+Ordered delivery:
+
+1. repository and manifest safety;
+2. immutable Agent and MCP releases;
+3. deployment through the common Workload path;
+4. immutable Skill bundle publication and binding; and
+5. release provenance, rollback, and catalog operations.
+
+Agent and MCP are asset and workload profiles, not separate schedulers.
+
+### 5.5 `S0`: stateful platform
+
+Ordered delivery:
+
+1. fenced local volumes;
+2. explicit PostgreSQL resources;
+3. backup, restore, retention, and disaster evidence;
+4. additional database engines and remote volume providers through
+   conformance; and
+5. stateful project-import mappings.
+
+A stateful move cannot proceed until the prior writer is fenced. A backup is
+not a product capability until restore passes against a clean environment.
+
+### 5.6 `H0`: production scale
+
+| Sub-gate | Foundation | Required evidence |
+| --- | --- | --- |
+| `H0.1` | Managed-owner references, durable replica identity, effective placement policy, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
+| `H0.2` | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected reload preserve the prior route |
+| `H0.3` | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.4` | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
+| `H0.5` | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
+
+Kubernetes or Helm may package Cloud, but Workloads remains the only workload
+scheduler and Cloud product configuration remains ACL.
+
+### 5.7 `I0`: inference profile
+
+| Sub-gate | Outcome | Dependency |
+| --- | --- | --- |
+| `I0.0` | Versioned accelerator and node contracts with mixed-version safety | Verified `E0` node control |
+| `I0.1` | Single-node accelerator inventory, claims, Docker/CDI enforcement, and recovery | `I0.0` + `H0.1` |
+| `I0.2a` | Immutable model catalog/cache, typed backend compiler, and one healthy private vLLM Workload | `I0.1` |
+| `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, limits, streaming, and fallback | `H0.2` + `I0.2a` |
+| `I0.2c` | Durable Gateway usage spool, Cloud ledger, observability, model rollout, and rollback | `I0.2b` |
+| `I0.2d` | Credential-isolated external OpenAI-compatible Provider targets | `I0.2b` + `I0.2c` |
+| `I0.2e` | Grant-derived model/key self-service, diagnostics, playground, search, and usage showback | `C0.3` + `I0.2d` |
+| `I0.3` | Multi-node independent serving replicas and failover | `I0.2e` + `H0.3` |
+| `I0.4` | One typed Ray/vLLM distributed replica across multiple nodes | `I0.3` + `H0.3` placement-group and private-network gates |
+| `I0.5` | Gateway/control-plane HA, autoscaling, quota, disaster recovery, provider breadth, and load hardening | `I0.4` + `H0.4` + `H0.5` |
+
+The first provider combination is NVIDIA, Docker, and vLLM. Power, hardware
+partitions, additional accelerator vendors, named external Providers, and
+additional APIs remain unavailable until their real conformance gates pass.
+
+## 6. Near-term execution order
+
+The default portfolio priority is:
+
+1. preserve the verified `E0` release and its clean-host regression gate;
+2. finish the remaining `G0` provenance, trust, and private-provider evidence;
+3. advance `C0.1` and the first `S0` foundation independently when staffed;
+4. begin `I0.0` plus `H0.1`, then follow the ordered inference slices without
+   bypassing their generic platform dependencies;
+5. start `P0` and `A0` only on the verified `G0` contracts they consume;
+6. advance `H0.2` and `H0.3` as real consumers require target projection and
+   multi-node placement; and
+7. close full production packaging, HA, autoscaling, and inference hardening
+   through `H0.4`, `H0.5`, and `I0.5`.
+
+This order expresses dependency and product risk, not equal staffing or a
+calendar promise. The next implementation is the smallest vertical slice that
+can pass a real exit gate.
+
+## 7. A3S Gateway relationship
+
+Gateway coordination is one part of the Cloud roadmap, not a replacement for
+the Cloud product lanes above.
+
+### 7.1 Product boundary
+
+| Product | Position | Owns |
+| --- | --- | --- |
+| A3S Cloud | Self-hosted control plane | Tenancy, identity, catalogs, Workloads, desired replicas, placement, rollout, autoscaling, complete Gateway policy, operations, usage ledger, and management surfaces |
+| A3S Gateway | AI traffic and protocol data plane | Transport, TLS, streaming, local enforcement, healthy endpoint selection, atomic snapshot application, request-path telemetry, and the planned durable usage spool |
+
+Cloud never becomes the per-request proxy or synchronous authorization
+dependency. Gateway never becomes a tenant database, scheduler, production
+rollout controller, production autoscaling authority, or long-term usage
+ledger.
+
+### 7.2 Gateway operating modes
 
 | Concern | Standalone Gateway | Cloud-managed Gateway |
 | --- | --- | --- |
-| Desired-state authority | Operator-owned local ACL configuration | A3S Cloud PostgreSQL domain state |
-| Configuration delivery | Startup file and optional local providers or file watch | Complete versioned ACL snapshot delivered through the node agent |
-| Apply authority | Local operator | Cloud Edge command; Gateway validates and applies |
-| Target discovery | Explicit local configuration or supported local provider | Cloud-compiled complete target set only |
-| Replica count and placement | External operator or orchestrator | Cloud Workloads |
-| Rollout | Static operator-supplied weights; local automation remains experimental until separately proven | Cloud Inference, Workloads, and Edge |
-| Autoscaling | Optional local experiment, never implied to be production-ready | Cloud H0 Workloads autoscaler only |
+| Desired-state authority | Operator-owned local ACL | Cloud PostgreSQL desired state |
+| Traffic configuration | Local startup/watch/provider policy | Complete versioned ACL snapshot delivered through the node agent |
+| Target lifecycle | External operator or orchestrator | Cloud Workloads and Edge |
+| Rollout and autoscaling | Standalone experiments remain explicitly non-production until proven | Cloud is the only authority |
 | Durable business state | None | Cloud |
-| Failure posture | Preserve last valid local snapshot | Preserve last acknowledged snapshot; fail closed when an expiring security snapshot is no longer valid |
 
-Cloud-managed mode must be explicit and enforceable. It must reject
-configuration that enables local discovery, local rollout, or a Gateway-owned
-autoscaling controller. A managed Gateway may make temporary local health and
-circuit-breaker decisions, but it may never add an endpoint, change desired
-weight, create a replica, or promote a revision outside the applied snapshot.
-
-A minimal node-local bootstrap ACL may bind process, management-listener,
+A minimal managed bootstrap ACL may bind process, management listener,
 identity, and Cloud-delivery settings. It cannot define or mutate managed
-traffic routes, target sets, rollout, or scaling policy.
+routes, target sets, rollout, or scaling policy.
 
-Manual mutation of a managed Gateway is not an ordinary workflow. A
-break-glass replacement must produce visible divergence, preserve an audit
-record outside Gateway, and be reconciled or superseded by Cloud before the
-instance returns to ready service.
-
-Standalone mode remains valuable and independent. It does not require Cloud,
-but its local features must not be described as Cloud-equivalent orchestration.
-
-## 4. Single-authority matrix
-
-| Decision or fact | Desired-state authority | Data-plane executor or observer | Durable observed truth |
-| --- | --- | --- | --- |
-| Tenant, project, environment, principal, and grant | Cloud Identity and Projects | Gateway enforces a compiled subset | Cloud PostgreSQL |
-| Workload revision and desired replica count | Cloud Workloads | Runtime providers create and run units | Cloud Workloads/Fleet projections |
-| Placement and resource claims | Cloud Workloads | Node agent and Runtime enforce exact bindings | Cloud PostgreSQL plus fenced observations |
-| Model alias, rewrite, target order, and fallback | Cloud Inference | Gateway inference dispatch | Cloud Inference route revision |
-| Eligible replica endpoints and desired weights | Cloud Edge from Workloads/Inference facts | Gateway selects within the target set | Cloud Edge applied-state projection |
-| Immediate endpoint suppression | Applied Gateway policy | Gateway active/passive health | Gateway telemetry; never a new desired target |
-| Production rollout and promotion | Cloud Inference/Workloads/Edge | Gateway applies published weights | Cloud operation and rollout generation |
-| Production autoscaling | Cloud H0 Workloads autoscaler | Gateway emits bounded signals and buffers only when policy allows | Cloud autoscaling decision and desired count |
-| Inference-key lifecycle | Cloud Identity and Inference | Gateway validates a projected verifier/grant | Cloud credential and revocation generation |
-| Domain and certificate intent | Cloud Edge | Gateway keeps the node-local private key and terminates TLS | Cloud claim/certificate state plus exact Gateway acknowledgement |
-| Request and attempt usage | Cloud defines the contract | Gateway appends the durable local spool | Cloud immutable usage ledger after ingestion |
-| Long-term metrics, audit, and showback | Cloud | Gateway emits bounded telemetry | Cloud-selected telemetry and PostgreSQL stores |
-| Active traffic snapshot | Cloud Edge in managed mode | Gateway validates and atomically applies | Exact Gateway ID, revision, digest, and acknowledgement |
-
-## 5. Cross-product runtime contract
-
-### 5.1 Desired-state flow
+### 7.3 Managed runtime contract
 
 ```text
-Cloud command
-  -> commit versioned desired state
-  -> compile one complete Gateway-scope ACL snapshot
-  -> deliver a command through the outbound node agent
-  -> Gateway validates the complete snapshot
-  -> Gateway atomically applies it or preserves the previous revision
-  -> node agent records the exact Gateway ID, revision, digest, and result
+Cloud commits desired state
+  -> Cloud compiles one complete Gateway-scope ACL snapshot
+  -> outbound node agent delivers the exact revision and digest
+  -> Gateway validates and atomically applies or preserves the prior snapshot
+  -> node agent records the exact applied or rejected result
   -> Cloud advances only after the matching acknowledgement
 ```
 
-Partial patches are not authoritative configuration. Snapshot composition is a
-Cloud compiler concern; transactionally applying the resulting bytes is a
-Gateway concern.
+Gateway may temporarily suppress an unhealthy endpoint, open a circuit, or
+drain a connection under the applied policy. It may never invent a target,
+change desired weights, create a replica, or promote a revision.
 
-### 5.2 Request flow
+The Cloud API, PostgreSQL, and workers stay off the request path. Authorization
+and route snapshots are complete, bounded, and expiring; policy that requires
+an unavailable or expired security snapshot fails closed. Retry and fallback
+are allowed only before the first response byte.
 
-```text
-client
-  -> Gateway TLS and protocol handling
-  -> cached authorization and route evaluation
-  -> healthy endpoint selection
-  -> local Runtime backend or credential-isolated provider egress Workload
-  -> streaming response
-```
+### 7.4 Coordinated gates
 
-The Cloud API, PostgreSQL, and workers are never synchronous request
-dependencies. A Gateway must receive complete, bounded, and expiring security
-state before serving. It fails closed when policy requires an unavailable or
-expired authorization snapshot.
-
-Retry and fallback are permitted only before the first response byte. Each
-attempt has a stable identity because an upstream may consume resources even
-when a later fallback succeeds. An established stream follows its bounded
-timeout and explicit emergency-abort policy.
-
-### 5.3 Feedback flow
-
-Gateway emits:
-
-- exact snapshot application results;
-- endpoint and protocol health;
-- bounded, low-cardinality operational metrics;
-- request and attempt usage batches with contiguous sequence
-  acknowledgements; and
-- version and readiness information.
-
-Cloud may use those signals to make later desired-state decisions. Gateway
-telemetry never mutates desired state directly.
-
-## 6. Coordinated delivery plan
-
-The existing Cloud roadmap is the only milestone vocabulary. Detailed
-requirements remain in the owning development and inference plans.
-
-The verified `R0` through `E0` chain remains the shared foundation. `G0` is in
-progress; later gates remain planned unless their owning evidence table says
-otherwise.
-
-Cloud continues to deliver its broader post-`E0` portfolio without making
-Gateway own those control-plane concerns:
-
-| Cloud lane | Product outcome | Gateway involvement |
-| --- | --- | --- |
-| `G0` and `P0` | Source delivery, builds, previews, monorepos, and project import | Route the resulting ordinary Workloads through the verified `E0` contract |
-| `C0` | REST, CLI, management MCP, grants, search, audit, notifications, and exec | Report bounded operational state; do not add a parallel business API |
-| `A0` | Agent, MCP, and Skill release catalog over the common deployment path | Add native traffic protocols only when a closed data-plane contract requires them |
-| `S0` | Databases, volumes, fencing, backup, and restore | No storage orchestration; proxy only explicitly published service endpoints |
-| `H0` | Replicas, placement, private networking, Gateway HA, and autoscaling | Apply complete targets, expose exact readiness, drain safely, and emit scaling signals |
-| `I0` | Model serving, authorization, routing, usage, providers, and self-service | Implement inference dispatch, local enforcement, streaming, fallback, and the durable spool |
-
-The joint delivery path is:
-
-| Gate | Cloud delivery | Gateway delivery | Joint exit evidence |
+| Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
-| `E0` | Edge desired state, managed TLS, complete snapshot publication, and exact acknowledgement | ACL validation, atomic reload, HTTPS termination, routing, health, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route flow through the real Gateway; preserve as a regression gate |
-| `I0.0` | Versioned accelerator and node contracts plus mixed-version negotiation | Preserve existing traffic snapshot behavior while Cloud node contracts evolve | An old node agent continues CPU service and Gateway delivery while supported versions negotiate safely |
-| `H0.1` | Managed-owner, replica identity, generic claims, and fencing foundation | Maintain snapshot compatibility; do not infer replica ownership | Replay cannot create a duplicate Runtime unit or make Gateway invent a target |
-| `I0.1` | Single-node accelerator inventory, claims, Runtime enforcement, and recovery | No public inference route yet | Real device enforcement and recovery pass without exposing a model endpoint |
-| `I0.2a` | Model catalog, cache, backend compiler, private healthy inference Workload | No public inference route yet | A real backend passes health and failure recovery while remaining unreachable from a public Gateway |
-| `H0.2` | Logical Gateway scopes, cardinality-one complete target sets, private endpoints, and exact acknowledgement | Explicit managed mode, mode-specific validation, exact applied status, and rejection of local control loops | Restart and rejected reload preserve the previous target set; no stale or cross-environment endpoint becomes eligible |
-| `I0.2b` | Inference routes, environment keys, grants, limits, TLS binding, and complete dispatch snapshots | Native OpenAI dispatch, body/model parsing, cached verifier/grant enforcement, streaming, and pre-first-byte fallback | Real SDK tests prove the closed endpoint matrix, denial non-enumeration, revocation, framing, fallback, disconnect, and exact route acknowledgement |
-| `I0.2c` | Usage ingestion, deduplication, gap recovery, immutable ledger, rollups, rollout authority, and operations | Durable request/attempt spool, ordered upload, backpressure, and applied weight execution | Crash and replay leave every started request terminal or visibly unknown; a failed candidate never replaces the prior healthy revision |
-| `I0.2d` | Same-environment external-provider egress Workload, Secret binding, model rewrite, and provider policy | Route only to the credential-isolated internal egress target | Client and provider credentials never cross or enter snapshots, logs, traces, or usage facts |
-| `C0.3` + `I0.2e` | Principal grants, authorized search, key lifecycle, role-focused console, diagnostics, playground, and usage showback | Expose only bounded operational status needed by Cloud; do not add business-state management | Consumer, steward, and operator fixtures cannot discover or mutate ungranted resources through any surface |
-| `A0` + `C0` | Agent and MCP release catalog plus common deployment and management surfaces | Add native MCP or agent-protocol data-plane behavior only against a closed protocol contract; keep management MCP in Cloud | Real session, authorization, drain, and recovery evidence passes without creating a second asset or identity model |
-| `H0.3` | Multi-node replicas, drain, cluster-private endpoints, and independently placed Gateway scopes | Identity-bound private upstream connections and bounded drain behavior | Serving-node loss removes the target before replacement activation; Gateway is outside the serving-node failure domain |
-| `H0.4` | Production packaging and HA for API, workers, dependencies, and replicated Gateways | Per-instance exact-revision readiness, mixed-version compatibility, graceful replacement, and recovery | Only exact-revision-ready instances receive external traffic; loss and rolling upgrade preserve configured readiness |
-| `H0.5` | Sole production autoscaling controller, quotas, stabilization, load limits, and disaster recovery | Complete and age-stamped load signals plus bounded cold-start buffering; no managed autoscaler | Stale, missing, duplicate, and bursty metrics remain safe without a competing scaling path |
-| `I0.5` | Inference HA, quota, cache-pressure, provider breadth, and disaster gates | Gateway loss, revision skew, backlog, protocol load, and fail-closed security hardening | Mixed versions, Gateway loss, usage backlog, and restore pass the published production limits |
+| `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | ACL validation, atomic reload, HTTPS, routing, health, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
+| `H0.2` | Logical scopes, private endpoints, complete target sets, and applied-state projection | Explicit managed mode, mode validation, exact readiness, and rejection of local control loops | Restart, redelivery, and rejected reload cannot expose a stale target |
+| `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
+| `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
+| `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |
+| `C0.3` + `I0.2e` | Grants, authorized search, key lifecycle, role-focused console, diagnostics, playground, and showback | Expose bounded operational state only | Consumer, steward, and operator surfaces cannot reveal an ungranted resource |
+| `A0` + `C0` | Agent/MCP catalog, deployment, identity, and management contracts | Add a native protocol data plane only against a closed session and authorization contract | No second asset, identity, or deployment model appears in Gateway |
+| `H0.3` through `I0.5` | Multi-node placement, Gateway HA, sole autoscaler, quotas, recovery, and provider policy | Private upstream identity, drain, exact-revision readiness, complete signals, and failure hardening | Node/Gateway loss, mixed versions, scale, backlog, and restore meet published limits |
 
-No gate is complete because one repository passes unit tests in isolation. A
-joint gate pins compatible Cloud and Gateway revisions and exercises the real
-cross-repository protocol.
+No joint gate is complete because one repository passes unit tests alone.
+Compatible Cloud and Gateway revisions must pass the real cross-repository
+protocol and recovery gate.
 
-## 7. Immediate implementation order
+## 8. Definition of done
 
-### 7.1 Gateway baseline correction
+A product gate is complete only when:
 
-Before claiming `I0.2b`, Gateway should:
+- its domain invariants, commands, queries, persistence, provider adapters,
+  transport contracts, web, and applicable CLI/MCP surfaces land together;
+- every mutation has tenant scope, idempotency, audit, timeout, cancellation,
+  retry, cleanup, and documented error semantics;
+- real-provider happy path, failure, process-death, replay, corruption, and
+  cleanup gates pass from a clean environment;
+- Secret handling, authorization, revocation, SSRF, path/URL validation, and
+  cross-tenant fixtures pass;
+- upgrades, mixed versions, rollback, backup/restore, observability, and
+  runbooks pass where the gate requires them;
+- README, this roadmap, the owning detailed plan, API documentation, examples,
+  and current-evidence tables describe the same verified behavior; and
+- unsupported or unverified capability fails explicitly instead of degrading
+  silently.
 
-1. publish the standalone and managed mode contract in its public API and ACL
-   validation behavior;
-2. reject local providers, rollout controllers, and autoscaling controllers in
-   managed mode;
-3. complete structured per-request access-log emission on every terminal
-   request path or stop advertising it as available;
-4. label the current local autoscaler experimental until real in-flight
-   measurement, typed executor selection, provider conformance, and recovery
-   pass;
-5. keep the parsed but inert local rollout configuration explicitly
-   unavailable, or implement and certify it only for standalone mode;
-6. preserve the optional wire firewall as a separate single-upstream profile,
-   not describe it as native MCP or Cloud inference dispatch; and
-7. add mode-isolation, rejected-snapshot, prior-revision, drain, and
-   cross-version contract tests.
-
-These corrections do not create a new roadmap gate. They make current product
-claims truthful and prepare the `H0.2` and `I0.2b` contracts.
-
-### 7.2 Cloud control-plane sequence
-
-Cloud should follow the existing dependency order:
-
-1. preserve the verified `E0` snapshot and acknowledgement path;
-2. land `I0.0` versioned contracts with `H0.1` managed replica and claim
-   foundations;
-3. complete `I0.1` accelerator enforcement and `I0.2a` private single-node
-   backend serving;
-4. land `H0.2` logical Gateway scopes, private targets, and managed-mode
-   snapshot constraints;
-5. deliver `I0.2b`, then `I0.2c`, then `I0.2d`;
-6. combine `C0.3` with `I0.2e` for governed self-service;
-7. reuse `A0` and `C0` identity, catalog, and deployment contracts for Agent
-   and MCP products;
-8. advance through `H0.3`, `H0.4`, and `H0.5`; and
-9. close inference production evidence in `I0.5`.
-
-Cloud must not implement a temporary request proxy, Gateway-side business
-database, or second autoscaler to shorten that sequence.
-
-## 8. Cross-repository definition of done
-
-A coordinated slice is done only when:
-
-- one product is named as authority for every new decision and durable fact;
-- managed mode has no second config, rollout, placement, or autoscaling writer;
-- complete snapshots are canonical, digest-addressed, bounded, validated, and
-  acknowledged by exact Gateway identity and revision;
-- rejected, stale, partial, and mixed-version snapshots preserve the last
-  proven state or fail closed according to explicit policy;
-- Cloud process loss and unavailability do not interrupt an already authorized
-  request path;
-- Gateway process loss, restart, and replacement do not produce an untracked
-  active revision;
-- streaming, timeout, disconnect, drain, retry, and fallback behavior pass real
-  protocol conformance;
-- secrets, prompts, and responses are absent from snapshots, logs, traces,
-  operations, audit, and durable Cloud state unless an explicitly owned future
-  feature says otherwise;
-- usage replay is idempotent and every gap remains visible;
-- standalone behavior remains usable and is tested independently from managed
-  behavior;
-- README, examples, API documentation, and roadmap state describe only the
-  evidence that passed; and
-- compatible Cloud and Gateway revisions are recorded by the release gate.
+See the [development plan](docs/development-plan.md) and
+[inference plan](docs/inference-plan.md) for complete per-gate evidence.
 
 ## 9. Product non-goals
 
-The coordinated roadmap does not include:
+The current roadmap does not include:
 
-- putting Cloud on the live request or token-stream path;
-- turning Gateway into a tenant database, scheduler, deployment engine, or
-  billing service;
-- allowing Gateway to create production replicas in Cloud-managed mode;
-- storing provider credentials or TLS private keys in Gateway ACL snapshots;
-- treating Kubernetes as a second Cloud workload scheduler;
-- claiming every OpenAI, Anthropic, MCP, or A2A endpoint without a closed
-  protocol and real conformance gate; or
-- implementing commercial billing inside Cloud.
+- a second deployment or scheduling path for imports, Agents, MCP, stateful
+  resources, or inference;
+- Cloud on the live request or token-stream path;
+- a Cloud-equivalent control plane inside Gateway;
+- training, fine-tuning, or notebook lifecycle inside `I0`;
+- GPU host creation or SSH credential custody inside Inference;
+- Kubernetes as an alternative Workloads scheduler;
+- plaintext credentials in ACL, desired state, operations, logs, or events;
+- a built-in mail server or divergent native desktop feature set; or
+- commercial billing inside the Cloud core.
 
-New capabilities enter the plan only after they have one owning product, one
-existing roadmap dependency, a closed contract, and real failure and recovery
+New capabilities enter the roadmap only after they have one owning context,
+one dependency path, a closed contract, and real failure, recovery, and cleanup
 evidence.
