@@ -7,8 +7,10 @@ export interface ArchitectureHostingVisual {
   relationship: ArchitectureHostingRelationship;
   group: THREE.Group;
   paths: readonly THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>[];
+  hitTargets: readonly THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>[];
   joints: readonly THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>[];
   label: THREE.Sprite;
+  hovered: boolean;
   spotlighted: boolean;
   selected: boolean;
 }
@@ -35,6 +37,7 @@ export function createArchitectureHostingVisual(
     depthWrite: false,
   });
   const paths: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>[] = [];
+  const hitTargets: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>[] = [];
   const joints: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>[] = [];
   const midpoints: THREE.Vector3[] = [];
 
@@ -61,6 +64,23 @@ export function createArchitectureHostingVisual(
       group.add(path);
       paths.push(path);
       midpoints.push(midpoint);
+
+      const hitTarget = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 28, 0.22, 7, false),
+        new THREE.MeshBasicMaterial({
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          colorWrite: false,
+        })
+      );
+      hitTarget.name = `structural-edge-hit:${relationship.id}`;
+      hitTarget.userData.architectureSelection = {
+        kind: 'structural-edge',
+        id: relationship.id,
+      };
+      group.add(hitTarget);
+      hitTargets.push(hitTarget);
 
       const joint = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 28), jointMaterial);
       joint.position.copy(end);
@@ -91,7 +111,17 @@ export function createArchitectureHostingVisual(
   label.material.opacity = 0.34;
   group.add(label);
 
-  return { relationship, group, paths, joints, label, spotlighted: false, selected: false };
+  return {
+    relationship,
+    group,
+    paths,
+    hitTargets,
+    joints,
+    label,
+    hovered: false,
+    spotlighted: false,
+    selected: false,
+  };
 }
 
 export function updateArchitectureHostingVisual(
@@ -99,14 +129,14 @@ export function updateArchitectureHostingVisual(
   elapsed: number,
   reducedMotion: boolean
 ): void {
-  const emphasized = visual.spotlighted || visual.selected;
+  const emphasized = visual.spotlighted || visual.selected || visual.hovered;
   const pulse = reducedMotion ? 0.5 : 0.5 + Math.sin(elapsed * 1.8 + visual.paths.length) * 0.5;
-  const lineOpacity = emphasized ? 0.68 + pulse * 0.18 : 0.11;
+  const lineOpacity = visual.selected ? 0.78 + pulse * 0.18 : emphasized ? 0.68 + pulse * 0.18 : 0.11;
   for (const path of visual.paths) {
     path.material.opacity = lineOpacity;
   }
   for (const joint of visual.joints) {
-    joint.material.opacity = emphasized ? 0.62 + pulse * 0.2 : 0.14;
+    joint.material.opacity = visual.selected ? 0.76 + pulse * 0.18 : emphasized ? 0.62 + pulse * 0.2 : 0.14;
     joint.scale.setScalar(emphasized ? 1 + pulse * 0.1 : 1);
   }
   visual.label.material.opacity = emphasized ? 1 : 0.26;
@@ -118,6 +148,10 @@ export function disposeArchitectureHostingVisual(visual: ArchitectureHostingVisu
   for (const path of visual.paths) {
     geometries.add(path.geometry);
     materials.add(path.material);
+  }
+  for (const hitTarget of visual.hitTargets) {
+    geometries.add(hitTarget.geometry);
+    materials.add(hitTarget.material);
   }
   for (const joint of visual.joints) {
     geometries.add(joint.geometry);

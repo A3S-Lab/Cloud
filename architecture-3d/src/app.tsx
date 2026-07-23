@@ -1,9 +1,12 @@
-import { Box, Github, Layers3, Pause, Play, RotateCcw } from 'lucide-react';
+import { Box, Github, Layers3, Network, Pause, Play, RotateCcw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ARCHITECTURE_GRAPH, ARCHITECTURE_STATUS_META, type JourneyId } from './architecture';
+import { ArchifyScene } from './components/archify-scene';
 import { ArchitectureScene } from './components/architecture-scene';
 import { BusinessFlowPanel } from './components/business-flow-panel';
 import { NodeInspector } from './components/node-inspector';
+import { RelationshipInspector } from './components/relationship-inspector';
+import type { ArchitectureRelationshipSelection, ArchitectureSelection } from './selection';
 import {
   SIMULATION_SCENARIOS,
   type SimulationEntryId,
@@ -11,9 +14,12 @@ import {
   simulationFramesFor,
 } from './simulations';
 
+type ArchitectureViewMode = '3d' | '2d';
+
 export function App() {
   const [journey, setJourney] = useState<JourneyId>('all');
-  const [selectedNodeId, setSelectedNodeId] = useState<string>();
+  const [selection, setSelection] = useState<ArchitectureSelection>();
+  const [viewMode, setViewMode] = useState<ArchitectureViewMode>('3d');
   const [autoRotate, setAutoRotate] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
   const [resetRevision, setResetRevision] = useState(0);
@@ -22,6 +28,9 @@ export function App() {
   const [simulationStepIndex, setSimulationStepIndex] = useState(0);
   const [simulationPlaying, setSimulationPlaying] = useState(false);
 
+  const selectedNodeId = selection?.kind === 'node' ? selection.id : undefined;
+  const selectedRelationship =
+    selection?.kind === 'business-edge' || selection?.kind === 'structural-edge' ? selection : undefined;
   const selectedNode = useMemo(
     () => ARCHITECTURE_GRAPH.nodes.find((node) => node.id === selectedNodeId),
     [selectedNodeId]
@@ -34,8 +43,13 @@ export function App() {
 
   const selectAndFocusNode = (nodeId: string) => {
     setSimulationPlaying(false);
-    setSelectedNodeId(nodeId);
+    setSelection({ kind: 'node', id: nodeId });
     setFocusRevision((revision) => revision + 1);
+  };
+
+  const selectRelationship = (nextSelection: ArchitectureRelationshipSelection) => {
+    setSimulationPlaying(false);
+    setSelection(nextSelection);
   };
 
   useEffect(() => {
@@ -56,7 +70,7 @@ export function App() {
     setSimulationStepIndex(0);
     setSimulationPlaying(true);
     setJourney(scenario?.journey ?? 'all');
-    setSelectedNodeId(undefined);
+    setSelection(undefined);
   };
 
   const stopSimulation = () => {
@@ -112,60 +126,73 @@ export function App() {
         </a>
       </header>
 
-      <main id='architecture-map' className='architecture-map'>
-        <ArchitectureScene
-          autoRotate={autoRotate}
-          focusRevision={focusRevision}
-          journey={journey}
-          resetRevision={resetRevision}
-          selectedNodeId={selectedNodeId}
-          simulationFrame={simulationFrame}
-          onSelectNode={(nodeId) => {
-            setSimulationPlaying(false);
-            setSelectedNodeId(nodeId);
-          }}
-        />
+      <main id='architecture-map' className={`architecture-map is-${viewMode}`}>
+        {viewMode === '3d' ? (
+          <>
+            <ArchitectureScene
+              autoRotate={autoRotate}
+              focusRevision={focusRevision}
+              journey={journey}
+              resetRevision={resetRevision}
+              selection={selection}
+              simulationFrame={simulationFrame}
+              onSelect={(nextSelection) => {
+                setSimulationPlaying(false);
+                setSelection(nextSelection);
+              }}
+            />
 
-        <BusinessFlowPanel
-          activeScenarioId={activeScenarioId}
-          entryId={simulationEntryId}
-          isPlaying={simulationPlaying}
-          journey={journey}
-          stepIndex={simulationStepIndex}
-          onChangeEntry={(entryId) => {
-            setSimulationEntryId(entryId);
-            if (activeScenarioId) {
-              setSimulationStepIndex(0);
-              setSimulationPlaying(true);
-            }
-          }}
-          onChangeJourney={(nextJourney) => {
-            setJourney(nextJourney);
-            setActiveScenarioId(undefined);
-            setSimulationPlaying(false);
-            setSimulationStepIndex(0);
-          }}
-          onNext={() => {
-            setSimulationPlaying(false);
-            setSimulationStepIndex((index) => Math.min(index + 1, simulationFrames.length - 1));
-          }}
-          onPrevious={() => {
-            setSimulationPlaying(false);
-            setSimulationStepIndex((index) => Math.max(index - 1, 0));
-          }}
-          onSelectStep={(index) => {
-            setSimulationPlaying(false);
-            setSimulationStepIndex(index);
-          }}
-          onStartScenario={startScenario}
-          onStop={stopSimulation}
-          onTogglePlayback={() => {
-            if (!simulationPlaying && simulationStepIndex >= simulationFrames.length - 1) {
-              setSimulationStepIndex(0);
-            }
-            setSimulationPlaying((playing) => !playing);
-          }}
-        />
+            <BusinessFlowPanel
+              activeScenarioId={activeScenarioId}
+              entryId={simulationEntryId}
+              isPlaying={simulationPlaying}
+              journey={journey}
+              stepIndex={simulationStepIndex}
+              onChangeEntry={(entryId) => {
+                setSimulationEntryId(entryId);
+                if (activeScenarioId) {
+                  setSimulationStepIndex(0);
+                  setSimulationPlaying(true);
+                }
+              }}
+              onChangeJourney={(nextJourney) => {
+                setJourney(nextJourney);
+                setActiveScenarioId(undefined);
+                setSimulationPlaying(false);
+                setSimulationStepIndex(0);
+              }}
+              onNext={() => {
+                setSimulationPlaying(false);
+                setSimulationStepIndex((index) => Math.min(index + 1, simulationFrames.length - 1));
+              }}
+              onPrevious={() => {
+                setSimulationPlaying(false);
+                setSimulationStepIndex((index) => Math.max(index - 1, 0));
+              }}
+              onSelectStep={(index) => {
+                setSimulationPlaying(false);
+                setSimulationStepIndex(index);
+              }}
+              onStartScenario={startScenario}
+              onStop={stopSimulation}
+              onTogglePlayback={() => {
+                if (!simulationPlaying && simulationStepIndex >= simulationFrames.length - 1) {
+                  setSimulationStepIndex(0);
+                }
+                setSimulationPlaying((playing) => !playing);
+              }}
+            />
+          </>
+        ) : (
+          <ArchifyScene
+            selection={selection}
+            onClearSelection={() => setSelection(undefined)}
+            onSelect={(nextSelection) => {
+              setSimulationPlaying(false);
+              setSelection(nextSelection);
+            }}
+          />
+        )}
 
         <section className='component-picker' aria-labelledby='component-picker-label'>
           <label id='component-picker-label' htmlFor='component-picker'>
@@ -224,36 +251,71 @@ export function App() {
         </section>
 
         <fieldset className='view-controls'>
-          <legend className='sr-only'>3D view controls</legend>
+          <legend className='sr-only'>Architecture view controls</legend>
           <button
             type='button'
-            className={autoRotate ? 'is-active' : undefined}
-            onClick={() => setAutoRotate((enabled) => !enabled)}
-            aria-pressed={autoRotate}
-            aria-label={autoRotate ? 'Pause orbit' : 'Auto orbit'}
+            className={viewMode === '3d' ? 'is-active' : undefined}
+            onClick={() => setViewMode('3d')}
+            aria-pressed={viewMode === '3d'}
+            aria-label='Show interactive 3D architecture'
           >
-            {autoRotate ? <Pause size={15} aria-hidden='true' /> : <Play size={15} aria-hidden='true' />}
-            <span>{autoRotate ? 'Pause orbit' : 'Auto orbit'}</span>
+            <Box size={15} aria-hidden='true' />
+            <span>3D</span>
           </button>
           <button
             type='button'
-            aria-label='Reset view'
-            onClick={() => setResetRevision((revision) => revision + 1)}
+            className={viewMode === '2d' ? 'is-active' : undefined}
+            onClick={() => {
+              setViewMode('2d');
+              setSimulationPlaying(false);
+            }}
+            aria-pressed={viewMode === '2d'}
+            aria-label='Show interactive 2D Archify architecture'
           >
-            <RotateCcw size={15} aria-hidden='true' />
-            <span>Reset view</span>
+            <Network size={15} aria-hidden='true' />
+            <span>2D</span>
           </button>
+          {viewMode === '3d' ? (
+            <>
+              <button
+                type='button'
+                className={autoRotate ? 'is-active' : undefined}
+                onClick={() => setAutoRotate((enabled) => !enabled)}
+                aria-pressed={autoRotate}
+                aria-label={autoRotate ? 'Pause orbit' : 'Auto orbit'}
+              >
+                {autoRotate ? <Pause size={15} aria-hidden='true' /> : <Play size={15} aria-hidden='true' />}
+                <span>{autoRotate ? 'Pause orbit' : 'Auto orbit'}</span>
+              </button>
+              <button
+                type='button'
+                aria-label='Reset view'
+                onClick={() => setResetRevision((revision) => revision + 1)}
+              >
+                <RotateCcw size={15} aria-hidden='true' />
+                <span>Reset view</span>
+              </button>
+            </>
+          ) : null}
         </fieldset>
 
         <div className='interaction-hint' aria-hidden='true'>
-          <Box size={13} />
-          Drag to orbit · Scroll to zoom · Click a component
+          {viewMode === '3d' ? <Box size={13} /> : <Network size={13} />}
+          {viewMode === '3d'
+            ? 'Drag to orbit · Scroll to zoom · Click a component or relationship'
+            : 'Pan and zoom · Click nodes or relationships · Use PATH, LENS, and MAP'}
         </div>
 
         <NodeInspector
           node={selectedNode}
-          onClose={() => setSelectedNodeId(undefined)}
+          onClose={() => setSelection(undefined)}
           onFocus={() => setFocusRevision((revision) => revision + 1)}
+          onSelectRelationship={selectRelationship}
+        />
+
+        <RelationshipInspector
+          selection={selectedRelationship}
+          onClose={() => setSelection(undefined)}
           onSelectNode={selectAndFocusNode}
         />
       </main>

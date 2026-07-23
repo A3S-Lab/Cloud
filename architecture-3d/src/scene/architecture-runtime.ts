@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { type ArchitectureGraph, type JourneyId, nodeIdsForJourney } from '../architecture';
+import type { ArchitectureSelection } from '../selection';
 import { ARCHITECTURE_CARRIERS, ARCHITECTURE_HOSTING_RELATIONSHIPS } from '../topology';
 import {
   createArchitectureCarrierVisual,
@@ -33,10 +34,10 @@ import {
 interface ArchitectureRuntimeOptions {
   graph: ArchitectureGraph;
   initialJourney: JourneyId;
-  initialSelectedNodeId?: string;
+  initialSelection?: ArchitectureSelection;
   autoRotate: boolean;
   onHover: (event?: ArchitectureHoverEvent) => void;
-  onSelect: (nodeId: string) => void;
+  onSelect: (selection: ArchitectureSelection) => void;
 }
 
 export interface ArchitectureRuntime {
@@ -44,7 +45,7 @@ export interface ArchitectureRuntime {
   resetCamera: () => void;
   setAutoRotate: (enabled: boolean) => void;
   setJourney: (journey: JourneyId) => void;
-  setSelectedNode: (nodeId?: string) => void;
+  setSelection: (selection?: ArchitectureSelection) => void;
   setSimulationFrame: (frame?: ArchitectureSimulationFrame) => void;
   dispose: () => void;
 }
@@ -63,12 +64,12 @@ interface CameraFlight {
   toTarget: THREE.Vector3;
 }
 
-const INITIAL_CAMERA = new THREE.Vector3(18.5, 43, 25.5);
-const INITIAL_TARGET = new THREE.Vector3(0, 0.2, 1.5);
+const INITIAL_CAMERA = new THREE.Vector3(18.5, 49, 29);
+const INITIAL_TARGET = new THREE.Vector3(0, 0.2, 1.6);
 
 export function createArchitectureRuntime(
   container: HTMLDivElement,
-  { graph, initialJourney, initialSelectedNodeId, autoRotate, onHover, onSelect }: ArchitectureRuntimeOptions
+  { graph, initialJourney, initialSelection, autoRotate, onHover, onSelect }: ArchitectureRuntimeOptions
 ): ArchitectureRuntime {
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -136,9 +137,10 @@ export function createArchitectureRuntime(
     scene.add(visual.group);
     return visual;
   });
+  const edgeVisualsById = new Map(edgeVisuals.map((visual) => [visual.edge.id, visual]));
+  const hostingVisualsById = new Map(hostingVisuals.map((visual) => [visual.relationship.id, visual]));
 
-  let selectedNodeId = nodeVisuals.has(initialSelectedNodeId ?? '') ? initialSelectedNodeId : undefined;
-  let hoveredNodeId: string | undefined;
+  let selectedNodeId: string | undefined;
   let activeJourney = initialJourney;
   let elapsed = 0;
   let flight: CameraFlight | undefined;
@@ -147,20 +149,42 @@ export function createArchitectureRuntime(
   const timer = new THREE.Timer();
   timer.connect(document);
 
-  const setSelectedNode = (nodeId?: string) => {
-    selectedNodeId = nodeId && nodeVisuals.has(nodeId) ? nodeId : undefined;
+  const normalizeSelection = (selection?: ArchitectureSelection): ArchitectureSelection | undefined => {
+    if (!selection) return undefined;
+    if (selection.kind === 'node') return nodeVisuals.has(selection.id) ? selection : undefined;
+    if (selection.kind === 'business-edge') {
+      return edgeVisualsById.has(selection.id) ? selection : undefined;
+    }
+    return hostingVisualsById.has(selection.id) ? selection : undefined;
+  };
+
+  const setSelection = (selection?: ArchitectureSelection) => {
+    const selected = normalizeSelection(selection);
+    selectedNodeId = selected?.kind === 'node' ? selected.id : undefined;
     for (const visual of nodeVisuals.values()) visual.selected = visual.node.id === selectedNodeId;
+    for (const visual of edgeVisuals) {
+      visual.selected = selected?.kind === 'business-edge' && visual.edge.id === selected.id;
+    }
     for (const visual of hostingVisuals) {
       visual.selected =
-        selectedNodeId !== undefined &&
-        (visual.relationship.hostNodeIds.includes(selectedNodeId) ||
-          visual.relationship.guestNodeIds.includes(selectedNodeId));
+        (selected?.kind === 'structural-edge' && visual.relationship.id === selected.id) ||
+        (selectedNodeId !== undefined &&
+          (visual.relationship.hostNodeIds.includes(selectedNodeId) ||
+            visual.relationship.guestNodeIds.includes(selectedNodeId)));
     }
   };
 
-  const setHoveredNode = (nodeId?: string) => {
-    hoveredNodeId = nodeId && nodeVisuals.has(nodeId) ? nodeId : undefined;
-    for (const visual of nodeVisuals.values()) visual.hovered = visual.node.id === hoveredNodeId;
+  const setHoveredSelection = (selection?: ArchitectureSelection) => {
+    const hovered = normalizeSelection(selection);
+    for (const visual of nodeVisuals.values()) {
+      visual.hovered = hovered?.kind === 'node' && visual.node.id === hovered.id;
+    }
+    for (const visual of edgeVisuals) {
+      visual.hovered = hovered?.kind === 'business-edge' && visual.edge.id === hovered.id;
+    }
+    for (const visual of hostingVisuals) {
+      visual.hovered = hovered?.kind === 'structural-edge' && visual.relationship.id === hovered.id;
+    }
   };
 
   const setSimulationFrame = (frame?: ArchitectureSimulationFrame) => {
@@ -192,14 +216,18 @@ export function createArchitectureRuntime(
   const interaction = attachArchitectureInteraction({
     canvas: renderer.domElement,
     camera,
-    targets: [...nodeVisuals.values()].flatMap((visual) => visual.hitTargets),
+    targets: [
+      ...[...nodeVisuals.values()].flatMap((visual) => visual.hitTargets),
+      ...edgeVisuals.map((visual) => visual.hitTarget),
+      ...hostingVisuals.flatMap((visual) => visual.hitTargets),
+    ],
     onHover: (event) => {
-      setHoveredNode(event?.nodeId);
+      setHoveredSelection(event?.selection);
       onHover(event);
     },
-    onSelect: (nodeId) => {
-      setSelectedNode(nodeId);
-      onSelect(nodeId);
+    onSelect: (selection) => {
+      setSelection(selection);
+      onSelect(selection);
     },
     onReset: resetCamera,
   });
@@ -252,7 +280,7 @@ export function createArchitectureRuntime(
     }
   };
 
-  setSelectedNode(selectedNodeId);
+  setSelection(initialSelection);
   setJourney(activeJourney);
   animate();
 
@@ -260,7 +288,7 @@ export function createArchitectureRuntime(
     focusNode: (nodeId) => {
       const node = nodes.get(nodeId);
       if (!node) return;
-      setSelectedNode(nodeId);
+      setSelection({ kind: 'node', id: nodeId });
       const target = new THREE.Vector3().fromArray(node.position);
       const cameraOffset = new THREE.Vector3(5.8, 9.2, 7.2);
       flight = createCameraFlight(
@@ -276,7 +304,7 @@ export function createArchitectureRuntime(
       autoRotateRequested = enabled && !reducedMotion;
     },
     setJourney,
-    setSelectedNode,
+    setSelection,
     setSimulationFrame,
     dispose: () => {
       disposed = true;

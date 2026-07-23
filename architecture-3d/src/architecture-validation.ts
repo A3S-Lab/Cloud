@@ -45,6 +45,13 @@ export function validateArchitectureGraph(graph: ArchitectureGraph): readonly st
     if (edge.journeys.length === 0 || edge.journeys.some((journey) => !journeyIds.has(journey))) {
       errors.push(`edge ${edge.id} has an invalid journey`);
     }
+    if (
+      edge.summary.trim().length === 0 ||
+      edge.transfers.length === 0 ||
+      edge.boundary.trim().length === 0
+    ) {
+      errors.push(`edge ${edge.id} is missing explanatory content`);
+    }
   }
 
   for (const journey of graph.journeys) {
@@ -86,6 +93,9 @@ export function validateArchitectureGraph(graph: ArchitectureGraph): readonly st
     }
     if (relationship.hostAction.trim().length === 0 || relationship.guestAction.trim().length === 0) {
       errors.push(`hosting relationship ${relationship.id} is missing directional actions`);
+    }
+    if (relationship.description.trim().length === 0 || relationship.boundary.trim().length === 0) {
+      errors.push(`hosting relationship ${relationship.id} is missing explanatory content`);
     }
   }
 

@@ -648,6 +648,132 @@
   line-height: 1.6;
 }
 
+.relationship-inspector .inspector-heading h2 {
+  font-size: 21px;
+}
+
+.relationship-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.relationship-endpoints {
+  display: grid;
+  gap: 5px;
+}
+
+.relationship-endpoints button {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--node-status), transparent 72%);
+  background: color-mix(in srgb, var(--node-status), transparent 94%);
+  color: var(--cloud-ink);
+  text-align: left;
+}
+
+.relationship-endpoints button:hover {
+  border-color: color-mix(in srgb, var(--node-status), transparent 38%);
+  background: color-mix(in srgb, var(--node-status), transparent 89%);
+}
+
+.relationship-endpoints small,
+.relationship-endpoints strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.relationship-endpoints small {
+  color: var(--node-status);
+  font-family: var(--mono-font);
+  font-size: 7px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.relationship-endpoints strong {
+  font-size: 9px;
+  font-weight: 620;
+  line-height: 1.25;
+}
+
+.relationship-direction {
+  display: grid;
+  color: var(--node-status);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--node-status), transparent 45%));
+  place-items: center;
+}
+
+.relationship-navigation-hint {
+  margin: 7px 0 0;
+  color: var(--cloud-faint);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.relationship-journeys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.relationship-journeys span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--journey-color), transparent 76%);
+  background: color-mix(in srgb, var(--journey-color), transparent 95%);
+  color: #b7c5ba;
+  font-size: 8px;
+}
+
+.relationship-journeys i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--journey-color);
+  box-shadow: 0 0 7px var(--journey-color);
+}
+
+.relationship-semantics {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 6px;
+}
+
+.relationship-semantics div {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--cloud-line);
+  background: rgb(255 255 255 / 2.2%);
+}
+
+.relationship-semantics dt,
+.relationship-semantics dd {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.relationship-semantics dt {
+  color: var(--cloud-faint);
+  font-family: var(--mono-font);
+  letter-spacing: 0.035em;
+}
+
+.relationship-semantics dd {
+  color: var(--node-status);
+  font-weight: 620;
+}
+
 .connection-list {
   display: grid;
   gap: 5px;

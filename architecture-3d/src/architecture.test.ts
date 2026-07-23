@@ -63,6 +63,68 @@ describe('architecture graph', () => {
     expect(ARCHITECTURE_EDGES.some((edge) => edge.id === 'box-workload')).toBe(true);
   });
 
+  it('places Gateway between management clients and the private Cloud API', () => {
+    const web = ARCHITECTURE_NODES.find((node) => node.id === 'web');
+    const code = ARCHITECTURE_NODES.find((node) => node.id === 'code-tui');
+    const gateway = ARCHITECTURE_NODES.find((node) => node.id === 'gateway');
+    const api = ARCHITECTURE_NODES.find((node) => node.id === 'api');
+    const edgeIds = new Set(ARCHITECTURE_EDGES.map((edge) => edge.id));
+
+    expect(gateway?.domain).toBe('access');
+    expect(web?.position[2]).toBeGreaterThan(gateway?.position[2] ?? Number.POSITIVE_INFINITY);
+    expect(code?.position[2]).toBeGreaterThan(gateway?.position[2] ?? Number.POSITIVE_INFINITY);
+    expect(gateway?.position[2]).toBeGreaterThan(api?.position[2] ?? Number.POSITIVE_INFINITY);
+    expect(edgeIds.has('web-gateway')).toBe(true);
+    expect(edgeIds.has('code-gateway')).toBe(true);
+    expect(edgeIds.has('gateway-api')).toBe(true);
+    expect(edgeIds.has('web-api')).toBe(false);
+    expect(edgeIds.has('code-api')).toBe(false);
+  });
+
+  it('separates middleware, node runtime, providers, and physical infrastructure into layers', () => {
+    const domainOrder = ['control', 'coordination', 'data-plane', 'ecosystem', 'infrastructure'];
+    const centers = domainOrder.map(
+      (domainId) => ARCHITECTURE_DOMAINS.find((domain) => domain.id === domainId)?.center[1]
+    );
+    for (let index = 1; index < centers.length; index += 1) {
+      expect(centers[index - 1]).toBeGreaterThan(centers[index] ?? Number.POSITIVE_INFINITY);
+    }
+
+    expect(ARCHITECTURE_NODES.find((node) => node.id === 'postgres')?.domain).toBe('coordination');
+    expect(ARCHITECTURE_NODES.find((node) => node.id === 'runtime')?.domain).toBe('data-plane');
+    expect(ARCHITECTURE_NODES.find((node) => node.id === 'box-provider')?.domain).toBe('ecosystem');
+    expect(ARCHITECTURE_NODES.find((node) => node.id === 'gpu-compute')?.domain).toBe('infrastructure');
+  });
+
+  it('distinguishes the Cloud Inference context from the A3S Power backend', () => {
+    const inference = ARCHITECTURE_NODES.find((node) => node.id === 'inference');
+    const power = ARCHITECTURE_NODES.find((node) => node.id === 'power');
+    const powerHosting = ARCHITECTURE_HOSTING_RELATIONSHIPS.find(
+      (relationship) => relationship.id === 'workload-runs-power'
+    );
+
+    expect(inference?.label).toBe('Cloud Inference (I0)');
+    expect(inference?.domain).toBe('control');
+    expect(power?.label).toBe('A3S Power');
+    expect(power?.domain).toBe('ecosystem');
+    expect(ARCHITECTURE_EDGES.some((edge) => edge.id === 'inference-power')).toBe(true);
+    expect(ARCHITECTURE_EDGES.some((edge) => edge.id === 'power-gpu')).toBe(true);
+    expect(powerHosting?.hostNodeIds).toEqual(['workload-unit']);
+    expect(powerHosting?.guestNodeIds).toEqual(['power']);
+  });
+
+  it('provides detailed HUD content for every business and structural relationship', () => {
+    for (const edge of ARCHITECTURE_EDGES) {
+      expect(edge.summary.trim(), edge.id).not.toBe('');
+      expect(edge.transfers.length, edge.id).toBeGreaterThan(0);
+      expect(edge.boundary.trim(), edge.id).not.toBe('');
+    }
+    for (const relationship of ARCHITECTURE_HOSTING_RELATIONSHIPS) {
+      expect(relationship.description.trim(), relationship.id).not.toBe('');
+      expect(relationship.boundary.trim(), relationship.id).not.toBe('');
+    }
+  });
+
   it('keeps every named journey connected to at least one end-to-end system boundary', () => {
     for (const journey of JOURNEYS) {
       if (journey.id === 'all') continue;

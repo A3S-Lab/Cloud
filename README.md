@@ -1176,27 +1176,27 @@ API, worker, and event-relay roles can run in one process or independently from
 the same binary.
 
 ```text
-Browser
+Browser / A3S Code
    │
    v
-A3S Boot API ───> DDD application modules ───> PostgreSQL
+A3S Gateway ───> A3S Boot API ───> DDD application modules ───> PostgreSQL
+   │                  │                       │                         │
+   │                  │                       ├──> A3S Flow <───────────┤
+   │                  │                       └──> transactional outbox │
+   │                  │                                      │          │
+   │                  │                                      v          │
+   │                  │                                  A3S Event      │
+   │                  │                                                 │
+   │                  │       outbound mTLS command lease               │
+   │                  v                                                 │
+   │             Node agent ───> A3S Runtime ───> Providers ───> CPU/GPU
    │                       │                         │
-   │                       ├──> A3S Flow <───────────┤
-   │                       └──> transactional outbox │
-   │                                      │          │
-   │                                      v          │
-   │                                  A3S Event      │
-   │                                                 │
-   │       outbound mTLS command lease               │
-   v                                                 │
-Node agent ───> A3S Runtime ───> Docker / containerd / A3S Box
-   │
-   ├──────────> A3S Gateway ───> active edge revision
-   └──────────> observations and durable acknowledgements
+   └──── live request ──────> healthy workload target
 ```
 
 Explore the same ownership boundaries and end-to-end journeys in the
-[interactive 3D architecture](https://a3s-lab.github.io/Cloud/). Its
+[interactive 3D and Archify 2D architecture](https://a3s-lab.github.io/Cloud/).
+Every component and authored relationship opens a detailed HUD. The
 [standalone Rsbuild source](architecture-3d/README.md) is versioned with Cloud
 and deployed through GitHub Pages.
 
@@ -1290,7 +1290,7 @@ Cloud/
 │   ├── contracts/          # versioned public and node protocol types
 │   ├── control-plane/      # API, worker, reconciler, and event relay
 │   └── node-agent/         # outbound node process and Runtime adapters
-├── architecture-3d/        # Rsbuild and Three.js interactive system map
+├── architecture-3d/        # Rsbuild, Three.js, and Archify interactive system map
 ├── web/                    # React control-plane console
 └── docs/
 ```

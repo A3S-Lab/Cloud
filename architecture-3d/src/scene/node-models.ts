@@ -87,6 +87,21 @@ export function createFacilityModel(
       addBox(kit.root, [1.22, 0.16, 0.12], [0, 0.9, 0.59], kit.accent);
       addBranch(kit, 1.45);
       break;
+    case 'inference-control':
+      addCylinder(kit.root, [0.64, 0.76, 0.42, 24], [0, 0.21, 0], kit.dark);
+      for (const [index, angle] of [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3].entries()) {
+        const x = Math.cos(angle) * 0.72;
+        const z = Math.sin(angle) * 0.72;
+        const model = addSphere(kit.root, 0.25, [x, 0.92, z], kit.primary);
+        addCylinder(kit.root, [0.035, 0.035, 0.78, 8], [x / 2, 0.64, z / 2], kit.accent, [
+          Math.PI / 2,
+          -angle,
+          0,
+        ]);
+        animate(kit, model, 'pulse', 1.1, index * 0.8);
+      }
+      addSphere(kit.root, 0.34, [0, 0.92, 0], kit.accent);
+      break;
     case 'gpu-cluster':
       for (const [index, offset] of [-0.65, 0, 0.65].entries()) {
         const board = addBox(kit.root, [0.48, 1.28, 0.92], [offset, 0.68, 0], kit.primary);

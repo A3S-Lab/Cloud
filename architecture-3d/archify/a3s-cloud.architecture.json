@@ -1,0 +1,1119 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "A3S Cloud Layered Architecture",
+    "subtitle": "Experience → Gateway → Cloud domains → middleware → managed nodes → providers → infrastructure",
+    "output": "public/archify/a3s-cloud.architecture.html",
+    "animation": "trace",
+    "visual_preset": "blueprint",
+    "quality_profile": "standard",
+    "viewBox": [
+      1760,
+      1120
+    ],
+    "views": [
+      {
+        "id": "management-boundary",
+        "label": "Management boundary",
+        "focus": [
+          "clients",
+          "web",
+          "a3s-box",
+          "code-tui",
+          "gateway",
+          "api"
+        ],
+        "note": "Web and Code both cross the public Gateway before the private Boot API."
+      },
+      {
+        "id": "deploy-converge",
+        "label": "Deploy and converge",
+        "focus": [
+          "api",
+          "workloads",
+          "operations",
+          "flow",
+          "node-agent",
+          "runtime",
+          "box-provider",
+          "workload-unit"
+        ],
+        "note": "Follow desired state through durable coordination into one provider-backed unit."
+      },
+      {
+        "id": "middleware-layer",
+        "label": "Middleware and durable truth",
+        "focus": [
+          "postgres",
+          "flow",
+          "event",
+          "object-storage"
+        ],
+        "note": "SQL truth, workflow history, committed facts, and immutable bytes stay distinct."
+      },
+      {
+        "id": "power-gpu",
+        "label": "Cloud Inference and A3S Power",
+        "focus": [
+          "inference",
+          "workloads",
+          "fleet",
+          "runtime",
+          "power",
+          "gpu-compute"
+        ],
+        "note": "Cloud Inference owns intent; Power is one backend inside a managed workload."
+      },
+      {
+        "id": "live-request",
+        "label": "Live request path",
+        "focus": [
+          "clients",
+          "gateway",
+          "workload-unit",
+          "cpu-compute",
+          "gpu-compute"
+        ],
+        "note": "Gateway reaches an acknowledged target while Cloud control services stay off-path."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "Clients & SDKs",
+      "sublabel": "Request origin",
+      "tag": "External · External",
+      "pos": [
+        120,
+        72
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web Console",
+      "sublabel": "Management surface",
+      "tag": "F0 · E0 · Verified",
+      "pos": [
+        409,
+        72
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "a3s-box",
+      "type": "cloud",
+      "label": "A3S Box (Local)",
+      "sublabel": "Local OCI workload host",
+      "tag": "Local host · Verified",
+      "pos": [
+        1273,
+        72
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "code-tui",
+      "type": "frontend",
+      "label": "A3S Code TUI",
+      "sublabel": "Developer workspace",
+      "tag": "C0 · Planned",
+      "pos": [
+        1562,
+        72
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub Source",
+      "sublabel": "External provider",
+      "tag": "G0 · In progress",
+      "pos": [
+        695,
+        72
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "inference",
+      "type": "backend",
+      "label": "Cloud Inference (I0)",
+      "sublabel": "Planned bounded context",
+      "tag": "I0 · Planned",
+      "pos": [
+        841,
+        395
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "A3S Boot API",
+      "sublabel": "Control-plane boundary",
+      "tag": "F0 · Verified",
+      "pos": [
+        841,
+        299
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "identity",
+      "type": "security",
+      "label": "Identity",
+      "sublabel": "Bounded context",
+      "tag": "F0 · Verified",
+      "pos": [
+        193,
+        383
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "projects",
+      "type": "backend",
+      "label": "Projects",
+      "sublabel": "Bounded context",
+      "tag": "F0 · Verified",
+      "pos": [
+        463,
+        383
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "sources",
+      "type": "backend",
+      "label": "Sources",
+      "sublabel": "Bounded context",
+      "tag": "G0 · In progress",
+      "pos": [
+        1219,
+        383
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "artifacts",
+      "type": "backend",
+      "label": "Artifacts",
+      "sublabel": "Bounded context",
+      "tag": "G0 · In progress",
+      "pos": [
+        1489,
+        383
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "workloads",
+      "type": "backend",
+      "label": "Workloads",
+      "sublabel": "Bounded context",
+      "tag": "D0 · E0 · Verified",
+      "pos": [
+        355,
+        468
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "fleet",
+      "type": "backend",
+      "label": "Fleet",
+      "sublabel": "Bounded context",
+      "tag": "N0 · E0 · Verified",
+      "pos": [
+        679,
+        468
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "edge",
+      "type": "backend",
+      "label": "Edge",
+      "sublabel": "Bounded context",
+      "tag": "E0 · Verified",
+      "pos": [
+        1003,
+        468
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "operations",
+      "type": "backend",
+      "label": "Operations",
+      "sublabel": "Bounded context",
+      "tag": "F0 · E0 · Verified",
+      "pos": [
+        1327,
+        468
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "Authoritative state",
+      "tag": "F0 · Verified",
+      "pos": [
+        193,
+        573
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "flow",
+      "type": "backend",
+      "label": "A3S Flow",
+      "sublabel": "Operation history",
+      "tag": "F0 · E0 · Verified",
+      "pos": [
+        625,
+        573
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "event",
+      "type": "messagebus",
+      "label": "A3S Event",
+      "sublabel": "Committed facts",
+      "tag": "F0 · Verified",
+      "pos": [
+        1057,
+        573
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "object-storage",
+      "type": "database",
+      "label": "Artifact & Log Store",
+      "sublabel": "Content-addressed bytes",
+      "tag": "E0 · G0 · Verified",
+      "pos": [
+        1489,
+        573
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "node-agent",
+      "type": "backend",
+      "label": "Node Agent",
+      "sublabel": "Outbound control",
+      "tag": "N0 · E0 · Verified",
+      "pos": [
+        679,
+        700
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "A3S Runtime",
+      "sublabel": "Provider-neutral execution",
+      "tag": "R0 · Verified",
+      "pos": [
+        1003,
+        700
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "A3S Gateway",
+      "sublabel": "Public same-origin boundary",
+      "tag": "E0 · Verified",
+      "pos": [
+        841,
+        203
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "docker-buildkit",
+      "type": "backend",
+      "label": "Docker · BuildKit",
+      "sublabel": "Execution providers",
+      "tag": "R0 · G0 · In progress",
+      "pos": [
+        193,
+        825
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "box-provider",
+      "type": "backend",
+      "label": "A3S Box Provider",
+      "sublabel": "Cloud workload carrier",
+      "tag": "Provider conformance · Planned",
+      "pos": [
+        625,
+        825
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "power",
+      "type": "backend",
+      "label": "A3S Power",
+      "sublabel": "TEE inference backend",
+      "tag": "I0.5 conformance · Planned",
+      "pos": [
+        1057,
+        825
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "workload-unit",
+      "type": "cloud",
+      "label": "Cloud Workload Units",
+      "sublabel": "Converged resources",
+      "tag": "D0 · E0 · Verified",
+      "pos": [
+        1489,
+        825
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "database",
+      "label": "OCI Registry",
+      "sublabel": "Published artifacts",
+      "tag": "G0 · In progress",
+      "pos": [
+        301,
+        956
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "cpu-compute",
+      "type": "external",
+      "label": "CPU Compute",
+      "sublabel": "Host hardware",
+      "tag": "Hardware · External",
+      "pos": [
+        841,
+        956
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "gpu-compute",
+      "type": "external",
+      "label": "GPU Compute",
+      "sublabel": "Accelerator hardware",
+      "tag": "I0 hardware · External",
+      "pos": [
+        1381,
+        956
+      ],
+      "size": [
+        132,
+        62
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "01 · Intent · Experience & Sources",
+      "wraps": [
+        "clients",
+        "web",
+        "a3s-box",
+        "code-tui",
+        "github"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "security-group",
+      "label": "02 · Gateway boundary · Public Access & Delivery",
+      "wraps": [
+        "gateway"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "03 · Control plane · Cloud Control Domains",
+      "wraps": [
+        "inference",
+        "api",
+        "identity",
+        "projects",
+        "sources",
+        "artifacts",
+        "workloads",
+        "fleet",
+        "edge",
+        "operations"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "04 · Middleware · Platform Middleware & State",
+      "wraps": [
+        "postgres",
+        "flow",
+        "event",
+        "object-storage"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "05 · Node execution · Managed Node Plane",
+      "wraps": [
+        "node-agent",
+        "runtime"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "06 · Providers · Provider & Workload Layer",
+      "wraps": [
+        "docker-buildkit",
+        "box-provider",
+        "power",
+        "workload-unit"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "07 · Physical resources · Infrastructure & Hardware",
+      "wraps": [
+        "registry",
+        "cpu-compute",
+        "gpu-compute"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "id": "clients-web",
+      "from": "clients",
+      "to": "web",
+      "variant": "dashed"
+    },
+    {
+      "id": "web-gateway",
+      "from": "web",
+      "to": "gateway",
+      "variant": "emphasis"
+    },
+    {
+      "id": "code-gateway",
+      "from": "code-tui",
+      "to": "gateway",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-api",
+      "from": "gateway",
+      "to": "api",
+      "variant": "emphasis"
+    },
+    {
+      "id": "github-sources",
+      "from": "github",
+      "to": "sources",
+      "variant": "default"
+    },
+    {
+      "id": "api-identity",
+      "from": "api",
+      "to": "identity",
+      "variant": "security"
+    },
+    {
+      "id": "api-projects",
+      "from": "api",
+      "to": "projects",
+      "variant": "default"
+    },
+    {
+      "id": "api-workloads",
+      "from": "api",
+      "to": "workloads",
+      "variant": "default"
+    },
+    {
+      "id": "api-sources",
+      "from": "api",
+      "to": "sources",
+      "variant": "default"
+    },
+    {
+      "id": "api-inference",
+      "from": "api",
+      "to": "inference",
+      "variant": "default"
+    },
+    {
+      "id": "inference-power",
+      "from": "inference",
+      "to": "power",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          907,
+          470
+        ],
+        [
+          907,
+          792
+        ],
+        [
+          1123,
+          792
+        ]
+      ]
+    },
+    {
+      "id": "sources-artifacts",
+      "from": "sources",
+      "to": "artifacts",
+      "variant": "default"
+    },
+    {
+      "id": "artifacts-operations",
+      "from": "artifacts",
+      "to": "operations",
+      "variant": "default"
+    },
+    {
+      "id": "workloads-operations",
+      "from": "workloads",
+      "to": "operations",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          487,
+          540
+        ],
+        [
+          1327,
+          540
+        ]
+      ]
+    },
+    {
+      "id": "operations-flow",
+      "from": "operations",
+      "to": "flow",
+      "variant": "default"
+    },
+    {
+      "id": "flow-node-agent",
+      "from": "flow",
+      "to": "node-agent",
+      "variant": "default"
+    },
+    {
+      "id": "node-runtime",
+      "from": "node-agent",
+      "to": "runtime",
+      "variant": "default"
+    },
+    {
+      "id": "runtime-provider",
+      "from": "runtime",
+      "to": "docker-buildkit",
+      "variant": "default"
+    },
+    {
+      "id": "runtime-box",
+      "from": "runtime",
+      "to": "box-provider",
+      "variant": "default"
+    },
+    {
+      "id": "box-workload",
+      "from": "box-provider",
+      "to": "workload-unit",
+      "variant": "default",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          757,
+          792
+        ],
+        [
+          1555,
+          792
+        ]
+      ]
+    },
+    {
+      "id": "runtime-cpu",
+      "from": "runtime",
+      "to": "cpu-compute",
+      "variant": "default"
+    },
+    {
+      "id": "runtime-gpu",
+      "from": "runtime",
+      "to": "gpu-compute",
+      "variant": "default"
+    },
+    {
+      "id": "power-cpu",
+      "from": "power",
+      "to": "cpu-compute",
+      "variant": "dashed"
+    },
+    {
+      "id": "power-gpu",
+      "from": "power",
+      "to": "gpu-compute",
+      "variant": "dashed"
+    },
+    {
+      "id": "buildkit-cpu",
+      "from": "docker-buildkit",
+      "to": "cpu-compute",
+      "variant": "default"
+    },
+    {
+      "id": "buildkit-registry",
+      "from": "docker-buildkit",
+      "to": "registry",
+      "variant": "default"
+    },
+    {
+      "id": "registry-workloads",
+      "from": "registry",
+      "to": "workloads",
+      "variant": "default"
+    },
+    {
+      "id": "runtime-workload",
+      "from": "runtime",
+      "to": "workload-unit",
+      "variant": "default"
+    },
+    {
+      "id": "cpu-workload",
+      "from": "cpu-compute",
+      "to": "workload-unit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gpu-workload",
+      "from": "gpu-compute",
+      "to": "workload-unit",
+      "variant": "emphasis"
+    },
+    {
+      "id": "workload-edge",
+      "from": "workload-unit",
+      "to": "edge",
+      "variant": "default"
+    },
+    {
+      "id": "edge-agent",
+      "from": "edge",
+      "to": "node-agent",
+      "variant": "default"
+    },
+    {
+      "id": "agent-gateway",
+      "from": "node-agent",
+      "to": "gateway",
+      "variant": "default"
+    },
+    {
+      "id": "clients-gateway",
+      "from": "clients",
+      "to": "gateway",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-workload",
+      "from": "gateway",
+      "to": "workload-unit",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1680,
+          234
+        ],
+        [
+          1680,
+          856
+        ]
+      ]
+    },
+    {
+      "id": "workload-agent-logs",
+      "from": "workload-unit",
+      "to": "node-agent",
+      "variant": "dashed"
+    },
+    {
+      "id": "agent-fleet",
+      "from": "node-agent",
+      "to": "fleet",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          850,
+          731
+        ],
+        [
+          850,
+          540
+        ],
+        [
+          745,
+          540
+        ]
+      ]
+    },
+    {
+      "id": "fleet-object-store",
+      "from": "fleet",
+      "to": "object-storage",
+      "variant": "dashed"
+    },
+    {
+      "id": "object-store-api",
+      "from": "object-storage",
+      "to": "api",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1680,
+          604
+        ],
+        [
+          1680,
+          330
+        ]
+      ]
+    },
+    {
+      "id": "contexts-postgres",
+      "from": "workloads",
+      "to": "postgres",
+      "variant": "dashed"
+    },
+    {
+      "id": "artifacts-store",
+      "from": "artifacts",
+      "to": "object-storage",
+      "variant": "default"
+    },
+    {
+      "id": "contexts-event",
+      "from": "projects",
+      "to": "event",
+      "variant": "dashed"
+    },
+    {
+      "id": "inference-workloads",
+      "from": "inference",
+      "to": "workloads",
+      "variant": "default"
+    },
+    {
+      "id": "inference-fleet",
+      "from": "inference",
+      "to": "fleet",
+      "variant": "default"
+    },
+    {
+      "id": "fleet-gpu",
+      "from": "fleet",
+      "to": "gpu-compute",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [
+        [
+          745,
+          540
+        ],
+        [
+          1680,
+          540
+        ],
+        [
+          1680,
+          1004
+        ]
+      ]
+    },
+    {
+      "id": "inference-edge",
+      "from": "inference",
+      "to": "edge",
+      "variant": "default"
+    },
+    {
+      "id": "struct-box-hosts-code-a3s-box-code-tui",
+      "from": "a3s-box",
+      "to": "code-tui",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-identity",
+      "from": "api",
+      "to": "identity",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-projects",
+      "from": "api",
+      "to": "projects",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-inference",
+      "from": "api",
+      "to": "inference",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-sources",
+      "from": "api",
+      "to": "sources",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-artifacts",
+      "from": "api",
+      "to": "artifacts",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-workloads",
+      "from": "api",
+      "to": "workloads",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-fleet",
+      "from": "api",
+      "to": "fleet",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-edge",
+      "from": "api",
+      "to": "edge",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-operations",
+      "from": "api",
+      "to": "operations",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-gateway-routes-web-gateway-web",
+      "from": "gateway",
+      "to": "web",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-agent-manages-runtime-node-agent-runtime",
+      "from": "node-agent",
+      "to": "runtime",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-agent-configures-gateway-node-agent-gateway",
+      "from": "node-agent",
+      "to": "gateway",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-runtime-drives-providers-runtime-docker-buildkit",
+      "from": "runtime",
+      "to": "docker-buildkit",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-runtime-drives-providers-runtime-box-provider",
+      "from": "runtime",
+      "to": "box-provider",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-box-provider-hosts-workloads-box-provider-workload-unit",
+      "from": "box-provider",
+      "to": "workload-unit",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          757,
+          796
+        ],
+        [
+          1555,
+          796
+        ]
+      ]
+    },
+    {
+      "id": "struct-workload-runs-power-workload-unit-power",
+      "from": "workload-unit",
+      "to": "power",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-cpu-supplies-box-provider-cpu-compute-box-provider",
+      "from": "cpu-compute",
+      "to": "box-provider",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Control and middleware stay separate",
+      "items": [
+        "Cloud bounded contexts own business intent and policy.",
+        "PostgreSQL, Flow, Event, and object storage provide distinct durable capabilities."
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Providers do not become infrastructure authority",
+      "items": [
+        "Runtime drives conformant providers through typed contracts.",
+        "Registry plus CPU/GPU racks remain a lower infrastructure and hardware layer."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Inference ownership",
+      "items": [
+        "Cloud Inference owns models, backend profiles, routes, and usage.",
+        "A3S Power is one optional backend carried by a generic Cloud workload."
+      ]
+    }
+  ]
+}

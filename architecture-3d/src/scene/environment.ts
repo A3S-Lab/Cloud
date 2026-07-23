@@ -107,7 +107,7 @@ function createFoundation(): THREE.Group {
   const group = new THREE.Group();
   group.name = 'sandbox-foundation';
   const foundation = new THREE.Mesh(
-    new RoundedBoxGeometry(35.2, 0.52, 28.4, 5, 0.34),
+    new RoundedBoxGeometry(35.2, 0.52, 33.6, 5, 0.34),
     new THREE.MeshPhysicalMaterial({
       color: 0x0b1510,
       emissive: 0x152a1d,
@@ -132,13 +132,13 @@ function createFoundation(): THREE.Group {
   );
   foundation.add(outline);
 
-  for (const z of [-13.55, 13.55]) {
+  for (const z of [-16.15, 16.15]) {
     for (let x = -16.2; x <= 16.2; x += 1.2) {
       group.add(createPerimeterLight(x, -0.08, z));
     }
   }
   for (const x of [-16.9, 16.9]) {
-    for (let z = -12.2; z <= 12.2; z += 1.2) {
+    for (let z = -14.8; z <= 14.8; z += 1.2) {
       group.add(createPerimeterLight(x, -0.08, z));
     }
   }
@@ -174,18 +174,15 @@ function createRoadNetwork(): THREE.Group {
     opacity: 0.32,
   });
 
-  addRoad(group, [32, 0.08, 0.72], [0, -0.06, 6.45], roadMaterial);
-  addRoad(group, [32, 0.08, 0.72], [0, -0.06, -3.25], roadMaterial);
-  addRoad(group, [0.72, 0.08, 8.2], [-5.35, -0.06, -8.1], roadMaterial);
-  addRoad(group, [0.72, 0.08, 8.2], [5.35, -0.06, -8.1], roadMaterial);
+  const horizontalRoads = [11.9, 8.95, 1.55, -2, -5.45, -9];
+  for (const z of horizontalRoads) {
+    addRoad(group, [32, 0.08, 0.72], [0, -0.06, z], roadMaterial);
+  }
 
   for (let x = -15.5; x <= 15.5; x += 1.15) {
-    addRoad(group, [0.52, 0.015, 0.045], [x, -0.005, 6.45], laneMaterial);
-    addRoad(group, [0.52, 0.015, 0.045], [x, -0.005, -3.25], laneMaterial);
-  }
-  for (let z = -11.6; z <= -4.6; z += 1.1) {
-    addRoad(group, [0.045, 0.015, 0.48], [-5.35, -0.005, z], laneMaterial);
-    addRoad(group, [0.045, 0.015, 0.48], [5.35, -0.005, z], laneMaterial);
+    for (const z of horizontalRoads) {
+      addRoad(group, [0.52, 0.015, 0.045], [x, -0.005, z], laneMaterial);
+    }
   }
   return group;
 }
@@ -286,7 +283,7 @@ function createDomainDistrict(domain: ArchitectureDomain): DomainDistrict {
 function createMapCompass(): THREE.Group {
   const group = new THREE.Group();
   group.name = 'sandbox-compass';
-  group.position.set(15.9, 0.04, 12.6);
+  group.position.set(15.9, 0.04, -15.3);
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.35, 0.39, 32),
     new THREE.MeshBasicMaterial({

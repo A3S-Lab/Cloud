@@ -46,18 +46,19 @@ export const SIMULATION_ENTRIES: readonly SimulationEntry[] = [
     id: 'web',
     label: 'A3S Web Console',
     shortLabel: 'A3S Web',
-    description: 'An operator uses the same-origin management SPA.',
-    nodeIds: ['clients', 'web', 'api'],
-    edgeIds: ['clients-web', 'web-api'],
+    description:
+      'An operator uses the management SPA, whose same-origin API calls cross A3S Gateway before reaching Cloud.',
+    nodeIds: ['clients', 'web', 'gateway', 'api'],
+    edgeIds: ['clients-web', 'web-gateway', 'gateway-api'],
   },
   {
     id: 'code',
     label: 'A3S Box → A3S Code TUI',
     shortLabel: 'Code TUI',
     description:
-      'A local A3S Box carries A3S Code as one of its possible workloads; Code then issues typed Cloud commands.',
-    nodeIds: ['a3s-box', 'code-tui', 'api'],
-    edgeIds: ['code-api'],
+      'A local A3S Box carries A3S Code as one workload; Code reaches Cloud through the same public Gateway boundary.',
+    nodeIds: ['a3s-box', 'code-tui', 'gateway', 'api'],
+    edgeIds: ['code-gateway', 'gateway-api'],
   },
 ] as const;
 
@@ -203,17 +204,17 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
   },
   {
     id: 'gpu-inference',
-    label: 'Deploy GPU inference',
-    shortLabel: 'GPU inference',
+    label: 'Deploy A3S Power on GPU',
+    shortLabel: 'Power GPU',
     description:
-      'Turn typed inference intent into leased accelerator capacity, a healthy model target, and a live route.',
+      'Simulate the planned path from typed Cloud Inference intent to a conformant A3S Power backend on leased GPU capacity.',
     journey: 'all',
     color: '#d7b6ff',
     steps: [
       {
         id: 'submit-inference',
         title: 'Submit typed inference intent',
-        actor: 'Boot API · Inference Profile',
+        actor: 'Boot API · Cloud Inference',
         description:
           'The management surface selects a model profile; Boot preserves one application path and hands off a typed plan.',
         nodeIds: ['api', 'identity', 'inference'],
@@ -222,12 +223,12 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
       },
       {
         id: 'plan-inference',
-        title: 'Plan workload and accelerator claims',
-        actor: 'Inference · Workloads · Fleet',
+        title: 'Select Power and plan accelerator claims',
+        actor: 'Cloud Inference · A3S Power · Workloads · Fleet',
         description:
-          'Inference reuses Workloads for revision intent and Fleet for advertised accelerator capabilities and leases.',
-        nodeIds: ['inference', 'workloads', 'fleet', 'operations'],
-        edgeIds: ['inference-workloads', 'inference-fleet', 'workloads-operations'],
+          'Cloud Inference selects a versioned Power backend profile, then reuses Workloads and Fleet for generic revision intent, capabilities, and leases.',
+        nodeIds: ['inference', 'power', 'workloads', 'fleet', 'operations'],
+        edgeIds: ['inference-power', 'inference-workloads', 'inference-fleet', 'workloads-operations'],
         durationMs: 3100,
       },
       {
@@ -242,18 +243,18 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
       },
       {
         id: 'execute-gpu',
-        title: 'Start the model through Runtime',
-        actor: 'Node Agent · A3S Runtime · GPU Compute',
+        title: 'Start A3S Power through Runtime',
+        actor: 'Node Agent · A3S Runtime · A3S Power · GPU Compute',
         description:
-          'Node Agent applies the leased command; Runtime turns the provider-neutral plan into GPU-backed execution.',
-        nodeIds: ['node-agent', 'runtime', 'gpu-compute', 'workload-unit'],
-        edgeIds: ['node-runtime', 'runtime-gpu', 'gpu-workload'],
+          'Node Agent applies the leased command; Runtime converges a normal workload unit in which conformant Power uses the exact GPU binding.',
+        nodeIds: ['node-agent', 'runtime', 'power', 'gpu-compute', 'workload-unit'],
+        edgeIds: ['node-runtime', 'runtime-gpu', 'power-gpu', 'gpu-workload'],
         durationMs: 3200,
       },
       {
         id: 'route-model',
         title: 'Publish the healthy model route',
-        actor: 'Inference · Edge · Gateway',
+        actor: 'Cloud Inference · Edge · Gateway',
         description:
           'Health evidence and model route policy converge into one complete snapshot, applied atomically by Gateway.',
         nodeIds: ['inference', 'workload-unit', 'edge', 'node-agent', 'gateway'],
@@ -263,11 +264,11 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
       {
         id: 'stream-inference',
         title: 'Stream an inference response',
-        actor: 'Client · Gateway · GPU Runtime Unit',
+        actor: 'Client · Gateway · A3S Power · GPU',
         description:
           'The client streams through Gateway to the exact healthy target; the Cloud control plane stays off the request path.',
-        nodeIds: ['clients', 'gateway', 'workload-unit', 'gpu-compute'],
-        edgeIds: ['clients-gateway', 'gateway-workload', 'gpu-workload'],
+        nodeIds: ['clients', 'gateway', 'workload-unit', 'power', 'gpu-compute'],
+        edgeIds: ['clients-gateway', 'gateway-workload', 'power-gpu', 'gpu-workload'],
         durationMs: 3000,
       },
     ],
@@ -296,9 +297,9 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
         title: 'Select an acknowledged healthy target',
         actor: 'Gateway · Runtime Unit',
         description:
-          'The atomic route snapshot contains only the exact healthy target acknowledged by the node.',
-        nodeIds: ['gateway', 'workload-unit', 'edge'],
-        edgeIds: ['gateway-workload', 'workload-edge'],
+          'Gateway uses its already-applied atomic route snapshot, which contains only the exact healthy target acknowledged by the node.',
+        nodeIds: ['gateway', 'workload-unit'],
+        edgeIds: ['gateway-workload'],
         durationMs: 2800,
       },
       {
@@ -378,8 +379,8 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
         actor: 'A3S Web/Code · Operations',
         description:
           'The selected surface displays durable operation history, cancellation, replay, and repair without owning business rules.',
-        nodeIds: ['web', 'code-tui', 'api', 'operations', 'flow'],
-        edgeIds: ['web-api', 'code-api', 'operations-flow'],
+        nodeIds: ['web', 'code-tui', 'gateway', 'api', 'operations', 'flow'],
+        edgeIds: ['web-gateway', 'code-gateway', 'gateway-api', 'operations-flow'],
         durationMs: 3100,
       },
     ],

@@ -1,16 +1,17 @@
 import { ArrowDownLeft, ArrowUpRight, Box, Crosshair, ExternalLink, X } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { ARCHITECTURE_GRAPH, ARCHITECTURE_STATUS_META, type ArchitectureNode } from '../architecture';
+import type { ArchitectureRelationshipSelection } from '../selection';
 import { ARCHITECTURE_CARRIERS, ARCHITECTURE_HOSTING_RELATIONSHIPS } from '../topology';
 
 interface NodeInspectorProps {
   node?: ArchitectureNode;
   onClose: () => void;
   onFocus: () => void;
-  onSelectNode: (nodeId: string) => void;
+  onSelectRelationship: (selection: ArchitectureRelationshipSelection) => void;
 }
 
-export function NodeInspector({ node, onClose, onFocus, onSelectNode }: NodeInspectorProps) {
+export function NodeInspector({ node, onClose, onFocus, onSelectRelationship }: NodeInspectorProps) {
   if (!node) return null;
 
   const status = ARCHITECTURE_STATUS_META[node.status];
@@ -90,7 +91,9 @@ export function NodeInspector({ node, onClose, onFocus, onSelectNode }: NodeInsp
                   label={relationship.label}
                   nodeId={relatedNodeId}
                   relation={isHost ? relationship.hostAction : relationship.guestAction}
-                  onSelectNode={onSelectNode}
+                  onSelectRelationship={() =>
+                    onSelectRelationship({ kind: 'structural-edge', id: relationship.id })
+                  }
                 />
               ));
             })}
@@ -106,18 +109,20 @@ export function NodeInspector({ node, onClose, onFocus, onSelectNode }: NodeInsp
               <ConnectionButton
                 key={edge.id}
                 direction='inbound'
+                edgeId={edge.id}
                 label={edge.label}
                 nodeId={edge.from}
-                onSelectNode={onSelectNode}
+                onSelectRelationship={onSelectRelationship}
               />
             ))}
             {outbound.map((edge) => (
               <ConnectionButton
                 key={edge.id}
                 direction='outbound'
+                edgeId={edge.id}
                 label={edge.label}
                 nodeId={edge.to}
-                onSelectNode={onSelectNode}
+                onSelectRelationship={onSelectRelationship}
               />
             ))}
           </div>
@@ -142,17 +147,22 @@ function HostingButton({
   label,
   nodeId,
   relation,
-  onSelectNode,
+  onSelectRelationship,
 }: {
   label: string;
   nodeId: string;
   relation: string;
-  onSelectNode: (nodeId: string) => void;
+  onSelectRelationship: () => void;
 }) {
   const relatedNode = ARCHITECTURE_GRAPH.nodes.find((candidate) => candidate.id === nodeId);
   if (!relatedNode) return null;
   return (
-    <button type='button' className='hosting-relationship' onClick={() => onSelectNode(nodeId)}>
+    <button
+      type='button'
+      className='hosting-relationship'
+      onClick={onSelectRelationship}
+      aria-label={`Inspect ${label} relationship with ${relatedNode.label}`}
+    >
       <Box size={13} aria-hidden='true' />
       <span>
         <small>
@@ -166,20 +176,26 @@ function HostingButton({
 
 function ConnectionButton({
   direction,
+  edgeId,
   label,
   nodeId,
-  onSelectNode,
+  onSelectRelationship,
 }: {
   direction: 'inbound' | 'outbound';
+  edgeId: string;
   label: string;
   nodeId: string;
-  onSelectNode: (nodeId: string) => void;
+  onSelectRelationship: (selection: ArchitectureRelationshipSelection) => void;
 }) {
   const otherNode = ARCHITECTURE_GRAPH.nodes.find((candidate) => candidate.id === nodeId);
   if (!otherNode) return null;
 
   return (
-    <button type='button' onClick={() => onSelectNode(nodeId)}>
+    <button
+      type='button'
+      onClick={() => onSelectRelationship({ kind: 'business-edge', id: edgeId })}
+      aria-label={`Inspect ${label} relationship with ${otherNode.label}`}
+    >
       {direction === 'inbound' ? (
         <ArrowDownLeft size={13} aria-hidden='true' />
       ) : (

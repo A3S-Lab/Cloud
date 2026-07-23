@@ -31,10 +31,12 @@ export const ARCHITECTURE_STATUS_META: Readonly<Record<ArchitectureStatus, Archi
 
 export const ARCHITECTURE_DOMAIN_IDS = [
   'experience',
+  'access',
   'control',
   'coordination',
   'data-plane',
   'ecosystem',
+  'infrastructure',
 ] as const;
 
 export type ArchitectureDomainId = (typeof ARCHITECTURE_DOMAIN_IDS)[number];
@@ -46,6 +48,7 @@ export const ARCHITECTURE_VISUAL_KINDS = [
   'box-workload-host',
   'code-terminal',
   'source-repository',
+  'inference-control',
   'gpu-cluster',
   'control-tower',
   'identity-vault',
@@ -80,6 +83,7 @@ export const ARCHITECTURE_LOGO_IDS = [
   'a3s-code',
   'github',
   'inference',
+  'a3s-power',
   'a3s-boot',
   'identity',
   'projects',
@@ -138,8 +142,13 @@ export interface ArchitectureEdge {
   from: string;
   to: string;
   label: string;
+  summary: string;
+  transfers: readonly string[];
+  boundary: string;
   journeys: readonly Exclude<JourneyId, 'all'>[];
 }
+
+export type ArchitectureEdgeDetail = Pick<ArchitectureEdge, 'summary' | 'transfers' | 'boundary'>;
 
 export interface Journey {
   id: JourneyId;

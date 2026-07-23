@@ -6,9 +6,12 @@ export interface ArchitectureEdgeVisual {
   group: THREE.Group;
   curve: THREE.CubicBezierCurve3;
   tube: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
+  hitTarget: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
   arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   particle: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   active: boolean;
+  hovered: boolean;
+  selected: boolean;
   spotlighted: boolean;
   simulationRunning: boolean;
   phase: number;
@@ -55,6 +58,19 @@ export function createArchitectureEdgeVisual(
   tube.renderOrder = 1;
   group.add(tube);
 
+  const hitTarget = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, 48, 0.2, 7, false),
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      colorWrite: false,
+    })
+  );
+  hitTarget.name = `business-edge-hit:${edge.id}`;
+  hitTarget.userData.architectureSelection = { kind: 'business-edge', id: edge.id };
+  group.add(hitTarget);
+
   const arrow = new THREE.Mesh(
     new THREE.ConeGeometry(0.075, 0.24, 12),
     new THREE.MeshBasicMaterial({
@@ -88,9 +104,12 @@ export function createArchitectureEdgeVisual(
     group,
     curve,
     tube,
+    hitTarget,
     arrow,
     particle,
     active: true,
+    hovered: false,
+    selected: false,
     spotlighted: false,
     simulationRunning: false,
     phase: Math.abs(signedHash(edge.id)),
@@ -121,38 +140,59 @@ export function updateArchitectureEdgeVisual(
   const touchesSelection = selectedNodeId === visual.edge.from || selectedNodeId === visual.edge.to;
   const spotlighted = visual.simulationRunning && visual.spotlighted;
   const backgroundSimulationEdge = visual.simulationRunning && !visual.spotlighted;
-  visual.tube.material.opacity = visual.active
+  const visible = visual.active || visual.selected;
+  visual.tube.material.opacity = visible
     ? spotlighted
       ? 0.96
-      : backgroundSimulationEdge
-        ? 0.045
-        : touchesSelection
-          ? 0.72
-          : 0.28
+      : visual.selected
+        ? 0.92
+        : backgroundSimulationEdge
+          ? 0.045
+          : touchesSelection
+            ? 0.72
+            : visual.hovered
+              ? 0.6
+              : 0.28
     : 0.012;
-  visual.arrow.material.opacity = visual.active
+  visual.arrow.material.opacity = visible
     ? spotlighted
       ? 1
-      : backgroundSimulationEdge
-        ? 0.08
-        : touchesSelection
-          ? 0.95
-          : 0.62
+      : visual.selected
+        ? 1
+        : backgroundSimulationEdge
+          ? 0.08
+          : touchesSelection
+            ? 0.95
+            : visual.hovered
+              ? 0.88
+              : 0.62
     : 0.018;
-  visual.arrow.visible = visual.active && (!visual.simulationRunning || visual.spotlighted);
-  visual.particle.visible = visual.active && (!visual.simulationRunning || visual.spotlighted);
-  if (!visual.active) return;
+  visual.arrow.visible = visible && (!visual.simulationRunning || visual.spotlighted || visual.selected);
+  visual.particle.visible = visible && (!visual.simulationRunning || visual.spotlighted || visual.selected);
+  if (!visible) return;
 
-  const speed = reducedMotion ? 0 : spotlighted ? 0.22 : touchesSelection ? 0.115 : 0.075;
+  const speed = reducedMotion
+    ? 0
+    : spotlighted
+      ? 0.22
+      : visual.selected
+        ? 0.15
+        : touchesSelection || visual.hovered
+          ? 0.115
+          : 0.075;
   const progress = speed === 0 ? visual.phase : (elapsed * speed + visual.phase) % 1;
   visual.particle.position.copy(visual.curve.getPointAt(progress));
-  visual.particle.scale.setScalar(spotlighted ? 1.7 : touchesSelection ? 1.34 : 1);
+  visual.particle.scale.setScalar(
+    spotlighted ? 1.7 : visual.selected ? 1.55 : touchesSelection || visual.hovered ? 1.34 : 1
+  );
   visual.particle.material.opacity = reducedMotion ? 0.52 : 0.94;
 }
 
 export function disposeArchitectureEdgeVisual(visual: ArchitectureEdgeVisual): void {
   visual.tube.geometry.dispose();
   visual.tube.material.dispose();
+  visual.hitTarget.geometry.dispose();
+  visual.hitTarget.material.dispose();
   visual.arrow.geometry.dispose();
   visual.arrow.material.dispose();
   visual.particle.geometry.dispose();

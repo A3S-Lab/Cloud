@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "rsbuild dev",
     "build": "rsbuild build",
+    "archify:source": "bun run scripts/generate-archify-source.ts",
     "preview": "rsbuild preview",
     "typecheck": "tsc --noEmit",
     "format": "biome format --write .",

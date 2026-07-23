@@ -1,21 +1,23 @@
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { ARCHITECTURE_GRAPH, type ArchitectureNode, type JourneyId } from '../architecture';
+import { ARCHITECTURE_GRAPH, type JourneyId } from '../architecture';
+import type { ArchitectureSelection } from '../selection';
 import {
   createArchitectureRuntime,
   type ArchitectureRuntime,
   type ArchitectureSimulationFrame,
 } from '../scene/architecture-runtime';
 import type { ArchitectureHoverEvent } from '../scene/interaction';
+import { ARCHITECTURE_HOSTING_RELATIONSHIPS } from '../topology';
 
 interface ArchitectureSceneProps {
   autoRotate: boolean;
   focusRevision: number;
   journey: JourneyId;
   resetRevision: number;
-  selectedNodeId?: string;
+  selection?: ArchitectureSelection;
   simulationFrame?: ArchitectureSimulationFrame;
-  onSelectNode: (nodeId: string) => void;
+  onSelect: (selection: ArchitectureSelection) => void;
 }
 
 export function ArchitectureScene({
@@ -23,19 +25,18 @@ export function ArchitectureScene({
   focusRevision,
   journey,
   resetRevision,
-  selectedNodeId,
+  selection,
   simulationFrame,
-  onSelectNode,
+  onSelect,
 }: ArchitectureSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<ArchitectureRuntime | undefined>(undefined);
-  const selectNodeRef = useRef(onSelectNode);
-  selectNodeRef.current = onSelectNode;
+  const selectRef = useRef(onSelect);
+  selectRef.current = onSelect;
   const [renderError, setRenderError] = useState<string>();
   const [hover, setHover] = useState<ArchitectureHoverEvent>();
   const previousFocusRevision = useRef(focusRevision);
   const previousResetRevision = useRef(resetRevision);
-  const hoveredNode = hover ? ARCHITECTURE_GRAPH.nodes.find((node) => node.id === hover.nodeId) : undefined;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: The Three.js runtime is initialized once and synchronized by the focused effects below.
   useEffect(() => {
@@ -45,10 +46,10 @@ export function ArchitectureScene({
       runtimeRef.current = createArchitectureRuntime(container, {
         graph: ARCHITECTURE_GRAPH,
         initialJourney: journey,
-        initialSelectedNodeId: selectedNodeId,
+        initialSelection: selection,
         autoRotate,
         onHover: setHover,
-        onSelect: (nodeId) => selectNodeRef.current(nodeId),
+        onSelect: (nextSelection) => selectRef.current(nextSelection),
       });
       setRenderError(undefined);
     } catch (error) {
@@ -68,8 +69,8 @@ export function ArchitectureScene({
   }, [journey]);
 
   useEffect(() => {
-    runtimeRef.current?.setSelectedNode(selectedNodeId);
-  }, [selectedNodeId]);
+    runtimeRef.current?.setSelection(selection);
+  }, [selection]);
 
   useEffect(() => {
     runtimeRef.current?.setAutoRotate(autoRotate);
@@ -82,8 +83,8 @@ export function ArchitectureScene({
   useEffect(() => {
     if (focusRevision === previousFocusRevision.current) return;
     previousFocusRevision.current = focusRevision;
-    if (selectedNodeId) runtimeRef.current?.focusNode(selectedNodeId);
-  }, [focusRevision, selectedNodeId]);
+    if (selection?.kind === 'node') runtimeRef.current?.focusNode(selection.id);
+  }, [focusRevision, selection]);
 
   useEffect(() => {
     if (resetRevision === previousResetRevision.current) return;
@@ -101,24 +102,66 @@ export function ArchitectureScene({
       <div className='viewport-corner viewport-corner-bl' aria-hidden='true' />
       <div className='viewport-corner viewport-corner-br' aria-hidden='true' />
 
-      {hoveredNode && hover ? <NodeTooltip node={hoveredNode} hover={hover} /> : null}
+      {hover ? <SelectionTooltip hover={hover} /> : null}
 
-      {renderError ? <WebglFallback error={renderError} onSelectNode={onSelectNode} /> : null}
+      {renderError ? <WebglFallback error={renderError} onSelect={onSelect} /> : null}
     </section>
   );
 }
 
-function NodeTooltip({ node, hover }: { node: ArchitectureNode; hover: ArchitectureHoverEvent }) {
+function SelectionTooltip({ hover }: { hover: ArchitectureHoverEvent }) {
+  const { selection } = hover;
+  if (selection.kind === 'node') {
+    const node = ARCHITECTURE_GRAPH.nodes.find((candidate) => candidate.id === selection.id);
+    if (!node) return null;
+    return (
+      <output className={`node-tooltip is-${hover.placement}`} style={{ left: hover.x, top: hover.y }}>
+        <span>{node.eyebrow}</span>
+        <strong>{node.label}</strong>
+        <small>{node.gate}</small>
+      </output>
+    );
+  }
+
+  const businessEdge =
+    selection.kind === 'business-edge'
+      ? ARCHITECTURE_GRAPH.edges.find((edge) => edge.id === selection.id)
+      : undefined;
+  const structuralEdge =
+    selection.kind === 'structural-edge'
+      ? ARCHITECTURE_HOSTING_RELATIONSHIPS.find((relationship) => relationship.id === selection.id)
+      : undefined;
+  const sourceLabels = businessEdge
+    ? [ARCHITECTURE_GRAPH.nodes.find((node) => node.id === businessEdge.from)?.label]
+    : structuralEdge?.hostNodeIds.map(
+        (nodeId) => ARCHITECTURE_GRAPH.nodes.find((node) => node.id === nodeId)?.label
+      );
+  const targetLabels = businessEdge
+    ? [ARCHITECTURE_GRAPH.nodes.find((node) => node.id === businessEdge.to)?.label]
+    : structuralEdge?.guestNodeIds.map(
+        (nodeId) => ARCHITECTURE_GRAPH.nodes.find((node) => node.id === nodeId)?.label
+      );
+  const label = businessEdge?.label ?? structuralEdge?.label;
+  if (!label) return null;
+
   return (
     <output className={`node-tooltip is-${hover.placement}`} style={{ left: hover.x, top: hover.y }}>
-      <span>{node.eyebrow}</span>
-      <strong>{node.label}</strong>
-      <small>{node.gate}</small>
+      <span>{businessEdge ? 'Business flow' : 'Structure / hosting'}</span>
+      <strong>{label}</strong>
+      <small>
+        {sourceLabels?.filter(Boolean).join(', ')} → {targetLabels?.filter(Boolean).join(', ')}
+      </small>
     </output>
   );
 }
 
-function WebglFallback({ error, onSelectNode }: { error: string; onSelectNode: (nodeId: string) => void }) {
+function WebglFallback({
+  error,
+  onSelect,
+}: {
+  error: string;
+  onSelect: (selection: ArchitectureSelection) => void;
+}) {
   return (
     <div className='webgl-fallback' role='alert'>
       <div className='webgl-fallback-heading'>
@@ -139,13 +182,41 @@ function WebglFallback({ error, onSelectNode }: { error: string; onSelectNode: (
               {ARCHITECTURE_GRAPH.nodes
                 .filter((node) => node.domain === domain.id)
                 .map((node) => (
-                  <button type='button' key={node.id} onClick={() => onSelectNode(node.id)}>
+                  <button type='button' key={node.id} onClick={() => onSelect({ kind: 'node', id: node.id })}>
                     {node.label}
                   </button>
                 ))}
             </div>
           </section>
         ))}
+        <section>
+          <h2>Business flows</h2>
+          <div>
+            {ARCHITECTURE_GRAPH.edges.map((edge) => (
+              <button
+                type='button'
+                key={edge.id}
+                onClick={() => onSelect({ kind: 'business-edge', id: edge.id })}
+              >
+                {edge.label}
+              </button>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h2>Structure & hosting</h2>
+          <div>
+            {ARCHITECTURE_HOSTING_RELATIONSHIPS.map((relationship) => (
+              <button
+                type='button'
+                key={relationship.id}
+                onClick={() => onSelect({ kind: 'structural-edge', id: relationship.id })}
+              >
+                {relationship.label}
+              </button>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );

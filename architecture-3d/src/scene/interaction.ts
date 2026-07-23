@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { type ArchitectureSelection, isArchitectureSelection } from '../selection';
 
 export interface ArchitectureHoverEvent {
-  nodeId: string;
+  selection: ArchitectureSelection;
   x: number;
   y: number;
   placement: 'left' | 'right';
@@ -12,7 +13,7 @@ interface ArchitectureInteractionOptions {
   camera: THREE.Camera;
   targets: readonly THREE.Object3D[];
   onHover: (event?: ArchitectureHoverEvent) => void;
-  onSelect: (nodeId: string) => void;
+  onSelect: (selection: ArchitectureSelection) => void;
   onReset: () => void;
 }
 
@@ -42,10 +43,10 @@ export function attachArchitectureInteraction({
   canvas.setAttribute('role', 'application');
   canvas.setAttribute(
     'aria-label',
-    'Interactive 3D map of A3S Cloud. Drag to orbit, scroll to zoom, select components for details, and press R to reset the camera.'
+    'Interactive 3D map of A3S Cloud. Drag to orbit, scroll to zoom, select components or relationships for details, and press R to reset the camera.'
   );
 
-  const hitTest = (event: PointerEvent): string | undefined => {
+  const hitTest = (event: PointerEvent): ArchitectureSelection | undefined => {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return undefined;
     pointer.set(
@@ -53,11 +54,17 @@ export function attachArchitectureInteraction({
       -((event.clientY - rect.top) / rect.height) * 2 + 1
     );
     raycaster.setFromCamera(pointer, camera);
+    const selections: ArchitectureSelection[] = [];
     for (const intersection of raycaster.intersectObjects([...targets], false)) {
+      const selection = intersection.object.userData.architectureSelection;
+      if (isArchitectureSelection(selection)) {
+        selections.push(selection);
+        continue;
+      }
       const nodeId = intersection.object.userData.nodeId;
-      if (typeof nodeId === 'string') return nodeId;
+      if (typeof nodeId === 'string') selections.push({ kind: 'node', id: nodeId });
     }
-    return undefined;
+    return selections.find((selection) => selection.kind === 'node') ?? selections[0];
   };
 
   const handlePointerDown = (event: PointerEvent) => {
@@ -74,9 +81,9 @@ export function attachArchitectureInteraction({
       onHover(undefined);
       return;
     }
-    const nodeId = hitTest(event);
-    canvas.dataset.interaction = nodeId ? 'node' : 'orbit';
-    if (!nodeId) {
+    const selection = hitTest(event);
+    canvas.dataset.interaction = selection ? (selection.kind === 'node' ? 'node' : 'relationship') : 'orbit';
+    if (!selection) {
       onHover(undefined);
       return;
     }
@@ -84,7 +91,7 @@ export function attachArchitectureInteraction({
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     onHover({
-      nodeId,
+      selection,
       x,
       y,
       placement: x > rect.width * 0.64 ? 'left' : 'right',
@@ -101,8 +108,8 @@ export function attachArchitectureInteraction({
     ) {
       return;
     }
-    const nodeId = hitTest(event);
-    if (nodeId) onSelect(nodeId);
+    const selection = hitTest(event);
+    if (selection) onSelect(selection);
   };
 
   const handlePointerCancel = () => {
