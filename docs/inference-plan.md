@@ -19,7 +19,10 @@ UI, or implementation compatibility with GPUStack. The finished profile will:
 - expose OpenAI-compatible streaming APIs through A3S Gateway;
 - apply model-level authorization, weighted routing, fallback, and rate limits;
 - record auditable request and token usage without coupling scheduling to
-  commercial billing; and
+  commercial billing;
+- expose grant-derived consumer, project-steward, and platform-operator
+  workspaces for model discovery, key lifecycle, route diagnostics, API
+  exploration, and usage showback; and
 - recover truthfully from process, node, device, network, and control-plane
   failure.
 
@@ -41,6 +44,7 @@ The capability boundary is explicit:
 | Independent replicas on multiple nodes | Included | `H0.3` + `I0.3` |
 | One Ray/vLLM replica spanning multiple GPU nodes | Included after independent replicas | `H0.3` + `I0.4` |
 | External OpenAI-compatible provider targets | Included as a later isolated slice | `I0.2d` |
+| Role-focused model discovery, project key lifecycle, provider/route diagnostics, API exploration, and usage showback | Included after the underlying data-plane, usage, external-provider, and C0 principal gates | `C0.3` + `I0.2e` |
 | Production Gateway/control-plane HA and autoscaling | Reuse the generic platform implementation | `H0.4`/`H0.5` + `I0.5` gates |
 | Power, hardware partitions and additional accelerator vendors/backends | Deferred until conformance passes | `I0.5` |
 | Responses API and Jina-compatible rerank | Deferred beyond the initial data-plane gate | `I0.5` candidate |
@@ -80,6 +84,13 @@ The capability boundary is explicit:
    an otherwise unisolated device is not a production capability.
 10. All product configuration remains validated A3S ACL. Backend-specific raw
     maps and alternate product configuration formats are forbidden.
+11. Consumer, project-steward, and platform-operator workspaces are
+    grant-derived presentation modes, not new authorization roles. Every card,
+    count, search result, deep link, and mutation uses the same C0-authorized
+    query or command as REST, CLI, and MCP.
+12. Usage showback may snapshot project attribution references and export
+    durable usage facts, but price catalogs, balances, invoices, settlement,
+    and commercial entitlements remain outside the Cloud core.
 
 ## 3. Bounded-context ownership
 
@@ -171,10 +182,12 @@ credential creation, rotation, revocation, and delivery; Inference only
 validates and replaces the bound version reference.
 
 `InferenceUsageRecord` is an append-only business fact keyed by a stable
-request/event ID. It records tenant, principal, credential, route, selected
-target, status, prompt/completion/cached tokens when reported, timestamps, and
-whether the measurement is complete or estimated. It never stores prompts or
-responses. Price, balance, invoicing, and settlement remain outside Cloud.
+request/event ID. It records tenant, project, environment, principal,
+credential, route, selected target, status, prompt/completion/cached tokens
+when reported, timestamps, the bounded project-attribution reference effective
+at request start, and whether the measurement is complete or estimated. It
+never stores prompts or responses. Price, balance, invoicing, and settlement
+remain outside Cloud.
 
 ### 4.2 Typed topology
 
@@ -264,7 +277,7 @@ Management paths are versioned under `/api/v1`. The following table uses
 | `POST ENV/inference/routes/{id}/revisions` | `inference:write` | `202` immutable policy, target or Edge-binding revision publication |
 | `GET ENV/inference/routes` | `inference:read` | Cursor-paginated route and applied-state projection |
 | `GET ENV/inference/routes/{id}` | `inference:read` | Intent plus exact Edge/Gateway applied state |
-| `GET ENV/inference/usage` | `inference:read` | Cursor-paginated request records or bounded rollups |
+| `GET ENV/inference/usage` | `inference:read` | Cursor-paginated request records or bounded rollups grouped by a closed dimension enum such as principal, credential, model, route, provider, or project attribution reference |
 
 Every management mutation requires `Idempotency-Key`, uses the standard A3S
 response wrapper, and documents synchronous validation versus `202` Operation
@@ -861,6 +874,59 @@ configured safe count. Scale-to-zero is enabled only with bounded Gateway
 buffering, an explicit cold-start SLO, and a model-cache policy that has passed
 overflow, timeout, and restart gates.
 
+### 10.6 Enterprise gateway self-service and governance
+
+I0.2e turns the verified inference contracts into grant-derived console
+workspaces. It takes product inspiration from TokenHub without adopting its API,
+UI, storage topology, or billing model. The workspace selected by the console
+changes navigation and default queries only; C0 effective grants remain the
+sole authority for every result and action.
+
+| Persona | Workspace outcomes |
+| --- | --- |
+| Consumer | Discover only allowed models, create/rotate/revoke authorized environment keys, copy versioned SDK/API examples, exercise a browser-local API playground, and inspect authorized personal usage |
+| Project steward | Manage project members and grants through C0, govern project keys and typed limits, and inspect usage breakdowns with the effective project attribution reference |
+| Platform operator | Certify ExternalModelProvider channels, curate the model catalog, inspect route health and applied revisions, test fallback policy, and follow the complete audit/correlation chain |
+
+C0 global search accepts a tenant context and returns only results from
+authorized resource projections. I0.2e registers model, Provider, route, key
+metadata, and usage-summary projections only after their owning gates pass.
+Counts, suggestions, recent items, error timing, and deep links obey the same
+guards as the underlying query; the browser never fetches a broad result set
+and filters it locally.
+
+Provider and route diagnostics expose credential-free capability probes,
+model-list compatibility, health history, sanitized upstream failures, current
+and candidate route revisions, target selection, fallback decisions, Gateway
+revision skew, and usage-ingestion lag. Diagnostics never reveal a Provider
+Secret, inference-key verifier, prompt, response, or another tenant's target.
+Key creation follows the one-time reveal contract in section 10.3: a plaintext
+key can appear only in the bounded creation receipt, cannot be recovered after
+the receipt expires, and is replaced through create-then-revoke rotation.
+
+The API explorer publishes the certified endpoint contract, copyable SDK and
+HTTP examples, and an in-memory browser-local playground. Draft prompts and
+responses are not sent to a management endpoint, written to browser durable
+storage, or persisted by Cloud. An invoked request still traverses the public
+Gateway authorization path and emits the same prompt-free usage facts as any
+other request. Usage showback reports requests, tokens, errors, latency,
+fallback, and measurement completeness over authorized principal, credential,
+model, route, Provider, project/environment, and attribution dimensions.
+
+I0.2d certifies one generic OpenAI-compatible external Provider contract first.
+Named Azure OpenAI, Anthropic, Gemini, DeepSeek, Qwen, externally managed vLLM,
+and Ollama adapters behind Cloud's OpenAI-compatible contract are candidates
+for I0.5 only after each passes a real endpoint-specific protocol, streaming,
+error, usage, credential-isolation, and failure-recovery suite. A
+compatible-looking model list or registration form is not certification. This
+policy does not delay the local typed vLLM backend owned by I0.2a.
+
+Showback is operational evidence, not a commercial ledger. Cloud does not own
+price catalogs, monetary credits or balances, checkout, invoices, settlement,
+tax, or entitlement authority. A separately deployed commercial service may
+consume authorized usage exports and external attribution references without
+mutating historical Cloud usage facts.
+
 ## 11. Persistence slices
 
 Migration numbers are assigned only when an implementation slice lands. The E0
@@ -878,7 +944,7 @@ prerequisite is already satisfied; the logical order and ownership are:
 | Inference catalog | Inference | organization models/revisions and platform backend/revision references |
 | Inference serving | Inference | environment deployments/revisions/providers, routes/aliases, immutable EdgeRouteBinding references, two-level targets, access-policy revisions, credential grants and typed rate limits |
 | Inference credentials | Identity | environment ownership, audience, prefix, verifier hash/algorithm parameters, issuance generation, expiry/revocation, encrypted idempotency receipt and Gateway projection generation |
-| Usage | Inference | append-only request/attempt events, Gateway epoch/sequence cursors, gap state, time partitions, retention and rebuildable rollups |
+| Usage | Inference | append-only request/attempt events with project/environment and immutable attribution references, Gateway epoch/sequence cursors, gap state, time partitions, retention and rebuildable rollups |
 | Edge target sets | Edge | source/rollout owner reference, prior/candidate target-set revision/digest, private endpoints, per-Gateway ack/readiness |
 | Autoscaling | Workloads | immutable effective policy, evaluator lease, decision record, stabilization/cooldown state and desired-count mutation |
 | Operation composition | Operations | parent/child operation relations and workflow identity |
@@ -947,6 +1013,28 @@ high-frequency metrics do not enter these tables.
 - Prove client and provider credentials cannot cross, rotate, leak, or select a
   cross-tenant provider target.
 
+### I0.2e: enterprise gateway self-service and governance
+
+- Depend on C0.3 and I0.2b/I0.2c/I0.2d. Land the grant-derived console
+  workspaces, authorized I0 search registration, model and key self-service,
+  Provider/route diagnostics, API explorer, in-memory playground, and usage
+  showback over the existing commands and queries.
+- Prove consumer, project-steward, and platform-operator fixtures cannot learn
+  or mutate an ungranted resource through navigation, search, counts, recent
+  items, diagnostics, usage rollups, timing, or a forged deep link.
+- Create, reveal once, rotate, and revoke a real inference key; prove reload and
+  receipt expiry cannot recover it, the exact Gateway revocation acknowledgement
+  closes access, and plaintext scans of durable browser/server state, logs,
+  events, audit, and exports remain clean.
+- Exercise the playground through the public Gateway against both the local
+  backend and certified generic external Provider. Force target and fallback
+  failures, reconcile visible diagnostics and usage with the durable ledger,
+  and prove browser reload loses drafts while Cloud stores no prompt or
+  response.
+- Change a project attribution profile and prove future usage selects the new
+  immutable reference while historical request facts and authorized exports
+  retain the prior reference exactly.
+
 ### I0.3: multi-node independent replicas
 
 - Depend on H0.3 multi-node replicas, drain/evacuation, private endpoints, and
@@ -974,8 +1062,14 @@ high-frequency metrics do not enter these tables.
   profiles.
 - Add hardware partitions and each new vendor/backend only through the exported
   accelerator/backend conformance suites.
+- Add a named external Provider adapter only after its real endpoint passes the
+  generic egress safety gates plus its own protocol, streaming, error, usage,
+  credential-rotation, timeout, fallback, and recovery conformance. Azure
+  OpenAI, Anthropic, Gemini, DeepSeek, Qwen, externally managed vLLM, and Ollama
+  remain candidates until that evidence exists.
 - Do not claim fractional sharing, multi-vendor support, or distributed
-  recovery from capability advertisement alone.
+  recovery, named Provider support, or API compatibility from capability
+  advertisement alone.
 
 Cloud GPU host creation, SSH credential custody, and cloud-instance lifecycle
 are not owned by Inference. If required, they land later as a separate typed
@@ -997,6 +1091,13 @@ In addition to the repository verification matrix, I0 requires:
   and cache eviction tests;
 - real vLLM streaming, same-node tensor parallel, weighted target distribution,
   fallback, auth revocation, and usage deduplication;
+- real generic OpenAI-compatible external-Provider conformance covering model
+  discovery, streaming, errors, timeouts, fallback, Secret rotation, usage, and
+  credential isolation;
+- grant-derived consumer, project-steward, and platform-operator navigation,
+  authorized search/deep-link non-disclosure, one-time key reveal, prompt-free
+  playground persistence scans, diagnostic redaction, and usage-attribution
+  reconciliation;
 - real multi-node placement, drain, node return with stale epoch, and route
   convergence; and
 - real Ray/vLLM gang tests with process kills and network faults at every
@@ -1045,12 +1146,14 @@ The recommended merge order is:
    streaming;
 9. I0.2c durable usage spool/ledger, observability, update and rollback;
 10. I0.2d external-provider egress and Secret-version replacement;
-11. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
-12. I0.3 independent replica failover and rolling update;
-13. H0.3 placement-group/private-network gate, then I0.4 Ray/vLLM;
-14. H0.4 production deployment/HA and H0.5 sole autoscaling controller;
-15. I0.5 inference HA, load, quota and disaster gates; and
-16. Power and additional vendor/backend adapters through conformance.
+11. C0.3 principal/grant, authorized-search, attribution, and console
+    foundations, then I0.2e enterprise gateway self-service and governance;
+12. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
+13. I0.3 independent replica failover and rolling update;
+14. H0.3 placement-group/private-network gate, then I0.4 Ray/vLLM;
+15. H0.4 production deployment/HA and H0.5 sole autoscaling controller;
+16. I0.5 inference HA, load, quota and disaster gates; and
+17. Power and named vendor/backend/Provider adapters through conformance.
 
 No slice weakens the verified E0 path, creates a parallel deployment path, or
 marks a capability available before its real-provider and recovery gates pass.
