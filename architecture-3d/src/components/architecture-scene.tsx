@@ -1,7 +1,11 @@
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ARCHITECTURE_GRAPH, type ArchitectureNode, type JourneyId } from '../architecture';
-import { createArchitectureRuntime, type ArchitectureRuntime } from '../scene/architecture-runtime';
+import {
+  createArchitectureRuntime,
+  type ArchitectureRuntime,
+  type ArchitectureSimulationFrame,
+} from '../scene/architecture-runtime';
 import type { ArchitectureHoverEvent } from '../scene/interaction';
 
 interface ArchitectureSceneProps {
@@ -10,6 +14,7 @@ interface ArchitectureSceneProps {
   journey: JourneyId;
   resetRevision: number;
   selectedNodeId?: string;
+  simulationFrame?: ArchitectureSimulationFrame;
   onSelectNode: (nodeId: string) => void;
 }
 
@@ -19,6 +24,7 @@ export function ArchitectureScene({
   journey,
   resetRevision,
   selectedNodeId,
+  simulationFrame,
   onSelectNode,
 }: ArchitectureSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -68,6 +74,10 @@ export function ArchitectureScene({
   useEffect(() => {
     runtimeRef.current?.setAutoRotate(autoRotate);
   }, [autoRotate]);
+
+  useEffect(() => {
+    runtimeRef.current?.setSimulationFrame(simulationFrame);
+  }, [simulationFrame]);
 
   useEffect(() => {
     if (focusRevision === previousFocusRevision.current) return;
@@ -122,12 +132,12 @@ function WebglFallback({ error, onSelectNode }: { error: string; onSelectNode: (
         The complete architecture remains available as an accessible component index.
       </p>
       <div className='fallback-layers'>
-        {ARCHITECTURE_GRAPH.layers.map((layer) => (
-          <section key={layer.id}>
-            <h2>{layer.label}</h2>
+        {ARCHITECTURE_GRAPH.domains.map((domain) => (
+          <section key={domain.id}>
+            <h2>{domain.label}</h2>
             <div>
               {ARCHITECTURE_GRAPH.nodes
-                .filter((node) => node.layer === layer.id)
+                .filter((node) => node.domain === domain.id)
                 .map((node) => (
                   <button type='button' key={node.id} onClick={() => onSelectNode(node.id)}>
                     {node.label}

@@ -9,6 +9,8 @@ export interface ArchitectureEdgeVisual {
   arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   particle: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   active: boolean;
+  spotlighted: boolean;
+  simulationRunning: boolean;
   phase: number;
 }
 
@@ -89,6 +91,8 @@ export function createArchitectureEdgeVisual(
     arrow,
     particle,
     active: true,
+    spotlighted: false,
+    simulationRunning: false,
     phase: Math.abs(signedHash(edge.id)),
   };
 }
@@ -115,16 +119,34 @@ export function updateArchitectureEdgeVisual(
   selectedNodeId?: string
 ): void {
   const touchesSelection = selectedNodeId === visual.edge.from || selectedNodeId === visual.edge.to;
-  visual.tube.material.opacity = visual.active ? (touchesSelection ? 0.72 : 0.28) : 0.018;
-  visual.arrow.material.opacity = visual.active ? (touchesSelection ? 0.95 : 0.62) : 0.025;
-  visual.arrow.visible = visual.active;
-  visual.particle.visible = visual.active;
+  const spotlighted = visual.simulationRunning && visual.spotlighted;
+  const backgroundSimulationEdge = visual.simulationRunning && !visual.spotlighted;
+  visual.tube.material.opacity = visual.active
+    ? spotlighted
+      ? 0.96
+      : backgroundSimulationEdge
+        ? 0.045
+        : touchesSelection
+          ? 0.72
+          : 0.28
+    : 0.012;
+  visual.arrow.material.opacity = visual.active
+    ? spotlighted
+      ? 1
+      : backgroundSimulationEdge
+        ? 0.08
+        : touchesSelection
+          ? 0.95
+          : 0.62
+    : 0.018;
+  visual.arrow.visible = visual.active && (!visual.simulationRunning || visual.spotlighted);
+  visual.particle.visible = visual.active && (!visual.simulationRunning || visual.spotlighted);
   if (!visual.active) return;
 
-  const speed = reducedMotion ? 0 : touchesSelection ? 0.115 : 0.075;
+  const speed = reducedMotion ? 0 : spotlighted ? 0.22 : touchesSelection ? 0.115 : 0.075;
   const progress = speed === 0 ? visual.phase : (elapsed * speed + visual.phase) % 1;
   visual.particle.position.copy(visual.curve.getPointAt(progress));
-  visual.particle.scale.setScalar(touchesSelection ? 1.34 : 1);
+  visual.particle.scale.setScalar(spotlighted ? 1.7 : touchesSelection ? 1.34 : 1);
   visual.particle.material.opacity = reducedMotion ? 0.52 : 0.94;
 }
 

@@ -1,119 +1,77 @@
-export type ArchitectureStatus = 'verified' | 'in-progress' | 'planned' | 'external';
-
-export interface ArchitectureStatusMeta {
-  label: string;
-  description: string;
-  color: string;
-}
-
-export const ARCHITECTURE_STATUS_META: Readonly<Record<ArchitectureStatus, ArchitectureStatusMeta>> = {
-  verified: {
-    label: 'Verified',
-    description: 'Backed by repeatable release or conformance evidence.',
-    color: '#b8f36b',
-  },
-  'in-progress': {
-    label: 'In progress',
-    description: 'Actively advancing through the current delivery gate.',
-    color: '#f3c86b',
-  },
-  planned: {
-    label: 'Planned',
-    description: 'Sequenced after its required platform foundations.',
-    color: '#72b7ff',
-  },
-  external: {
-    label: 'External',
-    description: 'Outside the Cloud ownership boundary.',
-    color: '#91a398',
-  },
-};
-
-export type ArchitectureLayerId = 'interfaces' | 'control' | 'state' | 'node' | 'provider';
-
-export type JourneyId = 'all' | 'deploy' | 'source' | 'traffic' | 'observe';
-
-export interface ArchitectureLayer {
-  id: ArchitectureLayerId;
-  label: string;
-  description: string;
-  y: number;
-  color: string;
-}
-
-export interface ArchitectureNode {
-  id: string;
-  label: string;
-  eyebrow: string;
-  layer: ArchitectureLayerId;
-  position: readonly [number, number, number];
-  status: ArchitectureStatus;
-  gate: string;
-  summary: string;
-  owns: readonly string[];
-  boundary: string;
-  docsUrl: string;
-}
-
-export interface ArchitectureEdge {
-  id: string;
-  from: string;
-  to: string;
-  label: string;
-  journeys: readonly Exclude<JourneyId, 'all'>[];
-}
-
-export interface Journey {
-  id: JourneyId;
-  label: string;
-  shortLabel: string;
-  description: string;
-  color: string;
-}
-
-export interface ArchitectureGraph {
-  layers: readonly ArchitectureLayer[];
-  nodes: readonly ArchitectureNode[];
-  edges: readonly ArchitectureEdge[];
-  journeys: readonly Journey[];
-}
+import type {
+  ArchitectureDomain,
+  ArchitectureEdge,
+  ArchitectureGraph,
+  ArchitectureNode,
+  Journey,
+  JourneyId,
+} from './architecture-schema';
+export {
+  ARCHITECTURE_DOMAIN_IDS,
+  ARCHITECTURE_LOGO_IDS,
+  ARCHITECTURE_STATUS_META,
+  ARCHITECTURE_VISUAL_KINDS,
+} from './architecture-schema';
+export type {
+  ArchitectureDomain,
+  ArchitectureDomainId,
+  ArchitectureEdge,
+  ArchitectureGraph,
+  ArchitectureLogoId,
+  ArchitectureNode,
+  ArchitectureStatus,
+  ArchitectureStatusMeta,
+  ArchitectureVisualKind,
+  Journey,
+  JourneyId,
+} from './architecture-schema';
 
 const cloudDocs = 'https://github.com/A3S-Lab/Cloud/blob/main';
 
-export const ARCHITECTURE_LAYERS: readonly ArchitectureLayer[] = [
+export const ARCHITECTURE_DOMAINS: readonly ArchitectureDomain[] = [
   {
-    id: 'interfaces',
-    label: 'Intent & interfaces',
-    description: 'Human, automation, source, and inference entry points',
-    y: 6,
-    color: '#a9d8ff',
+    id: 'experience',
+    label: 'Experience & Sources',
+    shortLabel: '01 · Intent',
+    description: 'People, automation, source providers, and inference intent',
+    center: [0, 10],
+    size: [32, 6.2],
+    color: '#72b7ff',
   },
   {
     id: 'control',
-    label: 'Cloud control plane',
-    description: 'Tenant-scoped desired state, reconciliation, and policy',
-    y: 2.5,
+    label: 'Cloud Control Domains',
+    shortLabel: '02 · Control plane',
+    description: 'Tenant-scoped authority, desired state, reconciliation, and policy',
+    center: [0, 2.1],
+    size: [32, 8.2],
     color: '#b8f36b',
   },
   {
-    id: 'state',
-    label: 'Durable coordination',
-    description: 'Authoritative state, operation history, facts, and content',
-    y: -1,
+    id: 'coordination',
+    label: 'Coordination & State',
+    shortLabel: '03 · Durable truth',
+    description: 'Authoritative state, workflows, committed facts, and content',
+    center: [-10.7, -8.1],
+    size: [10.2, 8.2],
     color: '#d7b6ff',
   },
   {
-    id: 'node',
-    label: 'Managed node plane',
-    description: 'Outbound control, provider-neutral execution, and traffic',
-    y: -4.5,
+    id: 'data-plane',
+    label: 'Node & Data Plane',
+    shortLabel: '04 · Managed nodes',
+    description: 'Outbound control, provider-neutral execution, and live traffic',
+    center: [0, -8.1],
+    size: [9.4, 8.2],
     color: '#71d5c3',
   },
   {
-    id: 'provider',
-    label: 'Provider resources',
-    description: 'Concrete build, runtime, registry, and workload resources',
-    y: -8,
+    id: 'ecosystem',
+    label: 'Provider Ecosystem',
+    shortLabel: '05 · Resources',
+    description: 'Concrete builders, runtimes, registries, and healthy resources',
+    center: [10.7, -8.1],
+    size: [10.2, 8.2],
     color: '#f3c86b',
   },
 ] as const;
@@ -123,8 +81,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'clients',
     label: 'Clients & SDKs',
     eyebrow: 'Request origin',
-    layer: 'interfaces',
-    position: [-8, 6, 2.4],
+    domain: 'experience',
+    position: [-13.35, 0.28, 9],
+    visualKind: 'client-terminal',
+    logoId: 'clients',
     status: 'external',
     gate: 'External',
     summary: 'Browsers, operators, automation, and OpenAI-compatible clients originate intent and traffic.',
@@ -136,8 +96,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'web',
     label: 'Web Console',
     eyebrow: 'Management surface',
-    layer: 'interfaces',
-    position: [-4, 6, 0.4],
+    domain: 'experience',
+    position: [-8, 0.28, 9],
+    visualKind: 'web-console',
+    logoId: 'a3s-web',
     status: 'verified',
     gate: 'F0 · E0',
     summary: 'The same-origin management SPA consumes authoritative command, query, operation, and log APIs.',
@@ -146,24 +108,47 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     docsUrl: `${cloudDocs}/docs/architecture.md#41-management-web-delivery`,
   },
   {
-    id: 'control-surfaces',
-    label: 'REST · CLI · MCP',
-    eyebrow: 'Automation surfaces',
-    layer: 'interfaces',
-    position: [0.2, 6, 0.4],
+    id: 'a3s-box',
+    label: 'A3S Box (Local)',
+    eyebrow: 'Local OCI workload host',
+    domain: 'experience',
+    position: [8, 0.28, 9],
+    visualKind: 'box-runtime',
+    logoId: 'a3s-box',
+    status: 'verified',
+    gate: 'Local host',
+    summary:
+      'A local A3S Box hosts isolated agent products and tools; A3S Code is one workload installed inside it.',
+    owns: ['OCI workload lifecycle', 'Workspace and filesystem isolation', 'MicroVM or sandbox execution'],
+    boundary:
+      'Box owns execution and isolation, while its hosted products own their workflows and Cloud owns tenant orchestration.',
+    docsUrl: 'https://github.com/A3S-Lab/Box',
+  },
+  {
+    id: 'code-tui',
+    label: 'A3S Code TUI',
+    eyebrow: 'Developer workspace',
+    domain: 'experience',
+    position: [13.35, 0.28, 9],
+    visualKind: 'code-terminal',
+    logoId: 'a3s-code',
     status: 'planned',
     gate: 'C0',
-    summary: 'REST, CLI, and management MCP converge on the same application commands and queries.',
-    owns: ['Stable automation contracts', 'Authorized search', 'Scoped management tools'],
-    boundary: 'No presentation surface may introduce a second policy or orchestration path.',
+    summary:
+      'Installed inside a local A3S Box, A3S Code uses its TUI, CLI, and management MCP tools to operate Cloud.',
+    owns: ['Developer workflow', 'TUI interactions', 'Scoped management tools'],
+    boundary:
+      'A3S Code is one Box-hosted workload; it never receives provider credentials or introduces a second orchestration path.',
     docsUrl: `${cloudDocs}/docs/development-plan.md`,
   },
   {
     id: 'github',
     label: 'GitHub Source',
     eyebrow: 'External provider',
-    layer: 'interfaces',
-    position: [4.5, 6, 1.8],
+    domain: 'experience',
+    position: [-2.7, 0.28, 9],
+    visualKind: 'source-repository',
+    logoId: 'github',
     status: 'in-progress',
     gate: 'G0',
     summary: 'Signed webhooks and short-lived GitHub App credentials resolve one exact source revision.',
@@ -175,8 +160,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'inference',
     label: 'Inference Profile',
     eyebrow: 'Optional product profile',
-    layer: 'interfaces',
-    position: [8.3, 6, -0.8],
+    domain: 'experience',
+    position: [2.7, 0.28, 9],
+    visualKind: 'gpu-cluster',
+    logoId: 'inference',
     status: 'planned',
     gate: 'I0',
     summary: 'GPU-backed model serving reuses Workloads, Fleet, Edge, Identity, Artifacts, and Gateway.',
@@ -188,8 +175,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'api',
     label: 'A3S Boot API',
     eyebrow: 'Control-plane boundary',
-    layer: 'control',
-    position: [-8.2, 2.5, 0],
+    domain: 'control',
+    position: [-11.5, 0.28, 4.2],
+    visualKind: 'control-tower',
+    logoId: 'a3s-boot',
     status: 'verified',
     gate: 'F0',
     summary:
@@ -202,8 +191,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'identity',
     label: 'Identity',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [-5.4, 2.5, 2],
+    domain: 'control',
+    position: [-5.8, 0.28, 4.2],
+    visualKind: 'identity-vault',
+    logoId: 'identity',
     status: 'verified',
     gate: 'F0',
     summary: 'Organizations, memberships, tokens, grants, and the tenant security boundary.',
@@ -215,8 +206,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'projects',
     label: 'Projects',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [-2.7, 2.5, 2],
+    domain: 'control',
+    position: [0, 0.28, 4.2],
+    visualKind: 'project-blocks',
+    logoId: 'projects',
     status: 'verified',
     gate: 'F0',
     summary: 'Projects and environments form the product and desired-state namespace hierarchy.',
@@ -228,8 +221,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'sources',
     label: 'Sources',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [0.1, 2.5, 2],
+    domain: 'control',
+    position: [5.8, 0.28, 4.2],
+    visualKind: 'source-branch',
+    logoId: 'sources',
     status: 'in-progress',
     gate: 'G0',
     summary:
@@ -242,8 +237,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'artifacts',
     label: 'Artifacts',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [2.9, 2.5, 2],
+    domain: 'control',
+    position: [11.5, 0.28, 4.2],
+    visualKind: 'artifact-factory',
+    logoId: 'artifacts',
     status: 'in-progress',
     gate: 'G0',
     summary:
@@ -256,8 +253,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'workloads',
     label: 'Workloads',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [-3.9, 2.5, -1.8],
+    domain: 'control',
+    position: [-8.7, 0.28, 0],
+    visualKind: 'workload-cluster',
+    logoId: 'workloads',
     status: 'verified',
     gate: 'D0 · E0',
     summary:
@@ -270,8 +269,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'fleet',
     label: 'Fleet',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [-0.8, 2.5, -1.8],
+    domain: 'control',
+    position: [-2.9, 0.28, 0],
+    visualKind: 'fleet-radar',
+    logoId: 'fleet',
     status: 'verified',
     gate: 'N0 · E0',
     summary: 'Node identity, capabilities, leases, observations, drain, and ordered log ingestion.',
@@ -283,8 +284,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'edge',
     label: 'Edge',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [2.5, 2.5, -1.8],
+    domain: 'control',
+    position: [2.9, 0.28, 0],
+    visualKind: 'edge-router',
+    logoId: 'edge',
     status: 'verified',
     gate: 'E0',
     summary: 'Domains, managed TLS, routes, complete Gateway snapshots, and exact acknowledgements.',
@@ -296,8 +299,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'operations',
     label: 'Operations',
     eyebrow: 'Bounded context',
-    layer: 'control',
-    position: [5.7, 2.5, -1.8],
+    domain: 'control',
+    position: [8.7, 0.28, 0],
+    visualKind: 'operations-timeline',
+    logoId: 'operations',
     status: 'verified',
     gate: 'F0 · E0',
     summary:
@@ -310,8 +315,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'postgres',
     label: 'PostgreSQL',
     eyebrow: 'Authoritative state',
-    layer: 'state',
-    position: [-6, -1, 0.7],
+    domain: 'coordination',
+    position: [-13.2, 0.28, -6.5],
+    visualKind: 'database',
+    logoId: 'postgresql',
     status: 'verified',
     gate: 'F0',
     summary: 'The source of truth for aggregates, desired state, idempotency, outbox, and UI projections.',
@@ -323,8 +330,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'flow',
     label: 'A3S Flow',
     eyebrow: 'Operation history',
-    layer: 'state',
-    position: [-2, -1, 0.7],
+    domain: 'coordination',
+    position: [-8.3, 0.28, -6.5],
+    visualKind: 'workflow-orchestrator',
+    logoId: 'a3s-flow',
     status: 'verified',
     gate: 'F0 · E0',
     summary: 'Coordinates long-lived, replay-safe deployment, build, rollback, and repair workflows.',
@@ -336,8 +345,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'event',
     label: 'A3S Event',
     eyebrow: 'Committed facts',
-    layer: 'state',
-    position: [2, -1, 0.7],
+    domain: 'coordination',
+    position: [-13.2, 0.28, -10],
+    visualKind: 'event-bus',
+    logoId: 'a3s-event',
     status: 'verified',
     gate: 'F0',
     summary: 'The outbox relay publishes integration facts only after the originating transaction commits.',
@@ -349,8 +360,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'object-storage',
     label: 'Artifact & Log Store',
     eyebrow: 'Content-addressed bytes',
-    layer: 'state',
-    position: [6, -1, 0.7],
+    domain: 'coordination',
+    position: [-8.3, 0.28, -10],
+    visualKind: 'object-storage',
+    logoId: 'object-store',
     status: 'verified',
     gate: 'E0 · G0',
     summary: 'Immutable log chunks and command-bound Artifact archives live outside business rows.',
@@ -362,8 +375,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'node-agent',
     label: 'Node Agent',
     eyebrow: 'Outbound control',
-    layer: 'node',
-    position: [-5, -4.5, 0],
+    domain: 'data-plane',
+    position: [-3, 0.28, -7],
+    visualKind: 'node-antenna',
+    logoId: 'node-agent',
     status: 'verified',
     gate: 'N0 · E0',
     summary:
@@ -376,8 +391,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'runtime',
     label: 'A3S Runtime',
     eyebrow: 'Provider-neutral execution',
-    layer: 'node',
-    position: [0, -4.5, 0],
+    domain: 'data-plane',
+    position: [0, 0.28, -10],
+    visualKind: 'runtime-engine',
+    logoId: 'a3s-runtime',
     status: 'verified',
     gate: 'R0',
     summary:
@@ -390,8 +407,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'gateway',
     label: 'A3S Gateway',
     eyebrow: 'Traffic data plane',
-    layer: 'node',
-    position: [5, -4.5, 0],
+    domain: 'data-plane',
+    position: [3, 0.28, -7],
+    visualKind: 'traffic-gateway',
+    logoId: 'a3s-gateway',
     status: 'verified',
     gate: 'E0',
     summary:
@@ -404,8 +423,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'docker-buildkit',
     label: 'Docker · BuildKit',
     eyebrow: 'Execution providers',
-    layer: 'provider',
-    position: [-5, -8, 0],
+    domain: 'ecosystem',
+    position: [7.3, 0.28, -6.5],
+    visualKind: 'buildkit-yard',
+    logoId: 'docker-buildkit',
     status: 'in-progress',
     gate: 'R0 · G0',
     summary: 'Docker runs services and isolated BuildKit Tasks produce OCI output under dual network denial.',
@@ -414,14 +435,34 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     docsUrl: `${cloudDocs}/docs/development-plan.md`,
   },
   {
+    id: 'box-provider',
+    label: 'A3S Box Provider',
+    eyebrow: 'Cloud workload carrier',
+    domain: 'ecosystem',
+    position: [10.7, 0.28, -6.5],
+    visualKind: 'box-workload-host',
+    logoId: 'a3s-box-provider',
+    status: 'planned',
+    gate: 'Provider conformance',
+    summary:
+      'A selectable A3S Runtime driver carries many Cloud OCI workloads in isolated MicroVMs or certified sandboxes.',
+    owns: ['Box-backed Runtime units', 'MicroVM and sandbox isolation', 'Provider health and output'],
+    boundary:
+      'A3S Box implements execution and isolation; A3S Runtime retains the common lifecycle contract and Cloud retains placement.',
+    docsUrl: `${cloudDocs}/docs/architecture.md#34-provider-conformance`,
+  },
+  {
     id: 'workload-unit',
-    label: 'Healthy Runtime Unit',
-    eyebrow: 'Converged resource',
-    layer: 'provider',
-    position: [0, -8, 0],
+    label: 'Cloud Workload Units',
+    eyebrow: 'Converged resources',
+    domain: 'ecosystem',
+    position: [10.7, 0.28, -10],
+    visualKind: 'healthy-runtime',
+    logoId: 'runtime-unit',
     status: 'verified',
     gate: 'D0 · E0',
-    summary: 'A digest-pinned workload revision becomes one observable provider resource and healthy target.',
+    summary:
+      'Digest-pinned revisions become observable provider resources; many isolation-sensitive units are carried by A3S Box.',
     owns: ['Provider resource', 'Health evidence', 'Ordered logs'],
     boundary: 'A unit becomes active only after exact health and routing acknowledgement gates pass.',
     docsUrl: `${cloudDocs}/docs/architecture.md`,
@@ -430,8 +471,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: 'registry',
     label: 'OCI Registry',
     eyebrow: 'Published artifacts',
-    layer: 'provider',
-    position: [5, -8, 0],
+    domain: 'ecosystem',
+    position: [14.1, 0.28, -6.5],
+    visualKind: 'registry-rack',
+    logoId: 'oci-registry',
     status: 'in-progress',
     gate: 'G0',
     summary: 'Authenticated, digest-only publication stores the complete remotely verified OCI graph.',
@@ -439,6 +482,39 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     boundary:
       'Registry credentials are materialized per attempt and never enter build history or provenance.',
     docsUrl: `${cloudDocs}/docs/development-plan.md`,
+  },
+  {
+    id: 'cpu-compute',
+    label: 'CPU Compute',
+    eyebrow: 'Host hardware',
+    domain: 'ecosystem',
+    position: [7.3, 0.28, -10],
+    visualKind: 'cpu-array',
+    logoId: 'cpu-compute',
+    status: 'external',
+    gate: 'Hardware',
+    summary:
+      'General-purpose CPU cores execute control helpers, build workers, services, and non-accelerated workloads.',
+    owns: ['CPU cores', 'Host memory', 'Execution telemetry'],
+    boundary: 'Cloud schedules typed Runtime intent; it never embeds hardware-specific lifecycle rules.',
+    docsUrl: `${cloudDocs}/docs/architecture.md#3-universal-a3s-runtime-boundary`,
+  },
+  {
+    id: 'gpu-compute',
+    label: 'GPU Compute',
+    eyebrow: 'Accelerator hardware',
+    domain: 'ecosystem',
+    position: [14.1, 0.28, -10],
+    visualKind: 'gpu-array',
+    logoId: 'gpu-compute',
+    status: 'external',
+    gate: 'I0 hardware',
+    summary:
+      'Advertised accelerator capabilities back typed inference plans and GPU-aware workload placement.',
+    owns: ['GPU devices', 'Accelerator memory', 'Capability telemetry'],
+    boundary:
+      'Inference requests typed capabilities; Fleet and Runtime retain placement and execution authority.',
+    docsUrl: `${cloudDocs}/docs/inference-plan.md`,
   },
 ] as const;
 
@@ -458,10 +534,10 @@ export const ARCHITECTURE_EDGES: readonly ArchitectureEdge[] = [
     journeys: ['deploy', 'source', 'observe'],
   },
   {
-    id: 'surfaces-api',
-    from: 'control-surfaces',
+    id: 'code-api',
+    from: 'code-tui',
     to: 'api',
-    label: 'shared contracts',
+    label: 'TUI / CLI / MCP commands',
     journeys: ['deploy', 'source', 'observe'],
   },
   {
@@ -498,6 +574,13 @@ export const ARCHITECTURE_EDGES: readonly ArchitectureEdge[] = [
     to: 'sources',
     label: 'source intent',
     journeys: ['source'],
+  },
+  {
+    id: 'api-inference',
+    from: 'api',
+    to: 'inference',
+    label: 'typed inference intent',
+    journeys: ['deploy', 'traffic'],
   },
   {
     id: 'sources-artifacts',
@@ -549,6 +632,41 @@ export const ARCHITECTURE_EDGES: readonly ArchitectureEdge[] = [
     journeys: ['deploy', 'source'],
   },
   {
+    id: 'runtime-box',
+    from: 'runtime',
+    to: 'box-provider',
+    label: 'Box provider contract',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'box-workload',
+    from: 'box-provider',
+    to: 'workload-unit',
+    label: 'isolated OCI lifecycle',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'runtime-cpu',
+    from: 'runtime',
+    to: 'cpu-compute',
+    label: 'CPU execution plan',
+    journeys: ['deploy', 'traffic'],
+  },
+  {
+    id: 'runtime-gpu',
+    from: 'runtime',
+    to: 'gpu-compute',
+    label: 'GPU execution plan',
+    journeys: ['deploy', 'traffic'],
+  },
+  {
+    id: 'buildkit-cpu',
+    from: 'docker-buildkit',
+    to: 'cpu-compute',
+    label: 'isolated build compute',
+    journeys: ['source'],
+  },
+  {
     id: 'buildkit-registry',
     from: 'docker-buildkit',
     to: 'registry',
@@ -568,6 +686,20 @@ export const ARCHITECTURE_EDGES: readonly ArchitectureEdge[] = [
     to: 'workload-unit',
     label: 'converged unit',
     journeys: ['deploy'],
+  },
+  {
+    id: 'cpu-workload',
+    from: 'cpu-compute',
+    to: 'workload-unit',
+    label: 'CPU health & output',
+    journeys: ['deploy', 'traffic', 'observe'],
+  },
+  {
+    id: 'gpu-workload',
+    from: 'gpu-compute',
+    to: 'workload-unit',
+    label: 'GPU health & output',
+    journeys: ['deploy', 'traffic', 'observe'],
   },
   {
     id: 'workload-edge',
@@ -668,6 +800,13 @@ export const ARCHITECTURE_EDGES: readonly ArchitectureEdge[] = [
     journeys: ['deploy'],
   },
   {
+    id: 'fleet-gpu',
+    from: 'fleet',
+    to: 'gpu-compute',
+    label: 'capability lease & observation',
+    journeys: ['deploy', 'observe'],
+  },
+  {
     id: 'inference-edge',
     from: 'inference',
     to: 'edge',
@@ -716,7 +855,7 @@ export const JOURNEYS: readonly Journey[] = [
 ] as const;
 
 export const ARCHITECTURE_GRAPH: ArchitectureGraph = {
-  layers: ARCHITECTURE_LAYERS,
+  domains: ARCHITECTURE_DOMAINS,
   nodes: ARCHITECTURE_NODES,
   edges: ARCHITECTURE_EDGES,
   journeys: JOURNEYS,
@@ -742,49 +881,4 @@ export function nodeIdsForJourney(
     nodeIds.add(edge.to);
   }
   return nodeIds;
-}
-
-export function validateArchitectureGraph(graph: ArchitectureGraph): readonly string[] {
-  const errors: string[] = [];
-  const layerIds = new Set(graph.layers.map((layer) => layer.id));
-  const nodeIds = new Set<string>();
-  const edgeIds = new Set<string>();
-  const journeyIds = new Set(graph.journeys.map((journey) => journey.id));
-
-  for (const node of graph.nodes) {
-    if (nodeIds.has(node.id)) {
-      errors.push(`duplicate node id: ${node.id}`);
-    }
-    nodeIds.add(node.id);
-    if (!layerIds.has(node.layer)) {
-      errors.push(`node ${node.id} references missing layer ${node.layer}`);
-    }
-    if (node.owns.length === 0 || node.summary.trim().length === 0 || node.boundary.trim().length === 0) {
-      errors.push(`node ${node.id} is missing explanatory content`);
-    }
-  }
-
-  for (const edge of graph.edges) {
-    if (edgeIds.has(edge.id)) {
-      errors.push(`duplicate edge id: ${edge.id}`);
-    }
-    edgeIds.add(edge.id);
-    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-      errors.push(`edge ${edge.id} references a missing node`);
-    }
-    if (edge.from === edge.to) {
-      errors.push(`edge ${edge.id} is a self-loop`);
-    }
-    if (edge.journeys.length === 0 || edge.journeys.some((journey) => !journeyIds.has(journey))) {
-      errors.push(`edge ${edge.id} has an invalid journey`);
-    }
-  }
-
-  for (const journey of graph.journeys) {
-    if (journey.id !== 'all' && edgesForJourney(journey.id, graph.edges).length === 0) {
-      errors.push(`journey ${journey.id} has no edges`);
-    }
-  }
-
-  return errors;
 }

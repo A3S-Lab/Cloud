@@ -9,19 +9,30 @@ Production site: <https://a3s-lab.github.io/Cloud/>
 
 ## Experience
 
-- Orbit, zoom, select, and focus individual architecture components.
-- Trace deploy, source/build, traffic, and observation journeys.
-- Inspect ownership, boundary rules, connected signals, roadmap status, and
-  design references.
+- Explore five labeled domains from a high bird's-eye view, with a distinct
+  facility and generated product badge for every module or middleware.
+- Distinguish animated business flow, dashed structural/hosting relationships,
+  and raised carrier chassis.
+- See A3S Code as one workload hosted by a local A3S Box, while the separate
+  A3S Box Runtime provider carries general Cloud OCI workload units.
+- Inspect CPU and GPU hardware as multi-rack clusters without implying that the
+  current Box provider already supports GPU passthrough.
+- Run CPU deployment, source-to-OCI, GPU inference, live traffic, and
+  logs/recovery scenarios from either A3S Web or A3S Code TUI.
+- Orbit, zoom, select, focus, and inspect ownership, boundaries, placement,
+  connected signals, roadmap status, and design references.
 - Fall back to an accessible component index when WebGL is unavailable.
 - Adapt the controls and details inspector to desktop and mobile viewports
   without resizing the Three.js canvas when a panel opens.
 - Respect the operating system reduced-motion preference.
 
-The graph in [`src/architecture.ts`](src/architecture.ts) is the source of truth
-for layers, nodes, edges, journeys, and roadmap status. Keep it aligned with the
-Cloud domain model, technical architecture, development plan, and inference
-plan.
+The typed data in [`src/architecture.ts`](src/architecture.ts),
+[`src/topology.ts`](src/topology.ts), and
+[`src/simulations.ts`](src/simulations.ts) is the source of truth for domains,
+nodes, business edges, structural placement, scenarios, and roadmap status.
+Keep it aligned with the Cloud domain model, technical architecture,
+development plan, inference plan, and each provider's verified capability
+boundary.
 
 ## Local development
 
@@ -75,7 +86,10 @@ architecture-3d/
 │   ├── components/         # React scene bridge and details inspector
 │   ├── scene/              # Three.js runtime, visuals, and interaction
 │   ├── styles/             # responsive application presentation
-│   ├── architecture.ts     # typed architecture graph
+│   ├── architecture-schema.ts
+│   ├── architecture.ts     # domains, nodes, business edges, and journeys
+│   ├── topology.ts         # carrier and structural relationship model
+│   ├── simulations.ts      # interactive business-flow scenarios
 │   ├── app.tsx             # application shell and exploration state
 │   └── main.tsx            # Rsbuild browser entry point
 ├── rsbuild.config.ts

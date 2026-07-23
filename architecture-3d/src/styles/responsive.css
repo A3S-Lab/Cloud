@@ -7,7 +7,7 @@
     font-size: 8px;
   }
 
-  .journey-panel {
+  .simulation-panel {
     width: calc(100% - 410px);
   }
 
@@ -29,11 +29,12 @@
     display: none;
   }
 
-  .journey-panel {
+  .simulation-panel {
     width: calc(100% - 370px);
   }
 
-  .journey-panel > p {
+  .simulation-copy p,
+  .simulation-intro {
     display: none;
   }
 
@@ -100,37 +101,57 @@
     height: 34px;
   }
 
-  .status-legend {
+  .status-legend,
+  .topology-legend {
     display: none;
   }
 
-  .journey-panel {
+  .simulation-panel {
     top: 64px;
     right: 10px;
     bottom: auto;
     left: 10px;
     width: auto;
+    max-height: 272px;
     padding: 9px;
   }
 
-  .journey-panel .panel-label,
-  .journey-panel > p {
+  .simulation-panel .panel-label,
+  .simulation-intro,
+  .path-filter {
     display: none;
   }
 
-  .journey-tabs {
+  .simulation-heading {
+    justify-content: flex-end;
+  }
+
+  .simulation-entry-row {
     margin-top: 0;
+  }
+
+  .scenario-buttons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 3px;
   }
 
-  .journey-tabs button {
+  .scenario-buttons button {
     height: 29px;
     padding: 0 4px;
-    font-size: 9px;
+    font-size: 8px;
+  }
+
+  .simulation-stage {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px;
+  }
+
+  .simulation-copy p {
+    display: none;
   }
 
   .view-controls {
-    top: 110px;
+    top: 292px;
     right: 10px;
     left: auto;
     transform: none;
@@ -195,12 +216,13 @@
 
 @media (max-height: 690px) and (min-width: 701px) {
   .status-legend,
-  .journey-panel > p {
+  .simulation-copy p,
+  .simulation-intro {
     display: none;
   }
 
   .component-picker,
-  .journey-panel {
+  .simulation-panel {
     padding: 10px;
   }
 

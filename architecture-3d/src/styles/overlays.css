@@ -1,4 +1,4 @@
-.journey-panel,
+.simulation-panel,
 .component-picker,
 .node-inspector {
   border: 1px solid var(--cloud-line);
@@ -9,13 +9,15 @@
   backdrop-filter: blur(18px) saturate(130%);
 }
 
-.journey-panel {
+.simulation-panel {
   position: absolute;
   z-index: 10;
   bottom: 20px;
   left: 20px;
-  width: min(570px, calc(100% - 450px));
+  width: min(760px, calc(100% - 430px));
+  max-height: calc(100% - 90px);
   padding: 13px 14px 12px;
+  overflow: auto;
 }
 
 .panel-label,
@@ -36,49 +38,283 @@
   color: var(--cloud-accent);
 }
 
-.journey-tabs {
-  display: grid;
-  padding: 0;
-  border: 0;
-  margin-top: 10px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 5px;
+.simulation-heading,
+.simulation-entry-row,
+.path-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.journey-tabs button {
-  position: relative;
-  min-width: 0;
-  height: 31px;
+.simulation-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cloud-faint);
+  font-family: var(--mono-font);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.simulation-live i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cloud-faint);
+}
+
+.simulation-live.is-playing {
+  color: var(--cloud-accent);
+}
+
+.simulation-live.is-playing i {
+  background: currentColor;
+  box-shadow: 0 0 9px currentColor;
+  animation: simulation-live-pulse 1.3s ease-in-out infinite;
+}
+
+.simulation-entry-row {
+  justify-content: flex-start;
+  margin-top: 9px;
+}
+
+.simulation-entry-row > span,
+.path-filter > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cloud-faint);
+  font-family: var(--mono-font);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.entry-switch {
+  display: flex;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  gap: 4px;
+}
+
+.entry-switch button,
+.path-filter button {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  gap: 5px;
   padding: 0 8px;
   border: 1px solid var(--cloud-line);
   background: rgb(255 255 255 / 2.5%);
   color: var(--cloud-muted);
-  font-size: 10px;
+  font-size: 8px;
+}
+
+.entry-switch button:hover,
+.entry-switch button.is-active,
+.path-filter button:hover,
+.path-filter button.is-active {
+  border-color: rgb(184 243 107 / 42%);
+  background: rgb(184 243 107 / 7%);
+  color: var(--cloud-accent-strong);
+}
+
+.scenario-buttons {
+  display: grid;
+  padding: 0;
+  border: 0;
+  margin-top: 9px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.scenario-buttons button {
+  --scenario-color: var(--cloud-accent);
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--cloud-line);
+  background: rgb(255 255 255 / 2.5%);
+  color: var(--cloud-muted);
+  font-size: 9px;
+  white-space: nowrap;
   transition:
     border-color 150ms ease,
     background 150ms ease,
     color 150ms ease;
 }
 
-.journey-tabs button:hover {
+.scenario-buttons button > i {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: var(--scenario-color);
+  opacity: 0.64;
+}
+
+.scenario-buttons button:hover {
   border-color: var(--cloud-line-strong);
   color: var(--cloud-ink);
 }
 
-.journey-tabs button.is-active {
-  border-color: rgb(184 243 107 / 52%);
+.scenario-buttons button.is-active {
+  border-color: color-mix(in srgb, var(--scenario-color), transparent 36%);
   background:
-    linear-gradient(90deg, rgb(184 243 107 / 15%), rgb(184 243 107 / 4%)),
+    linear-gradient(90deg, color-mix(in srgb, var(--scenario-color), transparent 85%), transparent),
     #0d1810;
-  color: var(--cloud-accent-strong);
-  box-shadow: inset 0 -1px 0 var(--cloud-accent);
+  color: var(--cloud-ink);
+  box-shadow: inset 0 -1px 0 var(--scenario-color);
 }
 
-.journey-panel > p {
-  min-height: 18px;
-  margin: 9px 2px 0;
+.simulation-stage {
+  --scenario-color: var(--cloud-accent);
+  display: grid;
+  margin-top: 9px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  padding: 10px 11px 9px;
+  border: 1px solid color-mix(in srgb, var(--scenario-color), transparent 72%);
+  background:
+    linear-gradient(110deg, color-mix(in srgb, var(--scenario-color), transparent 92%), transparent 46%),
+    rgb(3 8 5 / 46%);
+}
+
+.simulation-copy {
+  min-width: 0;
+}
+
+.simulation-copy > span {
+  display: block;
+  overflow: hidden;
+  color: var(--scenario-color);
+  font-family: var(--mono-font);
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0.075em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.simulation-copy h2 {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.simulation-copy p,
+.simulation-intro {
+  margin: 4px 0 0;
   color: #90a097;
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.simulation-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.simulation-controls button {
+  display: inline-grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid var(--cloud-line);
+  background: rgb(255 255 255 / 2.5%);
+  color: var(--cloud-muted);
+}
+
+.simulation-controls button:hover:not(:disabled),
+.simulation-controls .simulation-play {
+  border-color: color-mix(in srgb, var(--scenario-color), transparent 48%);
+  background: color-mix(in srgb, var(--scenario-color), transparent 90%);
+  color: var(--scenario-color);
+}
+
+.simulation-controls button:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.simulation-timeline {
+  display: flex;
+  grid-column: 1 / -1;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  gap: 4px;
+}
+
+.simulation-timeline button {
+  position: relative;
+  height: 6px;
+  min-width: 12px;
+  flex: 1;
+  padding: 0;
+  background: rgb(255 255 255 / 5%);
+}
+
+.simulation-timeline button i {
+  position: absolute;
+  inset: 0;
+  background: var(--scenario-color);
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.simulation-timeline button.is-complete i {
+  opacity: 0.44;
+  transform: scaleX(1);
+}
+
+.simulation-timeline button.is-active i {
+  opacity: 1;
+  box-shadow: 0 0 9px color-mix(in srgb, var(--scenario-color), transparent 30%);
+  transform: scaleX(1);
+}
+
+.simulation-intro {
+  min-height: 28px;
+  margin: 9px 2px 0;
+}
+
+.path-filter {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cloud-line);
+}
+
+.path-filter > fieldset {
+  display: flex;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  gap: 3px;
+}
+
+.path-filter button {
+  height: 23px;
+  padding: 0 7px;
+  font-size: 7px;
+}
+
+@keyframes simulation-live-pulse {
+  50% {
+    opacity: 0.32;
+    transform: scale(0.76);
+  }
 }
 
 .component-picker {
@@ -146,6 +382,58 @@
 
 .status-legend i {
   flex: 0 0 6px;
+}
+
+.topology-legend {
+  display: grid;
+  padding: 9px 0 0;
+  border: 0;
+  border-top: 1px solid var(--cloud-line);
+  margin: 10px 0 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.topology-legend span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--cloud-faint);
+  font-family: var(--mono-font);
+  font-size: 7px;
+  letter-spacing: 0.035em;
+}
+
+.topology-legend i {
+  position: relative;
+  width: 19px;
+  height: 8px;
+  flex: 0 0 19px;
+}
+
+.topology-legend .is-business-flow::before,
+.topology-legend .is-hosting-link::before {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  content: '';
+}
+
+.topology-legend .is-business-flow::before {
+  background: var(--cloud-blue);
+  box-shadow: 0 0 6px rgb(114 183 255 / 56%);
+}
+
+.topology-legend .is-hosting-link::before {
+  border-top: 1px dashed var(--cloud-violet);
+}
+
+.topology-legend .is-carrier-frame {
+  border: 1px solid rgb(184 243 107 / 48%);
+  background: rgb(184 243 107 / 7%);
 }
 
 .view-controls {
@@ -363,6 +651,61 @@
 .connection-list {
   display: grid;
   gap: 5px;
+}
+
+.placement-list {
+  display: grid;
+  gap: 5px;
+}
+
+.carrier-membership,
+.hosting-relationship {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 19px 1fr;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid rgb(113 213 195 / 18%);
+  background: rgb(113 213 195 / 4%);
+  color: #71d5c3;
+  text-align: left;
+}
+
+.hosting-relationship:hover {
+  border-color: rgb(113 213 195 / 42%);
+  background: rgb(113 213 195 / 8%);
+}
+
+.carrier-membership span,
+.hosting-relationship span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.carrier-membership small,
+.carrier-membership strong,
+.hosting-relationship small,
+.hosting-relationship strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.carrier-membership small,
+.hosting-relationship small {
+  color: var(--cloud-faint);
+  font-family: var(--mono-font);
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+}
+
+.carrier-membership strong,
+.hosting-relationship strong {
+  color: #b9cbc3;
+  font-size: 9px;
+  font-weight: 580;
 }
 
 .connection-list button {

@@ -1,27 +1,69 @@
-import { Box, Github, Layers3, Pause, Play, RotateCcw, Route } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { ARCHITECTURE_GRAPH, ARCHITECTURE_STATUS_META, JOURNEYS, type JourneyId } from './architecture';
+import { Box, Github, Layers3, Pause, Play, RotateCcw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ARCHITECTURE_GRAPH, ARCHITECTURE_STATUS_META, type JourneyId } from './architecture';
 import { ArchitectureScene } from './components/architecture-scene';
+import { BusinessFlowPanel } from './components/business-flow-panel';
 import { NodeInspector } from './components/node-inspector';
-
-const INITIAL_NODE_ID = 'workloads';
+import {
+  SIMULATION_SCENARIOS,
+  type SimulationEntryId,
+  type SimulationScenarioId,
+  simulationFramesFor,
+} from './simulations';
 
 export function App() {
   const [journey, setJourney] = useState<JourneyId>('all');
-  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(INITIAL_NODE_ID);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const [autoRotate, setAutoRotate] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
   const [resetRevision, setResetRevision] = useState(0);
+  const [simulationEntryId, setSimulationEntryId] = useState<SimulationEntryId>('web');
+  const [activeScenarioId, setActiveScenarioId] = useState<SimulationScenarioId>();
+  const [simulationStepIndex, setSimulationStepIndex] = useState(0);
+  const [simulationPlaying, setSimulationPlaying] = useState(false);
 
   const selectedNode = useMemo(
     () => ARCHITECTURE_GRAPH.nodes.find((node) => node.id === selectedNodeId),
     [selectedNodeId]
   );
-  const activeJourney = JOURNEYS.find((candidate) => candidate.id === journey) ?? JOURNEYS[0];
+  const simulationFrames = useMemo(
+    () => (activeScenarioId ? simulationFramesFor(simulationEntryId, activeScenarioId) : []),
+    [activeScenarioId, simulationEntryId]
+  );
+  const simulationFrame = simulationFrames[simulationStepIndex];
 
   const selectAndFocusNode = (nodeId: string) => {
+    setSimulationPlaying(false);
     setSelectedNodeId(nodeId);
     setFocusRevision((revision) => revision + 1);
+  };
+
+  useEffect(() => {
+    if (!simulationPlaying || !simulationFrame) return;
+    const timer = window.setTimeout(() => {
+      if (simulationStepIndex >= simulationFrames.length - 1) {
+        setSimulationPlaying(false);
+        return;
+      }
+      setSimulationStepIndex((index) => index + 1);
+    }, simulationFrame.durationMs);
+    return () => window.clearTimeout(timer);
+  }, [simulationFrame, simulationFrames.length, simulationPlaying, simulationStepIndex]);
+
+  const startScenario = (scenarioId: SimulationScenarioId) => {
+    const scenario = SIMULATION_SCENARIOS.find((candidate) => candidate.id === scenarioId);
+    setActiveScenarioId(scenarioId);
+    setSimulationStepIndex(0);
+    setSimulationPlaying(true);
+    setJourney(scenario?.journey ?? 'all');
+    setSelectedNodeId(undefined);
+  };
+
+  const stopSimulation = () => {
+    setActiveScenarioId(undefined);
+    setSimulationPlaying(false);
+    setSimulationStepIndex(0);
+    setJourney('all');
   };
 
   return (
@@ -77,30 +119,53 @@ export function App() {
           journey={journey}
           resetRevision={resetRevision}
           selectedNodeId={selectedNodeId}
-          onSelectNode={setSelectedNodeId}
+          simulationFrame={simulationFrame}
+          onSelectNode={(nodeId) => {
+            setSimulationPlaying(false);
+            setSelectedNodeId(nodeId);
+          }}
         />
 
-        <section className='journey-panel' aria-labelledby='journey-title'>
-          <div className='panel-label'>
-            <Route size={13} aria-hidden='true' />
-            <span id='journey-title'>Trace a system journey</span>
-          </div>
-          <fieldset className='journey-tabs'>
-            <legend className='sr-only'>Architecture journey</legend>
-            {JOURNEYS.map((candidate) => (
-              <button
-                type='button'
-                key={candidate.id}
-                className={candidate.id === journey ? 'is-active' : undefined}
-                onClick={() => setJourney(candidate.id)}
-                aria-pressed={candidate.id === journey}
-              >
-                {candidate.shortLabel}
-              </button>
-            ))}
-          </fieldset>
-          <p>{activeJourney.description}</p>
-        </section>
+        <BusinessFlowPanel
+          activeScenarioId={activeScenarioId}
+          entryId={simulationEntryId}
+          isPlaying={simulationPlaying}
+          journey={journey}
+          stepIndex={simulationStepIndex}
+          onChangeEntry={(entryId) => {
+            setSimulationEntryId(entryId);
+            if (activeScenarioId) {
+              setSimulationStepIndex(0);
+              setSimulationPlaying(true);
+            }
+          }}
+          onChangeJourney={(nextJourney) => {
+            setJourney(nextJourney);
+            setActiveScenarioId(undefined);
+            setSimulationPlaying(false);
+            setSimulationStepIndex(0);
+          }}
+          onNext={() => {
+            setSimulationPlaying(false);
+            setSimulationStepIndex((index) => Math.min(index + 1, simulationFrames.length - 1));
+          }}
+          onPrevious={() => {
+            setSimulationPlaying(false);
+            setSimulationStepIndex((index) => Math.max(index - 1, 0));
+          }}
+          onSelectStep={(index) => {
+            setSimulationPlaying(false);
+            setSimulationStepIndex(index);
+          }}
+          onStartScenario={startScenario}
+          onStop={stopSimulation}
+          onTogglePlayback={() => {
+            if (!simulationPlaying && simulationStepIndex >= simulationFrames.length - 1) {
+              setSimulationStepIndex(0);
+            }
+            setSimulationPlaying((playing) => !playing);
+          }}
+        />
 
         <section className='component-picker' aria-labelledby='component-picker-label'>
           <label id='component-picker-label' htmlFor='component-picker'>
@@ -119,10 +184,10 @@ export function App() {
               <option value='' disabled>
                 Select a component
               </option>
-              {ARCHITECTURE_GRAPH.layers.map((layer) => (
-                <optgroup key={layer.id} label={layer.label}>
+              {ARCHITECTURE_GRAPH.domains.map((domain) => (
+                <optgroup key={domain.id} label={domain.label}>
                   {ARCHITECTURE_GRAPH.nodes
-                    .filter((node) => node.layer === layer.id)
+                    .filter((node) => node.domain === domain.id)
                     .map((node) => (
                       <option key={node.id} value={node.id}>
                         {node.label} · {node.gate}
@@ -140,6 +205,21 @@ export function App() {
                 {status.label}
               </span>
             ))}
+          </fieldset>
+          <fieldset className='topology-legend'>
+            <legend className='sr-only'>Architecture relationship legend</legend>
+            <span>
+              <i className='is-business-flow' aria-hidden='true' />
+              Business flow
+            </span>
+            <span>
+              <i className='is-hosting-link' aria-hidden='true' />
+              Structure / hosting
+            </span>
+            <span>
+              <i className='is-carrier-frame' aria-hidden='true' />
+              Carrier chassis
+            </span>
           </fieldset>
         </section>
 
