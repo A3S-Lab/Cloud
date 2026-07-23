@@ -30,7 +30,7 @@ trap 'exit 143' TERM
 
 test -f "$repository_root/web/dist/index.html"
 test -f "$repository_root/web/dist/favicon.svg"
-rg --quiet 'rel="icon"[^>]+favicon\.svg' "$repository_root/web/dist/index.html"
+grep -Eq 'rel="icon"[^>]+favicon\.svg' "$repository_root/web/dist/index.html"
 
 cd "$repository_root"
 cargo build -p a3s-cloud-web-server --locked
@@ -76,11 +76,11 @@ curl --fail --silent --show-error --dump-header "$asset_headers" \
 curl --fail --silent --show-error --dump-header "$favicon_headers" \
   "$origin/favicon.svg" >/dev/null
 
-rg --ignore-case --quiet '^cache-control: no-cache, no-store, must-revalidate' "$index_headers"
-rg --ignore-case --quiet '^content-security-policy:' "$index_headers"
-rg --ignore-case --quiet '^x-content-type-options: nosniff' "$index_headers"
-rg --ignore-case --quiet '^cache-control: public, max-age=31536000, immutable' "$asset_headers"
-rg --ignore-case --quiet '^content-type: image/svg\+xml' "$favicon_headers"
+grep -Eiq '^cache-control: no-cache, no-store, must-revalidate' "$index_headers"
+grep -Eiq '^content-security-policy:' "$index_headers"
+grep -Eiq '^x-content-type-options: nosniff' "$index_headers"
+grep -Eiq '^cache-control: public, max-age=31536000, immutable' "$asset_headers"
+grep -Eiq '^content-type: image/svg\+xml' "$favicon_headers"
 
 api_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
   "$origin/api/v1/health/live")"
