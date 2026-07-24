@@ -7,6 +7,11 @@ until their owning exit gates pass. E0 is verified as of 2026-07-20, so I0
 implementation may now proceed through the ordered slices below. Production
 capability claims remain blocked until their owning I0 and H0 exit gates pass.
 
+The root [product roadmap](../ROADMAP.md) places `I0` in the complete Cloud
+portfolio and publishes its current status and dependencies. This document
+owns the detailed inference contracts, delivery gates, and evidence within the
+roadmap's Cloud/Gateway ownership boundary.
+
 I0 adds an optional inference product profile to A3S Cloud. Its target is a
 clearly gated GPUStack-like multi-node model-serving capability set, not API,
 UI, or implementation compatibility with GPUStack. The finished profile will:
