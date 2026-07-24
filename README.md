@@ -70,12 +70,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
-- **Managed Reachability**: Create tenant-scoped logical Gateway scopes, bind
-  them to physical nodes, verify domain ownership, provision TLS, compile
-  complete expiring ACL snapshots from command-bound healthy Runtime targets,
-  renew unchanged policy without reissuing TLS, and advance routes only after
-  Gateway acknowledges the exact identity, revision, digest, validity, and
-  readiness
+- **Managed Reachability**: Create tenant-scoped logical Gateway scopes, persist
+  ordered physical membership and explicit rollout thresholds, verify domain
+  ownership, provision TLS, compile complete expiring ACL snapshots from
+  command-bound healthy Runtime targets, renew unchanged policy without
+  reissuing TLS, and advance routes only after Gateway acknowledges the exact
+  identity, revision, digest, validity, and readiness
 - **Encrypted Secrets**: Store tenant-scoped immutable Secret versions and
   materialize exact bindings only at authenticated registry or assigned-node
   boundaries
@@ -127,13 +127,16 @@ signed-evidence process-death gate pass.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to
-one organization, project, and environment and currently maps to one physical
-Gateway node. `POST` and `GET` on the environment's `/gateway-scopes` resource
-create and list these scopes. Route publication requires a `gatewayScopeId`
-whose tenancy and mapped node match the verified DomainClaim and healthy
-Runtime target. `Route` stores both the logical scope and physical node;
-Gateway continues to receive only its node-addressed managed snapshot and does
-not become the owner of Cloud tenancy.
+one organization, project, and environment. Its desired state can contain an
+ordered set of physical Gateway members, a membership generation, and explicit
+`minReady` and `maxUnavailable` policy; the legacy `nodeId` request remains the
+single-member form. The first member is the bootstrap primary used by the
+current route compiler. `POST` and `GET` on the environment's
+`/gateway-scopes` resource create and list these scopes. Route publication
+requires a `gatewayScopeId` whose tenancy and bootstrap primary match the
+verified DomainClaim and healthy Runtime target. `Route` stores both the
+logical scope and physical node; Gateway continues to receive only its
+node-addressed managed snapshot and does not become the owner of Cloud tenancy.
 
 Every route persists its immutable workload revision, deterministic Runtime
 unit identity, positive generation, declared port, canonical node-local HTTP
@@ -162,14 +165,26 @@ PostgreSQL and migration gates verify recovery and reject cross-environment or
 wrong-node publication. Migration 037 stores new protocol evidence without
 inventing it for legacy acknowledgements.
 
+The replicated control-plane foundation persists one `GatewayRollout`
+aggregate with an independent revision, command, digest, expiry, certificate,
+and terminal result for every desired physical member. Meeting the configured
+threshold makes the rollout ready to serve; only exact success from every
+member makes it succeeded, while a fully observed mixed result becomes
+explicitly degraded. Migrations 038 and 039 preserve legacy single-member
+scopes, add membership and rollout constraints, and recover the aggregate from
+PostgreSQL. The new schema-backed CRUD uses A3S ORM typed table and query
+builders; reviewed static SQL is retained only where the current typed AST
+cannot express PostgreSQL locking or aggregation.
+
 The real pinned-Gateway gate rotates independently signed certificates and
 upstream targets, rejects the superseded certificate and selector, removes the
 old certificate material, and recovers only the replacement after Gateway
 restart. Same-policy validity renewal continues to retain the exact ACL digest
 and active certificate until its successor is ready. Contract-level
-mixed-version delivery is verified; replicated readiness and rollout
-thresholds plus joint production HA evidence remain open, so this foundation
-does not complete `H0.2` or `H0`.
+mixed-version delivery and PostgreSQL replica-threshold recovery are verified.
+The application coordinator that compiles and enqueues every member snapshot,
+real multi-Gateway failure evidence, and joint production HA recovery remain
+open, so this foundation does not complete `H0.2` or `H0`.
 
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
 evidence, and the ordered product portfolio.
@@ -368,13 +383,15 @@ v3/v1 acknowledgement pair, whose rows retain `NULL` protocol evidence rather
 than a fabricated backfill.
 
 Cloud owns a logical Gateway scope inside one organization, project, and
-environment. The current cardinality-one mapping binds that scope to one
-physical Gateway node. Each route carries both identities together with the
-exact workload revision, deterministic Runtime unit identity, positive
-generation, port, canonical node-local origin, and command-bound observation
-time. Those fields are durable Cloud state and part of the compiled ACL digest;
-Gateway receives the resulting complete policy but does not infer a target,
-interpret the logical scope, or store Cloud tenancy.
+environment. The scope stores ordered desired physical membership, a
+membership generation, and readiness policy. Its first member remains the
+bootstrap primary for the current node-local route compiler. Each route carries
+both logical and physical identities together with the exact workload revision,
+deterministic Runtime unit identity, positive generation, port, canonical
+node-local origin, and command-bound observation time. Those fields are durable
+Cloud state and part of the compiled ACL digest; Gateway receives the resulting
+complete policy but does not infer a target, interpret the logical scope, or
+store Cloud tenancy.
 
 Gateway's native journal is the sole source of truth for applied snapshot
 state. The node agent does not maintain a second installed-snapshot CAS file,
@@ -385,9 +402,12 @@ reuses the existing certificate files, and keeps the prior revision
 authoritative when renewal is rejected. Logical-scope ownership, migration,
 same-environment/node enforcement, generation-bound target replacement,
 PostgreSQL recovery, and real certificate/target rotation are verified for the
-current one-scope/one-Gateway mapping. Mixed-version delivery is verified at
-the protocol boundary. Replicated readiness and rollout thresholds plus joint
-production HA recovery remain to be implemented and verified.
+bootstrap-primary route path. Mixed-version delivery is verified at the
+protocol boundary. Cloud also persists independent per-member rollout evidence
+and computes ready, succeeded, or degraded aggregate outcomes without assuming
+a global atomic reload. Multi-member snapshot coordination, real Gateway loss
+and partial-availability evidence, and joint production HA recovery remain to
+be implemented and verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

@@ -51,6 +51,7 @@ identifier!(WorkloadId);
 identifier!(WorkloadRevisionId);
 identifier!(DeploymentId);
 identifier!(GatewayScopeId);
+identifier!(GatewayRolloutId);
 identifier!(RouteId);
 identifier!(DomainClaimId);
 identifier!(GatewayCertificateId);

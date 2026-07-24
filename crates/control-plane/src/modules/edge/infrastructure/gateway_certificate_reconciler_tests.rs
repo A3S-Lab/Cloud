@@ -215,7 +215,8 @@ impl Fixture {
             self.environment_id,
             self.node_id,
             now,
-        );
+        )
+        .expect("logical Gateway scope");
         let logical_scope = self
             .repository
             .create_gateway_scope(CreateGatewayScopeWrite {

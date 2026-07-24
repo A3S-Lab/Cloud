@@ -229,7 +229,8 @@ async fn gateway_scope(
         environment_id,
         node_id,
         now,
-    );
+    )
+    .expect("Gateway scope");
     edge.create_gateway_scope(CreateGatewayScopeWrite {
         scope: scope.clone(),
         idempotency: IdempotencyRequest::new(

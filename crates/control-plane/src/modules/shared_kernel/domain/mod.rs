@@ -7,9 +7,9 @@ mod timestamp;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     ApiTokenId, BuildRunId, DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId,
-    GatewayCertificateId, GatewayScopeId, NodeCertificateId, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, RouteId, SecretId, SourceConnectionId, SourceRevisionId,
-    SourceSubscriptionId, WorkloadId, WorkloadRevisionId,
+    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, NodeCertificateId, NodeCommandId,
+    NodeId, OperationId, OrganizationId, ProjectId, RouteId, SecretId, SourceConnectionId,
+    SourceRevisionId, SourceSubscriptionId, WorkloadId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

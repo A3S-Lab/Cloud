@@ -1,4 +1,4 @@
-use crate::modules::edge::domain::GatewayScope;
+use crate::modules::edge::domain::{GatewayRolloutPolicy, GatewayScope};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayScopeId, NodeId, OrganizationId, ProjectId,
 };
@@ -12,7 +12,10 @@ pub struct GatewayScopeCreated {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub gateway_scope_id: GatewayScopeId,
-    pub node_id: NodeId,
+    pub primary_node_id: NodeId,
+    pub member_node_ids: Vec<NodeId>,
+    pub membership_generation: u64,
+    pub rollout_policy: GatewayRolloutPolicy,
 }
 
 impl GatewayScopeCreated {
@@ -23,7 +26,7 @@ impl GatewayScopeCreated {
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "edge.gateway-scope.created".into(),
-            schema_version: 1,
+            schema_version: 2,
             organization_id: scope.organization_id.as_uuid(),
             aggregate_id: scope.id.as_uuid(),
             aggregate_version: scope.aggregate_version,
@@ -35,7 +38,10 @@ impl GatewayScopeCreated {
                 project_id: scope.project_id,
                 environment_id: scope.environment_id,
                 gateway_scope_id: scope.id,
-                node_id: scope.node_id,
+                primary_node_id: scope.node_id,
+                member_node_ids: scope.member_node_ids.clone(),
+                membership_generation: scope.membership_generation,
+                rollout_policy: scope.rollout_policy,
             })?,
         })
     }

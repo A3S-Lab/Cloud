@@ -21,6 +21,9 @@ use a3s_cloud_contracts::{
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
+#[path = "tests/gateway_rollout_tests.rs"]
+mod gateway_rollout_tests;
+
 fn staged(
     node_id: NodeId,
     revision: u64,
@@ -66,7 +69,8 @@ fn staged(
         environment_id,
         node_id,
         now,
-    );
+    )
+    .expect("Gateway scope");
     let mut route = Route::create(
         RouteId::new(),
         organization_id,
@@ -376,18 +380,25 @@ fn cutover_acknowledgement(
 async fn creates_and_lists_environment_gateway_scopes_idempotently() {
     let repository = InMemoryEdgeRepository::new();
     let now = Utc::now();
-    let scope = GatewayScope::create(
+    let primary_node_id = NodeId::new();
+    let secondary_node_id = NodeId::new();
+    let scope = GatewayScope::create_replicated(
         GatewayScopeId::new(),
         OrganizationId::new(),
         ProjectId::new(),
         EnvironmentId::new(),
-        NodeId::new(),
+        primary_node_id,
+        vec![secondary_node_id, primary_node_id],
+        crate::modules::edge::domain::GatewayRolloutPolicy::new(1, 1, 2).expect("rollout policy"),
         now,
-    );
+    )
+    .expect("replicated Gateway scope");
     let idempotency = IdempotencyRequest::new(
         "gateway-scopes",
         "bind-primary",
-        scope.node_id.to_string().as_bytes(),
+        serde_json::to_string(&scope.member_node_ids)
+            .expect("member identities")
+            .as_bytes(),
     )
     .expect("idempotency");
     let bundle = CreateGatewayScopeWrite {
@@ -434,9 +445,10 @@ async fn creates_and_lists_environment_gateway_scopes_idempotently() {
         scope.organization_id,
         scope.project_id,
         scope.environment_id,
-        scope.node_id,
+        secondary_node_id,
         now + Duration::seconds(1),
-    );
+    )
+    .expect("duplicate Gateway scope");
     let duplicate_result = repository
         .create_gateway_scope(CreateGatewayScopeWrite {
             scope: duplicate.clone(),
@@ -462,7 +474,8 @@ async fn creates_and_lists_environment_gateway_scopes_idempotently() {
         scope.environment_id,
         NodeId::new(),
         now,
-    );
+    )
+    .expect("changed Gateway scope");
     let changed_request = repository
         .create_gateway_scope(CreateGatewayScopeWrite {
             scope: changed_scope.clone(),

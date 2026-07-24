@@ -1,12 +1,12 @@
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceState, GatewayPublication, GatewayRouteCutover,
+    GatewayCertificateConvergenceState, GatewayPublication, GatewayRollout, GatewayRouteCutover,
     GatewayRouteCutoverState, GatewayScope, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
-    IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, ProjectId, RepositoryError,
-    RouteId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
+    GatewayScopeId, IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, ProjectId,
+    RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, NodeGatewayAck};
 use async_trait::async_trait;
@@ -41,6 +41,109 @@ pub struct StageGatewayCertificateConvergence {
     pub publication: GatewayPublication,
     pub expected_scope_version: u64,
     pub event: DomainEventEnvelope,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageGatewayRollout {
+    pub scope: GatewayScope,
+    pub rollout: GatewayRollout,
+    pub publications: Vec<GatewayPublication>,
+    pub certificates: Vec<GatewayCertificate>,
+    pub expected_scope_versions: std::collections::BTreeMap<NodeId, u64>,
+    pub idempotency: IdempotencyRequest,
+    pub event: DomainEventEnvelope,
+}
+
+impl StageGatewayRollout {
+    pub fn validate(&self) -> Result<(), String> {
+        self.scope.validate()?;
+        self.rollout.validate()?;
+        if self.rollout.gateway_scope_id != self.scope.id
+            || self.rollout.membership_generation != self.scope.membership_generation
+            || self.rollout.policy != self.scope.rollout_policy
+            || self.rollout.state != crate::modules::edge::domain::GatewayRolloutState::Pending
+            || self.rollout.aggregate_version != 1
+            || self.event.event_key != "edge.gateway-rollout.staged"
+            || self.event.schema_version != 1
+            || self.event.organization_id != self.scope.organization_id.as_uuid()
+            || self.event.aggregate_id != self.rollout.id.as_uuid()
+            || self.event.aggregate_version != self.rollout.aggregate_version
+            || self.event.occurred_at != self.rollout.started_at
+            || self.event.correlation_id != self.rollout.correlation_id
+        {
+            return Err("Gateway rollout stage bundle is inconsistent".into());
+        }
+        let mut publications = self.publications.iter().collect::<Vec<_>>();
+        publications.sort_by_key(|publication| publication.node_id);
+        if publications.len() != self.rollout.replicas.len()
+            || publications
+                .iter()
+                .zip(&self.rollout.replicas)
+                .any(|(publication, replica)| {
+                    publication.node_id != replica.node_id
+                        || publication.revision != replica.revision
+                        || publication.command_id != replica.command_id
+                        || publication.snapshot_digest != replica.snapshot_digest
+                        || publication.snapshot_expires_at != replica.snapshot_expires_at
+                        || publication
+                            .certificate_request
+                            .as_ref()
+                            .map(|request| GatewayCertificateId::from_uuid(request.certificate_id))
+                            != replica.gateway_certificate_id
+                })
+        {
+            return Err("Gateway rollout publications do not match its replica projection".into());
+        }
+        let expected_nodes = self
+            .rollout
+            .replicas
+            .iter()
+            .map(|replica| replica.node_id)
+            .collect::<std::collections::BTreeSet<_>>();
+        if self
+            .expected_scope_versions
+            .keys()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            != expected_nodes
+        {
+            return Err(
+                "Gateway rollout scope versions do not cover the exact desired membership".into(),
+            );
+        }
+        let mut certificates = self.certificates.iter().collect::<Vec<_>>();
+        certificates.sort_by_key(|certificate| certificate.node_id);
+        let expected_certificates = publications
+            .iter()
+            .filter_map(|publication| {
+                publication
+                    .certificate_request
+                    .as_ref()
+                    .map(|request| (publication, request.certificate_id))
+            })
+            .collect::<Vec<_>>();
+        if certificates.len() != expected_certificates.len()
+            || certificates.iter().zip(expected_certificates).any(
+                |(certificate, (publication, certificate_id))| {
+                    certificate.id.as_uuid() != certificate_id
+                        || certificate.organization_id != self.scope.organization_id
+                        || certificate.node_id != publication.node_id
+                        || certificate.gateway_revision != publication.revision
+                        || certificate.gateway_command_id != publication.command_id
+                        || certificate.snapshot_digest != publication.snapshot_digest
+                        || certificate.state
+                            != crate::modules::edge::domain::GatewayCertificateState::Provisioning
+                        || publication.certificate_request.as_ref() != Some(&certificate.request)
+                },
+            )
+        {
+            return Err("Gateway rollout certificate projection is inconsistent".into());
+        }
+        for publication in &self.publications {
+            publication.snapshot()?;
+        }
+        Ok(())
+    }
 }
 
 impl StageGatewayCertificateConvergence {
@@ -217,6 +320,14 @@ pub struct GatewayCertificateConvergenceResult {
     pub publication: GatewayPublication,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayRolloutResult {
+    pub rollout: GatewayRollout,
+    pub publications: Vec<GatewayPublication>,
+    pub certificates: Vec<GatewayCertificate>,
+    pub replayed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayCertificateRouteStatus {
     pub route: Route,
@@ -334,6 +445,27 @@ pub trait IEdgeRepository: Send + Sync {
         &self,
         bundle: StageGatewayRouteCutover,
     ) -> Result<GatewayRouteCutoverResult, RepositoryError>;
+
+    async fn stage_gateway_rollout(
+        &self,
+        bundle: StageGatewayRollout,
+    ) -> Result<GatewayRolloutResult, RepositoryError>;
+
+    async fn find_gateway_rollout(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+    ) -> Result<GatewayRollout, RepositoryError>;
+
+    async fn mark_gateway_rollout_replica_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError>;
 
     async fn gateway_certificate_convergence_targets(
         &self,

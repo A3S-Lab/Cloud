@@ -51,6 +51,8 @@ mod edge_certificate_lifecycle_support;
 mod edge_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
+#[path = "support/gateway_rollouts.rs"]
+mod gateway_rollouts_support;
 #[path = "support/github_connection.rs"]
 mod github_connection_support;
 #[path = "support/postgres_fixture.rs"]
@@ -213,11 +215,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 37);
+    assert_eq!(applied, 39);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
         .await?;
+    assert_gateway_scope_membership_migration_backfills_primary_members(&executor).await?;
     let evidence_required_column = database
         .fetch_one_as(sql_query::<(String, String, Option<String>)>(
             "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence_required'",
@@ -606,6 +609,22 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "038",
+                "replicated Gateway scope membership",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/038_gateway_scope_membership.sql"
+                )),
+            ),
+            Migration::new(
+                "039",
+                "per-replica Gateway rollouts",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/039_gateway_replica_rollouts.sql"
+                )),
+            ),
+            Migration::new(
+                "040",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1915,6 +1934,21 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         },
     )
     .await?;
+    gateway_rollouts_support::exercise_replicated_gateway_rollout(
+        &executor,
+        gateway_rollouts_support::GatewayRolloutFixture {
+            organization_id: OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+            project_id:
+                a3s_cloud_control_plane::modules::shared_kernel::domain::ProjectId::from_uuid(
+                    Uuid::parse_str(&project_id)?,
+                ),
+            environment_id:
+                a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
+                    Uuid::parse_str(&environment_id)?,
+                ),
+        },
+    )
+    .await?;
 
     Ok(())
 }
@@ -2318,6 +2352,154 @@ begin
     exception
         when check_violation then null;
     end;
+end
+$$;
+
+rollback;
+"#
+    );
+    client.batch_execute(&probe).await?;
+    Ok(())
+}
+
+async fn assert_gateway_scope_membership_migration_backfills_primary_members(
+    executor: &PostgresExecutor,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = executor.pool().get().await?;
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/038_gateway_scope_membership.sql"
+    ));
+    let probe = format!(
+        r#"
+begin;
+set local search_path = pg_temp;
+
+create temporary table nodes (
+    id uuid primary key,
+    organization_id uuid not null,
+    unique (organization_id, id)
+);
+
+create temporary table gateway_route_scopes (
+    id uuid primary key,
+    organization_id uuid not null,
+    project_id uuid not null,
+    environment_id uuid not null,
+    node_id uuid not null,
+    aggregate_version bigint not null,
+    created_at timestamptz not null,
+    updated_at timestamptz not null,
+    unique (organization_id, project_id, environment_id, node_id),
+    unique (id, organization_id, project_id, environment_id, node_id)
+);
+
+create temporary table idempotency_records (
+    scope_key text not null,
+    idempotency_key text not null,
+    request_digest text not null,
+    response jsonb not null,
+    created_at timestamptz not null,
+    primary key (scope_key, idempotency_key)
+);
+
+insert into nodes (id, organization_id)
+values (
+    '38000000-0000-0000-0000-000000000002',
+    '38000000-0000-0000-0000-000000000003'
+);
+
+insert into gateway_route_scopes (
+    id,
+    organization_id,
+    project_id,
+    environment_id,
+    node_id,
+    aggregate_version,
+    created_at,
+    updated_at
+)
+values (
+    '38000000-0000-0000-0000-000000000001',
+    '38000000-0000-0000-0000-000000000003',
+    '38000000-0000-0000-0000-000000000004',
+    '38000000-0000-0000-0000-000000000005',
+    '38000000-0000-0000-0000-000000000002',
+    1,
+    '2026-07-25T00:00:00Z',
+    '2026-07-25T00:00:00Z'
+);
+
+insert into idempotency_records (
+    scope_key,
+    idempotency_key,
+    request_digest,
+    response,
+    created_at
+)
+values (
+    'organizations/38000000-0000-0000-0000-000000000003/projects/38000000-0000-0000-0000-000000000004/environments/38000000-0000-0000-0000-000000000005/gateway-scopes',
+    'legacy-scope',
+    'sha256:legacy',
+    jsonb_build_object(
+        'id',
+        '38000000-0000-0000-0000-000000000001',
+        'organization_id',
+        '38000000-0000-0000-0000-000000000003',
+        'project_id',
+        '38000000-0000-0000-0000-000000000004',
+        'environment_id',
+        '38000000-0000-0000-0000-000000000005',
+        'node_id',
+        '38000000-0000-0000-0000-000000000002',
+        'aggregate_version',
+        1,
+        'created_at',
+        '2026-07-25T00:00:00Z',
+        'updated_at',
+        '2026-07-25T00:00:00Z'
+    ),
+    '2026-07-25T00:00:00Z'
+);
+
+{migration}
+
+do $$
+begin
+    if not exists (
+        select 1
+        from gateway_scope_members
+        where gateway_scope_id = '38000000-0000-0000-0000-000000000001'
+          and node_id = '38000000-0000-0000-0000-000000000002'
+          and ordinal = 0
+          and membership_generation = 1
+    ) then
+        raise exception 'Gateway scope migration did not backfill its primary member';
+    end if;
+
+    if not exists (
+        select 1
+        from gateway_route_scopes
+        where id = '38000000-0000-0000-0000-000000000001'
+          and membership_generation = 1
+          and min_ready = 1
+          and max_unavailable = 0
+    ) then
+        raise exception 'Gateway scope migration did not backfill rollout policy';
+    end if;
+
+    if not exists (
+        select 1
+        from idempotency_records
+        where idempotency_key = 'legacy-scope'
+          and response -> 'member_node_ids'
+              = jsonb_build_array('38000000-0000-0000-0000-000000000002')
+          and response ->> 'membership_generation' = '1'
+          and response #>> '{{rollout_policy,min_ready}}' = '1'
+          and response #>> '{{rollout_policy,max_unavailable}}' = '0'
+    ) then
+        raise exception 'Gateway scope migration did not upgrade replay documents';
+    end if;
 end
 $$;
 

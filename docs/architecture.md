@@ -379,8 +379,12 @@ cloud-gateway` exercises the production topology after building the SPA.
 
 PostgreSQL is authoritative for aggregates, desired state, idempotency records,
 the outbox, and UI projections. A3S ORM supplies parameterized queries,
-transactions, migrations, and PostgreSQL access. Each aggregate row carries a
-version; commands use optimistic concurrency rather than last-write-wins.
+transactions, migrations, and PostgreSQL access. New schema-backed CRUD uses
+its typed table and query builders. Reviewed static SQL remains bounded to
+locking, aggregation, backend expressions that the current typed AST cannot
+represent, and legacy paths that have not yet migrated. Each aggregate row
+carries a version; commands use optimistic concurrency rather than
+last-write-wins.
 
 The Flow event store uses a separate PostgreSQL schema. A business transaction
 does not attempt a distributed transaction with Flow. The deployment command
@@ -669,14 +673,16 @@ HTTP endpoints remain an explicit development-only option.
 
 For the first vertical slice, A3S Gateway runs on the workload node. Edge owns
 a logical `GatewayScope` inside one organization, project, and environment;
-the current cardinality-one mapping binds it to one physical Gateway node.
-Routes persist both identities, while the managed snapshot protocol remains
-node-addressed and Gateway does not interpret Cloud tenancy. A publication may
-target only the workload's active immutable revision, a declared TCP port, and
-a current healthy Runtime observation whose node matches the scope mapping.
-Docker observations expose the selected node-local HTTP origin as a typed
-evidence claim; Docker-specific container and port-binding details do not cross
-into the Route domain.
+it stores an ordered desired physical member set, a membership generation, and
+`min_ready`/`max_unavailable` rollout policy. The first member remains the
+bootstrap primary for the current cardinality-one route compiler. Routes
+persist both logical and physical identities, while the managed snapshot
+protocol remains node-addressed and Gateway does not interpret Cloud tenancy.
+A publication may target only the workload's active immutable revision, a
+declared TCP port, and a current healthy Runtime observation whose node matches
+the bootstrap primary. Docker observations expose the selected node-local HTTP
+origin as a typed evidence claim; Docker-specific container and port-binding
+details do not cross into the Route domain.
 
 The durable `RouteTarget` projection binds that origin to the immutable
 workload revision, deterministic
@@ -743,6 +749,19 @@ wrong-node bindings. Migration 037 adds the selected management protocol,
 request/status schemas, and discovery mode to Gateway acknowledgements. Legacy
 rows remain null because the migration does not invent negotiation evidence;
 new rows must store either the complete supported tuple or no tuple.
+
+Migration 038 preserves every legacy primary as the first scope member and
+backfills the single-replica rollout policy. Migration 039 adds one durable
+`GatewayRollout` plus a per-member projection. Each member has an independent
+Gateway revision, command, snapshot digest, expiry, optional certificate, and
+terminal outcome. Reaching the policy threshold makes the aggregate ready to
+serve, but only exact acknowledgement from every desired member makes it
+succeeded. Once every member is terminal, any rejected or unavailable member
+makes the result explicitly degraded. Staging and acknowledgement transitions
+are transactional, versioned, and recoverable through PostgreSQL without
+assuming an atomic reload across Gateway processes. The application coordinator
+that compiles and enqueues all member publications is still required before
+this persistence foundation becomes a replicated delivery path.
 
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route

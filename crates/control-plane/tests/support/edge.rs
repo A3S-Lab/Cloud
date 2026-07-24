@@ -103,7 +103,7 @@ pub async fn exercise_edge_api(
         .call(post_json(
             &gateway_scope_collection_path,
             "edge-api-gateway-scope",
-            gateway_scope_request.clone(),
+            gateway_scope_request,
             fixture.token,
         ))
         .await?;
@@ -111,7 +111,11 @@ pub async fn exercise_edge_api(
         .call(post_json(
             &gateway_scope_collection_path,
             "edge-api-gateway-scope",
-            gateway_scope_request,
+            json!({
+                "nodeIds": [fixture.node_id],
+                "minReady": 1,
+                "maxUnavailable": 0
+            }),
             fixture.token,
         ))
         .await?;
@@ -372,7 +376,7 @@ pub async fn exercise_edge(
                 fixture.environment_id,
                 fixture.node_id,
                 now,
-            );
+            )?;
             repository
                 .create_gateway_scope(CreateGatewayScopeWrite {
                     scope: scope.clone(),

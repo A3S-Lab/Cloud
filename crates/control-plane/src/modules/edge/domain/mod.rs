@@ -8,11 +8,13 @@ pub use entities::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
     GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
-    GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion,
+    GatewayPublicationState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
+    GatewayRolloutState, GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion,
     GatewayScope, GatewayScopeState, Route, RouteState,
 };
 pub use value_objects::{
-    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
+    DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,
+    UpstreamEndpoint, MAX_GATEWAY_SCOPE_MEMBERS,
 };
 
 #[cfg(test)]

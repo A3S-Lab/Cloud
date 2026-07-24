@@ -357,6 +357,22 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/037_gateway_management_protocol.sql"
             )),
         ),
+        Migration::new(
+            "038",
+            "replicated Gateway scope membership",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/038_gateway_scope_membership.sql"
+            )),
+        ),
+        Migration::new(
+            "039",
+            "per-replica Gateway rollouts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/039_gateway_replica_rollouts.sql"
+            )),
+        ),
     ]
 }
 

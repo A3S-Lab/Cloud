@@ -16,8 +16,9 @@ pub use application::{
 pub use domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
-    GatewayCertificateRouteStatus, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayCertificateConvergence, StageGatewayRouteCutover, TransitionDomainClaim,
+    GatewayCertificateRouteStatus, GatewayRolloutResult, GatewayRouteCutoverResult,
+    IEdgeRepository, StageGatewayCertificateConvergence, StageGatewayRollout,
+    StageGatewayRouteCutover, TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
@@ -28,9 +29,10 @@ pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
     GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
-    GatewayPublication, GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState,
-    GatewayRouteVersion, GatewayScope, GatewayScopeState, Route, RouteHostname, RoutePath,
-    RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayPublication, GatewayPublicationState, GatewayReplicaRollout, GatewayReplicaRolloutState,
+    GatewayRollout, GatewayRolloutPolicy, GatewayRolloutState, GatewayRouteCutover,
+    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{

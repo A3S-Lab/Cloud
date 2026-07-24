@@ -1,4 +1,5 @@
 use crate::modules::edge::application::CreateGatewayScope;
+use crate::modules::edge::domain::GatewayRolloutPolicy;
 use crate::modules::edge::presentation::dto::{CreateGatewayScopeRequest, GatewayScopeResponse};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
@@ -22,6 +23,18 @@ pub fn gateway_scope_commands_controller(bus: Arc<CommandBus>) -> Result<Control
                 let bus = Arc::clone(&bus);
                 async move {
                     let body: CreateGatewayScopeRequest = request.json_with_content_type()?;
+                    let (primary_node_id, member_node_ids, min_ready, max_unavailable) =
+                        body.members().map_err(BootError::BadRequest)?;
+                    let member_node_ids = member_node_ids
+                        .into_iter()
+                        .map(NodeId::from_uuid)
+                        .collect::<Vec<_>>();
+                    let rollout_policy = GatewayRolloutPolicy::new(
+                        min_ready,
+                        max_unavailable,
+                        member_node_ids.len(),
+                    )
+                    .map_err(BootError::BadRequest)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateGatewayScope {
@@ -34,7 +47,9 @@ pub fn gateway_scope_commands_controller(bus: Arc<CommandBus>) -> Result<Control
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
-                            node_id: NodeId::from_uuid(body.node_id),
+                            node_id: NodeId::from_uuid(primary_node_id),
+                            member_node_ids,
+                            rollout_policy,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),

@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-24.**
+**Status as of 2026-07-25.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -267,13 +267,16 @@ not a product capability until restore passes against a clean environment.
 Kubernetes or Helm may package Cloud, but Workloads remains the only workload
 scheduler and Cloud product configuration remains ACL.
 
-The current `H0.2` foundation includes Cloud-owned logical Gateway scopes for
-the cardinality-one mapping. Each scope belongs to one organization, project,
-and environment and maps to one physical Gateway node. Environment-scoped
-create/list APIs persist that resource idempotently. Route publication requires
-the logical scope, stores both scope and node identities, and rejects a
-cross-environment scope or a scope whose node differs from the healthy Runtime
-target. Cutover retains the same logical scope.
+The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
+scope belongs to one organization, project, and environment and now stores an
+ordered desired member set, a membership generation, and explicit `min_ready`
+and `max_unavailable` policy. The first member remains the bootstrap primary
+for the current cardinality-one route compiler. Environment-scoped create/list
+APIs persist the resource idempotently and retain the legacy single-`nodeId`
+request. Route publication requires the logical scope, stores both scope and
+node identities, and rejects a cross-environment scope or a bootstrap primary
+that differs from the healthy Runtime target. Cutover retains the same logical
+scope.
 
 Cloud persists each private route target as an exact immutable revision,
 deterministic Runtime unit, positive generation, declared port, canonical
@@ -296,8 +299,14 @@ Before mutation, the agent now selects an explicitly advertised
 Unknown and inconsistent descriptors fail closed. Gateway ack v4 and command
 ack v2 persist the selected protocol, while the control plane reads legacy
 v3/v1 acknowledgements and migration 037 leaves their unavailable evidence
-null. Replicated readiness and rollout thresholds plus joint production HA
-evidence remain open.
+null. Migrations 038 and 039 add backward-compatible scope membership and a
+durable per-member `GatewayRollout` aggregate. Every physical member owns an
+independent revision, command, digest, expiry, certificate, and result. Meeting
+the configured threshold makes a rollout ready, exact success from every
+member makes it succeeded, and a fully observed mixed result becomes degraded.
+Domain, in-memory, typed A3S ORM, migration, and recreated-PostgreSQL tests
+cover this foundation. The application coordinator, real multi-Gateway
+delivery and loss evidence, and joint production HA remain open.
 
 ### 5.7 `I0`: inference profile
 
@@ -394,7 +403,7 @@ are allowed only before the first response byte.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical Gateway scopes, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and command-bound revision/unit/generation target projection with PostgreSQL recovery are available; replicated projection remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement, superseded-selector rejection, and restart recovery are verified; replicated-rollout and production HA gates remain open |
+| `H0.2` | Logical Gateway scopes, ordered desired membership, rollout thresholds, durable per-member outcomes, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and command-bound revision/unit/generation target projection are available; multi-member coordination remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement and restart recovery, plus PostgreSQL threshold aggregation are verified; real replicated delivery, Gateway loss, and production HA gates remain open |
 | `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |

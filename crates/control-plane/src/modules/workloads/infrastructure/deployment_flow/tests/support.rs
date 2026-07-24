@@ -60,7 +60,8 @@ pub(super) async fn publish_active_route(
         workload.environment_id,
         node_id,
         staged_at,
-    );
+    )
+    .expect("Gateway scope");
     repository
         .create_gateway_scope(CreateGatewayScopeWrite {
             scope: gateway_scope.clone(),

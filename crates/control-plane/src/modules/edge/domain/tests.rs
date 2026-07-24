@@ -1,7 +1,8 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
+    GatewayScopeId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayCertificateRequest, GatewaySnapshot, NodeGatewayAck,
@@ -53,11 +54,205 @@ fn logical_gateway_scope_owns_one_environment_node_binding() {
         environment_id,
         node_id,
         Utc::now(),
-    );
+    )
+    .expect("Gateway scope");
 
     assert!(scope.owns(organization_id, project_id, environment_id, node_id));
     assert!(!scope.owns(organization_id, project_id, EnvironmentId::new(), node_id,));
     assert!(!scope.owns(organization_id, project_id, environment_id, NodeId::new(),));
+}
+
+#[test]
+fn logical_gateway_scope_owns_bounded_replica_membership_and_rollout_policy() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let primary = NodeId::new();
+    let secondary = NodeId::new();
+    let policy = GatewayRolloutPolicy::new(1, 1, 2).expect("replicated policy");
+    let scope = GatewayScope::create_replicated(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        primary,
+        vec![secondary, primary],
+        policy,
+        Utc::now(),
+    )
+    .expect("replicated Gateway scope");
+
+    assert_eq!(scope.node_id, primary);
+    assert_eq!(scope.member_node_ids, vec![primary, secondary]);
+    assert_eq!(scope.membership_generation, 1);
+    assert_eq!(
+        scope
+            .rollout_policy
+            .required_ready(2)
+            .expect("valid scope rollout policy"),
+        1
+    );
+    assert!(scope.owns(organization_id, project_id, environment_id, primary));
+    assert!(!scope.owns(organization_id, project_id, environment_id, secondary));
+    assert!(scope.contains_member(primary));
+    assert!(scope.contains_member(secondary));
+    assert!(GatewayScope::create_replicated(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        primary,
+        vec![primary, primary],
+        policy,
+        Utc::now(),
+    )
+    .is_err());
+    assert!(GatewayRolloutPolicy::new(0, 0, 2).is_err());
+    assert!(GatewayRolloutPolicy::new(1, 2, 2).is_err());
+}
+
+#[test]
+fn replicated_gateway_rollout_requires_exact_per_member_terminal_evidence() {
+    let now = Utc::now();
+    let correlation_id = Uuid::now_v7();
+    let primary = NodeId::new();
+    let secondary = NodeId::new();
+    let tertiary = NodeId::new();
+    let scope = GatewayScope::create_replicated(
+        GatewayScopeId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        primary,
+        vec![primary, secondary, tertiary],
+        GatewayRolloutPolicy::new(2, 1, 3).expect("rollout policy"),
+        now,
+    )
+    .expect("replicated scope");
+    let publications = scope
+        .member_node_ids
+        .iter()
+        .map(|node_id| rollout_publication(*node_id, correlation_id, now))
+        .collect::<Vec<_>>();
+    let mut rollout = GatewayRollout::stage(GatewayRolloutId::new(), &scope, 1, &publications, now)
+        .expect("stage rollout");
+
+    assert_eq!(rollout.required_ready().expect("valid rollout policy"), 2);
+    assert!(!rollout
+        .serves_traffic()
+        .expect("valid pending rollout policy"));
+    rollout
+        .acknowledge(&rollout_acknowledgement(
+            &publications[0],
+            GatewayAckState::Applied,
+            now + Duration::seconds(1),
+        ))
+        .expect("first replica");
+    assert_eq!(rollout.state, GatewayRolloutState::Pending);
+    rollout
+        .acknowledge(&rollout_acknowledgement(
+            &publications[1],
+            GatewayAckState::Applied,
+            now + Duration::seconds(2),
+        ))
+        .expect("second replica");
+    assert_eq!(rollout.state, GatewayRolloutState::Ready);
+    assert!(rollout
+        .serves_traffic()
+        .expect("valid ready rollout policy"));
+    rollout
+        .mark_unavailable(
+            publications[2].node_id,
+            "Gateway did not become ready before the rollout deadline",
+            now + Duration::seconds(3),
+        )
+        .expect("terminal unavailable result");
+    assert_eq!(rollout.state, GatewayRolloutState::Degraded);
+    assert_eq!(rollout.ready_replicas, 2);
+    assert_eq!(rollout.unavailable_replicas, 1);
+    assert!(rollout.completed_at.is_some());
+    assert!(rollout
+        .serves_traffic()
+        .expect("valid degraded rollout policy"));
+
+    let replay = rollout
+        .acknowledge(&rollout_acknowledgement(
+            &publications[0],
+            GatewayAckState::Applied,
+            now + Duration::seconds(1),
+        ))
+        .expect("exact acknowledgement replay");
+    assert!(!replay);
+    let mut mismatched = rollout_acknowledgement(
+        &publications[1],
+        GatewayAckState::Applied,
+        now + Duration::seconds(2),
+    );
+    mismatched.snapshot_digest = format!("sha256:{}", "0".repeat(64));
+    let terminal = rollout.clone();
+    assert!(rollout.acknowledge(&mismatched).is_err());
+    assert_eq!(rollout, terminal);
+
+    let mut exhausted =
+        GatewayRollout::stage(GatewayRolloutId::new(), &scope, 2, &publications, now)
+            .expect("stage exhausted rollout");
+    exhausted.aggregate_version = u64::MAX;
+    let unchanged = exhausted.clone();
+    assert!(exhausted
+        .acknowledge(&rollout_acknowledgement(
+            &publications[0],
+            GatewayAckState::Applied,
+            now + Duration::seconds(1),
+        ))
+        .is_err());
+    assert_eq!(exhausted, unchanged);
+}
+
+fn rollout_publication(
+    node_id: NodeId,
+    correlation_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> GatewayPublication {
+    let snapshot = GatewaySnapshot::new(
+        node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::hours(1),
+        format!("# exact snapshot for {node_id}"),
+    )
+    .expect("Gateway snapshot");
+    GatewayPublication::stage(
+        node_id,
+        NodeCommandId::new(),
+        correlation_id,
+        snapshot,
+        now,
+        now + Duration::minutes(3),
+    )
+    .expect("Gateway publication")
+}
+
+fn rollout_acknowledgement(
+    publication: &GatewayPublication,
+    state: GatewayAckState,
+    acknowledged_at: chrono::DateTime<Utc>,
+) -> NodeGatewayAck {
+    NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: publication.command_id.as_uuid(),
+        node_id: publication.node_id.as_uuid(),
+        gateway_id: publication.node_id.as_uuid(),
+        revision: publication.revision,
+        snapshot_digest: publication.snapshot_digest.clone(),
+        expires_at: publication.snapshot_expires_at,
+        state,
+        ready: state == GatewayAckState::Applied,
+        message: (state == GatewayAckState::Rejected).then(|| "snapshot rejected".into()),
+        acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
+    }
 }
 
 #[test]

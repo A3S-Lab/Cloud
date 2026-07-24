@@ -1,6 +1,8 @@
 use super::postgres::{PublicationRow, RouteRow, SELECT_PUBLICATIONS, SELECT_ROUTES};
 use super::postgres_certificate_convergence;
 use super::postgres_cutovers;
+use super::postgres_rollouts;
+use super::postgres_schema::GatewayPublications;
 use super::postgres_tls::{update_certificate, CertificateRow, SELECT_CERTIFICATES};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, transaction_error,
@@ -11,7 +13,7 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
-use a3s_orm::{sql_query, PostgresExecutor};
+use a3s_orm::{sql_query, update_table, PostgresExecutor};
 use chrono::{DateTime, Utc};
 
 pub(super) async fn project(
@@ -52,6 +54,88 @@ pub(super) async fn project(
                     .acknowledge(&acknowledgement)
                     .map_err(RepositoryError::Conflict)?;
                 if !was_pending {
+                    return Ok(true);
+                }
+                if let Some(mut rollout) = postgres_rollouts::lock_by_gateway_identity(
+                    transaction,
+                    acknowledgement.node_id,
+                    acknowledgement.revision,
+                    acknowledgement.command_id,
+                )
+                .await?
+                {
+                    let expected_rollout_version = rollout.aggregate_version;
+                    if !rollout
+                        .acknowledge(&acknowledgement)
+                        .map_err(RepositoryError::Conflict)?
+                    {
+                        return Err(PostgresPersistenceError::Invariant(
+                            "pending Gateway publication replayed a terminal rollout result".into(),
+                        ));
+                    }
+                    let expected_certificate_id = rollout
+                        .replicas
+                        .iter()
+                        .find(|replica| {
+                            replica.node_id.as_uuid() == acknowledgement.node_id
+                                && replica.revision == acknowledgement.revision
+                                && replica.command_id.as_uuid() == acknowledgement.command_id
+                        })
+                        .and_then(|replica| replica.gateway_certificate_id);
+                    let certificate_rows = fetch_all::<CertificateRow, _>(
+                        transaction,
+                        sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+                            .append(" where node_id = ")
+                            .bind(acknowledgement.node_id)
+                            .append(" and gateway_revision = ")
+                            .bind(acknowledgement.revision)
+                            .append(" and gateway_command_id = ")
+                            .bind(acknowledgement.command_id)
+                            .append(" for update"),
+                    )
+                    .await?;
+                    let mut certificates = certificate_rows
+                        .into_iter()
+                        .map(CertificateRow::certificate)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if certificates.len() != usize::from(expected_certificate_id.is_some())
+                        || certificates.first().map(|certificate| certificate.id)
+                            != expected_certificate_id
+                    {
+                        return Err(PostgresPersistenceError::Invariant(
+                            "Gateway rollout has inconsistent staged certificate material".into(),
+                        ));
+                    }
+                    let mut certificate = certificates.pop();
+                    let certificate_version = certificate
+                        .as_ref()
+                        .map(|certificate| certificate.aggregate_version);
+                    if let Some(certificate) = &mut certificate {
+                        certificate
+                            .apply_gateway_acknowledgement(&acknowledgement)
+                            .map_err(RepositoryError::Conflict)?;
+                    }
+                    persist_publication_acknowledgement(transaction, &publication).await?;
+                    if let (Some(certificate), Some(certificate_version)) =
+                        (&certificate, certificate_version)
+                    {
+                        update_certificate(transaction, certificate, certificate_version).await?;
+                    }
+                    postgres_rollouts::persist_acknowledgement(
+                        transaction,
+                        &rollout,
+                        NodeId::from_uuid(acknowledgement.node_id),
+                        expected_rollout_version,
+                    )
+                    .await?;
+                    if acknowledgement.state == GatewayAckState::Applied {
+                        persist_installed_scope_revision(
+                            transaction,
+                            &publication,
+                            acknowledgement.acknowledged_at,
+                        )
+                        .await?;
+                    }
                     return Ok(true);
                 }
                 let certificate_rows = fetch_all::<CertificateRow, _>(
@@ -153,24 +237,7 @@ pub(super) async fn project(
                             .map_err(RepositoryError::Conflict)?;
                     }
                 }
-                require_one_row(
-                    "Gateway publication acknowledgement",
-                    execute(
-                        transaction,
-                        sql_query::<()>("update gateway_publications set state = ")
-                            .bind(publication.state.as_str())
-                            .append(", failure = ")
-                            .bind(publication.failure.as_deref())
-                            .append(", acknowledged_at = ")
-                            .bind(publication.acknowledged_at)
-                            .append(" where node_id = ")
-                            .bind(publication.node_id.as_uuid())
-                            .append(" and revision = ")
-                            .bind(publication.revision)
-                            .append(" and state = 'pending'"),
-                    )
-                    .await?,
-                )?;
+                persist_publication_acknowledgement(transaction, &publication).await?;
                 if let (Some(certificate), Some(certificate_version)) =
                     (&certificate, certificate_version)
                 {
@@ -240,27 +307,63 @@ pub(super) async fn project(
                             "certificate-free Gateway snapshot retained active routes".into(),
                         ));
                     }
-                    require_one_row(
-                        "installed Gateway scope revision",
-                        execute(
-                            transaction,
-                            sql_query::<()>("update gateway_scopes set installed_revision = ")
-                                .bind(acknowledgement.revision)
-                                .append(
-                                    ", aggregate_version = aggregate_version + 1, updated_at = ",
-                                )
-                                .bind(acknowledgement.acknowledged_at)
-                                .append(" where node_id = ")
-                                .bind(acknowledgement.node_id)
-                                .append(" and installed_revision is not distinct from ")
-                                .bind(publication.expected_revision),
-                        )
-                        .await?,
-                    )?;
+                    persist_installed_scope_revision(
+                        transaction,
+                        &publication,
+                        acknowledgement.acknowledged_at,
+                    )
+                    .await?;
                 }
                 Ok(true)
             })
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn persist_publication_acknowledgement(
+    transaction: &a3s_orm::PostgresTransaction,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+) -> Result<(), PostgresPersistenceError> {
+    require_one_row(
+        "Gateway publication acknowledgement",
+        execute(
+            transaction,
+            update_table::<GatewayPublications>()
+                .set(GatewayPublications::state(), publication.state.as_str())
+                .set(GatewayPublications::failure(), publication.failure.clone())
+                .set(
+                    GatewayPublications::acknowledged_at(),
+                    publication.acknowledged_at,
+                )
+                .filter(GatewayPublications::node_id().eq(publication.node_id.as_uuid()))
+                .filter(GatewayPublications::revision().eq(publication.revision))
+                .filter(GatewayPublications::state().eq("pending")),
+        )
+        .await?,
+    )?;
+    Ok(())
+}
+
+async fn persist_installed_scope_revision(
+    transaction: &a3s_orm::PostgresTransaction,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+    acknowledged_at: DateTime<Utc>,
+) -> Result<(), PostgresPersistenceError> {
+    require_one_row(
+        "installed Gateway scope revision",
+        execute(
+            transaction,
+            sql_query::<()>("update gateway_scopes set installed_revision = ")
+                .bind(publication.revision)
+                .append(", aggregate_version = aggregate_version + 1, updated_at = ")
+                .bind(acknowledged_at)
+                .append(" where node_id = ")
+                .bind(publication.node_id.as_uuid())
+                .append(" and installed_revision is not distinct from ")
+                .bind(publication.expected_revision),
+        )
+        .await?,
+    )?;
+    Ok(())
 }

@@ -1,7 +1,7 @@
 use super::{CreateGatewayScope, CreateGatewayScopeResult};
 use crate::modules::edge::domain::events::GatewayScopeCreated;
 use crate::modules::edge::domain::repositories::{CreateGatewayScopeWrite, IEdgeRepository};
-use crate::modules::edge::domain::GatewayScope;
+use crate::modules::edge::domain::{GatewayRolloutPolicy, GatewayScope};
 use crate::modules::fleet::domain::repositories::INodeRepository;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -56,17 +56,40 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
-            if let Err(error) = nodes.find(command.organization_id, command.node_id).await {
-                return Ok(Err(error.into()));
-            }
-
-            let canonical = serde_json::to_vec(&serde_json::json!({
-                "organization_id": command.organization_id,
-                "project_id": command.project_id,
-                "environment_id": command.environment_id,
-                "node_id": command.node_id,
-            }))
-            .map_err(|error| BootError::Internal(error.to_string()))?;
+            let scope = match GatewayScope::create_replicated(
+                GatewayScopeId::new(),
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+                command.node_id,
+                command.member_node_ids,
+                command.rollout_policy,
+                command.requested_at,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            let canonical = if scope.member_node_ids.len() == 1
+                && scope.rollout_policy == GatewayRolloutPolicy::single_replica()
+            {
+                serde_json::json!({
+                    "organization_id": scope.organization_id,
+                    "project_id": scope.project_id,
+                    "environment_id": scope.environment_id,
+                    "node_id": scope.node_id,
+                })
+            } else {
+                serde_json::json!({
+                    "organization_id": scope.organization_id,
+                    "project_id": scope.project_id,
+                    "environment_id": scope.environment_id,
+                    "primary_node_id": scope.node_id,
+                    "member_node_ids": scope.member_node_ids,
+                    "rollout_policy": scope.rollout_policy,
+                })
+            };
+            let canonical = serde_json::to_vec(&canonical)
+                .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
                 format!(
                     "organizations/{}/projects/{}/environments/{}/gateway-scopes",
@@ -78,14 +101,11 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let scope = GatewayScope::create(
-                GatewayScopeId::new(),
-                command.organization_id,
-                command.project_id,
-                command.environment_id,
-                command.node_id,
-                command.requested_at,
-            );
+            for node_id in &scope.member_node_ids {
+                if let Err(error) = nodes.find(command.organization_id, *node_id).await {
+                    return Ok(Err(error.into()));
+                }
+            }
             let event = GatewayScopeCreated::envelope(&scope, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
             let write = match edge

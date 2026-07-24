@@ -4,30 +4,34 @@ use crate::infrastructure::{
 };
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
-    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget, GatewayRolloutResult,
     GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
-    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
+    StageGatewayRollout, StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
-    GatewayPublicationState, GatewayRouteCutover, GatewayScope, GatewayScopeState, Route,
-    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayPublicationState, GatewayRollout, GatewayRouteCutover, GatewayScope, GatewayScopeState,
+    Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
-    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
-    WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
+    GatewayScopeId, IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId,
+    RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayCertificateRequest, NodeGatewayAck};
 use a3s_orm::{
-    sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
+    insert_into, sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect,
+    PostgresExecutor, Row,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use super::postgres_schema::GatewayPublications;
 use super::postgres_tls::{self as tls, insert_certificate};
-use super::{postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes};
+use super::{
+    postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes, postgres_rollouts,
+};
 
 pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_scope_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
 pub(super) const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, snapshot_expires_at, acknowledged_at, certificate_request from gateway_publications";
@@ -499,6 +503,42 @@ impl IEdgeRepository for PostgresEdgeRepository {
         postgres_cutovers::stage(&self.executor, bundle).await
     }
 
+    async fn stage_gateway_rollout(
+        &self,
+        bundle: StageGatewayRollout,
+    ) -> Result<GatewayRolloutResult, RepositoryError> {
+        postgres_rollouts::stage(&self.executor, bundle).await
+    }
+
+    async fn find_gateway_rollout(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        postgres_rollouts::find(&self.executor, organization_id, rollout_id).await
+    }
+
+    async fn mark_gateway_rollout_replica_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        postgres_rollouts::mark_unavailable(
+            &self.executor,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            failure,
+            observed_at,
+        )
+        .await
+    }
+
     async fn gateway_certificate_convergence_targets(
         &self,
         certificate_renew_before: DateTime<Utc>,
@@ -635,37 +675,51 @@ pub(super) async fn insert_publication(
         .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?;
     let result = execute(
         transaction,
-        sql_query::<()>(
-            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, snapshot_expires_at, acknowledged_at, certificate_request) values (",
-        )
-        .bind(publication.node_id.as_uuid())
-        .append(", ")
-        .bind(publication.revision)
-        .append(", ")
-        .bind(publication.expected_revision)
-        .append(", ")
-        .bind(publication.command_id.as_uuid())
-        .append(", ")
-        .bind(publication.command_correlation_id)
-        .append(", ")
-        .bind(publication.snapshot_digest.as_str())
-        .append(", ")
-        .bind(publication.acl.as_str())
-        .append(", ")
-        .bind(publication.state.as_str())
-        .append(", ")
-        .bind(publication.failure.as_deref())
-        .append(", ")
-        .bind(publication.command_issued_at)
-        .append(", ")
-        .bind(publication.command_not_after)
-        .append(", ")
-        .bind(publication.snapshot_expires_at)
-        .append(", ")
-        .bind(publication.acknowledged_at)
-        .append(", ")
-        .bind(certificate_request)
-        .append(")"),
+        insert_into::<GatewayPublications>()
+            .value(
+                GatewayPublications::node_id(),
+                publication.node_id.as_uuid(),
+            )
+            .value(GatewayPublications::revision(), publication.revision)
+            .value(
+                GatewayPublications::expected_revision(),
+                publication.expected_revision,
+            )
+            .value(
+                GatewayPublications::command_id(),
+                publication.command_id.as_uuid(),
+            )
+            .value(
+                GatewayPublications::command_correlation_id(),
+                publication.command_correlation_id,
+            )
+            .value(
+                GatewayPublications::snapshot_digest(),
+                publication.snapshot_digest.as_str(),
+            )
+            .value(GatewayPublications::acl(), publication.acl.as_str())
+            .value(GatewayPublications::state(), publication.state.as_str())
+            .value(GatewayPublications::failure(), publication.failure.clone())
+            .value(
+                GatewayPublications::command_issued_at(),
+                publication.command_issued_at,
+            )
+            .value(
+                GatewayPublications::command_not_after(),
+                publication.command_not_after,
+            )
+            .value(
+                GatewayPublications::snapshot_expires_at(),
+                publication.snapshot_expires_at,
+            )
+            .value(
+                GatewayPublications::acknowledged_at(),
+                publication.acknowledged_at,
+            )
+            .value(
+                GatewayPublications::certificate_request(),
+                certificate_request,
+            ),
     )
     .await;
     map_insert("Gateway publication", result)

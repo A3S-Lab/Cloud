@@ -1247,11 +1247,13 @@ reconciliation, process death, and provider recovery.
 
 The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
 cardinality-one private target projection. A scope belongs to one organization,
-project, and environment and currently maps to one physical Gateway node.
-Environment-scoped create/list APIs persist it idempotently. Route publication
-requires the scope, stores both logical scope and physical node identity, and
-rejects a cross-environment or wrong-node binding; cutover cannot change the
-logical scope.
+project, and environment and now persists ordered desired physical membership,
+a membership generation, and explicit readiness policy. The first member is
+the bootstrap primary used by the current route compiler. Environment-scoped
+create/list APIs persist it idempotently and retain the legacy single-member
+request. Route publication requires the scope, stores both logical scope and
+physical primary identity, and rejects a cross-environment or wrong-node
+binding; cutover cannot change the logical scope.
 
 A route also persists its immutable revision, deterministic Runtime unit,
 positive generation, port, canonical node-local origin, and command-bound
@@ -1269,8 +1271,15 @@ protocol and request/status schemas before mutation, accepts only the closed
 legacy-v1 version response as fallback, and rejects unknown tuples. Gateway ack
 v4 and command ack v2 carry the selection; the control plane also reads legacy
 v3/v1 pairs. Migration 037 stores new evidence and leaves historical evidence
-null. Replicated rollout thresholds and production HA remain open, so `H0.2`
-is not complete.
+null. Migrations 038 and 039 add backward-compatible membership plus a durable
+`GatewayRollout` aggregate with independent publication evidence for every
+desired member. The aggregate becomes ready at the configured threshold,
+succeeds only when every member applies the exact snapshot, and otherwise
+terminates explicitly degraded after all replicas are terminal. Domain,
+in-memory, A3S ORM-backed PostgreSQL, migration, and restart tests cover this
+foundation. Multi-member compile/enqueue coordination, real replicated Gateway
+delivery and loss evidence, and production HA remain open, so `H0.2` is not
+complete.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
 job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the
@@ -1303,10 +1312,11 @@ remains ACL.
   isolation, partition, and recovery evidence across real nodes.
 - Add highly available control-plane roles, leader/lease contention tests,
   backup/restore for control-plane PostgreSQL, and disaster runbooks.
-- Define per-Gateway rollout readiness with explicit `min_ready` and
-  `max_unavailable`. Success requires every desired Gateway replica to
-  acknowledge the exact revision or the rollout to terminate as explicitly
-  degraded; no global atomic reload is assumed.
+- Complete the replicated Gateway coordinator on the implemented
+  `min_ready`/`max_unavailable` and per-member aggregate foundation. It must
+  compile and enqueue an independent exact snapshot for every desired member,
+  resume partial delivery after restart, and never assume a global atomic
+  reload.
 - Add versioned control-plane export/import manifests for tenant-owned desired
   state, provenance, audit metadata, and referenced artifacts. Secret values are
   re-encrypted for the destination through an explicit migration ceremony;

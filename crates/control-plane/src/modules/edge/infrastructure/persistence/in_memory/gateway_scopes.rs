@@ -9,6 +9,7 @@ pub(super) fn create(
     state: &mut State,
     bundle: CreateGatewayScopeWrite,
 ) -> Result<IdempotentWrite<GatewayScope>, RepositoryError> {
+    bundle.scope.validate().map_err(RepositoryError::Conflict)?;
     validate_event(&bundle)?;
     let key = (
         bundle.idempotency.scope.clone(),
@@ -24,13 +25,23 @@ pub(super) fn create(
         });
     }
 
-    let binding = (
-        bundle.scope.organization_id,
-        bundle.scope.project_id,
-        bundle.scope.environment_id,
-        bundle.scope.node_id,
-    );
-    if state.gateway_scope_bindings.contains_key(&binding) {
+    let bindings = bundle
+        .scope
+        .member_node_ids
+        .iter()
+        .map(|node_id| {
+            (
+                bundle.scope.organization_id,
+                bundle.scope.project_id,
+                bundle.scope.environment_id,
+                *node_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    if bindings
+        .iter()
+        .any(|binding| state.gateway_scope_bindings.contains_key(binding))
+    {
         return Err(RepositoryError::Conflict(
             "Gateway node is already bound to this environment scope".into(),
         ));
@@ -41,9 +52,11 @@ pub(super) fn create(
         ));
     }
 
-    state
-        .gateway_scope_bindings
-        .insert(binding, bundle.scope.id);
+    for binding in bindings {
+        state
+            .gateway_scope_bindings
+            .insert(binding, bundle.scope.id);
+    }
     state
         .gateway_scopes
         .insert(bundle.scope.id, bundle.scope.clone());
@@ -144,7 +157,7 @@ fn validate_event(bundle: &CreateGatewayScopeWrite) -> Result<(), RepositoryErro
     if scope.aggregate_version != 1
         || scope.updated_at != scope.created_at
         || event.event_key != "edge.gateway-scope.created"
-        || event.schema_version != 1
+        || event.schema_version != 2
         || event.organization_id != scope.organization_id.as_uuid()
         || event.aggregate_id != scope.id.as_uuid()
         || event.aggregate_version != scope.aggregate_version

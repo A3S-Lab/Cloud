@@ -11,6 +11,10 @@ pub struct GatewayScopeResponse {
     pub project_id: Uuid,
     pub environment_id: Uuid,
     pub node_id: Uuid,
+    pub member_node_ids: Vec<Uuid>,
+    pub membership_generation: u64,
+    pub min_ready: u32,
+    pub max_unavailable: u32,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -24,6 +28,14 @@ impl From<GatewayScope> for GatewayScopeResponse {
             project_id: scope.project_id.as_uuid(),
             environment_id: scope.environment_id.as_uuid(),
             node_id: scope.node_id.as_uuid(),
+            member_node_ids: scope
+                .member_node_ids
+                .into_iter()
+                .map(|node_id| node_id.as_uuid())
+                .collect(),
+            membership_generation: scope.membership_generation,
+            min_ready: scope.rollout_policy.min_ready,
+            max_unavailable: scope.rollout_policy.max_unavailable,
             aggregate_version: scope.aggregate_version,
             created_at: scope.created_at,
             updated_at: scope.updated_at,
