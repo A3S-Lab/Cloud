@@ -270,10 +270,12 @@ scheduler and Cloud product configuration remains ACL.
 The first `H0.2` foundation is implemented: Cloud emits identity-bound,
 expiring snapshots with exact ACL digests, the node agent uses Gateway's native
 apply and exact-status APIs, and Gateway's journal is the sole applied-state
-authority across replay and restart. The gate remains open for snapshot
-renewal, logical scopes beyond the current one-node/one-Gateway mapping,
-generation-bound private targets, mixed-version delivery, replicated
-readiness, and joint HA evidence.
+authority across replay and restart. Cloud now also renews unchanged snapshots
+inside a bounded pre-expiry window, retaining the exact ACL digest and active
+certificate until the successor is acknowledged. The gate remains open for
+logical scopes beyond the current one-node/one-Gateway mapping,
+generation-bound private targets, mixed-version delivery, replicated readiness,
+and joint HA evidence.
 
 ### 5.7 `I0`: inference profile
 
@@ -370,7 +372,7 @@ are allowed only before the first response byte.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Native identity/validity/readiness bridge is available; logical scopes, private endpoints, complete target sets, renewal, and replicated projection remain | Explicit managed mode, native exact apply/readiness, durable journal, and rejection of local control loops are available | Native replay/restart foundation is verified; stale-target, mixed-version, private-generation, and HA gates remain open |
+| `H0.2` | Native identity/validity/readiness bridge and same-policy renewal are available; logical scopes, private endpoints, complete target sets, and replicated projection remain | Explicit managed mode, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Native replay/restart/renewal foundation is verified; stale-target, mixed-version, private-generation, and HA gates remain open |
 | `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |

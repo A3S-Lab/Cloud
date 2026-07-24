@@ -229,6 +229,7 @@ pub struct EdgeConfig {
     pub managed_state_file: String,
     pub certificate_ttl_ms: u64,
     pub certificate_renewal_window_ms: u64,
+    pub snapshot_renewal_window_ms: u64,
     pub certificate_reconciliation_interval_ms: u64,
     pub upstream_request_timeout_ms: u64,
     pub command_ttl_ms: u64,
@@ -497,6 +498,7 @@ impl CloudConfig {
                 "managed_state_file",
                 "certificate_ttl_ms",
                 "certificate_renewal_window_ms",
+                "snapshot_renewal_window_ms",
                 "certificate_reconciliation_interval_ms",
                 "upstream_request_timeout_ms",
                 "command_ttl_ms",
@@ -691,6 +693,7 @@ impl CloudConfig {
                 managed_state_file: string(edge, "managed_state_file")?,
                 certificate_ttl_ms: integer(edge, "certificate_ttl_ms")?,
                 certificate_renewal_window_ms: integer(edge, "certificate_renewal_window_ms")?,
+                snapshot_renewal_window_ms: integer(edge, "snapshot_renewal_window_ms")?,
                 certificate_reconciliation_interval_ms: integer(
                     edge,
                     "certificate_reconciliation_interval_ms",
@@ -1133,13 +1136,18 @@ impl CloudConfig {
             || !(3_600_000..=34_300_800_000).contains(&self.edge.certificate_ttl_ms)
             || self.edge.certificate_renewal_window_ms == 0
             || self.edge.certificate_renewal_window_ms >= self.edge.certificate_ttl_ms
+            || self.edge.snapshot_renewal_window_ms == 0
+            || self.edge.snapshot_renewal_window_ms >= 86_400_000
             || self.edge.certificate_reconciliation_interval_ms == 0
             || self.edge.certificate_reconciliation_interval_ms
                 > self.edge.certificate_renewal_window_ms
+            || self.edge.certificate_reconciliation_interval_ms
+                > self.edge.snapshot_renewal_window_ms
             || self.edge.upstream_request_timeout_ms == 0
             || self.edge.upstream_request_timeout_ms > 3_600_000
             || self.edge.command_ttl_ms == 0
             || self.edge.command_ttl_ms > 86_400_000
+            || self.edge.command_ttl_ms >= self.edge.snapshot_renewal_window_ms
         {
             return Err(ConfigError::Invalid(
                 "edge requires valid traffic and loopback management addresses, a safe management path/token environment, bounded DNS verification, normalized certificate and managed-state paths with bounded lifecycle windows, and independent bounded upstream and command timeouts"
@@ -1782,6 +1790,7 @@ edge {
   managed_state_file = "/var/lib/a3s-gateway/managed-snapshot.json"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
+  snapshot_renewal_window_ms = 21600000
   certificate_reconciliation_interval_ms = 60000
   upstream_request_timeout_ms = 30000
   command_ttl_ms = 180000
@@ -1941,6 +1950,16 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "certificate_reconciliation_interval_ms = 60000",
             "certificate_reconciliation_interval_ms = 604800001"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "snapshot_renewal_window_ms = 21600000",
+            "snapshot_renewal_window_ms = 86400000"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "snapshot_renewal_window_ms = 21600000",
+            "snapshot_renewal_window_ms = 180000"
         ))
         .is_err());
         assert!(CloudConfig::parse(

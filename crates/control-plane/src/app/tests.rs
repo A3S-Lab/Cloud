@@ -382,6 +382,7 @@ fn config() -> CloudConfig {
             managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
             certificate_ttl_ms: 2_592_000_000,
             certificate_renewal_window_ms: 604_800_000,
+            snapshot_renewal_window_ms: 21_600_000,
             certificate_reconciliation_interval_ms: 60_000,
             upstream_request_timeout_ms: 30_000,
             command_ttl_ms: 10_000,

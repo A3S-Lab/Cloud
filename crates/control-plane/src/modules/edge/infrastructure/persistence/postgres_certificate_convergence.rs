@@ -12,8 +12,9 @@ use crate::modules::edge::domain::repositories::{
 };
 use crate::modules::edge::domain::{
     DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceState, GatewayCertificateState, GatewayRouteVersion,
-    GatewayScopeState, Route, RouteState,
+    GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
+    GatewayCertificateState, GatewayPublicationState, GatewayRouteVersion, GatewayScopeState,
+    Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeCommandId, NodeId,
@@ -102,18 +103,23 @@ impl ConvergenceRow {
 
 pub(super) async fn targets(
     executor: &PostgresExecutor,
-    renew_before: DateTime<Utc>,
+    certificate_renew_before: DateTime<Utc>,
+    snapshot_renew_before: DateTime<Utc>,
     limit: usize,
 ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
     validate_limit(limit)?;
     let node_ids = Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
             sql_query::<Uuid>(
-                "select scope.node_id from gateway_scopes scope join gateway_certificates certificate on certificate.node_id = scope.node_id and certificate.gateway_revision = scope.installed_revision where scope.installed_revision is not null and certificate.state in ('ready', 'revoked') and exists (select 1 from routes active_route where active_route.gateway_node_id = scope.node_id and active_route.state = 'active') and not exists (select 1 from gateway_publications pending where pending.node_id = scope.node_id and pending.state = 'pending') and (certificate.state = 'revoked' or certificate.expires_at <= ",
+                "select scope.node_id from gateway_scopes scope join gateway_publications installed on installed.node_id = scope.node_id and installed.revision = scope.installed_revision and installed.state = 'applied' where scope.installed_revision is not null and exists (select 1 from routes active_route where active_route.gateway_node_id = scope.node_id and active_route.state = 'active') and not exists (select 1 from gateway_publications pending where pending.node_id = scope.node_id and pending.state = 'pending') and (installed.snapshot_expires_at <= ",
             )
-            .bind(canonical_timestamp(renew_before))
+            .bind(canonical_timestamp(snapshot_renew_before))
             .append(
-                " or exists (select 1 from routes route left join domain_claims claim on claim.id = route.domain_claim_id where route.gateway_node_id = scope.node_id and route.state = 'active' and (claim.state is distinct from 'verified' or route.gateway_revision is distinct from scope.installed_revision or route.gateway_command_id is distinct from certificate.gateway_command_id or route.snapshot_digest is distinct from certificate.snapshot_digest or route.gateway_certificate_id is distinct from certificate.id))) order by certificate.expires_at, scope.node_id limit ",
+                " or exists (select 1 from routes route left join domain_claims claim on claim.id = route.domain_claim_id left join gateway_certificates certificate on certificate.id = route.gateway_certificate_id where route.gateway_node_id = scope.node_id and route.state = 'active' and (claim.state is distinct from 'verified' or route.gateway_revision is distinct from scope.installed_revision or route.gateway_command_id is distinct from installed.command_id or route.snapshot_digest is distinct from installed.snapshot_digest or certificate.id is null or certificate.node_id is distinct from scope.node_id or certificate.state not in ('ready', 'revoked') or certificate.state = 'revoked' or certificate.expires_at <= ",
+            )
+            .bind(canonical_timestamp(certificate_renew_before))
+            .append(
+                "))) order by least(installed.snapshot_expires_at, coalesce((select min(certificate.expires_at) from routes route join gateway_certificates certificate on certificate.id = route.gateway_certificate_id where route.gateway_node_id = scope.node_id and route.state = 'active'), installed.snapshot_expires_at)), scope.node_id limit ",
             )
             .bind(u64::try_from(limit).map_err(|_| {
                 RepositoryError::Conflict(
@@ -238,7 +244,6 @@ pub(super) async fn stage(
                 .certificate()?;
                 if previous.organization_id != convergence.organization_id
                     || previous.node_id != convergence.node_id
-                    || Some(previous.gateway_revision) != scope.installed_revision
                     || !matches!(
                         previous.state,
                         GatewayCertificateState::Ready | GatewayCertificateState::Revoked
@@ -258,9 +263,46 @@ pub(super) async fn stage(
                 )
                 .await?
                 .into_iter()
-                .map(RouteRow::route)
-                .collect::<Result<Vec<_>, _>>()?;
+                    .map(RouteRow::route)
+                    .collect::<Result<Vec<_>, _>>()?;
                 validate_convergence_routes(transaction, convergence, &active).await?;
+                validate_active_certificate(previous.id, &active)?;
+                if convergence.reason == GatewayCertificateConvergenceReason::SnapshotRenewal {
+                    let current_publication = fetch_optional::<PublicationRow, _>(
+                        transaction,
+                        sql_query::<PublicationRow>(SELECT_PUBLICATIONS)
+                            .append(" where node_id = ")
+                            .bind(convergence.node_id.as_uuid())
+                            .append(" and revision = ")
+                            .bind(scope.installed_revision.ok_or_else(|| {
+                                RepositoryError::Storage(
+                                    "Gateway snapshot renewal has no installed revision".into(),
+                                )
+                            })?)
+                            .append(" for update"),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "Gateway snapshot renewal publication disappeared".into(),
+                        )
+                    })?
+                    .publication()?;
+                    if current_publication.state != GatewayPublicationState::Applied
+                        || current_publication.acknowledged_at.is_none_or(|acknowledged_at| {
+                            bundle.publication.command_issued_at < acknowledged_at
+                        })
+                        || bundle.publication.acl != current_publication.acl
+                        || bundle.publication.snapshot_digest
+                            != current_publication.snapshot_digest
+                        || bundle.publication.certificate_request.is_some()
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "Gateway snapshot renewal changed the installed policy".into(),
+                        )
+                        .into());
+                    }
+                }
                 if let Some(certificate) = &bundle.certificate {
                     validate_replacement_claims(convergence, certificate, &active)?;
                 }
@@ -462,24 +504,23 @@ async fn load_target(
         aggregate_version,
     };
     validate_scope(&scope)?;
-    let certificate = Database::new(PostgresDialect, executor.clone())
+    let installed_revision = installed_revision.ok_or_else(|| {
+        RepositoryError::Storage("Gateway convergence scope has no installed revision".into())
+    })?;
+    let publication = Database::new(PostgresDialect, executor.clone())
         .fetch_optional_as(
-            sql_query::<CertificateRow>(SELECT_CERTIFICATES)
+            sql_query::<PublicationRow>(SELECT_PUBLICATIONS)
                 .append(" where node_id = ")
                 .bind(node_id.as_uuid())
-                .append(" and gateway_revision = ")
-                .bind(installed_revision.ok_or_else(|| {
-                    RepositoryError::Storage(
-                        "Gateway convergence scope has no installed revision".into(),
-                    )
-                })?),
+                .append(" and revision = ")
+                .bind(installed_revision),
         )
         .await
         .map_err(storage)?
         .ok_or_else(|| {
-            RepositoryError::Storage("installed Gateway certificate disappeared".into())
+            RepositoryError::Storage("installed Gateway publication disappeared".into())
         })?
-        .certificate()?;
+        .publication()?;
     let routes = query_routes(
         executor,
         sql_query::<RouteRow>(SELECT_ROUTES)
@@ -488,6 +529,24 @@ async fn load_target(
             .append(" and state = 'active' order by id"),
     )
     .await?;
+    let certificate_ids = routes
+        .iter()
+        .map(|route| {
+            route.gateway_certificate_id.ok_or_else(|| {
+                RepositoryError::Storage("active Gateway route omitted its certificate".into())
+            })
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if certificate_ids.len() != 1 {
+        return Err(RepositoryError::Storage(
+            "active Gateway routes disagree on their certificate".into(),
+        ));
+    }
+    let certificate_id = *certificate_ids.iter().next().ok_or_else(|| {
+        RepositoryError::Storage("installed Gateway scope has no active certificate".into())
+    })?;
+    let certificate =
+        super::postgres_tls::find_gateway_certificate(executor, node_id, certificate_id).await?;
     let mut statuses = Vec::with_capacity(routes.len());
     for route in routes {
         let claim_id = route.domain_claim_id.ok_or_else(|| {
@@ -500,6 +559,7 @@ async fn load_target(
     }
     let target = GatewayCertificateConvergenceTarget {
         scope,
+        publication,
         certificate,
         routes: statuses,
     };
@@ -597,6 +657,22 @@ async fn validate_convergence_routes(
         false,
     )
     .await
+}
+
+fn validate_active_certificate(
+    certificate_id: GatewayCertificateId,
+    active: &[Route],
+) -> Result<(), PostgresPersistenceError> {
+    if active
+        .iter()
+        .any(|route| route.gateway_certificate_id != Some(certificate_id))
+    {
+        return Err(RepositoryError::Conflict(
+            "active Gateway routes changed certificate during convergence".into(),
+        )
+        .into());
+    }
+    Ok(())
 }
 
 async fn validate_versions_and_claims(
@@ -724,6 +800,7 @@ async fn persist_route_convergence(
             "applied Gateway certificate convergence omitted acknowledgement time".into(),
         )
     })?;
+    let active_certificate_id = convergence.active_certificate_id();
     for version in &convergence.retained_routes {
         let mut route = lock_active_route(transaction, version).await?;
         let expected_version = route.aggregate_version;
@@ -732,9 +809,9 @@ async fn persist_route_convergence(
                 convergence.gateway_revision,
                 convergence.gateway_command_id,
                 convergence.snapshot_digest.clone(),
-                convergence.replacement_certificate_id.ok_or_else(|| {
+                active_certificate_id.ok_or_else(|| {
                     PostgresPersistenceError::Invariant(
-                        "retained convergence route has no replacement certificate".into(),
+                        "retained convergence route has no active certificate".into(),
                     )
                 })?,
                 acknowledged_at,

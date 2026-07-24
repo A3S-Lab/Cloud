@@ -542,7 +542,7 @@ pub async fn exercise_edge(
         &repository,
         &cutover.certificate,
         cutover_issued_at,
-        cutover_issued_at + Duration::days(6),
+        cutover_issued_at + Duration::days(30),
     )
     .await?;
     let applied = cutover_acknowledgement(&cutover.cutover, GatewayAckState::Applied);
@@ -571,7 +571,7 @@ pub async fn exercise_edge(
             organization_id: fixture.organization_id,
             node_id: fixture.node_id,
             domain_claim,
-            started_at: now + Duration::seconds(8),
+            started_at: now + Duration::days(24),
         },
     )
     .await?;

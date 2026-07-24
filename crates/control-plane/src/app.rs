@@ -363,6 +363,7 @@ pub async fn build_application_with_source_resolver(
         deployment_route_compiler.clone(),
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
         chrono_duration(config.edge.command_ttl_ms)?,
         100,
     )

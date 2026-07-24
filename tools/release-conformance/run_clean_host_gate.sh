@@ -654,6 +654,7 @@ edge {
   managed_state_file = "$gateway_managed_state"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
+  snapshot_renewal_window_ms = 21600000
   certificate_reconciliation_interval_ms = 60000
   upstream_request_timeout_ms = 10000
   command_ttl_ms = 180000

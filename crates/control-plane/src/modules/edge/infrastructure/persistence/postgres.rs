@@ -453,10 +453,17 @@ impl IEdgeRepository for PostgresEdgeRepository {
 
     async fn gateway_certificate_convergence_targets(
         &self,
-        renew_before: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
-        postgres_certificate_convergence::targets(&self.executor, renew_before, limit).await
+        postgres_certificate_convergence::targets(
+            &self.executor,
+            certificate_renew_before,
+            snapshot_renew_before,
+            limit,
+        )
+        .await
     }
 
     async fn pending_gateway_certificate_convergences(

@@ -98,6 +98,22 @@ impl GatewaySnapshotCompiler {
         self.compile_snapshot(metadata, certificate_id, routes, false)
     }
 
+    pub fn compile_validity_renewal(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        current_acl: &str,
+    ) -> Result<GatewaySnapshot, String> {
+        GatewaySnapshot::new_with_certificate(
+            metadata.node_id.as_uuid(),
+            metadata.revision,
+            metadata.expected_revision,
+            metadata.issued_at,
+            metadata.expires_at,
+            current_acl.to_owned(),
+            None,
+        )
+    }
+
     fn compile_snapshot(
         &self,
         metadata: GatewaySnapshotMetadata,

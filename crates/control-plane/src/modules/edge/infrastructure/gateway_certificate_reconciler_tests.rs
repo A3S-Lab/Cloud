@@ -240,7 +240,7 @@ impl Fixture {
                     revision,
                     scope.installed_revision,
                     now,
-                    now + Duration::minutes(3),
+                    now + Duration::hours(24),
                 ),
                 certificate_id,
                 &complete_routes,
@@ -366,6 +366,7 @@ fn reconciler(
         fixture.compiler.clone(),
         std::time::Duration::from_secs(60),
         Duration::days(7),
+        Duration::hours(6),
         Duration::minutes(3),
         100,
     )
@@ -482,6 +483,168 @@ async fn durable_convergence_is_redispatched_after_command_queue_failure() {
     assert_eq!(second.dispatched_commands, 1);
     assert!(second.failures.is_empty());
     assert_eq!(queue.publications.lock().await.len(), 1);
+}
+
+#[tokio::test]
+async fn applied_snapshot_is_renewed_before_expiry_without_reissuing_its_certificate() {
+    let fixture = Fixture::new();
+    let base = Utc::now();
+    let claim = fixture.verified_claim("snapshot.example.com", base).await;
+    let (route, certificate) = fixture
+        .activate_route(
+            &claim,
+            "snapshot.example.com",
+            base + Duration::seconds(1),
+            base + Duration::days(30),
+        )
+        .await;
+    let initial_revision = route.gateway_revision.expect("installed revision");
+    let initial_digest = route.snapshot_digest.clone().expect("installed digest");
+    let initial_certificate_version = certificate.aggregate_version;
+    let queue = Arc::new(RecordingGatewayQueue::default());
+    let authority = Arc::new(RecordingGatewayCertificateAuthority::default());
+    let reconciler = reconciler(&fixture, queue.clone(), authority);
+    let run_at = base + Duration::hours(18) + Duration::seconds(2);
+
+    let report = reconciler.run_once(run_at).await.expect("renew snapshot");
+    assert_eq!(report.staged_convergences, 1);
+    assert_eq!(report.dispatched_commands, 1);
+    assert_eq!(report.obsolete_certificates, 0);
+    assert!(report.failures.is_empty());
+    let pending = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending snapshot renewal")
+        .pop()
+        .expect("snapshot renewal");
+    assert_eq!(
+        pending.convergence.reason,
+        crate::modules::edge::domain::GatewayCertificateConvergenceReason::SnapshotRenewal
+    );
+    assert_eq!(pending.convergence.previous_certificate_id, certificate.id);
+    assert!(pending.convergence.replacement_certificate_id.is_none());
+    assert!(pending.certificate.is_none());
+    assert!(pending.publication.certificate_request.is_none());
+    assert_eq!(
+        pending.publication.expected_revision,
+        Some(initial_revision)
+    );
+    assert_eq!(pending.publication.snapshot_digest, initial_digest);
+    assert_eq!(
+        queue.publications.lock().await[0].acl,
+        pending.publication.acl
+    );
+    assert_eq!(
+        fixture
+            .repository
+            .find_route(fixture.organization_id, route.id)
+            .await
+            .expect("route before renewal acknowledgement")
+            .gateway_revision,
+        Some(initial_revision)
+    );
+
+    let rejected_at = run_at + Duration::milliseconds(1);
+    let rejected = NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: pending.publication.command_id.as_uuid(),
+        node_id: pending.publication.node_id.as_uuid(),
+        gateway_id: pending.publication.node_id.as_uuid(),
+        revision: pending.publication.revision,
+        snapshot_digest: pending.publication.snapshot_digest.clone(),
+        expires_at: pending.publication.snapshot_expires_at,
+        state: GatewayAckState::Rejected,
+        ready: false,
+        message: Some("renewal rejected".into()),
+        acknowledged_at: rejected_at,
+    };
+    fixture
+        .repository
+        .project_gateway_acknowledgement(&rejected, rejected_at + Duration::milliseconds(1))
+        .await
+        .expect("reject renewal");
+    assert_eq!(
+        fixture
+            .repository
+            .find_route(fixture.organization_id, route.id)
+            .await
+            .expect("route after rejected renewal")
+            .gateway_revision,
+        Some(initial_revision)
+    );
+    assert_eq!(
+        fixture
+            .repository
+            .gateway_scope(fixture.node_id)
+            .await
+            .expect("scope after rejected renewal")
+            .installed_revision,
+        Some(initial_revision)
+    );
+
+    let retry_at = run_at + Duration::seconds(1);
+    let retry = reconciler
+        .run_once(retry_at)
+        .await
+        .expect("retry snapshot renewal");
+    assert_eq!(retry.staged_convergences, 1);
+    let renewal = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending retry")
+        .pop()
+        .expect("snapshot renewal retry");
+    assert_eq!(
+        renewal.convergence.reason,
+        crate::modules::edge::domain::GatewayCertificateConvergenceReason::SnapshotRenewal
+    );
+    assert_eq!(renewal.publication.snapshot_digest, initial_digest);
+    assert!(renewal.publication.revision > pending.publication.revision);
+    apply_convergence(
+        fixture.repository.as_ref(),
+        &renewal.publication,
+        retry_at + Duration::milliseconds(1),
+    )
+    .await;
+    let renewed_route = fixture
+        .repository
+        .find_route(fixture.organization_id, route.id)
+        .await
+        .expect("renewed route");
+    assert_eq!(
+        renewed_route.gateway_revision,
+        Some(renewal.publication.revision)
+    );
+    assert_eq!(
+        renewed_route.gateway_command_id,
+        Some(renewal.publication.command_id)
+    );
+    assert_eq!(
+        renewed_route.snapshot_digest.as_deref(),
+        Some(initial_digest.as_str())
+    );
+    assert_eq!(renewed_route.gateway_certificate_id, Some(certificate.id));
+    let retained_certificate = fixture
+        .repository
+        .find_gateway_certificate(fixture.node_id, certificate.id)
+        .await
+        .expect("retained certificate");
+    assert_eq!(
+        retained_certificate.aggregate_version,
+        initial_certificate_version
+    );
+    assert_eq!(retained_certificate.state, GatewayCertificateState::Ready);
+
+    let settled = reconciler
+        .run_once(retry_at + Duration::seconds(1))
+        .await
+        .expect("settled snapshot");
+    assert_eq!(settled.convergence_targets, 0);
+    assert_eq!(settled.obsolete_certificates, 0);
+    assert!(settled.failures.is_empty());
 }
 
 #[tokio::test]
@@ -698,6 +861,7 @@ fn reconciler_configuration_is_closed() {
         fixture.compiler,
         std::time::Duration::ZERO,
         Duration::days(7),
+        Duration::hours(6),
         Duration::minutes(3),
         100,
     )

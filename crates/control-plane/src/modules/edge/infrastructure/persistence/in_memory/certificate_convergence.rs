@@ -17,7 +17,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn targets(
     state: &State,
-    renew_before: DateTime<Utc>,
+    certificate_renew_before: DateTime<Utc>,
+    snapshot_renew_before: DateTime<Utc>,
     limit: usize,
 ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
     validate_batch_limit(limit)?;
@@ -32,22 +33,15 @@ pub(super) fn targets(
         }) {
             continue;
         }
-        let Some(certificate) = state.certificates.values().find(|certificate| {
-            certificate.node_id == scope.node_id
-                && certificate.gateway_revision == installed_revision
-        }) else {
-            return Err(RepositoryError::Storage(
-                "installed Gateway scope has no certificate".into(),
-            ));
-        };
-        if !matches!(
-            certificate.state,
-            GatewayCertificateState::Ready | GatewayCertificateState::Revoked
-        ) {
-            return Err(RepositoryError::Storage(
-                "installed Gateway certificate is not terminally usable".into(),
-            ));
-        }
+        let publication = state
+            .publications
+            .get(&(scope.node_id, installed_revision))
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "installed Gateway scope has no applied publication".into(),
+                )
+            })?;
         let mut routes = state
             .routes
             .values()
@@ -68,17 +62,37 @@ pub(super) fn targets(
             })
             .collect::<Vec<_>>();
         routes.sort_by_key(|status| status.route.id);
-        if routes.is_empty()
-            || !needs_certificate_convergence(scope, certificate, &routes, renew_before)?
-        {
+        if routes.is_empty() {
             continue;
         }
+        let certificate_id = routes
+            .first()
+            .and_then(|status| status.route.gateway_certificate_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("active Gateway route has no certificate".into())
+            })?;
+        if routes
+            .iter()
+            .any(|status| status.route.gateway_certificate_id != Some(certificate_id))
+        {
+            return Err(RepositoryError::Storage(
+                "active Gateway routes disagree on their certificate".into(),
+            ));
+        }
+        let certificate = state.certificates.get(&certificate_id).ok_or_else(|| {
+            RepositoryError::Storage("active Gateway certificate disappeared".into())
+        })?;
         let target = GatewayCertificateConvergenceTarget {
             scope: scope.clone(),
+            publication,
             certificate: certificate.clone(),
             routes,
         };
         target.validate().map_err(RepositoryError::Storage)?;
+        if !needs_certificate_convergence(&target, certificate_renew_before, snapshot_renew_before)?
+        {
+            continue;
+        }
         targets.push(target);
         if targets.len() == limit {
             break;
@@ -147,7 +161,6 @@ pub(super) fn stage(
         .ok_or(RepositoryError::NotFound)?;
     if previous.organization_id != convergence.organization_id
         || previous.node_id != convergence.node_id
-        || Some(previous.gateway_revision) != current.installed_revision
         || !matches!(
             previous.state,
             GatewayCertificateState::Ready | GatewayCertificateState::Revoked
@@ -158,6 +171,34 @@ pub(super) fn stage(
         ));
     }
     validate_convergence_routes(state, convergence)?;
+    validate_active_certificate(state, convergence, previous.id)?;
+    if convergence.reason
+        == crate::modules::edge::domain::GatewayCertificateConvergenceReason::SnapshotRenewal
+    {
+        let installed_revision = current.installed_revision.ok_or_else(|| {
+            RepositoryError::Storage("Gateway snapshot renewal has no installed revision".into())
+        })?;
+        let current_publication = state
+            .publications
+            .get(&(convergence.node_id, installed_revision))
+            .ok_or_else(|| {
+                RepositoryError::Storage("Gateway snapshot renewal publication disappeared".into())
+            })?;
+        if current_publication.state != GatewayPublicationState::Applied
+            || current_publication
+                .acknowledged_at
+                .is_none_or(|acknowledged_at| {
+                    bundle.publication.command_issued_at < acknowledged_at
+                })
+            || bundle.publication.acl != current_publication.acl
+            || bundle.publication.snapshot_digest != current_publication.snapshot_digest
+            || bundle.publication.certificate_request.is_some()
+        {
+            return Err(RepositoryError::Conflict(
+                "Gateway snapshot renewal changed the installed policy".into(),
+            ));
+        }
+    }
     if let Some(certificate) = &bundle.certificate {
         if state.certificates.contains_key(&certificate.id) {
             return Err(RepositoryError::Conflict(
@@ -244,6 +285,7 @@ pub(super) fn apply(
     convergence: &GatewayCertificateConvergence,
     acknowledgement: &NodeGatewayAck,
 ) -> Result<(), RepositoryError> {
+    let active_certificate_id = convergence.active_certificate_id();
     for version in &convergence.retained_routes {
         let route = state
             .routes
@@ -259,9 +301,9 @@ pub(super) fn apply(
                 convergence.gateway_revision,
                 convergence.gateway_command_id,
                 convergence.snapshot_digest.clone(),
-                convergence.replacement_certificate_id.ok_or_else(|| {
+                active_certificate_id.ok_or_else(|| {
                     RepositoryError::Storage(
-                        "retained convergence route has no replacement certificate".into(),
+                        "retained convergence route has no active certificate".into(),
                     )
                 })?,
                 acknowledgement.acknowledged_at,
@@ -338,27 +380,28 @@ fn validate_batch_limit(limit: usize) -> Result<(), RepositoryError> {
 }
 
 fn needs_certificate_convergence(
-    scope: &GatewayScopeState,
-    certificate: &GatewayCertificate,
-    routes: &[GatewayCertificateRouteStatus],
-    renew_before: DateTime<Utc>,
+    target: &GatewayCertificateConvergenceTarget,
+    certificate_renew_before: DateTime<Utc>,
+    snapshot_renew_before: DateTime<Utc>,
 ) -> Result<bool, RepositoryError> {
-    let expires_at = certificate
+    let expires_at = target
+        .certificate
         .material
         .as_ref()
         .map(|material| material.expires_at)
         .ok_or_else(|| {
             RepositoryError::Storage("installed Gateway certificate has no material".into())
         })?;
-    Ok(certificate.state == GatewayCertificateState::Revoked
-        || expires_at <= canonical_timestamp(renew_before)
-        || routes.iter().any(|status| {
+    Ok(target.certificate.state == GatewayCertificateState::Revoked
+        || expires_at <= canonical_timestamp(certificate_renew_before)
+        || target.publication.snapshot_expires_at <= canonical_timestamp(snapshot_renew_before)
+        || target.routes.iter().any(|status| {
             status.domain_claim_state != DomainClaimState::Verified
-                || status.route.gateway_revision != scope.installed_revision
-                || status.route.gateway_command_id != Some(certificate.gateway_command_id)
+                || status.route.gateway_revision != target.scope.installed_revision
+                || status.route.gateway_command_id != Some(target.publication.command_id)
                 || status.route.snapshot_digest.as_deref()
-                    != Some(certificate.snapshot_digest.as_str())
-                || status.route.gateway_certificate_id != Some(certificate.id)
+                    != Some(target.publication.snapshot_digest.as_str())
+                || status.route.gateway_certificate_id != Some(target.certificate.id)
         }))
 }
 
@@ -421,6 +464,23 @@ fn validate_convergence_routes(
     }
     validate_route_versions_and_claims(state, &active, &convergence.retained_routes, true)?;
     validate_route_versions_and_claims(state, &active, &convergence.rejected_routes, false)
+}
+
+fn validate_active_certificate(
+    state: &State,
+    convergence: &GatewayCertificateConvergence,
+    certificate_id: GatewayCertificateId,
+) -> Result<(), RepositoryError> {
+    if state.routes.values().any(|route| {
+        route.gateway_node_id == convergence.node_id
+            && route.state == RouteState::Active
+            && route.gateway_certificate_id != Some(certificate_id)
+    }) {
+        return Err(RepositoryError::Conflict(
+            "active Gateway routes changed certificate during convergence".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_route_versions_and_claims(

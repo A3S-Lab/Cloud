@@ -528,3 +528,43 @@ fn complete_domain_revocation_convergence_requires_no_replacement_certificate() 
     )
     .is_err());
 }
+
+#[test]
+fn snapshot_renewal_retains_the_active_certificate_without_reissuing_it() {
+    let now = Utc::now();
+    let route = route(now);
+    let previous_certificate_id = GatewayCertificateId::new();
+    let convergence = GatewayCertificateConvergence::stage(
+        route.organization_id,
+        route.gateway_node_id,
+        2,
+        NodeCommandId::new(),
+        previous_certificate_id,
+        None,
+        format!("sha256:{}", "c".repeat(64)),
+        vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
+        Vec::new(),
+        GatewayCertificateConvergenceReason::SnapshotRenewal,
+        now,
+    )
+    .expect("snapshot renewal");
+    assert_eq!(
+        convergence.active_certificate_id(),
+        Some(previous_certificate_id)
+    );
+    assert!(convergence.replacement_certificate_id.is_none());
+    assert!(GatewayCertificateConvergence::stage(
+        route.organization_id,
+        route.gateway_node_id,
+        3,
+        NodeCommandId::new(),
+        previous_certificate_id,
+        Some(GatewayCertificateId::new()),
+        format!("sha256:{}", "d".repeat(64)),
+        vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
+        Vec::new(),
+        GatewayCertificateConvergenceReason::SnapshotRenewal,
+        now,
+    )
+    .is_err());
+}

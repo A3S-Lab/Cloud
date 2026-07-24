@@ -204,6 +204,26 @@ replace it. The rotated workload gate now proves provider and agent process
 death preserve one exact Docker resource, one completed Runtime receipt, `0400`
 Secret material, redacted logs, and complete cleanup.
 
+## Managed Gateway snapshot conformance
+
+Build the Gateway revision pinned in
+`tools/gateway-conformance/gateway-revision`, then run the node-agent's
+real-binary gate:
+
+```bash
+export A3S_CLOUD_TEST_GATEWAY_BIN=/absolute/path/to/a3s-gateway
+cargo test -p a3s-cloud-node-agent \
+  installed_a3s_gateway_validates_and_reloads_complete_snapshots \
+  -- --ignored --nocapture
+```
+
+The gate applies two complete native snapshots, rejects an invalid successor
+without changing exact readiness, and then renews the proven snapshot with the
+same ACL bytes and digest. The renewal must advance revision and expiry, expose
+only the successor selector as ready, preserve traffic, and avoid a certificate
+request. Separate managed TLS and apply-before-acknowledgement crash fixtures
+remain mandatory regressions.
+
 ## Clean-host E0 release acceptance
 
 The final E0 gate builds release-mode control-plane and node-agent binaries from

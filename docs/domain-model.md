@@ -567,10 +567,13 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 ### Gateway certificate
 
-- A certificate binds one node, a sorted nonempty claim set, the complete
-  Gateway revision and command, its snapshot digest, and one sorted SAN set.
-- Snapshot schema v2 digests the certificate request with the ACL; a legacy
-  snapshot cannot carry certificate intent.
+- A certificate binds one node, a sorted nonempty claim set, the Gateway
+  revision and command that issued it, that snapshot digest, and one sorted SAN
+  set. Later same-policy snapshot renewal may retain the certificate while
+  active routes advance to a newer publication revision.
+- Snapshot schema v3 digests the exact ACL bytes and validates optional
+  certificate intent separately. A same-policy validity renewal omits
+  certificate intent and retains the existing certificate paths.
 - PostgreSQL may store the CSR digest and public certificate chain, but never
   the private key or plaintext key material.
 - `ready` requires valid issued material and the exact applied Gateway
@@ -585,13 +588,18 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A convergence binds one node/revision/command/digest to the previous
   installed certificate, an optional replacement certificate, and
   aggregate-versioned retained and rejected route sets.
-- Reasons are renewal, revoked domain ownership, provider-certificate
-  revocation, or projection repair. Every active route must appear exactly once
-  in the retained or rejected set at staging.
+- Reasons are certificate renewal, snapshot validity renewal, revoked domain
+  ownership, provider-certificate revocation, or projection repair. Every
+  active route must appear exactly once in the retained or rejected set at
+  staging.
 - Staging never changes active route rows. An exact rejected acknowledgement
   leaves the old routes and certificate authoritative. An exact applied
-  acknowledgement atomically binds retained routes to the replacement,
-  rejects revoked-claim routes, and advances the installed revision.
+  acknowledgement atomically binds retained routes to the replacement or
+  retained certificate, rejects revoked-claim routes, and advances the
+  installed revision.
+- Snapshot validity renewal has retained routes, no rejected routes, no
+  replacement certificate, and no certificate request. Its successor reuses
+  the exact installed ACL digest and may change only revision and validity.
 - A convergence whose routes are all rejected has no replacement certificate
   or certificate request; its complete snapshot retains only the Gateway
   management endpoint.

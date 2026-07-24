@@ -508,15 +508,17 @@ duplicate.
 Gateway publication is a distinct node command and never enters A3S Runtime.
 Its payload carries one complete ACL snapshot, a positive revision, the
 expected installed revision, a typed certificate request when TLS is required,
-and a SHA-256 digest over both ACL and certificate intent. Before validation or
-reload, the node generates or reuses its private key and CSR, obtains public
-certificate material through the authenticated signing endpoint, and verifies
-identity, SANs, serial, fingerprint, validity, server usage, CA chain, and
-private-key match. It then calls the node-local management API with independent
-validation and reload deadlines and atomically persists the installed snapshot
-only after Gateway confirms a transactional reload. Its acknowledgement binds
-`command_id`, `node_id`, revision, and snapshot digest; the control plane rejects
-an acknowledgement that does not match the exact persisted command.
+an exact SHA-256 digest over the ACL bytes, and an independent issue/expiry
+window. Before the first certificate-bearing apply, the node generates or
+reuses its private key and CSR, obtains public certificate material through the
+authenticated signing endpoint, and verifies identity, SANs, serial,
+fingerprint, validity, server usage, CA chain, and private-key match. It then
+calls Gateway's native apply endpoint with independent validation and reload
+deadlines and queries exact readiness. Gateway's managed-state journal is the
+sole installed-snapshot authority; the node agent records only its command
+outcome. Its acknowledgement binds `command_id`, `node_id`, `gateway_id`,
+revision, ACL digest, expiry, applied metadata, and readiness; the control plane
+rejects an acknowledgement that does not match the exact persisted command.
 
 The agent persists its command journal and last accepted generation locally.
 Provider labels also bind resources to unit ID, generation, and spec digest so
@@ -711,21 +713,24 @@ temporary-unavailability error.
 
 The compiler emits one HTTPS entrypoint with TLS 1.2 as the minimum, unions and
 sorts the required SAN patterns, and binds one typed certificate request into
-snapshot schema v2. The control plane stores claim state, CSR digest, serial,
-fingerprint, leaf certificate, and CA bundle. It never receives or persists the
-Gateway private key. The node creates that key and CSR under its configured
-managed directory, keeps the key at mode `0600`, reuses the pair after
-interruption, and atomically writes the verified certificate chain before
-Gateway validation and reload.
+snapshot schema v3. The exact digest covers the ACL bytes; certificate intent is
+validated independently and may be omitted when validity renewal reuses the
+already installed certificate paths. The control plane stores claim state, CSR
+digest, serial, fingerprint, leaf certificate, and CA bundle. It never receives
+or persists the Gateway private key. The node creates that key and CSR under
+its configured managed directory, keeps the key at mode `0600`, reuses the pair
+after interruption, and atomically writes the verified certificate chain before
+Gateway validation and native apply.
 
 The node command journal is committed before Gateway mutation. The dedicated
 real-process crash gate pauses immediately after A3S Gateway accepts the reload,
-verifies that the new listener is live while neither installer state nor an
+verifies that the new listener and Gateway journal are live while no Cloud
 acknowledgement exists, and sends `SIGKILL` to the child agent. A reconstructed
-executor rebinds the same command ID to a new lease, repeats the reload
-idempotently, persists the exact installed revision and applied Gateway
-acknowledgement, then survives another reconstruction without a third reload.
-Only the simulated command-ack receipt advances the durable journal cursor.
+executor rebinds the same command ID to a new lease, repeats native apply
+idempotently, queries exact Gateway readiness, persists the applied command
+outcome and acknowledgement, then survives another reconstruction without a
+second Gateway mutation. Only the simulated command-ack receipt advances the
+durable command-journal cursor.
 
 Gateway certificates move from `provisioning` to `issued`, then become `ready`
 only after the exact applied Gateway acknowledgement; provisioning may fail and
@@ -745,14 +750,18 @@ policy-rejected responses remain terminal.
 
 The worker/all process roles run `GatewayCertificateReconciler` with
 `run_once(now)` as the injected-time seam. Each cycle first redispatches durable
-pending publications, then scans installed scopes at
-`now + certificate_renewal_window_ms`. Renewal, provider-certificate
-revocation, revoked domain ownership, and projection drift stage a separate
-`GatewayCertificateConvergence` record with deterministic node/revision
-command and certificate identities. Staging does not mutate active route rows.
-A matching rejected acknowledgement preserves the previous installed
-certificate and routes. A matching applied acknowledgement atomically binds
-every retained route to the replacement certificate, rejects revoked-claim
+pending publications, then scans installed scopes against independent
+`now + certificate_renewal_window_ms` and
+`now + snapshot_renewal_window_ms` bounds. Certificate renewal,
+provider-certificate revocation, revoked domain ownership, projection drift,
+and snapshot validity renewal stage a separate
+`GatewayCertificateConvergence` record with a deterministic node/revision
+command identity. Staging does not mutate active route rows. Snapshot renewal
+copies the exact installed ACL bytes, retains the digest and active certificate,
+omits certificate intent, and advances the validity window to 24 hours. A
+matching rejected acknowledgement preserves the previous installed certificate
+and routes. A matching applied acknowledgement atomically binds every retained
+route to either the replacement or retained certificate, rejects revoked-claim
 routes, and advances the installed scope revision. When no verified routes
 remain, the complete management-only snapshot intentionally carries no
 certificate request.

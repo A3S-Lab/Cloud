@@ -50,6 +50,7 @@ pub struct GatewayCertificateReconciler {
     compiler: super::GatewaySnapshotCompiler,
     interval: Duration,
     renewal_window: ChronoDuration,
+    snapshot_renewal_window: ChronoDuration,
     command_ttl: ChronoDuration,
     batch_size: usize,
 }
@@ -63,11 +64,14 @@ impl GatewayCertificateReconciler {
         compiler: super::GatewaySnapshotCompiler,
         interval: Duration,
         renewal_window: ChronoDuration,
+        snapshot_renewal_window: ChronoDuration,
         command_ttl: ChronoDuration,
         batch_size: usize,
     ) -> Result<Self, String> {
         if interval.is_zero()
             || renewal_window <= ChronoDuration::zero()
+            || snapshot_renewal_window <= ChronoDuration::zero()
+            || snapshot_renewal_window >= ChronoDuration::hours(24)
             || command_ttl <= ChronoDuration::zero()
             || batch_size == 0
             || batch_size > 10_000
@@ -84,6 +88,7 @@ impl GatewayCertificateReconciler {
             compiler,
             interval,
             renewal_window,
+            snapshot_renewal_window,
             command_ttl,
             batch_size,
         })
@@ -94,11 +99,19 @@ impl GatewayCertificateReconciler {
         now: DateTime<Utc>,
     ) -> Result<GatewayCertificateReconciliationReport, RepositoryError> {
         let now = canonical_timestamp(now);
-        let renew_before = now.checked_add_signed(self.renewal_window).ok_or_else(|| {
-            RepositoryError::Conflict(
-                "Gateway certificate renewal window exceeds supported time".into(),
-            )
-        })?;
+        let certificate_renew_before =
+            now.checked_add_signed(self.renewal_window).ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway certificate renewal window exceeds supported time".into(),
+                )
+            })?;
+        let snapshot_renew_before = now
+            .checked_add_signed(self.snapshot_renewal_window)
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway snapshot renewal window exceeds supported time".into(),
+                )
+            })?;
         let mut report = GatewayCertificateReconciliationReport::default();
 
         let pending = self
@@ -112,13 +125,22 @@ impl GatewayCertificateReconciler {
 
         let targets = self
             .repository
-            .gateway_certificate_convergence_targets(renew_before, self.batch_size)
+            .gateway_certificate_convergence_targets(
+                certificate_renew_before,
+                snapshot_renew_before,
+                self.batch_size,
+            )
             .await?;
         report.convergence_targets = targets.len();
         for target in targets {
             let node_id = target.scope.node_id;
             let certificate_id = target.certificate.id;
-            let bundle = match self.compile_convergence(target, now, renew_before) {
+            let bundle = match self.compile_convergence(
+                target,
+                now,
+                certificate_renew_before,
+                snapshot_renew_before,
+            ) {
                 Ok(bundle) => bundle,
                 Err(_) => {
                     report.failures.push(failure(
@@ -220,7 +242,8 @@ impl GatewayCertificateReconciler {
         &self,
         target: GatewayCertificateConvergenceTarget,
         now: DateTime<Utc>,
-        renew_before: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
     ) -> Result<StageGatewayCertificateConvergence, RepositoryError> {
         target.validate().map_err(RepositoryError::Storage)?;
         if target.certificate.updated_at > now
@@ -251,8 +274,14 @@ impl GatewayCertificateReconciler {
                 rejected_versions.push(version);
             }
         }
-        let reason = convergence_reason(&target, renew_before, !rejected_versions.is_empty())?;
-        let replacement_certificate_id = (!retained_routes.is_empty())
+        let reason = convergence_reason(
+            &target,
+            certificate_renew_before,
+            snapshot_renew_before,
+            !rejected_versions.is_empty(),
+        )?;
+        let replacement_certificate_id = (!retained_routes.is_empty()
+            && reason != GatewayCertificateConvergenceReason::SnapshotRenewal)
             .then(|| deterministic_certificate_id(target.scope.node_id, revision));
         let command_not_after = now.checked_add_signed(self.command_ttl).ok_or_else(|| {
             RepositoryError::Conflict(
@@ -266,20 +295,24 @@ impl GatewayCertificateReconciler {
                     "Gateway certificate convergence snapshot expiry exceeds supported time".into(),
                 )
             })?;
-        let snapshot = self
-            .compiler
-            .compile_certificate_convergence(
-                GatewaySnapshotMetadata::new(
-                    target.scope.node_id,
-                    revision,
-                    target.scope.installed_revision,
-                    now,
-                    snapshot_expires_at,
-                ),
+        let metadata = GatewaySnapshotMetadata::new(
+            target.scope.node_id,
+            revision,
+            target.scope.installed_revision,
+            now,
+            snapshot_expires_at,
+        );
+        let snapshot = if reason == GatewayCertificateConvergenceReason::SnapshotRenewal {
+            self.compiler
+                .compile_validity_renewal(metadata, &target.publication.acl)
+        } else {
+            self.compiler.compile_certificate_convergence(
+                metadata,
                 replacement_certificate_id,
                 &retained_routes,
             )
-            .map_err(RepositoryError::Conflict)?;
+        }
+        .map_err(RepositoryError::Conflict)?;
         let publication = GatewayPublication::stage(
             target.scope.node_id,
             command_id,
@@ -391,7 +424,8 @@ impl GatewayCertificateReconciler {
 
 fn convergence_reason(
     target: &GatewayCertificateConvergenceTarget,
-    renew_before: DateTime<Utc>,
+    certificate_renew_before: DateTime<Utc>,
+    snapshot_renew_before: DateTime<Utc>,
     has_rejected_routes: bool,
 ) -> Result<GatewayCertificateConvergenceReason, RepositoryError> {
     if has_rejected_routes {
@@ -408,11 +442,29 @@ fn convergence_reason(
         .ok_or_else(|| {
             RepositoryError::Storage("installed Gateway certificate has no material".into())
         })?;
-    if expires_at <= renew_before {
-        Ok(GatewayCertificateConvergenceReason::Renewal)
-    } else {
-        Ok(GatewayCertificateConvergenceReason::ProjectionRepair)
+    if expires_at <= certificate_renew_before {
+        return Ok(GatewayCertificateConvergenceReason::Renewal);
     }
+    if !projection_is_current(target) {
+        return Ok(GatewayCertificateConvergenceReason::ProjectionRepair);
+    }
+    if target.publication.snapshot_expires_at <= snapshot_renew_before {
+        return Ok(GatewayCertificateConvergenceReason::SnapshotRenewal);
+    }
+    Err(RepositoryError::Storage(
+        "Gateway convergence target does not require reconciliation".into(),
+    ))
+}
+
+fn projection_is_current(target: &GatewayCertificateConvergenceTarget) -> bool {
+    target.routes.iter().all(|status| {
+        status.domain_claim_state == DomainClaimState::Verified
+            && status.route.gateway_revision == target.scope.installed_revision
+            && status.route.gateway_command_id == Some(target.publication.command_id)
+            && status.route.snapshot_digest.as_deref()
+                == Some(target.publication.snapshot_digest.as_str())
+            && status.route.gateway_certificate_id == Some(target.certificate.id)
+    })
 }
 
 pub(super) fn deterministic_command_id(node_id: NodeId, revision: u64) -> NodeCommandId {

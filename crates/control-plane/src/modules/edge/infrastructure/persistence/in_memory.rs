@@ -456,11 +456,17 @@ impl IEdgeRepository for InMemoryEdgeRepository {
 
     async fn gateway_certificate_convergence_targets(
         &self,
-        renew_before: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
         let state = self.state.read().await;
-        certificate_convergence::targets(&state, renew_before, limit)
+        certificate_convergence::targets(
+            &state,
+            certificate_renew_before,
+            snapshot_renew_before,
+            limit,
+        )
     }
 
     async fn pending_gateway_certificate_convergences(
@@ -651,7 +657,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             .certificate_convergences
             .get(&convergence_key)
             .cloned();
-        let expected_certificate_id = match &convergence {
+        let staged_certificate_id = match &convergence {
             Some(convergence) => convergence.replacement_certificate_id,
             None if certificate_ids.len() == 1 => Some(certificate_ids[0]),
             None => {
@@ -660,14 +666,18 @@ impl IEdgeRepository for InMemoryEdgeRepository {
                 ))
             }
         };
-        if certificate_ids.len() != usize::from(expected_certificate_id.is_some())
-            || certificate_ids.first().copied() != expected_certificate_id
+        let active_certificate_id = convergence
+            .as_ref()
+            .and_then(|convergence| convergence.active_certificate_id())
+            .or(staged_certificate_id);
+        if certificate_ids.len() != usize::from(staged_certificate_id.is_some())
+            || certificate_ids.first().copied() != staged_certificate_id
         {
             return Err(RepositoryError::Storage(
                 "Gateway publication has inconsistent staged certificate material".into(),
             ));
         }
-        let mut certificate = expected_certificate_id
+        let mut certificate = staged_certificate_id
             .map(|certificate_id| {
                 state
                     .certificates
@@ -763,7 +773,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
         }
         state.publications.insert((node_id, revision), publication);
         if acknowledgement.state == GatewayAckState::Applied {
-            if let Some(certificate_id) = expected_certificate_id {
+            if let Some(certificate_id) = active_certificate_id {
                 certificate_convergence::bind_active_routes(
                     &mut state,
                     node_id,

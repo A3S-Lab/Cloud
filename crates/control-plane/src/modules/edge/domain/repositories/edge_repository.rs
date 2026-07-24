@@ -209,6 +209,7 @@ pub struct GatewayCertificateRouteStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayCertificateConvergenceTarget {
     pub scope: GatewayScopeState,
+    pub publication: GatewayPublication,
     pub certificate: GatewayCertificate,
     pub routes: Vec<GatewayCertificateRouteStatus>,
 }
@@ -220,8 +221,12 @@ impl GatewayCertificateConvergenceTarget {
             .installed_revision
             .ok_or_else(|| "Gateway certificate convergence target is not installed".to_string())?;
         if self.routes.is_empty()
+            || self.publication.node_id != self.scope.node_id
+            || self.publication.revision != installed_revision
+            || self.publication.state
+                != crate::modules::edge::domain::GatewayPublicationState::Applied
+            || self.publication.acknowledged_at.is_none()
             || self.certificate.node_id != self.scope.node_id
-            || self.certificate.gateway_revision != installed_revision
             || !matches!(
                 self.certificate.state,
                 crate::modules::edge::domain::GatewayCertificateState::Ready
@@ -231,10 +236,12 @@ impl GatewayCertificateConvergenceTarget {
                 status.route.gateway_node_id != self.scope.node_id
                     || status.route.organization_id != self.certificate.organization_id
                     || status.route.state != RouteState::Active
+                    || status.route.gateway_certificate_id != Some(self.certificate.id)
             })
         {
             return Err("Gateway certificate convergence target is inconsistent".into());
         }
+        self.publication.snapshot()?;
         Ok(())
     }
 }
@@ -295,7 +302,8 @@ pub trait IEdgeRepository: Send + Sync {
 
     async fn gateway_certificate_convergence_targets(
         &self,
-        renew_before: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError>;
 

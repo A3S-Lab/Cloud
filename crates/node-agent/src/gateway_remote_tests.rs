@@ -250,6 +250,36 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     if retained.state != ManagedSnapshotState::Applied || !retained.ready {
         return Err("rejected native Gateway apply changed the prior ready snapshot".into());
     }
+
+    let renewal_issued_at = Utc::now();
+    let renewal = GatewaySnapshot::new(
+        gateway_id,
+        3,
+        Some(2),
+        renewal_issued_at,
+        renewal_issued_at + chrono::Duration::minutes(20),
+        second.acl.clone(),
+    )?;
+    if renewal.snapshot_digest != second.snapshot_digest {
+        return Err("Gateway validity renewal changed the exact ACL digest".into());
+    }
+    if installer.install(&renewal).await? != GatewaySnapshotInstallOutcome::Applied {
+        return Err("real Gateway did not apply the validity renewal".into());
+    }
+    let renewed = control.readiness(&renewal).await?;
+    if renewed.state != ManagedSnapshotState::Applied
+        || !renewed.ready
+        || renewed
+            .applied
+            .as_ref()
+            .is_none_or(|identity| identity.expires_at != renewal.expires_at)
+    {
+        return Err("real Gateway did not expose exact renewed readiness".into());
+    }
+    let superseded = control.readiness(&second).await?;
+    if superseded.state != ManagedSnapshotState::NotApplied || superseded.ready {
+        return Err("real Gateway kept the superseded validity selector ready".into());
+    }
     Ok(())
 }
 

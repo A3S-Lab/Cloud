@@ -104,7 +104,7 @@ pub(super) async fn project(
                     .into_iter()
                     .map(CertificateRow::certificate)
                     .collect::<Result<Vec<_>, _>>()?;
-                let expected_certificate_id = match &convergence {
+                let staged_certificate_id = match &convergence {
                     Some(convergence) => convergence.replacement_certificate_id,
                     None if certificates.len() == 1 => Some(certificates[0].id),
                     None => {
@@ -113,9 +113,13 @@ pub(super) async fn project(
                         ));
                     }
                 };
-                if certificates.len() != usize::from(expected_certificate_id.is_some())
+                let active_certificate_id = convergence
+                    .as_ref()
+                    .and_then(|convergence| convergence.active_certificate_id())
+                    .or(staged_certificate_id);
+                if certificates.len() != usize::from(staged_certificate_id.is_some())
                     || certificates.first().map(|certificate| certificate.id)
-                        != expected_certificate_id
+                        != staged_certificate_id
                 {
                     return Err(PostgresPersistenceError::Invariant(
                         "Gateway publication has inconsistent staged certificate material".into(),
@@ -212,7 +216,7 @@ pub(super) async fn project(
                     }
                 }
                 if acknowledgement.state == GatewayAckState::Applied {
-                    if let Some(certificate_id) = expected_certificate_id {
+                    if let Some(certificate_id) = active_certificate_id {
                         postgres_certificate_convergence::bind_active_routes_to_certificate(
                             transaction,
                             NodeId::from_uuid(acknowledgement.node_id),

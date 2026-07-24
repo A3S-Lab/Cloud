@@ -72,8 +72,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   Runtime health evidence
 - **Managed Reachability**: Verify domain ownership, provision TLS, compile
   complete expiring Gateway ACL snapshots, apply them through Gateway's native
-  managed-snapshot protocol, and advance only after exact identity, revision,
-  digest, validity, and readiness are acknowledged
+  managed-snapshot protocol, renew unchanged policy before expiry without
+  reissuing TLS, and advance only after exact identity, revision, digest,
+  validity, and readiness are acknowledged
 - **Encrypted Secrets**: Store tenant-scoped immutable Secret versions and
   materialize exact bindings only at authenticated registry or assigned-node
   boundaries
@@ -129,9 +130,12 @@ window; the node agent uses Gateway's native apply and exact-status APIs; and
 Cloud records an applied acknowledgement only after Gateway reports the same
 identity, revision, digest, expiry, applied metadata, and ready state. Gateway's
 durable managed-state journal is the sole authority for applied snapshot
-recovery. Logical Gateway scopes, generated private targets, renewal,
-mixed-version delivery, replicated rollout thresholds, and joint HA evidence
-remain open, so this foundation does not complete `H0.2` or `H0`.
+recovery. Cloud also renews unchanged policy inside a configured pre-expiry
+window by retaining the exact ACL digest and active certificate while advancing
+revision and validity only after an exact ready acknowledgement. Logical
+Gateway scopes, generated private targets, mixed-version delivery, replicated
+rollout thresholds, and joint HA evidence remain open, so this foundation does
+not complete `H0.2` or `H0`.
 
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
 evidence, and the ordered product portfolio.
@@ -324,9 +328,12 @@ Gateway's native journal is the sole source of truth for applied snapshot
 state. The node agent does not maintain a second installed-snapshot CAS file,
 so command redelivery and process restart converge through Gateway's idempotent
 apply and status contract. This is the Gateway-native foundation of `H0.2`;
-logical scopes beyond the current one-node/one-Gateway mapping, private target
-generations, snapshot renewal, mixed-version delivery, replicated readiness,
-and joint HA recovery remain to be implemented and verified.
+the periodic Edge reconciler renews an unchanged applied ACL before expiry,
+reuses the existing certificate files, and keeps the prior revision
+authoritative when renewal is rejected. Logical scopes beyond the current
+one-node/one-Gateway mapping, private target generations, mixed-version
+delivery, replicated readiness, and joint HA recovery remain to be implemented
+and verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

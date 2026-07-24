@@ -151,6 +151,7 @@ edge {
   managed_state_file = "/var/lib/a3s-gateway/managed-snapshot.json"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
+  snapshot_renewal_window_ms = 21600000
   certificate_reconciliation_interval_ms = 60000
   upstream_request_timeout_ms = 30000
   command_ttl_ms = 180000

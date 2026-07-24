@@ -1477,13 +1477,16 @@ record is:
    server identity and provider-owned certificate metadata before persistence,
    revokes by the real serial, sanitizes provider failures, and keeps temporary
    provider outages retryable.
-6. Implemented on 2026-07-20: certificate renewal/revocation convergence uses
-   deterministic node/revision identities, durable pending redispatch,
-   verified-claim filtering, exact acknowledgement projection, route-less
-   snapshots, and retryable sanitized provider revocation. Unit coverage and
-   the isolated PostgreSQL acceptance scenario cover rejected and applied
-   renewal, pre-ack route preservation, revoked-claim removal, and obsolete
-   serial retry.
+6. Updated on 2026-07-24: Gateway projection convergence uses independent
+   certificate and snapshot-renewal windows with deterministic node/revision
+   identities and durable pending redispatch. Snapshot validity renewal reuses
+   the exact installed ACL digest and certificate without issuing another CSR;
+   only an exact ready acknowledgement advances route and scope bindings, while
+   rejection preserves the prior revision. Certificate renewal/revocation
+   continues to use verified-claim filtering, route-less snapshots, and
+   retryable sanitized provider revocation. Unit and isolated PostgreSQL
+   acceptance cover both renewal types, pre-ack preservation, revoked-claim
+   removal, and obsolete-serial retry.
 7. Updated on 2026-07-24: the dedicated pinned-Gateway job durably begins a
    snapshot command, pauses after native apply and exact readiness but before
    Cloud acknowledgement completion, sends `SIGKILL`, and proves reconstructed
