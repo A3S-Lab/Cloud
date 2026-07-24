@@ -142,9 +142,12 @@ impl CommandExecutor {
                     acknowledgement_id: uuid::Uuid::now_v7(),
                     command_id: envelope.command_id,
                     node_id: envelope.node_id,
+                    gateway_id: snapshot.gateway_id,
                     revision: snapshot.revision,
                     snapshot_digest: snapshot.snapshot_digest.clone(),
+                    expires_at: snapshot.expires_at,
                     state,
+                    ready: state == GatewayAckState::Applied,
                     message,
                     acknowledged_at: Utc::now(),
                 };
@@ -511,8 +514,16 @@ mod tests {
         let directory = tempfile::tempdir().expect("journal directory");
         let node_id = Uuid::now_v7();
         let issued_at = Utc::now() - Duration::seconds(1);
-        let snapshot = GatewaySnapshot::new(3, Some(2), "management { enabled = true }\n")
-            .expect("Gateway snapshot");
+        let not_after = issued_at + Duration::minutes(1);
+        let snapshot = GatewaySnapshot::new(
+            node_id,
+            3,
+            Some(2),
+            issued_at,
+            not_after,
+            "management { enabled = true }\n",
+        )
+        .expect("Gateway snapshot");
         let envelope = NodeCommandEnvelope::new(
             NodeCommandMetadata {
                 command_id: Uuid::now_v7(),
@@ -521,7 +532,7 @@ mod tests {
                 sequence: 1,
                 aggregate_id: Uuid::now_v7(),
                 issued_at,
-                not_after: issued_at + Duration::minutes(1),
+                not_after,
                 correlation_id: Uuid::now_v7(),
             },
             NodeCommandPayload::GatewaySnapshotInstall {

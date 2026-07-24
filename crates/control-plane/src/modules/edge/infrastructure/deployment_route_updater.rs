@@ -7,7 +7,7 @@ use crate::modules::edge::domain::{
     GatewayCertificate, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
     RouteState, UpstreamEndpoint,
 };
-use crate::modules::edge::infrastructure::GatewaySnapshotCompiler;
+use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, IdempotencyRequest, NodeCommandId, RepositoryError,
@@ -198,6 +198,13 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                 reason: "Gateway route cutover command expired before staging".into(),
             });
         }
+        let snapshot_expires_at = issued_at
+            .checked_add_signed(Duration::hours(24))
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway route cutover snapshot expiry exceeds supported time".into(),
+                )
+            })?;
         let certificate_id = GatewayCertificateId::from_uuid(Uuid::new_v5(
             &request.deployment_id.as_uuid(),
             b"gateway-route-cutover-certificate",
@@ -238,9 +245,13 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
         let snapshot = self
             .compiler
             .compile(
-                request.node_id,
-                gateway_revision,
-                scope.installed_revision,
+                GatewaySnapshotMetadata::new(
+                    request.node_id,
+                    gateway_revision,
+                    scope.installed_revision,
+                    issued_at,
+                    snapshot_expires_at,
+                ),
                 certificate_id,
                 &complete_routes,
             )
@@ -298,6 +309,7 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             command_id,
             certificate_id,
             publication.snapshot_digest.clone(),
+            publication.snapshot_expires_at,
             candidates,
             issued_at,
         )

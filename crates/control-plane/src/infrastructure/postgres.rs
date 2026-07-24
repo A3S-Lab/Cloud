@@ -317,6 +317,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/032_build_cache_trust.sql"
             )),
         ),
+        Migration::new(
+            "033",
+            "managed Gateway snapshot validity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/033_gateway_snapshot_validity.sql"
+            )),
+        ),
     ]
 }
 

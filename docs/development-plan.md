@@ -348,16 +348,18 @@ Complete the first user-visible release loop.
 - Implemented: healthy immutable target resolution from typed Runtime endpoint
   evidence, Fleet command dispatch, stable correlation across retries, and
   exact-revision acknowledgement projection.
-- Implemented: node-local A3S Gateway validation, atomic compare-and-swap
-  install, reload, durable acknowledgement ordering, and the real route-bearing
-  router/service ACL gate against A3S Gateway 1.0.12.
+- Implemented: node-local A3S Gateway native snapshot application,
+  identity/revision/digest/expiry/readiness verification, durable
+  acknowledgement ordering, and the real route-bearing router/service ACL gate
+  against the repository-pinned Gateway revision.
 - Implemented: tenant-scoped exact and one-label wildcard claims, deterministic
   development proof verification, closed certificate policy, TLS 1.2 snapshot
   compilation, public certificate persistence, sanitized failure projection,
   and a separate local Gateway CA.
 - Implemented: authenticated CSR signing, replay binding, node-local `0600`
   private keys, full chain/identity/key verification, atomic chain storage
-  before Gateway reload, and a dedicated real HTTPS fixture for Gateway 1.0.12.
+  before native Gateway apply, and a dedicated real HTTPS fixture for the
+  repository-pinned Gateway revision.
 - Implemented: the production security profile performs bounded TXT ownership
   verification through the host's asynchronous system DNS resolver, fails
   startup closed without resolver configuration, sanitizes provider failures,
@@ -521,11 +523,12 @@ Complete the first user-visible release loop.
 - Implemented post-E0: the production SPA build is served from a private,
   fail-fast Rust service with history fallback, bounded content types, cache
   policy, path containment, security headers, and a product favicon. A3S
-  Gateway 1.0.12 validates the same-origin profile that routes exact `/api`
-  paths to the control plane and everything else to the SPA. CI exercises the
-  real built assets, deep-link fallback, headers, API isolation, process
-  cleanup, and Gateway ACL validation; `just cloud` supervises the local API
-  and hot-reloading web process from the monorepo root.
+  repository-pinned Gateway revision validates the same-origin profile that
+  routes exact `/api` paths to the control plane and everything else to the
+  SPA. CI exercises the real built assets, deep-link fallback, headers, API
+  isolation, process cleanup, and Gateway ACL validation; `just cloud`
+  supervises the local API and hot-reloading web process from the monorepo
+  root.
 
 ### Exit gate
 
@@ -539,7 +542,8 @@ Complete the first user-visible release loop.
   provider and agent death during the rotated apply reattach one exact resource
   and receipt, and plaintext scans of database rows, events, Flow history, logs,
   and API payloads find no secret value.
-- A failed Gateway reload cannot mark the route or deployment active.
+- A rejected, expired, mismatched, or not-ready Gateway apply cannot mark the
+  route or deployment active.
 - Losing the Gateway acknowledgement and restarting either process converges
   without duplicating or partially applying routes.
 - Log reconnect resumes from the last cursor or, after an acknowledged typed
@@ -1341,7 +1345,7 @@ not subtractions from one model-call-style global timer.
 | Runtime apply | start and convergence deadlines | inspect, then stop only by policy |
 | Image pull/build | attempt and total deadlines | cancel Task; preserve diagnostics |
 | Health check | per-probe timeout and stabilization window | keep prior revision active |
-| Gateway publish | validation/reload deadline | retain prior config revision |
+| Gateway publish | native apply/readiness deadline | retain prior config revision |
 | Log stream | idle and retention policies | reconnect or truncate with an explicit gap |
 | Cleanup | bounded synchronous wait plus reconcile deadline | expose pending cleanup |
 
@@ -1384,7 +1388,7 @@ eventual convergence:
 4. provider create before agent journal update;
 5. node result persistence before server acknowledgement;
 6. health success before deployment projection update;
-7. Gateway reload before acknowledgement;
+7. Gateway native apply before acknowledgement;
 8. activation before old-revision cleanup;
 9. Secret version commit before workload restart command.
 
@@ -1402,7 +1406,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container; the Secret-rotation consumer gate additionally restarts the isolated provider and kills the applying child while the exact Runtime receipt is pending, then reconstructs and reattaches the same container without duplicate material |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
-| 7 | Gateway reload before acknowledgement | Verified | `installed_a3s_gateway_recovers_reload_after_agent_process_death` durably begins the node command, reloads A3S Gateway 1.0.12, proves the new listener is live with no installed-state or acknowledgement projection, sends `SIGKILL`, reconstructs the executor, redelivers the same command under a new lease, persists one exact applied acknowledgement, and proves a second restart performs no third reload |
+| 7 | Gateway apply before acknowledgement | Verified foundation | `installed_a3s_gateway_recovers_native_apply_after_agent_process_death` durably begins the node command, applies the exact snapshot through the pinned Gateway's native API, proves Gateway readiness while Cloud has no acknowledgement projection, sends `SIGKILL`, redelivers the same command under a new lease, persists one exact applied acknowledgement, and restarts Gateway from its sole durable managed-state journal without another apply |
 | 8 | Activation before old-revision cleanup | Verified | `activation_before_retirement_crash_probe` runs inside the PostgreSQL/Linux and isolated Cloud consumer gates: the parent prevents retirement command access, a child durably selects the candidate as `retiring`, the parent proves no cleanup command exists and sends `SIGKILL`, and a reconstructed coordinator emits one deterministic stop and requires stopped-or-absent evidence before terminal `active` |
 | 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 
@@ -1480,11 +1484,12 @@ record is:
    the isolated PostgreSQL acceptance scenario cover rejected and applied
    renewal, pre-ack route preservation, revoked-claim removal, and obsolete
    serial retry.
-7. Implemented on 2026-07-20: the dedicated A3S Gateway 1.0.12 job durably
-   begins a snapshot command, pauses after the real reload but before local
-   installed-state or acknowledgement completion, sends `SIGKILL`, and proves
-   reconstructed redelivery produces one exact applied acknowledgement. A
-   second reconstruction replays the outcome without another reload.
+7. Updated on 2026-07-24: the dedicated pinned-Gateway job durably begins a
+   snapshot command, pauses after native apply and exact readiness but before
+   Cloud acknowledgement completion, sends `SIGKILL`, and proves reconstructed
+   redelivery produces one exact applied acknowledgement. Gateway's native
+   journal is the sole applied-state authority, and Gateway restart restores
+   the same readiness without another apply.
 8. Implemented on 2026-07-20: the isolated Cloud consumer gate pauses after a
    healthy rotated Docker resource is created with a pending Runtime receipt,
    restarts the labeled provider, kills the child agent, and proves
@@ -1495,13 +1500,13 @@ record is:
    revision as `retiring`, prove no cleanup command committed, send `SIGKILL`,
    and require reconstructed Flow to emit one deterministic stop and finish only
    from stopped-or-absent evidence.
-10. Implemented on 2026-07-20: the clean-host Linux gate builds release
-    binaries from exact clean Cloud and pinned Runtime revisions, starts pinned
-    PostgreSQL and registry fixtures, A3S Gateway 1.0.12, the control plane, and
-    one outbound Docker node, then proves enrollment, digest-pinned A,
-    acknowledged TLS, ordered and resumable logs, B, cloned-A rollback, durable
-    stop, source cleanliness, exact host-inventory restoration, and an empty
-    generated-credential scan.
+10. Updated on 2026-07-24: the clean-host Linux gate builds release binaries
+    from exact clean Cloud, Runtime, and Gateway revisions, starts pinned
+    PostgreSQL and registry fixtures, the control plane, and one outbound
+    Docker node, binds the enrolled node identity to a managed Gateway, then
+    proves digest-pinned A, acknowledged TLS, ordered and resumable logs, B,
+    cloned-A rollback, durable stop, source cleanliness, exact host-inventory
+    restoration, and an empty generated-credential scan.
 
 E0 is verified. Post-E0 product surfaces may now land only through their owning
 milestone gates; they cannot create tables, routes, providers, or user-visible

@@ -59,10 +59,19 @@ fn inspect_command(sequence: u64) -> NodeCommandEnvelope {
     .expect("valid command")
 }
 
-fn gateway_snapshot(revision: u64, expected_revision: Option<u64>) -> GatewaySnapshot {
+fn gateway_snapshot(
+    gateway_id: Uuid,
+    revision: u64,
+    expected_revision: Option<u64>,
+    issued_at: chrono::DateTime<Utc>,
+    expires_at: chrono::DateTime<Utc>,
+) -> GatewaySnapshot {
     GatewaySnapshot::new(
+        gateway_id,
         revision,
         expected_revision,
+        issued_at,
+        expires_at,
         r#"entrypoint "https" {
   address = "0.0.0.0:443"
 }
@@ -327,11 +336,18 @@ fn node_protocol_errors_are_versioned_and_strict() {
 
 #[test]
 fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgement() {
-    let snapshot = gateway_snapshot(4, Some(3));
+    let metadata = metadata(9);
+    let snapshot = gateway_snapshot(
+        metadata.node_id,
+        4,
+        Some(3),
+        metadata.issued_at,
+        metadata.not_after,
+    );
     snapshot.validate().expect("valid Gateway snapshot");
 
     let command = NodeCommandEnvelope::new(
-        metadata(9),
+        metadata,
         NodeCommandPayload::GatewaySnapshotInstall {
             snapshot: Box::new(snapshot.clone()),
         },
@@ -345,9 +361,12 @@ fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgemen
         acknowledgement_id: Uuid::now_v7(),
         command_id: command.command_id,
         node_id: command.node_id,
+        gateway_id: snapshot.gateway_id,
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest.clone(),
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: command.issued_at + Duration::milliseconds(10),
     };
@@ -383,7 +402,14 @@ fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgemen
     wrong_digest.acl.push_str("# changed\n");
     assert!(wrong_digest.validate().is_err());
 
-    let invalid_compare_and_swap = GatewaySnapshot::new(4, Some(4), "valid = true\n");
+    let invalid_compare_and_swap = GatewaySnapshot::new(
+        snapshot.gateway_id,
+        4,
+        Some(4),
+        snapshot.issued_at,
+        snapshot.expires_at,
+        "valid = true\n",
+    );
     assert!(invalid_compare_and_swap.is_err());
 }
 
@@ -408,9 +434,17 @@ fn gateway_tls_snapshot_binds_one_closed_certificate_request() {
 "#,
         certificate.certificate_file, certificate.private_key_file
     );
-    let snapshot =
-        GatewaySnapshot::new_with_certificate(5, Some(4), acl, Some(certificate.clone()))
-            .expect("TLS snapshot");
+    let issued_at = Utc::now();
+    let snapshot = GatewaySnapshot::new_with_certificate(
+        Uuid::now_v7(),
+        5,
+        Some(4),
+        issued_at,
+        issued_at + Duration::minutes(10),
+        acl,
+        Some(certificate.clone()),
+    )
+    .expect("TLS snapshot");
     snapshot.validate().expect("valid TLS snapshot");
 
     let mut changed_certificate = snapshot.clone();
@@ -419,12 +453,20 @@ fn gateway_tls_snapshot_binds_one_closed_certificate_request() {
         .as_mut()
         .expect("certificate")
         .dns_names = vec!["other.example.com".into()];
-    assert_eq!(
-        changed_certificate
-            .validate()
-            .expect_err("certificate digest conflict"),
-        "Gateway snapshot digest does not match its desired state"
-    );
+    changed_certificate
+        .validate()
+        .expect("certificate remains structurally valid");
+    let original_digest = NodeCommandPayload::GatewaySnapshotInstall {
+        snapshot: Box::new(snapshot.clone()),
+    }
+    .digest()
+    .expect("original payload digest");
+    let changed_digest = NodeCommandPayload::GatewaySnapshotInstall {
+        snapshot: Box::new(changed_certificate),
+    }
+    .digest()
+    .expect("changed payload digest");
+    assert_ne!(original_digest, changed_digest);
 
     let mut missing_reference = snapshot;
     missing_reference.acl = "management { enabled = true }\n".into();

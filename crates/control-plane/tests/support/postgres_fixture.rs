@@ -320,6 +320,7 @@ pub(super) fn config() -> CloudConfig {
             management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
             domain_verification_timeout_ms: 5_000,
             certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+            managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
             certificate_ttl_ms: 2_592_000_000,
             certificate_renewal_window_ms: 604_800_000,
             certificate_reconciliation_interval_ms: 60_000,

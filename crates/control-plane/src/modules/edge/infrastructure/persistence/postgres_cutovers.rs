@@ -23,7 +23,7 @@ use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-const SELECT_CUTOVERS: &str = "select deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, routes, state, failure, staged_at, acknowledged_at from gateway_route_cutovers";
+const SELECT_CUTOVERS: &str = "select deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at from gateway_route_cutovers";
 
 struct CutoverRow {
     deployment_id: Uuid,
@@ -36,6 +36,7 @@ struct CutoverRow {
     gateway_command_id: Uuid,
     gateway_certificate_id: Uuid,
     snapshot_digest: String,
+    snapshot_expires_at: DateTime<Utc>,
     routes: serde_json::Value,
     state: String,
     failure: Option<String>,
@@ -56,11 +57,12 @@ impl FromRow for CutoverRow {
             gateway_command_id: decode(row, 7)?,
             gateway_certificate_id: decode(row, 8)?,
             snapshot_digest: decode(row, 9)?,
-            routes: decode(row, 10)?,
-            state: decode(row, 11)?,
-            failure: decode(row, 12)?,
-            staged_at: decode(row, 13)?,
-            acknowledged_at: decode(row, 14)?,
+            snapshot_expires_at: decode(row, 10)?,
+            routes: decode(row, 11)?,
+            state: decode(row, 12)?,
+            failure: decode(row, 13)?,
+            staged_at: decode(row, 14)?,
+            acknowledged_at: decode(row, 15)?,
         })
     }
 }
@@ -78,6 +80,7 @@ impl CutoverRow {
             gateway_command_id: NodeCommandId::from_uuid(self.gateway_command_id),
             gateway_certificate_id: GatewayCertificateId::from_uuid(self.gateway_certificate_id),
             snapshot_digest: self.snapshot_digest,
+            snapshot_expires_at: self.snapshot_expires_at,
             routes: serde_json::from_value(self.routes)
                 .map_err(|error| stored("route cutover routes")(error.to_string()))?,
             state: GatewayRouteCutoverState::parse(&self.state)
@@ -399,7 +402,7 @@ async fn insert_cutover(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into gateway_route_cutovers (deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, routes, state, failure, staged_at, acknowledged_at) values (",
+            "insert into gateway_route_cutovers (deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at) values (",
         )
         .bind(cutover.deployment_id.as_uuid())
         .append(", ")
@@ -420,6 +423,8 @@ async fn insert_cutover(
         .bind(cutover.gateway_certificate_id.as_uuid())
         .append(", ")
         .bind(cutover.snapshot_digest.as_str())
+        .append(", ")
+        .bind(cutover.snapshot_expires_at)
         .append(", ")
         .bind(routes)
         .append(", ")

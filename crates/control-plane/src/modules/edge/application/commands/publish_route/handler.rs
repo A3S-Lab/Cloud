@@ -4,7 +4,7 @@ use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetR
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName,
 };
-use crate::modules::edge::infrastructure::GatewaySnapshotCompiler;
+use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     GatewayCertificateId, IdempotencyRequest, NodeCommandId, RouteId,
@@ -166,11 +166,32 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Conflict(error))),
             };
+            let not_after = match command.requested_at.checked_add_signed(command_ttl) {
+                Some(value) => value,
+                None => {
+                    return Ok(Err(ApplicationError::Invalid(
+                        "Gateway publication command expiry exceeds supported time".into(),
+                    )))
+                }
+            };
+            let snapshot_expires_at =
+                match command.requested_at.checked_add_signed(Duration::hours(24)) {
+                    Some(value) => value,
+                    None => {
+                        return Ok(Err(ApplicationError::Invalid(
+                            "Gateway snapshot expiry exceeds supported time".into(),
+                        )))
+                    }
+                };
             active_routes.push(route.clone());
             let snapshot = match compiler.compile(
-                target.node_id,
-                revision,
-                scope.installed_revision,
+                GatewaySnapshotMetadata::new(
+                    target.node_id,
+                    revision,
+                    scope.installed_revision,
+                    command.requested_at,
+                    snapshot_expires_at,
+                ),
                 certificate_id,
                 &active_routes,
             ) {
@@ -186,14 +207,6 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
             ) {
                 return Ok(Err(ApplicationError::Invalid(error)));
             }
-            let not_after = match command.requested_at.checked_add_signed(command_ttl) {
-                Some(value) => value,
-                None => {
-                    return Ok(Err(ApplicationError::Invalid(
-                        "Gateway publication command expiry exceeds supported time".into(),
-                    )))
-                }
-            };
             let publication = match GatewayPublication::stage(
                 target.node_id,
                 command_id,

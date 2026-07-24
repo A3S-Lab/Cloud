@@ -32,6 +32,7 @@ impl GatewayRouteCutoverStaged {
             || cutover.gateway_revision != publication.revision
             || cutover.gateway_command_id != publication.command_id
             || cutover.snapshot_digest != publication.snapshot_digest
+            || cutover.snapshot_expires_at != publication.snapshot_expires_at
         {
             return Err("route cutover event publication identity is inconsistent".into());
         }

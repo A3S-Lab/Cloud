@@ -57,11 +57,12 @@ projections for deployment history, route/certificate state, complete-template
 differences and updates, eligible rollback, and browser-local terminal
 operation cleanup. Production now performs bounded DNS TXT ownership
 verification through the host resolver. The clean-host release gate now builds
-the exact clean Cloud and pinned Runtime revisions, starts pinned PostgreSQL and
-registry fixtures, A3S Gateway 1.0.12, the control plane, and one outbound
-Docker node, then certifies bootstrap through A→B→cloned-A TLS cutover, ordered
-resumable logs, durable stop, source cleanliness, host-inventory equality, and
-credential-safe cleanup. This closes the first release. The current G0 slices
+the exact clean Cloud, Runtime, and Gateway revisions, starts pinned PostgreSQL
+and registry fixtures, the control plane, and one outbound Docker node, binds
+the enrolled node identity to a managed Gateway, then certifies bootstrap
+through A→B→cloned-A TLS cutover, ordered resumable logs, durable stop, source
+cleanliness, host-inventory equality, and credential-safe cleanup. This closes
+the first release. The current G0 slices
 add a Sources context with canonical GitHub repository identities, an exact
 allow/deny policy, provider-neutral anonymous-first branch/tag/commit
 resolution, full
@@ -768,10 +769,11 @@ acknowledgement.
 
 Production configuration requires Vault for node PKI, Gateway PKI, and Transit
 and fails startup closed without valid credentials or provider names. A
-dedicated Ubuntu CI job installs A3S Gateway 1.0.12 and proves the
-node-generated key, managed chain, exact reload, trusted DNS/SNI HTTPS request,
-durable revision against a loopback upstream, and forced process-death recovery
-at the reload-before-acknowledgement boundary.
+dedicated Ubuntu CI job builds Cloud's pinned Gateway revision and proves the
+node-generated key, managed chain, native exact apply/readiness, trusted
+DNS/SNI HTTPS request, durable revision against a loopback upstream, and forced
+process-death recovery at the apply-before-acknowledgement boundary. Gateway's
+native journal is the sole applied-snapshot recovery authority.
 
 I0 extends this projection from one upstream to complete healthy target sets.
 Inference owns model aliases, primary/fallback intent, access policy, and usage

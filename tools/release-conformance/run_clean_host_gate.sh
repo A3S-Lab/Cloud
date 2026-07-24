@@ -46,8 +46,9 @@ Usage:
 
 The source root must contain clean apps/cloud and crates/runtime Git worktrees at
 the exact supplied revisions. The runner builds release binaries from scratch,
-starts pinned PostgreSQL and registry fixtures, boots A3S Gateway 1.0.12, the
-control plane, and one outbound node agent, then drives the public E0 API loop.
+starts pinned PostgreSQL and registry fixtures, boots the repository-pinned A3S
+Gateway revision, the control plane, and one outbound node agent, then drives
+the public E0 API loop.
 
 The gate requires a dedicated Linux host with Docker and network access. It
 does not alter the Docker daemon. Cleanup targets only run-labeled fixtures and
@@ -207,6 +208,7 @@ target_dir=$(realpath -m "$target_dir")
 config_dir="$run_root/config"
 state_dir="$run_root/state"
 gateway_certificates="$state_dir/gateway-certificates"
+gateway_managed_state="$state_dir/gateway-managed-snapshot.json"
 secret_memory_root="/dev/shm/a3s-cloud-e0-$suffix"
 context_file="$run_root/release-context.json"
 
@@ -498,46 +500,6 @@ docker image rm --force "$local_image_id" >"$evidence/workload-local-image-remov
     die "release workload remained cached before node deployment"
 log "phase=fixtures-pass postgres_port=$postgres_port registry_port=$registry_port"
 
-cat >"$config_dir/gateway.acl" <<ACL
-management {
-  enabled = true
-  address = "127.0.0.1:$gateway_management_port"
-  path_prefix = "/api/gateway"
-  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  allowed_ips = ["127.0.0.1"]
-}
-ACL
-
-"$gateway_bin" --config "$config_dir/gateway.acl" \
-    >"$evidence/gateway.log" 2>&1 &
-gateway_pid=$!
-for attempt in $(seq 1 120); do
-    kill -0 "$gateway_pid" >/dev/null 2>&1 ||
-        die "A3S Gateway exited before readiness"
-    curl --fail --silent --show-error --max-time 2 \
-        --header "authorization: Bearer $A3S_GATEWAY_ADMIN_TOKEN" \
-        "http://127.0.0.1:$gateway_management_port/api/gateway/version" \
-        >"$evidence/gateway-ready.json" 2>/dev/null && break
-    [[ $attempt -ne 120 ]] || die "A3S Gateway readiness timed out"
-    sleep 0.25
-done
-gateway_version=$(
-    python3 - "$evidence/gateway-ready.json" <<'PY'
-import json
-import pathlib
-import sys
-
-payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-version = payload.get("version")
-if not isinstance(version, str):
-    raise SystemExit("A3S Gateway version response omitted a string version")
-print(version)
-PY
-)
-[[ $gateway_version == "$GATEWAY_VERSION" ]] ||
-    die "A3S Gateway $GATEWAY_VERSION is required, got $gateway_version"
-printf '%s\n' "$gateway_version" >"$evidence/gateway-version.txt"
-
 cat >"$config_dir/cloud.acl" <<ACL
 server {
   host = "127.0.0.1"
@@ -689,6 +651,7 @@ edge {
   management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
   domain_verification_timeout_ms = 5000
   certificate_directory = "$gateway_certificates"
+  managed_state_file = "$gateway_managed_state"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
   certificate_reconciliation_interval_ms = 60000
@@ -783,17 +746,94 @@ docker {
 gateway {
   management_url = "http://127.0.0.1:$gateway_management_port/api/gateway"
   auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  state_file = "$state_dir/node/gateway-snapshot.json"
   certificate_directory = "$gateway_certificates"
   connect_timeout_ms = 5000
-  validation_timeout_ms = 10000
-  reload_timeout_ms = 30000
+  apply_timeout_ms = 30000
+  readiness_timeout_ms = 10000
 }
 ACL
 
 RUST_LOG=info "$node_bin" "$config_dir/node.acl" \
     >"$evidence/node-agent.log" 2>&1 &
 node_pid=$!
+
+node_identity_file="$state_dir/node/identity.json"
+gateway_id=""
+for attempt in $(seq 1 240); do
+    kill -0 "$node_pid" >/dev/null 2>&1 ||
+        die "node agent exited before enrollment"
+    if [[ -f $node_identity_file ]]; then
+        gateway_id=$(
+            python3 - "$node_identity_file" 2>/dev/null <<'PY' || true
+import json
+import pathlib
+import sys
+import uuid
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+identity = payload.get("identity")
+if not isinstance(identity, dict) or identity.get("state") != "enrolled":
+    raise SystemExit(1)
+value = identity.get("value")
+response = value.get("response") if isinstance(value, dict) else None
+node_id = response.get("node_id") if isinstance(response, dict) else None
+print(uuid.UUID(node_id))
+PY
+        )
+    fi
+    [[ $gateway_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] &&
+        break
+    [[ $attempt -ne 240 ]] || die "node enrollment identity timed out"
+    sleep 0.25
+done
+printf '%s\n' "$gateway_id" >"$evidence/gateway-id.txt"
+
+cat >"$config_dir/gateway.acl" <<ACL
+mode { kind = "cloud-managed" }
+
+managed {
+  gateway_id = "$gateway_id"
+  state_file = "$gateway_managed_state"
+}
+
+management {
+  enabled = true
+  address = "127.0.0.1:$gateway_management_port"
+  path_prefix = "/api/gateway"
+  auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  allowed_ips = ["127.0.0.1"]
+}
+ACL
+
+"$gateway_bin" --config "$config_dir/gateway.acl" \
+    >"$evidence/gateway.log" 2>&1 &
+gateway_pid=$!
+for attempt in $(seq 1 120); do
+    kill -0 "$gateway_pid" >/dev/null 2>&1 ||
+        die "A3S Gateway exited before readiness"
+    curl --fail --silent --show-error --max-time 2 \
+        --header "authorization: Bearer $A3S_GATEWAY_ADMIN_TOKEN" \
+        "http://127.0.0.1:$gateway_management_port/api/gateway/version" \
+        >"$evidence/gateway-ready.json" 2>/dev/null && break
+    [[ $attempt -ne 120 ]] || die "A3S Gateway readiness timed out"
+    sleep 0.25
+done
+gateway_version=$(
+    python3 - "$evidence/gateway-ready.json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+version = payload.get("version")
+if not isinstance(version, str):
+    raise SystemExit("A3S Gateway version response omitted a string version")
+print(version)
+PY
+)
+[[ $gateway_version == "$GATEWAY_VERSION" ]] ||
+    die "A3S Gateway $GATEWAY_VERSION is required, got $gateway_version"
+printf '%s\n' "$gateway_version" >"$evidence/gateway-version.txt"
 
 log "phase=scenario-start"
 timeout --signal=TERM --kill-after=10s 900s \

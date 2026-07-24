@@ -46,6 +46,7 @@ pub struct GatewayRouteCutover {
     pub gateway_command_id: NodeCommandId,
     pub gateway_certificate_id: GatewayCertificateId,
     pub snapshot_digest: String,
+    pub snapshot_expires_at: DateTime<Utc>,
     pub routes: Vec<Route>,
     pub state: GatewayRouteCutoverState,
     pub failure: Option<String>,
@@ -66,6 +67,7 @@ impl GatewayRouteCutover {
         gateway_command_id: NodeCommandId,
         gateway_certificate_id: GatewayCertificateId,
         snapshot_digest: String,
+        snapshot_expires_at: DateTime<Utc>,
         mut routes: Vec<Route>,
         staged_at: DateTime<Utc>,
     ) -> Result<Self, String> {
@@ -82,6 +84,7 @@ impl GatewayRouteCutover {
             gateway_command_id,
             gateway_certificate_id,
             snapshot_digest,
+            snapshot_expires_at: canonical_timestamp(snapshot_expires_at),
             routes,
             state: GatewayRouteCutoverState::Pending,
             failure: None,
@@ -97,8 +100,10 @@ impl GatewayRouteCutover {
         let acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
         if acknowledgement.node_id != self.node_id.as_uuid()
             || acknowledgement.command_id != self.gateway_command_id.as_uuid()
+            || acknowledgement.gateway_id != self.node_id.as_uuid()
             || acknowledgement.revision != self.gateway_revision
             || acknowledgement.snapshot_digest != self.snapshot_digest
+            || acknowledgement.expires_at != self.snapshot_expires_at
         {
             return Err("Gateway acknowledgement does not match the staged route cutover".into());
         }
@@ -131,6 +136,7 @@ impl GatewayRouteCutover {
         if self.previous_revision_id == self.candidate_revision_id
             || self.gateway_revision == 0
             || !valid_sha256(&self.snapshot_digest)
+            || self.snapshot_expires_at <= self.staged_at
             || self.routes.is_empty()
             || self
                 .routes

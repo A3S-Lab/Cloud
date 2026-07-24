@@ -23,7 +23,7 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const GATEWAY_TOKEN: &str = "a3s-cloud-gateway-integration-token";
 const CRASH_PROBE_TEST: &str =
-    "gateway::reload_crash_tests::gateway_reload_before_acknowledgement_crash_probe";
+    "gateway::reload_crash_tests::gateway_apply_before_acknowledgement_crash_probe";
 const CRASH_PROBE_PARENT_ENV: &str = "A3S_CLOUD_GATEWAY_CRASH_PROBE_PARENT";
 const CRASH_PROBE_BASE_URL_ENV: &str = "A3S_CLOUD_GATEWAY_CRASH_PROBE_BASE_URL";
 const CRASH_PROBE_STATE_DIR_ENV: &str = "A3S_CLOUD_GATEWAY_CRASH_PROBE_STATE_DIR";
@@ -69,27 +69,28 @@ impl RuntimeClient for UnusedRuntime {
 
 struct RecordedGatewayControl {
     inner: Arc<GatewayManagementClient>,
-    reload_log: PathBuf,
-    pause_after_reload: bool,
+    apply_log: PathBuf,
+    pause_after_apply: bool,
 }
 
 impl RecordedGatewayControl {
-    async fn record_reload(&self) -> Result<(), GatewayControlError> {
+    async fn record_apply(&self, replayed: bool) -> Result<(), GatewayControlError> {
         let mut options = tokio::fs::OpenOptions::new();
         options.create(true).append(true);
-        let mut file = options.open(&self.reload_log).await.map_err(|error| {
+        let mut file = options.open(&self.apply_log).await.map_err(|error| {
             GatewayControlError::Unavailable(format!(
-                "could not open the Gateway reload crash marker: {error}"
+                "could not open the Gateway apply crash marker: {error}"
             ))
         })?;
-        file.write_all(b"reload\n").await.map_err(|error| {
+        let marker: &[u8] = if replayed { b"replay\n" } else { b"apply\n" };
+        file.write_all(marker).await.map_err(|error| {
             GatewayControlError::Unavailable(format!(
-                "could not write the Gateway reload crash marker: {error}"
+                "could not write the Gateway apply crash marker: {error}"
             ))
         })?;
         file.sync_all().await.map_err(|error| {
             GatewayControlError::Unavailable(format!(
-                "could not persist the Gateway reload crash marker: {error}"
+                "could not persist the Gateway apply crash marker: {error}"
             ))
         })
     }
@@ -97,17 +98,23 @@ impl RecordedGatewayControl {
 
 #[async_trait]
 impl GatewayControl for RecordedGatewayControl {
-    async fn validate(&self, acl: &str) -> Result<(), GatewayControlError> {
-        self.inner.validate(acl).await
-    }
-
-    async fn reload(&self, acl: &str) -> Result<(), GatewayControlError> {
-        self.inner.reload(acl).await?;
-        self.record_reload().await?;
-        if self.pause_after_reload {
+    async fn apply(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+        let status = self.inner.apply(snapshot).await?;
+        self.record_apply(status.replayed).await?;
+        if self.pause_after_apply {
             return std::future::pending().await;
         }
-        Ok(())
+        Ok(status)
+    }
+
+    async fn readiness(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+        self.inner.readiness(snapshot).await
     }
 }
 
@@ -195,12 +202,17 @@ impl Drop for GatewayProcess {
 
 #[tokio::test]
 #[ignore = "requires a dedicated remote Gateway runner"]
-async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> TestResult {
+async fn installed_a3s_gateway_recovers_native_apply_after_agent_process_death() -> TestResult {
     let binary = required_gateway_binary()?;
     let directory = tempfile::tempdir()?;
     let (traffic_port, management_port) = unused_ports();
+    let node_id = uuid::Uuid::now_v7();
+    let managed_state_file = directory.path().join("managed-snapshot.json");
     let config_path = directory.path().join("gateway.acl");
-    std::fs::write(&config_path, management_gateway_acl(management_port))?;
+    std::fs::write(
+        &config_path,
+        management_gateway_acl(management_port, node_id, &managed_state_file),
+    )?;
     let mut gateway = GatewayProcess::start(&binary, &config_path)?;
 
     let base_url = format!("http://127.0.0.1:{management_port}/api/gateway");
@@ -209,17 +221,29 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
         .await
         .is_ok()
     {
-        return Err("Gateway traffic port was available before the crash probe reload".into());
+        return Err("Gateway traffic port was available before the native apply".into());
     }
 
     let state_dir = directory.path().join("node-state");
     tokio::fs::create_dir(&state_dir).await?;
-    let installed_state = state_dir.join("installed-gateway.json");
-    let reload_log = state_dir.join("gateway-reloads.log");
+    let apply_log = state_dir.join("gateway-applies.log");
     let command_path = directory.path().join("gateway-command.json");
-    let snapshot = GatewaySnapshot::new(1, None, gateway_acl(traffic_port, management_port, 1))?;
-    let node_id = uuid::Uuid::now_v7();
     let issued_at = Utc::now();
+    let not_after = issued_at + ChronoDuration::minutes(10);
+    let snapshot = GatewaySnapshot::new(
+        node_id,
+        1,
+        None,
+        issued_at,
+        not_after,
+        gateway_acl(
+            traffic_port,
+            management_port,
+            node_id,
+            &managed_state_file,
+            1,
+        ),
+    )?;
     let command = NodeCommandEnvelope::new(
         NodeCommandMetadata {
             command_id: uuid::Uuid::now_v7(),
@@ -228,7 +252,7 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
             sequence: 1,
             aggregate_id: node_id,
             issued_at,
-            not_after: issued_at + ChronoDuration::minutes(10),
+            not_after,
             correlation_id: uuid::Uuid::now_v7(),
         },
         NodeCommandPayload::GatewaySnapshotInstall {
@@ -242,14 +266,12 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
         &base_url,
         &state_dir,
         &command_path,
-        &reload_log,
+        &apply_log,
     )?;
-    wait_for_reload_crash_marker(&reload_log, &mut crash_probe).await?;
+    wait_for_apply_crash_marker(&apply_log, &mut crash_probe).await?;
     wait_for_tcp_listener(traffic_port, &mut gateway.child).await?;
-    if tokio::fs::try_exists(&installed_state).await? {
-        return Err(
-            "crash probe persisted installed Gateway state before process termination".into(),
-        );
+    if !tokio::fs::try_exists(&managed_state_file).await? {
+        return Err("Gateway native apply omitted its durable journal".into());
     }
     let crash_status = crash_probe.kill_and_wait()?;
     if crash_status.success() {
@@ -265,8 +287,8 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
             .into());
         }
     }
-    if reload_count(&reload_log).await? != 1 {
-        return Err("Gateway crash probe did not perform exactly one durable reload".into());
+    if tokio::fs::read_to_string(&apply_log).await? != "apply\n" {
+        return Err("Gateway crash probe did not reach one native apply".into());
     }
 
     let interrupted_journal = FileCommandJournal::new(state_dir.clone(), node_id)?;
@@ -281,11 +303,11 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
 
     let recovery_control: Arc<dyn GatewayControl> = Arc::new(RecordedGatewayControl {
         inner: gateway_control(&base_url)?,
-        reload_log: reload_log.clone(),
-        pause_after_reload: false,
+        apply_log: apply_log.clone(),
+        pause_after_apply: false,
     });
     let recovery_installer = Arc::new(DurableGatewaySnapshotInstaller::new(
-        installed_state.clone(),
+        node_id,
         recovery_control,
     ));
     let recovery_executor = CommandExecutor::new(
@@ -305,33 +327,24 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
         _ => return Err("recovered Gateway command did not succeed".into()),
     };
     gateway_acknowledgement.validate_for(command.command_id, node_id, &snapshot)?;
-    if gateway_acknowledgement.state != GatewayAckState::Applied {
+    if gateway_acknowledgement.state != GatewayAckState::Applied || !gateway_acknowledgement.ready {
         return Err("recovered Gateway command did not produce an applied acknowledgement".into());
     }
-    let installed = recovery_installer
-        .read_installed()
-        .await?
-        .ok_or("recovered Gateway command omitted durable installed state")?;
-    if installed.snapshot.revision != snapshot.revision
-        || installed.snapshot.snapshot_digest != snapshot.snapshot_digest
-    {
-        return Err("recovered Gateway command persisted a different snapshot identity".into());
-    }
-    if reload_count(&reload_log).await? != 2 {
-        return Err("Gateway recovery did not repeat exactly one idempotent reload".into());
+    if tokio::fs::read_to_string(&apply_log).await? != "apply\nreplay\n" {
+        return Err("Gateway recovery did not confirm one exact native replay".into());
     }
     drop(recovery_executor);
 
     let replay_control: Arc<dyn GatewayControl> = Arc::new(RecordedGatewayControl {
         inner: gateway_control(&base_url)?,
-        reload_log: reload_log.clone(),
-        pause_after_reload: false,
+        apply_log: apply_log.clone(),
+        pause_after_apply: false,
     });
     let replay_executor = CommandExecutor::new(
         FileCommandJournal::new(state_dir, node_id)?,
         Arc::new(UnusedRuntime),
         Arc::new(DurableGatewaySnapshotInstaller::new(
-            installed_state,
+            node_id,
             replay_control,
         )),
     );
@@ -342,8 +355,8 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
     if replayed.outcome != recovered.outcome || replayed.completed_at != recovered.completed_at {
         return Err("completed Gateway command replay changed its durable outcome".into());
     }
-    if reload_count(&reload_log).await? != 2 {
-        return Err("completed Gateway command replay performed another reload".into());
+    if tokio::fs::read_to_string(&apply_log).await? != "apply\nreplay\n" {
+        return Err("completed Gateway command replay performed another native apply".into());
     }
     if replay_executor.journal().pending_acknowledgements().await? != vec![replayed.clone()] {
         return Err("recovered Gateway acknowledgement was not durably pending delivery".into());
@@ -360,59 +373,69 @@ async fn installed_a3s_gateway_recovers_reload_after_agent_process_death() -> Te
     if acknowledged_sequence != 1 || replay_executor.journal().after_sequence().await? != 1 {
         return Err("recovered Gateway acknowledgement did not advance the durable cursor".into());
     }
+    drop(replay_executor);
+    drop(gateway);
+
+    let mut recovered_gateway = GatewayProcess::start(&binary, &config_path)?;
+    wait_for_gateway(&base_url, &mut recovered_gateway.child).await?;
+    let recovered_status = gateway_control(&base_url)?.readiness(&snapshot).await?;
+    if recovered_status.state != ManagedSnapshotState::Applied || !recovered_status.ready {
+        return Err("Gateway process restart did not recover the exact native snapshot".into());
+    }
+    wait_for_tcp_listener(traffic_port, &mut recovered_gateway.child).await?;
     Ok(())
 }
 
 #[tokio::test]
 #[ignore = "private subprocess used only by the Gateway reload crash gate"]
-async fn gateway_reload_before_acknowledgement_crash_probe() -> TestResult {
+async fn gateway_apply_before_acknowledgement_crash_probe() -> TestResult {
     if required_probe_environment(CRASH_PROBE_PARENT_ENV)? != "1" {
-        return Err("Gateway reload crash probe requires its private parent marker".into());
+        return Err("Gateway apply crash probe requires its private parent marker".into());
     }
     let base_url = required_probe_environment(CRASH_PROBE_BASE_URL_ENV)?;
     let state_dir = PathBuf::from(required_probe_environment(CRASH_PROBE_STATE_DIR_ENV)?);
     let command_path = PathBuf::from(required_probe_environment(CRASH_PROBE_COMMAND_ENV)?);
-    let reload_log = PathBuf::from(required_probe_environment(CRASH_PROBE_LOG_ENV)?);
+    let apply_log = PathBuf::from(required_probe_environment(CRASH_PROBE_LOG_ENV)?);
     let command: NodeCommandEnvelope =
         serde_json::from_slice(&tokio::fs::read(command_path).await?)?;
     command.validate()?;
     let control: Arc<dyn GatewayControl> = Arc::new(RecordedGatewayControl {
         inner: gateway_control(&base_url)?,
-        reload_log,
-        pause_after_reload: true,
+        apply_log,
+        pause_after_apply: true,
     });
     let executor = CommandExecutor::new(
         FileCommandJournal::new(state_dir.clone(), command.node_id)?,
         Arc::new(UnusedRuntime),
         Arc::new(DurableGatewaySnapshotInstaller::new(
-            state_dir.join("installed-gateway.json"),
+            command.node_id,
             control,
         )),
     );
     let result = executor.execute(command).await;
-    Err(format!("Gateway reload crash probe returned without process death: {result:?}").into())
+    Err(format!("Gateway apply crash probe returned without process death: {result:?}").into())
 }
 
-async fn wait_for_reload_crash_marker(
-    reload_log: &Path,
+async fn wait_for_apply_crash_marker(
+    apply_log: &Path,
     crash_probe: &mut CrashProbeProcess,
 ) -> TestResult {
     for _ in 0..100 {
-        match tokio::fs::read_to_string(reload_log).await {
-            Ok(contents) if contents == "reload\n" => return Ok(()),
-            Ok(_) => return Err("Gateway crash probe wrote an invalid reload marker".into()),
+        match tokio::fs::read_to_string(apply_log).await {
+            Ok(contents) if contents == "apply\n" => return Ok(()),
+            Ok(_) => return Err("Gateway crash probe wrote an invalid apply marker".into()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
         if let Some(status) = crash_probe.try_wait()? {
             return Err(format!(
-                "Gateway crash probe exited before the reload boundary with {status}"
+                "Gateway crash probe exited before the apply boundary with {status}"
             )
             .into());
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    Err("Gateway crash probe did not reach the reload boundary".into())
+    Err("Gateway crash probe did not reach the apply boundary".into())
 }
 
 async fn wait_for_tcp_listener(port: u16, child: &mut Child) -> TestResult {
@@ -429,14 +452,6 @@ async fn wait_for_tcp_listener(port: u16, child: &mut Child) -> TestResult {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     Err("A3S Gateway did not expose the reloaded traffic entrypoint".into())
-}
-
-async fn reload_count(reload_log: &Path) -> TestResult<usize> {
-    let contents = tokio::fs::read_to_string(reload_log).await?;
-    if contents.lines().any(|line| line != "reload") {
-        return Err("Gateway reload log contains an invalid record".into());
-    }
-    Ok(contents.lines().count())
 }
 
 fn required_gateway_binary() -> TestResult<String> {
@@ -474,26 +489,44 @@ fn unused_ports() -> (u16, u16) {
     ports
 }
 
-fn gateway_acl(traffic_port: u16, management_port: u16, revision: u64) -> String {
+fn gateway_acl(
+    traffic_port: u16,
+    management_port: u16,
+    gateway_id: uuid::Uuid,
+    managed_state_file: &Path,
+    revision: u64,
+) -> String {
     format!(
         r#"# revision {revision}
 entrypoints "web" {{ address = "127.0.0.1:{traffic_port}" }}
 
 {}
 "#,
-        management_gateway_acl(management_port)
+        management_gateway_acl(management_port, gateway_id, managed_state_file)
     )
 }
 
-fn management_gateway_acl(management_port: u16) -> String {
+fn management_gateway_acl(
+    management_port: u16,
+    gateway_id: uuid::Uuid,
+    managed_state_file: &Path,
+) -> String {
     format!(
-        r#"management {{
+        r#"mode {{ kind = "cloud-managed" }}
+
+managed {{
+  gateway_id = "{gateway_id}"
+  state_file = "{}"
+}}
+
+management {{
   enabled = true
   address = "127.0.0.1:{management_port}"
   path_prefix = "/api/gateway"
   auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
   allowed_ips = ["127.0.0.1"]
-}}"#
+}}"#,
+        managed_state_file.display()
     )
 }
 

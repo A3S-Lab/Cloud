@@ -82,7 +82,7 @@ and generated through `a3s-acl`.
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | Planned |
 | `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
-| `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | Planned |
+| `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service | Planned |
 
 ### 3.1 Verified baseline
@@ -259,13 +259,21 @@ not a product capability until restore passes against a clean environment.
 | Sub-gate | Foundation | Required evidence |
 | --- | --- | --- |
 | `H0.1` | Managed-owner references, durable replica identity, effective placement policy, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
-| `H0.2` | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected reload preserve the prior route |
+| `H0.2` | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
 | `H0.3` | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
 | `H0.4` | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
 | `H0.5` | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
 Kubernetes or Helm may package Cloud, but Workloads remains the only workload
 scheduler and Cloud product configuration remains ACL.
+
+The first `H0.2` foundation is implemented: Cloud emits identity-bound,
+expiring snapshots with exact ACL digests, the node agent uses Gateway's native
+apply and exact-status APIs, and Gateway's journal is the sole applied-state
+authority across replay and restart. The gate remains open for snapshot
+renewal, logical scopes beyond the current one-node/one-Gateway mapping,
+generation-bound private targets, mixed-version delivery, replicated
+readiness, and joint HA evidence.
 
 ### 5.7 `I0`: inference profile
 
@@ -342,9 +350,9 @@ routes, target sets, rollout, or scaling policy.
 ```text
 Cloud commits desired state
   -> Cloud compiles one complete Gateway-scope ACL snapshot
-  -> outbound node agent delivers the exact revision and digest
-  -> Gateway validates and atomically applies or preserves the prior snapshot
-  -> node agent records the exact applied or rejected result
+  -> outbound node agent delivers identity, revision, digest, and validity
+  -> Gateway natively applies, journals, and reports exact readiness
+  -> node agent records the exact ready-applied or rejected result
   -> Cloud advances only after the matching acknowledgement
 ```
 
@@ -361,8 +369,8 @@ are allowed only before the first response byte.
 
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
-| `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | ACL validation, atomic reload, HTTPS, routing, health, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical scopes, private endpoints, complete target sets, and applied-state projection | Explicit managed mode, mode validation, exact readiness, and rejection of local control loops | Restart, redelivery, and rejected reload cannot expose a stale target |
+| `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
+| `H0.2` | Native identity/validity/readiness bridge is available; logical scopes, private endpoints, complete target sets, renewal, and replicated projection remain | Explicit managed mode, native exact apply/readiness, durable journal, and rejection of local control loops are available | Native replay/restart foundation is verified; stale-target, mixed-version, private-generation, and HA gates remain open |
 | `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |

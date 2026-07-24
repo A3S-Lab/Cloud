@@ -1,3 +1,4 @@
+use super::GatewaySnapshotMetadata;
 use crate::modules::edge::domain::events::GatewayCertificateConvergenceStaged;
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget, IEdgeRepository,
@@ -253,21 +254,32 @@ impl GatewayCertificateReconciler {
         let reason = convergence_reason(&target, renew_before, !rejected_versions.is_empty())?;
         let replacement_certificate_id = (!retained_routes.is_empty())
             .then(|| deterministic_certificate_id(target.scope.node_id, revision));
-        let snapshot = self
-            .compiler
-            .compile_certificate_convergence(
-                target.scope.node_id,
-                revision,
-                target.scope.installed_revision,
-                replacement_certificate_id,
-                &retained_routes,
-            )
-            .map_err(RepositoryError::Conflict)?;
         let command_not_after = now.checked_add_signed(self.command_ttl).ok_or_else(|| {
             RepositoryError::Conflict(
                 "Gateway certificate convergence command expiry exceeds supported time".into(),
             )
         })?;
+        let snapshot_expires_at = now
+            .checked_add_signed(ChronoDuration::hours(24))
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway certificate convergence snapshot expiry exceeds supported time".into(),
+                )
+            })?;
+        let snapshot = self
+            .compiler
+            .compile_certificate_convergence(
+                GatewaySnapshotMetadata::new(
+                    target.scope.node_id,
+                    revision,
+                    target.scope.installed_revision,
+                    now,
+                    snapshot_expires_at,
+                ),
+                replacement_certificate_id,
+                &retained_routes,
+            )
+            .map_err(RepositoryError::Conflict)?;
         let publication = GatewayPublication::stage(
             target.scope.node_id,
             command_id,

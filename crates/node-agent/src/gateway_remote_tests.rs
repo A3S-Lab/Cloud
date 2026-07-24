@@ -184,7 +184,9 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     let binary = required_gateway_binary()?;
     let directory = tempfile::tempdir()?;
     let (traffic_port, management_port) = unused_ports();
-    let bootstrap = gateway_acl(traffic_port, management_port, 0);
+    let gateway_id = uuid::Uuid::now_v7();
+    let managed_state_file = directory.path().join("managed-snapshot.json");
+    let bootstrap = management_gateway_acl(management_port, gateway_id, &managed_state_file);
     let config_path = directory.path().join("gateway.acl");
     std::fs::write(&config_path, &bootstrap)?;
     let mut gateway = GatewayProcess::start(&binary, &config_path)?;
@@ -192,29 +194,61 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     let base_url = format!("http://127.0.0.1:{management_port}/api/gateway");
     wait_for_gateway(&base_url, &mut gateway.child).await?;
     let control = gateway_control(&base_url)?;
-    let installer =
-        DurableGatewaySnapshotInstaller::new(directory.path().join("installed.json"), control);
-    let first = GatewaySnapshot::new(1, None, gateway_acl(traffic_port, management_port, 1))?;
+    let installer = DurableGatewaySnapshotInstaller::new(gateway_id, control.clone());
+    let first_issued_at = Utc::now();
+    let first = GatewaySnapshot::new(
+        gateway_id,
+        1,
+        None,
+        first_issued_at,
+        first_issued_at + chrono::Duration::minutes(10),
+        gateway_acl(
+            traffic_port,
+            management_port,
+            gateway_id,
+            &managed_state_file,
+            1,
+        ),
+    )?;
     if installer.install(&first).await? != GatewaySnapshotInstallOutcome::Applied {
         return Err("real Gateway did not apply the first snapshot".into());
     }
-    let second = GatewaySnapshot::new(2, Some(1), gateway_acl(traffic_port, management_port, 2))?;
+    let second_issued_at = Utc::now();
+    let second = GatewaySnapshot::new(
+        gateway_id,
+        2,
+        Some(1),
+        second_issued_at,
+        second_issued_at + chrono::Duration::minutes(10),
+        gateway_acl(
+            traffic_port,
+            management_port,
+            gateway_id,
+            &managed_state_file,
+            2,
+        ),
+    )?;
     if installer.install(&second).await? != GatewaySnapshotInstallOutcome::Applied {
         return Err("real Gateway did not apply the second snapshot".into());
     }
-    let invalid = GatewaySnapshot::new(3, Some(2), invalid_gateway_acl(management_port))?;
+    let invalid_issued_at = Utc::now();
+    let invalid = GatewaySnapshot::new(
+        gateway_id,
+        3,
+        Some(2),
+        invalid_issued_at,
+        invalid_issued_at + chrono::Duration::minutes(10),
+        invalid_gateway_acl(management_port, gateway_id, &managed_state_file),
+    )?;
     if !matches!(
         installer.install(&invalid).await?,
         GatewaySnapshotInstallOutcome::Rejected { .. }
     ) {
         return Err("real Gateway accepted invalid ACL".into());
     }
-    let installed = installer
-        .read_installed()
-        .await?
-        .ok_or("real Gateway test has no durable snapshot")?;
-    if installed.snapshot.revision != 2 {
-        return Err("rejected real Gateway reload changed durable state".into());
+    let retained = control.readiness(&second).await?;
+    if retained.state != ManagedSnapshotState::Applied || !retained.ready {
+        return Err("rejected native Gateway apply changed the prior ready snapshot".into());
     }
     Ok(())
 }
@@ -225,8 +259,13 @@ async fn installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload() 
     let binary = required_gateway_binary()?;
     let directory = tempfile::tempdir()?;
     let (tls_port, management_port) = unused_ports();
+    let node_id = uuid::Uuid::now_v7();
+    let managed_state_file = directory.path().join("managed-snapshot.json");
     let config_path = directory.path().join("gateway.acl");
-    std::fs::write(&config_path, management_gateway_acl(management_port))?;
+    std::fs::write(
+        &config_path,
+        management_gateway_acl(management_port, node_id, &managed_state_file),
+    )?;
     let mut gateway = GatewayProcess::start(&binary, &config_path)?;
 
     let base_url = format!("http://127.0.0.1:{management_port}/api/gateway");
@@ -239,7 +278,6 @@ async fn installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload() 
     }
 
     let upstream = LoopbackHttpUpstream::start().await?;
-    let node_id = uuid::Uuid::now_v7();
     let certificate_id = uuid::Uuid::now_v7();
     let dns_names = vec![TLS_HOSTNAME.to_owned()];
     let certificate_root = directory.path().join("managed-certificates");
@@ -262,19 +300,26 @@ async fn installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload() 
         signer.clone(),
         Arc::new(SystemGatewayCertificateClock),
     )?);
+    let control = gateway_control(&base_url)?;
     let installer = DurableGatewaySnapshotInstaller::new_with_certificates(
-        directory.path().join("installed.json"),
-        gateway_control(&base_url)?,
+        node_id,
+        control.clone(),
         provisioner,
     );
+    let issued_at = Utc::now();
     let snapshot = GatewaySnapshot::new_with_certificate(
+        node_id,
         1,
         None,
+        issued_at,
+        issued_at + chrono::Duration::minutes(10),
         tls_gateway_acl(
             tls_port,
             management_port,
             upstream.address,
             &certificate_request,
+            node_id,
+            &managed_state_file,
         ),
         Some(certificate_request),
     )?;
@@ -302,14 +347,12 @@ async fn installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload() 
     if response.text().await? != UPSTREAM_BODY {
         return Err("managed TLS route returned an unexpected upstream response".into());
     }
-    let installed = installer
-        .read_installed()
-        .await?
-        .ok_or("managed TLS fixture has no durable snapshot")?;
-    if installed.snapshot.revision != 1
-        || installed.snapshot.snapshot_digest != snapshot.snapshot_digest
-    {
-        return Err("managed TLS fixture did not preserve the exact installed revision".into());
+    let status = control.readiness(&snapshot).await?;
+    if status.state != ManagedSnapshotState::Applied || !status.ready {
+        return Err("managed TLS fixture did not preserve exact Gateway readiness".into());
+    }
+    if !tokio::fs::try_exists(&managed_state_file).await? {
+        return Err("managed TLS fixture omitted the Gateway-native durable journal".into());
     }
     Ok(())
 }
@@ -343,14 +386,20 @@ fn unused_ports() -> (u16, u16) {
     ports
 }
 
-fn gateway_acl(traffic_port: u16, management_port: u16, revision: u64) -> String {
+fn gateway_acl(
+    traffic_port: u16,
+    management_port: u16,
+    gateway_id: uuid::Uuid,
+    managed_state_file: &Path,
+    revision: u64,
+) -> String {
     format!(
         r#"# revision {revision}
 entrypoints "web" {{ address = "127.0.0.1:{traffic_port}" }}
 
 {}
 "#,
-        management_gateway_acl(management_port)
+        management_gateway_acl(management_port, gateway_id, managed_state_file)
     )
 }
 
@@ -359,6 +408,8 @@ fn tls_gateway_acl(
     management_port: u16,
     upstream: SocketAddr,
     certificate: &GatewayCertificateRequest,
+    gateway_id: uuid::Uuid,
+    managed_state_file: &Path,
 ) -> String {
     format!(
         r#"entrypoints "a3s-cloud-https" {{
@@ -388,29 +439,45 @@ services "managed-tls-fixture" {{
 "#,
         certificate.certificate_file,
         certificate.private_key_file,
-        management_gateway_acl(management_port)
+        management_gateway_acl(management_port, gateway_id, managed_state_file)
     )
 }
 
-fn management_gateway_acl(management_port: u16) -> String {
+fn management_gateway_acl(
+    management_port: u16,
+    gateway_id: uuid::Uuid,
+    managed_state_file: &Path,
+) -> String {
     format!(
-        r#"management {{
+        r#"mode {{ kind = "cloud-managed" }}
+
+managed {{
+  gateway_id = "{gateway_id}"
+  state_file = "{}"
+}}
+
+management {{
   enabled = true
   address = "127.0.0.1:{management_port}"
   path_prefix = "/api/gateway"
   auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
   allowed_ips = ["127.0.0.1"]
-}}"#
+}}"#,
+        managed_state_file.display()
     )
 }
 
-fn invalid_gateway_acl(management_port: u16) -> String {
+fn invalid_gateway_acl(
+    management_port: u16,
+    gateway_id: uuid::Uuid,
+    managed_state_file: &Path,
+) -> String {
     format!(
         r#"entrypoints "web" {{ address = "invalid-address" }}
 
 {}
 "#,
-        management_gateway_acl(management_port)
+        management_gateway_acl(management_port, gateway_id, managed_state_file)
     )
 }
 

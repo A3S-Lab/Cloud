@@ -38,6 +38,7 @@ pub(super) fn gateway_compiler() -> Result<GatewaySnapshotCompiler, String> {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 5_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
 }
 
@@ -72,9 +73,13 @@ pub(super) async fn publish_active_route(
         staged_at,
     )?;
     let snapshot = compiler.compile(
-        node_id,
-        1,
-        None,
+        crate::modules::edge::infrastructure::GatewaySnapshotMetadata::new(
+            node_id,
+            1,
+            None,
+            staged_at,
+            staged_at + Duration::seconds(5),
+        ),
         certificate_id,
         std::slice::from_ref(&route),
     )?;
@@ -138,9 +143,12 @@ pub(super) async fn publish_active_route(
         acknowledgement_id: Uuid::now_v7(),
         command_id: staged.publication.command_id.as_uuid(),
         node_id: staged.publication.node_id.as_uuid(),
+        gateway_id: staged.publication.node_id.as_uuid(),
         revision: staged.publication.revision,
         snapshot_digest: staged.publication.snapshot_digest,
+        expires_at: staged.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: staged_at + Duration::milliseconds(2),
     };
@@ -179,9 +187,12 @@ pub(super) fn cutover_acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: cutover.gateway_command_id.as_uuid(),
         node_id: cutover.node_id.as_uuid(),
+        gateway_id: cutover.node_id.as_uuid(),
         revision: cutover.gateway_revision,
         snapshot_digest: cutover.snapshot_digest.clone(),
+        expires_at: cutover.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: cutover.staged_at + Duration::milliseconds(2),
     }

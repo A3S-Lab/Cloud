@@ -109,8 +109,11 @@ fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() 
     )
     .expect("certificate request");
     let snapshot = GatewaySnapshot::new_with_certificate(
+        node_id.as_uuid(),
         3,
         Some(2),
+        now,
+        now + Duration::minutes(10),
         format!(
             "entrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             request.certificate_file, request.private_key_file
@@ -135,9 +138,12 @@ fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() 
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(2),
     };
@@ -219,8 +225,15 @@ fn route_activates_only_for_the_exact_gateway_publication() {
     let now = Utc::now();
     let mut route = route(now);
     let command_id = NodeCommandId::new();
-    let snapshot =
-        GatewaySnapshot::new(3, Some(2), "management { enabled = true }\n").expect("snapshot");
+    let snapshot = GatewaySnapshot::new(
+        route.gateway_node_id.as_uuid(),
+        3,
+        Some(2),
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     route
         .stage(
             snapshot.revision,
@@ -234,9 +247,12 @@ fn route_activates_only_for_the_exact_gateway_publication() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: route.gateway_node_id.as_uuid(),
+        gateway_id: route.gateway_node_id.as_uuid(),
         revision: 4,
         snapshot_digest: snapshot.snapshot_digest.clone(),
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(2),
     };
@@ -262,8 +278,15 @@ fn rejected_publication_preserves_failure_without_false_activation() {
     let now = Utc::now();
     let mut route = route(now);
     let command_id = NodeCommandId::new();
-    let snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("snapshot");
+    let snapshot = GatewaySnapshot::new(
+        route.gateway_node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     route
         .stage(1, command_id, snapshot.snapshot_digest.clone(), now)
         .expect("stage");
@@ -273,9 +296,12 @@ fn rejected_publication_preserves_failure_without_false_activation() {
             acknowledgement_id: Uuid::now_v7(),
             command_id: command_id.as_uuid(),
             node_id: route.gateway_node_id.as_uuid(),
+            gateway_id: route.gateway_node_id.as_uuid(),
             revision: 1,
             snapshot_digest: snapshot.snapshot_digest,
+            expires_at: snapshot.expires_at,
             state: GatewayAckState::Rejected,
+            ready: false,
             message: Some("validation failed".into()),
             acknowledged_at: now + Duration::seconds(1),
         })
@@ -290,8 +316,15 @@ fn active_route_certificate_convergence_preserves_service_until_exact_apply() {
     let now = Utc::now();
     let mut active = route(now);
     let first_command = NodeCommandId::new();
-    let first_snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("snapshot");
+    let first_snapshot = GatewaySnapshot::new(
+        active.gateway_node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     active
         .stage(
             1,
@@ -306,9 +339,12 @@ fn active_route_certificate_convergence_preserves_service_until_exact_apply() {
             acknowledgement_id: Uuid::now_v7(),
             command_id: first_command.as_uuid(),
             node_id: active.gateway_node_id.as_uuid(),
+            gateway_id: active.gateway_node_id.as_uuid(),
             revision: 1,
             snapshot_digest: first_snapshot.snapshot_digest,
+            expires_at: first_snapshot.expires_at,
             state: GatewayAckState::Applied,
+            ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
         })
@@ -348,8 +384,15 @@ fn revoked_domain_policy_removes_only_an_active_route() {
     let now = Utc::now();
     let mut active = route(now);
     let first_command = NodeCommandId::new();
-    let first_snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("snapshot");
+    let first_snapshot = GatewaySnapshot::new(
+        active.gateway_node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     active
         .stage(
             1,
@@ -364,9 +407,12 @@ fn revoked_domain_policy_removes_only_an_active_route() {
             acknowledgement_id: Uuid::now_v7(),
             command_id: first_command.as_uuid(),
             node_id: active.gateway_node_id.as_uuid(),
+            gateway_id: active.gateway_node_id.as_uuid(),
             revision: 1,
             snapshot_digest: first_snapshot.snapshot_digest,
+            expires_at: first_snapshot.expires_at,
             state: GatewayAckState::Applied,
+            ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
         })
@@ -424,9 +470,12 @@ fn certificate_convergence_is_exact_and_preserves_route_versions() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: 3,
         snapshot_digest: digest.clone(),
+        expires_at: now + Duration::minutes(10),
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
     };

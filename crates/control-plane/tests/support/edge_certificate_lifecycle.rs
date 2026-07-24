@@ -518,6 +518,7 @@ fn compiler() -> Result<GatewaySnapshotCompiler, String> {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
 }
 
@@ -570,9 +571,12 @@ fn acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: convergence.publication.command_id.as_uuid(),
         node_id: convergence.publication.node_id.as_uuid(),
+        gateway_id: convergence.publication.node_id.as_uuid(),
         revision: convergence.publication.revision,
         snapshot_digest: convergence.publication.snapshot_digest.clone(),
+        expires_at: convergence.publication.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "reload rejected".into()),
         acknowledged_at,
     }

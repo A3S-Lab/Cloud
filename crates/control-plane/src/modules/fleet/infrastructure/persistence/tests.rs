@@ -333,8 +333,16 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         .await
         .is_err());
 
-    let snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("Gateway snapshot");
+    let gateway_not_after = observed_at + Duration::minutes(1);
+    let snapshot = GatewaySnapshot::new(
+        node_id.as_uuid(),
+        1,
+        None,
+        observed_at,
+        gateway_not_after,
+        "management { enabled = true }\n",
+    )
+    .expect("Gateway snapshot");
     let gateway_command = repository
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: NodeCommandId::new(),
@@ -344,7 +352,7 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
                 snapshot: Box::new(snapshot.clone()),
             },
             issued_at: observed_at,
-            not_after: observed_at + Duration::minutes(1),
+            not_after: gateway_not_after,
             correlation_id: Uuid::now_v7(),
         })
         .await
@@ -356,9 +364,12 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         acknowledgement_id: Uuid::now_v7(),
         command_id: gateway_command.id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: observed_at + Duration::seconds(1),
     };

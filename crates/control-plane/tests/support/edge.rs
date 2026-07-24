@@ -172,9 +172,12 @@ pub async fn exercise_edge_api(
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision,
         snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at,
     };
@@ -365,9 +368,12 @@ pub async fn exercise_edge(
         acknowledgement_id: Uuid::now_v7(),
         command_id: stored.publication.command_id.as_uuid(),
         node_id: fixture.node_id.as_uuid(),
+        gateway_id: fixture.node_id.as_uuid(),
         revision: first_revision,
         snapshot_digest: stored.publication.snapshot_digest.clone(),
+        expires_at: stored.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
     };
@@ -449,9 +455,12 @@ pub async fn exercise_edge(
         acknowledgement_id: Uuid::now_v7(),
         command_id: second.publication.command_id.as_uuid(),
         node_id: fixture.node_id.as_uuid(),
+        gateway_id: fixture.node_id.as_uuid(),
         revision: second.publication.revision,
         snapshot_digest: second.publication.snapshot_digest.clone(),
+        expires_at: second.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: second.publication.command_issued_at + Duration::seconds(1),
     };
@@ -675,8 +684,11 @@ fn staged_cutover(
         format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
     )?;
     let snapshot = GatewaySnapshot::new_with_certificate(
+        fixture.node_id.as_uuid(),
         gateway_revision,
         expected_revision,
+        staged_at,
+        staged_at + Duration::minutes(3),
         format!(
             "# PostgreSQL route cutover {}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             fixture.candidate_deployment_id,
@@ -740,6 +752,7 @@ fn staged_cutover(
         command_id,
         certificate_id,
         publication.snapshot_digest.clone(),
+        publication.snapshot_expires_at,
         candidates,
         staged_at,
     )?;
@@ -770,9 +783,12 @@ fn cutover_acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: cutover.gateway_command_id.as_uuid(),
         node_id: cutover.node_id.as_uuid(),
+        gateway_id: cutover.node_id.as_uuid(),
         revision: cutover.gateway_revision,
         snapshot_digest: cutover.snapshot_digest.clone(),
+        expires_at: cutover.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: cutover.staged_at + Duration::seconds(1),
     }
@@ -799,8 +815,11 @@ fn staged(
         format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
     )?;
     let snapshot = GatewaySnapshot::new_with_certificate(
+        fixture.node_id.as_uuid(),
         revision,
         expected_revision,
+        now,
+        now + Duration::minutes(3),
         format!(
             "# route {hostname}{path}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             certificate_request.certificate_file, certificate_request.private_key_file

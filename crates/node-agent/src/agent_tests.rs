@@ -317,6 +317,7 @@ fn command(node_id: Uuid, command_id: Uuid, lease_id: Uuid) -> NodeCommandEnvelo
 
 fn gateway_command(node_id: Uuid, command_id: Uuid, lease_id: Uuid) -> NodeCommandEnvelope {
     let issued_at = Utc::now() - ChronoDuration::milliseconds(1);
+    let not_after = issued_at + ChronoDuration::minutes(1);
     NodeCommandEnvelope::new(
         NodeCommandMetadata {
             command_id,
@@ -325,13 +326,20 @@ fn gateway_command(node_id: Uuid, command_id: Uuid, lease_id: Uuid) -> NodeComma
             sequence: 1,
             aggregate_id: Uuid::now_v7(),
             issued_at,
-            not_after: issued_at + ChronoDuration::minutes(1),
+            not_after,
             correlation_id: Uuid::now_v7(),
         },
         NodeCommandPayload::GatewaySnapshotInstall {
             snapshot: Box::new(
-                GatewaySnapshot::new(1, None, "management { enabled = true }\n")
-                    .expect("Gateway snapshot"),
+                GatewaySnapshot::new(
+                    node_id,
+                    1,
+                    None,
+                    issued_at,
+                    not_after,
+                    "management { enabled = true }\n",
+                )
+                .expect("Gateway snapshot"),
             ),
         },
     )

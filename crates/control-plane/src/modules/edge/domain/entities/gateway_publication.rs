@@ -47,6 +47,7 @@ pub struct GatewayPublication {
     pub failure: Option<String>,
     pub command_issued_at: DateTime<Utc>,
     pub command_not_after: DateTime<Utc>,
+    pub snapshot_expires_at: DateTime<Utc>,
     pub acknowledged_at: Option<DateTime<Utc>>,
 }
 
@@ -68,6 +69,15 @@ impl GatewayPublication {
         if command_not_after <= command_issued_at {
             return Err("Gateway publication command expiry must follow its issue time".into());
         }
+        if snapshot.gateway_id != node_id.as_uuid()
+            || snapshot.issued_at != command_issued_at
+            || snapshot.expires_at < command_not_after
+        {
+            return Err(
+                "Gateway publication command does not match its exact Gateway identity and validity"
+                    .into(),
+            );
+        }
         Ok(Self {
             node_id,
             revision: snapshot.revision,
@@ -81,14 +91,18 @@ impl GatewayPublication {
             failure: None,
             command_issued_at,
             command_not_after,
+            snapshot_expires_at: snapshot.expires_at,
             acknowledged_at: None,
         })
     }
 
     pub fn snapshot(&self) -> Result<GatewaySnapshot, String> {
         let snapshot = GatewaySnapshot::new_with_certificate(
+            self.node_id.as_uuid(),
             self.revision,
             self.expected_revision,
+            self.command_issued_at,
+            self.snapshot_expires_at,
             self.acl.clone(),
             self.certificate_request.clone(),
         )?;

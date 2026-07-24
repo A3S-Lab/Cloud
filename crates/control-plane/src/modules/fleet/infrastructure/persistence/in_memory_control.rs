@@ -478,6 +478,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
         received_at: DateTime<Utc>,
     ) -> Result<NodeGatewayAckReceipt, RepositoryError> {
         acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+        acknowledgement.expires_at = canonical_timestamp(acknowledgement.expires_at);
         let _received_at = canonical_timestamp(received_at);
         acknowledgement
             .validate()

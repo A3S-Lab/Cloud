@@ -207,9 +207,10 @@ Secret material, redacted logs, and complete cleanup.
 ## Clean-host E0 release acceptance
 
 The final E0 gate builds release-mode control-plane and node-agent binaries from
-exact clean Cloud and pinned Runtime revisions. On a disposable Linux host it
-starts digest-pinned PostgreSQL and registry fixtures, A3S Gateway 1.0.12, the
-control plane, and one real outbound Docker node, then drives:
+exact clean Cloud, Runtime, and Gateway revisions. On a disposable Linux host
+it starts digest-pinned PostgreSQL and registry fixtures, the control plane,
+one real outbound Docker node, and a native-snapshot managed Gateway bound to
+that enrolled node identity, then drives:
 
 ```text
 bootstrap -> enrollment -> release A -> managed TLS route -> ordered logs

@@ -40,8 +40,11 @@ fn staged(
     )
     .expect("certificate request");
     let snapshot = GatewaySnapshot::new_with_certificate(
+        node_id.as_uuid(),
         revision,
         expected_revision,
+        now,
+        now + Duration::minutes(3),
         format!(
             "# {hostname}{path}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             certificate_request.certificate_file, certificate_request.private_key_file
@@ -152,9 +155,12 @@ fn acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: staged.publication.command_id.as_uuid(),
         node_id: staged.publication.node_id.as_uuid(),
+        gateway_id: staged.publication.node_id.as_uuid(),
         revision: staged.publication.revision,
         snapshot_digest: staged.publication.snapshot_digest.clone(),
+        expires_at: staged.publication.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "invalid snapshot".into()),
         acknowledged_at: staged.publication.command_issued_at + Duration::seconds(1),
     }
@@ -188,8 +194,11 @@ fn staged_cutover(
     )
     .expect("certificate request");
     let snapshot = GatewaySnapshot::new_with_certificate(
+        node_id.as_uuid(),
         gateway_revision,
         expected_revision,
+        now,
+        now + Duration::minutes(3),
         format!(
             "# cutover {deployment_id}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             certificate_request.certificate_file, certificate_request.private_key_file
@@ -258,6 +267,7 @@ fn staged_cutover(
         command_id,
         certificate_id,
         publication.snapshot_digest.clone(),
+        publication.snapshot_expires_at,
         candidates,
         now,
     )
@@ -287,9 +297,12 @@ fn cutover_acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: staged.publication.command_id.as_uuid(),
         node_id: staged.publication.node_id.as_uuid(),
+        gateway_id: staged.publication.node_id.as_uuid(),
         revision: staged.publication.revision,
         snapshot_digest: staged.publication.snapshot_digest.clone(),
+        expires_at: staged.publication.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: staged.publication.command_issued_at + Duration::seconds(1),
     }

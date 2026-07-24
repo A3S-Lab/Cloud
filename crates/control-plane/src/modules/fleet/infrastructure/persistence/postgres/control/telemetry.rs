@@ -36,6 +36,37 @@ struct LogGapRow {
     reason: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GatewayAcknowledgementRow {
+    node_id: Uuid,
+    command_id: Option<Uuid>,
+    gateway_id: Uuid,
+    revision: u64,
+    snapshot_digest: String,
+    expires_at: DateTime<Utc>,
+    state: String,
+    ready: bool,
+    message: Option<String>,
+    acknowledged_at: DateTime<Utc>,
+}
+
+impl FromRow for GatewayAcknowledgementRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            node_id: decode(row, 0)?,
+            command_id: decode(row, 1)?,
+            gateway_id: decode(row, 2)?,
+            revision: decode(row, 3)?,
+            snapshot_digest: decode(row, 4)?,
+            expires_at: decode(row, 5)?,
+            state: decode(row, 6)?,
+            ready: decode(row, 7)?,
+            message: decode(row, 8)?,
+            acknowledged_at: decode(row, 9)?,
+        })
+    }
+}
+
 impl FromRow for LogChunkMetadataRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
@@ -247,6 +278,7 @@ pub(in super::super) async fn record_gateway_acknowledgement(
     received_at: DateTime<Utc>,
 ) -> Result<NodeGatewayAckReceipt, RepositoryError> {
     acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
+    acknowledgement.expires_at = canonical_timestamp(acknowledgement.expires_at);
     let received_at = canonical_timestamp(received_at);
     acknowledgement
         .validate()
@@ -265,45 +297,26 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                     return Err(RepositoryError::NotFound.into());
                 }
                 let state = gateway_state(acknowledgement.state);
-                if let Some(existing) = fetch_optional::<
-                    (
-                        Uuid,
-                        Option<Uuid>,
-                        u64,
-                        String,
-                        String,
-                        Option<String>,
-                        DateTime<Utc>,
-                    ),
-                    _,
-                >(
+                if let Some(existing) = fetch_optional::<GatewayAcknowledgementRow, _>(
                     transaction,
-                    sql_query::<(
-                        Uuid,
-                        Option<Uuid>,
-                        u64,
-                        String,
-                        String,
-                        Option<String>,
-                        DateTime<Utc>,
-                    )>(
-                        "select node_id, command_id, revision, snapshot_digest, state, message, acknowledged_at from node_gateway_acknowledgements where acknowledgement_id = ",
+                    sql_query::<GatewayAcknowledgementRow>(
+                        "select node_id, command_id, gateway_id, revision, snapshot_digest, expires_at, state, ready, message, acknowledged_at from node_gateway_acknowledgements where acknowledgement_id = ",
                     )
                     .bind(acknowledgement.acknowledgement_id)
                     .append(" for update"),
                 )
                 .await?
                 {
-                    if existing
-                        != (
-                            acknowledgement.node_id,
-                            Some(acknowledgement.command_id),
-                            acknowledgement.revision,
-                            acknowledgement.snapshot_digest.clone(),
-                            state.into(),
-                            acknowledgement.message.clone(),
-                            acknowledgement.acknowledged_at,
-                        )
+                    if existing.node_id != acknowledgement.node_id
+                        || existing.command_id != Some(acknowledgement.command_id)
+                        || existing.gateway_id != acknowledgement.gateway_id
+                        || existing.revision != acknowledgement.revision
+                        || existing.snapshot_digest != acknowledgement.snapshot_digest
+                        || existing.expires_at != acknowledgement.expires_at
+                        || existing.state != state
+                        || existing.ready != acknowledgement.ready
+                        || existing.message != acknowledgement.message
+                        || existing.acknowledged_at != acknowledgement.acknowledged_at
                     {
                         return Err(RepositoryError::Conflict(
                             "Gateway acknowledgement ID was reused with different content".into(),
@@ -335,7 +348,7 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                     execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into node_gateway_acknowledgements (acknowledgement_id, node_id, command_id, revision, snapshot_digest, state, message, acknowledged_at, received_at) values (",
+                            "insert into node_gateway_acknowledgements (acknowledgement_id, node_id, command_id, gateway_id, revision, snapshot_digest, expires_at, state, ready, message, acknowledged_at, received_at) values (",
                         )
                         .bind(acknowledgement.acknowledgement_id)
                         .append(", ")
@@ -343,11 +356,17 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                         .append(", ")
                         .bind(acknowledgement.command_id)
                         .append(", ")
+                        .bind(acknowledgement.gateway_id)
+                        .append(", ")
                         .bind(acknowledgement.revision)
                         .append(", ")
                         .bind(acknowledgement.snapshot_digest.as_str())
                         .append(", ")
+                        .bind(acknowledgement.expires_at)
+                        .append(", ")
                         .bind(state)
+                        .append(", ")
+                        .bind(acknowledgement.ready)
                         .append(", ")
                         .bind(acknowledgement.message.clone())
                         .append(", ")

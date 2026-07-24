@@ -136,6 +136,16 @@ impl NodeCommandEnvelope {
             return Err("command expiry must follow issue time".into());
         }
         self.payload.validate()?;
+        if let NodeCommandPayload::GatewaySnapshotInstall { snapshot } = &self.payload {
+            if snapshot.gateway_id != self.node_id
+                || snapshot.issued_at != self.issued_at
+                || snapshot.expires_at < self.not_after
+            {
+                return Err(
+                    "Gateway snapshot identity and validity must contain its node command".into(),
+                );
+            }
+        }
         if self.generation != self.payload.generation() {
             return Err("command generation does not match its payload".into());
         }

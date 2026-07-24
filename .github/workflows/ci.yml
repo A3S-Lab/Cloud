@@ -335,6 +335,13 @@ jobs:
           [[ $revision =~ ^[0-9a-f]{40}$ ]]
           echo "revision=$revision" >>"$GITHUB_OUTPUT"
 
+      - name: Read pinned Gateway revision
+        id: gateway_revision
+        run: |
+          revision=$(<tools/gateway-conformance/gateway-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
       - name: Checkout Runtime
         uses: actions/checkout@v4
         with:
@@ -342,23 +349,32 @@ jobs:
           ref: ${{ steps.runtime_revision.outputs.revision }}
           path: crates/runtime
 
+      - name: Checkout Gateway
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Gateway
+          ref: ${{ steps.gateway_revision.outputs.revision }}
+          path: crates/gateway
+
       - name: Install stable Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
 
-      - name: Install A3S Gateway 1.0.12
-        run: cargo install a3s-gateway --version 1.0.12 --locked
+      - name: Build pinned A3S Gateway
+        run: |
+          cargo build --manifest-path ../../crates/gateway/Cargo.toml \
+            --release --locked --bin a3s-gateway
 
       - name: Serve and recover exact Gateway snapshots
         run: |
-          A3S_CLOUD_TEST_GATEWAY_BIN=$(command -v a3s-gateway) \
+          A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \
             cargo test -p a3s-cloud-node-agent --lib --locked \
               gateway::remote_tests::installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload \
               -- --ignored --exact --nocapture --test-threads=1
-          A3S_CLOUD_TEST_GATEWAY_BIN=$(command -v a3s-gateway) \
+          A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \
             cargo test -p a3s-cloud-node-agent --lib --locked \
-              gateway::reload_crash_tests::installed_a3s_gateway_recovers_reload_after_agent_process_death \
+              gateway::reload_crash_tests::installed_a3s_gateway_recovers_native_apply_after_agent_process_death \
               -- --ignored --exact --nocapture --test-threads=1
 
   s3-compatible-logs:

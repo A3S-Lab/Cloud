@@ -26,8 +26,8 @@
 **A3S Cloud** is a self-hosted control plane that stores desired state in
 PostgreSQL and converges it through durable operations. Organizations, projects,
 and environments define the tenancy boundary. Outbound node agents execute
-provider-neutral A3S Runtime commands, apply A3S Gateway configuration, and
-report durable observations to the control plane.
+provider-neutral A3S Runtime commands, apply identity-bound A3S Gateway
+snapshots, and report durable observations to the control plane.
 
 Cloud accepts intent rather than holding an HTTP request open for deployment
 work. A mutation commits desired state and an operation identity, then A3S Flow,
@@ -71,8 +71,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
 - **Managed Reachability**: Verify domain ownership, provision TLS, compile
-  complete Gateway ACL snapshots, and advance only after the matching
-  acknowledgement
+  complete expiring Gateway ACL snapshots, apply them through Gateway's native
+  managed-snapshot protocol, and advance only after exact identity, revision,
+  digest, validity, and readiness are acknowledged
 - **Encrypted Secrets**: Store tenant-scoped immutable Secret versions and
   materialize exact bindings only at authenticated registry or assigned-node
   boundaries
@@ -103,7 +104,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | Planned |
 | `A0` — Release catalog | Immutable Agent and MCP releases plus Skill publication through the common delivery path | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
-| `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | Planned |
+| `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed serving, OpenAI-compatible traffic, scoped keys, Providers, routing, usage, and governed self-service | Planned |
 
 `R0` through `E0` are one cumulative verified baseline: one control plane, one
@@ -122,6 +123,16 @@ adoption, cleanup, and explicit deployment handoff. It remains in progress
 until external private-provider certification and the production
 signed-evidence process-death gate pass.
 
+`H0.2` now has a Gateway-native snapshot foundation. Cloud emits a versioned,
+identity-bound snapshot with an exact ACL digest and independent validity
+window; the node agent uses Gateway's native apply and exact-status APIs; and
+Cloud records an applied acknowledgement only after Gateway reports the same
+identity, revision, digest, expiry, applied metadata, and ready state. Gateway's
+durable managed-state journal is the sole authority for applied snapshot
+recovery. Logical Gateway scopes, generated private targets, renewal,
+mixed-version delivery, replicated rollout thresholds, and joint HA evidence
+remain open, so this foundation does not complete `H0.2` or `H0`.
+
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
 evidence, and the ordered product portfolio.
 
@@ -132,7 +143,8 @@ evidence, and the ordered product portfolio.
 - Rust 1.85 or later
 - PostgreSQL 17 or a compatible supported release
 - Docker for the first Runtime provider and real deployment gates
-- A3S Gateway 1.0.12 or later for routed service operation
+- The A3S Gateway source revision pinned in
+  `tools/gateway-conformance/gateway-revision` for routed service operation
 - Bun and Node.js 22 or later for the web console
 - NATS JetStream only when the NATS event provider is selected
 
@@ -300,12 +312,21 @@ dependency. Gateway never becomes a tenant database, scheduler, production
 rollout controller, production autoscaling authority, or long-term usage
 ledger.
 
-The verified Cloud `E0` flow already compiles a complete ACL snapshot, delivers
-it through an outbound node command, reloads Gateway before acknowledgement,
-and records the exact outer command revision and digest. The coordinated
-`H0.2` gate adds first-class Gateway snapshot identity, expiry, readiness,
-rejection status, logical scopes, private target sets, and multi-generation
-recovery. These are related contracts, not the same completion claim.
+The Cloud-to-Gateway bridge compiles one complete ACL snapshot, binds it to the
+target Gateway identity, revision, expected revision, exact ACL digest, issue
+time, and expiry, and delivers it through an outbound node command. The node
+agent calls Gateway's native snapshot apply endpoint and then queries exact
+readiness. It emits an applied acknowledgement only when Gateway returns the
+same snapshot metadata and `ready` state; rejection, expiry, mismatched status,
+or unavailable readiness cannot advance Cloud state.
+
+Gateway's native journal is the sole source of truth for applied snapshot
+state. The node agent does not maintain a second installed-snapshot CAS file,
+so command redelivery and process restart converge through Gateway's idempotent
+apply and status contract. This is the Gateway-native foundation of `H0.2`;
+logical scopes beyond the current one-node/one-Gateway mapping, private target
+generations, snapshot renewal, mixed-version delivery, replicated readiness,
+and joint HA recovery remain to be implemented and verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or
@@ -342,7 +363,7 @@ node agent
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
 | A3S Runtime | Provider-neutral Task and Service lifecycle |
-| A3S Gateway | HTTPS, routing, health, and atomic ACL application |
+| A3S Gateway | HTTPS, routing, health, native snapshot application, and durable applied-state recovery |
 | A3S ACL | Closed product configuration and validated manifests |
 
 Business modules follow domain, application, infrastructure, and presentation
@@ -367,7 +388,7 @@ credential values do not belong in ACL.
 | `node_control`, `fleet` | Outbound mTLS protocol, leases, and observations |
 | `deployments`, `builds`, `artifacts` | Workload and source-build execution bounds |
 | `registry`, `sources` | OCI publication and GitHub delivery policy |
-| `edge`, `gateway` | Route compilation, certificates, and node-local Gateway reload |
+| `edge`, `gateway` | Route compilation, certificates, snapshot validity, and node-local native Gateway application |
 | `logs` | Durable log object storage, paging, retention, and compaction |
 | `security` | Development or production PKI and encryption providers |
 | `docker` | Node-local Docker and transient Secret materialization policy |

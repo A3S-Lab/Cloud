@@ -1,7 +1,7 @@
 use super::gateway_certificate_reconciler::{
     deterministic_certificate_id, deterministic_command_id, GatewayCertificateReconciler,
 };
-use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig};
+use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata};
 use crate::modules::edge::domain::events::{DomainClaimChanged, RoutePublicationStaged};
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, IEdgeRepository, StageRoutePublication, TransitionDomainClaim,
@@ -235,9 +235,13 @@ impl Fixture {
         let snapshot = self
             .compiler
             .compile(
-                self.node_id,
-                revision,
-                scope.installed_revision,
+                GatewaySnapshotMetadata::new(
+                    self.node_id,
+                    revision,
+                    scope.installed_revision,
+                    now,
+                    now + Duration::minutes(3),
+                ),
                 certificate_id,
                 &complete_routes,
             )
@@ -307,9 +311,12 @@ impl Fixture {
             acknowledgement_id: Uuid::now_v7(),
             command_id: staged.publication.command_id.as_uuid(),
             node_id: self.node_id.as_uuid(),
+            gateway_id: self.node_id.as_uuid(),
             revision,
             snapshot_digest: staged.publication.snapshot_digest,
+            expires_at: staged.publication.snapshot_expires_at,
             state: GatewayAckState::Applied,
+            ready: true,
             message: None,
             acknowledged_at: now + Duration::milliseconds(2),
         };
@@ -341,6 +348,7 @@ fn compiler() -> GatewaySnapshotCompiler {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
     .expect("compiler")
 }
@@ -404,9 +412,12 @@ async fn apply_convergence(
         acknowledgement_id: Uuid::now_v7(),
         command_id: publication.command_id.as_uuid(),
         node_id: publication.node_id.as_uuid(),
+        gateway_id: publication.node_id.as_uuid(),
         revision: publication.revision,
         snapshot_digest: publication.snapshot_digest.clone(),
+        expires_at: publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at,
     };

@@ -730,7 +730,7 @@ records its own revision/digest acknowledgement. H0 defines `minimum_ready` and
 the external load balancer readiness check, the route may serve after the
 configured minimum is ready, and rollout success still requires every desired
 Gateway replica or an explicit degraded terminal result. No global atomic
-Gateway reload is assumed.
+Gateway apply is assumed.
 
 I0.3 requires a Gateway placed outside the serving-node failure domain. Its
 node-loss gate covers a serving node. Gateway process/node loss and mixed

@@ -30,7 +30,7 @@ use super::postgres_tls::{self as tls, insert_certificate};
 use super::{postgres_certificate_convergence, postgres_cutovers};
 
 pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
-pub(super) const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request from gateway_publications";
+pub(super) const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, snapshot_expires_at, acknowledged_at, certificate_request from gateway_publications";
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {
@@ -150,6 +150,7 @@ pub(super) struct PublicationRow {
     failure: Option<String>,
     command_issued_at: DateTime<Utc>,
     command_not_after: DateTime<Utc>,
+    snapshot_expires_at: DateTime<Utc>,
     acknowledged_at: Option<DateTime<Utc>>,
     certificate_request: Option<serde_json::Value>,
 }
@@ -168,8 +169,9 @@ impl FromRow for PublicationRow {
             failure: decode(row, 8)?,
             command_issued_at: decode(row, 9)?,
             command_not_after: decode(row, 10)?,
-            acknowledged_at: decode(row, 11)?,
-            certificate_request: decode(row, 12)?,
+            snapshot_expires_at: decode(row, 11)?,
+            acknowledged_at: decode(row, 12)?,
+            certificate_request: decode(row, 13)?,
         })
     }
 }
@@ -194,6 +196,7 @@ impl PublicationRow {
             failure: self.failure,
             command_issued_at: self.command_issued_at,
             command_not_after: self.command_not_after,
+            snapshot_expires_at: self.snapshot_expires_at,
             acknowledged_at: self.acknowledged_at,
         };
         publication.snapshot().map_err(stored("snapshot"))?;
@@ -578,7 +581,7 @@ pub(super) async fn insert_publication(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, acknowledged_at, certificate_request) values (",
+            "insert into gateway_publications (node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, snapshot_expires_at, acknowledged_at, certificate_request) values (",
         )
         .bind(publication.node_id.as_uuid())
         .append(", ")
@@ -601,6 +604,8 @@ pub(super) async fn insert_publication(
         .bind(publication.command_issued_at)
         .append(", ")
         .bind(publication.command_not_after)
+        .append(", ")
+        .bind(publication.snapshot_expires_at)
         .append(", ")
         .bind(publication.acknowledged_at)
         .append(", ")

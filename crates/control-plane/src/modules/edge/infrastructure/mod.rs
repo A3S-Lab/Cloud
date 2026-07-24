@@ -20,7 +20,9 @@ pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciliationReport,
 };
 pub use gateway_command_queue::FleetGatewayCommandQueue;
-pub use gateway_snapshot_compiler::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig};
+pub use gateway_snapshot_compiler::{
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+};
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use route_target_reader::WorkloadRouteTargetReader;
 pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;

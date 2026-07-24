@@ -353,6 +353,7 @@ pub async fn build_application_with_source_resolver(
         management_auth_token_env: config.edge.management_auth_token_env.clone(),
         upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
         certificate_directory: config.edge.certificate_directory.clone(),
+        managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let gateway_certificate_reconciler = GatewayCertificateReconciler::new(
@@ -789,6 +790,7 @@ fn build_application_with_health(
         management_auth_token_env: config.edge.management_auth_token_env.clone(),
         upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
         certificate_directory: config.edge.certificate_directory.clone(),
+        managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(BootError::Internal)?;
     let publish_route_handler = PublishRouteHandler::new(

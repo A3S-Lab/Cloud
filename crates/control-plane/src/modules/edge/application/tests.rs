@@ -174,6 +174,7 @@ fn compiler() -> GatewaySnapshotCompiler {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
     .expect("compiler")
 }
@@ -674,9 +675,12 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: first.publication.publication.command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: 1,
         snapshot_digest: first.publication.publication.snapshot_digest.clone(),
+        expires_at: first.publication.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
     };

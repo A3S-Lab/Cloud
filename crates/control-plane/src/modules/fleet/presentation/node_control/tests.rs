@@ -330,8 +330,17 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     assert_eq!(replayed_observation.accepted_reports, 0);
     assert_eq!(replayed_observation.replayed_reports, 1);
 
-    let snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("Gateway snapshot");
+    let gateway_issued_at = Utc::now();
+    let gateway_not_after = gateway_issued_at + Duration::minutes(1);
+    let snapshot = GatewaySnapshot::new(
+        node_id,
+        1,
+        None,
+        gateway_issued_at,
+        gateway_not_after,
+        "management { enabled = true }\n",
+    )
+    .expect("Gateway snapshot");
     let gateway_command = nodes
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: NodeCommandId::new(),
@@ -340,8 +349,8 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
             payload: NodeCommandPayload::GatewaySnapshotInstall {
                 snapshot: Box::new(snapshot.clone()),
             },
-            issued_at: Utc::now(),
-            not_after: Utc::now() + Duration::minutes(1),
+            issued_at: gateway_issued_at,
+            not_after: gateway_not_after,
             correlation_id: Uuid::now_v7(),
         })
         .await
@@ -352,9 +361,12 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: gateway_command.id.as_uuid(),
         node_id,
+        gateway_id: node_id,
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: Utc::now(),
     };
