@@ -11,7 +11,7 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
     GatewayPublicationState, GatewayRouteCutover, GatewayScopeState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotentWrite,
@@ -29,7 +29,7 @@ use uuid::Uuid;
 use super::postgres_tls::{self as tls, insert_certificate};
 use super::{postgres_certificate_convergence, postgres_cutovers};
 
-pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
+pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
 pub(super) const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, snapshot_expires_at, acknowledged_at, certificate_request from gateway_publications";
 
 #[derive(Clone)]
@@ -53,8 +53,11 @@ pub(super) struct RouteRow {
     path_prefix: String,
     workload_id: Uuid,
     workload_revision_id: Uuid,
+    runtime_unit_id: String,
+    runtime_generation: u64,
     port_name: String,
     upstream_origin: String,
+    target_observed_at: DateTime<Utc>,
     state: String,
     gateway_revision: u64,
     gateway_command_id: Uuid,
@@ -81,26 +84,40 @@ impl FromRow for RouteRow {
             path_prefix: decode(row, 6)?,
             workload_id: decode(row, 7)?,
             workload_revision_id: decode(row, 8)?,
-            port_name: decode(row, 9)?,
-            upstream_origin: decode(row, 10)?,
-            state: decode(row, 11)?,
-            gateway_revision: decode(row, 12)?,
-            gateway_command_id: decode(row, 13)?,
-            snapshot_digest: decode(row, 14)?,
-            failure: decode(row, 15)?,
-            aggregate_version: decode(row, 16)?,
-            created_at: decode(row, 17)?,
-            updated_at: decode(row, 18)?,
-            activated_at: decode(row, 19)?,
-            domain_claim_id: decode(row, 20)?,
-            domain_pattern: decode(row, 21)?,
-            gateway_certificate_id: decode(row, 22)?,
+            runtime_unit_id: decode(row, 9)?,
+            runtime_generation: decode(row, 10)?,
+            port_name: decode(row, 11)?,
+            upstream_origin: decode(row, 12)?,
+            target_observed_at: decode(row, 13)?,
+            state: decode(row, 14)?,
+            gateway_revision: decode(row, 15)?,
+            gateway_command_id: decode(row, 16)?,
+            snapshot_digest: decode(row, 17)?,
+            failure: decode(row, 18)?,
+            aggregate_version: decode(row, 19)?,
+            created_at: decode(row, 20)?,
+            updated_at: decode(row, 21)?,
+            activated_at: decode(row, 22)?,
+            domain_claim_id: decode(row, 23)?,
+            domain_pattern: decode(row, 24)?,
+            gateway_certificate_id: decode(row, 25)?,
         })
     }
 }
 
 impl RouteRow {
     pub(super) fn route(self) -> Result<Route, RepositoryError> {
+        let workload_id = WorkloadId::from_uuid(self.workload_id);
+        let target = RouteTarget::new(
+            workload_id,
+            WorkloadRevisionId::from_uuid(self.workload_revision_id),
+            self.runtime_unit_id,
+            self.runtime_generation,
+            RoutePortName::parse(self.port_name).map_err(stored("port name"))?,
+            UpstreamEndpoint::parse(self.upstream_origin).map_err(stored("upstream endpoint"))?,
+            self.target_observed_at,
+        )
+        .map_err(stored("target"))?;
         let route = Route {
             id: RouteId::from_uuid(self.id),
             organization_id: OrganizationId::from_uuid(self.organization_id),
@@ -118,11 +135,8 @@ impl RouteRow {
             gateway_certificate_id: self
                 .gateway_certificate_id
                 .map(GatewayCertificateId::from_uuid),
-            workload_id: WorkloadId::from_uuid(self.workload_id),
-            workload_revision_id: WorkloadRevisionId::from_uuid(self.workload_revision_id),
-            port_name: RoutePortName::parse(self.port_name).map_err(stored("port name"))?,
-            upstream: UpstreamEndpoint::parse(self.upstream_origin)
-                .map_err(stored("upstream endpoint"))?,
+            workload_id,
+            target,
             state: RouteState::parse(&self.state).map_err(stored("state"))?,
             gateway_revision: Some(self.gateway_revision),
             gateway_command_id: Some(NodeCommandId::from_uuid(self.gateway_command_id)),
@@ -630,7 +644,7 @@ async fn insert_route(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, port_name, upstream_origin, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id) values (",
+            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id) values (",
         )
         .bind(route.id.as_uuid())
         .append(", ")
@@ -648,11 +662,17 @@ async fn insert_route(
         .append(", ")
         .bind(route.workload_id.as_uuid())
         .append(", ")
-        .bind(route.workload_revision_id.as_uuid())
+        .bind(route.target.workload_revision_id.as_uuid())
         .append(", ")
-        .bind(route.port_name.as_str())
+        .bind(route.target.runtime_unit_id.as_str())
         .append(", ")
-        .bind(route.upstream.as_str())
+        .bind(route.target.runtime_generation)
+        .append(", ")
+        .bind(route.target.port_name.as_str())
+        .append(", ")
+        .bind(route.target.upstream.as_str())
+        .append(", ")
+        .bind(route.target.observed_at)
         .append(", ")
         .bind(route.state.as_str())
         .append(", ")
@@ -756,6 +776,9 @@ fn validate_stored_route(route: &Route) -> Result<(), RepositoryError> {
             "stored route state is inconsistent".into(),
         ));
     }
+    route
+        .validate_target_binding()
+        .map_err(stored("target binding"))?;
     Ok(())
 }
 

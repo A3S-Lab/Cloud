@@ -11,11 +11,11 @@ use crate::modules::edge::domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayCommandDispatch,
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
-    IRouteTargetReader, RouteTarget,
+    IRouteTargetReader, ResolvedRouteTarget,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
-    GatewayCertificateMaterial, GatewayPublication, RoutePortName, UpstreamEndpoint,
+    GatewayCertificateMaterial, GatewayPublication, RoutePortName, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::infrastructure::{
@@ -38,7 +38,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct FixedTargetReader {
-    target: RouteTarget,
+    target: ResolvedRouteTarget,
 }
 
 #[async_trait]
@@ -51,8 +51,8 @@ impl IRouteTargetReader for FixedTargetReader {
         revision_id: WorkloadRevisionId,
         _port_name: &RoutePortName,
         _now: chrono::DateTime<Utc>,
-    ) -> Result<RouteTarget, RepositoryError> {
-        if revision_id != self.target.workload_revision_id {
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
+        if revision_id != self.target.target.workload_revision_id {
             return Err(RepositoryError::NotFound);
         }
         Ok(self.target.clone())
@@ -71,7 +71,7 @@ impl IRouteTargetReader for UnavailableTargetReader {
         _revision_id: WorkloadRevisionId,
         _port_name: &RoutePortName,
         _now: chrono::DateTime<Utc>,
-    ) -> Result<RouteTarget, RepositoryError> {
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
         Err(RepositoryError::Conflict(
             "current target evidence is no longer available".into(),
         ))
@@ -209,6 +209,27 @@ fn command(
     }
 }
 
+fn fixed_target(
+    workload_id: WorkloadId,
+    revision_id: WorkloadRevisionId,
+    node_id: NodeId,
+) -> ResolvedRouteTarget {
+    ResolvedRouteTarget {
+        workload_id,
+        node_id,
+        target: RouteTarget::new(
+            workload_id,
+            revision_id,
+            format!("workload:{workload_id}:revision:{revision_id}"),
+            1,
+            RoutePortName::parse("http").expect("port name"),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            Utc::now() - Duration::days(1),
+        )
+        .expect("route target"),
+    }
+}
+
 async fn verified_claim(
     edge: &Arc<InMemoryEdgeRepository>,
     organization_id: OrganizationId,
@@ -309,15 +330,11 @@ async fn stage_certificate(
         now,
     )
     .await;
+    let workload_id = WorkloadId::new();
     PublishRouteHandler::new(
         routes,
         Arc::new(FixedTargetReader {
-            target: RouteTarget {
-                workload_id: WorkloadId::new(),
-                workload_revision_id: revision_id,
-                node_id,
-                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
-            },
+            target: fixed_target(workload_id, revision_id, node_id),
         }),
         Arc::new(RecordingGatewayQueue::default()),
         compiler(),
@@ -531,17 +548,13 @@ async fn publishes_one_exact_command_and_replays_the_same_route_intent() {
     let environment_id = EnvironmentId::new();
     let revision_id = WorkloadRevisionId::new();
     let node_id = NodeId::new();
+    let workload_id = WorkloadId::new();
     let routes = Arc::new(InMemoryEdgeRepository::new());
     let queue = Arc::new(RecordingGatewayQueue::default());
     let handler = PublishRouteHandler::new(
         routes.clone(),
         Arc::new(FixedTargetReader {
-            target: RouteTarget {
-                workload_id: WorkloadId::new(),
-                workload_revision_id: revision_id,
-                node_id,
-                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
-            },
+            target: fixed_target(workload_id, revision_id, node_id),
         }),
         queue.clone(),
         compiler(),
@@ -620,17 +633,13 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
     let environment_id = EnvironmentId::new();
     let revision_id = WorkloadRevisionId::new();
     let node_id = NodeId::new();
+    let workload_id = WorkloadId::new();
     let routes = Arc::new(InMemoryEdgeRepository::new());
     let queue = Arc::new(RecordingGatewayQueue::default());
     let handler = PublishRouteHandler::new(
         routes.clone(),
         Arc::new(FixedTargetReader {
-            target: RouteTarget {
-                workload_id: WorkloadId::new(),
-                workload_revision_id: revision_id,
-                node_id,
-                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
-            },
+            target: fixed_target(workload_id, revision_id, node_id),
         }),
         queue,
         compiler(),

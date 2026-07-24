@@ -6,7 +6,7 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{
     DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
     GatewayRouteCutover, GatewayRouteCutoverState, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, UpstreamEndpoint,
+    RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
@@ -52,6 +52,8 @@ fn staged(
         Some(certificate_request.clone()),
     )
     .expect("snapshot");
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
     let mut route = Route::create(
         RouteId::new(),
         OrganizationId::new(),
@@ -63,10 +65,17 @@ fn staged(
         domain_claim_id,
         DomainNamePattern::parse(hostname).expect("domain pattern"),
         certificate_id,
-        WorkloadId::new(),
-        WorkloadRevisionId::new(),
-        RoutePortName::parse("http").expect("port"),
-        UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("endpoint"),
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").expect("port"),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("endpoint"),
+            now,
+        )
+        .expect("target"),
         now,
     )
     .expect("route");
@@ -206,16 +215,25 @@ fn staged_cutover(
         Some(certificate_request.clone()),
     )
     .expect("snapshot");
+    let candidate_generation = first.target.runtime_generation + 1;
     let mut candidates = active_routes
         .iter()
         .map(|route| {
+            let target = RouteTarget::new(
+                route.workload_id,
+                candidate_revision_id,
+                format!(
+                    "workload:{}:revision:{candidate_revision_id}",
+                    route.workload_id
+                ),
+                candidate_generation,
+                route.target.port_name.clone(),
+                UpstreamEndpoint::parse("http://127.0.0.1:49153").expect("candidate endpoint"),
+                now,
+            )
+            .expect("candidate target");
             route
-                .prepare_cutover(
-                    candidate_revision_id,
-                    UpstreamEndpoint::parse("http://127.0.0.1:49153").expect("candidate endpoint"),
-                    certificate_id,
-                    now,
-                )
+                .prepare_cutover(target, certificate_id, now)
                 .expect("prepare cutover")
         })
         .collect::<Vec<_>>();
@@ -260,8 +278,10 @@ fn staged_cutover(
         deployment_id,
         first.organization_id,
         first.workload_id,
-        first.workload_revision_id,
+        first.target.workload_revision_id,
         candidate_revision_id,
+        first.target.runtime_generation,
+        candidate_generation,
         node_id,
         gateway_revision,
         command_id,
@@ -526,8 +546,9 @@ async fn route_cutover_preserves_the_active_target_until_exact_applied_acknowled
         .find_route(first.route.organization_id, first.route.id)
         .await
         .expect("active route");
-    let previous_revision_id = active.workload_revision_id;
-    let previous_upstream = active.upstream.clone();
+    let previous_revision_id = active.target.workload_revision_id;
+    let previous_generation = active.target.runtime_generation;
+    let previous_upstream = active.target.upstream.clone();
     let candidate_revision_id = WorkloadRevisionId::new();
     let cutover = repository
         .stage_gateway_route_cutover(staged_cutover(
@@ -546,8 +567,12 @@ async fn route_cutover_preserves_the_active_target_until_exact_applied_acknowled
         .find_route(first.route.organization_id, first.route.id)
         .await
         .expect("pending serving route");
-    assert_eq!(pending_route.workload_revision_id, previous_revision_id);
-    assert_eq!(pending_route.upstream, previous_upstream);
+    assert_eq!(
+        pending_route.target.workload_revision_id,
+        previous_revision_id
+    );
+    assert_eq!(pending_route.target.runtime_generation, previous_generation);
+    assert_eq!(pending_route.target.upstream, previous_upstream);
     assert_eq!(
         repository
             .find_gateway_route_cutover(
@@ -586,8 +611,12 @@ async fn route_cutover_preserves_the_active_target_until_exact_applied_acknowled
         .find_route(first.route.organization_id, first.route.id)
         .await
         .expect("updated route");
-    assert_eq!(updated.workload_revision_id, candidate_revision_id);
-    assert_eq!(updated.upstream.as_str(), "http://127.0.0.1:49153/");
+    assert_eq!(updated.target.workload_revision_id, candidate_revision_id);
+    assert_eq!(
+        updated.target.runtime_generation,
+        cutover.cutover.candidate_generation
+    );
+    assert_eq!(updated.target.upstream.as_str(), "http://127.0.0.1:49153/");
     assert_eq!(updated.gateway_revision, Some(2));
     assert_eq!(
         repository
@@ -636,6 +665,7 @@ async fn rejected_route_cutover_keeps_the_previous_route_authoritative() {
         .find_route(first.route.organization_id, first.route.id)
         .await
         .expect("active route");
+    let previous_generation = active.target.runtime_generation;
     let cutover = repository
         .stage_gateway_route_cutover(staged_cutover(
             std::slice::from_ref(&active),
@@ -664,16 +694,26 @@ async fn rejected_route_cutover_keeps_the_previous_route_authoritative() {
             .expect("serving route"),
         active
     );
+    let rejected_cutover = repository
+        .find_gateway_route_cutover(
+            cutover.cutover.organization_id,
+            cutover.cutover.deployment_id,
+        )
+        .await
+        .expect("cutover query")
+        .expect("cutover");
     assert_eq!(
         repository
-            .find_gateway_route_cutover(
-                cutover.cutover.organization_id,
-                cutover.cutover.deployment_id,
-            )
+            .find_route(first.route.organization_id, first.route.id)
             .await
-            .expect("cutover query")
-            .expect("cutover")
-            .state,
-        GatewayRouteCutoverState::Rejected
+            .expect("serving route")
+            .target
+            .runtime_generation,
+        previous_generation
     );
+    assert_eq!(
+        rejected_cutover.routes[0].target.runtime_generation,
+        cutover.cutover.candidate_generation
+    );
+    assert_eq!(rejected_cutover.state, GatewayRouteCutoverState::Rejected);
 }

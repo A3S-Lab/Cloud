@@ -345,8 +345,9 @@ Complete the first user-visible release loop.
 
 - Implemented: Edge route and Gateway publication records, hostname/path
   ownership, versioned complete snapshot generation, and closed route APIs.
-- Implemented: healthy immutable target resolution from typed Runtime endpoint
-  evidence, Fleet command dispatch, stable correlation across retries, and
+- Implemented: healthy immutable target resolution from the exact deployment
+  command's typed Runtime endpoint evidence, durable revision/unit/generation
+  binding, Fleet command dispatch, stable correlation across retries, and
   exact-revision acknowledgement projection.
 - Implemented: node-local A3S Gateway native snapshot application,
   identity/revision/digest/expiry/readiness verification, durable
@@ -488,9 +489,12 @@ Complete the first user-visible release loop.
   `verifying`, and health must converge before any routed cutover is staged.
 - Implemented: routed updates preserve the old route rows and active revision
   through unhealthy candidates, mismatched acknowledgements, and rejected
-  reloads. Only the exact node, command, Gateway revision, and snapshot digest
-  acknowledgement atomically replaces route targets. The candidate then enters
-  `retiring`; a deterministic stop command targets the previous Runtime
+  reloads. A candidate must use a different immutable revision, a strictly
+  newer Runtime generation, its deterministic Runtime unit, the unchanged
+  declared port, and the exact deployment command's healthy observation. Only
+  the exact node, command, Gateway revision, and snapshot digest
+  acknowledgement atomically replaces every target field. The candidate then
+  enters `retiring`; a deterministic stop command targets the previous Runtime
   revision, and durable stopped-or-absent evidence completes the operation.
   Reconciliation adopts staged cutovers and retirement commands after
   coordinator recovery.
@@ -1241,6 +1245,18 @@ reconciliation, process death, and provider recovery.
 | `H0.4` | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
 | `H0.5` | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
+The current `H0.2` slice implements cardinality-one private target projection
+for the existing one-node/one-Gateway mapping. A route persists its immutable
+revision, deterministic Runtime unit, positive generation, port, canonical
+node-local origin, and command-bound observation time. The complete snapshot
+digest binds revision, unit, and generation; rejected acknowledgement retains
+the old target; exact applied acknowledgement atomically selects the newer
+generation. Migration 035 backfills legacy projections and PostgreSQL enforces
+the identity and generation constraints. Unit, recreated-PostgreSQL, migration,
+and real-Gateway certificate/target replacement and restart fixtures cover this
+slice. Logical Gateway scopes, mixed-version delivery, replicated rollout
+thresholds, and production HA remain open, so `H0.2` is not complete.
+
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
 job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the
 OpenTelemetry Collector remain replaceable dependencies with explicit health
@@ -1510,6 +1526,20 @@ record is:
     proves digest-pinned A, acknowledged TLS, ordered and resumable logs, B,
     cloned-A rollback, durable stop, source cleanliness, exact host-inventory
     restoration, and an empty generated-credential scan.
+11. Updated on 2026-07-24: Edge routes and cutovers persist the exact immutable
+    workload revision, deterministic Runtime unit, positive generation,
+    declared port, node-local origin, and command-bound observation. Snapshot
+    digests bind the revision/unit/generation tuple even when the origin is
+    reused. Equal or stale generations and observations from another Runtime
+    command fail closed; rejected acknowledgement preserves the previous
+    target, while exact applied acknowledgement replaces every target field in
+    one transaction. Migration 035 backfills legacy route and cutover
+    projections and adds PostgreSQL identity, generation-order, observation,
+    and composite revision-generation constraints. Recreated repositories
+    retain the exact target, and the pinned real-Gateway fixture rotates
+    independently signed certificates and target origins, rejects the
+    superseded CA and selector, removes old certificate material, and recovers
+    only the replacement after restart.
 
 E0 is verified. Post-E0 product surfaces may now land only through their owning
 milestone gates; they cannot create tables, routes, providers, or user-visible

@@ -1,5 +1,5 @@
-use crate::modules::edge::domain::services::{IRouteTargetReader, RouteTarget};
-use crate::modules::edge::domain::{RoutePortName, UpstreamEndpoint};
+use crate::modules::edge::domain::services::{IRouteTargetReader, ResolvedRouteTarget};
+use crate::modules::edge::domain::{RoutePortName, RouteTarget, UpstreamEndpoint};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, RepositoryError, WorkloadRevisionId,
@@ -45,7 +45,7 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
         revision_id: WorkloadRevisionId,
         port_name: &RoutePortName,
         now: DateTime<Utc>,
-    ) -> Result<RouteTarget, RepositoryError> {
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
         let revision = self
             .workloads
             .find_revision(organization_id, revision_id)
@@ -93,6 +93,9 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
         let node_id = deployment.node_id.ok_or_else(|| {
             RepositoryError::Storage("active deployment has no node identity".into())
         })?;
+        let runtime_command_id = deployment.command_id.ok_or_else(|| {
+            RepositoryError::Storage("active deployment has no Runtime command identity".into())
+        })?;
         let observation = self
             .observations
             .latest_runtime_observation(node_id, &revision.runtime_unit_id(), revision.generation)
@@ -100,6 +103,11 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
             .ok_or_else(|| {
                 RepositoryError::Conflict("route target has no current Runtime observation".into())
             })?;
+        if observation.command_id != Some(runtime_command_id) {
+            return Err(RepositoryError::Conflict(
+                "route target Runtime observation belongs to another command".into(),
+            ));
+        }
         if observation.received_at > now || now - observation.received_at > self.observation_max_age
         {
             return Err(RepositoryError::Conflict(
@@ -115,12 +123,20 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
         let endpoint =
             RuntimeServiceEndpoint::from_observation(&observation.observation, port_name.as_str())
                 .map_err(RepositoryError::Conflict)?;
-        Ok(RouteTarget {
+        let target = RouteTarget::new(
+            workload.id,
+            revision.id,
+            spec.unit_id,
+            spec.generation,
+            port_name.clone(),
+            UpstreamEndpoint::parse(endpoint.origin).map_err(RepositoryError::Conflict)?,
+            observation.received_at,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        Ok(ResolvedRouteTarget {
             workload_id: workload.id,
-            workload_revision_id: revision.id,
             node_id,
-            upstream: UpstreamEndpoint::parse(endpoint.origin)
-                .map_err(RepositoryError::Conflict)?,
+            target,
         })
     }
 }

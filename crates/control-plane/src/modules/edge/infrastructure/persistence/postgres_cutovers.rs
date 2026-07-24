@@ -23,7 +23,7 @@ use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-const SELECT_CUTOVERS: &str = "select deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at from gateway_route_cutovers";
+const SELECT_CUTOVERS: &str = "select deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, previous_generation, candidate_generation, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at from gateway_route_cutovers";
 
 struct CutoverRow {
     deployment_id: Uuid,
@@ -31,6 +31,8 @@ struct CutoverRow {
     workload_id: Uuid,
     previous_revision_id: Uuid,
     candidate_revision_id: Uuid,
+    previous_generation: u64,
+    candidate_generation: u64,
     node_id: Uuid,
     gateway_revision: u64,
     gateway_command_id: Uuid,
@@ -52,17 +54,19 @@ impl FromRow for CutoverRow {
             workload_id: decode(row, 2)?,
             previous_revision_id: decode(row, 3)?,
             candidate_revision_id: decode(row, 4)?,
-            node_id: decode(row, 5)?,
-            gateway_revision: decode(row, 6)?,
-            gateway_command_id: decode(row, 7)?,
-            gateway_certificate_id: decode(row, 8)?,
-            snapshot_digest: decode(row, 9)?,
-            snapshot_expires_at: decode(row, 10)?,
-            routes: decode(row, 11)?,
-            state: decode(row, 12)?,
-            failure: decode(row, 13)?,
-            staged_at: decode(row, 14)?,
-            acknowledged_at: decode(row, 15)?,
+            previous_generation: decode(row, 5)?,
+            candidate_generation: decode(row, 6)?,
+            node_id: decode(row, 7)?,
+            gateway_revision: decode(row, 8)?,
+            gateway_command_id: decode(row, 9)?,
+            gateway_certificate_id: decode(row, 10)?,
+            snapshot_digest: decode(row, 11)?,
+            snapshot_expires_at: decode(row, 12)?,
+            routes: decode(row, 13)?,
+            state: decode(row, 14)?,
+            failure: decode(row, 15)?,
+            staged_at: decode(row, 16)?,
+            acknowledged_at: decode(row, 17)?,
         })
     }
 }
@@ -75,6 +79,8 @@ impl CutoverRow {
             workload_id: WorkloadId::from_uuid(self.workload_id),
             previous_revision_id: WorkloadRevisionId::from_uuid(self.previous_revision_id),
             candidate_revision_id: WorkloadRevisionId::from_uuid(self.candidate_revision_id),
+            previous_generation: self.previous_generation,
+            candidate_generation: self.candidate_generation,
             node_id: NodeId::from_uuid(self.node_id),
             gateway_revision: self.gateway_revision,
             gateway_command_id: NodeCommandId::from_uuid(self.gateway_command_id),
@@ -203,8 +209,6 @@ pub(super) async fn stage(
                         .bind(bundle.cutover.organization_id.as_uuid())
                         .append(" and workload_id = ")
                         .bind(bundle.cutover.workload_id.as_uuid())
-                        .append(" and workload_revision_id = ")
-                        .bind(bundle.cutover.previous_revision_id.as_uuid())
                         .append(" and state = 'active' order by id for update"),
                 )
                 .await?;
@@ -341,9 +345,17 @@ pub(super) async fn persist_acknowledgement(
                 execute(
                     transaction,
                     sql_query::<()>("update routes set workload_revision_id = ")
-                        .bind(candidate.workload_revision_id.as_uuid())
+                        .bind(candidate.target.workload_revision_id.as_uuid())
+                        .append(", runtime_unit_id = ")
+                        .bind(candidate.target.runtime_unit_id.as_str())
+                        .append(", runtime_generation = ")
+                        .bind(candidate.target.runtime_generation)
+                        .append(", port_name = ")
+                        .bind(candidate.target.port_name.as_str())
                         .append(", upstream_origin = ")
-                        .bind(candidate.upstream.as_str())
+                        .bind(candidate.target.upstream.as_str())
+                        .append(", target_observed_at = ")
+                        .bind(candidate.target.observed_at)
                         .append(", state = ")
                         .bind(candidate.state.as_str())
                         .append(", gateway_revision = ")
@@ -402,7 +414,7 @@ async fn insert_cutover(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into gateway_route_cutovers (deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at) values (",
+            "insert into gateway_route_cutovers (deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, previous_generation, candidate_generation, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at) values (",
         )
         .bind(cutover.deployment_id.as_uuid())
         .append(", ")
@@ -413,6 +425,10 @@ async fn insert_cutover(
         .bind(cutover.previous_revision_id.as_uuid())
         .append(", ")
         .bind(cutover.candidate_revision_id.as_uuid())
+        .append(", ")
+        .bind(cutover.previous_generation)
+        .append(", ")
+        .bind(cutover.candidate_generation)
         .append(", ")
         .bind(cutover.node_id.as_uuid())
         .append(", ")
@@ -478,10 +494,12 @@ fn validate_pending_routes(
             .ok_or(RepositoryError::NotFound)?;
         if !same_route_ownership(route, candidate)
             || route.state != RouteState::Active
-            || route.workload_revision_id != cutover.previous_revision_id
+            || route.target.workload_revision_id != cutover.previous_revision_id
+            || route.target.runtime_generation != cutover.previous_generation
             || route.gateway_node_id != cutover.node_id
             || candidate.state != RouteState::Publishing
-            || candidate.workload_revision_id != cutover.candidate_revision_id
+            || candidate.target.workload_revision_id != cutover.candidate_revision_id
+            || candidate.target.runtime_generation != cutover.candidate_generation
             || candidate.gateway_certificate_id == route.gateway_certificate_id
             || candidate.aggregate_version != route.aggregate_version.saturating_add(1)
             || candidate.updated_at < route.updated_at
@@ -501,9 +519,11 @@ fn validate_applied_route(
 ) -> Result<(), RepositoryError> {
     if !same_route_ownership(current, candidate)
         || current.state != RouteState::Active
-        || current.workload_revision_id != cutover.previous_revision_id
+        || current.target.workload_revision_id != cutover.previous_revision_id
+        || current.target.runtime_generation != cutover.previous_generation
         || candidate.state != RouteState::Active
-        || candidate.workload_revision_id != cutover.candidate_revision_id
+        || candidate.target.workload_revision_id != cutover.candidate_revision_id
+        || candidate.target.runtime_generation != cutover.candidate_generation
         || candidate.aggregate_version != current.aggregate_version.saturating_add(2)
         || candidate.updated_at < current.updated_at
     {
@@ -525,7 +545,7 @@ fn same_route_ownership(current: &Route, candidate: &Route) -> bool {
         && current.domain_claim_id == candidate.domain_claim_id
         && current.domain_pattern == candidate.domain_pattern
         && current.workload_id == candidate.workload_id
-        && current.port_name == candidate.port_name
+        && current.target.port_name == candidate.target.port_name
         && current.created_at == candidate.created_at
 }
 

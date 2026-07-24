@@ -1,4 +1,4 @@
-use crate::modules::edge::domain::{RoutePortName, UpstreamEndpoint};
+use crate::modules::edge::domain::{RoutePortName, RouteTarget};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
     WorkloadRevisionId,
@@ -7,11 +7,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RouteTarget {
+pub struct ResolvedRouteTarget {
     pub workload_id: WorkloadId,
-    pub workload_revision_id: WorkloadRevisionId,
     pub node_id: NodeId,
-    pub upstream: UpstreamEndpoint,
+    pub target: RouteTarget,
 }
 
 #[async_trait]
@@ -25,5 +24,5 @@ pub trait IRouteTargetReader: Send + Sync {
         revision_id: WorkloadRevisionId,
         port_name: &RoutePortName,
         now: DateTime<Utc>,
-    ) -> Result<RouteTarget, RepositoryError>;
+    ) -> Result<ResolvedRouteTarget, RepositoryError>;
 }

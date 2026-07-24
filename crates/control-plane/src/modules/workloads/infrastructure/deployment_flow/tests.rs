@@ -2,7 +2,7 @@ use super::{DeploymentFlowConfig, DeploymentFlowRuntime};
 use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
 use crate::modules::edge::domain::{
     DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
-    GatewayRouteCutover, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+    GatewayRouteCutover, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
     UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::{
@@ -10,7 +10,7 @@ use crate::modules::edge::infrastructure::{
     GatewaySnapshotCompilerConfig,
 };
 use crate::modules::edge::InMemoryEdgeRepository;
-use crate::modules::fleet::domain::entities::EnrollmentToken;
+use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
 };
@@ -35,12 +35,14 @@ use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository, RequestWorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
+    DeploymentRouteStage, DeploymentRouteUpdateRequest, IDeploymentRouteUpdater,
     IOciArtifactResolver, OciArtifactResolutionError,
 };
 use crate::modules::workloads::infrastructure::{project_runtime_spec, InMemoryWorkloadRepository};
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, GatewayAckState, NodeCommandLeaseRequest, NodeGatewayAck, NodeHeartbeat,
-    NodeObservationBatch, RuntimeObservationReport, RuntimeServiceEndpoint,
+    DomainEventEnvelope, GatewayAckState, NodeCommandLeaseRequest, NodeCommandPayload,
+    NodeGatewayAck, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    RuntimeServiceEndpoint,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, InMemoryEventStore,

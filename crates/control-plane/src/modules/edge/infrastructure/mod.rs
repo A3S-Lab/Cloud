@@ -11,6 +11,8 @@ mod vault_gateway_certificate_authority;
 
 #[cfg(test)]
 mod gateway_certificate_reconciler_tests;
+#[cfg(test)]
+mod gateway_snapshot_compiler_tests;
 
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};

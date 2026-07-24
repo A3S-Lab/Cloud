@@ -55,6 +55,15 @@ pub(super) async fn publish_active_route(
     let certificate_id = GatewayCertificateId::new();
     let command_id = NodeCommandId::new();
     let correlation_id = Uuid::now_v7();
+    let target = RouteTarget::new(
+        workload.id,
+        revision_id,
+        format!("workload:{}:revision:{revision_id}", workload.id),
+        1,
+        RoutePortName::parse("http")?,
+        UpstreamEndpoint::parse("http://127.0.0.1:49151")?,
+        staged_at,
+    )?;
     let mut route = Route::create(
         route_id,
         workload.organization_id,
@@ -67,9 +76,7 @@ pub(super) async fn publish_active_route(
         DomainNamePattern::parse("update.example.com")?,
         certificate_id,
         workload.id,
-        revision_id,
-        RoutePortName::parse("http")?,
-        UpstreamEndpoint::parse("http://127.0.0.1:49151")?,
+        target,
         staged_at,
     )?;
     let snapshot = compiler.compile(

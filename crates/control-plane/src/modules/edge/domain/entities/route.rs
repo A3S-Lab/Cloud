@@ -1,9 +1,7 @@
-use crate::modules::edge::domain::{
-    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
-};
+use crate::modules::edge::domain::{DomainNamePattern, RouteHostname, RoutePath, RouteTarget};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    OrganizationId, ProjectId, RouteId, WorkloadId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use chrono::{DateTime, Utc};
@@ -52,9 +50,8 @@ pub struct Route {
     pub domain_pattern: Option<DomainNamePattern>,
     pub gateway_certificate_id: Option<GatewayCertificateId>,
     pub workload_id: WorkloadId,
-    pub workload_revision_id: WorkloadRevisionId,
-    pub port_name: RoutePortName,
-    pub upstream: UpstreamEndpoint,
+    #[serde(flatten)]
+    pub target: RouteTarget,
     pub state: RouteState,
     pub gateway_revision: Option<u64>,
     pub gateway_command_id: Option<NodeCommandId>,
@@ -80,15 +77,17 @@ impl Route {
         domain_pattern: DomainNamePattern,
         gateway_certificate_id: GatewayCertificateId,
         workload_id: WorkloadId,
-        workload_revision_id: WorkloadRevisionId,
-        port_name: RoutePortName,
-        upstream: UpstreamEndpoint,
+        target: RouteTarget,
         created_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         if !domain_pattern.covers(&hostname) {
             return Err("domain claim pattern does not cover the route hostname".into());
         }
         let created_at = canonical_timestamp(created_at);
+        target.validate_for(workload_id)?;
+        if target.observed_at > created_at {
+            return Err("route target observation is newer than route creation".into());
+        }
         Ok(Self {
             id,
             organization_id,
@@ -101,9 +100,7 @@ impl Route {
             domain_pattern: Some(domain_pattern),
             gateway_certificate_id: Some(gateway_certificate_id),
             workload_id,
-            workload_revision_id,
-            port_name,
-            upstream,
+            target,
             state: RouteState::Pending,
             gateway_revision: None,
             gateway_command_id: None,
@@ -149,8 +146,7 @@ impl Route {
 
     pub fn prepare_cutover(
         &self,
-        workload_revision_id: WorkloadRevisionId,
-        upstream: UpstreamEndpoint,
+        target: RouteTarget,
         gateway_certificate_id: GatewayCertificateId,
         prepared_at: DateTime<Utc>,
     ) -> Result<Self, String> {
@@ -164,14 +160,21 @@ impl Route {
         {
             return Err("only an active route can prepare a target cutover".into());
         }
-        if workload_revision_id == self.workload_revision_id {
-            return Err("route cutover must select a different immutable revision".into());
+        target.validate_for(self.workload_id)?;
+        if target.workload_revision_id == self.target.workload_revision_id
+            || target.runtime_generation <= self.target.runtime_generation
+            || target.port_name != self.target.port_name
+            || target.observed_at > prepared_at
+        {
+            return Err(
+                "route cutover must select a newer generation of a different immutable revision"
+                    .into(),
+            );
         }
         self.ensure_time(prepared_at)?;
 
         let mut candidate = self.clone();
-        candidate.workload_revision_id = workload_revision_id;
-        candidate.upstream = upstream;
+        candidate.target = target;
         candidate.state = RouteState::Pending;
         candidate.gateway_revision = None;
         candidate.gateway_command_id = None;
@@ -181,6 +184,14 @@ impl Route {
         candidate.updated_at = prepared_at;
         candidate.activated_at = None;
         Ok(candidate)
+    }
+
+    pub fn validate_target_binding(&self) -> Result<(), String> {
+        self.target.validate_for(self.workload_id)?;
+        if self.target.observed_at > self.updated_at {
+            return Err("route target observation is newer than the route projection".into());
+        }
+        Ok(())
     }
 
     pub fn apply_gateway_acknowledgement(

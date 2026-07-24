@@ -13,7 +13,7 @@ use crate::modules::edge::domain::services::{
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
     GatewayCertificateState, GatewayPublication, GatewayPublicationState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::shared_kernel::domain::{
@@ -214,9 +214,19 @@ impl Fixture {
             claim.pattern.clone(),
             certificate_id,
             self.workload_id,
-            self.workload_revision_id,
-            RoutePortName::parse("http").expect("port"),
-            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            RouteTarget::new(
+                self.workload_id,
+                self.workload_revision_id,
+                format!(
+                    "workload:{}:revision:{}",
+                    self.workload_id, self.workload_revision_id
+                ),
+                1,
+                RoutePortName::parse("http").expect("port"),
+                UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+                now,
+            )
+            .expect("target"),
             now,
         )
         .expect("route");

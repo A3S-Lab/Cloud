@@ -13,7 +13,7 @@ use a3s_cloud_control_plane::modules::edge::infrastructure::persistence::Postgre
 use a3s_cloud_control_plane::modules::edge::{
     DomainClaim, DomainNamePattern, EdgeGatewayAcknowledgementProjector, GatewayCertificate,
     GatewayCertificateMaterial, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
-    Route, RouteHostname, RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::{
@@ -38,7 +38,9 @@ pub struct EdgeFixture {
     pub node_id: NodeId,
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
+    pub revision_generation: u64,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub candidate_generation: u64,
     pub candidate_deployment_id: DeploymentId,
 }
 
@@ -46,7 +48,9 @@ pub struct EdgeApiFixture<'a> {
     pub organization_id: &'a str,
     pub project_id: &'a str,
     pub environment_id: &'a str,
+    pub workload_id: &'a str,
     pub workload_revision_id: &'a str,
+    pub runtime_generation: u64,
     pub token: &'a str,
 }
 
@@ -123,6 +127,19 @@ pub async fn exercise_edge_api(
     assert_eq!(replay_body["data"]["commandReplayed"], true);
     let route = &first_body["data"]["route"];
     assert_eq!(route["state"], "publishing");
+    assert_eq!(
+        route["runtimeUnitId"],
+        format!(
+            "workload:{}:revision:{}",
+            fixture.workload_id, fixture.workload_revision_id
+        )
+    );
+    assert_eq!(
+        route["runtimeGeneration"],
+        json!(fixture.runtime_generation)
+    );
+    assert_eq!(route["upstreamOrigin"], "http://127.0.0.1:49152/");
+    assert!(route["targetObservedAt"].as_str().is_some());
     let route_id = field_uuid(route, "id")?;
     let node_id = NodeId::from_uuid(field_uuid(route, "gatewayNodeId")?);
     let command_id = NodeCommandId::from_uuid(field_uuid(route, "gatewayCommandId")?);
@@ -477,10 +494,18 @@ pub async fn exercise_edge(
         .into_iter()
         .filter(|route| {
             route.workload_id == fixture.workload_id
-                && route.workload_revision_id == fixture.revision_id
+                && route.target.workload_revision_id == fixture.revision_id
         })
         .collect::<Vec<_>>();
     assert_eq!(before_cutover.len(), 2);
+    assert!(before_cutover.iter().all(|route| {
+        route.target.runtime_generation == fixture.revision_generation
+            && route.target.runtime_unit_id
+                == format!(
+                    "workload:{}:revision:{}",
+                    fixture.workload_id, fixture.revision_id
+                )
+    }));
     let scope = repository.gateway_scope(fixture.node_id).await?;
     let request = staged_cutover(
         &fixture,
@@ -499,6 +524,27 @@ pub async fn exercise_edge(
     let replay = replay?;
     assert_ne!(cutover.replayed, replay.replayed);
     assert_eq!(cutover.cutover, replay.cutover);
+    let restarted_repository = PostgresEdgeRepository::new(executor.clone());
+    let restarted_pending = restarted_repository
+        .find_gateway_route_cutover(fixture.organization_id, fixture.candidate_deployment_id)
+        .await?
+        .ok_or("restarted PostgreSQL repository lost the pending route cutover")?;
+    assert_eq!(
+        restarted_pending.previous_generation,
+        fixture.revision_generation
+    );
+    assert_eq!(
+        restarted_pending.candidate_generation,
+        fixture.candidate_generation
+    );
+    assert!(restarted_pending.routes.iter().all(|route| {
+        route.target.runtime_generation == fixture.candidate_generation
+            && route.target.runtime_unit_id
+                == format!(
+                    "workload:{}:revision:{}",
+                    fixture.workload_id, fixture.candidate_revision_id
+                )
+    }));
     assert_eq!(
         repository
             .replay_gateway_route_cutover(&idempotency)
@@ -552,18 +598,37 @@ pub async fn exercise_edge(
             applied.acknowledged_at + Duration::milliseconds(1),
         )
         .await?;
-    let stored_cutover = repository
+    let restarted_repository = PostgresEdgeRepository::new(executor.clone());
+    let stored_cutover = restarted_repository
         .find_gateway_route_cutover(fixture.organization_id, fixture.candidate_deployment_id)
         .await?
         .ok_or("PostgreSQL route cutover disappeared")?;
     assert_eq!(stored_cutover.state, GatewayRouteCutoverState::Applied);
+    assert_eq!(
+        stored_cutover.candidate_generation,
+        fixture.candidate_generation
+    );
     for route in stored_cutover.routes {
-        let active = repository
+        let active = restarted_repository
             .find_route(fixture.organization_id, route.id)
             .await?;
         assert_eq!(active, route);
-        assert_eq!(active.workload_revision_id, fixture.candidate_revision_id);
-        assert_eq!(active.upstream.as_str(), "http://127.0.0.1:49153/");
+        assert_eq!(
+            active.target.workload_revision_id,
+            fixture.candidate_revision_id
+        );
+        assert_eq!(active.target.upstream.as_str(), "http://127.0.0.1:49153/");
+        assert_eq!(
+            active.target.runtime_generation,
+            fixture.candidate_generation
+        );
+        assert_eq!(
+            active.target.runtime_unit_id,
+            format!(
+                "workload:{}:revision:{}",
+                fixture.workload_id, fixture.candidate_revision_id
+            )
+        );
     }
     super::edge_certificate_lifecycle_support::exercise(
         executor,
@@ -700,12 +765,19 @@ fn staged_cutover(
     let mut candidates = active_routes
         .iter()
         .map(|route| {
-            route.prepare_cutover(
+            let target = RouteTarget::new(
+                fixture.workload_id,
                 fixture.candidate_revision_id,
+                format!(
+                    "workload:{}:revision:{}",
+                    fixture.workload_id, fixture.candidate_revision_id
+                ),
+                fixture.candidate_generation,
+                route.target.port_name.clone(),
                 UpstreamEndpoint::parse("http://127.0.0.1:49153")?,
-                certificate_id,
                 staged_at,
-            )
+            )?;
+            route.prepare_cutover(target, certificate_id, staged_at)
         })
         .collect::<Result<Vec<_>, String>>()?;
     for route in &mut candidates {
@@ -747,6 +819,8 @@ fn staged_cutover(
         fixture.workload_id,
         fixture.revision_id,
         fixture.candidate_revision_id,
+        fixture.revision_generation,
+        fixture.candidate_generation,
         fixture.node_id,
         gateway_revision,
         command_id,
@@ -838,9 +912,18 @@ fn staged(
         domain_claim.pattern.clone(),
         certificate_id,
         fixture.workload_id,
-        fixture.revision_id,
-        RoutePortName::parse("http")?,
-        UpstreamEndpoint::parse("http://127.0.0.1:49152")?,
+        RouteTarget::new(
+            fixture.workload_id,
+            fixture.revision_id,
+            format!(
+                "workload:{}:revision:{}",
+                fixture.workload_id, fixture.revision_id
+            ),
+            fixture.revision_generation,
+            RoutePortName::parse("http")?,
+            UpstreamEndpoint::parse("http://127.0.0.1:49152")?,
+            now,
+        )?,
         now,
     )?;
     route.stage(revision, command_id, snapshot.snapshot_digest.clone(), now)?;

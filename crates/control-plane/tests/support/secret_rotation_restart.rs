@@ -35,6 +35,7 @@ use uuid::Uuid;
 
 pub struct SecretRotationRestartFixture {
     pub revision_id: WorkloadRevisionId,
+    pub generation: u64,
     pub deployment_id: DeploymentId,
     pub operation_id: OperationId,
 }
@@ -483,6 +484,7 @@ pub async fn exercise_secret_rotation_restart(
 
     Ok(SecretRotationRestartFixture {
         revision_id: target_revision_id,
+        generation: target_revision.generation,
         deployment_id,
         operation_id,
     })

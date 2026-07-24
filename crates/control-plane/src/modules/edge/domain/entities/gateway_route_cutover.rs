@@ -41,6 +41,8 @@ pub struct GatewayRouteCutover {
     pub workload_id: WorkloadId,
     pub previous_revision_id: WorkloadRevisionId,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub previous_generation: u64,
+    pub candidate_generation: u64,
     pub node_id: NodeId,
     pub gateway_revision: u64,
     pub gateway_command_id: NodeCommandId,
@@ -62,6 +64,8 @@ impl GatewayRouteCutover {
         workload_id: WorkloadId,
         previous_revision_id: WorkloadRevisionId,
         candidate_revision_id: WorkloadRevisionId,
+        previous_generation: u64,
+        candidate_generation: u64,
         node_id: NodeId,
         gateway_revision: u64,
         gateway_command_id: NodeCommandId,
@@ -79,6 +83,8 @@ impl GatewayRouteCutover {
             workload_id,
             previous_revision_id,
             candidate_revision_id,
+            previous_generation,
+            candidate_generation,
             node_id,
             gateway_revision,
             gateway_command_id,
@@ -134,6 +140,8 @@ impl GatewayRouteCutover {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.previous_revision_id == self.candidate_revision_id
+            || self.previous_generation == 0
+            || self.candidate_generation <= self.previous_generation
             || self.gateway_revision == 0
             || !valid_sha256(&self.snapshot_digest)
             || self.snapshot_expires_at <= self.staged_at
@@ -150,10 +158,14 @@ impl GatewayRouteCutover {
             GatewayRouteCutoverState::Applied => RouteState::Active,
             GatewayRouteCutoverState::Rejected => RouteState::Rejected,
         };
+        for route in &self.routes {
+            route.validate_target_binding()?;
+        }
         if self.routes.iter().any(|route| {
             route.organization_id != self.organization_id
                 || route.workload_id != self.workload_id
-                || route.workload_revision_id != self.candidate_revision_id
+                || route.target.workload_revision_id != self.candidate_revision_id
+                || route.target.runtime_generation != self.candidate_generation
                 || route.gateway_node_id != self.node_id
                 || route.state != expected_route_state
                 || route.gateway_revision != Some(self.gateway_revision)

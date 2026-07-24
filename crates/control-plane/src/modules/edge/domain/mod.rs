@@ -12,7 +12,7 @@ pub use entities::{
     GatewayScopeState, Route, RouteState,
 };
 pub use value_objects::{
-    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
+    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
 };
 
 #[cfg(test)]

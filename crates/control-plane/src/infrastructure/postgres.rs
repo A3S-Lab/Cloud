@@ -333,6 +333,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/034_gateway_snapshot_renewal.sql"
             )),
         ),
+        Migration::new(
+            "035",
+            "generation-bound Gateway route targets",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/035_route_target_generation.sql"
+            )),
+        ),
     ]
 }
 

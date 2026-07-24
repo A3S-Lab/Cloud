@@ -812,7 +812,6 @@ fn validate_pending_cutover_routes(
             route.state == RouteState::Active
                 && route.organization_id == cutover.organization_id
                 && route.workload_id == cutover.workload_id
-                && route.workload_revision_id == cutover.previous_revision_id
         })
         .map(|route| route.id)
         .collect::<BTreeSet<_>>();
@@ -831,10 +830,12 @@ fn validate_pending_cutover_routes(
         let current = routes.get(&candidate.id).ok_or(RepositoryError::NotFound)?;
         if !same_route_ownership(current, candidate)
             || current.state != RouteState::Active
-            || current.workload_revision_id != cutover.previous_revision_id
+            || current.target.workload_revision_id != cutover.previous_revision_id
+            || current.target.runtime_generation != cutover.previous_generation
             || current.gateway_node_id != cutover.node_id
             || candidate.state != RouteState::Publishing
-            || candidate.workload_revision_id != cutover.candidate_revision_id
+            || candidate.target.workload_revision_id != cutover.candidate_revision_id
+            || candidate.target.runtime_generation != cutover.candidate_generation
             || candidate.gateway_certificate_id == current.gateway_certificate_id
             || candidate.aggregate_version != current.aggregate_version.saturating_add(1)
             || candidate.updated_at < current.updated_at
@@ -857,9 +858,11 @@ fn validate_applied_cutover_routes(
             .ok_or_else(|| RepositoryError::Storage("cutover route disappeared".into()))?;
         if !same_route_ownership(current, candidate)
             || current.state != RouteState::Active
-            || current.workload_revision_id != cutover.previous_revision_id
+            || current.target.workload_revision_id != cutover.previous_revision_id
+            || current.target.runtime_generation != cutover.previous_generation
             || candidate.state != RouteState::Active
-            || candidate.workload_revision_id != cutover.candidate_revision_id
+            || candidate.target.workload_revision_id != cutover.candidate_revision_id
+            || candidate.target.runtime_generation != cutover.candidate_generation
             || candidate.aggregate_version != current.aggregate_version.saturating_add(2)
             || candidate.updated_at < current.updated_at
         {
@@ -882,7 +885,7 @@ fn same_route_ownership(current: &Route, candidate: &Route) -> bool {
         && current.domain_claim_id == candidate.domain_claim_id
         && current.domain_pattern == candidate.domain_pattern
         && current.workload_id == candidate.workload_id
-        && current.port_name == candidate.port_name
+        && current.target.port_name == candidate.target.port_name
         && current.created_at == candidate.created_at
 }
 

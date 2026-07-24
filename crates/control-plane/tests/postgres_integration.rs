@@ -212,7 +212,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 34);
+    assert_eq!(applied, 35);
+    assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     let evidence_required_column = database
         .fetch_one_as(sql_query::<(String, String, Option<String>)>(
             "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence_required'",
@@ -577,6 +578,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "035",
+                "generation-bound Gateway route targets",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/035_route_target_generation.sql"
+                )),
+            ),
+            Migration::new(
+                "036",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1777,7 +1786,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             organization_id: &organization_id,
             project_id: &project_id,
             environment_id: &environment_id,
+            workload_id: &workload_id,
             workload_revision_id: &restart_revision_id,
+            runtime_generation: restart_fixture.generation,
             token: ADMIN_TOKEN,
         },
     )
@@ -1876,11 +1887,136 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             node_id: workload_fixture.node_id,
             workload_id: workload_fixture.workload_id,
             revision_id: workload_fixture.revision_id,
+            revision_generation: workload_fixture.revision_generation,
             candidate_revision_id: workload_fixture.candidate_revision_id,
+            candidate_generation: workload_fixture.candidate_generation,
             candidate_deployment_id: workload_fixture.candidate_deployment_id,
         },
     )
     .await?;
 
+    Ok(())
+}
+
+async fn assert_route_target_migration_backfills_legacy_projection(
+    executor: &PostgresExecutor,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = executor.pool().get().await?;
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/035_route_target_generation.sql"
+    ));
+    let probe = format!(
+        r#"
+begin;
+
+create temporary table workload_revisions (
+    id uuid not null,
+    workload_id uuid not null,
+    generation bigint not null
+);
+
+create temporary table routes (
+    workload_id uuid not null,
+    workload_revision_id uuid not null,
+    updated_at timestamptz not null
+);
+
+create temporary table gateway_route_cutovers (
+    workload_id uuid not null,
+    previous_revision_id uuid not null,
+    candidate_revision_id uuid not null,
+    routes jsonb not null
+);
+
+insert into workload_revisions (id, workload_id, generation) values
+    (
+        '10000000-0000-0000-0000-000000000011',
+        '10000000-0000-0000-0000-000000000001',
+        1
+    ),
+    (
+        '10000000-0000-0000-0000-000000000012',
+        '10000000-0000-0000-0000-000000000001',
+        2
+    );
+
+insert into routes (workload_id, workload_revision_id, updated_at) values (
+    '10000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000011',
+    '2026-01-01T00:00:00Z'
+);
+
+insert into gateway_route_cutovers (
+    workload_id,
+    previous_revision_id,
+    candidate_revision_id,
+    routes
+) values (
+    '10000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000011',
+    '10000000-0000-0000-0000-000000000012',
+    '[{{
+        "workload_id": "10000000-0000-0000-0000-000000000001",
+        "workload_revision_id": "10000000-0000-0000-0000-000000000012",
+        "updated_at": "2026-01-01T00:00:01Z"
+    }}]'::jsonb
+);
+
+{migration}
+
+do $probe$
+begin
+    if (
+        select runtime_generation <> 1
+            or runtime_unit_id <>
+                'workload:10000000-0000-0000-0000-000000000001'
+                    || ':revision:10000000-0000-0000-0000-000000000011'
+            or target_observed_at <> '2026-01-01T00:00:00Z'::timestamptz
+        from routes
+    ) then
+        raise exception 'route target migration did not backfill the authoritative route';
+    end if;
+
+    if (
+        select previous_generation <> 1
+            or candidate_generation <> 2
+            or routes -> 0 ->> 'runtime_unit_id' <>
+                'workload:10000000-0000-0000-0000-000000000001'
+                    || ':revision:10000000-0000-0000-0000-000000000012'
+            or (routes -> 0 ->> 'runtime_generation')::bigint <> 2
+            or routes -> 0 ->> 'observed_at' <> '2026-01-01T00:00:01Z'
+        from gateway_route_cutovers
+    ) then
+        raise exception 'route target migration did not backfill the cutover projection';
+    end if;
+
+    begin
+        update routes set runtime_generation = 2;
+        raise exception 'route target revision-generation constraint accepted a mismatch';
+    exception
+        when foreign_key_violation then null;
+    end;
+
+    begin
+        update routes set runtime_unit_id = 'workload:forged:revision:forged';
+        raise exception 'route target deterministic identity constraint accepted a mismatch';
+    exception
+        when check_violation then null;
+    end;
+
+    begin
+        update gateway_route_cutovers set candidate_generation = previous_generation;
+        raise exception 'route cutover generation ordering constraint accepted a mismatch';
+    exception
+        when check_violation then null;
+    end;
+end
+$probe$;
+
+rollback;
+"#
+    );
+    client.batch_execute(&probe).await?;
     Ok(())
 }

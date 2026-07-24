@@ -134,30 +134,29 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
+            let target_node_id = target.node_id;
             let certificate_id = GatewayCertificateId::new();
             let mut route = match Route::create(
                 RouteId::new(),
                 command.organization_id,
                 command.project_id,
                 command.environment_id,
-                target.node_id,
+                target_node_id,
                 hostname,
                 path_prefix,
                 claim.id,
                 claim.pattern,
                 certificate_id,
                 target.workload_id,
-                target.workload_revision_id,
-                port_name,
-                target.upstream,
+                target.target,
                 command.requested_at,
             ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
             let (scope, mut active_routes) = match tokio::try_join!(
-                routes.gateway_scope(target.node_id),
-                routes.active_routes(target.node_id)
+                routes.gateway_scope(target_node_id),
+                routes.active_routes(target_node_id)
             ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
@@ -186,7 +185,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
             active_routes.push(route.clone());
             let snapshot = match compiler.compile(
                 GatewaySnapshotMetadata::new(
-                    target.node_id,
+                    target_node_id,
                     revision,
                     scope.installed_revision,
                     command.requested_at,
@@ -208,7 +207,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 return Ok(Err(ApplicationError::Invalid(error)));
             }
             let publication = match GatewayPublication::stage(
-                target.node_id,
+                target_node_id,
                 command_id,
                 command.request_id,
                 snapshot,
@@ -235,7 +234,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
             let certificate = match GatewayCertificate::provision(
                 certificate_id,
                 command.organization_id,
-                target.node_id,
+                target_node_id,
                 domain_claim_ids,
                 revision,
                 command_id,

@@ -133,6 +133,7 @@ impl GatewaySnapshotCompiler {
         let mut dns_names = BTreeSet::new();
         let mut pending_routes = 0_usize;
         for route in &routes {
+            route.validate_target_binding()?;
             if route.gateway_node_id != metadata.node_id {
                 return Err("complete Gateway snapshot contains a route from another scope".into());
             }
@@ -211,14 +212,17 @@ impl GatewaySnapshotCompiler {
         for route in &routes {
             let name = format!("route-{}", route.id.as_uuid().simple());
             acl.push_str(&format!(
-                "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
+                "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\n# target revision={} unit={} generation={}\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
                 acl_string(&format!(
                     "Host(`{}`) && PathPrefix(`{}`)",
                     route.hostname.as_str(),
                     route.path_prefix.as_str()
                 )),
+                route.target.workload_revision_id,
+                route.target.runtime_unit_id,
+                route.target.runtime_generation,
                 acl_string(&duration(self.config.upstream_request_timeout_ms)),
-                acl_string(route.upstream.as_str()),
+                acl_string(route.target.upstream.as_str()),
             ));
         }
         acl.push_str(&format!(
@@ -295,7 +299,7 @@ fn valid_absolute_file(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::modules::edge::domain::{
-        DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
+        DomainNamePattern, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
     use crate::modules::shared_kernel::domain::{
         DomainClaimId, EnvironmentId, GatewayCertificateId, OrganizationId, ProjectId, RouteId,
@@ -317,6 +321,9 @@ mod tests {
     }
 
     fn route(node_id: NodeId, hostname: &str, path: &str, port: u16) -> Route {
+        let workload_id = WorkloadId::new();
+        let workload_revision_id = WorkloadRevisionId::new();
+        let now = Utc::now();
         Route::create(
             RouteId::new(),
             OrganizationId::new(),
@@ -328,11 +335,18 @@ mod tests {
             DomainClaimId::new(),
             DomainNamePattern::parse(hostname).expect("domain pattern"),
             GatewayCertificateId::new(),
-            WorkloadId::new(),
-            WorkloadRevisionId::new(),
-            RoutePortName::parse("http").expect("port"),
-            UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}")).expect("upstream"),
-            Utc::now(),
+            workload_id,
+            RouteTarget::new(
+                workload_id,
+                workload_revision_id,
+                format!("workload:{workload_id}:revision:{workload_revision_id}"),
+                1,
+                RoutePortName::parse("http").expect("port"),
+                UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}")).expect("upstream"),
+                now,
+            )
+            .expect("target"),
+            now,
         )
         .expect("route")
     }

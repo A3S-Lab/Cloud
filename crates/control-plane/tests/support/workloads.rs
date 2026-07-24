@@ -19,7 +19,9 @@ use uuid::Uuid;
 pub struct WorkloadFixture {
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
+    pub revision_generation: u64,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub candidate_generation: u64,
     pub candidate_deployment_id: DeploymentId,
     pub node_id: NodeId,
 }
@@ -339,7 +341,9 @@ pub async fn exercise_workloads(
     Ok(WorkloadFixture {
         workload_id: active_workload.id,
         revision_id: first_revision_id,
+        revision_generation: 1,
         candidate_revision_id,
+        candidate_generation: 4,
         candidate_deployment_id,
         node_id,
     })

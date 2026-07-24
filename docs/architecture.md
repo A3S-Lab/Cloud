@@ -667,6 +667,15 @@ and a current healthy Runtime observation. Docker observations expose the
 selected node-local HTTP origin as a typed evidence claim; Docker-specific
 container and port-binding details do not cross into the Route domain.
 
+The durable `RouteTarget` projection binds that origin to the immutable
+workload revision, deterministic
+`workload:{workload_id}:revision:{revision_id}` Runtime unit, positive Runtime
+generation, declared port, and canonical observation time. Initial publication
+accepts only the observation owned by the active deployment's exact Runtime
+command. Routed update accepts only the candidate deployment command's
+observation at the desired healthy generation. A future, stale, mismatched, or
+forged observation cannot create a route target.
+
 The compiler sorts every active route plus the proposed route and emits one
 deterministic, versioned ACL snapshot. A Gateway scope permits only one pending
 complete snapshot. Its PostgreSQL transaction binds route, scope revision,
@@ -676,6 +685,12 @@ when the retry arrives under a new HTTP request ID. The application checks this
 durable replay before consulting current workload health, so later observation
 expiry or workload-state drift cannot turn an already accepted identical
 request into a conflict.
+
+Each generated service carries the target revision, Runtime unit, and
+generation in the canonical ACL bytes. The snapshot digest therefore changes
+when the Runtime generation changes even if the node-local origin is reused.
+Gateway applies the resulting complete traffic policy; it never derives a
+Runtime target or generation itself.
 
 Incremental route mutation is forbidden because a partial retry could expose a
 route to the wrong tenant or revision. Snapshot publication uses compare-and-
@@ -690,13 +705,24 @@ for `publishing` or `active` routes.
 
 Routed workload updates use a separate `GatewayRouteCutover` record because the
 candidate is healthy but is not yet the active workload revision. Staging
-stores candidate route projections and the complete publication identity while
-leaving every live route row byte-identical. A mismatched acknowledgement is
+stores the previous and candidate generations, candidate route projections,
+and the complete publication identity while leaving every live route row
+byte-identical. It rejects an equal or stale generation, a reused immutable
+revision, a changed declared port, or any active route that does not share the
+same prior revision, generation, and node. A mismatched acknowledgement is
 rejected without changing the cutover, route rows, or active revision. A
 matching `rejected` acknowledgement makes only the cutover terminal and
-preserves the prior routes. A matching `applied` acknowledgement atomically
-replaces every affected route target; deployment activation may select the
+preserves the prior revision, unit, generation, origin, and observation. A
+matching `applied` acknowledgement atomically replaces all of those target
+fields for every affected route; deployment activation may select the
 candidate only after that applied cutover is durable.
+
+Migration 035 backfills legacy routes and serialized cutover projections from
+immutable workload revisions. PostgreSQL then enforces the deterministic unit
+identity, positive and increasing generations, observation ordering, and
+composite workload/revision/generation references. Recreated repository tests
+prove exact target recovery, and a migration probe verifies both legacy
+backfill and rejection of forged identities or revision-generation pairs.
 
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route
@@ -781,8 +807,12 @@ and fails startup closed without valid credentials or provider names. A
 dedicated Ubuntu CI job builds Cloud's pinned Gateway revision and proves the
 node-generated key, managed chain, native exact apply/readiness, trusted
 DNS/SNI HTTPS request, durable revision against a loopback upstream, and forced
-process-death recovery at the apply-before-acknowledgement boundary. Gateway's
-native journal is the sole applied-snapshot recovery authority.
+process-death recovery at the apply-before-acknowledgement boundary. A second
+real-binary gate replaces both the independently signed certificate and target
+origin, proves the prior CA and exact selector no longer work, removes the
+superseded certificate directory, and restarts Gateway to recover only the
+replacement target. Gateway's native journal is the sole applied-snapshot
+recovery authority.
 
 I0 extends this projection from one upstream to complete healthy target sets.
 Inference owns model aliases, primary/fallback intent, access policy, and usage

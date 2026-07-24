@@ -10,6 +10,8 @@ use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 fn route(now: chrono::DateTime<Utc>) -> Route {
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
     Route::create(
         RouteId::new(),
         OrganizationId::new(),
@@ -21,10 +23,17 @@ fn route(now: chrono::DateTime<Utc>) -> Route {
         DomainClaimId::new(),
         DomainNamePattern::parse("api.example.com").expect("domain pattern"),
         GatewayCertificateId::new(),
-        WorkloadId::new(),
-        WorkloadRevisionId::new(),
-        RoutePortName::parse("http").expect("port"),
-        UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").expect("port"),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            now,
+        )
+        .expect("target"),
         now,
     )
     .expect("route")
@@ -309,6 +318,58 @@ fn rejected_publication_preserves_failure_without_false_activation() {
     assert_eq!(route.state, RouteState::Rejected);
     assert_eq!(route.failure.as_deref(), Some("validation failed"));
     assert_eq!(route.activated_at, None);
+}
+
+#[test]
+fn route_cutover_rejects_equal_and_stale_runtime_generations() {
+    let now = canonical_timestamp(Utc::now());
+    let mut active = route(now);
+    active.target.runtime_generation = 2;
+    let command_id = NodeCommandId::new();
+    let digest = format!("sha256:{}", "a".repeat(64));
+    active
+        .stage(1, command_id, digest.clone(), now)
+        .expect("stage active route");
+    active
+        .apply_gateway_acknowledgement(&NodeGatewayAck {
+            schema: NodeGatewayAck::SCHEMA.into(),
+            acknowledgement_id: Uuid::now_v7(),
+            command_id: command_id.as_uuid(),
+            node_id: active.gateway_node_id.as_uuid(),
+            gateway_id: active.gateway_node_id.as_uuid(),
+            revision: 1,
+            snapshot_digest: digest,
+            expires_at: now + Duration::minutes(10),
+            state: GatewayAckState::Applied,
+            ready: true,
+            message: None,
+            acknowledged_at: now + Duration::seconds(1),
+        })
+        .expect("activate route");
+
+    for candidate_generation in [2, 1] {
+        let candidate_revision_id = WorkloadRevisionId::new();
+        let target = RouteTarget::new(
+            active.workload_id,
+            candidate_revision_id,
+            format!(
+                "workload:{}:revision:{candidate_revision_id}",
+                active.workload_id
+            ),
+            candidate_generation,
+            active.target.port_name.clone(),
+            active.target.upstream.clone(),
+            now + Duration::seconds(1),
+        )
+        .expect("candidate target");
+        assert!(active
+            .prepare_cutover(
+                target,
+                GatewayCertificateId::new(),
+                now + Duration::seconds(2),
+            )
+            .is_err());
+    }
 }
 
 #[test]

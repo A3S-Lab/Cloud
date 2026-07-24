@@ -19,7 +19,8 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const GATEWAY_TOKEN: &str = "a3s-cloud-gateway-integration-token";
 const TLS_HOSTNAME: &str = "managed-tls.a3s.test";
-const UPSTREAM_BODY: &str = "a3s-cloud-managed-tls-ok";
+const INITIAL_UPSTREAM_BODY: &str = "a3s-cloud-target-generation-1";
+const REPLACEMENT_UPSTREAM_BODY: &str = "a3s-cloud-target-generation-2";
 
 struct FixtureGatewayCertificateSigner {
     node_id: uuid::Uuid,
@@ -146,29 +147,41 @@ impl Drop for GatewayProcess {
 
 struct LoopbackHttpUpstream {
     address: SocketAddr,
+    requests: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
 }
 
 impl LoopbackHttpUpstream {
-    async fn start() -> std::io::Result<Self> {
+    async fn start(body: &'static str) -> std::io::Result<Self> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
+        let requests = Arc::new(AtomicUsize::new(0));
+        let observed_requests = requests.clone();
         let task = tokio::spawn(async move {
             while let Ok((mut stream, _)) = listener.accept().await {
                 let mut request = [0_u8; 4096];
                 if stream.read(&mut request).await.is_err() {
                     continue;
                 }
+                observed_requests.fetch_add(1, Ordering::SeqCst);
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-                    UPSTREAM_BODY.len(),
-                    UPSTREAM_BODY
+                    body.len(),
+                    body
                 );
                 let _ = stream.write_all(response.as_bytes()).await;
                 let _ = stream.shutdown().await;
             }
         });
-        Ok(Self { address, task })
+        Ok(Self {
+            address,
+            requests,
+            task,
+        })
+    }
+
+    fn request_count(&self) -> usize {
+        self.requests.load(Ordering::SeqCst)
     }
 }
 
@@ -285,11 +298,20 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
 
 #[tokio::test]
 #[ignore = "requires a dedicated remote Gateway runner"]
-async fn installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload() -> TestResult {
+async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> TestResult {
     let binary = required_gateway_binary()?;
     let directory = tempfile::tempdir()?;
     let (tls_port, management_port) = unused_ports();
     let node_id = uuid::Uuid::now_v7();
+    let workload_id = uuid::Uuid::now_v7();
+    let initial_revision_id = uuid::Uuid::now_v7();
+    let replacement_revision_id = uuid::Uuid::now_v7();
+    let initial_target_identity = format!(
+        "revision={initial_revision_id} unit=workload:{workload_id}:revision:{initial_revision_id} generation=1"
+    );
+    let replacement_target_identity = format!(
+        "revision={replacement_revision_id} unit=workload:{workload_id}:revision:{replacement_revision_id} generation=2"
+    );
     let managed_state_file = directory.path().join("managed-snapshot.json");
     let config_path = directory.path().join("gateway.acl");
     std::fs::write(
@@ -307,82 +329,180 @@ async fn installed_a3s_gateway_serves_managed_tls_after_exact_snapshot_reload() 
         return Err("Gateway TLS port was available before snapshot reload".into());
     }
 
-    let upstream = LoopbackHttpUpstream::start().await?;
-    let certificate_id = uuid::Uuid::now_v7();
+    let initial_upstream = LoopbackHttpUpstream::start(INITIAL_UPSTREAM_BODY).await?;
+    let initial_certificate_id = uuid::Uuid::now_v7();
     let dns_names = vec![TLS_HOSTNAME.to_owned()];
     let certificate_root = directory.path().join("managed-certificates");
-    let certificate_directory = certificate_root.join(certificate_id.to_string());
-    let certificate_request = GatewayCertificateRequest::new(
-        certificate_id,
+    let initial_certificate_directory = certificate_root.join(initial_certificate_id.to_string());
+    let initial_certificate_request = GatewayCertificateRequest::new(
+        initial_certificate_id,
         dns_names.clone(),
-        certificate_directory
+        initial_certificate_directory
             .join("certificate.pem")
             .to_string_lossy(),
-        certificate_directory
+        initial_certificate_directory
             .join("private-key.pem")
             .to_string_lossy(),
     )?;
-    let signer = Arc::new(FixtureGatewayCertificateSigner::new(node_id, dns_names));
-    let ca_bundle_pem = signer.certificate_pem.clone();
-    let provisioner = Arc::new(NodeGatewayCertificateProvisioner::new(
-        certificate_root,
+    let initial_signer = Arc::new(FixtureGatewayCertificateSigner::new(
         node_id,
-        signer.clone(),
+        dns_names.clone(),
+    ));
+    let initial_ca_bundle_pem = initial_signer.certificate_pem.clone();
+    let initial_provisioner = Arc::new(NodeGatewayCertificateProvisioner::new(
+        certificate_root.clone(),
+        node_id,
+        initial_signer.clone(),
         Arc::new(SystemGatewayCertificateClock),
     )?);
     let control = gateway_control(&base_url)?;
-    let installer = DurableGatewaySnapshotInstaller::new_with_certificates(
+    let initial_installer = DurableGatewaySnapshotInstaller::new_with_certificates(
         node_id,
         control.clone(),
-        provisioner,
+        initial_provisioner,
     );
-    let issued_at = Utc::now();
-    let snapshot = GatewaySnapshot::new_with_certificate(
+    let initial_issued_at = Utc::now();
+    let initial_snapshot = GatewaySnapshot::new_with_certificate(
         node_id,
         1,
         None,
-        issued_at,
-        issued_at + chrono::Duration::minutes(10),
+        initial_issued_at,
+        initial_issued_at + chrono::Duration::minutes(10),
         tls_gateway_acl(
             tls_port,
             management_port,
-            upstream.address,
-            &certificate_request,
+            initial_upstream.address,
+            &initial_certificate_request,
             node_id,
             &managed_state_file,
+            &initial_target_identity,
         ),
-        Some(certificate_request),
+        Some(initial_certificate_request),
     )?;
-    if installer.install(&snapshot).await? != GatewaySnapshotInstallOutcome::Applied {
+    if !initial_snapshot
+        .acl
+        .contains(&format!("# target {initial_target_identity}"))
+    {
+        return Err("initial snapshot omitted the Cloud target-generation identity".into());
+    }
+    if initial_installer.install(&initial_snapshot).await? != GatewaySnapshotInstallOutcome::Applied
+    {
         return Err("real Gateway did not apply the managed TLS snapshot".into());
     }
-    if signer.calls.load(Ordering::SeqCst) != 1 {
+    if initial_signer.calls.load(Ordering::SeqCst) != 1 {
         return Err("managed TLS fixture did not perform exactly one signing request".into());
     }
 
-    let root = reqwest::Certificate::from_pem(ca_bundle_pem.as_bytes())?;
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(root)
-        .resolve(TLS_HOSTNAME, SocketAddr::from(([127, 0, 0, 1], tls_port)))
-        .timeout(Duration::from_secs(2))
-        .build()?;
-    let response = wait_for_https(
-        &client,
-        &format!("https://{TLS_HOSTNAME}:{tls_port}/fixture"),
-        &mut gateway.child,
-    )
-    .await?;
-    if response.text().await? != UPSTREAM_BODY {
-        return Err("managed TLS route returned an unexpected upstream response".into());
+    let url = format!("https://{TLS_HOSTNAME}:{tls_port}/fixture");
+    let initial_client = managed_tls_client(&initial_ca_bundle_pem, tls_port)?;
+    let response = wait_for_https(&initial_client, &url, &mut gateway.child).await?;
+    if response.text().await? != INITIAL_UPSTREAM_BODY {
+        return Err("initial managed TLS route returned an unexpected target".into());
     }
-    let status = control.readiness(&snapshot).await?;
-    if status.state != ManagedSnapshotState::Applied || !status.ready {
-        return Err("managed TLS fixture did not preserve exact Gateway readiness".into());
+    let initial_request_count = initial_upstream.request_count();
+    let initial_status = control.readiness(&initial_snapshot).await?;
+    if initial_status.state != ManagedSnapshotState::Applied || !initial_status.ready {
+        return Err("initial managed TLS snapshot was not exactly ready".into());
+    }
+
+    let replacement_upstream = LoopbackHttpUpstream::start(REPLACEMENT_UPSTREAM_BODY).await?;
+    let replacement_certificate_id = uuid::Uuid::now_v7();
+    let replacement_certificate_directory =
+        certificate_root.join(replacement_certificate_id.to_string());
+    let replacement_certificate_request = GatewayCertificateRequest::new(
+        replacement_certificate_id,
+        dns_names.clone(),
+        replacement_certificate_directory
+            .join("certificate.pem")
+            .to_string_lossy(),
+        replacement_certificate_directory
+            .join("private-key.pem")
+            .to_string_lossy(),
+    )?;
+    let replacement_signer = Arc::new(FixtureGatewayCertificateSigner::new(node_id, dns_names));
+    let replacement_ca_bundle_pem = replacement_signer.certificate_pem.clone();
+    let replacement_provisioner = Arc::new(NodeGatewayCertificateProvisioner::new(
+        certificate_root,
+        node_id,
+        replacement_signer.clone(),
+        Arc::new(SystemGatewayCertificateClock),
+    )?);
+    let replacement_installer = DurableGatewaySnapshotInstaller::new_with_certificates(
+        node_id,
+        control.clone(),
+        replacement_provisioner,
+    );
+    let replacement_issued_at = Utc::now();
+    let replacement_snapshot = GatewaySnapshot::new_with_certificate(
+        node_id,
+        2,
+        Some(1),
+        replacement_issued_at,
+        replacement_issued_at + chrono::Duration::minutes(10),
+        tls_gateway_acl(
+            tls_port,
+            management_port,
+            replacement_upstream.address,
+            &replacement_certificate_request,
+            node_id,
+            &managed_state_file,
+            &replacement_target_identity,
+        ),
+        Some(replacement_certificate_request),
+    )?;
+    if !replacement_snapshot
+        .acl
+        .contains(&format!("# target {replacement_target_identity}"))
+    {
+        return Err("replacement snapshot omitted the Cloud target-generation identity".into());
+    }
+    if replacement_installer.install(&replacement_snapshot).await?
+        != GatewaySnapshotInstallOutcome::Applied
+    {
+        return Err("real Gateway did not apply the replacement TLS snapshot".into());
+    }
+    if replacement_signer.calls.load(Ordering::SeqCst) != 1
+        || initial_signer.calls.load(Ordering::SeqCst) != 1
+    {
+        return Err("certificate replacement did not issue each identity exactly once".into());
+    }
+
+    let replacement_client = managed_tls_client(&replacement_ca_bundle_pem, tls_port)?;
+    let response = wait_for_https(&replacement_client, &url, &mut gateway.child).await?;
+    if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
+        return Err("replacement snapshot exposed a stale target generation".into());
+    }
+    if initial_upstream.request_count() != initial_request_count {
+        return Err("replacement traffic reached the superseded target generation".into());
+    }
+    if initial_client.get(&url).send().await.is_ok() {
+        return Err("replacement snapshot continued serving the superseded certificate".into());
+    }
+    let replacement_status = control.readiness(&replacement_snapshot).await?;
+    if replacement_status.state != ManagedSnapshotState::Applied || !replacement_status.ready {
+        return Err("replacement managed TLS snapshot was not exactly ready".into());
+    }
+    let superseded_status = control.readiness(&initial_snapshot).await?;
+    if superseded_status.state != ManagedSnapshotState::NotApplied || superseded_status.ready {
+        return Err("superseded certificate and target selector remained ready".into());
     }
     if !tokio::fs::try_exists(&managed_state_file).await? {
         return Err("managed TLS fixture omitted the Gateway-native durable journal".into());
+    }
+
+    tokio::fs::remove_dir_all(initial_certificate_directory).await?;
+    drop(initial_upstream);
+    drop(gateway);
+
+    let mut restarted = GatewayProcess::start(&binary, &config_path)?;
+    wait_for_gateway(&base_url, &mut restarted.child).await?;
+    let recovered = control.readiness(&replacement_snapshot).await?;
+    if recovered.state != ManagedSnapshotState::Applied || !recovered.ready {
+        return Err("Gateway did not recover the replacement snapshot exactly".into());
+    }
+    let response = wait_for_https(&replacement_client, &url, &mut restarted.child).await?;
+    if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
+        return Err("Gateway restart recovered a superseded target generation".into());
     }
     Ok(())
 }
@@ -403,6 +523,17 @@ fn gateway_control(
         Duration::from_secs(2),
         Duration::from_secs(5),
     )?))
+}
+
+fn managed_tls_client(ca_bundle_pem: &str, tls_port: u16) -> TestResult<reqwest::Client> {
+    let root = reqwest::Certificate::from_pem(ca_bundle_pem.as_bytes())?;
+    Ok(reqwest::Client::builder()
+        .no_proxy()
+        .tls_built_in_root_certs(false)
+        .add_root_certificate(root)
+        .resolve(TLS_HOSTNAME, SocketAddr::from(([127, 0, 0, 1], tls_port)))
+        .timeout(Duration::from_secs(2))
+        .build()?)
 }
 
 fn unused_ports() -> (u16, u16) {
@@ -440,6 +571,7 @@ fn tls_gateway_acl(
     certificate: &GatewayCertificateRequest,
     gateway_id: uuid::Uuid,
     managed_state_file: &Path,
+    target_identity: &str,
 ) -> String {
     format!(
         r#"entrypoints "a3s-cloud-https" {{
@@ -457,6 +589,7 @@ routers "managed-tls-fixture" {{
   entrypoints = ["a3s-cloud-https"]
 }}
 
+# target {target_identity}
 services "managed-tls-fixture" {{
   load_balancer {{
     strategy = "round-robin"

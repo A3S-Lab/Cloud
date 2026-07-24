@@ -21,7 +21,7 @@ pub use domain::repositories::{
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, IDomainOwnershipVerifier,
-    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, RouteTarget,
+    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, ResolvedRouteTarget,
 };
 pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
@@ -29,7 +29,7 @@ pub use domain::{
     GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
     GatewayPublication, GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState,
     GatewayRouteVersion, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, UpstreamEndpoint,
+    RouteState, RouteTarget, UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{

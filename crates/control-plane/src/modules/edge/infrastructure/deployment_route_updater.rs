@@ -5,7 +5,7 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::services::IGatewayCommandQueue;
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
-    RouteState, UpstreamEndpoint,
+    RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
@@ -116,13 +116,17 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
         if workload_routes.is_empty() {
             return Ok(DeploymentRouteStage::NotRequired { checked_at: now });
         }
+        let previous_generation = workload_routes[0].target.runtime_generation;
         if workload_routes.iter().any(|route| {
-            route.workload_revision_id != request.previous_revision_id
+            route.target.workload_revision_id != request.previous_revision_id
                 || route.gateway_node_id != request.node_id
-        }) {
+                || route.target.runtime_generation != previous_generation
+        }) || request.spec.generation <= previous_generation
+        {
             return Ok(DeploymentRouteStage::Failed {
-                reason: "one-node update routes do not match the previous active revision and node"
-                    .into(),
+                reason:
+                    "one-node update routes do not match the previous active revision, generation, and node"
+                        .into(),
             });
         }
 
@@ -171,7 +175,7 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             .iter()
             .filter(|route| {
                 route.workload_id == request.workload_id
-                    && route.workload_revision_id == request.previous_revision_id
+                    && route.target.workload_revision_id == request.previous_revision_id
             })
             .map(|route| route.id)
             .collect::<BTreeSet<_>>();
@@ -217,18 +221,22 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
         for route in &workload_routes {
             let endpoint = RuntimeServiceEndpoint::from_observation(
                 &observation.observation,
-                route.port_name.as_str(),
+                route.target.port_name.as_str(),
+            )
+            .map_err(RepositoryError::Conflict)?;
+            let target = RouteTarget::new(
+                request.workload_id,
+                request.candidate_revision_id,
+                request.spec.unit_id.clone(),
+                request.spec.generation,
+                route.target.port_name.clone(),
+                UpstreamEndpoint::parse(endpoint.origin).map_err(RepositoryError::Conflict)?,
+                observation.received_at,
             )
             .map_err(RepositoryError::Conflict)?;
             candidates.push(
                 route
-                    .prepare_cutover(
-                        request.candidate_revision_id,
-                        UpstreamEndpoint::parse(endpoint.origin)
-                            .map_err(RepositoryError::Conflict)?,
-                        certificate_id,
-                        issued_at,
-                    )
+                    .prepare_cutover(target, certificate_id, issued_at)
                     .map_err(RepositoryError::Conflict)?,
             );
         }
@@ -304,6 +312,8 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             request.workload_id,
             request.previous_revision_id,
             request.candidate_revision_id,
+            previous_generation,
+            request.spec.generation,
             request.node_id,
             gateway_revision,
             command_id,
