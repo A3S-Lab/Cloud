@@ -696,7 +696,8 @@ mod tests {
 
         assert_eq!(summary.entries, 1);
         assert_eq!(
-            std::fs::read(destination.join("cache/index.json")).unwrap(),
+            std::fs::read(destination.join("cache/index.json"))
+                .expect("read extracted cache index"),
             b"{}"
         );
         assert!(!destination.join("a3s-output").exists());
