@@ -543,6 +543,9 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A gateway scope has at most one pending complete snapshot.
 - Route, publication, Fleet command, and acknowledgement bind the same node,
   command ID, revision, snapshot digest, and original correlation ID.
+- A new applied acknowledgement carries the exact supported Gateway management
+  protocol, request/status schemas, and discovery mode. A readable legacy
+  acknowledgement carries no invented protocol evidence.
 - Every published route references verified, same-tenant claims that cover its
   canonical hostname and one certificate owned by the target node.
 - Only the exact `applied` acknowledgement activates a route; a rejected

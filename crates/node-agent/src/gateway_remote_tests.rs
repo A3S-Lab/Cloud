@@ -223,7 +223,10 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
             1,
         ),
     )?;
-    if installer.install(&first).await? != GatewaySnapshotInstallOutcome::Applied {
+    if !matches!(
+        installer.install(&first).await?,
+        GatewaySnapshotInstallOutcome::Applied { .. }
+    ) {
         return Err("real Gateway did not apply the first snapshot".into());
     }
     let second_issued_at = Utc::now();
@@ -241,7 +244,10 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
             2,
         ),
     )?;
-    if installer.install(&second).await? != GatewaySnapshotInstallOutcome::Applied {
+    if !matches!(
+        installer.install(&second).await?,
+        GatewaySnapshotInstallOutcome::Applied { .. }
+    ) {
         return Err("real Gateway did not apply the second snapshot".into());
     }
     let invalid_issued_at = Utc::now();
@@ -276,7 +282,10 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     if renewal.snapshot_digest != second.snapshot_digest {
         return Err("Gateway validity renewal changed the exact ACL digest".into());
     }
-    if installer.install(&renewal).await? != GatewaySnapshotInstallOutcome::Applied {
+    if !matches!(
+        installer.install(&renewal).await?,
+        GatewaySnapshotInstallOutcome::Applied { .. }
+    ) {
         return Err("real Gateway did not apply the validity renewal".into());
     }
     let renewed = control.readiness(&renewal).await?;
@@ -385,8 +394,10 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     {
         return Err("initial snapshot omitted the Cloud target-generation identity".into());
     }
-    if initial_installer.install(&initial_snapshot).await? != GatewaySnapshotInstallOutcome::Applied
-    {
+    if !matches!(
+        initial_installer.install(&initial_snapshot).await?,
+        GatewaySnapshotInstallOutcome::Applied { .. }
+    ) {
         return Err("real Gateway did not apply the managed TLS snapshot".into());
     }
     if initial_signer.calls.load(Ordering::SeqCst) != 1 {
@@ -456,9 +467,10 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     {
         return Err("replacement snapshot omitted the Cloud target-generation identity".into());
     }
-    if replacement_installer.install(&replacement_snapshot).await?
-        != GatewaySnapshotInstallOutcome::Applied
-    {
+    if !matches!(
+        replacement_installer.install(&replacement_snapshot).await?,
+        GatewaySnapshotInstallOutcome::Applied { .. }
+    ) {
         return Err("real Gateway did not apply the replacement TLS snapshot".into());
     }
     if replacement_signer.calls.load(Ordering::SeqCst) != 1

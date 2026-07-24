@@ -361,6 +361,9 @@ impl Fixture {
             ready: true,
             message: None,
             acknowledged_at: now + Duration::milliseconds(2),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         };
         self.repository
             .project_gateway_acknowledgement(
@@ -463,6 +466,7 @@ async fn apply_convergence(
         ready: true,
         message: None,
         acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     repository
         .project_gateway_acknowledgement(
@@ -601,6 +605,7 @@ async fn applied_snapshot_is_renewed_before_expiry_without_reissuing_its_certifi
         ready: false,
         message: Some("renewal rejected".into()),
         acknowledged_at: rejected_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     fixture
         .repository

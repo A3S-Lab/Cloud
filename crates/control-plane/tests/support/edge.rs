@@ -240,6 +240,7 @@ pub async fn exercise_edge_api(
         ready: true,
         message: None,
         acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     let mut wrong_revision = acknowledgement.clone();
     wrong_revision.acknowledgement_id = Uuid::now_v7();
@@ -471,6 +472,7 @@ pub async fn exercise_edge(
         ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(
         repository
@@ -560,6 +562,7 @@ pub async fn exercise_edge(
         ready: true,
         message: None,
         acknowledged_at: second.publication.command_issued_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     repository
         .project_gateway_acknowledgement(
@@ -945,6 +948,7 @@ fn cutover_acknowledgement(
         ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: cutover.staged_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }
 

@@ -48,6 +48,10 @@ struct GatewayAcknowledgementRow {
     ready: bool,
     message: Option<String>,
     acknowledged_at: DateTime<Utc>,
+    management_protocol: Option<String>,
+    snapshot_request_schema: Option<String>,
+    snapshot_status_schema: Option<String>,
+    protocol_discovery: Option<String>,
 }
 
 impl FromRow for GatewayAcknowledgementRow {
@@ -63,6 +67,10 @@ impl FromRow for GatewayAcknowledgementRow {
             ready: decode(row, 7)?,
             message: decode(row, 8)?,
             acknowledged_at: decode(row, 9)?,
+            management_protocol: decode(row, 10)?,
+            snapshot_request_schema: decode(row, 11)?,
+            snapshot_status_schema: decode(row, 12)?,
+            protocol_discovery: decode(row, 13)?,
         })
     }
 }
@@ -297,10 +305,26 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                     return Err(RepositoryError::NotFound.into());
                 }
                 let state = gateway_state(acknowledgement.state);
+                let management_protocol = acknowledgement
+                    .management_protocol
+                    .as_ref()
+                    .map(|protocol| protocol.protocol.clone());
+                let snapshot_request_schema = acknowledgement
+                    .management_protocol
+                    .as_ref()
+                    .map(|protocol| protocol.snapshot_request_schema.clone());
+                let snapshot_status_schema = acknowledgement
+                    .management_protocol
+                    .as_ref()
+                    .map(|protocol| protocol.snapshot_status_schema.clone());
+                let protocol_discovery = acknowledgement
+                    .management_protocol
+                    .as_ref()
+                    .map(|protocol| gateway_protocol_discovery(protocol.discovery).to_string());
                 if let Some(existing) = fetch_optional::<GatewayAcknowledgementRow, _>(
                     transaction,
                     sql_query::<GatewayAcknowledgementRow>(
-                        "select node_id, command_id, gateway_id, revision, snapshot_digest, expires_at, state, ready, message, acknowledged_at from node_gateway_acknowledgements where acknowledgement_id = ",
+                        "select node_id, command_id, gateway_id, revision, snapshot_digest, expires_at, state, ready, message, acknowledged_at, management_protocol, snapshot_request_schema, snapshot_status_schema, protocol_discovery from node_gateway_acknowledgements where acknowledgement_id = ",
                     )
                     .bind(acknowledgement.acknowledgement_id)
                     .append(" for update"),
@@ -317,6 +341,10 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                         || existing.ready != acknowledgement.ready
                         || existing.message != acknowledgement.message
                         || existing.acknowledged_at != acknowledgement.acknowledged_at
+                        || existing.management_protocol != management_protocol
+                        || existing.snapshot_request_schema != snapshot_request_schema
+                        || existing.snapshot_status_schema != snapshot_status_schema
+                        || existing.protocol_discovery != protocol_discovery
                     {
                         return Err(RepositoryError::Conflict(
                             "Gateway acknowledgement ID was reused with different content".into(),
@@ -348,7 +376,7 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                     execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into node_gateway_acknowledgements (acknowledgement_id, node_id, command_id, gateway_id, revision, snapshot_digest, expires_at, state, ready, message, acknowledged_at, received_at) values (",
+                            "insert into node_gateway_acknowledgements (acknowledgement_id, node_id, command_id, gateway_id, revision, snapshot_digest, expires_at, state, ready, message, acknowledged_at, received_at, management_protocol, snapshot_request_schema, snapshot_status_schema, protocol_discovery) values (",
                         )
                         .bind(acknowledgement.acknowledgement_id)
                         .append(", ")
@@ -373,6 +401,14 @@ pub(in super::super) async fn record_gateway_acknowledgement(
                         .bind(acknowledgement.acknowledged_at)
                         .append(", ")
                         .bind(received_at)
+                        .append(", ")
+                        .bind(management_protocol)
+                        .append(", ")
+                        .bind(snapshot_request_schema)
+                        .append(", ")
+                        .bind(snapshot_status_schema)
+                        .append(", ")
+                        .bind(protocol_discovery)
                         .append(")"),
                     )
                     .await?,
@@ -1203,6 +1239,13 @@ const fn gateway_state(state: GatewayAckState) -> &'static str {
     match state {
         GatewayAckState::Applied => "applied",
         GatewayAckState::Rejected => "rejected",
+    }
+}
+
+const fn gateway_protocol_discovery(discovery: GatewayManagementProtocolDiscovery) -> &'static str {
+    match discovery {
+        GatewayManagementProtocolDiscovery::Advertised => "advertised",
+        GatewayManagementProtocolDiscovery::LegacyVersionV1 => "legacy_version_v1",
     }
 }
 

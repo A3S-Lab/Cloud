@@ -131,10 +131,12 @@ impl CommandExecutor {
             }
             NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
                 let installed = self.gateway.install(snapshot).await?;
-                let (state, message) = match installed {
-                    GatewaySnapshotInstallOutcome::Applied => (GatewayAckState::Applied, None),
-                    GatewaySnapshotInstallOutcome::Rejected { message } => {
-                        (GatewayAckState::Rejected, Some(message))
+                let (state, message, management_protocol) = match installed {
+                    GatewaySnapshotInstallOutcome::Applied { protocol } => {
+                        (GatewayAckState::Applied, None, Some(protocol))
+                    }
+                    GatewaySnapshotInstallOutcome::Rejected { message, protocol } => {
+                        (GatewayAckState::Rejected, Some(message), protocol)
                     }
                 };
                 let acknowledgement = NodeGatewayAck {
@@ -150,6 +152,7 @@ impl CommandExecutor {
                     ready: state == GatewayAckState::Applied,
                     message,
                     acknowledged_at: Utc::now(),
+                    management_protocol,
                 };
                 acknowledgement
                     .validate_for(envelope.command_id, envelope.node_id, snapshot)
@@ -349,7 +352,11 @@ mod tests {
     fn gateway() -> Arc<InspectGateway> {
         Arc::new(InspectGateway {
             calls: AtomicUsize::new(0),
-            outcome: GatewaySnapshotInstallOutcome::Applied,
+            outcome: GatewaySnapshotInstallOutcome::Applied {
+                protocol: a3s_cloud_contracts::GatewayManagementProtocol::v1(
+                    a3s_cloud_contracts::GatewayManagementProtocolDiscovery::Advertised,
+                ),
+            },
         })
     }
 

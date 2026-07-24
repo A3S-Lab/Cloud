@@ -11,6 +11,58 @@ const MAX_GATEWAY_ACL_BYTES: usize = 1024 * 1024;
 const MAX_GATEWAY_CERTIFICATE_DNS_NAMES: usize = 100;
 const MAX_GATEWAY_SNAPSHOT_VALIDITY_HOURS: i64 = 24;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GatewayManagementProtocolDiscovery {
+    Advertised,
+    LegacyVersionV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GatewayManagementProtocol {
+    pub protocol: String,
+    pub snapshot_request_schema: String,
+    pub snapshot_status_schema: String,
+    pub discovery: GatewayManagementProtocolDiscovery,
+}
+
+impl GatewayManagementProtocol {
+    pub const V1: &'static str = "a3s.gateway.management-protocol.v1";
+    pub const SNAPSHOT_REQUEST_V1: &'static str = "a3s.gateway.managed-snapshot.v1";
+    pub const SNAPSHOT_STATUS_V1: &'static str = "a3s.gateway.managed-snapshot-status.v1";
+
+    pub fn v1(discovery: GatewayManagementProtocolDiscovery) -> Self {
+        Self {
+            protocol: Self::V1.into(),
+            snapshot_request_schema: Self::SNAPSHOT_REQUEST_V1.into(),
+            snapshot_status_schema: Self::SNAPSHOT_STATUS_V1.into(),
+            discovery,
+        }
+    }
+
+    pub fn advertised_v1() -> Self {
+        Self::v1(GatewayManagementProtocolDiscovery::Advertised)
+    }
+
+    pub fn legacy_v1() -> Self {
+        Self::v1(GatewayManagementProtocolDiscovery::LegacyVersionV1)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.protocol != Self::V1
+            || self.snapshot_request_schema != Self::SNAPSHOT_REQUEST_V1
+            || self.snapshot_status_schema != Self::SNAPSHOT_STATUS_V1
+        {
+            return Err(format!(
+                "unsupported Gateway management protocol {:?}",
+                self.protocol
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatewayCertificateRequest {

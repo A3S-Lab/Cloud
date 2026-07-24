@@ -291,8 +291,13 @@ inside a bounded pre-expiry window without replacing their ACL digest or active
 certificate before acknowledgement. A real pinned-Gateway fixture also rotates
 independently signed certificates and target origins, rejects the superseded
 certificate and selector, and recovers only the replacement after restart.
-Mixed-version delivery, replicated readiness and rollout thresholds, and joint
-production HA evidence remain open.
+Before mutation, the agent now selects an explicitly advertised
+`a3s.gateway.management-protocol.v1` tuple or the closed legacy-v1 baseline.
+Unknown and inconsistent descriptors fail closed. Gateway ack v4 and command
+ack v2 persist the selected protocol, while the control plane reads legacy
+v3/v1 acknowledgements and migration 037 leaves their unavailable evidence
+null. Replicated readiness and rollout thresholds plus joint production HA
+evidence remain open.
 
 ### 5.7 `I0`: inference profile
 
@@ -389,7 +394,7 @@ are allowed only before the first response byte.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical Gateway scopes, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, and command-bound revision/unit/generation target projection with PostgreSQL recovery are available; replicated projection remains | Explicit managed mode, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration and isolation plus single-Gateway certificate and target replacement, superseded-selector rejection, and restart recovery are verified; mixed-version, replicated-rollout, and production HA gates remain open |
+| `H0.2` | Logical Gateway scopes, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and command-bound revision/unit/generation target projection with PostgreSQL recovery are available; replicated projection remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement, superseded-selector rejection, and restart recovery are verified; replicated-rollout and production HA gates remain open |
 | `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |

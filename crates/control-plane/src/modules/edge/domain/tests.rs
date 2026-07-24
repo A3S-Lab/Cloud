@@ -176,6 +176,7 @@ fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() 
         ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(2),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(certificate.apply_gateway_acknowledgement(&applied).is_err());
     certificate
@@ -285,6 +286,7 @@ fn route_activates_only_for_the_exact_gateway_publication() {
         ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(2),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(route.apply_gateway_acknowledgement(&wrong).is_err());
     assert_eq!(route.state, RouteState::Publishing);
@@ -334,6 +336,9 @@ fn rejected_publication_preserves_failure_without_false_activation() {
             ready: false,
             message: Some("validation failed".into()),
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("reject");
     assert_eq!(route.state, RouteState::Rejected);
@@ -365,6 +370,9 @@ fn route_cutover_rejects_equal_and_stale_runtime_generations() {
             ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("activate route");
 
@@ -429,6 +437,9 @@ fn active_route_certificate_convergence_preserves_service_until_exact_apply() {
             ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("activate route");
     let activated_at = active.activated_at;
@@ -497,6 +508,9 @@ fn revoked_domain_policy_removes_only_an_active_route() {
             ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("activate route");
 
@@ -560,6 +574,7 @@ fn certificate_convergence_is_exact_and_preserves_route_versions() {
         ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(convergence.acknowledge(&wrong).is_err());
     wrong.revision = 2;

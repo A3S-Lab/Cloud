@@ -514,11 +514,18 @@ reuses its private key and CSR, obtains public certificate material through the
 authenticated signing endpoint, and verifies identity, SANs, serial,
 fingerprint, validity, server usage, CA chain, and private-key match. It then
 calls Gateway's native apply endpoint with independent validation and reload
-deadlines and queries exact readiness. Gateway's managed-state journal is the
-sole installed-snapshot authority; the node agent records only its command
-outcome. Its acknowledgement binds `command_id`, `node_id`, `gateway_id`,
-revision, ACL digest, expiry, applied metadata, and readiness; the control plane
-rejects an acknowledgement that does not match the exact persisted command.
+deadlines and queries exact readiness. Before certificate provisioning or
+snapshot mutation, it reads `a3s.gateway.version.v1` and selects the complete
+advertised management protocol tuple. The exact pre-descriptor Gateway v1
+response is a bounded compatibility fallback; unknown version/API schemas,
+duplicate protocol declarations, and inconsistent request/status schemas fail
+before apply. Gateway's managed-state journal is the sole installed-snapshot
+authority; the node agent records only its command outcome. Its v4
+acknowledgement binds `command_id`, `node_id`, `gateway_id`, revision, ACL
+digest, expiry, applied metadata, readiness, selected protocol, and discovery
+mode. The enclosing command acknowledgement is v2. The control plane also
+accepts the legacy Gateway-ack-v3/command-ack-v1 pair during migration and
+rejects mixed outer/inner schema pairs.
 
 The agent persists its command journal and last accepted generation locally.
 Provider labels also bind resources to unit ID, generation, and spec digest so
@@ -732,7 +739,10 @@ and idempotency documents, preserves certificate-convergence route-version
 records, and adds composite tenancy/node foreign keys. Recreated repository
 tests prove exact target and scope recovery, while migration probes reject
 forged identities, revision-generation pairs, cross-environment scopes, and
-wrong-node bindings.
+wrong-node bindings. Migration 037 adds the selected management protocol,
+request/status schemas, and discovery mode to Gateway acknowledgements. Legacy
+rows remain null because the migration does not invent negotiation evidence;
+new rows must store either the complete supported tuple or no tuple.
 
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route

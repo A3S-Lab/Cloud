@@ -369,6 +369,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         ready: true,
         message: None,
         acknowledged_at: Utc::now(),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     let gateway_endpoint = format!(
         "https://localhost:{}/v1/node-control/gateway-acks",

@@ -1262,8 +1262,15 @@ backfills target projections. Migration 036 deterministically creates one scope
 per legacy environment/node binding, backfills Route and serialized recovery
 documents, and enforces composite tenancy/node constraints. Unit,
 recreated-PostgreSQL, migration, and real-Gateway certificate/target replacement
-and restart fixtures cover this slice. Mixed-version delivery, replicated
-rollout thresholds, and production HA remain open, so `H0.2` is not complete.
+and restart fixtures cover this slice.
+
+Mixed-version delivery now selects the exact advertised Gateway management
+protocol and request/status schemas before mutation, accepts only the closed
+legacy-v1 version response as fallback, and rejects unknown tuples. Gateway ack
+v4 and command ack v2 carry the selection; the control plane also reads legacy
+v3/v1 pairs. Migration 037 stores new evidence and leaves historical evidence
+null. Replicated rollout thresholds and production HA remain open, so `H0.2`
+is not complete.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
 job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the

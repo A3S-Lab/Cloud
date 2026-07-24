@@ -214,6 +214,7 @@ fn acknowledgement(
         ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "invalid snapshot".into()),
         acknowledged_at: staged.publication.command_issued_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }
 
@@ -367,6 +368,7 @@ fn cutover_acknowledgement(
         ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: staged.publication.command_issued_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }
 

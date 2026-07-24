@@ -24,9 +24,9 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{
-    GatewayAckState, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
-    NodeCommandOutcome, NodeCommandPayload, NodeGatewayAck, NodeGatewayAckReceipt,
-    NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
+    GatewayAckState, GatewayManagementProtocolDiscovery, NodeCommandAck, NodeCommandLeaseRequest,
+    NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
 };
 use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
 use a3s_runtime::contract::RuntimeLogDiscontinuityReason;

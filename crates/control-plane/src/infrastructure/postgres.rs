@@ -349,6 +349,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/036_logical_gateway_scopes.sql"
             )),
         ),
+        Migration::new(
+            "037",
+            "Gateway management protocol evidence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/037_gateway_management_protocol.sql"
+            )),
+        ),
     ]
 }
 

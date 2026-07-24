@@ -327,11 +327,12 @@ impl NodeCommandAckReceipt {
 }
 
 impl NodeCommandAck {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-command-ack.v1";
+    pub const SCHEMA: &'static str = "a3s.cloud.node-command-ack.v2";
+    pub const LEGACY_SCHEMA: &'static str = "a3s.cloud.node-command-ack.v1";
 
     pub fn validate_against(&self, command: &NodeCommandEnvelope) -> Result<(), String> {
         command.validate()?;
-        if self.schema != Self::SCHEMA {
+        if self.schema != Self::SCHEMA && self.schema != Self::LEGACY_SCHEMA {
             return Err(format!(
                 "unsupported node command acknowledgement schema {:?}",
                 self.schema
@@ -353,6 +354,17 @@ impl NodeCommandAck {
             result.validate_against(command)?;
             if let NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } = result.as_ref()
             {
+                let expected_gateway_schema = if self.schema == Self::SCHEMA {
+                    NodeGatewayAck::SCHEMA
+                } else {
+                    NodeGatewayAck::LEGACY_SCHEMA
+                };
+                if acknowledgement.schema != expected_gateway_schema {
+                    return Err(
+                        "Gateway acknowledgement schema does not match its command acknowledgement"
+                            .into(),
+                    );
+                }
                 if acknowledgement.acknowledged_at < command.issued_at
                     || acknowledgement.acknowledged_at > self.completed_at
                 {

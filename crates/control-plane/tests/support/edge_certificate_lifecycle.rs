@@ -635,5 +635,6 @@ fn acknowledgement(
         ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "reload rejected".into()),
         acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }

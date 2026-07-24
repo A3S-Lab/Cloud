@@ -203,7 +203,11 @@ impl GatewaySnapshotInstaller for AppliedGatewayInstaller {
         &self,
         _snapshot: &GatewaySnapshot,
     ) -> Result<GatewaySnapshotInstallOutcome, GatewaySnapshotInstallError> {
-        Ok(GatewaySnapshotInstallOutcome::Applied)
+        Ok(GatewaySnapshotInstallOutcome::Applied {
+            protocol: a3s_cloud_contracts::GatewayManagementProtocol::v1(
+                a3s_cloud_contracts::GatewayManagementProtocolDiscovery::Advertised,
+            ),
+        })
     }
 }
 

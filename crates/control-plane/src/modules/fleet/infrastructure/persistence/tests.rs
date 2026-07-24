@@ -372,6 +372,7 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         ready: true,
         message: None,
         acknowledged_at: observed_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(
         !repository

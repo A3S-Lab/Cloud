@@ -639,6 +639,7 @@ async fn exercise_observation_control(
         ready: true,
         message: None,
         acknowledged_at: observed_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(
         !nodes

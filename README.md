@@ -144,6 +144,14 @@ a new generation produces a distinct snapshot.
 
 Cloud records an applied acknowledgement only after Gateway reports the same
 identity, revision, digest, expiry, applied metadata, and ready state.
+Before any mutation, the node agent reads Gateway's versioned capability
+descriptor and selects the exact management protocol plus request/status
+schemas. It also supports the closed pre-descriptor v1 response for an older
+Gateway; unknown or inconsistent tuples fail before apply. New Gateway
+acknowledgements carry that selection under v4 and the enclosing command
+acknowledgement is v2. The control plane still reads the prior v3/v1 pair during
+the migration window.
+
 Generation cutover requires a different immutable revision, a strictly newer
 generation, and the same logical scope; rejection preserves the prior target,
 while an exact applied acknowledgement atomically replaces the complete target
@@ -151,15 +159,17 @@ projection. PostgreSQL migration 036 deterministically creates one logical
 scope per legacy environment/node binding, backfills Route and recovery
 documents, and enforces the full tenancy/node relationship. Recreated
 PostgreSQL and migration gates verify recovery and reject cross-environment or
-wrong-node publication.
+wrong-node publication. Migration 037 stores new protocol evidence without
+inventing it for legacy acknowledgements.
 
 The real pinned-Gateway gate rotates independently signed certificates and
 upstream targets, rejects the superseded certificate and selector, removes the
 old certificate material, and recovers only the replacement after Gateway
 restart. Same-policy validity renewal continues to retain the exact ACL digest
-and active certificate until its successor is ready. Mixed-version delivery,
-replicated readiness and rollout thresholds, and joint production HA evidence
-remain open, so this foundation does not complete `H0.2` or `H0`.
+and active certificate until its successor is ready. Contract-level
+mixed-version delivery is verified; replicated readiness and rollout
+thresholds plus joint production HA evidence remain open, so this foundation
+does not complete `H0.2` or `H0`.
 
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
 evidence, and the ordered product portfolio.
@@ -348,6 +358,15 @@ readiness. It emits an applied acknowledgement only when Gateway returns the
 same snapshot metadata and `ready` state; rejection, expiry, mismatched status,
 or unavailable readiness cannot advance Cloud state.
 
+The node agent first selects `a3s.gateway.management-protocol.v1` from the
+versioned Gateway descriptor. A legacy Gateway that exposes the exact
+pre-descriptor v1 version response remains compatible, while an unknown
+descriptor or mismatched request/status schema fails before snapshot apply.
+The v4 Gateway acknowledgement and v2 command acknowledgement persist the
+selected tuple and discovery mode. New control planes continue to read the old
+v3/v1 acknowledgement pair, whose rows retain `NULL` protocol evidence rather
+than a fabricated backfill.
+
 Cloud owns a logical Gateway scope inside one organization, project, and
 environment. The current cardinality-one mapping binds that scope to one
 physical Gateway node. Each route carries both identities together with the
@@ -366,9 +385,9 @@ reuses the existing certificate files, and keeps the prior revision
 authoritative when renewal is rejected. Logical-scope ownership, migration,
 same-environment/node enforcement, generation-bound target replacement,
 PostgreSQL recovery, and real certificate/target rotation are verified for the
-current one-scope/one-Gateway mapping. Mixed-version delivery, replicated
-readiness and rollout thresholds, and joint production HA recovery remain to
-be implemented and verified.
+current one-scope/one-Gateway mapping. Mixed-version delivery is verified at
+the protocol boundary. Replicated readiness and rollout thresholds plus joint
+production HA recovery remain to be implemented and verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

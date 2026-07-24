@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot};
+use super::{
+    validate_sha256, validate_single_line, validate_uuid, GatewayManagementProtocol,
+    GatewaySnapshot,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -342,14 +345,38 @@ pub struct NodeGatewayAck {
     pub ready: bool,
     pub message: Option<String>,
     pub acknowledged_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_protocol: Option<GatewayManagementProtocol>,
 }
 
 impl NodeGatewayAck {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v3";
+    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v4";
+    pub const LEGACY_SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v3";
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != Self::SCHEMA {
-            return Err(format!("unsupported Gateway ack schema {:?}", self.schema));
+        match self.schema.as_str() {
+            Self::SCHEMA => {
+                if self.state == GatewayAckState::Applied && self.management_protocol.is_none() {
+                    return Err(
+                        "applied Gateway acknowledgement must identify its management protocol"
+                            .into(),
+                    );
+                }
+                if let Some(protocol) = &self.management_protocol {
+                    protocol.validate()?;
+                }
+            }
+            Self::LEGACY_SCHEMA => {
+                if self.management_protocol.is_some() {
+                    return Err(
+                        "legacy Gateway acknowledgement must omit management protocol evidence"
+                            .into(),
+                    );
+                }
+            }
+            _ => {
+                return Err(format!("unsupported Gateway ack schema {:?}", self.schema));
+            }
         }
         validate_uuid("acknowledgement_id", self.acknowledgement_id)?;
         validate_uuid("command_id", self.command_id)?;

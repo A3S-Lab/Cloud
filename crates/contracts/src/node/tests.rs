@@ -369,10 +369,22 @@ fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgemen
         ready: true,
         message: None,
         acknowledged_at: command.issued_at + Duration::milliseconds(10),
+        management_protocol: Some(GatewayManagementProtocol::v1(
+            GatewayManagementProtocolDiscovery::Advertised,
+        )),
     };
     acknowledgement
         .validate_for(command.command_id, command.node_id, &snapshot)
         .expect("exact Gateway acknowledgement");
+    let mut legacy_acknowledgement = acknowledgement.clone();
+    legacy_acknowledgement.schema = NodeGatewayAck::LEGACY_SCHEMA.into();
+    legacy_acknowledgement.management_protocol = None;
+    legacy_acknowledgement
+        .validate_for(command.command_id, command.node_id, &snapshot)
+        .expect("legacy Gateway acknowledgement remains readable");
+    let mut missing_protocol = acknowledgement.clone();
+    missing_protocol.management_protocol = None;
+    assert!(missing_protocol.validate().is_err());
 
     let command_acknowledgement = NodeCommandAck {
         schema: NodeCommandAck::SCHEMA.into(),
@@ -391,6 +403,42 @@ fn gateway_snapshot_commands_bind_the_complete_snapshot_and_exact_acknowledgemen
     command_acknowledgement
         .validate_against(&command)
         .expect("Gateway command acknowledgement");
+    let mut legacy_command_acknowledgement = command_acknowledgement.clone();
+    legacy_command_acknowledgement.schema = NodeCommandAck::LEGACY_SCHEMA.into();
+    {
+        let NodeCommandOutcome::Succeeded { result } = &mut legacy_command_acknowledgement.outcome
+        else {
+            panic!("expected successful legacy Gateway command acknowledgement");
+        };
+        let NodeCommandResult::GatewaySnapshotInstalled {
+            acknowledgement: legacy_gateway_ack,
+        } = result.as_mut()
+        else {
+            panic!("expected legacy Gateway snapshot result");
+        };
+        legacy_gateway_ack.schema = NodeGatewayAck::LEGACY_SCHEMA.into();
+        legacy_gateway_ack.management_protocol = None;
+    }
+    legacy_command_acknowledgement
+        .validate_against(&command)
+        .expect("legacy command and Gateway acknowledgement remain readable");
+    {
+        let NodeCommandOutcome::Succeeded { result } = &mut legacy_command_acknowledgement.outcome
+        else {
+            panic!("expected successful legacy Gateway command acknowledgement");
+        };
+        let NodeCommandResult::GatewaySnapshotInstalled {
+            acknowledgement: legacy_gateway_ack,
+        } = result.as_mut()
+        else {
+            panic!("expected legacy Gateway snapshot result");
+        };
+        legacy_gateway_ack.schema = NodeGatewayAck::SCHEMA.into();
+        legacy_gateway_ack.management_protocol = Some(GatewayManagementProtocol::advertised_v1());
+    }
+    assert!(legacy_command_acknowledgement
+        .validate_against(&command)
+        .is_err());
 
     let mut wrong_revision = acknowledgement;
     wrong_revision.revision += 1;

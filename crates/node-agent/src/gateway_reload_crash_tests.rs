@@ -98,6 +98,10 @@ impl RecordedGatewayControl {
 
 #[async_trait]
 impl GatewayControl for RecordedGatewayControl {
+    async fn negotiate(&self) -> Result<GatewayManagementProtocol, GatewayControlError> {
+        self.inner.negotiate().await
+    }
+
     async fn apply(
         &self,
         snapshot: &GatewaySnapshot,

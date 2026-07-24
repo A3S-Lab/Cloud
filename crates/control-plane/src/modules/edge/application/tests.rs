@@ -759,6 +759,7 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(routes
         .project_gateway_acknowledgement(

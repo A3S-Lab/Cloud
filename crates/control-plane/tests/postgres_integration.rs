@@ -213,9 +213,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 36);
+    assert_eq!(applied, 37);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
+    assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
+        .await?;
     let evidence_required_column = database
         .fetch_one_as(sql_query::<(String, String, Option<String>)>(
             "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence_required'",
@@ -596,6 +598,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "037",
+                "Gateway management protocol evidence",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/037_gateway_management_protocol.sql"
+                )),
+            ),
+            Migration::new(
+                "038",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -2247,6 +2257,69 @@ begin
     end;
 end
 $probe$;
+
+rollback;
+"#
+    );
+    client.batch_execute(&probe).await?;
+    Ok(())
+}
+
+async fn assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(
+    executor: &PostgresExecutor,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = executor.pool().get().await?;
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/037_gateway_management_protocol.sql"
+    ));
+    let probe = format!(
+        r#"
+begin;
+set local search_path = pg_temp;
+
+create temporary table node_gateway_acknowledgements (
+    acknowledgement_id uuid primary key
+);
+
+insert into node_gateway_acknowledgements (acknowledgement_id)
+values ('37000000-0000-0000-0000-000000000001');
+
+{migration}
+
+do $$
+begin
+    if exists (
+        select 1
+        from node_gateway_acknowledgements
+        where acknowledgement_id = '37000000-0000-0000-0000-000000000001'
+          and (
+              management_protocol is not null
+              or snapshot_request_schema is not null
+              or snapshot_status_schema is not null
+              or protocol_discovery is not null
+          )
+    ) then
+        raise exception 'legacy Gateway acknowledgement gained invented protocol evidence';
+    end if;
+
+    update node_gateway_acknowledgements
+    set management_protocol = 'a3s.gateway.management-protocol.v1',
+        snapshot_request_schema = 'a3s.gateway.managed-snapshot.v1',
+        snapshot_status_schema = 'a3s.gateway.managed-snapshot-status.v1',
+        protocol_discovery = 'advertised'
+    where acknowledgement_id = '37000000-0000-0000-0000-000000000001';
+
+    begin
+        update node_gateway_acknowledgements
+        set snapshot_status_schema = 'a3s.gateway.managed-snapshot-status.v2'
+        where acknowledgement_id = '37000000-0000-0000-0000-000000000001';
+        raise exception 'incompatible Gateway protocol evidence was accepted';
+    exception
+        when check_violation then null;
+    end;
+end
+$$;
 
 rollback;
 "#
