@@ -399,6 +399,7 @@ fn config() -> CloudConfig {
             certificate_authority: SecurityProviderKind::Local,
             gateway_certificate_authority: SecurityProviderKind::Local,
             key_encryption: SecurityProviderKind::Local,
+            build_evidence_signing: SecurityProviderKind::Local,
             vault_address_env: "A3S_CLOUD_VAULT_ADDR".into(),
             vault_token_env: "A3S_CLOUD_VAULT_TOKEN".into(),
             vault_pki_mount: "pki".into(),
@@ -407,6 +408,7 @@ fn config() -> CloudConfig {
             vault_gateway_pki_role: "a3s-cloud-gateway".into(),
             vault_transit_mount: "transit".into(),
             vault_transit_key: "a3s-cloud".into(),
+            vault_build_evidence_signing_key: "a3s-cloud-build-evidence".into(),
             vault_timeout_ms: 5_000,
         },
     }

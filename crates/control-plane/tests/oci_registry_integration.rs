@@ -117,7 +117,7 @@ async fn real_private_registry_publishes_and_replays_a_validated_oci_graph(
         None,
         vec!["linux/amd64".into()],
     )?;
-    let output = validator.validate(&artifact, &recipe).await?;
+    let output = validator.validate(&artifact, &recipe, None).await?.output;
     assert_eq!(output.descriptor, descriptor);
     let publisher = OciRegistryArtifactPublisher::new(
         validator,

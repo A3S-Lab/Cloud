@@ -1,7 +1,8 @@
 use super::*;
+use crate::modules::artifacts::domain::test_support::evidence_for;
 use crate::modules::artifacts::{
     BuildArtifact, BuildRun, InMemoryBuildRunRepository, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, SourceRevisionId};
 use crate::modules::sources::domain::BuildPlatform;
@@ -112,6 +113,42 @@ async fn source_build_deployment_requires_one_owned_success_and_replays_exactly(
         .published_artifact
         .as_ref()
         .ok_or_else(|| BootError::Internal("succeeded test build has no publication".into()))?;
+    let expected_evidence = succeeded
+        .evidence
+        .as_deref()
+        .ok_or_else(|| BootError::Internal("succeeded test build has no evidence".into()))?;
+    let build_path = format!(
+        "/api/v1/organizations/{organization}/build-runs/{}",
+        succeeded.id
+    );
+    let build_detail = app.call(get_as(&build_path, ADMIN_TOKEN)).await?;
+    assert_eq!(build_detail.status(), 200);
+    let build_detail = response_json(&build_detail)?;
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["verificationState"],
+        "verified"
+    );
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["sbomDigest"],
+        expected_evidence.sbom_digest
+    );
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["provenanceDigest"],
+        expected_evidence.provenance_digest
+    );
+    assert_eq!(
+        build_detail["data"]["evidenceSummary"]["signingKeyId"],
+        expected_evidence.signing_key.key_id
+    );
+    let evidence = app
+        .call(get_as(format!("{build_path}/evidence"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(evidence.status(), 200);
+    assert_eq!(
+        response_json(&evidence)?["data"],
+        serde_json::to_value(expected_evidence)
+            .map_err(|error| BootError::Internal(error.to_string()))?
+    );
     let accepted = app
         .call(post_json(
             &workload_path,
@@ -356,10 +393,19 @@ async fn succeed_build(
         content_bytes: 1_024,
         blob_count: 3,
     };
+    let cache = ValidatedBuildCache::new(
+        digest('f'),
+        output.artifact.clone(),
+        OciDescriptor::new("application/vnd.oci.image.index.v1+json", digest('9'), 256)
+            .map_err(BootError::Internal)?,
+        512,
+        2,
+    )
+    .map_err(BootError::Internal)?;
     let previous = build.aggregate_version;
     at += chrono::Duration::milliseconds(1);
     build
-        .record_validated_output(output, at)
+        .record_validated_output(output, Some(cache), at)
         .map_err(BootError::Internal)?;
     let mut build = builds
         .save(build, previous)
@@ -384,6 +430,23 @@ async fn succeed_build(
     at += chrono::Duration::milliseconds(1);
     build
         .record_published_artifact(PublishedOciArtifact::from_target(&target), at)
+        .map_err(BootError::Internal)?;
+    let mut build = builds
+        .save(build, previous)
+        .await
+        .map_err(repository_error)?;
+    let previous = build.aggregate_version;
+    at += chrono::Duration::milliseconds(1);
+    build.begin_attestation(at).map_err(BootError::Internal)?;
+    let mut build = builds
+        .save(build, previous)
+        .await
+        .map_err(repository_error)?;
+    let previous = build.aggregate_version;
+    at += chrono::Duration::milliseconds(1);
+    let evidence = evidence_for(&build, at);
+    build
+        .record_evidence(evidence, at)
         .map_err(BootError::Internal)?;
     let mut build = builds
         .save(build, previous)

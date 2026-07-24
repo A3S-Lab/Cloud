@@ -273,6 +273,7 @@ jobs:
 
       - name: Run the Runtime-to-Registry production gate
         env:
+          A3S_CLOUD_TEST_BUILDKIT_CONTAINER: a3s-cloud-buildkit
           A3S_CLOUD_TEST_BUSYBOX_ROOTFS: ${{ runner.temp }}/a3s-cloud-buildkit-busybox-rootfs.tar
           A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
           A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password

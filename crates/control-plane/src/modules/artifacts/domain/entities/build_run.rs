@@ -1,4 +1,6 @@
 use super::build_artifact::{validate_sha256, BuildArtifact, ValidatedOciBuildOutput};
+use super::build_cache::ValidatedBuildCache;
+use super::build_evidence::BuildEvidence;
 use super::oci_publication::{OciPublicationTarget, PublishedOciArtifact};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, EnvironmentId, NodeCommandId, NodeId, OperationId,
@@ -22,6 +24,7 @@ pub enum BuildRunStatus {
     Running,
     Validating,
     Publishing,
+    Attesting,
     Cancelling,
     CleanupPending,
     Succeeded,
@@ -39,6 +42,7 @@ impl BuildRunStatus {
             Self::Running => "running",
             Self::Validating => "validating",
             Self::Publishing => "publishing",
+            Self::Attesting => "attesting",
             Self::Cancelling => "cancelling",
             Self::CleanupPending => "cleanup_pending",
             Self::Succeeded => "succeeded",
@@ -56,6 +60,7 @@ impl BuildRunStatus {
             "running" => Ok(Self::Running),
             "validating" => Ok(Self::Validating),
             "publishing" => Ok(Self::Publishing),
+            "attesting" => Ok(Self::Attesting),
             "cancelling" => Ok(Self::Cancelling),
             "cleanup_pending" => Ok(Self::CleanupPending),
             "succeeded" => Ok(Self::Succeeded),
@@ -89,8 +94,12 @@ pub struct BuildRun {
     pub runtime_spec_digest: Option<String>,
     pub runtime_output_artifact: Option<BuildArtifact>,
     pub output: Option<ValidatedOciBuildOutput>,
+    pub cache_required: bool,
+    pub cache: Option<ValidatedBuildCache>,
     pub publication_target: Option<OciPublicationTarget>,
     pub published_artifact: Option<PublishedOciArtifact>,
+    pub evidence_required: bool,
+    pub evidence: Option<Box<BuildEvidence>>,
     pub failure: Option<String>,
     pub aggregate_version: u64,
     pub requested_at: DateTime<Utc>,
@@ -164,8 +173,12 @@ impl BuildRun {
             runtime_spec_digest: None,
             runtime_output_artifact: None,
             output: None,
+            cache_required: true,
+            cache: None,
             publication_target: None,
             published_artifact: None,
+            evidence_required: true,
+            evidence: None,
             failure: None,
             aggregate_version: 1,
             requested_at,
@@ -211,8 +224,12 @@ impl BuildRun {
             runtime_spec_digest: None,
             runtime_output_artifact: None,
             output: None,
+            cache_required: true,
+            cache: None,
             publication_target: None,
             published_artifact: None,
+            evidence_required: true,
+            evidence: None,
             failure: None,
             aggregate_version: 1,
             requested_at,
@@ -323,9 +340,19 @@ impl BuildRun {
     pub fn record_validated_output(
         &mut self,
         output: ValidatedOciBuildOutput,
+        cache: Option<ValidatedBuildCache>,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
         output.validate()?;
+        if self.cache_required != cache.is_some() {
+            return Err("validated build cache does not match the build workflow contract".into());
+        }
+        if let Some(cache) = &cache {
+            cache.validate()?;
+            if cache.artifact != output.artifact {
+                return Err("validated build cache changed the Runtime output artifact".into());
+            }
+        }
         if self.status != BuildRunStatus::Validating {
             return Err("validated output requires a validating build run".into());
         }
@@ -334,12 +361,13 @@ impl BuildRun {
         }
         let at = self.canonical_time(at)?;
         if let Some(existing) = &self.output {
-            if existing != &output {
-                return Err("validated build output cannot change".into());
+            if existing != &output || self.cache != cache {
+                return Err("validated build output or cache cannot change".into());
             }
             return self.observe_time(at);
         }
         self.output = Some(output);
+        self.cache = cache;
         self.aggregate_version += 1;
         self.updated_at = at;
         Ok(())
@@ -402,10 +430,74 @@ impl BuildRun {
         Ok(())
     }
 
+    pub fn begin_attestation(&mut self, at: DateTime<Utc>) -> Result<(), String> {
+        if !self.evidence_required {
+            return Err("build run does not require supply-chain evidence".into());
+        }
+        if self.published_artifact.is_none() {
+            return Err("build attestation requires a published OCI artifact".into());
+        }
+        if self.evidence.is_some() {
+            return self.observe_time(at);
+        }
+        if self.status == BuildRunStatus::Attesting {
+            return self.observe_time(at);
+        }
+        if !matches!(
+            self.status,
+            BuildRunStatus::Publishing | BuildRunStatus::Cancelling
+        ) {
+            return Err(format!(
+                "build run cannot attest from {}",
+                self.status.as_str()
+            ));
+        }
+        let at = self.canonical_time(at)?;
+        self.status = BuildRunStatus::Attesting;
+        self.aggregate_version += 1;
+        self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn record_evidence(
+        &mut self,
+        evidence: BuildEvidence,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        evidence.validate()?;
+        self.validate_evidence_binding(&evidence)?;
+        if !matches!(
+            self.status,
+            BuildRunStatus::Attesting | BuildRunStatus::Cancelling
+        ) {
+            return Err("build evidence requires an attesting or cancelling build".into());
+        }
+        let at = self.canonical_time(at)?;
+        if let Some(existing) = &self.evidence {
+            if existing.as_ref() != &evidence {
+                return Err("verified build evidence cannot change".into());
+            }
+            return self.observe_time(at);
+        }
+        self.evidence = Some(Box::new(evidence));
+        self.aggregate_version += 1;
+        self.updated_at = at;
+        Ok(())
+    }
+
     pub fn record_failure(&mut self, reason: String, at: DateTime<Utc>) -> Result<(), String> {
         validate_reason(&reason)?;
         if self.status.is_terminal() {
             return Err("terminal build run cannot fail".into());
+        }
+        if self.cancellation_requested_at.is_some()
+            && !(self.evidence_required
+                && self.published_artifact.is_some()
+                && self.evidence.is_none())
+        {
+            return Err(
+                "cancelling build can fail only when required published evidence is missing".into(),
+            );
         }
         let at = self.canonical_time(at)?;
         if let Some(existing) = &self.failure {
@@ -447,6 +539,7 @@ impl BuildRun {
         if !matches!(
             self.status,
             BuildRunStatus::Publishing
+                | BuildRunStatus::Attesting
                 | BuildRunStatus::Cancelling
                 | BuildRunStatus::CleanupPending
         ) {
@@ -454,6 +547,13 @@ impl BuildRun {
         }
         if self.status == BuildRunStatus::Publishing && self.published_artifact.is_none() {
             return Err("successful Runtime cleanup requires a published OCI artifact".into());
+        }
+        if self.published_artifact.is_some()
+            && self.evidence_required
+            && self.evidence.is_none()
+            && self.failure.is_none()
+        {
+            return Err("published OCI artifact must have verified evidence before cleanup".into());
         }
         let at = self.canonical_time(at)?;
         match self.cleanup_command_id {
@@ -565,6 +665,21 @@ impl BuildRun {
                 return Err("validated output changed the Runtime output artifact".into());
             }
         }
+        match &self.cache {
+            Some(cache) => {
+                if !self.cache_required {
+                    return Err("stored build cache is not required by this build run".into());
+                }
+                cache.validate()?;
+                if self.output.as_ref().map(|output| &output.artifact) != Some(&cache.artifact) {
+                    return Err("stored build cache changed the Runtime output artifact".into());
+                }
+            }
+            None if self.cache_required && self.output.is_some() => {
+                return Err("stored validated build output is missing its required cache".into())
+            }
+            None => {}
+        }
         if let Some(artifact) = &self.runtime_output_artifact {
             artifact.validate()?;
         }
@@ -592,8 +707,28 @@ impl BuildRun {
         if let Some(reason) = &self.failure {
             validate_reason(reason)?;
         }
+        match &self.evidence {
+            Some(evidence) => {
+                if !self.evidence_required {
+                    return Err("stored build evidence is not required by this build run".into());
+                }
+                evidence.validate()?;
+                self.validate_evidence_binding(evidence)?;
+            }
+            None if self.published_artifact.is_some()
+                && self.evidence_required
+                && self.cleanup_command_id.is_some()
+                && self.failure.is_none() =>
+            {
+                return Err(
+                    "stored published build entered cleanup without verified evidence".into(),
+                )
+            }
+            None => {}
+        }
         if self.status == BuildRunStatus::Succeeded
             && (self.published_artifact.is_none()
+                || self.evidence_required && self.evidence.is_none()
                 || self.failure.is_some()
                 || self.cancellation_requested_at.is_some()
                 || self.cleanup_command_id.is_none())
@@ -605,8 +740,14 @@ impl BuildRun {
         {
             return Err("failed build run is missing its failure reason".into());
         }
-        if self.status == BuildRunStatus::Cancelled && self.cancellation_requested_at.is_none() {
-            return Err("cancelled build run is missing its cancellation request".into());
+        if self.status == BuildRunStatus::Cancelled
+            && (self.cancellation_requested_at.is_none()
+                || self.published_artifact.is_some()
+                    && self.evidence_required
+                    && self.evidence.is_none()
+                    && self.failure.is_none())
+        {
+            return Err("cancelled published build is missing its request or evidence".into());
         }
         if self.command_id.is_some()
             && self.status.is_terminal()
@@ -622,8 +763,10 @@ impl BuildRun {
                     || self.command_id.is_some()
                     || self.runtime_output_artifact.is_some()
                     || self.output.is_some()
+                    || self.cache.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some()
                     || self.cleanup_command_id.is_some() =>
@@ -636,6 +779,7 @@ impl BuildRun {
                     || self.node_id.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -647,6 +791,7 @@ impl BuildRun {
                     || self.node_id.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -658,6 +803,7 @@ impl BuildRun {
                     || self.command_id.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -668,6 +814,7 @@ impl BuildRun {
                     || self.runtime_output_artifact.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -679,6 +826,7 @@ impl BuildRun {
                     || self.cleanup_command_id.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
@@ -690,10 +838,22 @@ impl BuildRun {
                     || self.output.is_none()
                     || self.publication_target.is_none()
                     || self.cleanup_command_id.is_some()
+                    || self.evidence.is_some()
                     || self.failure.is_some()
                     || self.cancellation_requested_at.is_some() =>
             {
                 return Err("publishing build run has inconsistent execution state".into());
+            }
+            BuildRunStatus::Attesting
+                if self.command_id.is_none()
+                    || self.output.is_none()
+                    || self.publication_target.is_none()
+                    || self.published_artifact.is_none()
+                    || !self.evidence_required
+                    || self.cleanup_command_id.is_some()
+                    || self.failure.is_some() =>
+            {
+                return Err("attesting build run has inconsistent execution state".into());
             }
             BuildRunStatus::Cancelling if self.cancellation_requested_at.is_none() => {
                 return Err("cancelling build run has no cancellation request".into());
@@ -706,6 +866,26 @@ impl BuildRun {
                 return Err("cleanup-pending build run has no terminal intent".into());
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn validate_evidence_binding(&self, evidence: &BuildEvidence) -> Result<(), String> {
+        if !self.evidence_required
+            || evidence.build_run_id != self.id
+            || evidence.operation_id != self.operation_id
+            || evidence.source_revision_id != self.source_revision_id
+            || evidence.attempt != self.attempt
+            || Some(evidence.source_content_digest.as_str())
+                != self.source_content_digest.as_deref()
+            || Some(evidence.runtime_spec_digest.as_str()) != self.runtime_spec_digest.as_deref()
+            || Some(&evidence.artifact) != self.published_artifact.as_ref()
+            || self
+                .output
+                .as_ref()
+                .is_none_or(|output| output.platforms != evidence.platforms)
+        {
+            return Err("build evidence changed its durable BuildRun binding".into());
         }
         Ok(())
     }

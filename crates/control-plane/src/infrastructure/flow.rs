@@ -71,6 +71,7 @@ impl FlowRuntime for FlowRuntimeRouter {
     ) -> Result<RuntimeCommand, FlowError> {
         use crate::modules::artifacts::application::{
             BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
+            PREVIOUS_BUILD_WORKFLOW_VERSION, SIGNED_BUILD_WORKFLOW_VERSION,
         };
         use crate::modules::workloads::infrastructure::{
             DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -82,6 +83,8 @@ impl FlowRuntime for FlowRuntimeRouter {
             invocation.spec.version.as_str(),
         ) {
             (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)
+            | (BUILD_WORKFLOW_NAME, SIGNED_BUILD_WORKFLOW_VERSION)
+            | (BUILD_WORKFLOW_NAME, PREVIOUS_BUILD_WORKFLOW_VERSION)
             | (BUILD_WORKFLOW_NAME, LEGACY_BUILD_WORKFLOW_VERSION) => &self.builds,
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
@@ -307,6 +310,7 @@ mod tests {
             ("cloud.workload.stop", "1", "deployment"),
             ("cloud.build", "1", "build"),
             ("cloud.build", "2", "build"),
+            ("cloud.build", "3", "build"),
         ] {
             assert_eq!(
                 router().run_workflow(workflow(name, version)).await?,

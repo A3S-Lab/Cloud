@@ -1,6 +1,7 @@
 import type {
   ApiEnvelope,
   ApiErrorEnvelope,
+  BuildEvidence,
   BuildRun,
   CancelBuildRunResult,
   CancelDeploymentResult,
@@ -78,6 +79,13 @@ export class CloudApi {
   getBuildRun(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildRun> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
+      signal
+    );
+  }
+
+  getBuildEvidence(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildEvidence> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}/evidence`,
       signal
     );
   }

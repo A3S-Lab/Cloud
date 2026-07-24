@@ -1,14 +1,15 @@
 use super::types::{
-    BuildFlowInput, CleanupDispatchStepInput, CleanupDispatchStepOutput, CleanupObserveStepInput,
-    CleanupObserveStepOutput, CompleteStepInput, CompleteStepOutput, DispatchStepInput,
-    DispatchStepOutput, FailStepInput, FailStepOutput, ObserveStepInput, ObserveStepOutput,
-    PreparePublicationStepInput, PreparePublicationStepOutput, PrepareStepOutput, PublishStepInput,
-    PublishStepOutput, ScheduleStepInput, ScheduleStepOutput, ScheduledBuild, ValidateStepInput,
-    ValidateStepOutput,
+    AttestStepInput, AttestStepOutput, BuildFlowInput, CleanupDispatchStepInput,
+    CleanupDispatchStepOutput, CleanupObserveStepInput, CleanupObserveStepOutput,
+    CompleteStepInput, CompleteStepOutput, DispatchStepInput, DispatchStepOutput, FailStepInput,
+    FailStepOutput, ObserveStepInput, ObserveStepOutput, PreparePublicationStepInput,
+    PreparePublicationStepOutput, PrepareStepOutput, PublishStepInput, PublishStepOutput,
+    ScheduleStepInput, ScheduleStepOutput, ScheduledBuild, ValidateStepInput, ValidateStepOutput,
 };
 use super::BuildFlowConfig;
 use crate::modules::artifacts::application::{
     BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
+    PREVIOUS_BUILD_WORKFLOW_VERSION, SIGNED_BUILD_WORKFLOW_VERSION,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
@@ -17,6 +18,7 @@ const DISPATCH_STEP_ID: &str = "dispatch";
 const VALIDATE_STEP_ID: &str = "validate";
 const PREPARE_PUBLICATION_STEP_ID: &str = "publication-target";
 const PUBLISH_STEP_ID: &str = "publish";
+const ATTEST_STEP_ID: &str = "attest";
 const FAIL_STEP_ID: &str = "fail";
 const COMPLETE_STEP_ID: &str = "complete";
 
@@ -30,9 +32,11 @@ pub(super) fn replay(
             invocation.spec.name, invocation.spec.version
         )));
     }
-    let requires_publication = match invocation.spec.version.as_str() {
-        BUILD_WORKFLOW_VERSION => true,
-        LEGACY_BUILD_WORKFLOW_VERSION => false,
+    let (requires_publication, requires_evidence) = match invocation.spec.version.as_str() {
+        BUILD_WORKFLOW_VERSION => (true, true),
+        SIGNED_BUILD_WORKFLOW_VERSION => (true, true),
+        PREVIOUS_BUILD_WORKFLOW_VERSION => (true, false),
+        LEGACY_BUILD_WORKFLOW_VERSION => (false, false),
         _ => {
             return Err(FlowError::Runtime(format!(
                 "Cloud has no build workflow runtime for {}@{}",
@@ -178,11 +182,12 @@ pub(super) fn replay(
                                     }
                                 };
                                 if let Some((target, deadline_at)) = publication {
-                                    match context
+                                    let published = match context
                                         .step_output_as::<PublishStepOutput>(PUBLISH_STEP_ID)?
                                     {
-                                        Some(PublishStepOutput::Ready { .. }) => {
-                                            terminal_intent = Some(TerminalIntent::Success)
+                                        Some(PublishStepOutput::Ready { artifact }) => {
+                                            terminal_intent = Some(TerminalIntent::Success);
+                                            Some(artifact)
                                         }
                                         Some(PublishStepOutput::Failed { reason }) => {
                                             return failure_command(
@@ -190,8 +195,11 @@ pub(super) fn replay(
                                             )
                                         }
                                         Some(PublishStepOutput::CancellationRequested {
-                                            ..
-                                        }) => terminal_intent = Some(TerminalIntent::Cancellation),
+                                            artifact,
+                                        }) => {
+                                            terminal_intent = Some(TerminalIntent::Cancellation);
+                                            artifact
+                                        }
                                         None => {
                                             return stage_or_failure(
                                                 config,
@@ -206,6 +214,41 @@ pub(super) fn replay(
                                                     deadline_at,
                                                 },
                                             )
+                                        }
+                                    };
+                                    if requires_evidence {
+                                        if let Some(artifact) = published {
+                                            match context.step_output_as::<AttestStepOutput>(
+                                                ATTEST_STEP_ID,
+                                            )? {
+                                                Some(AttestStepOutput::Ready { .. }) => {}
+                                                Some(AttestStepOutput::Failed { reason }) => {
+                                                    return failure_command(
+                                                        config, &context, &input, reason,
+                                                    )
+                                                }
+                                                None => {
+                                                    return stage_or_failure(
+                                                        config,
+                                                        &context,
+                                                        &input,
+                                                        ATTEST_STEP_ID,
+                                                        "build_attest_output",
+                                                        &AttestStepInput {
+                                                            flow: input.clone(),
+                                                            artifact,
+                                                        },
+                                                    )
+                                                }
+                                            }
+                                        } else if !matches!(
+                                            terminal_intent.as_ref(),
+                                            Some(TerminalIntent::Cancellation)
+                                        ) {
+                                            return Err(FlowError::Runtime(
+                                                "build attestation requires a published artifact"
+                                                    .into(),
+                                            ));
                                         }
                                     }
                                 }
@@ -245,10 +288,17 @@ fn terminal_command(
 ) -> a3s_flow::Result<RuntimeCommand> {
     match completed.status {
         crate::modules::artifacts::domain::BuildRunStatus::Succeeded
-        | crate::modules::artifacts::domain::BuildRunStatus::Cancelled => {
+            if completed.failure.is_none() =>
+        {
             Ok(context.complete(serde_json::to_value(completed)?))
         }
-        crate::modules::artifacts::domain::BuildRunStatus::Failed => Ok(context.fail(
+        crate::modules::artifacts::domain::BuildRunStatus::Cancelled
+            if completed.failure.is_none() =>
+        {
+            Ok(context.complete(serde_json::to_value(completed)?))
+        }
+        crate::modules::artifacts::domain::BuildRunStatus::Failed
+        | crate::modules::artifacts::domain::BuildRunStatus::Cancelled => Ok(context.fail(
             completed
                 .failure
                 .unwrap_or_else(|| "build failed without a persisted reason".into()),

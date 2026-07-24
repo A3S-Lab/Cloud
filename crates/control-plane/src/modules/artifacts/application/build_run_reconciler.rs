@@ -9,7 +9,9 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 pub const BUILD_WORKFLOW_NAME: &str = "cloud.build";
-pub const BUILD_WORKFLOW_VERSION: &str = "2";
+pub const BUILD_WORKFLOW_VERSION: &str = "4";
+pub const SIGNED_BUILD_WORKFLOW_VERSION: &str = "3";
+pub const PREVIOUS_BUILD_WORKFLOW_VERSION: &str = "2";
 pub const LEGACY_BUILD_WORKFLOW_VERSION: &str = "1";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -73,7 +75,14 @@ impl BuildRunReconciler {
         for build in pending {
             let subject = OperationSubject::new("build_run", build.id.as_uuid())
                 .map_err(RepositoryError::Storage)?;
-            let workflow = WorkflowIdentity::new(BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)
+            let version = if build.cache_required {
+                BUILD_WORKFLOW_VERSION
+            } else if build.evidence_required {
+                SIGNED_BUILD_WORKFLOW_VERSION
+            } else {
+                PREVIOUS_BUILD_WORKFLOW_VERSION
+            };
+            let workflow = WorkflowIdentity::new(BUILD_WORKFLOW_NAME, version)
                 .map_err(RepositoryError::Storage)?;
             let input = json!({
                 "organizationId": build.organization_id,

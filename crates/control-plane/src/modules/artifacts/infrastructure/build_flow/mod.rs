@@ -7,7 +7,8 @@ mod workflow;
 mod tests;
 
 use crate::modules::artifacts::domain::{
-    IBuildArtifactPublisher, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildInputPreparer, IBuildOutputValidator,
+    IBuildRunRepository,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
 use crate::modules::sources::domain::ISourceRevisionRepository;
@@ -151,6 +152,7 @@ pub struct BuildFlowRuntimeDependencies {
     pub inputs: Arc<dyn IBuildInputPreparer>,
     pub outputs: Arc<dyn IBuildOutputValidator>,
     pub publisher: Arc<dyn IBuildArtifactPublisher>,
+    pub evidence: Arc<dyn IBuildEvidenceGenerator>,
     pub nodes: Arc<dyn INodeRepository>,
     pub node_control: Arc<dyn INodeControlRepository>,
 }
@@ -162,6 +164,7 @@ pub struct BuildFlowRuntime {
     pub(super) inputs: Arc<dyn IBuildInputPreparer>,
     pub(super) outputs: Arc<dyn IBuildOutputValidator>,
     pub(super) publisher: Arc<dyn IBuildArtifactPublisher>,
+    pub(super) evidence: Arc<dyn IBuildEvidenceGenerator>,
     pub(super) nodes: Arc<dyn INodeRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
     pub(super) config: BuildFlowConfig,
@@ -175,6 +178,7 @@ impl BuildFlowRuntime {
             inputs,
             outputs,
             publisher,
+            evidence,
             nodes,
             node_control,
         } = dependencies;
@@ -184,6 +188,7 @@ impl BuildFlowRuntime {
             inputs,
             outputs,
             publisher,
+            evidence,
             nodes,
             node_control,
             config,

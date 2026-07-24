@@ -86,18 +86,25 @@ fn plan_archive(
         .map_err(|error| format!("could not read artifact archive: {error}"))?;
     let mut plans = Vec::new();
     let mut expanded_bytes = 0_u64;
+    let mut has_explicit_root = false;
     for entry in entries {
         let mut entry =
             entry.map_err(|error| format!("artifact archive entry is invalid: {error}"))?;
+        let raw_path = entry
+            .path()
+            .map_err(|error| format!("artifact archive path is invalid: {error}"))?;
+        let entry_type = entry.header().entry_type();
+        if is_explicit_archive_root(&raw_path) {
+            if has_explicit_root || !plans.is_empty() || !entry_type.is_dir() || entry.size() != 0 {
+                return Err("artifact archive has an invalid explicit root entry".into());
+            }
+            has_explicit_root = true;
+            continue;
+        }
         if plans.len() >= limits.max_entries {
             return Err("artifact archive exceeds the entry limit".into());
         }
-        let path = normalized_archive_path(
-            &entry
-                .path()
-                .map_err(|error| format!("artifact archive path is invalid: {error}"))?,
-        )?;
-        let entry_type = entry.header().entry_type();
+        let path = normalized_archive_path(&raw_path)?;
         let kind = if entry_type.is_dir() {
             if entry.size() != 0 {
                 return Err("artifact archive directory has a nonzero size".into());
@@ -233,17 +240,31 @@ fn extract_plans(
     let file = File::open(archive_path)
         .map_err(|error| format!("could not reopen artifact archive: {error}"))?;
     let mut archive = tar::Archive::new(file);
+    let mut has_explicit_root = false;
+    let mut extracted_entries = 0_usize;
     for entry in archive
         .entries()
         .map_err(|error| format!("could not reread artifact archive: {error}"))?
     {
         let mut entry =
             entry.map_err(|error| format!("artifact archive entry is invalid: {error}"))?;
-        let path = normalized_archive_path(
-            &entry
-                .path()
-                .map_err(|error| format!("artifact archive path is invalid: {error}"))?,
-        )?;
+        let raw_path = entry
+            .path()
+            .map_err(|error| format!("artifact archive path is invalid: {error}"))?;
+        let entry_type = entry.header().entry_type();
+        if is_explicit_archive_root(&raw_path) {
+            if has_explicit_root
+                || extracted_entries != 0
+                || !entry_type.is_dir()
+                || entry.size() != 0
+            {
+                return Err("artifact archive changed its explicit root entry".into());
+            }
+            has_explicit_root = true;
+            continue;
+        }
+        let path = normalized_archive_path(&raw_path)?;
+        extracted_entries += 1;
         let Some(kind) = expected.get(&path) else {
             return Err("artifact archive changed between validation and extraction".into());
         };
@@ -288,6 +309,9 @@ fn extract_plans(
         output
             .sync_all()
             .map_err(|error| format!("could not sync artifact file: {error}"))?;
+    }
+    if extracted_entries != plans.len() {
+        return Err("artifact archive changed between validation and extraction".into());
     }
 
     for plan in plans {
@@ -553,6 +577,13 @@ fn normalized_archive_path(path: &Path) -> Result<PathBuf, String> {
     Ok(normalized)
 }
 
+fn is_explicit_archive_root(path: &Path) -> bool {
+    path.as_os_str().is_empty()
+        || path
+            .components()
+            .all(|component| matches!(component, Component::CurDir))
+}
+
 fn resolve_link(base: &Path, target: &Path) -> Result<PathBuf, String> {
     let text = target
         .to_str()
@@ -643,6 +674,52 @@ mod tests {
                 .expect_err("escaping archive path");
             assert!(error.contains("escapes its extraction root"), "{error}");
         }
+    }
+
+    #[test]
+    fn accepts_one_leading_explicit_root_without_changing_the_mount_shape() {
+        let bytes = archive(&[
+            Entry {
+                path: ".",
+                kind: tar::EntryType::Directory,
+                link: None,
+                data: b"",
+            },
+            file("./cache/index.json", b"{}"),
+        ]);
+        let temporary = tempfile::tempdir().expect("archive test directory");
+        let archive_path = temporary.path().join("archive.tar");
+        let destination = temporary.path().join("root");
+        std::fs::write(&archive_path, bytes).expect("write archive");
+        let summary = extract_directory_archive(&archive_path, &destination, generous_limits())
+            .expect("explicit root archive");
+
+        assert_eq!(summary.entries, 1);
+        assert_eq!(
+            std::fs::read(destination.join("cache/index.json"))
+                .expect("read extracted cache index"),
+            b"{}"
+        );
+        assert!(!destination.join("a3s-output").exists());
+
+        let duplicate_root = archive(&[
+            Entry {
+                path: ".",
+                kind: tar::EntryType::Directory,
+                link: None,
+                data: b"",
+            },
+            Entry {
+                path: "./",
+                kind: tar::EntryType::Directory,
+                link: None,
+                data: b"",
+            },
+            file("cache/index.json", b"{}"),
+        ]);
+        assert!(extract(&duplicate_root, generous_limits())
+            .expect_err("duplicate explicit root")
+            .contains("invalid explicit root"));
     }
 
     #[test]

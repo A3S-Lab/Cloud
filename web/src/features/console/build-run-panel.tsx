@@ -1,4 +1,4 @@
-import { Ban, Boxes, Hammer, RotateCcw, SquareTerminal } from 'lucide-react';
+import { Ban, Boxes, Hammer, RotateCcw, ShieldCheck, SquareTerminal } from 'lucide-react';
 import type { BuildRun, BuildRunStatus } from '../../types/api';
 import { compactDigest, formatRelative, humanize, shortId } from './console-format';
 
@@ -92,6 +92,36 @@ export function BuildRunPanel({
                 {buildRun.publishedArtifact ? (
                   <code className='build-artifact-uri'>{buildRun.publishedArtifact.uri}</code>
                 ) : null}
+                {buildRun.evidenceSummary ? (
+                  <div className='build-run-evidence-summary'>
+                    <span>
+                      <ShieldCheck size={13} /> Verified evidence
+                    </span>
+                    <dl>
+                      <div>
+                        <dt>SBOM</dt>
+                        <dd title={buildRun.evidenceSummary.sbomDigest}>
+                          {compactDigest(buildRun.evidenceSummary.sbomDigest)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Provenance</dt>
+                        <dd title={buildRun.evidenceSummary.provenanceDigest}>
+                          {compactDigest(buildRun.evidenceSummary.provenanceDigest)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Signing key</dt>
+                        <dd title={buildRun.evidenceSummary.signingKeyId}>
+                          {compactDigest(buildRun.evidenceSummary.signingKeyId)}
+                          {buildRun.evidenceSummary.signingKeyVersion === null
+                            ? ''
+                            : ` · v${buildRun.evidenceSummary.signingKeyVersion}`}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ) : null}
                 {buildRun.failure ? <output className='build-run-failure'>{buildRun.failure}</output> : null}
                 <div className='build-run-actions'>
                   <button
@@ -100,7 +130,7 @@ export function BuildRunPanel({
                     aria-pressed={selected}
                     onClick={() => onSelect(buildRun.id)}
                   >
-                    <SquareTerminal size={13} /> {selected ? 'Viewing logs' : 'View logs'}
+                    <SquareTerminal size={13} /> {selected ? 'Inspecting run' : 'Inspect run'}
                   </button>
                   {!terminal ? (
                     <button

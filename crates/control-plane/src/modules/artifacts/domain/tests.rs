@@ -1,12 +1,16 @@
+use super::test_support::evidence_for;
 use super::{
     BuildArtifact, BuildRun, BuildRunStatus, OciBuildRequest, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use chrono::{Duration, Utc};
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -187,12 +191,21 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         content_bytes: 456,
         blob_count: 3,
     };
+    let cache = cache_for(&output);
     build
-        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(12))
+        .record_validated_output(
+            output.clone(),
+            Some(cache.clone()),
+            requested_at + Duration::milliseconds(12),
+        )
         .expect("record validated output");
     let validated = build.clone();
     build
-        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(13))
+        .record_validated_output(
+            output.clone(),
+            Some(cache),
+            requested_at + Duration::milliseconds(13),
+        )
         .expect("replay validated output");
     assert_eq!(build, validated);
     let target = OciPublicationTarget::new(
@@ -218,27 +231,44 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         .record_published_artifact(published.clone(), requested_at + Duration::milliseconds(17))
         .expect("replay publication");
     assert_eq!(build, projected);
+    build
+        .begin_attestation(requested_at + Duration::milliseconds(18))
+        .expect("begin attestation");
+    let attesting = build.clone();
+    build
+        .begin_attestation(requested_at + Duration::milliseconds(19))
+        .expect("replay attestation");
+    assert_eq!(build, attesting);
+    let evidence = evidence_for(&build, requested_at + Duration::milliseconds(20));
+    build
+        .record_evidence(evidence.clone(), requested_at + Duration::milliseconds(20))
+        .expect("record evidence");
+    let evidenced = build.clone();
+    build
+        .record_evidence(evidence, requested_at + Duration::milliseconds(21))
+        .expect("replay evidence");
+    assert_eq!(build, evidenced);
     let cleanup_command_id = NodeCommandId::new();
     build
         .begin_cleanup(
             cleanup_command_id,
-            requested_at + Duration::milliseconds(18),
+            requested_at + Duration::milliseconds(22),
         )
         .expect("begin cleanup");
     let cleanup = build.clone();
     build
         .begin_cleanup(
             cleanup_command_id,
-            requested_at + Duration::milliseconds(19),
+            requested_at + Duration::milliseconds(23),
         )
         .expect("replay cleanup");
     assert_eq!(build, cleanup);
     build
-        .complete(requested_at + Duration::milliseconds(20))
+        .complete(requested_at + Duration::milliseconds(24))
         .expect("complete");
     let completed = build.clone();
     build
-        .complete(requested_at + Duration::milliseconds(21))
+        .complete(requested_at + Duration::milliseconds(25))
         .expect("replay completion");
     assert_eq!(build, completed);
 
@@ -268,7 +298,105 @@ fn build_run_records_a_completed_publication_across_cancellation() {
         .expect("adopt publication after cancellation");
     assert_eq!(build.status, BuildRunStatus::Cancelling);
     assert_eq!(build.published_artifact, Some(published));
+    assert!(build
+        .begin_cleanup(NodeCommandId::new(), now + Duration::milliseconds(10))
+        .is_err());
     BuildRun::restore(build).expect("restore cancelling published build");
+}
+
+#[test]
+fn build_run_freezes_verified_evidence_before_cleanup() {
+    let now = Utc::now();
+    let mut build = attesting_build(now);
+    assert!(build
+        .begin_cleanup(NodeCommandId::new(), now + Duration::milliseconds(10))
+        .is_err());
+    assert!(build.complete(now + Duration::milliseconds(10)).is_err());
+
+    let first = evidence_for(&build, now + Duration::milliseconds(10));
+    build
+        .record_evidence(first.clone(), now + Duration::milliseconds(10))
+        .expect("record evidence");
+    let recorded = build.clone();
+    build
+        .record_evidence(first, now + Duration::milliseconds(11))
+        .expect("replay evidence");
+    assert_eq!(build, recorded);
+
+    let replacement = evidence_for(&build, now + Duration::milliseconds(12));
+    assert!(build
+        .record_evidence(replacement, now + Duration::milliseconds(12))
+        .is_err());
+    build
+        .begin_cleanup(NodeCommandId::new(), now + Duration::milliseconds(12))
+        .expect("begin cleanup after evidence");
+}
+
+#[test]
+fn build_evidence_restore_rejects_a_tampered_ed25519_signature() {
+    let now = Utc::now();
+    let build = attesting_build(now);
+    let mut evidence = evidence_for(&build, now + Duration::milliseconds(10));
+
+    evidence.envelope.signatures[0].signature = STANDARD.encode([0_u8; 64]);
+
+    assert!(evidence.validate().is_err());
+}
+
+#[test]
+fn build_evidence_restore_rejects_an_internally_consistent_public_key_substitution() {
+    let now = Utc::now();
+    let build = attesting_build(now);
+    let mut evidence = evidence_for(&build, now + Duration::milliseconds(10));
+    let replacement =
+        Ed25519KeyPair::from_seed_unchecked(&[8_u8; 32]).expect("replacement Ed25519 test key");
+    let public_key = replacement.public_key().as_ref().to_vec();
+    let key_id = super::sha256_digest(&public_key);
+
+    evidence.signing_key.public_key = STANDARD.encode(&public_key);
+    evidence.signing_key.key_id.clone_from(&key_id);
+    evidence.envelope.signatures[0].key_id = key_id;
+
+    assert!(evidence.validate().is_err());
+}
+
+#[test]
+fn cancelled_published_build_can_fail_closed_when_attestation_is_terminal() {
+    let now = Utc::now();
+    let mut build = publishing_build(now);
+    let target = build
+        .publication_target
+        .clone()
+        .expect("publication target");
+    build
+        .request_cancellation(now + Duration::milliseconds(8))
+        .expect("request cancellation");
+    build
+        .record_published_artifact(
+            PublishedOciArtifact::from_target(&target),
+            now + Duration::milliseconds(9),
+        )
+        .expect("adopt publication");
+    build
+        .begin_attestation(now + Duration::milliseconds(10))
+        .expect("begin attestation");
+    build
+        .record_failure(
+            "build evidence signature failed integrity validation".into(),
+            now + Duration::milliseconds(11),
+        )
+        .expect("fail closed");
+    build
+        .begin_cleanup(NodeCommandId::new(), now + Duration::milliseconds(12))
+        .expect("cleanup failed build");
+    build
+        .complete(now + Duration::milliseconds(13))
+        .expect("complete cancellation");
+
+    assert_eq!(build.status, BuildRunStatus::Cancelled);
+    assert!(build.evidence.is_none());
+    assert!(build.failure.is_some());
+    BuildRun::restore(build).expect("restore failed-closed cancellation");
 }
 
 #[test]
@@ -347,6 +475,8 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
     assert_eq!(retry.retry_of_build_run_id, Some(failed.id));
     assert_eq!(retry.source_revision_id, failed.source_revision_id);
     assert_eq!(retry.status, BuildRunStatus::Queued);
+    assert!(retry.evidence_required);
+    assert!(retry.evidence.is_none());
     assert_ne!(retry.id, failed.id);
     assert_eq!(retry.id.as_uuid(), retry.operation_id.as_uuid());
     assert_eq!(
@@ -374,6 +504,22 @@ fn artifact(fill: char) -> BuildArtifact {
         1024,
     )
     .expect("artifact")
+}
+
+fn cache_for(output: &ValidatedOciBuildOutput) -> ValidatedBuildCache {
+    ValidatedBuildCache::new(
+        format!("sha256:{}", "9".repeat(64)),
+        output.artifact.clone(),
+        OciDescriptor::new(
+            "application/vnd.oci.image.index.v1+json",
+            format!("sha256:{}", "8".repeat(64)),
+            64,
+        )
+        .expect("cache descriptor"),
+        128,
+        2,
+    )
+    .expect("validated build cache")
 }
 
 fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
@@ -420,8 +566,9 @@ fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
         content_bytes: 456,
         blob_count: 3,
     };
+    let cache = cache_for(&output);
     build
-        .record_validated_output(output.clone(), now + Duration::milliseconds(6))
+        .record_validated_output(output.clone(), Some(cache), now + Duration::milliseconds(6))
         .expect("validated output");
     build
         .begin_publication(
@@ -434,5 +581,23 @@ fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
             now + Duration::milliseconds(7),
         )
         .expect("publishing build");
+    build
+}
+
+fn attesting_build(now: chrono::DateTime<Utc>) -> BuildRun {
+    let mut build = publishing_build(now);
+    let target = build
+        .publication_target
+        .clone()
+        .expect("publication target");
+    build
+        .record_published_artifact(
+            PublishedOciArtifact::from_target(&target),
+            now + Duration::milliseconds(8),
+        )
+        .expect("published artifact");
+    build
+        .begin_attestation(now + Duration::milliseconds(9))
+        .expect("attesting build");
     build
 }

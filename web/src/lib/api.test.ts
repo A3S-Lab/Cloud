@@ -182,6 +182,36 @@ describe('CloudApi', () => {
     ]);
   });
 
+  it('loads full build evidence through the tenant-scoped evidence resource', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 200,
+          message: 'Success',
+          data: {
+            schema: 'a3s.cloud.build-evidence.v1',
+            buildRunId: 'build / one',
+            verificationState: 'verified',
+          },
+          requestId: 'request-1',
+          timestamp: 'now',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const evidence = await new CloudApi('a3s_secret').getBuildEvidence('organization / one', 'build / one');
+
+    expect(evidence.verificationState).toBe('verified');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/organizations/organization%20%2F%20one/build-runs/build%20%2F%20one/evidence',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer a3s_secret' }),
+      })
+    );
+  });
+
   it('stops one active workload through its own durable operation', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

@@ -66,6 +66,7 @@ export type BuildRunStatus =
   | 'running'
   | 'validating'
   | 'publishing'
+  | 'attesting'
   | 'cancelling'
   | 'cleanup_pending'
   | 'succeeded'
@@ -98,6 +99,59 @@ export interface PublishedOciArtifact {
   sizeBytes: number;
 }
 
+export interface BuildEvidenceSigningKey {
+  algorithm: 'ed25519';
+  keyId: string;
+  publicKey: string;
+  keyVersion?: number;
+}
+
+export interface BuildEvidenceSummary {
+  schema: string;
+  verificationState: 'verified';
+  sbomDigest: string;
+  provenanceDigest: string;
+  signingKeyAlgorithm: 'ed25519';
+  signingKeyId: string;
+  signingKeyVersion: number | null;
+  attestedAt: string;
+}
+
+export interface BuildEvidence {
+  schema: string;
+  buildRunId: string;
+  operationId: string;
+  sourceRevisionId: string;
+  attempt: number;
+  repository: string;
+  commitSha: string;
+  sourceContentDigest: string;
+  recipe: Record<string, unknown>;
+  recipeDigest: string;
+  runtimeSpecDigest: string;
+  builder: {
+    uri: string;
+    digest: string;
+  };
+  platforms: string[];
+  artifact: PublishedOciArtifact;
+  sbom: Record<string, unknown>;
+  sbomDigest: string;
+  provenance: Record<string, unknown>;
+  provenanceDigest: string;
+  envelope: {
+    payloadType: string;
+    payload: string;
+    signatures: Array<{
+      keyId: string;
+      signature: string;
+    }>;
+  };
+  signingKey: BuildEvidenceSigningKey;
+  verificationState: 'verified';
+  attestedAt: string;
+}
+
 export interface BuildRun {
   organizationId: string;
   projectId: string;
@@ -112,6 +166,7 @@ export interface BuildRun {
   output: ValidatedOciBuildOutput | null;
   publicationTarget: OciPublicationTarget | null;
   publishedArtifact: PublishedOciArtifact | null;
+  evidenceSummary: BuildEvidenceSummary | null;
   failure: string | null;
   aggregateVersion: number;
   requestedAt: string;

@@ -1,3 +1,4 @@
+mod attestation;
 mod cleanup;
 mod common;
 mod prepare;
@@ -14,6 +15,9 @@ pub(super) async fn execute(
 ) -> a3s_flow::Result<serde_json::Value> {
     let run_id = invocation.run_id.clone();
     match invocation.step_name.as_str() {
+        "build_attest_output" => {
+            encode(attestation::attest(runtime, &run_id, invocation.input_as()?).await?)
+        }
         "build_prepare_input" => {
             encode(prepare::prepare(runtime, &run_id, invocation.input_as()?).await?)
         }

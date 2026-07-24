@@ -286,6 +286,7 @@ pub struct SecurityConfig {
     pub certificate_authority: SecurityProviderKind,
     pub gateway_certificate_authority: SecurityProviderKind,
     pub key_encryption: SecurityProviderKind,
+    pub build_evidence_signing: SecurityProviderKind,
     pub vault_address_env: String,
     pub vault_token_env: String,
     pub vault_pki_mount: String,
@@ -294,6 +295,7 @@ pub struct SecurityConfig {
     pub vault_gateway_pki_role: String,
     pub vault_transit_mount: String,
     pub vault_transit_key: String,
+    pub vault_build_evidence_signing_key: String,
     pub vault_timeout_ms: u64,
 }
 
@@ -519,6 +521,7 @@ impl CloudConfig {
                 "certificate_authority",
                 "gateway_certificate_authority",
                 "key_encryption",
+                "build_evidence_signing",
                 "vault_address_env",
                 "vault_token_env",
                 "vault_pki_mount",
@@ -527,6 +530,7 @@ impl CloudConfig {
                 "vault_gateway_pki_role",
                 "vault_transit_mount",
                 "vault_transit_key",
+                "vault_build_evidence_signing_key",
                 "vault_timeout_ms",
             ],
         )?;
@@ -714,6 +718,10 @@ impl CloudConfig {
                     "key_encryption",
                     &string(security, "key_encryption")?,
                 )?,
+                build_evidence_signing: SecurityProviderKind::parse(
+                    "build_evidence_signing",
+                    &string(security, "build_evidence_signing")?,
+                )?,
                 vault_address_env: string(security, "vault_address_env")?,
                 vault_token_env: string(security, "vault_token_env")?,
                 vault_pki_mount: string(security, "vault_pki_mount")?,
@@ -722,6 +730,10 @@ impl CloudConfig {
                 vault_gateway_pki_role: string(security, "vault_gateway_pki_role")?,
                 vault_transit_mount: string(security, "vault_transit_mount")?,
                 vault_transit_key: string(security, "vault_transit_key")?,
+                vault_build_evidence_signing_key: string(
+                    security,
+                    "vault_build_evidence_signing_key",
+                )?,
                 vault_timeout_ms: integer(security, "vault_timeout_ms")?,
             },
         };
@@ -1166,6 +1178,10 @@ impl CloudConfig {
             ),
             ("vault_transit_mount", &self.security.vault_transit_mount),
             ("vault_transit_key", &self.security.vault_transit_key),
+            (
+                "vault_build_evidence_signing_key",
+                &self.security.vault_build_evidence_signing_key,
+            ),
         ] {
             if !valid_provider_segment(value) {
                 return Err(ConfigError::Invalid(format!("security.{label} is invalid")));
@@ -1179,11 +1195,11 @@ impl CloudConfig {
         if self.security.profile == SecurityProfile::Production
             && (self.security.certificate_authority != SecurityProviderKind::Vault
                 || self.security.gateway_certificate_authority != SecurityProviderKind::Vault
-                || self.security.key_encryption != SecurityProviderKind::Vault)
+                || self.security.key_encryption != SecurityProviderKind::Vault
+                || self.security.build_evidence_signing != SecurityProviderKind::Vault)
         {
             return Err(ConfigError::Invalid(
-                "production security requires external Vault node PKI, Gateway PKI, and Transit providers"
-                    .into(),
+                "production security requires external Vault node PKI, Gateway PKI, Transit encryption, and build evidence signing providers".into(),
             ));
         }
         if self.security.profile == SecurityProfile::Production
@@ -1301,6 +1317,7 @@ impl CloudConfig {
         if self.security.certificate_authority != SecurityProviderKind::Vault
             && self.security.gateway_certificate_authority != SecurityProviderKind::Vault
             && self.security.key_encryption != SecurityProviderKind::Vault
+            && self.security.build_evidence_signing != SecurityProviderKind::Vault
         {
             return Ok(None);
         }
@@ -1771,6 +1788,7 @@ security {
   certificate_authority = "local"
   gateway_certificate_authority = "local"
   key_encryption = "local"
+  build_evidence_signing = "local"
   vault_address_env = "A3S_CLOUD_VAULT_ADDR"
   vault_token_env = "A3S_CLOUD_VAULT_TOKEN"
   vault_pki_mount = "pki"
@@ -1779,6 +1797,7 @@ security {
   vault_gateway_pki_role = "a3s-cloud-gateway"
   vault_transit_mount = "transit"
   vault_transit_key = "a3s-cloud"
+  vault_build_evidence_signing_key = "a3s-cloud-build-evidence"
   vault_timeout_ms = 5000
 }
 "#;
@@ -1826,6 +1845,14 @@ security {
             config.security.gateway_certificate_authority,
             SecurityProviderKind::Local
         );
+        assert_eq!(
+            config.security.build_evidence_signing,
+            SecurityProviderKind::Local
+        );
+        assert_eq!(
+            config.security.vault_build_evidence_signing_key,
+            "a3s-cloud-build-evidence"
+        );
     }
 
     #[test]
@@ -1848,6 +1875,29 @@ security {
         assert!(config.sources.github_app_private_key_env.is_empty());
         assert_eq!(config.logs.retention_ms, 604_800_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
+    }
+
+    #[test]
+    fn vault_credentials_are_required_when_only_build_evidence_signing_uses_vault() {
+        const ADDRESS_ENV: &str = "A3S_CLOUD_TEST_EVIDENCE_ONLY_VAULT_ADDR_MUST_BE_UNSET";
+        const TOKEN_ENV: &str = "A3S_CLOUD_TEST_EVIDENCE_ONLY_VAULT_TOKEN_MUST_BE_UNSET";
+        assert!(std::env::var_os(ADDRESS_ENV).is_none());
+        assert!(std::env::var_os(TOKEN_ENV).is_none());
+        let config = CloudConfig::parse(
+            &VALID
+                .replace(
+                    "build_evidence_signing = \"local\"",
+                    "build_evidence_signing = \"vault\"",
+                )
+                .replace("A3S_CLOUD_VAULT_ADDR", ADDRESS_ENV)
+                .replace("A3S_CLOUD_VAULT_TOKEN", TOKEN_ENV),
+        )
+        .expect("development config with Vault evidence signing");
+
+        assert!(matches!(
+            config.vault_credentials(),
+            Err(ConfigError::Invalid(message)) if message.contains(ADDRESS_ENV)
+        ));
     }
 
     #[test]
@@ -2015,6 +2065,10 @@ security {
                 "  certificate_authority = \"vault\"",
             )
             .replace("key_encryption = \"local\"", "key_encryption = \"vault\"")
+            .replace(
+                "build_evidence_signing = \"local\"",
+                "build_evidence_signing = \"vault\"",
+            )
             .replace("storage_provider = \"local\"", "storage_provider = \"s3\"")
             .replace(
                 "insecure_hosts = [\"127.0.0.1:5000\"]",

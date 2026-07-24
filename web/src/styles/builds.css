@@ -102,6 +102,47 @@
   background: rgba(240, 123, 115, 0.08);
 }
 
+.build-run-evidence-summary {
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid rgba(184, 243, 107, 0.16);
+  border-radius: 8px;
+  background: rgba(184, 243, 107, 0.035);
+}
+
+.build-run-evidence-summary > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.build-run-evidence-summary dl {
+  display: grid;
+  margin: 9px 0 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.build-run-evidence-summary dt {
+  color: var(--faint);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.build-run-evidence-summary dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #c5d1c9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .build-run-actions {
   display: flex;
   margin-top: 14px;
@@ -117,6 +158,7 @@
 .state-badge.running,
 .state-badge.validating,
 .state-badge.publishing,
+.state-badge.attesting,
 .state-badge.cancelling,
 .state-badge.cleanup_pending {
   border-color: rgba(243, 200, 107, 0.28);
@@ -137,6 +179,144 @@
   background: rgba(240, 123, 115, 0.06);
 }
 
+.build-evidence-panel {
+  min-width: 0;
+  margin-top: 16px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.build-evidence-panel > .surface-heading {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.evidence-verified {
+  display: inline-flex;
+  padding: 6px 9px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(184, 243, 107, 0.24);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(184, 243, 107, 0.055);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.build-evidence-content {
+  padding: 20px 24px 24px;
+}
+
+.build-evidence-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+}
+
+.build-evidence-status > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.build-evidence-status strong {
+  font-size: 13px;
+}
+
+.build-evidence-status span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.build-evidence-facts {
+  display: grid;
+  margin: 18px 0 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.build-evidence-facts div {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(38, 53, 43, 0.72);
+  border-radius: 8px;
+  background: rgba(7, 11, 8, 0.28);
+}
+
+.build-evidence-facts dt {
+  color: var(--faint);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.build-evidence-facts dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: #c5d1c9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.build-evidence-actions {
+  display: flex;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.build-evidence-error {
+  display: block;
+  margin-top: 14px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #ffc2be;
+  background: rgba(240, 123, 115, 0.08);
+  font-size: 10px;
+}
+
+.build-evidence-document {
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(38, 53, 43, 0.82);
+  border-radius: 10px;
+  background: rgba(3, 6, 4, 0.68);
+}
+
+.build-evidence-document > div {
+  display: flex;
+  padding: 10px 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(38, 53, 43, 0.72);
+}
+
+.build-evidence-document strong {
+  font-size: 10px;
+}
+
+.build-evidence-document span {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.build-evidence-document pre {
+  max-height: 520px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: #b9c7be;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
 @media (max-width: 620px) {
   .build-run-list {
     padding: 12px;
@@ -145,5 +325,14 @@
 
   .build-run-facts {
     grid-template-columns: 1fr;
+  }
+
+  .build-run-evidence-summary dl,
+  .build-evidence-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .build-evidence-content {
+    padding: 18px;
   }
 }

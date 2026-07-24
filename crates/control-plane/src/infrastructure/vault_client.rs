@@ -97,6 +97,35 @@ impl VaultClient {
             .map_err(|error| VaultClientError::Rejected(format!("invalid Vault response: {error}")))
     }
 
+    pub(crate) async fn get<Output>(&self, path: &str) -> Result<Output, VaultClientError>
+    where
+        Output: DeserializeOwned,
+    {
+        validate_path(path)?;
+        let response = self
+            .client
+            .get(self.endpoint(path)?)
+            .send()
+            .await
+            .map_err(|error| VaultClientError::Unavailable(error.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            if is_transient_status(status) {
+                return Err(VaultClientError::Unavailable(format!(
+                    "Vault returned transient status {status}"
+                )));
+            }
+            return Err(VaultClientError::Rejected(format!(
+                "Vault returned {status}: {}",
+                bounded_body(response).await
+            )));
+        }
+        let bytes = bounded_response(response).await?;
+        serde_json::from_slice::<VaultEnvelope<Output>>(&bytes)
+            .map(|envelope| envelope.data)
+            .map_err(|error| VaultClientError::Rejected(format!("invalid Vault response: {error}")))
+    }
+
     pub(crate) async fn health(&self) -> Result<bool, VaultClientError> {
         let response = self
             .client

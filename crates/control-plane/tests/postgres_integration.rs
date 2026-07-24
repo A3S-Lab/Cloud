@@ -37,6 +37,8 @@ use uuid::Uuid;
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/build_evidence.rs"]
+mod build_evidence_support;
 #[path = "support/build_runs.rs"]
 mod build_runs_support;
 #[path = "support/cancellation.rs"]
@@ -210,7 +212,67 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 30);
+    assert_eq!(applied, 32);
+    let evidence_required_column = database
+        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
+            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence_required'",
+        ))
+        .await?;
+    assert_eq!(
+        evidence_required_column,
+        ("boolean".into(), "NO".into(), None)
+    );
+    let evidence_column = database
+        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
+            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence'",
+        ))
+        .await?;
+    assert_eq!(evidence_column, ("jsonb".into(), "YES".into(), None));
+    let cache_required_column = database
+        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
+            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'cache_required'",
+        ))
+        .await?;
+    assert_eq!(cache_required_column, ("boolean".into(), "NO".into(), None));
+    let cache_column = database
+        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
+            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'cache'",
+        ))
+        .await?;
+    assert_eq!(cache_column, ("jsonb".into(), "YES".into(), None));
+    let build_cache_constraint_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_cache_shape_check', 'build_runs_required_cache_check')",
+        ))
+        .await?;
+    assert_eq!(build_cache_constraint_count, 2);
+    let build_evidence_constraint_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_status_check', 'build_runs_evidence_shape_check', 'build_runs_attesting_state_check', 'build_runs_required_evidence_cleanup_check', 'build_runs_required_evidence_success_check', 'build_runs_required_evidence_cancel_check')",
+        ))
+        .await?;
+    assert_eq!(build_evidence_constraint_count, 6);
+    let build_status_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'build_runs'::regclass and conname = 'build_runs_status_check'",
+        ))
+        .await?;
+    assert!(build_status_constraint.contains("'attesting'"));
+    let build_publication_target_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'build_runs'::regclass and conname = 'build_runs_publication_target_check'",
+        ))
+        .await?;
+    assert!(build_publication_target_constraint.contains("'attesting'"));
+    let build_evidence_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'build_runs'::regclass and conname = 'build_runs_evidence_shape_check'",
+        ))
+        .await?;
+    assert!(build_evidence_constraint.contains("jsonb_typeof"));
+    assert!(build_evidence_constraint.contains("verificationState"));
+    assert!(build_evidence_constraint.contains("ed25519"));
+    assert!(build_evidence_constraint.contains("publicKey"));
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -483,6 +545,22 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "031",
+                "verified build evidence",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/031_build_evidence.sql"
+                )),
+            ),
+            Migration::new(
+                "032",
+                "trusted build cache",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/032_build_cache_trust.sql"
+                )),
+            ),
+            Migration::new(
+                "033",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

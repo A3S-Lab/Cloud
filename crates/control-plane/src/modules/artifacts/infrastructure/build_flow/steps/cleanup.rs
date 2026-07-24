@@ -31,7 +31,10 @@ pub(super) async fn dispatch(
     }
     if !matches!(
         build.status,
-        BuildRunStatus::Publishing | BuildRunStatus::Cancelling | BuildRunStatus::CleanupPending
+        BuildRunStatus::Publishing
+            | BuildRunStatus::Attesting
+            | BuildRunStatus::Cancelling
+            | BuildRunStatus::CleanupPending
     ) {
         return Err(FlowError::Runtime(format!(
             "build cannot clean up from {}",
@@ -39,7 +42,7 @@ pub(super) async fn dispatch(
         )));
     }
     let revision = load_revision(runtime, &build).await?;
-    let spec = project_spec(runtime, &build, &revision)?;
+    let spec = project_spec(runtime, &build, &revision).await?;
     let node_id = build
         .node_id
         .ok_or_else(|| FlowError::Runtime("dispatched build omitted its Runtime node".into()))?;
