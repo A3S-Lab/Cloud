@@ -53,6 +53,25 @@ pub(super) async fn publish_active_route(
     let route_id = RouteId::new();
     let domain_claim_id = DomainClaimId::new();
     let certificate_id = GatewayCertificateId::new();
+    let gateway_scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        workload.organization_id,
+        workload.project_id,
+        workload.environment_id,
+        node_id,
+        staged_at,
+    );
+    repository
+        .create_gateway_scope(CreateGatewayScopeWrite {
+            scope: gateway_scope.clone(),
+            idempotency: IdempotencyRequest::new(
+                "test.gateway-scopes",
+                gateway_scope.id.to_string(),
+                node_id.to_string().as_bytes(),
+            )?,
+            event: GatewayScopeCreated::envelope(&gateway_scope, Uuid::now_v7())?,
+        })
+        .await?;
     let command_id = NodeCommandId::new();
     let correlation_id = Uuid::now_v7();
     let target = RouteTarget::new(
@@ -69,6 +88,7 @@ pub(super) async fn publish_active_route(
         workload.organization_id,
         workload.project_id,
         workload.environment_id,
+        gateway_scope.id,
         node_id,
         RouteHostname::parse("update.example.com")?,
         RoutePath::parse("/")?,
@@ -117,6 +137,7 @@ pub(super) async fn publish_active_route(
     let staged = repository
         .stage_route_publication(StageRoutePublication {
             route,
+            gateway_scope,
             certificate,
             publication,
             expected_scope_version: 0,

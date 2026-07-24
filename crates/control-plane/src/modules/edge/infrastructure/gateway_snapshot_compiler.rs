@@ -302,8 +302,8 @@ mod tests {
         DomainNamePattern, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
     use crate::modules::shared_kernel::domain::{
-        DomainClaimId, EnvironmentId, GatewayCertificateId, OrganizationId, ProjectId, RouteId,
-        WorkloadId, WorkloadRevisionId,
+        DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, OrganizationId,
+        ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use chrono::{Duration, Utc};
 
@@ -329,6 +329,7 @@ mod tests {
             OrganizationId::new(),
             ProjectId::new(),
             EnvironmentId::new(),
+            GatewayScopeId::new(),
             node_id,
             RouteHostname::parse(hostname).expect("hostname"),
             RoutePath::parse(path).expect("path"),

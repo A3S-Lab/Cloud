@@ -1245,17 +1245,25 @@ reconciliation, process death, and provider recovery.
 | `H0.4` | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
 | `H0.5` | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
-The current `H0.2` slice implements cardinality-one private target projection
-for the existing one-node/one-Gateway mapping. A route persists its immutable
-revision, deterministic Runtime unit, positive generation, port, canonical
-node-local origin, and command-bound observation time. The complete snapshot
-digest binds revision, unit, and generation; rejected acknowledgement retains
-the old target; exact applied acknowledgement atomically selects the newer
-generation. Migration 035 backfills legacy projections and PostgreSQL enforces
-the identity and generation constraints. Unit, recreated-PostgreSQL, migration,
-and real-Gateway certificate/target replacement and restart fixtures cover this
-slice. Logical Gateway scopes, mixed-version delivery, replicated rollout
-thresholds, and production HA remain open, so `H0.2` is not complete.
+The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
+cardinality-one private target projection. A scope belongs to one organization,
+project, and environment and currently maps to one physical Gateway node.
+Environment-scoped create/list APIs persist it idempotently. Route publication
+requires the scope, stores both logical scope and physical node identity, and
+rejects a cross-environment or wrong-node binding; cutover cannot change the
+logical scope.
+
+A route also persists its immutable revision, deterministic Runtime unit,
+positive generation, port, canonical node-local origin, and command-bound
+observation time. The complete snapshot digest binds revision, unit, and
+generation; rejected acknowledgement retains the old target; exact applied
+acknowledgement atomically selects the newer generation. Migration 035
+backfills target projections. Migration 036 deterministically creates one scope
+per legacy environment/node binding, backfills Route and serialized recovery
+documents, and enforces composite tenancy/node constraints. Unit,
+recreated-PostgreSQL, migration, and real-Gateway certificate/target replacement
+and restart fixtures cover this slice. Mixed-version delivery, replicated
+rollout thresholds, and production HA remain open, so `H0.2` is not complete.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
 job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the

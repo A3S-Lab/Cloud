@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayCertificateRequest, GatewaySnapshot, NodeGatewayAck,
@@ -17,6 +17,7 @@ fn route(now: chrono::DateTime<Utc>) -> Route {
         OrganizationId::new(),
         ProjectId::new(),
         EnvironmentId::new(),
+        GatewayScopeId::new(),
         NodeId::new(),
         RouteHostname::parse("API.Example.COM").expect("hostname"),
         RoutePath::parse("/v1").expect("path"),
@@ -37,6 +38,26 @@ fn route(now: chrono::DateTime<Utc>) -> Route {
         now,
     )
     .expect("route")
+}
+
+#[test]
+fn logical_gateway_scope_owns_one_environment_node_binding() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let node_id = NodeId::new();
+    let scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        Utc::now(),
+    );
+
+    assert!(scope.owns(organization_id, project_id, environment_id, node_id));
+    assert!(!scope.owns(organization_id, project_id, EnvironmentId::new(), node_id,));
+    assert!(!scope.owns(organization_id, project_id, environment_id, NodeId::new(),));
 }
 
 #[test]

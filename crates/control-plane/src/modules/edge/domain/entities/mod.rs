@@ -3,6 +3,7 @@ mod gateway_certificate;
 mod gateway_certificate_convergence;
 mod gateway_publication;
 mod gateway_route_cutover;
+mod gateway_scope;
 mod route;
 
 pub use domain_claim::{DomainClaim, DomainClaimState};
@@ -15,4 +16,5 @@ pub use gateway_certificate_convergence::{
 };
 pub use gateway_publication::{GatewayPublication, GatewayPublicationState, GatewayScopeState};
 pub use gateway_route_cutover::{GatewayRouteCutover, GatewayRouteCutoverState};
+pub use gateway_scope::GatewayScope;
 pub use route::{Route, RouteState};

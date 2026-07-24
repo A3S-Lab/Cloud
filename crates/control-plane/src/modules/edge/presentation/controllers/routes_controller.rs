@@ -3,7 +3,7 @@ use crate::modules::edge::presentation::dto::{PublishRouteRequest, RoutePublicat
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, OrganizationId, ProjectId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, WorkloadRevisionId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -35,6 +35,7 @@ pub fn routes_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
                             organization_id,
                             project_id,
                             environment_id,
+                            gateway_scope_id: GatewayScopeId::from_uuid(body.gateway_scope_id),
                             workload_revision_id: WorkloadRevisionId::from_uuid(
                                 body.workload_revision_id,
                             ),

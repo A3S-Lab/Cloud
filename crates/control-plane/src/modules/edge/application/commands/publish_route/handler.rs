@@ -70,6 +70,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 "organization_id": command.organization_id,
                 "project_id": command.project_id,
                 "environment_id": command.environment_id,
+                "gateway_scope_id": command.gateway_scope_id,
                 "workload_revision_id": command.workload_revision_id,
                 "domain_claim_id": command.domain_claim_id,
                 "hostname": hostname.as_str(),
@@ -120,6 +121,23 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
+            let gateway_scope = match routes
+                .find_gateway_scope(command.organization_id, command.gateway_scope_id)
+                .await
+            {
+                Ok(value)
+                    if value.project_id == command.project_id
+                        && value.environment_id == command.environment_id =>
+                {
+                    value
+                }
+                Ok(_) => {
+                    return Ok(Err(ApplicationError::Conflict(
+                        "Gateway scope does not belong to this project and environment".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
+            };
             let target = match targets
                 .resolve_healthy_target(
                     command.organization_id,
@@ -135,12 +153,18 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Err(error) => return Ok(Err(error.into())),
             };
             let target_node_id = target.node_id;
+            if gateway_scope.node_id != target_node_id {
+                return Ok(Err(ApplicationError::Conflict(
+                    "Gateway scope is not mapped to the healthy target node".into(),
+                )));
+            }
             let certificate_id = GatewayCertificateId::new();
             let mut route = match Route::create(
                 RouteId::new(),
                 command.organization_id,
                 command.project_id,
                 command.environment_id,
+                gateway_scope.id,
                 target_node_id,
                 hostname,
                 path_prefix,
@@ -255,6 +279,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
             let staged = match routes
                 .stage_route_publication(StageRoutePublication {
                     route,
+                    gateway_scope,
                     certificate,
                     publication,
                     expected_scope_version: scope.aggregate_version,

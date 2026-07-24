@@ -172,6 +172,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
              drop table if exists routes cascade;
+             drop table if exists gateway_route_scopes cascade;
              drop table if exists gateway_certificates cascade;
              drop table if exists domain_claims cascade;
              drop table if exists gateway_publications cascade;
@@ -212,8 +213,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 35);
+    assert_eq!(applied, 36);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
+    assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     let evidence_required_column = database
         .fetch_one_as(sql_query::<(String, String, Option<String>)>(
             "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence_required'",
@@ -586,6 +588,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "036",
+                "logical Gateway scopes",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/036_logical_gateway_scopes.sql"
+                )),
+            ),
+            Migration::new(
+                "037",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1789,6 +1799,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             workload_id: &workload_id,
             workload_revision_id: &restart_revision_id,
             runtime_generation: restart_fixture.generation,
+            node_id: deployment_flow_fixture.node_id,
             token: ADMIN_TOKEN,
         },
     )
@@ -2010,6 +2021,229 @@ begin
         raise exception 'route cutover generation ordering constraint accepted a mismatch';
     exception
         when check_violation then null;
+    end;
+end
+$probe$;
+
+rollback;
+"#
+    );
+    client.batch_execute(&probe).await?;
+    Ok(())
+}
+
+async fn assert_logical_gateway_scope_migration_backfills_legacy_projection(
+    executor: &PostgresExecutor,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = executor.pool().get().await?;
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/036_logical_gateway_scopes.sql"
+    ));
+    let probe = format!(
+        r#"
+begin;
+set local search_path = pg_temp;
+
+create temporary table environments (
+    organization_id uuid not null,
+    project_id uuid not null,
+    id uuid not null,
+    unique (organization_id, project_id, id)
+);
+
+create temporary table nodes (
+    organization_id uuid not null,
+    id uuid not null,
+    unique (organization_id, id)
+);
+
+create temporary table routes (
+    id uuid primary key,
+    organization_id uuid not null,
+    project_id uuid not null,
+    environment_id uuid not null,
+    gateway_node_id uuid not null,
+    hostname text not null,
+    path_prefix text not null,
+    state text not null,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+);
+
+create temporary table gateway_route_cutovers (
+    routes jsonb not null
+);
+
+create temporary table gateway_certificate_convergences (
+    retained_routes jsonb not null,
+    rejected_routes jsonb not null
+);
+
+create temporary table idempotency_records (
+    response jsonb not null
+);
+
+insert into environments (organization_id, project_id, id) values
+    (
+        '20000000-0000-0000-0000-000000000001',
+        '20000000-0000-0000-0000-000000000002',
+        '20000000-0000-0000-0000-000000000003'
+    ),
+    (
+        '20000000-0000-0000-0000-000000000001',
+        '20000000-0000-0000-0000-000000000002',
+        '20000000-0000-0000-0000-000000000004'
+    );
+
+insert into nodes (organization_id, id) values
+    (
+        '20000000-0000-0000-0000-000000000001',
+        '20000000-0000-0000-0000-000000000005'
+    ),
+    (
+        '20000000-0000-0000-0000-000000000001',
+        '20000000-0000-0000-0000-000000000006'
+    );
+
+insert into routes (
+    id,
+    organization_id,
+    project_id,
+    environment_id,
+    gateway_node_id,
+    hostname,
+    path_prefix,
+    state,
+    created_at,
+    updated_at
+) values
+    (
+        '20000000-0000-0000-0000-000000000011',
+        '20000000-0000-0000-0000-000000000001',
+        '20000000-0000-0000-0000-000000000002',
+        '20000000-0000-0000-0000-000000000003',
+        '20000000-0000-0000-0000-000000000005',
+        'api.example.com',
+        '/',
+        'active',
+        '2026-01-01T00:00:00Z',
+        '2026-01-01T00:00:01Z'
+    ),
+    (
+        '20000000-0000-0000-0000-000000000012',
+        '20000000-0000-0000-0000-000000000001',
+        '20000000-0000-0000-0000-000000000002',
+        '20000000-0000-0000-0000-000000000004',
+        '20000000-0000-0000-0000-000000000005',
+        'web.example.com',
+        '/',
+        'active',
+        '2026-01-01T00:00:02Z',
+        '2026-01-01T00:00:03Z'
+    );
+
+insert into gateway_route_cutovers (routes) values (
+    '[{{"id":"20000000-0000-0000-0000-000000000011"}}]'::jsonb
+);
+
+insert into gateway_certificate_convergences (
+    retained_routes,
+    rejected_routes
+) values (
+    '[
+        {{
+            "route_id": "20000000-0000-0000-0000-000000000011",
+            "aggregate_version": 3
+        }}
+    ]'::jsonb,
+    '[
+        {{
+            "route_id": "20000000-0000-0000-0000-000000000012",
+            "aggregate_version": 4
+        }}
+    ]'::jsonb
+);
+
+insert into idempotency_records (response) values
+    (
+        '{{"route":{{"id":"20000000-0000-0000-0000-000000000011"}}}}'::jsonb
+    ),
+    (
+        '{{"cutover":{{"routes":[{{"id":"20000000-0000-0000-0000-000000000012"}}]}}}}'::jsonb
+    );
+
+{migration}
+
+do $probe$
+declare
+    first_scope uuid;
+    second_scope uuid;
+begin
+    if (select count(*) from gateway_route_scopes) <> 2
+        or (select count(distinct id) from gateway_route_scopes) <> 2
+    then
+        raise exception 'logical Gateway scope migration did not split legacy environments';
+    end if;
+
+    select gateway_scope_id into first_scope
+    from routes
+    where id = '20000000-0000-0000-0000-000000000011';
+    select gateway_scope_id into second_scope
+    from routes
+    where id = '20000000-0000-0000-0000-000000000012';
+
+    if first_scope is null or second_scope is null or first_scope = second_scope then
+        raise exception 'logical Gateway scope migration did not bind legacy routes';
+    end if;
+
+    if not exists (
+        select 1
+        from gateway_route_cutovers
+        where routes -> 0 ->> 'gateway_scope_id' = first_scope::text
+    ) or not exists (
+        select 1
+        from gateway_certificate_convergences
+        where retained_routes = '[
+                {{
+                    "route_id": "20000000-0000-0000-0000-000000000011",
+                    "aggregate_version": 3
+                }}
+            ]'::jsonb
+            and rejected_routes = '[
+                {{
+                    "route_id": "20000000-0000-0000-0000-000000000012",
+                    "aggregate_version": 4
+                }}
+            ]'::jsonb
+    ) or not exists (
+        select 1
+        from idempotency_records
+        where response #>> '{{route,gateway_scope_id}}' = first_scope::text
+    ) or not exists (
+        select 1
+        from idempotency_records
+        where response #>> '{{cutover,routes,0,gateway_scope_id}}' = second_scope::text
+    ) then
+        raise exception 'logical Gateway scope migration left a serialized route unbound';
+    end if;
+
+    begin
+        update routes
+        set gateway_scope_id = second_scope
+        where id = '20000000-0000-0000-0000-000000000011';
+        raise exception 'logical Gateway scope tenancy constraint accepted a cross-environment route';
+    exception
+        when foreign_key_violation then null;
+    end;
+
+    begin
+        update routes
+        set gateway_node_id = '20000000-0000-0000-0000-000000000006'
+        where id = '20000000-0000-0000-0000-000000000011';
+        raise exception 'logical Gateway scope binding accepted the wrong node';
+    exception
+        when foreign_key_violation then null;
     end;
 end
 $probe$;

@@ -660,12 +660,16 @@ HTTP endpoints remain an explicit development-only option.
 
 ## 8. Gateway and edge publication
 
-For the first vertical slice, A3S Gateway runs on the workload node. The Edge
-module persists one hostname/path owner per Gateway node scope. A publication
-may target only the workload's active immutable revision, a declared TCP port,
-and a current healthy Runtime observation. Docker observations expose the
-selected node-local HTTP origin as a typed evidence claim; Docker-specific
-container and port-binding details do not cross into the Route domain.
+For the first vertical slice, A3S Gateway runs on the workload node. Edge owns
+a logical `GatewayScope` inside one organization, project, and environment;
+the current cardinality-one mapping binds it to one physical Gateway node.
+Routes persist both identities, while the managed snapshot protocol remains
+node-addressed and Gateway does not interpret Cloud tenancy. A publication may
+target only the workload's active immutable revision, a declared TCP port, and
+a current healthy Runtime observation whose node matches the scope mapping.
+Docker observations expose the selected node-local HTTP origin as a typed
+evidence claim; Docker-specific container and port-binding details do not cross
+into the Route domain.
 
 The durable `RouteTarget` projection binds that origin to the immutable
 workload revision, deterministic
@@ -676,15 +680,16 @@ command. Routed update accepts only the candidate deployment command's
 observation at the desired healthy generation. A future, stale, mismatched, or
 forged observation cannot create a route target.
 
-The compiler sorts every active route plus the proposed route and emits one
-deterministic, versioned ACL snapshot. A Gateway scope permits only one pending
-complete snapshot. Its PostgreSQL transaction binds route, scope revision,
-snapshot digest, command ID, original correlation ID, idempotency record, and
-outbox fact. A replay therefore reuses the first Fleet command identity even
-when the retry arrives under a new HTTP request ID. The application checks this
-durable replay before consulting current workload health, so later observation
-expiry or workload-state drift cannot turn an already accepted identical
-request into a conflict.
+The compiler sorts every active route plus the proposed route for the physical
+node and emits one deterministic, versioned ACL snapshot. Physical
+`GatewayScopeState` permits only one pending complete snapshot per node. Its
+PostgreSQL transaction binds Route, logical scope, physical revision, snapshot
+digest, command ID, original correlation ID, idempotency record, and outbox
+fact. A replay therefore reuses the first Fleet command identity even when the
+retry arrives under a new HTTP request ID. The application checks this durable
+replay before consulting current workload health, so later observation expiry
+or workload-state drift cannot turn an already accepted identical request into
+a conflict.
 
 Each generated service carries the target revision, Runtime unit, and
 generation in the canonical ACL bytes. The snapshot digest therefore changes
@@ -720,9 +725,14 @@ candidate only after that applied cutover is durable.
 Migration 035 backfills legacy routes and serialized cutover projections from
 immutable workload revisions. PostgreSQL then enforces the deterministic unit
 identity, positive and increasing generations, observation ordering, and
-composite workload/revision/generation references. Recreated repository tests
-prove exact target recovery, and a migration probe verifies both legacy
-backfill and rejection of forged identities or revision-generation pairs.
+composite workload/revision/generation references. Migration 036
+deterministically creates one logical scope per legacy
+organization/project/environment/node binding, backfills Route, cutover,
+and idempotency documents, preserves certificate-convergence route-version
+records, and adds composite tenancy/node foreign keys. Recreated repository
+tests prove exact target and scope recovery, while migration probes reject
+forged identities, revision-generation pairs, cross-environment scopes, and
+wrong-node bindings.
 
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route

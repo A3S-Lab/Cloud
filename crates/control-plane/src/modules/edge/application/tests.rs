@@ -3,9 +3,9 @@ use super::{
     SignGatewayCertificate, SignGatewayCertificateHandler, VerifyDomainClaim,
     VerifyDomainClaimHandler,
 };
-use crate::modules::edge::domain::events::DomainClaimChanged;
+use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
@@ -15,7 +15,8 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
-    GatewayCertificateMaterial, GatewayPublication, RoutePortName, RouteTarget, UpstreamEndpoint,
+    GatewayCertificateMaterial, GatewayPublication, GatewayScope, RoutePortName, RouteTarget,
+    UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::infrastructure::{
@@ -23,8 +24,8 @@ use crate::modules::edge::infrastructure::{
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, IdempotencyRequest, NodeId, OrganizationId, ProjectId,
-    RepositoryError, WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayScopeId, IdempotencyRequest, NodeId, OrganizationId,
+    ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateSigningRequest, NodeGatewayAck};
@@ -35,6 +36,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+mod gateway_scope_tests;
 
 #[derive(Clone)]
 struct FixedTargetReader {
@@ -188,6 +191,7 @@ fn command(
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    gateway_scope_id: GatewayScopeId,
     revision_id: WorkloadRevisionId,
     domain_claim_id: DomainClaimId,
     hostname: &str,
@@ -198,6 +202,7 @@ fn command(
         organization_id,
         project_id,
         environment_id,
+        gateway_scope_id,
         workload_revision_id: revision_id,
         domain_claim_id,
         hostname: hostname.into(),
@@ -207,6 +212,37 @@ fn command(
         request_id: Uuid::now_v7(),
         requested_at,
     }
+}
+
+async fn gateway_scope(
+    edge: &Arc<InMemoryEdgeRepository>,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    node_id: NodeId,
+    now: chrono::DateTime<Utc>,
+) -> GatewayScopeId {
+    let scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    );
+    edge.create_gateway_scope(CreateGatewayScopeWrite {
+        scope: scope.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-gateway-scopes",
+            scope.id.to_string(),
+            scope.node_id.to_string().as_bytes(),
+        )
+        .expect("scope idempotency"),
+        event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7()).expect("scope event"),
+    })
+    .await
+    .expect("create Gateway scope");
+    scope.id
 }
 
 fn fixed_target(
@@ -331,6 +367,15 @@ async fn stage_certificate(
     )
     .await;
     let workload_id = WorkloadId::new();
+    let gateway_scope_id = gateway_scope(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    )
+    .await;
     PublishRouteHandler::new(
         routes,
         Arc::new(FixedTargetReader {
@@ -346,6 +391,7 @@ async fn stage_certificate(
             organization_id,
             project_id,
             environment_id,
+            gateway_scope_id,
             revision_id,
             domain_claim_id,
             hostname,
@@ -551,6 +597,7 @@ async fn publishes_one_exact_command_and_replays_the_same_route_intent() {
     let workload_id = WorkloadId::new();
     let routes = Arc::new(InMemoryEdgeRepository::new());
     let queue = Arc::new(RecordingGatewayQueue::default());
+    let now = Utc::now();
     let handler = PublishRouteHandler::new(
         routes.clone(),
         Arc::new(FixedTargetReader {
@@ -567,18 +614,28 @@ async fn publishes_one_exact_command_and_replays_the_same_route_intent() {
         project_id,
         environment_id,
         "api.example.com",
-        Utc::now(),
+        now,
+    )
+    .await;
+    let gateway_scope_id = gateway_scope(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
     )
     .await;
     let request = command(
         organization_id,
         project_id,
         environment_id,
+        gateway_scope_id,
         revision_id,
         domain_claim_id,
         "api.example.com",
         "publish-api",
-        Utc::now(),
+        now,
     );
     let first = handler
         .execute(request.clone(), context())
@@ -656,12 +713,22 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         now,
     )
     .await;
+    let gateway_scope_id = gateway_scope(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    )
+    .await;
     let first = handler
         .execute(
             command(
                 organization_id,
                 project_id,
                 environment_id,
+                gateway_scope_id,
                 revision_id,
                 domain_claim_id,
                 "api.example.com",
@@ -707,6 +774,7 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
                 organization_id,
                 project_id,
                 environment_id,
+                gateway_scope_id,
                 revision_id,
                 domain_claim_id,
                 "web.example.com",

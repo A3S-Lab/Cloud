@@ -341,6 +341,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/035_route_target_generation.sql"
             )),
         ),
+        Migration::new(
+            "036",
+            "logical Gateway scopes",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/036_logical_gateway_scopes.sql"
+            )),
+        ),
     ]
 }
 

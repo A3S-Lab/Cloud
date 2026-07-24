@@ -1,17 +1,19 @@
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
-    GatewayCertificateConvergenceTarget, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayCertificateConvergence, StageGatewayRouteCutover, StageRoutePublication,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
+    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceState, GatewayPublication, GatewayPublicationState,
-    GatewayRouteCutover, GatewayRouteCutoverState, GatewayScopeState, Route, RouteState,
+    GatewayRouteCutover, GatewayRouteCutoverState, GatewayScope, GatewayScopeState, Route,
+    RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
-    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    GatewayScopeId, IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId,
+    RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, GatewayAckState, NodeGatewayAck};
 use async_trait::async_trait;
@@ -20,6 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::RwLock;
 
 mod certificate_convergence;
+mod certificates;
+mod gateway_scopes;
 
 #[derive(Default)]
 pub struct InMemoryEdgeRepository {
@@ -28,6 +32,10 @@ pub struct InMemoryEdgeRepository {
 
 #[derive(Default)]
 struct State {
+    gateway_scopes: BTreeMap<GatewayScopeId, GatewayScope>,
+    gateway_scope_bindings:
+        BTreeMap<(OrganizationId, ProjectId, EnvironmentId, NodeId), GatewayScopeId>,
+    gateway_scope_idempotency: BTreeMap<(String, String), (String, GatewayScope)>,
     domain_claims: BTreeMap<DomainClaimId, DomainClaim>,
     domain_idempotency: BTreeMap<(String, String), (String, DomainClaim)>,
     scopes: BTreeMap<NodeId, GatewayScopeState>,
@@ -55,6 +63,38 @@ impl InMemoryEdgeRepository {
 
 #[async_trait]
 impl IEdgeRepository for InMemoryEdgeRepository {
+    async fn create_gateway_scope(
+        &self,
+        bundle: CreateGatewayScopeWrite,
+    ) -> Result<IdempotentWrite<GatewayScope>, RepositoryError> {
+        let mut state = self.state.write().await;
+        gateway_scopes::create(&mut state, bundle)
+    }
+
+    async fn find_gateway_scope(
+        &self,
+        organization_id: OrganizationId,
+        scope_id: GatewayScopeId,
+    ) -> Result<GatewayScope, RepositoryError> {
+        let state = self.state.read().await;
+        gateway_scopes::find(&state, organization_id, scope_id)
+    }
+
+    async fn list_gateway_scopes(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<GatewayScope>, RepositoryError> {
+        let state = self.state.read().await;
+        Ok(gateway_scopes::list(
+            &state,
+            organization_id,
+            project_id,
+            environment_id,
+        ))
+    }
+
     async fn replay_domain_claim_write(
         &self,
         idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
@@ -268,6 +308,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             replay.replayed = true;
             return Ok(replay);
         }
+        gateway_scopes::validate_route_binding(&state, &bundle.gateway_scope, &bundle.route)?;
         let current = state
             .scopes
             .get(&bundle.publication.node_id)
@@ -415,6 +456,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
                 "Gateway route cutover identity already exists".into(),
             ));
         }
+        gateway_scopes::validate_cutover_bindings(&state, &bundle.cutover.routes)?;
         validate_pending_cutover_routes(&state.routes, &bundle.cutover)?;
 
         let result = GatewayRouteCutoverResult {
@@ -597,7 +639,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             .certificates
             .get(&certificate.id)
             .ok_or(RepositoryError::NotFound)?;
-        validate_gateway_certificate_transition(existing, &certificate, expected_version)?;
+        certificates::validate_transition(existing, &certificate, expected_version)?;
         state
             .certificates
             .insert(certificate.id, certificate.clone());
@@ -879,6 +921,7 @@ fn same_route_ownership(current: &Route, candidate: &Route) -> bool {
         && current.organization_id == candidate.organization_id
         && current.project_id == candidate.project_id
         && current.environment_id == candidate.environment_id
+        && current.gateway_scope_id == candidate.gateway_scope_id
         && current.gateway_node_id == candidate.gateway_node_id
         && current.hostname == candidate.hostname
         && current.path_prefix == candidate.path_prefix
@@ -887,58 +930,6 @@ fn same_route_ownership(current: &Route, candidate: &Route) -> bool {
         && current.workload_id == candidate.workload_id
         && current.target.port_name == candidate.target.port_name
         && current.created_at == candidate.created_at
-}
-
-fn validate_gateway_certificate_transition(
-    existing: &GatewayCertificate,
-    next: &GatewayCertificate,
-    expected_version: u64,
-) -> Result<(), RepositoryError> {
-    use crate::modules::edge::domain::GatewayCertificateState;
-
-    let transition_is_valid = match (existing.state, next.state) {
-        (GatewayCertificateState::Provisioning, GatewayCertificateState::Issued) => {
-            next.csr_digest.is_some()
-                && next.material.is_some()
-                && next.failure.is_none()
-                && next.ready_at.is_none()
-                && next.revoked_at.is_none()
-        }
-        (GatewayCertificateState::Provisioning, GatewayCertificateState::Failed) => {
-            next.csr_digest.is_some()
-                && next.material.is_none()
-                && next.failure.is_some()
-                && next.ready_at.is_none()
-                && next.revoked_at.is_none()
-        }
-        (GatewayCertificateState::Ready, GatewayCertificateState::Revoked) => {
-            next.csr_digest == existing.csr_digest
-                && next.material == existing.material
-                && next.failure.is_some()
-                && next.ready_at == existing.ready_at
-                && next.revoked_at.is_some()
-        }
-        _ => false,
-    };
-    if existing.aggregate_version != expected_version
-        || next.aggregate_version != expected_version.saturating_add(1)
-        || !transition_is_valid
-        || existing.id != next.id
-        || existing.organization_id != next.organization_id
-        || existing.node_id != next.node_id
-        || existing.domain_claim_ids != next.domain_claim_ids
-        || existing.gateway_revision != next.gateway_revision
-        || existing.gateway_command_id != next.gateway_command_id
-        || existing.snapshot_digest != next.snapshot_digest
-        || existing.request != next.request
-        || existing.created_at != next.created_at
-        || next.updated_at < existing.updated_at
-    {
-        return Err(RepositoryError::Conflict(
-            "Gateway certificate changed while applying its transition".into(),
-        ));
-    }
-    Ok(())
 }
 
 fn validate_domain_event(

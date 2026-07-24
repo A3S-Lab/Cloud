@@ -3,17 +3,19 @@ use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
     NodeCommandPayload, NodeGatewayAck,
 };
-use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
-use a3s_cloud_control_plane::modules::edge::domain::events::GatewayRouteCutoverStaged;
+use a3s_cloud_control_plane::modules::edge::domain::events::{
+    DomainClaimChanged, GatewayRouteCutoverStaged, GatewayScopeCreated,
+};
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, StageGatewayRouteCutover, StageRoutePublication,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, StageGatewayRouteCutover,
+    StageRoutePublication, TransitionDomainClaim,
 };
 use a3s_cloud_control_plane::modules::edge::infrastructure::persistence::PostgresEdgeRepository;
 use a3s_cloud_control_plane::modules::edge::{
     DomainClaim, DomainNamePattern, EdgeGatewayAcknowledgementProjector, GatewayCertificate,
     GatewayCertificateMaterial, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
-    Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayScope, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+    UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::{
@@ -21,8 +23,9 @@ use a3s_cloud_control_plane::modules::fleet::{
     RecordGatewayAcknowledgementHandler,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::ControlPlane;
 use a3s_orm::PostgresExecutor;
@@ -51,6 +54,7 @@ pub struct EdgeApiFixture<'a> {
     pub workload_id: &'a str,
     pub workload_revision_id: &'a str,
     pub runtime_generation: u64,
+    pub node_id: NodeId,
     pub token: &'a str,
 }
 
@@ -90,11 +94,49 @@ pub async fn exercise_edge_api(
     assert_eq!(verified_claim.status(), 202);
     assert_eq!(response_json(&verified_claim)?["data"]["state"], "verified");
 
+    let gateway_scope_collection_path = format!(
+        "/api/v1/organizations/{}/projects/{}/environments/{}/gateway-scopes",
+        fixture.organization_id, fixture.project_id, fixture.environment_id
+    );
+    let gateway_scope_request = json!({"nodeId": fixture.node_id});
+    let created_scope = app
+        .call(post_json(
+            &gateway_scope_collection_path,
+            "edge-api-gateway-scope",
+            gateway_scope_request.clone(),
+            fixture.token,
+        ))
+        .await?;
+    let replayed_scope = app
+        .call(post_json(
+            &gateway_scope_collection_path,
+            "edge-api-gateway-scope",
+            gateway_scope_request,
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(created_scope.status(), 201);
+    assert_eq!(replayed_scope.status(), 200);
+    let gateway_scope_id = field_str(&response_json(&created_scope)?["data"], "id")?.to_owned();
+    assert_eq!(
+        response_json(&replayed_scope)?["data"]["id"],
+        gateway_scope_id
+    );
+    let listed_scopes = app
+        .call(get_json(&gateway_scope_collection_path, fixture.token))
+        .await?;
+    assert_eq!(listed_scopes.status(), 200);
+    assert_eq!(
+        response_json(&listed_scopes)?["data"][0]["nodeId"],
+        fixture.node_id.to_string()
+    );
+
     let collection_path = format!(
         "/api/v1/organizations/{}/projects/{}/environments/{}/routes",
         fixture.organization_id, fixture.project_id, fixture.environment_id
     );
     let request_body = json!({
+        "gatewayScopeId": gateway_scope_id,
         "workloadRevisionId": fixture.workload_revision_id,
         "domainClaimId": domain_claim_id,
         "hostname": "api.integration.example",
@@ -127,6 +169,7 @@ pub async fn exercise_edge_api(
     assert_eq!(replay_body["data"]["commandReplayed"], true);
     let route = &first_body["data"]["route"];
     assert_eq!(route["state"], "publishing");
+    assert_eq!(route["gatewayScopeId"], gateway_scope_id);
     assert_eq!(
         route["runtimeUnitId"],
         format!(
@@ -309,6 +352,40 @@ pub async fn exercise_edge(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let repository = PostgresEdgeRepository::new(executor.clone());
     let now = Utc::now();
+    let gateway_scope = match repository
+        .list_gateway_scopes(
+            fixture.organization_id,
+            fixture.project_id,
+            fixture.environment_id,
+        )
+        .await?
+        .into_iter()
+        .find(|scope| scope.node_id == fixture.node_id)
+    {
+        Some(scope) => scope,
+        None => {
+            let scope = GatewayScope::create(
+                GatewayScopeId::new(),
+                fixture.organization_id,
+                fixture.project_id,
+                fixture.environment_id,
+                fixture.node_id,
+                now,
+            );
+            repository
+                .create_gateway_scope(CreateGatewayScopeWrite {
+                    scope: scope.clone(),
+                    idempotency: IdempotencyRequest::new(
+                        "postgres-edge-gateway-scopes",
+                        scope.id.to_string(),
+                        scope.node_id.to_string().as_bytes(),
+                    )?,
+                    event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7())?,
+                })
+                .await?
+                .value
+        }
+    };
     let initial_scope = repository.gateway_scope(fixture.node_id).await?;
     let initial_active = repository.active_routes(fixture.node_id).await?.len();
     let initial_routes = repository
@@ -329,6 +406,7 @@ pub async fn exercise_edge(
     let first_revision = initial_scope.next_revision()?;
     let mut first = staged(
         &fixture,
+        &gateway_scope,
         first_revision,
         initial_scope.installed_revision,
         "api.example.com",
@@ -426,6 +504,7 @@ pub async fn exercise_edge(
 
     let mut duplicate = staged(
         &fixture,
+        &gateway_scope,
         scope.next_revision()?,
         scope.installed_revision,
         "API.EXAMPLE.COM",
@@ -439,6 +518,7 @@ pub async fn exercise_edge(
 
     let mut second = staged(
         &fixture,
+        &gateway_scope,
         scope.next_revision()?,
         scope.installed_revision,
         "web.example.com",
@@ -871,6 +951,7 @@ fn cutover_acknowledgement(
 #[allow(clippy::too_many_arguments)]
 fn staged(
     fixture: &EdgeFixture,
+    gateway_scope: &GatewayScope,
     revision: u64,
     expected_revision: Option<u64>,
     hostname: &str,
@@ -905,6 +986,7 @@ fn staged(
         fixture.organization_id,
         fixture.project_id,
         fixture.environment_id,
+        gateway_scope.id,
         fixture.node_id,
         RouteHostname::parse(hostname)?,
         RoutePath::parse(path)?,
@@ -949,6 +1031,7 @@ fn staged(
     let canonical = format!("{hostname}{path}");
     Ok(StageRoutePublication {
         route: route.clone(),
+        gateway_scope: gateway_scope.clone(),
         certificate,
         publication,
         expected_scope_version: 0,

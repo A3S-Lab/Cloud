@@ -3,20 +3,20 @@ use crate::infrastructure::{
     require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
-    GatewayCertificateConvergenceTarget, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayCertificateConvergence, StageGatewayRouteCutover, StageRoutePublication,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
+    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
-    GatewayPublicationState, GatewayRouteCutover, GatewayScopeState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayPublicationState, GatewayRouteCutover, GatewayScope, GatewayScopeState, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotentWrite,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
-    WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayCertificateRequest, NodeGatewayAck};
 use a3s_orm::{
@@ -27,9 +27,9 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use super::postgres_tls::{self as tls, insert_certificate};
-use super::{postgres_certificate_convergence, postgres_cutovers};
+use super::{postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes};
 
-pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
+pub(super) const SELECT_ROUTES: &str = "select id, organization_id, project_id, environment_id, gateway_scope_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id from routes";
 pub(super) const SELECT_PUBLICATIONS: &str = "select node_id, revision, expected_revision, command_id, command_correlation_id, snapshot_digest, acl, state, failure, command_issued_at, command_not_after, snapshot_expires_at, acknowledged_at, certificate_request from gateway_publications";
 
 #[derive(Clone)]
@@ -48,6 +48,7 @@ pub(super) struct RouteRow {
     organization_id: Uuid,
     project_id: Uuid,
     environment_id: Uuid,
+    gateway_scope_id: Uuid,
     gateway_node_id: Uuid,
     hostname: String,
     path_prefix: String,
@@ -79,28 +80,29 @@ impl FromRow for RouteRow {
             organization_id: decode(row, 1)?,
             project_id: decode(row, 2)?,
             environment_id: decode(row, 3)?,
-            gateway_node_id: decode(row, 4)?,
-            hostname: decode(row, 5)?,
-            path_prefix: decode(row, 6)?,
-            workload_id: decode(row, 7)?,
-            workload_revision_id: decode(row, 8)?,
-            runtime_unit_id: decode(row, 9)?,
-            runtime_generation: decode(row, 10)?,
-            port_name: decode(row, 11)?,
-            upstream_origin: decode(row, 12)?,
-            target_observed_at: decode(row, 13)?,
-            state: decode(row, 14)?,
-            gateway_revision: decode(row, 15)?,
-            gateway_command_id: decode(row, 16)?,
-            snapshot_digest: decode(row, 17)?,
-            failure: decode(row, 18)?,
-            aggregate_version: decode(row, 19)?,
-            created_at: decode(row, 20)?,
-            updated_at: decode(row, 21)?,
-            activated_at: decode(row, 22)?,
-            domain_claim_id: decode(row, 23)?,
-            domain_pattern: decode(row, 24)?,
-            gateway_certificate_id: decode(row, 25)?,
+            gateway_scope_id: decode(row, 4)?,
+            gateway_node_id: decode(row, 5)?,
+            hostname: decode(row, 6)?,
+            path_prefix: decode(row, 7)?,
+            workload_id: decode(row, 8)?,
+            workload_revision_id: decode(row, 9)?,
+            runtime_unit_id: decode(row, 10)?,
+            runtime_generation: decode(row, 11)?,
+            port_name: decode(row, 12)?,
+            upstream_origin: decode(row, 13)?,
+            target_observed_at: decode(row, 14)?,
+            state: decode(row, 15)?,
+            gateway_revision: decode(row, 16)?,
+            gateway_command_id: decode(row, 17)?,
+            snapshot_digest: decode(row, 18)?,
+            failure: decode(row, 19)?,
+            aggregate_version: decode(row, 20)?,
+            created_at: decode(row, 21)?,
+            updated_at: decode(row, 22)?,
+            activated_at: decode(row, 23)?,
+            domain_claim_id: decode(row, 24)?,
+            domain_pattern: decode(row, 25)?,
+            gateway_certificate_id: decode(row, 26)?,
         })
     }
 }
@@ -123,6 +125,7 @@ impl RouteRow {
             organization_id: OrganizationId::from_uuid(self.organization_id),
             project_id: ProjectId::from_uuid(self.project_id),
             environment_id: EnvironmentId::from_uuid(self.environment_id),
+            gateway_scope_id: GatewayScopeId::from_uuid(self.gateway_scope_id),
             gateway_node_id: NodeId::from_uuid(self.gateway_node_id),
             hostname: RouteHostname::parse(self.hostname).map_err(stored("hostname"))?,
             path_prefix: RoutePath::parse(self.path_prefix).map_err(stored("path"))?,
@@ -220,6 +223,31 @@ impl PublicationRow {
 
 #[async_trait]
 impl IEdgeRepository for PostgresEdgeRepository {
+    async fn create_gateway_scope(
+        &self,
+        bundle: CreateGatewayScopeWrite,
+    ) -> Result<IdempotentWrite<GatewayScope>, RepositoryError> {
+        postgres_gateway_scopes::create(&self.executor, bundle).await
+    }
+
+    async fn find_gateway_scope(
+        &self,
+        organization_id: OrganizationId,
+        scope_id: GatewayScopeId,
+    ) -> Result<GatewayScope, RepositoryError> {
+        postgres_gateway_scopes::find(&self.executor, organization_id, scope_id).await
+    }
+
+    async fn list_gateway_scopes(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<GatewayScope>, RepositoryError> {
+        postgres_gateway_scopes::list(&self.executor, organization_id, project_id, environment_id)
+            .await
+    }
+
     async fn replay_domain_claim_write(
         &self,
         idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
@@ -332,6 +360,12 @@ impl IEdgeRepository for PostgresEdgeRepository {
                         replay.value.replayed = true;
                         return Ok(replay.value);
                     }
+                    postgres_gateway_scopes::validate_route_binding(
+                        transaction,
+                        &bundle.gateway_scope,
+                        &bundle.route,
+                    )
+                    .await?;
                     let organization_id = fetch_optional::<Uuid, _>(
                         transaction,
                         sql_query::<Uuid>("select organization_id from nodes where id = ")
@@ -644,7 +678,7 @@ async fn insert_route(
     let result = execute(
         transaction,
         sql_query::<()>(
-            "insert into routes (id, organization_id, project_id, environment_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id) values (",
+            "insert into routes (id, organization_id, project_id, environment_id, gateway_scope_id, gateway_node_id, hostname, path_prefix, workload_id, workload_revision_id, runtime_unit_id, runtime_generation, port_name, upstream_origin, target_observed_at, state, gateway_revision, gateway_command_id, snapshot_digest, failure, aggregate_version, created_at, updated_at, activated_at, domain_claim_id, domain_pattern, gateway_certificate_id) values (",
         )
         .bind(route.id.as_uuid())
         .append(", ")
@@ -653,6 +687,8 @@ async fn insert_route(
         .bind(route.project_id.as_uuid())
         .append(", ")
         .bind(route.environment_id.as_uuid())
+        .append(", ")
+        .bind(route.gateway_scope_id.as_uuid())
         .append(", ")
         .bind(route.gateway_node_id.as_uuid())
         .append(", ")

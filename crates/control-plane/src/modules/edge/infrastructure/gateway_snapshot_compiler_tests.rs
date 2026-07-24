@@ -4,8 +4,8 @@ use crate::modules::edge::domain::{
     UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use chrono::{Duration, Utc};
 
@@ -21,6 +21,7 @@ fn snapshot_digest_binds_the_exact_runtime_generation() {
         OrganizationId::new(),
         ProjectId::new(),
         EnvironmentId::new(),
+        GatewayScopeId::new(),
         node_id,
         RouteHostname::parse("generation.example.com").expect("hostname"),
         RoutePath::parse("/").expect("path"),

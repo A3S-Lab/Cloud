@@ -1,4 +1,5 @@
 use super::postgres::{insert_publication, RouteRow, SELECT_ROUTES};
+use super::postgres_gateway_scopes;
 use super::postgres_tls::insert_certificate;
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
@@ -141,6 +142,11 @@ pub(super) async fn stage(
                     replay.value.replayed = true;
                     return Ok(replay.value);
                 }
+                postgres_gateway_scopes::validate_cutover_bindings(
+                    transaction,
+                    &bundle.cutover.routes,
+                )
+                .await?;
                 let organization_id = fetch_optional::<Uuid, _>(
                     transaction,
                     sql_query::<Uuid>("select organization_id from nodes where id = ")
@@ -539,6 +545,7 @@ fn same_route_ownership(current: &Route, candidate: &Route) -> bool {
         && current.organization_id == candidate.organization_id
         && current.project_id == candidate.project_id
         && current.environment_id == candidate.environment_id
+        && current.gateway_scope_id == candidate.gateway_scope_id
         && current.gateway_node_id == candidate.gateway_node_id
         && current.hostname == candidate.hostname
         && current.path_prefix == candidate.path_prefix

@@ -197,19 +197,22 @@ ordered Fleet log metadata; it does not become the owner of log bodies.
 ### 3.8 Edge routing
 
 The implemented slice owns hostname/path rules, exact and one-label wildcard
-domain claims, managed certificate public state, and the desired A3S Gateway
-configuration revision. It resolves a route only from a healthy active workload
-revision covered by verified claims, compiles one HTTPS-only snapshot, and does
-not mark the route or certificate ready until the Gateway acknowledges that
-exact complete snapshot. The node generates and retains the private key; the
-control plane sees only a CSR and public certificate material.
+domain claims, logical Gateway scopes, managed certificate public state, and
+the desired A3S Gateway configuration revision. A logical scope belongs to one
+organization, project, and environment and currently maps to one physical
+Gateway node. Edge resolves a route only from a healthy active workload
+revision covered by verified claims, compiles one HTTPS-only node-addressed
+snapshot, and does not mark the route or certificate ready until the Gateway
+acknowledges that exact complete snapshot. The node generates and retains the
+private key; the control plane sees only a CSR and public certificate material.
 
 Primary domain records:
 
 - `Route`
 - `DomainClaim`
 - `GatewayCertificate`
-- `GatewayScopeState`
+- `GatewayScope` — Cloud-owned logical tenancy and placement identity
+- `GatewayScopeState` — physical node publication revision state
 - `GatewayPublication`
 - `GatewayRouteCutover`
 - `GatewayCertificateConvergence`
@@ -528,6 +531,10 @@ tables directly. Audit records are append-only and separate from event delivery.
 ### Route
 
 - A hostname/path tuple has one owner within a gateway scope.
+- Every Route stores its logical Gateway scope and physical Gateway node.
+- The scope, DomainClaim, Route, and target belong to the same organization,
+  project, and environment; the scope's mapped node equals the healthy target
+  node.
 - Route publication targets an immutable workload revision.
 - The target port must be declared by that revision and resolved from current
   healthy Runtime evidence to a node-local HTTP origin.
@@ -544,8 +551,11 @@ tables directly. Audit records are append-only and separate from event delivery.
 ### Gateway route cutover
 
 - One cutover belongs to one deployment and binds the previous and candidate
-  immutable revisions, workload node, Gateway revision, deterministic command,
-  certificate, snapshot digest, and complete candidate route set.
+  immutable revisions, logical Gateway scope, workload node, Gateway revision,
+  deterministic command, certificate, snapshot digest, and complete candidate
+  route set.
+- A cutover preserves logical scope identity and cannot move a route across
+  project, environment, or physical node boundaries.
 - Staging validates every current active route for the workload and persists
   the candidate projections separately. The active route rows remain
   byte-identical while the cutover is `pending`.
@@ -1113,6 +1123,7 @@ inference.deployment.created
 inference.deployment.revised
 inference.route.changed
 inference.usage.recorded
+edge.gateway-scope.created
 edge.route.publication-staged
 edge.route.cutover-staged
 edge.domain-claim.created

@@ -2,9 +2,12 @@ use super::gateway_certificate_reconciler::{
     deterministic_certificate_id, deterministic_command_id, GatewayCertificateReconciler,
 };
 use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata};
-use crate::modules::edge::domain::events::{DomainClaimChanged, RoutePublicationStaged};
+use crate::modules::edge::domain::events::{
+    DomainClaimChanged, GatewayScopeCreated, RoutePublicationStaged,
+};
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, StageRoutePublication, TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::services::{
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayCommandDispatch,
@@ -12,13 +15,14 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
-    GatewayCertificateState, GatewayPublication, GatewayPublicationState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayCertificateState, GatewayPublication, GatewayPublicationState, GatewayScope, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, IdempotencyRequest,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use async_trait::async_trait;
@@ -102,6 +106,7 @@ struct Fixture {
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    gateway_scope_id: GatewayScopeId,
     node_id: NodeId,
     workload_id: WorkloadId,
     workload_revision_id: WorkloadRevisionId,
@@ -115,6 +120,7 @@ impl Fixture {
             organization_id: OrganizationId::new(),
             project_id: ProjectId::new(),
             environment_id: EnvironmentId::new(),
+            gateway_scope_id: GatewayScopeId::new(),
             node_id: NodeId::new(),
             workload_id: WorkloadId::new(),
             workload_revision_id: WorkloadRevisionId::new(),
@@ -202,11 +208,36 @@ impl Fixture {
         expires_at: chrono::DateTime<Utc>,
     ) -> (Route, GatewayCertificate) {
         let certificate_id = GatewayCertificateId::new();
+        let logical_scope = GatewayScope::create(
+            self.gateway_scope_id,
+            self.organization_id,
+            self.project_id,
+            self.environment_id,
+            self.node_id,
+            now,
+        );
+        let logical_scope = self
+            .repository
+            .create_gateway_scope(CreateGatewayScopeWrite {
+                scope: logical_scope.clone(),
+                idempotency: IdempotencyRequest::new(
+                    "test-gateway-scopes",
+                    self.gateway_scope_id.to_string(),
+                    self.node_id.to_string().as_bytes(),
+                )
+                .expect("scope idempotency"),
+                event: GatewayScopeCreated::envelope(&logical_scope, Uuid::now_v7())
+                    .expect("scope event"),
+            })
+            .await
+            .expect("create logical scope")
+            .value;
         let mut route = Route::create(
             RouteId::new(),
             self.organization_id,
             self.project_id,
             self.environment_id,
+            logical_scope.id,
             self.node_id,
             RouteHostname::parse(hostname).expect("hostname"),
             RoutePath::parse("/").expect("path"),
@@ -296,6 +327,7 @@ impl Fixture {
             .repository
             .stage_route_publication(StageRoutePublication {
                 route,
+                gateway_scope: logical_scope,
                 certificate,
                 publication,
                 expected_scope_version: scope.aggregate_version,

@@ -1,9 +1,12 @@
 use super::{DeploymentFlowConfig, DeploymentFlowRuntime};
-use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
+use crate::modules::edge::domain::events::GatewayScopeCreated;
+use crate::modules::edge::domain::repositories::{
+    CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
+};
 use crate::modules::edge::domain::{
     DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
-    GatewayRouteCutover, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
-    UpstreamEndpoint,
+    GatewayRouteCutover, GatewayScope, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+    RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::{
     EdgeDeploymentRouteUpdater, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
@@ -22,8 +25,8 @@ use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, GatewayCertificateId,
-    IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId,
-    ResourceName, RouteId, SecretId, WorkloadId, WorkloadRevisionId,
+    GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
+    ProjectId, ResourceName, RouteId, SecretId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,

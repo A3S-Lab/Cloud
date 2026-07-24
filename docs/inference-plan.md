@@ -699,9 +699,10 @@ Edge owns the second layer, including replica health, load-balancing weight,
 cluster-private endpoint, source generation, and per-Gateway acknowledgement.
 
 Every InferenceRoute revision stores an immutable `EdgeRouteBindingRef`. H0.2
-introduces its logical `gateway_scope_id` so a scope can move from today's
-node-keyed Gateway to a dedicated or replicated Gateway set without changing
-Inference ownership. Publication validates that the DomainClaim, canonical
+provides its logical `gateway_scope_id`; the current cardinality-one mapping
+binds that scope to one node-keyed Gateway, while later placement can move it
+to a dedicated or replicated Gateway set without changing Inference ownership.
+Publication validates that the DomainClaim, canonical
 hostname, `/v1` path prefix, logical scope, route, and every local/provider
 target belong to the same organization/project/environment, that the verified
 claim covers the hostname, and that no Edge owner conflicts. Inference never

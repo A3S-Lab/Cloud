@@ -1,16 +1,18 @@
 use super::*;
-use crate::modules::edge::domain::events::GatewayRouteCutoverStaged;
+use crate::modules::edge::domain::events::{GatewayRouteCutoverStaged, GatewayScopeCreated};
 use crate::modules::edge::domain::repositories::{
-    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayRouteCutover, StageRoutePublication,
+    CreateGatewayScopeWrite, EdgeRoutePublicationResult, GatewayRouteCutoverResult,
+    IEdgeRepository, StageGatewayRouteCutover, StageRoutePublication,
 };
 use crate::modules::edge::domain::{
     DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
-    GatewayRouteCutover, GatewayRouteCutoverState, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayRouteCutover, GatewayRouteCutoverState, GatewayScope, Route, RouteHostname, RoutePath,
+    RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
@@ -54,11 +56,23 @@ fn staged(
     .expect("snapshot");
     let workload_id = WorkloadId::new();
     let workload_revision_id = WorkloadRevisionId::new();
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let gateway_scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    );
     let mut route = Route::create(
         RouteId::new(),
-        OrganizationId::new(),
-        ProjectId::new(),
-        EnvironmentId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        gateway_scope.id,
         node_id,
         RouteHostname::parse(hostname).expect("hostname"),
         RoutePath::parse(path).expect("path"),
@@ -106,6 +120,7 @@ fn staged(
     let canonical = format!("{hostname}{path}");
     StageRoutePublication {
         route: route.clone(),
+        gateway_scope,
         certificate,
         publication,
         expected_scope_version: 0,
@@ -124,6 +139,33 @@ fn staged(
             payload: serde_json::json!({ "route_id": route.id }),
         },
     }
+}
+
+async fn persist_gateway_scope(
+    repository: &InMemoryEdgeRepository,
+    scope: &GatewayScope,
+) -> Result<(), RepositoryError> {
+    repository
+        .create_gateway_scope(CreateGatewayScopeWrite {
+            scope: scope.clone(),
+            idempotency: IdempotencyRequest::new(
+                "test-gateway-scopes",
+                scope.id.to_string(),
+                scope.node_id.to_string().as_bytes(),
+            )
+            .expect("scope idempotency"),
+            event: GatewayScopeCreated::envelope(scope, Uuid::now_v7()).expect("scope event"),
+        })
+        .await
+        .map(|_| ())
+}
+
+async fn stage_route(
+    repository: &InMemoryEdgeRepository,
+    bundle: StageRoutePublication,
+) -> Result<EdgeRoutePublicationResult, RepositoryError> {
+    persist_gateway_scope(repository, &bundle.gateway_scope).await?;
+    repository.stage_route_publication(bundle).await
 }
 
 async fn issue(
@@ -329,14 +371,147 @@ fn cutover_acknowledgement(
 }
 
 #[tokio::test]
+async fn creates_and_lists_environment_gateway_scopes_idempotently() {
+    let repository = InMemoryEdgeRepository::new();
+    let now = Utc::now();
+    let scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        NodeId::new(),
+        now,
+    );
+    let idempotency = IdempotencyRequest::new(
+        "gateway-scopes",
+        "bind-primary",
+        scope.node_id.to_string().as_bytes(),
+    )
+    .expect("idempotency");
+    let bundle = CreateGatewayScopeWrite {
+        scope: scope.clone(),
+        idempotency: idempotency.clone(),
+        event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7()).expect("event"),
+    };
+    let first = repository
+        .create_gateway_scope(bundle.clone())
+        .await
+        .expect("create scope");
+    let replay = repository
+        .create_gateway_scope(bundle)
+        .await
+        .expect("replay scope");
+    assert!(!first.replayed);
+    assert!(replay.replayed);
+    assert_eq!(replay.value, scope);
+    assert_eq!(
+        repository
+            .find_gateway_scope(scope.organization_id, scope.id)
+            .await
+            .expect("find scope"),
+        scope
+    );
+    assert_eq!(
+        repository
+            .list_gateway_scopes(
+                scope.organization_id,
+                scope.project_id,
+                scope.environment_id,
+            )
+            .await
+            .expect("list scopes"),
+        vec![scope.clone()]
+    );
+    assert!(repository
+        .find_gateway_scope(OrganizationId::new(), scope.id)
+        .await
+        .is_err());
+
+    let duplicate = GatewayScope::create(
+        GatewayScopeId::new(),
+        scope.organization_id,
+        scope.project_id,
+        scope.environment_id,
+        scope.node_id,
+        now + Duration::seconds(1),
+    );
+    let duplicate_result = repository
+        .create_gateway_scope(CreateGatewayScopeWrite {
+            scope: duplicate.clone(),
+            idempotency: IdempotencyRequest::new(
+                "gateway-scopes",
+                "duplicate-binding",
+                duplicate.id.to_string().as_bytes(),
+            )
+            .expect("duplicate idempotency"),
+            event: GatewayScopeCreated::envelope(&duplicate, Uuid::now_v7())
+                .expect("duplicate event"),
+        })
+        .await;
+    assert!(matches!(
+        duplicate_result,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let changed_scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        scope.organization_id,
+        scope.project_id,
+        scope.environment_id,
+        NodeId::new(),
+        now,
+    );
+    let changed_request = repository
+        .create_gateway_scope(CreateGatewayScopeWrite {
+            scope: changed_scope.clone(),
+            idempotency: IdempotencyRequest::new(
+                idempotency.scope,
+                idempotency.key,
+                b"different-node",
+            )
+            .expect("changed idempotency"),
+            event: GatewayScopeCreated::envelope(&changed_scope, Uuid::now_v7())
+                .expect("changed event"),
+        })
+        .await;
+    assert!(matches!(
+        changed_request,
+        Err(RepositoryError::IdempotencyConflict)
+    ));
+    assert_eq!(
+        repository
+            .outbox_events()
+            .await
+            .iter()
+            .filter(|event| event.event_key == "edge.gateway-scope.created")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn rejects_route_publication_without_the_authoritative_logical_scope() {
+    let repository = InMemoryEdgeRepository::new();
+    let bundle = staged(
+        NodeId::new(),
+        1,
+        None,
+        "unbound.example.com",
+        "/",
+        "unbound",
+    );
+    assert!(matches!(
+        repository.stage_route_publication(bundle).await,
+        Err(RepositoryError::NotFound)
+    ));
+}
+
+#[tokio::test]
 async fn enforces_one_owner_for_hostname_path_inside_gateway_scope() {
     let repository = InMemoryEdgeRepository::new();
     let node_id = NodeId::new();
     let first = staged(node_id, 1, None, "api.example.com", "/v1", "first");
-    let stored = repository
-        .stage_route_publication(first)
-        .await
-        .expect("first route");
+    let stored = stage_route(&repository, first).await.expect("first route");
     issue(
         &repository,
         &stored.certificate,
@@ -352,7 +527,7 @@ async fn enforces_one_owner_for_hostname_path_inside_gateway_scope() {
         .expect("acknowledge first route");
     let mut duplicate = staged(node_id, 2, Some(1), "API.EXAMPLE.COM", "/v1", "duplicate");
     duplicate.expected_scope_version = 2;
-    assert!(repository.stage_route_publication(duplicate).await.is_err());
+    assert!(stage_route(&repository, duplicate).await.is_err());
 
     let other_scope = staged(
         NodeId::new(),
@@ -362,8 +537,7 @@ async fn enforces_one_owner_for_hostname_path_inside_gateway_scope() {
         "/v1",
         "other-scope",
     );
-    repository
-        .stage_route_publication(other_scope)
+    stage_route(&repository, other_scope)
         .await
         .expect("same tuple in another Gateway scope");
 }
@@ -372,15 +546,14 @@ async fn enforces_one_owner_for_hostname_path_inside_gateway_scope() {
 async fn serializes_complete_snapshots_and_projects_exact_acknowledgements() {
     let repository = InMemoryEdgeRepository::new();
     let node_id = NodeId::new();
-    let first = repository
-        .stage_route_publication(staged(node_id, 1, None, "api.example.com", "/v1", "first"))
-        .await
-        .expect("stage first");
+    let first = stage_route(
+        &repository,
+        staged(node_id, 1, None, "api.example.com", "/v1", "first"),
+    )
+    .await
+    .expect("stage first");
     let second_pending = staged(node_id, 2, None, "web.example.com", "/", "second-pending");
-    assert!(repository
-        .stage_route_publication(second_pending)
-        .await
-        .is_err());
+    assert!(stage_route(&repository, second_pending).await.is_err());
 
     let rejected = acknowledgement(&first, GatewayAckState::Rejected);
     assert!(repository
@@ -406,8 +579,7 @@ async fn serializes_complete_snapshots_and_projects_exact_acknowledgements() {
         "republish-rejected",
     );
     second.expected_scope_version = 1;
-    let second = repository
-        .stage_route_publication(second)
+    let second = stage_route(&repository, second)
         .await
         .expect("republish ownership released by rejection");
     issue(
@@ -430,17 +602,19 @@ async fn serializes_complete_snapshots_and_projects_exact_acknowledgements() {
 #[tokio::test]
 async fn persists_only_closed_gateway_certificate_transitions() {
     let repository = InMemoryEdgeRepository::new();
-    let failed = repository
-        .stage_route_publication(staged(
+    let failed = stage_route(
+        &repository,
+        staged(
             NodeId::new(),
             1,
             None,
             "failed.example.com",
             "/",
             "failed-certificate",
-        ))
-        .await
-        .expect("stage failed certificate");
+        ),
+    )
+    .await
+    .expect("stage failed certificate");
     let mut failed_certificate = failed.certificate.clone();
     let failed_version = failed_certificate.aggregate_version;
     failed_certificate
@@ -463,17 +637,19 @@ async fn persists_only_closed_gateway_certificate_transitions() {
         crate::modules::edge::domain::GatewayCertificateState::Failed
     );
 
-    let ready = repository
-        .stage_route_publication(staged(
+    let ready = stage_route(
+        &repository,
+        staged(
             NodeId::new(),
             1,
             None,
             "ready.example.com",
             "/",
             "ready-certificate",
-        ))
-        .await
-        .expect("stage ready certificate");
+        ),
+    )
+    .await
+    .expect("stage ready certificate");
     issue(
         &repository,
         &ready.certificate,
@@ -517,17 +693,12 @@ async fn persists_only_closed_gateway_certificate_transitions() {
 async fn route_cutover_preserves_the_active_target_until_exact_applied_acknowledgement() {
     let repository = InMemoryEdgeRepository::new();
     let node_id = NodeId::new();
-    let first = repository
-        .stage_route_publication(staged(
-            node_id,
-            1,
-            None,
-            "update.example.com",
-            "/",
-            "update-first",
-        ))
-        .await
-        .expect("stage initial route");
+    let first = stage_route(
+        &repository,
+        staged(node_id, 1, None, "update.example.com", "/", "update-first"),
+    )
+    .await
+    .expect("stage initial route");
     issue(
         &repository,
         &first.certificate,
@@ -636,17 +807,19 @@ async fn route_cutover_preserves_the_active_target_until_exact_applied_acknowled
 async fn rejected_route_cutover_keeps_the_previous_route_authoritative() {
     let repository = InMemoryEdgeRepository::new();
     let node_id = NodeId::new();
-    let first = repository
-        .stage_route_publication(staged(
+    let first = stage_route(
+        &repository,
+        staged(
             node_id,
             1,
             None,
             "reject-update.example.com",
             "/",
             "reject-update-first",
-        ))
-        .await
-        .expect("stage initial route");
+        ),
+    )
+    .await
+    .expect("stage initial route");
     issue(
         &repository,
         &first.certificate,

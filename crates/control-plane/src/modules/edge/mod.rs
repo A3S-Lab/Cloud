@@ -4,19 +4,20 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, GetDomainClaim,
-    GetDomainClaimHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
-    ListGatewayCertificates, ListGatewayCertificatesHandler, ListRoutes, ListRoutesHandler,
-    PublishRoute, PublishRouteHandler, PublishRouteResult, RevokeDomainClaim,
+    CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,
+    CreateGatewayScopeHandler, CreateGatewayScopeResult, GetDomainClaim, GetDomainClaimHandler,
+    GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler, ListGatewayCertificates,
+    ListGatewayCertificatesHandler, ListGatewayScopes, ListGatewayScopesHandler, ListRoutes,
+    ListRoutesHandler, PublishRoute, PublishRouteHandler, PublishRouteResult, RevokeDomainClaim,
     RevokeDomainClaimHandler, RevokeDomainClaimResult, SignGatewayCertificate,
     SignGatewayCertificateHandler, VerifyDomainClaim, VerifyDomainClaimHandler,
     VerifyDomainClaimResult,
 };
 pub use domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
-    GatewayCertificateConvergenceTarget, GatewayCertificateRouteStatus, GatewayRouteCutoverResult,
-    IEdgeRepository, StageGatewayCertificateConvergence, StageGatewayRouteCutover,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayCertificateRouteStatus, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRouteCutover, TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
@@ -28,8 +29,8 @@ pub use domain::{
     GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
     GatewayPublication, GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState,
-    GatewayRouteVersion, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayRouteVersion, GatewayScope, GatewayScopeState, Route, RouteHostname, RoutePath,
+    RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{

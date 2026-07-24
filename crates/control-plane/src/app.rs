@@ -14,14 +14,14 @@ use crate::modules::edge::domain::services::{
     IRouteTargetReader,
 };
 use crate::modules::edge::{
-    CreateDomainClaimHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
-    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
-    GatewayCertificateReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, PostgresEdgeRepository, PublishRouteHandler,
-    RevokeDomainClaimHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
-    WorkloadRouteTargetReader,
+    CreateDomainClaimHandler, CreateGatewayScopeHandler, DnsDomainOwnershipVerifier,
+    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, EdgeModule,
+    FleetGatewayCommandQueue, GatewayCertificateReconciler, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
@@ -669,6 +669,7 @@ fn build_application_with_health(
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
+    let gateway_scope_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
@@ -700,6 +701,7 @@ fn build_application_with_health(
     let rotation_nodes = Arc::clone(&nodes);
     let state_nodes = Arc::clone(&nodes);
     let get_nodes = Arc::clone(&nodes);
+    let gateway_scope_nodes = Arc::clone(&nodes);
     let enqueue_commands = Arc::clone(&node_control);
     let lease_commands = Arc::clone(&node_control);
     let acknowledge_commands = Arc::clone(&node_control);
@@ -714,10 +716,12 @@ fn build_application_with_health(
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
     let revoke_domain_claims = Arc::clone(&routes);
+    let create_gateway_scopes = Arc::clone(&routes);
     let publish_routes = Arc::clone(&routes);
     let list_domain_claims = Arc::clone(&routes);
     let get_domain_claims = Arc::clone(&routes);
     let list_gateway_certificates = Arc::clone(&routes);
+    let list_gateway_scopes = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
     let create_secrets = Arc::clone(&secrets);
@@ -947,6 +951,13 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::edge::RevokeDomainClaim, _>(
                     RevokeDomainClaimHandler::new(revoke_domain_claims),
                 )
+                .command_handler::<crate::modules::edge::CreateGatewayScope, _>(
+                    CreateGatewayScopeHandler::new(
+                        gateway_scope_environments,
+                        gateway_scope_nodes,
+                        create_gateway_scopes,
+                    ),
+                )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
                     IssueEnrollmentTokenHandler::new(
@@ -1077,6 +1088,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::edge::ListGatewayCertificates, _>(
                     ListGatewayCertificatesHandler::new(list_gateway_certificates),
+                )
+                .query_handler::<crate::modules::edge::ListGatewayScopes, _>(
+                    ListGatewayScopesHandler::new(list_gateway_scopes),
                 )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,

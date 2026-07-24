@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::{GatewayPublication, Route};
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ pub struct RoutePublicationStaged {
     pub route_id: RouteId,
     pub domain_claim_id: DomainClaimId,
     pub gateway_certificate_id: GatewayCertificateId,
+    pub gateway_scope_id: GatewayScopeId,
     pub node_id: NodeId,
     pub workload_id: WorkloadId,
     pub workload_revision_id: WorkloadRevisionId,
@@ -41,7 +42,7 @@ impl RoutePublicationStaged {
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "edge.route.publication-staged".into(),
-            schema_version: 2,
+            schema_version: 3,
             organization_id: route.organization_id.as_uuid(),
             aggregate_id: route.id.as_uuid(),
             aggregate_version: route.aggregate_version,
@@ -55,6 +56,7 @@ impl RoutePublicationStaged {
                 route_id: route.id,
                 domain_claim_id,
                 gateway_certificate_id,
+                gateway_scope_id: route.gateway_scope_id,
                 node_id: route.gateway_node_id,
                 workload_id: route.workload_id,
                 workload_revision_id: route.target.workload_revision_id,

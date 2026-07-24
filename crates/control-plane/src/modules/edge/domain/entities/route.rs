@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::{DomainNamePattern, RouteHostname, RoutePath, RouteTarget};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use chrono::{DateTime, Utc};
@@ -43,6 +43,7 @@ pub struct Route {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub gateway_scope_id: GatewayScopeId,
     pub gateway_node_id: NodeId,
     pub hostname: RouteHostname,
     pub path_prefix: RoutePath,
@@ -70,6 +71,7 @@ impl Route {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        gateway_scope_id: GatewayScopeId,
         gateway_node_id: NodeId,
         hostname: RouteHostname,
         path_prefix: RoutePath,
@@ -93,6 +95,7 @@ impl Route {
             organization_id,
             project_id,
             environment_id,
+            gateway_scope_id,
             gateway_node_id,
             hostname,
             path_prefix,

@@ -9,7 +9,7 @@ pub use entities::{
     GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
     GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
     GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion,
-    GatewayScopeState, Route, RouteState,
+    GatewayScope, GatewayScopeState, Route, RouteState,
 };
 pub use value_objects::{
     DomainNamePattern, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,

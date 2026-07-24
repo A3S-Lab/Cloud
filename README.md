@@ -70,13 +70,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
-- **Managed Reachability**: Verify domain ownership, provision TLS, compile
-  complete expiring Gateway ACL snapshots from command-bound healthy Runtime
-  targets, bind each route to its immutable revision, deterministic Runtime
-  unit, and positive generation, apply through Gateway's native
-  managed-snapshot protocol, renew unchanged policy before expiry without
-  reissuing TLS, and advance only after exact identity, revision, digest,
-  validity, and readiness are acknowledged
+- **Managed Reachability**: Create tenant-scoped logical Gateway scopes, bind
+  them to physical nodes, verify domain ownership, provision TLS, compile
+  complete expiring ACL snapshots from command-bound healthy Runtime targets,
+  renew unchanged policy without reissuing TLS, and advance routes only after
+  Gateway acknowledges the exact identity, revision, digest, validity, and
+  readiness
 - **Encrypted Secrets**: Store tenant-scoped immutable Secret versions and
   materialize exact bindings only at authenticated registry or assigned-node
   boundaries
@@ -126,29 +125,40 @@ adoption, cleanup, and explicit deployment handoff. It remains in progress
 until external private-provider certification and the production
 signed-evidence process-death gate pass.
 
-`H0.2` now has a Gateway-native snapshot and generation-bound private-target
-foundation for the current one-node/one-Gateway mapping. Every route persists
-its immutable workload revision, deterministic Runtime unit identity, positive
-generation, declared port, canonical node-local HTTP origin, and observation
-time. Cloud accepts the target only from the exact deployment command's
-current healthy Runtime observation. The compiler binds revision, unit, and
-generation into the ACL digest, so even a reused origin at a new generation
-produces a distinct snapshot.
+`H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
+snapshot and generation-bound private-target foundation. A scope belongs to
+one organization, project, and environment and currently maps to one physical
+Gateway node. `POST` and `GET` on the environment's `/gateway-scopes` resource
+create and list these scopes. Route publication requires a `gatewayScopeId`
+whose tenancy and mapped node match the verified DomainClaim and healthy
+Runtime target. `Route` stores both the logical scope and physical node;
+Gateway continues to receive only its node-addressed managed snapshot and does
+not become the owner of Cloud tenancy.
+
+Every route persists its immutable workload revision, deterministic Runtime
+unit identity, positive generation, declared port, canonical node-local HTTP
+origin, and observation time. Cloud accepts the target only from the exact
+deployment command's current healthy Runtime observation. The compiler binds
+revision, unit, and generation into the ACL digest, so even a reused origin at
+a new generation produces a distinct snapshot.
 
 Cloud records an applied acknowledgement only after Gateway reports the same
 identity, revision, digest, expiry, applied metadata, and ready state.
-Generation cutover requires a different immutable revision and a strictly
-newer generation; rejection preserves the prior target, while an exact applied
-acknowledgement atomically replaces the complete target projection. PostgreSQL
-backfills and constrains this identity across restart. The real pinned-Gateway
-gate rotates independently signed certificates and upstream targets, rejects
-the superseded certificate and selector, removes the old certificate material,
-and recovers only the replacement after Gateway restart. Same-policy validity
-renewal continues to retain the exact ACL digest and active certificate until
-its successor is ready.
+Generation cutover requires a different immutable revision, a strictly newer
+generation, and the same logical scope; rejection preserves the prior target,
+while an exact applied acknowledgement atomically replaces the complete target
+projection. PostgreSQL migration 036 deterministically creates one logical
+scope per legacy environment/node binding, backfills Route and recovery
+documents, and enforces the full tenancy/node relationship. Recreated
+PostgreSQL and migration gates verify recovery and reject cross-environment or
+wrong-node publication.
 
-Logical Gateway scopes beyond the current node identity, mixed-version
-delivery, replicated rollout thresholds, and joint production HA evidence
+The real pinned-Gateway gate rotates independently signed certificates and
+upstream targets, rejects the superseded certificate and selector, removes the
+old certificate material, and recovers only the replacement after Gateway
+restart. Same-policy validity renewal continues to retain the exact ACL digest
+and active certificate until its successor is ready. Mixed-version delivery,
+replicated readiness and rollout thresholds, and joint production HA evidence
 remain open, so this foundation does not complete `H0.2` or `H0`.
 
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
@@ -338,12 +348,14 @@ readiness. It emits an applied acknowledgement only when Gateway returns the
 same snapshot metadata and `ready` state; rejection, expiry, mismatched status,
 or unavailable readiness cannot advance Cloud state.
 
-For the current cardinality-one target projection, each route also carries the
+Cloud owns a logical Gateway scope inside one organization, project, and
+environment. The current cardinality-one mapping binds that scope to one
+physical Gateway node. Each route carries both identities together with the
 exact workload revision, deterministic Runtime unit identity, positive
 generation, port, canonical node-local origin, and command-bound observation
 time. Those fields are durable Cloud state and part of the compiled ACL digest;
-Gateway receives the resulting complete policy but does not infer or create a
-target.
+Gateway receives the resulting complete policy but does not infer a target,
+interpret the logical scope, or store Cloud tenancy.
 
 Gateway's native journal is the sole source of truth for applied snapshot
 state. The node agent does not maintain a second installed-snapshot CAS file,
@@ -351,11 +363,12 @@ so command redelivery and process restart converge through Gateway's idempotent
 apply and status contract. This is the Gateway-native foundation of `H0.2`;
 the periodic Edge reconciler renews an unchanged applied ACL before expiry,
 reuses the existing certificate files, and keeps the prior revision
-authoritative when renewal is rejected. Generation-bound target replacement,
+authoritative when renewal is rejected. Logical-scope ownership, migration,
+same-environment/node enforcement, generation-bound target replacement,
 PostgreSQL recovery, and real certificate/target rotation are verified for the
-current one-node/one-Gateway mapping. Logical scopes beyond that mapping,
-mixed-version delivery, replicated readiness, and joint production HA recovery
-remain to be implemented and verified.
+current one-scope/one-Gateway mapping. Mixed-version delivery, replicated
+readiness and rollout thresholds, and joint production HA recovery remain to
+be implemented and verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

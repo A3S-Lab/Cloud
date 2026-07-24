@@ -1,11 +1,12 @@
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceState, GatewayPublication, GatewayRouteCutover,
-    GatewayRouteCutoverState, GatewayScopeState, Route, RouteState,
+    GatewayRouteCutoverState, GatewayScope, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
-    IdempotentWrite, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, ProjectId, RepositoryError,
+    RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, NodeGatewayAck};
 use async_trait::async_trait;
@@ -15,6 +16,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct StageRoutePublication {
     pub route: Route,
+    pub gateway_scope: GatewayScope,
     pub certificate: GatewayCertificate,
     pub publication: GatewayPublication,
     pub expected_scope_version: u64,
@@ -132,9 +134,17 @@ impl StageGatewayRouteCutover {
 impl StageRoutePublication {
     pub fn validate(&self) -> Result<(), String> {
         let route = &self.route;
+        let gateway_scope = &self.gateway_scope;
         let certificate = &self.certificate;
         let publication = &self.publication;
         if route.state != crate::modules::edge::domain::RouteState::Publishing
+            || route.gateway_scope_id != gateway_scope.id
+            || !gateway_scope.owns(
+                route.organization_id,
+                route.project_id,
+                route.environment_id,
+                route.gateway_node_id,
+            )
             || route.gateway_node_id != publication.node_id
             || route.gateway_revision != Some(publication.revision)
             || route.gateway_command_id != Some(publication.command_id)
@@ -160,6 +170,13 @@ impl StageRoutePublication {
         publication.snapshot()?;
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateGatewayScopeWrite {
+    pub scope: GatewayScope,
+    pub idempotency: IdempotencyRequest,
+    pub event: DomainEventEnvelope,
 }
 
 #[derive(Debug, Clone)]
@@ -248,6 +265,24 @@ impl GatewayCertificateConvergenceTarget {
 
 #[async_trait]
 pub trait IEdgeRepository: Send + Sync {
+    async fn create_gateway_scope(
+        &self,
+        bundle: CreateGatewayScopeWrite,
+    ) -> Result<IdempotentWrite<GatewayScope>, RepositoryError>;
+
+    async fn find_gateway_scope(
+        &self,
+        organization_id: OrganizationId,
+        scope_id: GatewayScopeId,
+    ) -> Result<GatewayScope, RepositoryError>;
+
+    async fn list_gateway_scopes(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<GatewayScope>, RepositoryError>;
+
     async fn replay_domain_claim_write(
         &self,
         idempotency: &IdempotencyRequest,
