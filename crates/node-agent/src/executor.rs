@@ -11,7 +11,7 @@ use a3s_cloud_contracts::{
 };
 use a3s_runtime::contract::RuntimeInspection;
 use a3s_runtime::{RuntimeClient, RuntimeError};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 pub struct CommandExecutor {
@@ -80,8 +80,9 @@ impl CommandExecutor {
                 Err(error) => dispatch_failure(error),
             }
         };
+        let completed_at = completion_timestamp(&envelope, &outcome);
         self.journal
-            .complete(envelope.command_id, command_timestamp(&envelope), outcome)
+            .complete(envelope.command_id, completed_at, outcome)
             .await
             .map_err(Into::into)
     }
@@ -240,8 +241,32 @@ impl CommandExecutor {
     }
 }
 
-fn command_timestamp(envelope: &NodeCommandEnvelope) -> chrono::DateTime<Utc> {
+fn command_timestamp(envelope: &NodeCommandEnvelope) -> DateTime<Utc> {
     Utc::now().max(envelope.issued_at)
+}
+
+fn completion_timestamp(
+    envelope: &NodeCommandEnvelope,
+    outcome: &NodeCommandOutcome,
+) -> DateTime<Utc> {
+    let evidence_at = match outcome {
+        NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
+            NodeCommandResult::ResourceClaimPrepared { prepared } => Some(prepared.prepared_at),
+            NodeCommandResult::ResourceClaimReleased { released } => Some(released.released_at),
+            NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
+                Some(acknowledgement.acknowledged_at)
+            }
+            NodeCommandResult::RuntimeApplied { .. }
+            | NodeCommandResult::RuntimeInspected { .. }
+            | NodeCommandResult::RuntimeStopped { .. }
+            | NodeCommandResult::RuntimeRemoved { .. } => None,
+        },
+        NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
+    };
+    evidence_at.map_or_else(
+        || command_timestamp(envelope),
+        |evidence_at| command_timestamp(envelope).max(evidence_at),
+    )
 }
 
 struct RuntimeOnlyGatewayInstaller;
@@ -821,6 +846,42 @@ mod tests {
         };
         assert_eq!(prepared.prepared_at, command.issued_at);
         assert_eq!(acknowledgement.completed_at, command.issued_at);
+    }
+
+    #[test]
+    fn completion_time_never_predates_resource_claim_evidence() {
+        let node_id = Uuid::now_v7();
+        let agent_instance_id = Uuid::now_v7();
+        let claim_id = Uuid::now_v7();
+        let inventory = claim_inventory(node_id, agent_instance_id);
+        let mut command = claim_command(
+            node_id,
+            claim_id,
+            1,
+            1,
+            NodeCommandPayload::ResourceClaimPrepare {
+                request: Box::new(NodeResourceClaimPrepare {
+                    schema: NodeResourceClaimPrepare::SCHEMA.into(),
+                    claim_generation: 1,
+                    claim_digest: format!("sha256:{}", "c".repeat(64)),
+                    binding: claim_binding(claim_id, &inventory),
+                }),
+            },
+        );
+        command.issued_at = Utc::now() + Duration::seconds(30);
+        command.not_after = command.issued_at + Duration::minutes(1);
+        let evidence_at = command.issued_at + Duration::seconds(1);
+        let NodeCommandPayload::ResourceClaimPrepare { request } = &command.payload else {
+            panic!("test command must prepare a resource Claim");
+        };
+        let outcome = NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::ResourceClaimPrepared {
+                prepared: NodeResourceClaimPrepared::new(request, evidence_at)
+                    .expect("prepared evidence"),
+            }),
+        };
+
+        assert_eq!(completion_timestamp(&command, &outcome), evidence_at);
     }
 
     #[tokio::test]
