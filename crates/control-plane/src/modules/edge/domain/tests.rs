@@ -7,7 +7,7 @@ use crate::modules::shared_kernel::domain::{
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayCertificateRequest, GatewaySnapshot, NodeGatewayAck,
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use uuid::Uuid;
 
 fn route(now: chrono::DateTime<Utc>) -> Route {
@@ -206,6 +206,47 @@ fn replicated_gateway_rollout_requires_exact_per_member_terminal_evidence() {
         ))
         .is_err());
     assert_eq!(exhausted, unchanged);
+}
+
+#[test]
+fn gateway_publication_canonicalizes_snapshot_validity_at_database_precision() {
+    let node_id = NodeId::new();
+    let issued_at = Utc
+        .timestamp_opt(1_700_000_000, 123_456_789)
+        .single()
+        .expect("issue time");
+    let expires_at = issued_at + Duration::hours(1);
+    let snapshot = GatewaySnapshot::new(
+        node_id.as_uuid(),
+        1,
+        None,
+        issued_at,
+        expires_at,
+        "# exact timestamp snapshot",
+    )
+    .expect("Gateway snapshot");
+
+    let publication = GatewayPublication::stage(
+        node_id,
+        NodeCommandId::new(),
+        Uuid::now_v7(),
+        snapshot,
+        issued_at,
+        issued_at + Duration::minutes(3),
+    )
+    .expect("Gateway publication");
+
+    assert_eq!(
+        publication.command_issued_at,
+        canonical_timestamp(issued_at)
+    );
+    assert_eq!(
+        publication.snapshot_expires_at,
+        canonical_timestamp(expires_at)
+    );
+    let recovered = publication.snapshot().expect("recovered snapshot");
+    assert_eq!(recovered.issued_at, canonical_timestamp(issued_at));
+    assert_eq!(recovered.expires_at, canonical_timestamp(expires_at));
 }
 
 fn rollout_publication(

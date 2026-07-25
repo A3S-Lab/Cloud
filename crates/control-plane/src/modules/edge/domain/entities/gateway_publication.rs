@@ -56,10 +56,12 @@ impl GatewayPublication {
         node_id: NodeId,
         command_id: NodeCommandId,
         command_correlation_id: Uuid,
-        snapshot: GatewaySnapshot,
+        mut snapshot: GatewaySnapshot,
         command_issued_at: DateTime<Utc>,
         command_not_after: DateTime<Utc>,
     ) -> Result<Self, String> {
+        snapshot.issued_at = canonical_timestamp(snapshot.issued_at);
+        snapshot.expires_at = canonical_timestamp(snapshot.expires_at);
         snapshot.validate()?;
         if command_correlation_id.is_nil() {
             return Err("Gateway publication command correlation ID must not be nil".into());
