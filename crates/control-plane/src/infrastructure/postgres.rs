@@ -399,6 +399,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/042_node_resource_inventories.sql"
             )),
         ),
+        Migration::new(
+            "043",
+            "shared resource capacity accounting",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/043_shared_resource_capacity.sql"
+            )),
+        ),
     ]
 }
 

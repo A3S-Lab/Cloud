@@ -1,4 +1,4 @@
-use super::{flow_error, DeploymentFlowConfig, DeploymentFlowRuntime};
+use super::{cancel_database_reservation, flow_error, DeploymentFlowConfig, DeploymentFlowRuntime};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{
     NodeCommandId, NodeId, OperationId, OrganizationId, WorkloadId, WorkloadRevisionId,
@@ -485,6 +485,35 @@ async fn complete(
         .find_workload(input.organization_id, input.workload_id)
         .await
         .map_err(|error| flow_error("could not load workload stop completion", error))?;
+    if let Some(revision_id) = workload.active_revision_id {
+        if let Some(deployment) = runtime
+            .workloads
+            .list_deployments(input.organization_id, workload.id)
+            .await
+            .map_err(|error| {
+                flow_error(
+                    "could not load active deployment resource reservation for stop",
+                    error,
+                )
+            })?
+            .into_iter()
+            .find(|deployment| {
+                deployment.revision_id == revision_id
+                    && matches!(
+                        deployment.status,
+                        DeploymentStatus::Retiring | DeploymentStatus::Active
+                    )
+            })
+        {
+            cancel_database_reservation(
+                runtime,
+                input.organization_id,
+                deployment.id,
+                input.stopped_at,
+            )
+            .await?;
+        }
+    }
     let stopped = runtime
         .workloads
         .complete_workload_stop(

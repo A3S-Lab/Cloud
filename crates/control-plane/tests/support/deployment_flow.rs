@@ -2,6 +2,7 @@ use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     CloudSecretReference, DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest,
     NodeCommandOutcome, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
+    NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit,
     RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
@@ -26,11 +27,11 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DeploymentId, EnrollmentTokenId, IdempotencyRequest, NodeId, OperationId, OrganizationId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    DeploymentCancellationRequested, DeploymentFlowConfig, DeploymentFlowRuntime, DeploymentStatus,
-    IOciArtifactResolver, IWorkloadRepository, IWorkloadRuntimeControl,
-    IWorkloadRuntimeTargetRepository, OciArtifact, OciArtifactReference,
-    OciArtifactResolutionError, OciRegistryArtifactResolver, PostgresWorkloadRepository,
-    RequestDeploymentCancellationBundle, WorkloadRuntimeReconciler,
+    DeploymentCancellationRequested, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver, IWorkloadRepository,
+    IWorkloadRuntimeControl, IWorkloadRuntimeTargetRepository, OciArtifact, OciArtifactReference,
+    OciArtifactResolutionError, OciRegistryArtifactResolver, PostgresResourceClaimRepository,
+    PostgresWorkloadRepository, RequestDeploymentCancellationBundle, WorkloadRuntimeReconciler,
 };
 use a3s_cloud_node_agent::{
     CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeControlClientError,
@@ -99,11 +100,14 @@ pub async fn exercise_deployment_flow(
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let runtime = DeploymentFlowRuntime::new(
-        workloads,
-        deployment_artifact_resolver(executor, security_state_dir)?,
-        nodes,
-        node_control,
-        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workloads,
+            Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+            deployment_artifact_resolver(executor, security_state_dir)?,
+            nodes,
+            node_control,
+            Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        ),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;
@@ -307,11 +311,14 @@ pub async fn exercise_deployment_flow(
     drop(coordinator);
     drop(flow);
     let restarted_runtime = DeploymentFlowRuntime::new(
-        workload_repository.clone(),
-        deployment_artifact_resolver(executor, security_state_dir)?,
-        node_repository.clone(),
-        node_repository.clone(),
-        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workload_repository.clone(),
+            Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+            deployment_artifact_resolver(executor, security_state_dir)?,
+            node_repository.clone(),
+            node_repository.clone(),
+            Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        ),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;
@@ -852,12 +859,41 @@ async fn ready_node(
         )
         .await?;
     repository
+        .record_resource_inventory(
+            NodeResourceInventory::new(
+                reservation.node.id.as_uuid(),
+                agent_instance_id,
+                1,
+                now + ChronoDuration::milliseconds(1),
+                vec![
+                    NodeResourceSlot::new(
+                        ResourceKind::Cpu,
+                        "cpu/shared",
+                        ResourceAllocation::Scalar {
+                            amount: 8_000,
+                            unit: ResourceUnit::MilliCpu,
+                        },
+                    )?,
+                    NodeResourceSlot::new(
+                        ResourceKind::Memory,
+                        "memory/system",
+                        ResourceAllocation::Scalar {
+                            amount: 8 * 1024 * 1024 * 1024,
+                            unit: ResourceUnit::Byte,
+                        },
+                    )?,
+                ],
+            )?,
+            now + ChronoDuration::milliseconds(2),
+        )
+        .await?;
+    repository
         .record_heartbeat(NodeHeartbeatUpdate {
             node_id: reservation.node.id,
             agent_instance_id,
             agent_version: "0.1.0".into(),
             capabilities: stored_capabilities,
-            observed_at: now + ChronoDuration::milliseconds(1),
+            observed_at: now + ChronoDuration::milliseconds(3),
         })
         .await?;
     Ok((reservation.node.id, agent_instance_id, capabilities))

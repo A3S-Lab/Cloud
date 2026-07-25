@@ -38,6 +38,10 @@ impl ResourceKind {
             _ => Err(format!("unsupported hard resource kind {value:?}")),
         }
     }
+
+    pub const fn is_shared_capacity(self) -> bool {
+        matches!(self, Self::Cpu | Self::Memory | Self::EphemeralStorage)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +102,45 @@ impl ResourceAllocation {
                 Ok(())
             }
             _ => Err("hard resource allocation does not match its resource kind".into()),
+        }
+    }
+
+    pub fn contains(&self, requested: &Self) -> bool {
+        match (self, requested) {
+            (
+                Self::Scalar {
+                    amount: capacity,
+                    unit: capacity_unit,
+                },
+                Self::Scalar {
+                    amount: requested,
+                    unit: requested_unit,
+                },
+            ) => capacity_unit == requested_unit && capacity >= requested,
+            (
+                Self::Range {
+                    start: capacity_start,
+                    end_inclusive: capacity_end,
+                    unit: capacity_unit,
+                },
+                Self::Range {
+                    start: requested_start,
+                    end_inclusive: requested_end,
+                    unit: requested_unit,
+                },
+            ) => {
+                capacity_unit == requested_unit
+                    && capacity_start <= requested_start
+                    && capacity_end >= requested_end
+            }
+            _ => false,
+        }
+    }
+
+    pub const fn scalar_amount(&self) -> Option<u64> {
+        match self {
+            Self::Scalar { amount, .. } => Some(*amount),
+            Self::Range { .. } => None,
         }
     }
 }
@@ -243,4 +286,52 @@ pub(crate) fn validate_stable_resource_id(value: &str) -> Result<(), String> {
         return Err("stable hard resource ID is invalid".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_capacity_kinds_and_allocation_containment_are_explicit() {
+        assert!(ResourceKind::Cpu.is_shared_capacity());
+        assert!(ResourceKind::Memory.is_shared_capacity());
+        assert!(ResourceKind::EphemeralStorage.is_shared_capacity());
+        assert!(!ResourceKind::Accelerator.is_shared_capacity());
+        assert!(!ResourceKind::HostPort.is_shared_capacity());
+        assert!(!ResourceKind::Volume.is_shared_capacity());
+
+        let capacity = ResourceAllocation::Scalar {
+            amount: 1_000,
+            unit: ResourceUnit::MilliCpu,
+        };
+        assert!(capacity.contains(&ResourceAllocation::Scalar {
+            amount: 750,
+            unit: ResourceUnit::MilliCpu,
+        }));
+        assert!(!capacity.contains(&ResourceAllocation::Scalar {
+            amount: 1_001,
+            unit: ResourceUnit::MilliCpu,
+        }));
+        assert!(!capacity.contains(&ResourceAllocation::Scalar {
+            amount: 750,
+            unit: ResourceUnit::Byte,
+        }));
+
+        let ports = ResourceAllocation::Range {
+            start: 20_000,
+            end_inclusive: 20_100,
+            unit: ResourceUnit::Port,
+        };
+        assert!(ports.contains(&ResourceAllocation::Range {
+            start: 20_010,
+            end_inclusive: 20_020,
+            unit: ResourceUnit::Port,
+        }));
+        assert!(!ports.contains(&ResourceAllocation::Range {
+            start: 19_999,
+            end_inclusive: 20_020,
+            unit: ResourceUnit::Port,
+        }));
+    }
 }

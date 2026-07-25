@@ -237,6 +237,20 @@ impl DeploymentReplicaBinding {
         Ok(())
     }
 
+    pub fn propose_assignment(&self, node_id: NodeId, at: DateTime<Utc>) -> Result<Self, String> {
+        let at = canonical_timestamp(at);
+        if self.node_id.is_some() || node_id.as_uuid().is_nil() || at < self.updated_at {
+            return Err("deployment replica binding cannot propose an initial assignment".into());
+        }
+        let mut candidate = self.clone();
+        candidate.node_id = Some(node_id);
+        if candidate.placement_generation == 0 {
+            candidate.placement_generation = 1;
+        }
+        candidate.updated_at = at;
+        Ok(candidate)
+    }
+
     pub fn validate_against(
         &self,
         deployment: &Deployment,

@@ -9,6 +9,7 @@ use crate::modules::workloads::domain::entities::{
     ResourceSlotRequest, ResourceUnit,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
+use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use tokio::sync::Barrier;
@@ -33,10 +34,97 @@ async fn exact_reservation_replay_does_not_rotate_fencing_identity() {
     assert_eq!(first.value, replay.value);
 
     let mut changed = reservation;
-    changed.inventory_generation += 1;
+    changed.inventory.generation += 1;
     assert_eq!(
         repository.reserve(changed).await,
         Err(RepositoryError::IdempotencyConflict)
+    );
+}
+
+#[tokio::test]
+async fn database_only_cancellation_cannot_release_prepared_or_orphaned_claims() {
+    let repository = InMemoryResourceClaimRepository::new();
+    let now = Utc::now();
+    let prepared = repository
+        .reserve(reservation(ResourceClaimId::new(), "gpu/GPU-prepared", now))
+        .await
+        .expect("reserve prepared claim")
+        .value;
+    let command_id = NodeCommandId::new();
+    let preparing = repository
+        .begin_preparation(
+            prepared.organization_id,
+            prepared.id,
+            prepared.aggregate_version,
+            command_id,
+            now + Duration::seconds(1),
+        )
+        .await
+        .expect("begin preparation");
+    let prepared = repository
+        .record_prepared(
+            preparing.organization_id,
+            preparing.id,
+            preparing.aggregate_version,
+            command_id,
+            digest('a'),
+            now + Duration::seconds(2),
+        )
+        .await
+        .expect("record preparation");
+    assert!(matches!(
+        repository
+            .cancel_database_reservation(
+                prepared.organization_id,
+                prepared.id,
+                prepared.aggregate_version,
+                now + Duration::seconds(3),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        repository
+            .find(prepared.organization_id, prepared.id)
+            .await
+            .expect("find prepared claim")
+            .state,
+        ResourceClaimState::PreparedOnAgent
+    );
+
+    let orphaned = repository
+        .reserve(reservation(ResourceClaimId::new(), "gpu/GPU-orphaned", now))
+        .await
+        .expect("reserve orphaned claim")
+        .value;
+    let orphaned = repository
+        .orphan(
+            orphaned.organization_id,
+            orphaned.id,
+            orphaned.aggregate_version,
+            "agent state is unknown".into(),
+            now + Duration::seconds(1),
+        )
+        .await
+        .expect("orphan claim");
+    assert!(matches!(
+        repository
+            .cancel_database_reservation(
+                orphaned.organization_id,
+                orphaned.id,
+                orphaned.aggregate_version,
+                now + Duration::seconds(2),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        repository
+            .find(orphaned.organization_id, orphaned.id)
+            .await
+            .expect("find orphaned claim")
+            .state,
+        ResourceClaimState::Orphaned
     );
 }
 
@@ -72,6 +160,48 @@ async fn concurrent_reservations_have_one_slot_winner() {
     assert_eq!(winners.len(), 1);
     assert_eq!(conflicts, CONCURRENCY - 1);
     assert_eq!(winners[0].slots[0].slot_generation, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_shared_reservations_fill_capacity_without_exclusive_slot_conflicts() {
+    const CONCURRENCY: usize = 20;
+    let repository = Arc::new(InMemoryResourceClaimRepository::new());
+    let barrier = Arc::new(Barrier::new(CONCURRENCY));
+    let now = Utc::now();
+    let organization_id = OrganizationId::new();
+    let node_id = NodeId::new();
+    let mut tasks = Vec::with_capacity(CONCURRENCY);
+
+    for _ in 0..CONCURRENCY {
+        let repository = Arc::clone(&repository);
+        let barrier = Arc::clone(&barrier);
+        let reservation = shared_reservation(organization_id, node_id, 250, 1_000, now);
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            repository.reserve(reservation).await
+        }));
+    }
+
+    let mut winners = Vec::new();
+    let mut conflicts = 0;
+    for task in tasks {
+        match task.await.expect("reservation task") {
+            Ok(reservation) => winners.push(reservation.value),
+            Err(RepositoryError::Conflict(_)) => conflicts += 1,
+            Err(error) => panic!("unexpected reservation result: {error}"),
+        }
+    }
+    assert_eq!(winners.len(), 4);
+    assert_eq!(conflicts, CONCURRENCY - 4);
+    let mut generations = winners
+        .iter()
+        .map(|claim| claim.slots[0].slot_generation)
+        .collect::<Vec<_>>();
+    generations.sort_unstable();
+    assert_eq!(generations, vec![1, 2, 3, 4]);
+    assert!(winners
+        .iter()
+        .all(|claim| claim.slots[0].stable_resource_id == "cpu/shared"));
 }
 
 #[tokio::test]
@@ -229,6 +359,10 @@ fn reservation(
     let workload_id = WorkloadId::new();
     let revision_id = WorkloadRevisionId::new();
     let node_id = NodeId::new();
+    let allocation = ResourceAllocation::Scalar {
+        amount: 1,
+        unit: ResourceUnit::Count,
+    };
     ResourceClaimReservation {
         id,
         binding: DeploymentReplicaBinding {
@@ -249,18 +383,86 @@ fn reservation(
             updated_at: reserved_at,
         },
         node_id,
-        inventory_generation: 1,
-        inventory_digest: digest('a'),
+        inventory: NodeResourceInventory::new(
+            node_id.as_uuid(),
+            uuid::Uuid::now_v7(),
+            1,
+            reserved_at,
+            vec![NodeResourceSlot::new(
+                ResourceKind::Accelerator,
+                stable_resource_id,
+                allocation.clone(),
+            )
+            .expect("inventory slot")],
+        )
+        .expect("inventory"),
         topology_digest: digest('b'),
         slots: vec![ResourceSlotRequest::new(
             ResourceKind::Accelerator,
             stable_resource_id,
-            ResourceAllocation::Scalar {
-                amount: 1,
-                unit: ResourceUnit::Count,
-            },
+            allocation,
         )
         .expect("slot request")],
+        reserved_at,
+    }
+}
+
+fn shared_reservation(
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    amount: u64,
+    capacity: u64,
+    reserved_at: chrono::DateTime<Utc>,
+) -> ResourceClaimReservation {
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let workload_id = WorkloadId::new();
+    let revision_id = WorkloadRevisionId::new();
+    let allocation = ResourceAllocation::Scalar {
+        amount,
+        unit: ResourceUnit::MilliCpu,
+    };
+    ResourceClaimReservation {
+        id: ResourceClaimId::new(),
+        binding: DeploymentReplicaBinding {
+            deployment_id: DeploymentId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            workload_id,
+            revision_id,
+            replica_id: WorkloadReplicaId::from_uuid(workload_id.as_uuid()),
+            replica_generation: 1,
+            member_id: WorkloadReplicaMemberId::from_uuid(workload_id.as_uuid()),
+            node_id: Some(node_id),
+            placement_generation: 1,
+            runtime_unit_id: format!("workload:{workload_id}:revision:{revision_id}"),
+            runtime_generation: 1,
+            created_at: reserved_at,
+            updated_at: reserved_at,
+        },
+        node_id,
+        inventory: NodeResourceInventory::new(
+            node_id.as_uuid(),
+            uuid::Uuid::now_v7(),
+            1,
+            reserved_at,
+            vec![NodeResourceSlot::new(
+                ResourceKind::Cpu,
+                "cpu/shared",
+                ResourceAllocation::Scalar {
+                    amount: capacity,
+                    unit: ResourceUnit::MilliCpu,
+                },
+            )
+            .expect("inventory slot")],
+        )
+        .expect("inventory"),
+        topology_digest: digest('c'),
+        slots: vec![
+            ResourceSlotRequest::new(ResourceKind::Cpu, "cpu/shared", allocation)
+                .expect("slot request"),
+        ],
         reserved_at,
     }
 }

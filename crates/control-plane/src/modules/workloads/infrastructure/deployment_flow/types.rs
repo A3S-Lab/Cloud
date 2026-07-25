@@ -33,6 +33,8 @@ pub(super) struct ResolveStepOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct PreviousRuntime {
+    #[serde(default)]
+    pub deployment_id: Option<DeploymentId>,
     pub revision_id: WorkloadRevisionId,
     pub node_id: NodeId,
     pub spec: RuntimeUnitSpec,

@@ -1,6 +1,7 @@
 mod deployment;
 mod resource_allocation;
 mod resource_claim;
+mod resource_requirements;
 mod secret_binding;
 mod workload;
 mod workload_control;
@@ -16,6 +17,7 @@ pub use resource_claim::{
     ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
     ResourceClaimReservation, ResourceClaimState,
 };
+pub use resource_requirements::CompiledResourceRequirements;
 pub use secret_binding::{SecretBinding, SecretBindingTarget};
 pub use workload::{Workload, WorkloadDesiredState};
 pub use workload_control::{

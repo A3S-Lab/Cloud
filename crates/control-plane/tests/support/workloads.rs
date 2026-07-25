@@ -406,7 +406,7 @@ pub async fn exercise_workloads(
     })
 }
 
-fn request(
+pub(crate) fn request(
     workload: Workload,
     generation: u64,
     digest_character: char,

@@ -3,7 +3,7 @@ use super::super::types::{
     CleanupObserveStepOutput, CompleteCancellationStepInput, CompleteCancellationStepOutput,
     DispatchedCleanup,
 };
-use super::super::{flow_error, DeploymentFlowRuntime};
+use super::super::{cancel_database_reservation, flow_error, DeploymentFlowRuntime};
 use super::{bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::NodeCommandId;
@@ -280,6 +280,13 @@ pub(super) async fn complete_cancellation(
         .find_deployment(input.organization_id, input.deployment_id)
         .await
         .map_err(|error| flow_error("could not load deployment cancellation", error))?;
+    cancel_database_reservation(
+        runtime,
+        input.organization_id,
+        deployment.id,
+        input.cleaned_at,
+    )
+    .await?;
     let cancelled = runtime
         .workloads
         .cancel(

@@ -6,6 +6,8 @@ mod queries;
 mod rows;
 mod schema;
 
+pub(crate) use control::require_current_inventory;
+
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,

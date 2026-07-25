@@ -4,6 +4,7 @@ use crate::modules::shared_kernel::domain::{
     OperationId, OrganizationId, ProjectId, ResourceName, SecretId, SourceRevisionId, WorkloadId,
     WorkloadRevisionId,
 };
+use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use chrono::{Duration, Timelike, Utc};
 use std::collections::BTreeMap;
 
@@ -236,8 +237,7 @@ fn resource_claim_requires_exact_prepare_bind_and_release_evidence() {
         id: crate::modules::shared_kernel::domain::ResourceClaimId::new(),
         binding: binding.clone(),
         node_id,
-        inventory_generation: 11,
-        inventory_digest: format!("sha256:{}", "1".repeat(64)),
+        inventory: inventory_for_bindings(node_id, 11, now, &slots),
         topology_digest: format!("sha256:{}", "2".repeat(64)),
         slots: slots
             .iter()
@@ -331,8 +331,7 @@ fn orphaned_resource_claim_blocks_until_trusted_fencing_evidence() {
         id: crate::modules::shared_kernel::domain::ResourceClaimId::new(),
         binding,
         node_id,
-        inventory_generation: 2,
-        inventory_digest: format!("sha256:{}", "6".repeat(64)),
+        inventory: inventory_for_bindings(node_id, 2, now, &slots),
         topology_digest: format!("sha256:{}", "7".repeat(64)),
         slots: slots
             .iter()
@@ -375,6 +374,32 @@ fn orphaned_resource_claim_blocks_until_trusted_fencing_evidence() {
         )
         .expect("trusted fence");
     assert_eq!(claim.state, ResourceClaimState::Released);
+}
+
+fn inventory_for_bindings(
+    node_id: NodeId,
+    generation: u64,
+    observed_at: chrono::DateTime<Utc>,
+    slots: &[ResourceSlotBinding],
+) -> NodeResourceInventory {
+    NodeResourceInventory::new(
+        node_id.as_uuid(),
+        uuid::Uuid::now_v7(),
+        generation,
+        observed_at,
+        slots
+            .iter()
+            .map(|slot| {
+                NodeResourceSlot::new(
+                    slot.kind,
+                    slot.stable_resource_id.clone(),
+                    slot.allocation.clone(),
+                )
+                .expect("inventory slot")
+            })
+            .collect(),
+    )
+    .expect("resource inventory")
 }
 
 fn placed_replica_binding(now: chrono::DateTime<Utc>) -> DeploymentReplicaBinding {

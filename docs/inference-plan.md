@@ -458,6 +458,12 @@ generation exactly once. A v2 heartbeat references the latest inventory
 generation and digest and is rejected unless that exact reference is current;
 legacy v1 observation batches remain readable during migration.
 
+The generic Workloads scheduler already compiles CPU, memory, and optional
+ephemeral-storage requirements from this current inventory. Its PostgreSQL
+claim transaction locks and verifies the exact tenant, node, Agent, generation,
+and digest head before capacity is reserved. PID limits remain Runtime-local
+because this inventory version has no PID slot.
+
 The completed inference profile extends this generic inventory with:
 
 - allocatable CPU, RAM, ephemeral storage, dedicated Artifact-cache storage,
@@ -474,12 +480,13 @@ High-frequency utilization, temperature, KV-cache pressure, TTFT, and
 throughput go to the metrics pipeline; they are not desired state or hard
 capacity truth.
 
-Inventory projections use generation compare-and-swap. Claim prepare and
-Runtime apply in the remaining `H0.1`/`I0.1` path must both revalidate the exact
-inventory generation/digest, resource health, partition identity, and topology
-digest. A MIG reconfiguration, device replacement, port-range change, or
-capacity regression invalidates the old candidate instead of being accepted as
-an equivalent node.
+Inventory projections use generation compare-and-swap. Database reservation
+already rejects a stale Fleet head. Claim prepare and Runtime apply in the
+remaining Agent/Runtime `H0.1`/`I0.1` path must revalidate the exact inventory
+generation/digest, resource health, partition identity, and topology digest.
+A MIG reconfiguration, device replacement, port-range change, or capacity
+regression invalidates the old candidate instead of being accepted as an
+equivalent node.
 
 `I0.1` adds a small `AcceleratorDetector` infrastructure trait with a
 deterministic virtual detector and a real NVIDIA detector. That slice also
@@ -493,6 +500,17 @@ enter the node-control protocol.
 Fleet persists inventory. The general Workloads scheduler owns placement and
 resource reservation through a Fleet inventory/claim port. The scheduler uses
 a deterministic filter, score, reserve, prepare, and bind pipeline.
+
+The implemented generic slice performs the filter, requirement compilation,
+database reserve, and placement prefix for one replica. It maps CPU, memory,
+and optional ephemeral storage to canonical scalar slot requests, reserves
+before persisting assignment, and uses the Deployment ID as the deterministic
+Claim ID. A committed reservation recovers the exact node after a process
+crash; a typed capacity conflict falls through to the next eligible candidate.
+CPU, memory, and ephemeral-storage slots allow multiple active claims up to
+their scalar capacity. Accelerator, host-port, and volume slots remain
+exclusive. Agent prepare and Runtime bind are still required before this
+pipeline reaches its `H0.1` exit gate.
 
 One resource claim follows this durable state machine:
 
@@ -564,10 +582,13 @@ same-slot-generation provider `NotFound` evidence, or a trusted Compute-provider
 power-off/instance-generation fence. An uncertainty timeout alone is not
 fencing evidence.
 
-Initial exclusive reservations enforce a partial uniqueness constraint over
-active `(node_id, accelerator_id)` claims. Hardware partitions use their stable
-partition identity. Release occurs only after stop/remove or fencing evidence
-proves that the old generation can no longer use the device.
+Migration 043 enforces partial active-slot uniqueness only for exclusive
+accelerator, host-port, and volume slots. Shared scalar capacity is serialized
+per stable slot and totals every unreleased allocation before admitting another
+claim. Hardware partitions use their stable partition identity. Release occurs
+only after stop/remove or fencing evidence proves that the old generation can
+no longer use the device. The sole exception is a database-only cancellation
+for a claim that never left `reserved_in_db`.
 
 ## 8. Model artifacts and node cache
 
@@ -982,6 +1003,12 @@ and ephemeral-storage slots. Accelerator topology, device health,
 Artifact-cache observations, port ranges, and private-network/fabric
 capabilities remain `I0.1`/`H0.3` extensions over the same contract and Fleet
 head; they do not create a second inventory store.
+
+Migration 043 implements shared scalar accounting for CPU, memory, and
+ephemeral storage and preserves exclusive uniqueness for accelerators,
+host ports, and volumes. Workloads uses typed A3S ORM queries and
+transaction-scoped locks for both capacity accounting and exact-current Fleet
+head validation; inference does not add another claim store.
 
 ## 12. Delivery gates
 

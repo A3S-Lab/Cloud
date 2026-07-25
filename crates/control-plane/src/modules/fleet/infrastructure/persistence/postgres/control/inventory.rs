@@ -5,7 +5,9 @@ use crate::infrastructure::{
     execute, fetch_optional, require_one_row, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::fleet::domain::repositories::NodeResourceInventoryRecord;
-use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeId, RepositoryError};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, NodeId, OrganizationId, RepositoryError,
+};
 use a3s_cloud_contracts::{
     NodeInventoryReference, NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
 };
@@ -338,6 +340,48 @@ pub(super) async fn require_current_reference(
     {
         return Err(RepositoryError::Conflict(
             "node heartbeat does not reference the current resource inventory".into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+pub(crate) async fn require_current_inventory(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    inventory: &NodeResourceInventory,
+) -> Result<(), PostgresPersistenceError> {
+    inventory.validate().map_err(RepositoryError::Conflict)?;
+    let current = fetch_optional::<(Uuid, Uuid, u64, String, Uuid), _>(
+        transaction,
+        select_from::<NodeResourceInventoryHeads>()
+            .select((
+                NodeResourceInventoryHeads::organization_id(),
+                NodeResourceInventoryHeads::node_id(),
+                NodeResourceInventoryHeads::generation(),
+                NodeResourceInventoryHeads::inventory_digest(),
+                NodeResourceInventoryHeads::agent_instance_id(),
+            ))
+            .filter(NodeResourceInventoryHeads::node_id().eq(inventory.node_id))
+            .for_update(),
+    )
+    .await?
+    .ok_or_else(|| {
+        RepositoryError::Conflict(
+            "resource claim references a node without a current resource inventory".into(),
+        )
+    })?;
+    if current
+        != (
+            organization_id.as_uuid(),
+            inventory.node_id,
+            inventory.generation,
+            inventory.digest.clone(),
+            inventory.agent_instance_id,
+        )
+    {
+        return Err(RepositoryError::Conflict(
+            "resource claim does not reference the current node resource inventory".into(),
         )
         .into());
     }

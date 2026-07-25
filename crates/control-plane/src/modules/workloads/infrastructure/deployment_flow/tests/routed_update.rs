@@ -137,11 +137,14 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
         Duration::seconds(5),
     )?);
     let runtime = DeploymentFlowRuntime::new(
-        workloads.clone(),
-        Arc::new(UnusedArtifactResolver),
-        nodes.clone(),
-        control_port,
-        route_updates,
+        DeploymentFlowDependencies::new(
+            workloads.clone(),
+            Arc::new(InMemoryResourceClaimRepository::new()),
+            Arc::new(UnusedArtifactResolver),
+            nodes.clone(),
+            control_port,
+            route_updates,
+        ),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 1, 10_000, 5_000, 1, 10_000)?,
     )?;

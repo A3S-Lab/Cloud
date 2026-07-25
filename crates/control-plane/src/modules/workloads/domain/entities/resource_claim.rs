@@ -7,6 +7,7 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, ResourceClaimId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
 };
 use crate::modules::workloads::domain::entities::DeploymentReplicaBinding;
+use a3s_cloud_contracts::NodeResourceInventory;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -71,6 +72,11 @@ impl ResourceClaimBindingEvidence {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResourceClaimReleaseEvidence {
+    DatabaseReservationCancelled {
+        reservation_digest: String,
+        slots: Vec<ResourceSlotEvidence>,
+        observed_at: DateTime<Utc>,
+    },
     AgentReleased {
         command_id: NodeCommandId,
         slots: Vec<ResourceSlotEvidence>,
@@ -92,7 +98,21 @@ pub enum ResourceClaimReleaseEvidence {
 
 impl ResourceClaimReleaseEvidence {
     pub fn validate(&self) -> Result<(), String> {
+        if let Self::DatabaseReservationCancelled {
+            reservation_digest,
+            slots,
+            observed_at,
+        } = self
+        {
+            validate_sha256(reservation_digest, "cancelled database reservation digest")?;
+            validate_slot_evidence(slots)?;
+            if observed_at.timestamp_millis() <= 0 {
+                return Err("resource release evidence time is invalid".into());
+            }
+            return Ok(());
+        }
         let (slots, evidence_digest, observed_at) = match self {
+            Self::DatabaseReservationCancelled { .. } => unreachable!(),
             Self::AgentReleased {
                 command_id,
                 slots,
@@ -131,7 +151,8 @@ impl ResourceClaimReleaseEvidence {
 
     pub fn slots(&self) -> &[ResourceSlotEvidence] {
         match self {
-            Self::AgentReleased { slots, .. }
+            Self::DatabaseReservationCancelled { slots, .. }
+            | Self::AgentReleased { slots, .. }
             | Self::ProviderNotFound { slots, .. }
             | Self::ComputeFenced { slots, .. } => slots,
         }
@@ -139,7 +160,8 @@ impl ResourceClaimReleaseEvidence {
 
     pub const fn observed_at(&self) -> DateTime<Utc> {
         match self {
-            Self::AgentReleased { observed_at, .. }
+            Self::DatabaseReservationCancelled { observed_at, .. }
+            | Self::AgentReleased { observed_at, .. }
             | Self::ProviderNotFound { observed_at, .. }
             | Self::ComputeFenced { observed_at, .. } => *observed_at,
         }
@@ -151,8 +173,7 @@ pub struct ResourceClaimReservation {
     pub id: ResourceClaimId,
     pub binding: DeploymentReplicaBinding,
     pub node_id: NodeId,
-    pub inventory_generation: u64,
-    pub inventory_digest: String,
+    pub inventory: NodeResourceInventory,
     pub topology_digest: String,
     pub slots: Vec<ResourceSlotRequest>,
     pub reserved_at: DateTime<Utc>,
@@ -160,6 +181,7 @@ pub struct ResourceClaimReservation {
 
 impl ResourceClaimReservation {
     pub fn validate(&self) -> Result<(), String> {
+        self.inventory.validate()?;
         if self.id.as_uuid().is_nil()
             || self.binding.organization_id.as_uuid().is_nil()
             || self.binding.project_id.as_uuid().is_nil()
@@ -173,18 +195,40 @@ impl ResourceClaimReservation {
             || self.binding.node_id != Some(self.node_id)
             || self.binding.placement_generation == 0
             || self.binding.runtime_generation != self.binding.replica_generation
-            || self.inventory_generation == 0
+            || self.inventory.node_id != self.node_id.as_uuid()
             || canonical_timestamp(self.reserved_at) < self.binding.updated_at
         {
             return Err("resource claim reservation identity or generation is invalid".into());
         }
-        validate_sha256(&self.inventory_digest, "resource inventory digest")?;
         validate_sha256(&self.topology_digest, "resource topology digest")?;
         validate_runtime_identity(
             &self.binding.runtime_unit_id,
             self.binding.runtime_generation,
         )?;
-        validate_slot_requests(&self.slots)
+        validate_slot_requests(&self.slots)?;
+        for request in &self.slots {
+            let inventory_slot = self
+                .inventory
+                .slots
+                .iter()
+                .find(|slot| {
+                    slot.kind == request.kind
+                        && slot.stable_resource_id == request.stable_resource_id
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "resource request {} is absent from the bound node inventory",
+                        request.stable_resource_id
+                    )
+                })?;
+            if !inventory_slot.allocation.contains(&request.allocation) {
+                return Err(format!(
+                    "resource request {} exceeds the bound node inventory allocation",
+                    request.stable_resource_id
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub fn matches(&self, claim: &ResourceClaim) -> bool {
@@ -199,8 +243,8 @@ impl ResourceClaimReservation {
             && self.binding.member_id == claim.member_id
             && self.binding.placement_generation == claim.placement_generation
             && self.node_id == claim.node_id
-            && self.inventory_generation == claim.inventory_generation
-            && self.inventory_digest == claim.inventory_digest
+            && self.inventory.generation == claim.inventory_generation
+            && self.inventory.digest == claim.inventory_digest
             && self.binding.runtime_unit_id == claim.runtime_unit_id
             && self.binding.runtime_generation == claim.runtime_generation
             && self.topology_digest == claim.topology_digest
@@ -270,8 +314,8 @@ impl ResourceClaim {
             member_id: binding.member_id,
             placement_generation: binding.placement_generation,
             node_id: reservation.node_id,
-            inventory_generation: reservation.inventory_generation,
-            inventory_digest: reservation.inventory_digest.clone(),
+            inventory_generation: reservation.inventory.generation,
+            inventory_digest: reservation.inventory.digest.clone(),
             runtime_unit_id: binding.runtime_unit_id.clone(),
             runtime_generation: binding.runtime_generation,
             topology_digest: reservation.topology_digest.clone(),
@@ -427,10 +471,23 @@ impl ResourceClaim {
                 Err("released resource claim evidence cannot change".into())
             };
         }
-        if !matches!(
+        let database_cancellation_matches = matches!(
+            &evidence,
+            ResourceClaimReleaseEvidence::DatabaseReservationCancelled {
+                reservation_digest,
+                ..
+            } if self.state == ResourceClaimState::ReservedInDb
+                && reservation_digest == &self.reservation_digest
+        );
+        let issued_release_matches = matches!(
             self.state,
             ResourceClaimState::Releasing | ResourceClaimState::Orphaned
-        ) || evidence.observed_at() > at
+        ) && !matches!(
+            evidence,
+            ResourceClaimReleaseEvidence::DatabaseReservationCancelled { .. }
+        );
+        if (!database_cancellation_matches && !issued_release_matches)
+            || evidence.observed_at() > at
             || !self.slot_evidence_matches(evidence.slots())
         {
             return Err("resource claim release evidence is stale or incomplete".into());
@@ -448,6 +505,17 @@ impl ResourceClaim {
         self.failure = None;
         self.bump(at)?;
         Ok(())
+    }
+
+    pub fn cancel_database_reservation(&mut self, at: DateTime<Utc>) -> Result<(), String> {
+        self.record_released(
+            ResourceClaimReleaseEvidence::DatabaseReservationCancelled {
+                reservation_digest: self.reservation_digest.clone(),
+                slots: self.slot_evidence(),
+                observed_at: canonical_timestamp(at),
+            },
+            at,
+        )
     }
 
     pub fn orphan(&mut self, failure: String, at: DateTime<Utc>) -> Result<(), String> {

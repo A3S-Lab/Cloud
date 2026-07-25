@@ -470,7 +470,7 @@ async fn replica_in_transaction(
     .map_err(Into::into)
 }
 
-async fn member_in_transaction(
+pub(super) async fn member_in_transaction(
     transaction: &PostgresTransaction,
     organization_id: OrganizationId,
     replica_id: WorkloadReplicaId,

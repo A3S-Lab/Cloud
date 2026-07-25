@@ -2,6 +2,7 @@ mod inventory;
 mod observations;
 mod telemetry;
 
+pub(crate) use inventory::require_current_inventory;
 pub(super) use inventory::{
     current as current_resource_inventory, record as record_resource_inventory,
 };

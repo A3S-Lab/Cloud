@@ -7,7 +7,13 @@ mod types;
 mod workflow;
 
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
-use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use crate::modules::shared_kernel::domain::{
+    DeploymentId, OrganizationId, RepositoryError, ResourceClaimId,
+};
+use crate::modules::workloads::domain::entities::ResourceClaimState;
+use crate::modules::workloads::domain::repositories::{
+    IResourceClaimRepository, IWorkloadRepository,
+};
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use async_trait::async_trait;
@@ -86,6 +92,7 @@ fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 #[derive(Clone)]
 pub struct DeploymentFlowRuntime {
     pub(super) workloads: Arc<dyn IWorkloadRepository>,
+    pub(super) resource_claims: Arc<dyn IResourceClaimRepository>,
     pub(super) artifacts: Arc<dyn IOciArtifactResolver>,
     pub(super) nodes: Arc<dyn INodeRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
@@ -94,13 +101,39 @@ pub struct DeploymentFlowRuntime {
     pub(super) config: DeploymentFlowConfig,
 }
 
-impl DeploymentFlowRuntime {
+#[derive(Clone)]
+pub struct DeploymentFlowDependencies {
+    workloads: Arc<dyn IWorkloadRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    artifacts: Arc<dyn IOciArtifactResolver>,
+    nodes: Arc<dyn INodeRepository>,
+    node_control: Arc<dyn INodeControlRepository>,
+    route_updates: Arc<dyn IDeploymentRouteUpdater>,
+}
+
+impl DeploymentFlowDependencies {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
+        resource_claims: Arc<dyn IResourceClaimRepository>,
         artifacts: Arc<dyn IOciArtifactResolver>,
         nodes: Arc<dyn INodeRepository>,
         node_control: Arc<dyn INodeControlRepository>,
         route_updates: Arc<dyn IDeploymentRouteUpdater>,
+    ) -> Self {
+        Self {
+            workloads,
+            resource_claims,
+            artifacts,
+            nodes,
+            node_control,
+            route_updates,
+        }
+    }
+}
+
+impl DeploymentFlowRuntime {
+    pub fn new(
+        dependencies: DeploymentFlowDependencies,
         heartbeat_timeout: chrono::Duration,
         config: DeploymentFlowConfig,
     ) -> Result<Self, String> {
@@ -108,11 +141,12 @@ impl DeploymentFlowRuntime {
             return Err("deployment scheduler heartbeat timeout must be positive".into());
         }
         Ok(Self {
-            workloads,
-            artifacts,
-            nodes,
-            node_control,
-            route_updates,
+            workloads: dependencies.workloads,
+            resource_claims: dependencies.resource_claims,
+            artifacts: dependencies.artifacts,
+            nodes: dependencies.nodes,
+            node_control: dependencies.node_control,
+            route_updates: dependencies.route_updates,
             heartbeat_timeout,
             config,
         })
@@ -156,4 +190,51 @@ impl FlowRuntime for DeploymentFlowRuntime {
 
 fn flow_error(context: &str, error: impl std::fmt::Display) -> FlowError {
     FlowError::Runtime(format!("{context}: {error}"))
+}
+
+fn resource_claim_id(deployment_id: DeploymentId) -> ResourceClaimId {
+    ResourceClaimId::from_uuid(deployment_id.as_uuid())
+}
+
+async fn cancel_database_reservation(
+    runtime: &DeploymentFlowRuntime,
+    organization_id: OrganizationId,
+    deployment_id: DeploymentId,
+    at: chrono::DateTime<chrono::Utc>,
+) -> a3s_flow::Result<()> {
+    let claim = match runtime
+        .resource_claims
+        .find(organization_id, resource_claim_id(deployment_id))
+        .await
+    {
+        Ok(claim) => claim,
+        Err(RepositoryError::NotFound) => return Ok(()),
+        Err(error) => {
+            return Err(flow_error(
+                "could not load database resource reservation for release",
+                error,
+            ))
+        }
+    };
+    match claim.state {
+        ResourceClaimState::Released => Ok(()),
+        ResourceClaimState::ReservedInDb => {
+            runtime
+                .resource_claims
+                .cancel_database_reservation(
+                    organization_id,
+                    claim.id,
+                    claim.aggregate_version,
+                    at.max(claim.updated_at),
+                )
+                .await
+                .map_err(|error| {
+                    flow_error("could not release database resource reservation", error)
+                })?;
+            Ok(())
+        }
+        _ => Err(FlowError::Runtime(
+            "issued resource claim requires Agent or trusted fencing release evidence".into(),
+        )),
+    }
 }

@@ -202,8 +202,13 @@ ordered Fleet log metadata; it does not become the owner of log bodies.
 One current single-instance Workload maps to canonical replica/member ordinal
 zero. A deployment binding records the exact replica, placement, and opaque
 Runtime unit generation. Resource claims bind stable slots to that projection;
-an orphaned or timed-out claim remains allocated until exact release or trusted
-fencing evidence is durable.
+CPU, memory, and ephemeral-storage slots are shared scalar capacities, while
+accelerator, host-port, and volume slots are exclusive. A reservation binds
+the exact current Fleet inventory generation and digest, and Deployment Flow
+persists it before node assignment so replay can recover the selected node.
+An orphaned or timed-out claim remains allocated until exact release or trusted
+fencing evidence is durable. Database-only cancellation is valid only for a
+claim that never advanced beyond `reserved_in_db`.
 
 ### 3.8 Edge routing
 

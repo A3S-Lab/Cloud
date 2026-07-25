@@ -10,11 +10,14 @@ pub async fn exercise_pre_dispatch_cancellation(
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let runtime = DeploymentFlowRuntime::new(
-        workload_repository.clone(),
-        test_artifact_resolver(),
-        node_repository.clone(),
-        node_repository,
-        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workload_repository.clone(),
+            Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+            test_artifact_resolver(),
+            node_repository.clone(),
+            node_repository,
+            Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        ),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;
@@ -93,11 +96,14 @@ pub async fn exercise_dispatched_cancellation(
     let (node_id, agent_instance_id, capabilities) =
         ready_node(&node_repository, organization_id).await?;
     let runtime = DeploymentFlowRuntime::new(
-        workload_repository.clone(),
-        test_artifact_resolver(),
-        node_repository.clone(),
-        node_repository.clone(),
-        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workload_repository.clone(),
+            Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+            test_artifact_resolver(),
+            node_repository.clone(),
+            node_repository.clone(),
+            Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        ),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;

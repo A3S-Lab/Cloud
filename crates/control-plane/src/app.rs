@@ -80,17 +80,19 @@ use crate::modules::sources::{
     PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
+use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
     CancelDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
-    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowRuntime,
-    GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadRuntimeControl,
-    ListWorkloadsHandler, OciRegistryArtifactResolver, PostgresWorkloadRepository,
-    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
-    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
+    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
+    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler,
+    SecretRotationRestartReconciler, StopWorkloadHandler, UpdateWorkloadDeploymentHandler,
+    WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -200,6 +202,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
+    let resource_claims: Arc<dyn IResourceClaimRepository> =
+        Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository.clone();
     let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> = workload_repository;
@@ -405,11 +409,14 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let deployment_runtime = DeploymentFlowRuntime::new(
-        Arc::clone(&workloads),
-        artifacts,
-        Arc::clone(&nodes),
-        Arc::clone(&node_control),
-        deployment_route_updates,
+        DeploymentFlowDependencies::new(
+            Arc::clone(&workloads),
+            resource_claims,
+            artifacts,
+            Arc::clone(&nodes),
+            Arc::clone(&node_control),
+            deployment_route_updates,
+        ),
         chrono_duration(config.fleet.heartbeat_timeout_ms)
             .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         deployment_flow_config,

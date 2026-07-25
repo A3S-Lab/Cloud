@@ -3,7 +3,7 @@ use super::super::types::{
     RetirementDispatchStepInput, RetirementDispatchStepOutput, RetirementObserveStepInput,
     RetirementObserveStepOutput,
 };
-use super::super::{flow_error, DeploymentFlowRuntime};
+use super::super::{cancel_database_reservation, flow_error, DeploymentFlowRuntime};
 use super::{bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::NodeCommandId;
@@ -305,6 +305,20 @@ pub(super) async fn complete(
         return Err(FlowError::Runtime(
             "Runtime retirement completion changed activation identity".into(),
         ));
+    }
+    if let Some(previous_deployment_id) = input
+        .resolved
+        .previous_runtime
+        .as_ref()
+        .and_then(|previous| previous.deployment_id)
+    {
+        cancel_database_reservation(
+            runtime,
+            input.resolved.organization_id,
+            previous_deployment_id,
+            input.retired_at,
+        )
+        .await?;
     }
     let active = runtime
         .workloads

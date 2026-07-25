@@ -5,7 +5,9 @@ use crate::modules::workloads::domain::entities::{
     ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
     ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotBinding,
 };
-use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
+use crate::modules::workloads::domain::repositories::{
+    capacity_unavailable, IResourceClaimRepository,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -102,18 +104,23 @@ impl IResourceClaimRepository for InMemoryResourceClaimRepository {
                 kind: request.kind,
                 stable_resource_id: request.stable_resource_id.clone(),
             };
-            let generation = match state.slots.get(&key) {
-                Some(lease) if lease.active_claim_id.is_some() => {
-                    return Err(RepositoryError::Conflict(format!(
-                        "hard resource slot {} is already claimed",
-                        request.stable_resource_id
-                    )));
-                }
-                Some(lease) => lease.generation.checked_add(1).ok_or_else(|| {
+            if request.kind.is_shared_capacity() {
+                validate_shared_capacity(&state, &reservation, request)?;
+            } else if state
+                .slots
+                .get(&key)
+                .is_some_and(|lease| lease.active_claim_id.is_some())
+            {
+                return Err(capacity_unavailable(format!(
+                    "hard resource slot {} is already claimed",
+                    request.stable_resource_id
+                )));
+            }
+            let generation = state.slots.get(&key).map_or(Ok(1), |lease| {
+                lease.generation.checked_add(1).ok_or_else(|| {
                     RepositoryError::Storage("hard resource slot generation overflowed".into())
-                })?,
-                None => 1,
-            };
+                })
+            })?;
             reserved_slots.push((
                 key,
                 ResourceSlotBinding {
@@ -140,7 +147,7 @@ impl IResourceClaimRepository for InMemoryResourceClaimRepository {
                 SlotLease {
                     generation: slot.slot_generation,
                     fence_token: slot.fence_token,
-                    active_claim_id: Some(claim.id),
+                    active_claim_id: (!slot.kind.is_shared_capacity()).then_some(claim.id),
                 },
             );
         }
@@ -237,6 +244,19 @@ impl IResourceClaimRepository for InMemoryResourceClaimRepository {
         .await
     }
 
+    async fn cancel_database_reservation(
+        &self,
+        organization_id: OrganizationId,
+        claim_id: ResourceClaimId,
+        expected_version: u64,
+        at: DateTime<Utc>,
+    ) -> Result<ResourceClaim, RepositoryError> {
+        self.mutate(organization_id, claim_id, expected_version, move |claim| {
+            claim.cancel_database_reservation(at)
+        })
+        .await
+    }
+
     async fn orphan(
         &self,
         organization_id: OrganizationId,
@@ -263,16 +283,26 @@ fn release_slots(state: &mut State, claim: &ResourceClaim) -> Result<(), Reposit
         let lease = state.slots.get(&key).ok_or_else(|| {
             RepositoryError::Storage("resource claim references a missing slot lease".into())
         })?;
-        if lease.active_claim_id != Some(claim.id)
-            || lease.generation != slot.slot_generation
-            || lease.fence_token != slot.fence_token
-        {
+        let identity_matches = if slot.kind.is_shared_capacity() {
+            lease.generation >= slot.slot_generation
+                && (lease.generation != slot.slot_generation
+                    || lease.fence_token == slot.fence_token)
+                && lease.active_claim_id.is_none()
+        } else {
+            lease.active_claim_id == Some(claim.id)
+                && lease.generation == slot.slot_generation
+                && lease.fence_token == slot.fence_token
+        };
+        if !identity_matches {
             return Err(RepositoryError::Storage(
                 "resource claim slot lease fencing identity is inconsistent".into(),
             ));
         }
     }
     for slot in &claim.slots {
+        if slot.kind.is_shared_capacity() {
+            continue;
+        }
         let key = SlotKey {
             organization_id: claim.organization_id,
             node_id: claim.node_id,
@@ -285,6 +315,65 @@ fn release_slots(state: &mut State, claim: &ResourceClaim) -> Result<(), Reposit
             )
         })?;
         lease.active_claim_id = None;
+    }
+    Ok(())
+}
+
+fn validate_shared_capacity(
+    state: &State,
+    reservation: &ResourceClaimReservation,
+    request: &crate::modules::workloads::domain::entities::ResourceSlotRequest,
+) -> Result<(), RepositoryError> {
+    let capacity = reservation
+        .inventory
+        .slots
+        .iter()
+        .find(|slot| {
+            slot.kind == request.kind && slot.stable_resource_id == request.stable_resource_id
+        })
+        .and_then(|slot| slot.allocation.scalar_amount())
+        .ok_or_else(|| {
+            RepositoryError::Conflict(format!(
+                "shared resource slot {} has no scalar inventory capacity",
+                request.stable_resource_id
+            ))
+        })?;
+    let requested = request.allocation.scalar_amount().ok_or_else(|| {
+        RepositoryError::Conflict(format!(
+            "shared resource slot {} has a non-scalar request",
+            request.stable_resource_id
+        ))
+    })?;
+    let allocated = state
+        .claims
+        .values()
+        .filter(|claim| {
+            claim.organization_id == reservation.binding.organization_id
+                && claim.node_id == reservation.node_id
+                && claim.state != ResourceClaimState::Released
+        })
+        .flat_map(|claim| &claim.slots)
+        .filter(|slot| {
+            slot.kind == request.kind && slot.stable_resource_id == request.stable_resource_id
+        })
+        .try_fold(0_u64, |total, slot| {
+            let amount = slot.allocation.scalar_amount().ok_or_else(|| {
+                RepositoryError::Storage(
+                    "stored shared resource claim has a non-scalar allocation".into(),
+                )
+            })?;
+            total.checked_add(amount).ok_or_else(|| {
+                RepositoryError::Storage("shared resource allocation total overflowed".into())
+            })
+        })?;
+    if allocated
+        .checked_add(requested)
+        .is_none_or(|required| required > capacity)
+    {
+        return Err(capacity_unavailable(format!(
+            "shared resource slot {} has insufficient remaining capacity",
+            request.stable_resource_id
+        )));
     }
     Ok(())
 }

@@ -3,6 +3,7 @@ use super::resource_claim_rows::{restore_claim, ClaimWithSlotRow, ClaimWithSlotS
 use super::resource_claim_writes;
 use super::schema::{ResourceClaimSlots, ResourceClaims};
 use crate::infrastructure::{fetch_all, transaction_error, PostgresPersistenceError};
+use crate::modules::fleet::infrastructure::require_current_inventory;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, OrganizationId, RepositoryError, ResourceClaimId,
 };
@@ -167,6 +168,22 @@ impl IResourceClaimRepository for PostgresResourceClaimRepository {
         .await
     }
 
+    async fn cancel_database_reservation(
+        &self,
+        organization_id: OrganizationId,
+        claim_id: ResourceClaimId,
+        expected_version: u64,
+        at: DateTime<Utc>,
+    ) -> Result<ResourceClaim, RepositoryError> {
+        self.mutate(
+            organization_id,
+            claim_id,
+            expected_version,
+            ClaimMutation::CancelDatabaseReservation { at },
+        )
+        .await
+    }
+
     async fn orphan(
         &self,
         organization_id: OrganizationId,
@@ -213,12 +230,42 @@ async fn reserve_in_transaction(
     )
     .await?
     .ok_or(RepositoryError::NotFound)?;
-    if persisted_binding != reservation.binding {
+    let member = replicas::member_in_transaction(
+        transaction,
+        reservation.binding.organization_id,
+        reservation.binding.replica_id,
+        reservation.binding.member_id,
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    let member_matches = match member.node_id {
+        Some(node_id) => {
+            node_id == reservation.node_id
+                && member.placement_generation == reservation.binding.placement_generation
+        }
+        None => {
+            member.placement_generation.checked_add(1)
+                == Some(reservation.binding.placement_generation)
+        }
+    };
+    let binding_matches = persisted_binding == reservation.binding
+        || (member_matches
+            && persisted_binding
+                .propose_assignment(reservation.node_id, reservation.binding.updated_at)
+                .is_ok_and(|candidate| candidate == reservation.binding));
+    if !binding_matches {
         return Err(RepositoryError::Conflict(
-            "resource claim reservation does not match the durable replica binding".into(),
+            "resource claim reservation does not match the durable or proposed initial replica binding"
+                .into(),
         )
         .into());
     }
+    require_current_inventory(
+        transaction,
+        reservation.binding.organization_id,
+        &reservation.inventory,
+    )
+    .await?;
     let slots = resource_claim_writes::reserve_slots(transaction, &reservation).await?;
     let claim = ResourceClaim::reserve(&reservation, slots).map_err(RepositoryError::Conflict)?;
     resource_claim_writes::insert_claim(transaction, &claim).await?;
@@ -317,6 +364,9 @@ enum ClaimMutation {
         evidence: ResourceClaimReleaseEvidence,
         at: DateTime<Utc>,
     },
+    CancelDatabaseReservation {
+        at: DateTime<Utc>,
+    },
     Orphan {
         failure: String,
         at: DateTime<Utc>,
@@ -335,6 +385,7 @@ impl ClaimMutation {
             Self::Bind { evidence, at } => claim.bind(evidence, at),
             Self::BeginRelease { command_id, at } => claim.begin_release(command_id, at),
             Self::RecordReleased { evidence, at } => claim.record_released(evidence, at),
+            Self::CancelDatabaseReservation { at } => claim.cancel_database_reservation(at),
             Self::Orphan { failure, at } => claim.orphan(failure, at),
         }
     }

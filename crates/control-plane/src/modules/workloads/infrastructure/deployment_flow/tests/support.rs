@@ -5,6 +5,20 @@ pub(super) fn runtime(
     nodes: &Arc<InMemoryNodeRepository>,
     convergence_timeout: Duration,
 ) -> Result<DeploymentFlowRuntime, String> {
+    runtime_with_resource_claims(
+        workloads,
+        nodes,
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        convergence_timeout,
+    )
+}
+
+pub(super) fn runtime_with_resource_claims(
+    workloads: &Arc<InMemoryWorkloadRepository>,
+    nodes: &Arc<InMemoryNodeRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    convergence_timeout: Duration,
+) -> Result<DeploymentFlowRuntime, String> {
     let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -12,11 +26,14 @@ pub(super) fn runtime(
         .map_err(|_| "test convergence timeout is invalid")?;
     let runtime_apply_timeout = (milliseconds / 2).max(1);
     DeploymentFlowRuntime::new(
-        workload_port,
-        Arc::new(UnusedArtifactResolver),
-        node_port,
-        control_port,
-        Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workload_port,
+            resource_claims,
+            Arc::new(UnusedArtifactResolver),
+            node_port,
+            control_port,
+            Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
+        ),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(
             milliseconds,
@@ -348,12 +365,40 @@ pub(super) async fn ready_node(
     ),
     Box<dyn std::error::Error>,
 > {
-    let secret = format!("a3sn_{}", "d".repeat(64));
+    ready_node_with_capacity(
+        nodes,
+        organization_id,
+        enrolled_at,
+        "deployment-test",
+        'd',
+        8_000,
+        8 * 1024 * 1024 * 1024,
+    )
+    .await
+}
+
+pub(super) async fn ready_node_with_capacity(
+    nodes: &Arc<InMemoryNodeRepository>,
+    organization_id: OrganizationId,
+    enrolled_at: chrono::DateTime<Utc>,
+    node_name: &str,
+    digest_character: char,
+    cpu_millis: u64,
+    memory_bytes: u64,
+) -> Result<
+    (
+        crate::modules::shared_kernel::domain::NodeId,
+        Uuid,
+        RuntimeCapabilities,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let secret = format!("a3sn_{}", digest_character.to_string().repeat(64));
     let credential = EnrollmentTokenCredential::from_secret(&secret)?;
     let token = EnrollmentToken::new(
         EnrollmentTokenId::new(),
         organization_id,
-        "deployment-test",
+        node_name,
         credential.clone(),
         enrolled_at,
         enrolled_at + Duration::minutes(5),
@@ -362,7 +407,7 @@ pub(super) async fn ready_node(
         .issue_enrollment_token(
             token,
             event(organization_id),
-            IdempotencyRequest::new("test.enrollment", "deployment-test", b"token")?,
+            IdempotencyRequest::new("test.enrollment", node_name, node_name.as_bytes())?,
         )
         .await?;
     let runtime_capabilities = capabilities();
@@ -377,13 +422,42 @@ pub(super) async fn ready_node(
             &credential,
             NodeEnrollmentDraft {
                 proposed_node_id: crate::modules::shared_kernel::domain::NodeId::new(),
-                name: NodeName::new("deployment-node")?,
+                name: NodeName::new(node_name)?,
                 agent_instance_id,
                 agent_version: "0.1.0".into(),
                 capabilities: node_capabilities.clone(),
-                request_digest: format!("sha256:{}", "e".repeat(64)),
+                request_digest: format!("sha256:{}", digest_character.to_string().repeat(64)),
                 requested_at: enrolled_at,
             },
+        )
+        .await?;
+    nodes
+        .record_resource_inventory(
+            NodeResourceInventory::new(
+                reservation.node.id.as_uuid(),
+                agent_instance_id,
+                1,
+                enrolled_at + Duration::milliseconds(1),
+                vec![
+                    NodeResourceSlot::new(
+                        ResourceKind::Cpu,
+                        "cpu/shared",
+                        ResourceAllocation::Scalar {
+                            amount: cpu_millis,
+                            unit: ResourceUnit::MilliCpu,
+                        },
+                    )?,
+                    NodeResourceSlot::new(
+                        ResourceKind::Memory,
+                        "memory/system",
+                        ResourceAllocation::Scalar {
+                            amount: memory_bytes,
+                            unit: ResourceUnit::Byte,
+                        },
+                    )?,
+                ],
+            )?,
+            enrolled_at + Duration::milliseconds(2),
         )
         .await?;
     nodes
@@ -392,7 +466,7 @@ pub(super) async fn ready_node(
             agent_instance_id,
             agent_version: "0.1.0".into(),
             capabilities: node_capabilities,
-            observed_at: enrolled_at + Duration::milliseconds(1),
+            observed_at: enrolled_at + Duration::milliseconds(3),
         })
         .await?;
     Ok((reservation.node.id, agent_instance_id, runtime_capabilities))

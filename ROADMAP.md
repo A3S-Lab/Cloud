@@ -280,14 +280,21 @@ durable `reserved_in_db -> preparing_on_agent -> prepared_on_agent ->
 bound_to_runtime_unit -> releasing -> released` lifecycle with an
 operator-visible `orphaned` branch. Orphaning and timeout retain the active
 lease. Only exact Agent release, provider NotFound, or trusted compute fencing
-can release it. The schema-backed claim CRUD and aggregate JOIN use A3S ORM
-typed builders. The full Workloads repository and its shared
-idempotency/outbox writes now use typed builders for every query and mutation,
-including PostgreSQL advisory and row locks, `SKIP LOCKED`, and parameterized
-JSONPath Secret-binding predicates. An architecture test rejects raw SQL and
-direct drivers anywhere in Workloads production persistence. A PostgreSQL 17
-gate proves 100-way exact replay, 100-way competing reservation, orphan
-blocking, and generation/token rotation after fencing.
+can release it. CPU, memory, and ephemeral-storage slots use shared scalar
+capacity accounting, while accelerator, host-port, and volume slots remain
+exclusive. Migration 043 narrows active-slot uniqueness to those exclusive
+kinds. Each PostgreSQL reservation serializes the stable slot, totals active
+allocations, rejects over-capacity requests, and advances the slot generation
+and fence token.
+
+The schema-backed claim CRUD and aggregate JOIN use A3S ORM typed builders. The
+full Workloads repository and its shared idempotency/outbox writes use typed
+builders for every query and mutation, including PostgreSQL advisory and row
+locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding predicates. An
+architecture test rejects raw SQL and direct drivers anywhere in Workloads
+production persistence. In-memory and PostgreSQL 17 gates prove exact replay,
+competing exclusive and shared reservations, over-capacity rejection, orphan
+blocking, safe release, and generation/token rotation after fencing.
 
 Migration 042 adds strict, immutable Fleet inventory snapshots, normalized
 slots, and one current generation/digest head per enrolled node. The node agent
@@ -302,10 +309,19 @@ PostgreSQL adapter uses only typed A3S ORM tables and builders, and the real
 PostgreSQL 17 gate verifies concurrent replay, recovery, head monotonicity, and
 stale-heartbeat rejection.
 
-`H0.1` remains in progress. The open exit work is requirement compilation
-against the current Fleet inventory, Agent-side prepare/release journal
-enforcement, Runtime allocation evidence, deployment-flow integration, and
-process-death reconciliation proving one provider unit for one replica
+Workloads now compiles CPU, memory, and optional ephemeral-storage requirements
+from the current inventory, leaving PID limits Runtime-local. PostgreSQL locks
+and verifies the exact Fleet inventory head in the same transaction that
+reserves capacity. Deployment Flow reserves before node assignment, derives a
+deterministic Claim ID from the Deployment ID, recovers a committed
+reservation-before-placement gap, and tries another eligible node after a
+typed capacity conflict. Normal cancellation, retirement, and stop paths may
+cancel only a never-issued `reserved_in_db` claim; later states retain the
+Agent/trusted-fence requirement.
+
+`H0.1` remains in progress. The open exit work is Agent-side prepare/release
+command and journal enforcement, Runtime allocation-binding evidence, and
+process/provider reconciliation proving one provider unit for one replica
 generation.
 
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each

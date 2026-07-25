@@ -1261,16 +1261,23 @@ accelerator, and volume slot allocations plus a complete `ResourceClaim`
 aggregate. Each claim binds tenant, deployment, replica/member, placement,
 node inventory, topology, Runtime identity, canonical slot set, claim digest,
 slot generation, and fence token. Migration 041 persists claims, immutable
-claim-slot evidence, and the current slot ledger. Its new PostgreSQL
-persistence and all pre-existing Workloads persistence use A3S ORM typed
-tables and builders for ordinary reads, JOINs, ordering, counts, inserts, and
-optimistic updates. Shared idempotency and outbox operations on this path are
-typed as well. PostgreSQL advisory and row locks, `SKIP LOCKED`, and
-parameterized JSONPath Secret-binding predicates are represented by the same
-typed AST. Source architecture tests prohibit raw SQL or direct database
+claim-slot evidence, and the current slot ledger. Migration 043 makes CPU,
+memory, and ephemeral storage shared scalar capacities while preserving
+exclusive accelerator, host-port, and volume ownership. A PostgreSQL
+reservation takes a transaction-scoped advisory lock for each stable slot,
+totals active shared allocations in Rust from typed query results, rejects
+over-capacity requests, and advances the slot generation and fence token.
+
+Its PostgreSQL persistence and all pre-existing Workloads persistence use A3S
+ORM typed tables and builders for ordinary reads, JOINs, ordering, counts,
+inserts, and optimistic updates. Shared idempotency and outbox operations on
+this path are typed as well. PostgreSQL advisory and row locks, `SKIP LOCKED`,
+and parameterized JSONPath Secret-binding predicates are represented by the
+same typed AST. Source architecture tests prohibit raw SQL or direct database
 drivers throughout Workloads production persistence. In-memory and isolated
-PostgreSQL 17 tests cover 100-way exact replay, 100-way competing claims,
-orphan retention, trusted fencing, and generation/token rotation.
+PostgreSQL 17 tests cover exact replay, competing exclusive and shared claims,
+over-capacity rejection, orphan retention, trusted fencing, safe release, and
+generation/token rotation.
 
 The implemented inventory slice moves the generic resource types into the
 shared Cloud contract crate and adds strict `NodeResourceInventory`, receipt,
@@ -1295,12 +1302,25 @@ that adapter. Contract, Agent, mTLS API, in-memory, and isolated PostgreSQL 17
 tests cover canonical digesting, restart reuse, concurrent replay, recovery,
 head monotonicity, and stale-heartbeat rejection.
 
-`H0.1` is not complete. Next, the requirements compiler must consume the
-current Fleet inventory; the node protocol and Agent journal must implement
-prepare/release fencing evidence; Runtime observations must prove allocation
-binding; and the deployment reconciler must adopt or release claims after
-process/provider failure. Only the combined real-provider crash/replay gate may
-mark the sub-gate complete.
+The implemented scheduler slice compiles CPU, memory, and optional
+ephemeral-storage requirements into canonical slot requests and one topology
+digest from the current Fleet inventory. PID limits remain Runtime-local
+because the inventory contract has no PID resource kind. The PostgreSQL claim
+transaction locks and verifies the exact current inventory head, including
+tenant, node, Agent, generation, and digest, before reserving slots.
+
+Deployment Flow reserves the deterministic Deployment-ID claim before
+persisting node assignment. Replay recovers the exact node after a crash in
+that gap, and a typed capacity conflict falls through to another eligible node.
+Cancellation, prior-runtime retirement, and Workload stop cancel a
+database-only reservation only while it remains `reserved_in_db`; prepared or
+orphaned claims retain the Agent/trusted-fence release requirement.
+
+`H0.1` is not complete. Next, the node protocol and Agent journal must
+implement prepare/release fencing evidence, Runtime observations must prove
+allocation binding, and the deployment reconciler must adopt or release claims
+after process/provider failure. Only the combined real-provider crash/replay
+gate may mark the sub-gate complete.
 
 The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
 cardinality-one private target projection. A scope belongs to one organization,

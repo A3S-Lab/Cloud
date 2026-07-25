@@ -16,15 +16,15 @@ pub use application::{
     WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult, WorkloadReplicaQueryResult,
 };
 pub use domain::entities::{
-    Deployment, DeploymentReplicaBinding, DeploymentStatus, EffectivePlacementPolicy,
-    ExternalBuildReference, HttpHealthCheck, ManagedOwnerKind, ManagedOwnerReference, OciArtifact,
-    OciArtifactReference, PlacementTopology, RequestedServiceTemplate, ResourceAllocation,
-    ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotBinding,
-    ResourceSlotEvidence, ResourceSlotRequest, ResourceUnit, SecretBinding, SecretBindingTarget,
-    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
-    WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica, WorkloadReplicaMember,
-    WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
+    CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, DeploymentStatus,
+    EffectivePlacementPolicy, ExternalBuildReference, HttpHealthCheck, ManagedOwnerKind,
+    ManagedOwnerReference, OciArtifact, OciArtifactReference, PlacementTopology,
+    RequestedServiceTemplate, ResourceAllocation, ResourceClaim, ResourceClaimBindingEvidence,
+    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState, ResourceKind,
+    ResourceSlotBinding, ResourceSlotEvidence, ResourceSlotRequest, ResourceUnit, SecretBinding,
+    SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
+    WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadStopRequested,
@@ -41,10 +41,10 @@ pub use domain::services::{
     OciArtifactResolutionError, OciRegistryCredentialReference, UnroutedDeploymentRouteUpdater,
 };
 pub use infrastructure::{
-    DeploymentFlowConfig, DeploymentFlowRuntime, IWorkloadRuntimeControl,
-    InMemoryResourceClaimRepository, InMemoryWorkloadRepository, OciRegistryArtifactResolver,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository, SecretRotationRestartFailure,
-    SecretRotationRestartReconciler, SecretRotationRestartReport, WorkloadReconciliationFailure,
-    WorkloadReconciliationReport, WorkloadRuntimeReconciler,
+    DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
+    IWorkloadRuntimeControl, InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
+    OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,
+    WorkloadReconciliationFailure, WorkloadReconciliationReport, WorkloadRuntimeReconciler,
 };
 pub use presentation::WorkloadsModule;

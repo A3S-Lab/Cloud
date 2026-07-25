@@ -5,9 +5,11 @@ use crate::infrastructure::{
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeCommandId, RepositoryError};
 use crate::modules::workloads::domain::entities::{
-    ResourceClaim, ResourceClaimReservation, ResourceSlotBinding,
+    ResourceAllocation, ResourceClaim, ResourceClaimReservation, ResourceSlotBinding,
+    ResourceSlotRequest,
 };
-use a3s_orm::{insert_into, select_from, update_table, InsertRow, PostgresTransaction};
+use crate::modules::workloads::domain::repositories::capacity_unavailable;
+use a3s_orm::{insert_into, select_from, update_table, InsertRow, PostgresTransaction, Query};
 use uuid::Uuid;
 
 pub(super) async fn reserve_slots(
@@ -17,6 +19,10 @@ pub(super) async fn reserve_slots(
     let reserved_at = canonical_timestamp(reservation.reserved_at);
     let mut slots = Vec::with_capacity(reservation.slots.len());
     for request in &reservation.slots {
+        lock_slot(transaction, reservation, request).await?;
+        if request.kind.is_shared_capacity() {
+            validate_shared_capacity(transaction, reservation, request).await?;
+        }
         let existing = fetch_optional::<SlotLeaseRow, _>(
             transaction,
             select_from::<ResourceSlotLeases>()
@@ -63,7 +69,8 @@ pub(super) async fn reserve_slots(
                         .set(ResourceSlotLeases::fence_token(), fence_token)
                         .set(
                             ResourceSlotLeases::active_claim_id(),
-                            Some(reservation.id.as_uuid()),
+                            (!request.kind.is_shared_capacity())
+                                .then_some(reservation.id.as_uuid()),
                         )
                         .set(ResourceSlotLeases::updated_at(), reserved_at)
                         .filter(
@@ -110,7 +117,8 @@ pub(super) async fn reserve_slots(
                         .value(ResourceSlotLeases::fence_token(), fence_token)
                         .value(
                             ResourceSlotLeases::active_claim_id(),
-                            Some(reservation.id.as_uuid()),
+                            (!request.kind.is_shared_capacity())
+                                .then_some(reservation.id.as_uuid()),
                         )
                         .value(ResourceSlotLeases::updated_at(), reserved_at)
                         .on_conflict((
@@ -350,6 +358,39 @@ pub(super) async fn release_slots(
         )
     })?;
     for slot in &claim.slots {
+        lock_bound_slot(transaction, claim, slot).await?;
+        if slot.kind.is_shared_capacity() {
+            let lease = fetch_optional::<SlotLeaseRow, _>(
+                transaction,
+                select_from::<ResourceSlotLeases>()
+                    .select(SlotLeaseSelection)
+                    .filter(
+                        ResourceSlotLeases::organization_id().eq(claim.organization_id.as_uuid()),
+                    )
+                    .filter(ResourceSlotLeases::node_id().eq(claim.node_id.as_uuid()))
+                    .filter(ResourceSlotLeases::resource_kind().eq(slot.kind.as_str()))
+                    .filter(
+                        ResourceSlotLeases::stable_resource_id()
+                            .eq(slot.stable_resource_id.as_str()),
+                    ),
+            )
+            .await?
+            .ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "shared resource claim references a missing slot ledger".into(),
+                )
+            })?;
+            if lease.active_claim_id.is_some()
+                || lease.slot_generation < slot.slot_generation
+                || (lease.slot_generation == slot.slot_generation
+                    && lease.fence_token != slot.fence_token)
+            {
+                return Err(PostgresPersistenceError::Invariant(
+                    "shared resource slot ledger fencing identity is inconsistent".into(),
+                ));
+            }
+            continue;
+        }
         let rows = execute(
             transaction,
             update_table::<ResourceSlotLeases>()
@@ -406,8 +447,123 @@ fn validate_lease_identity(
 }
 
 fn slot_conflict(stable_resource_id: &str) -> PostgresPersistenceError {
-    RepositoryError::Conflict(format!(
+    capacity_unavailable(format!(
         "hard resource slot {stable_resource_id} is already claimed"
     ))
     .into()
+}
+
+async fn validate_shared_capacity(
+    transaction: &PostgresTransaction,
+    reservation: &ResourceClaimReservation,
+    request: &ResourceSlotRequest,
+) -> Result<(), PostgresPersistenceError> {
+    let capacity = reservation
+        .inventory
+        .slots
+        .iter()
+        .find(|slot| {
+            slot.kind == request.kind && slot.stable_resource_id == request.stable_resource_id
+        })
+        .and_then(|slot| slot.allocation.scalar_amount())
+        .ok_or_else(|| {
+            RepositoryError::Conflict(format!(
+                "shared resource slot {} has no scalar inventory capacity",
+                request.stable_resource_id
+            ))
+        })?;
+    let requested = request.allocation.scalar_amount().ok_or_else(|| {
+        RepositoryError::Conflict(format!(
+            "shared resource slot {} has a non-scalar request",
+            request.stable_resource_id
+        ))
+    })?;
+    let allocations = crate::infrastructure::fetch_all::<serde_json::Value, _>(
+        transaction,
+        active_allocations_query(reservation, request),
+    )
+    .await?;
+    let allocated = allocations.into_iter().try_fold(0_u64, |total, value| {
+        let allocation = serde_json::from_value::<ResourceAllocation>(value).map_err(|error| {
+            PostgresPersistenceError::Invariant(format!(
+                "stored shared resource allocation is invalid: {error}"
+            ))
+        })?;
+        let amount = allocation.scalar_amount().ok_or_else(|| {
+            PostgresPersistenceError::Invariant(
+                "stored shared resource allocation is not scalar".into(),
+            )
+        })?;
+        total.checked_add(amount).ok_or_else(|| {
+            PostgresPersistenceError::Invariant(
+                "stored shared resource allocation total overflowed".into(),
+            )
+        })
+    })?;
+    if allocated
+        .checked_add(requested)
+        .is_none_or(|required| required > capacity)
+    {
+        return Err(capacity_unavailable(format!(
+            "shared resource slot {} has insufficient remaining capacity",
+            request.stable_resource_id
+        ))
+        .into());
+    }
+    Ok(())
+}
+
+fn active_allocations_query(
+    reservation: &ResourceClaimReservation,
+    request: &ResourceSlotRequest,
+) -> impl Query<Output = serde_json::Value> {
+    select_from::<ResourceClaimSlots>()
+        .select(ResourceClaimSlots::allocation())
+        .filter(
+            ResourceClaimSlots::organization_id().eq(reservation.binding.organization_id.as_uuid()),
+        )
+        .filter(ResourceClaimSlots::node_id().eq(reservation.node_id.as_uuid()))
+        .filter(ResourceClaimSlots::resource_kind().eq(request.kind.as_str()))
+        .filter(ResourceClaimSlots::stable_resource_id().eq(request.stable_resource_id.as_str()))
+        .filter(ResourceClaimSlots::released_at().is_null())
+}
+
+async fn lock_slot(
+    transaction: &PostgresTransaction,
+    reservation: &ResourceClaimReservation,
+    request: &ResourceSlotRequest,
+) -> Result<(), PostgresPersistenceError> {
+    transaction
+        .advisory_xact_lock(
+            "a3s.cloud.resource-slot",
+            &format!(
+                "{}/{}/{}/{}",
+                reservation.binding.organization_id,
+                reservation.node_id,
+                request.kind.as_str(),
+                request.stable_resource_id
+            ),
+        )
+        .await?;
+    Ok(())
+}
+
+async fn lock_bound_slot(
+    transaction: &PostgresTransaction,
+    claim: &ResourceClaim,
+    slot: &ResourceSlotBinding,
+) -> Result<(), PostgresPersistenceError> {
+    transaction
+        .advisory_xact_lock(
+            "a3s.cloud.resource-slot",
+            &format!(
+                "{}/{}/{}/{}",
+                claim.organization_id,
+                claim.node_id,
+                slot.kind.as_str(),
+                slot.stable_resource_id
+            ),
+        )
+        .await?;
+    Ok(())
 }

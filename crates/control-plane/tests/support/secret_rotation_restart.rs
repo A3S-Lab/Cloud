@@ -19,10 +19,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DeploymentId, OperationId, OrganizationId, SecretId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    DeploymentFlowConfig, DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver,
-    ISecretRotationRestartRepository, IWorkloadRepository, OciArtifact, OciArtifactReference,
-    OciArtifactResolutionError, OciRegistryCredentialReference, PostgresWorkloadRepository,
-    SecretRotationRestartReconciler,
+    DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
+    IOciArtifactResolver, ISecretRotationRestartRepository, IWorkloadRepository, OciArtifact,
+    OciArtifactReference, OciArtifactResolutionError, OciRegistryCredentialReference,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, SecretRotationRestartReconciler,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeInspection;
@@ -189,6 +189,7 @@ pub async fn exercise_secret_rotation_restart(
         })
         .await?;
     let flow = restart_flow(
+        executor,
         postgres_url,
         workload_repository.clone(),
         node_repository.clone(),
@@ -331,6 +332,7 @@ pub async fn exercise_secret_rotation_restart(
     // A reconstructed coordinator must replay activation and issue one
     // deterministic stop for the previous immutable Runtime revision.
     let flow = restart_flow(
+        executor,
         postgres_url,
         workload_repository.clone(),
         node_repository.clone(),
@@ -491,16 +493,20 @@ pub async fn exercise_secret_rotation_restart(
 }
 
 pub(crate) async fn restart_flow(
+    executor: &PostgresExecutor,
     postgres_url: &str,
     workloads: Arc<PostgresWorkloadRepository>,
     nodes: Arc<PostgresNodeRepository>,
 ) -> Result<FlowInfrastructure, Box<dyn std::error::Error>> {
     let runtime = DeploymentFlowRuntime::new(
-        workloads,
-        Arc::new(ResolvedRevisionOnly),
-        nodes.clone(),
-        nodes,
-        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workloads,
+            Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+            Arc::new(ResolvedRevisionOnly),
+            nodes.clone(),
+            nodes,
+            Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        ),
         ChronoDuration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 5, 20_000, 5_000, 5, 20_000)?,
     )?;

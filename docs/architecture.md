@@ -407,20 +407,25 @@ A deployment follows these durable steps:
 
 1. Commit an immutable requested template and queued deployment.
 2. Resolve the source to a commit SHA and/or OCI digest.
-3. For an initial deployment, select a ready node whose reported Runtime
-   capabilities satisfy the spec; for an update, require the previous Runtime
-   node to remain eligible and select that same node.
-4. Lease an apply command to that node using `deployment_id` and generation.
-5. Wait for a matching Runtime observation from the node.
-6. Run the declared health check through the actual service path.
-7. When the previous revision owns routes, stage a complete Gateway snapshot
+3. For an initial deployment, enumerate ready nodes whose reported Runtime
+   capabilities and current Fleet inventory satisfy the spec; for an update,
+   require the previous Runtime node to remain eligible and consider only that
+   node.
+4. Compile canonical CPU, memory, and optional ephemeral-storage requirements,
+   reserve the exact current-inventory capacity under a deterministic Claim ID,
+   and then persist the node assignment. Replay recovers the assignment from a
+   claim committed before a process crash.
+5. Lease an apply command to that node using `deployment_id` and generation.
+6. Wait for a matching Runtime observation from the node.
+7. Run the declared health check through the actual service path.
+8. When the previous revision owns routes, stage a complete Gateway snapshot
    and a durable `GatewayRouteCutover` without mutating the active route rows.
-8. Wait for an `applied` acknowledgement matching the exact node, command,
+9. Wait for an `applied` acknowledgement matching the exact node, command,
    Gateway revision, and snapshot digest.
-9. Replace all affected route targets atomically and select the healthy
+10. Replace all affected route targets atomically and select the healthy
    candidate as active. The deployment enters `retiring` when a previous
    Runtime revision exists.
-10. Issue the deterministic stop command for the previous Runtime revision and
+11. Issue the deterministic stop command for the previous Runtime revision and
     require durable stopped-or-absent evidence before the deployment becomes
     terminal `active`.
 
@@ -453,8 +458,13 @@ v1 observation batches remain readable during the protocol migration.
 
 Hard resources are reserved by an independent Workloads repository. A
 canonical request names the exact stable slots and allocation shapes. The
-repository transaction assigns each slot a monotonically increasing generation
-and new fence token, then persists one digest-bound claim:
+repository transaction locks and verifies the exact current Fleet inventory
+head before it reserves any slot. CPU, memory, and ephemeral storage are shared
+scalar capacities: each stable slot is serialized, active allocations are
+summed, and an over-capacity request is rejected. Accelerators, host ports, and
+volumes remain exclusive. Every successful reservation assigns a monotonically
+increasing slot generation and a new fence token, then persists one
+digest-bound claim:
 
 ```text
 reserved_in_db
@@ -469,21 +479,28 @@ reserved_in_db
 `orphaned` remains an active allocation, including when a timeout caused the
 uncertainty. Release requires exact slot generation/token evidence from the
 Agent, a provider NotFound result, or a trusted compute fence. PostgreSQL keeps
-immutable per-claim slot evidence and a current slot ledger; releasing a claim,
-marking every claim slot released, and clearing each matching ledger owner are
-one transaction. A partial unique index prevents two active claims for the same
-organization/node/resource-kind/stable-resource tuple.
+immutable per-claim slot evidence and a current slot ledger. Releasing a claim
+and marking every claim slot released are one transaction; exclusive release
+also clears the matching ledger owner. Migration 043 limits active-slot
+uniqueness to the exclusive resource kinds and allows multiple bounded scalar
+claims on one CPU, memory, or ephemeral-storage slot.
 
-Migrations 040 and 041 own these tables. The complete Workloads repository now
+Migrations 040, 041, and 043 own these tables. The complete Workloads repository
 uses A3S ORM typed table definitions and query builders for ordinary CRUD,
 aggregate reads, the claim/slot JOIN, generation lookup, idempotency, and
 outbox writes. The same typed AST owns transaction-scoped advisory locks,
 targeted row locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding
 predicates. Architecture tests reject raw SQL or direct drivers anywhere in
-Workloads production persistence. The provider prepare/bind/release command
-path, resource-requirement compilation, Runtime allocation evidence, and
-process-death claim reconciliation are still open, so this is a persistence,
-inventory, and domain foundation rather than a completed `H0.1` rollout.
+Workloads production persistence.
+
+The current requirements compiler deterministically maps CPU, memory, and
+optional ephemeral storage to inventory-backed scalar slots and one topology
+digest. PID limits remain Runtime-local. Deployment Flow reserves before
+placement, skips a candidate only for a typed capacity conflict, and recovers
+the reservation-before-placement crash gap. A stopped normal path may cancel
+only an unissued `reserved_in_db` claim with database evidence. The Agent
+prepare/bind/release command path, Runtime allocation evidence, and
+process/provider reconciliation remain open, so `H0.1` is not complete.
 
 New deployment operations use `cloud.deployment@2`. The version 1 workflow is
 registered only to replay runs persisted before routed update semantics. At

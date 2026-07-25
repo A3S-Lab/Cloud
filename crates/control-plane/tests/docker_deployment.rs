@@ -1,6 +1,7 @@
 use a3s_cloud_contracts::{
     DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
-    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, NodeResourceInventory,
+    NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::EnrollmentToken;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
@@ -18,11 +19,11 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     OrganizationId, ProjectId, ResourceName, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    CreateDeploymentBundle, Deployment, DeploymentFlowConfig, DeploymentFlowRuntime,
-    DeploymentRequested, DeploymentStatus, HttpHealthCheck, IOciArtifactResolver,
-    IWorkloadRepository, InMemoryWorkloadRepository, OciArtifact, OciArtifactReference,
-    OciArtifactResolutionError, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
-    Workload, WorkloadRevision,
+    CreateDeploymentBundle, Deployment, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
+    IOciArtifactResolver, IWorkloadRepository, InMemoryResourceClaimRepository,
+    InMemoryWorkloadRepository, OciArtifact, OciArtifactReference, OciArtifactResolutionError,
+    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
 };
 use a3s_cloud_node_agent::{
     CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeRuntimeBinding,
@@ -75,11 +76,14 @@ async fn real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_th
     let node_port: Arc<dyn INodeRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
     let flow_runtime = DeploymentFlowRuntime::new(
-        workload_port,
-        Arc::new(UnusedArtifactResolver),
-        node_port,
-        control_port,
-        Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workload_port,
+            Arc::new(InMemoryResourceClaimRepository::new()),
+            Arc::new(UnusedArtifactResolver),
+            node_port,
+            control_port,
+            Arc::new(a3s_cloud_control_plane::modules::workloads::UnroutedDeploymentRouteUpdater),
+        ),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(30_000, 20_000, 5, 30_000, 10_000, 5, 20_000)?,
     )?;
@@ -612,12 +616,41 @@ async fn ready_node(
         )
         .await?;
     nodes
+        .record_resource_inventory(
+            NodeResourceInventory::new(
+                reservation.node.id.as_uuid(),
+                agent_instance_id,
+                1,
+                enrolled_at + Duration::milliseconds(1),
+                vec![
+                    NodeResourceSlot::new(
+                        ResourceKind::Cpu,
+                        "cpu/shared",
+                        ResourceAllocation::Scalar {
+                            amount: 8_000,
+                            unit: ResourceUnit::MilliCpu,
+                        },
+                    )?,
+                    NodeResourceSlot::new(
+                        ResourceKind::Memory,
+                        "memory/system",
+                        ResourceAllocation::Scalar {
+                            amount: 8 * 1024 * 1024 * 1024,
+                            unit: ResourceUnit::Byte,
+                        },
+                    )?,
+                ],
+            )?,
+            enrolled_at + Duration::milliseconds(2),
+        )
+        .await?;
+    nodes
         .record_heartbeat(NodeHeartbeatUpdate {
             node_id: reservation.node.id,
             agent_instance_id,
             agent_version: "0.1.0".into(),
             capabilities: stored_capabilities,
-            observed_at: enrolled_at + Duration::milliseconds(1),
+            observed_at: enrolled_at + Duration::milliseconds(3),
         })
         .await?;
     Ok((reservation.node.id, agent_instance_id))

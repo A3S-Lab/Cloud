@@ -76,8 +76,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   Runtime health evidence
 - **Managed Replica Foundation**: Persist an inference-neutral owner,
   effective placement policy, stable replica/member identity, exact deployment
-  binding, and fenced hard-resource claims without exposing Cloud placement
-  identity to Runtime
+  binding, current-inventory requirement compilation, shared scalar capacity,
+  and fenced hard-resource claims without exposing Cloud placement identity to
+  Runtime
 - **Managed Reachability**: Create tenant-scoped logical Gateway scopes, persist
   ordered physical membership and explicit rollout thresholds, verify domain
   ownership, provision TLS, compile complete expiring ACL snapshots from
@@ -144,18 +145,38 @@ placement state explicitly.
 
 Hard-resource reservations define canonical sorted slot requests and a durable
 claim state machine for database reservation, Agent preparation, Runtime
-binding, release, and operator-visible orphaning. Every slot has a monotonic
-generation and a new unguessable fence token. An orphan or timeout continues
-to block the slot; only exact Agent release, provider NotFound, or trusted
-compute-fencing evidence makes it reusable. Migrations 040 and 041 backfill the
-replica foundation and add claim, slot-evidence, and current-lease tables. The
-complete Workloads PostgreSQL repository now uses A3S ORM typed tables and
-builders for reads, JOINs, ordering, counts, inserts, updates, idempotency
-records, outbox writes, PostgreSQL row and advisory locks, `SKIP LOCKED`, and
-parameterized JSONPath Secret-binding predicates. No Workloads production
-persistence file uses raw SQL or a direct database driver; an architecture
-test enforces that boundary. In-memory and PostgreSQL 17 gates cover 100-way
-exact replay, competing reservations, fencing, and generation/token rotation.
+binding, release, and operator-visible orphaning. CPU, memory, and ephemeral
+storage are shared scalar capacities; accelerator, host-port, and volume slots
+remain exclusive. PostgreSQL serializes each slot, sums active shared
+allocations, rejects over-capacity reservations, and advances a monotonic slot
+generation with a new unguessable fence token. An orphan or timeout continues
+to block its allocation; only exact Agent release, provider NotFound, or
+trusted compute-fencing evidence makes it reusable.
+
+The deployment scheduler now compiles CPU, memory, and optional ephemeral
+storage requirements from the current Fleet inventory. Its PostgreSQL
+reservation transaction locks and verifies the exact inventory head, reserves
+capacity before persisting placement, and uses the Deployment ID as the
+deterministic Claim ID. Replay recovers a crash between reservation and node
+assignment from the durable claim, while a capacity conflict on one candidate
+continues to the next eligible node. PID limits remain Runtime-local because
+the current inventory contract has no PID slot. Cancellation, retirement, and
+stop may release a claim with database-only evidence only while it is still
+`reserved_in_db`; an issued, prepared, bound, or orphaned claim still requires
+Agent or trusted fencing evidence.
+
+Migrations 040 and 041 backfill the replica foundation and add claim,
+slot-evidence, and current-lease tables. Migration 043 replaces universal
+active-slot uniqueness with exclusive-kind uniqueness so shared capacities can
+carry multiple bounded claims. The complete Workloads PostgreSQL repository
+uses A3S ORM typed tables and builders for reads, JOINs, ordering, counts,
+inserts, updates, idempotency records, outbox writes, PostgreSQL row and
+advisory locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding
+predicates. No Workloads production persistence file uses raw SQL or a direct
+database driver; an architecture test enforces that boundary. In-memory and
+PostgreSQL 17 gates cover exact replay, competing exclusive and shared
+reservations, over-capacity rejection, stale inventory rejection, fencing,
+release, and generation/token rotation.
 
 Fleet now persists strict `NodeResourceInventory` snapshots, their normalized
 slots, and one current generation/digest head per enrolled node. The node agent
@@ -172,12 +193,13 @@ batches remain readable during migration. Migration 042 and the inventory
 persistence adapter use only typed A3S ORM tables, expressions, transactions,
 locks, inserts, updates, and joins. Contract, Agent, API, in-memory, and real
 PostgreSQL 17 gates cover canonical digests, restart reuse, concurrent replay,
-historical replay without head regression, and stale-heartbeat rejection.
+historical replay without head regression, stale-heartbeat rejection, and
+claim rejection after the inventory head advances.
 
-This does not complete `H0.1`: resource requirement compilation, Agent
-prepare/release commands and journal evidence, Runtime allocation evidence,
-and process-death claim reconciliation still have to converge through the
-ordinary deployment workflow before the provider-unit exit gate can pass.
+This does not complete `H0.1`: Agent prepare/release commands and journal
+enforcement, Runtime allocation-binding evidence, and process/provider crash
+reconciliation still have to converge through the ordinary deployment
+workflow before the provider-unit exit gate can pass.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to
