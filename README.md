@@ -232,6 +232,10 @@ then permits the competing Claim. The provider release gate requires the
 stable certification marker plus empty provider and Artifact inventories.
 `H0.1` is therefore implemented as a closed exact-SHA acceptance gate; `H0`
 continues with logical reachability and multi-node placement.
+The closing evidence is Cloud commit
+`5cd7c4eebc21905cb2758856d0e96b31a111116c` in
+[Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417),
+where both `Real Docker provider` and `Cloud consumer recovery` passed.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to

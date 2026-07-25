@@ -1338,11 +1338,13 @@ apply, stop, and release, exact bound-Claim adoption, healthy update
 stop-before-release ordering, release retry, Secret-rotation derivation through
 `cloud.deployment@3`, reservation-before-placement recovery, and
 activation-before-retirement process death on PostgreSQL 17. Deployment v1 and
-v2 remain registered only for persisted histories. `H0.1` is not yet marked
-complete because the combined isolated real-provider crash/replay certification
-must still record one provider unit for one replica generation and no
-prematurely reusable Claim; no application, protocol, journal,
-reconciliation, or persistence slice remains open.
+v2 remain registered only for persisted histories. `H0.1` is complete at Cloud
+commit
+`5cd7c4eebc21905cb2758856d0e96b31a111116c`. The exact
+[Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417)
+passed both `Real Docker provider` and `Cloud consumer recovery`, including the
+combined isolated process-death, Claim fencing, provider cleanup, and consumer
+restart gates.
 
 The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
 private target projection. A scope belongs to one organization, project, and

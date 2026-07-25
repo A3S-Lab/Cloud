@@ -352,6 +352,10 @@ higher-generation Agent release; only then may the competing Claim prepare.
 The provider gate requires one stable pass marker and zero provider or Artifact
 residue. `H0.1` is a closed exact-SHA acceptance gate; `H0.2` and `H0.3` remain
 the active production-scale foundations.
+The closing evidence is Cloud commit
+`5cd7c4eebc21905cb2758856d0e96b31a111116c` in
+[Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417);
+both the real-provider and Cloud-consumer jobs passed.
 
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
