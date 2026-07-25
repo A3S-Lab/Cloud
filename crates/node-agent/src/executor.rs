@@ -81,7 +81,7 @@ impl CommandExecutor {
             }
         };
         self.journal
-            .complete(envelope.command_id, Utc::now(), outcome)
+            .complete(envelope.command_id, command_timestamp(&envelope), outcome)
             .await
             .map_err(Into::into)
     }
@@ -100,7 +100,7 @@ impl CommandExecutor {
                 let active = self.journal.active_resource_claim_bindings().await?;
                 resource_claim::validate_prepare(request, &inventory, &active)?;
                 Ok(NodeCommandResult::ResourceClaimPrepared {
-                    prepared: NodeResourceClaimPrepared::new(request, Utc::now())
+                    prepared: NodeResourceClaimPrepared::new(request, command_timestamp(envelope))
                         .map_err(ResourceClaimExecutionError::Invalid)?,
                 })
             }
@@ -189,7 +189,7 @@ impl CommandExecutor {
                     .validate_resource_claim_release(request.as_ref().clone())
                     .await?;
                 Ok(NodeCommandResult::ResourceClaimReleased {
-                    released: NodeResourceClaimReleased::new(request, Utc::now())
+                    released: NodeResourceClaimReleased::new(request, command_timestamp(envelope))
                         .map_err(ResourceClaimExecutionError::Invalid)?,
                 })
             }
@@ -215,7 +215,7 @@ impl CommandExecutor {
                     state,
                     ready: state == GatewayAckState::Applied,
                     message,
-                    acknowledged_at: Utc::now(),
+                    acknowledged_at: command_timestamp(envelope),
                     management_protocol,
                 };
                 acknowledgement
@@ -238,6 +238,10 @@ impl CommandExecutor {
             .await
             .map_err(Into::into)
     }
+}
+
+fn command_timestamp(envelope: &NodeCommandEnvelope) -> chrono::DateTime<Utc> {
+    Utc::now().max(envelope.issued_at)
 }
 
 struct RuntimeOnlyGatewayInstaller;
@@ -767,6 +771,56 @@ mod tests {
             provider_attestation: None,
             failure: None,
         }
+    }
+
+    #[tokio::test]
+    async fn resource_claim_evidence_uses_the_command_time_floor() {
+        let directory = tempfile::tempdir().expect("resource claim journal");
+        let node_id = Uuid::now_v7();
+        let agent_instance_id = Uuid::now_v7();
+        let claim_id = Uuid::now_v7();
+        let inventory = claim_inventory(node_id, agent_instance_id);
+        let binding = claim_binding(claim_id, &inventory);
+        let authority: Arc<dyn NodeResourceInventoryAuthority> =
+            Arc::new(FixedInventoryAuthority { inventory });
+        let executor = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+            Arc::new(ClaimRuntime {
+                apply_calls: AtomicUsize::new(0),
+                stop_not_found: AtomicBool::new(false),
+            }),
+            gateway(),
+        )
+        .with_resource_inventory(authority);
+        let mut command = claim_command(
+            node_id,
+            claim_id,
+            1,
+            1,
+            NodeCommandPayload::ResourceClaimPrepare {
+                request: Box::new(NodeResourceClaimPrepare {
+                    schema: NodeResourceClaimPrepare::SCHEMA.into(),
+                    claim_generation: 1,
+                    claim_digest: format!("sha256:{}", "c".repeat(64)),
+                    binding,
+                }),
+            },
+        );
+        command.issued_at = Utc::now() + Duration::seconds(2);
+        command.not_after = command.issued_at + Duration::minutes(1);
+
+        let acknowledgement = executor.execute(command.clone()).await.expect("prepare");
+        acknowledgement
+            .validate_against(&command)
+            .expect("future-issued acknowledgement");
+        let NodeCommandOutcome::Succeeded { result } = acknowledgement.outcome else {
+            panic!("resource Claim prepare must succeed");
+        };
+        let NodeCommandResult::ResourceClaimPrepared { prepared } = result.as_ref() else {
+            panic!("resource Claim prepare returned the wrong result");
+        };
+        assert_eq!(prepared.prepared_at, command.issued_at);
+        assert_eq!(acknowledgement.completed_at, command.issued_at);
     }
 
     #[tokio::test]
