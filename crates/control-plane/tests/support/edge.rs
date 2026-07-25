@@ -1,7 +1,7 @@
 use a3s_boot::{BootRequest, CommandHandler, CqrsContext, HttpMethod, ModuleRef};
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
-    NodeCommandPayload, NodeGatewayAck,
+    NodeCommandPayload, NodeGatewayAck, RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
     DomainClaimChanged, GatewayRouteCutoverStaged, GatewayScopeCreated,
@@ -135,6 +135,23 @@ pub async fn exercise_edge_api(
         fixture.node_id.to_string()
     );
 
+    let runtime_unit_id = format!(
+        "workload:{}:revision:{}",
+        fixture.workload_id, fixture.workload_revision_id
+    );
+    let nodes: Arc<dyn INodeControlRepository> =
+        Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let target_observation = nodes
+        .latest_runtime_observation(
+            fixture.node_id,
+            &runtime_unit_id,
+            fixture.runtime_generation,
+        )
+        .await?
+        .ok_or("route fixture has no current Runtime observation")?;
+    let expected_upstream =
+        RuntimeServiceEndpoint::from_observation(&target_observation.observation, "http")?.origin;
+
     let collection_path = format!(
         "/api/v1/organizations/{}/projects/{}/environments/{}/routes",
         fixture.organization_id, fixture.project_id, fixture.environment_id
@@ -178,19 +195,16 @@ pub async fn exercise_edge_api(
     let route = &first_body["data"]["route"];
     assert_eq!(route["state"], "publishing");
     assert_eq!(route["gatewayScopeId"], gateway_scope_id);
-    assert_eq!(
-        route["runtimeUnitId"],
-        format!(
-            "workload:{}:revision:{}",
-            fixture.workload_id, fixture.workload_revision_id
-        )
-    );
+    assert_eq!(route["runtimeUnitId"], runtime_unit_id);
     assert_eq!(
         route["runtimeGeneration"],
         json!(fixture.runtime_generation)
     );
-    assert_eq!(route["upstreamOrigin"], "http://127.0.0.1:49152/");
-    assert!(route["targetObservedAt"].as_str().is_some());
+    assert_eq!(route["upstreamOrigin"], expected_upstream);
+    assert_eq!(
+        route["targetObservedAt"],
+        json!(target_observation.received_at)
+    );
     let route_id = field_uuid(route, "id")?;
     let node_id = NodeId::from_uuid(field_uuid(route, "gatewayNodeId")?);
     let command_id = NodeCommandId::from_uuid(field_uuid(route, "gatewayCommandId")?);
@@ -213,8 +227,6 @@ pub async fn exercise_edge_api(
     assert_eq!(detail.status(), 200);
     assert_eq!(response_json(&detail)?["data"]["state"], "publishing");
 
-    let nodes: Arc<dyn INodeControlRepository> =
-        Arc::new(PostgresNodeRepository::new(executor.clone()));
     let issued = nodes
         .find_command(node_id, command_id)
         .await?
