@@ -673,9 +673,40 @@ if [[ $suite == provider ]]; then
                 real_docker_passes_all_advertised_runtime_profiles \
                 -- --ignored --exact --nocapture --test-threads=1 \
         2>&1 | tee "$evidence/cargo-test.log"
-    test_status=${PIPESTATUS[0]}
+    runtime_test_status=${PIPESTATUS[0]}
+
+    timeout --signal=TERM --kill-after=30s 600s \
+        nsenter -t "$keeper_pid" -n -- \
+        env PATH="$cargo_path" \
+            A3S_CLOUD_TEST_DOCKER=1 \
+            A3S_CLOUD_TEST_DOCKER_SOCKET="$provider_host" \
+            A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER="$provider" \
+            A3S_CLOUD_TEST_ARTIFACT_STATE_ROOT="$artifact_state_root" \
+            A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$secret_memory_dir" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$target_dir" \
+            "$cargo_bin" test --manifest-path "$cloud/Cargo.toml" --locked \
+                -p a3s-cloud-node-agent \
+                --test docker_conformance \
+                resource_claims::real_docker_claim_journal_survives_agent_and_provider_process_death \
+                -- --ignored --exact --nocapture --test-threads=1 \
+        2>&1 | tee "$evidence/cargo-resource-claim-test.log"
+    resource_claim_test_status=${PIPESTATUS[0]}
     set -e
+    printf '%s\n' "$runtime_test_status" >"$evidence/cargo-runtime-test-status.txt"
+    printf '%s\n' "$resource_claim_test_status" \
+        >"$evidence/cargo-resource-claim-test-status.txt"
+    if [[ $runtime_test_status -eq 0 && $resource_claim_test_status -eq 0 ]]; then
+        test_status=0
+    else
+        test_status=1
+    fi
     printf '%s\n' "$test_status" >"$evidence/cargo-test-status.txt"
+    grep -F 'A3S_RESOURCE_CLAIM_CRASH_CERTIFICATION_PASS ' \
+        "$evidence/cargo-resource-claim-test.log" \
+        >"$evidence/resource-claim-crash-certification.txt"
+    [[ $(wc -l <"$evidence/resource-claim-crash-certification.txt") -eq 1 ]] || \
+        die "resource Claim crash certification emitted an invalid pass marker"
 else
     postgres_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$postgres")
     nats_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$nats")

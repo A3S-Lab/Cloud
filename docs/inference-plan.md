@@ -558,6 +558,14 @@ prepare, bind, stop/remove, and release state from its command journal; release
 advances Claim generation and digest, and a rejected `not_found` or
 `stale_generation` stop is never accepted as fencing evidence.
 
+The generic `H0.1` provider gate exercises that exact journal against real
+Docker across both daemon replacement and Agent `SIGKILL`. It requires one
+provider unit before and after replay, exact allocation-binding evidence,
+release and competing-capacity rejection before Runtime fencing, real
+stop/removal, exact Agent release, successful reuse only afterward, and zero
+provider residue. Accelerator claims in `I0.1` extend this accepted lifecycle
+rather than introducing another ownership path.
+
 Hard filters are evaluated before scoring:
 
 1. tenant quota, node pool, ready/fresh/non-draining state;

@@ -192,12 +192,24 @@ cargo test -p a3s-cloud-control-plane \
   --locked -- --nocapture --test-threads=1
 ```
 
-When the isolated Cloud consumer environment enables Docker, the same fixture
-executes prepare and bound apply through the real node `CommandExecutor` and
-uses current inventory evidence. The remaining `H0.1` certification is a
-dedicated process-death run that records one real provider unit for one replica
-generation and proves no Claim becomes reusable before exact Runtime fencing
-and Agent release.
+The provider suite also runs
+`resource_claims::real_docker_claim_journal_survives_agent_and_provider_process_death`
+as a separate mandatory test. A private child executes the real
+`CommandExecutor` and `FileCommandJournal`, pauses after Docker creates the
+bound unit but before Runtime or command completion, and leaves both receipts
+durably pending. The parent replaces the isolated Docker daemon process, proves
+the child is still paused, sends `SIGKILL`, and reconstructs Runtime plus the
+Agent journal. Exact replay must adopt the original sole container and return
+the matching Claim ID and binding digest. Premature release and a
+capacity-conflicting Claim must fail until real Runtime stop/removal and exact
+Agent release complete; the competing Claim must then prepare successfully.
+
+The isolated runner accepts this test only when it emits exactly one
+`A3S_RESOURCE_CLAIM_CRASH_CERTIFICATION_PASS` marker and the ordinary provider,
+Artifact, mount, loop-device, network, and process cleanup audits remain empty.
+This is the complete `H0.1` process-death acceptance boundary; the
+Secret-rotation crash probe remains separate evidence for Secret transport and
+Runtime receipt recovery.
 
 ## Cloud Secret and log acceptance
 

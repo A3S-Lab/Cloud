@@ -14,6 +14,8 @@ mod networking;
 mod outputs;
 #[path = "docker_conformance/recovery.rs"]
 mod recovery;
+#[path = "docker_conformance/resource_claims.rs"]
+mod resource_claims;
 #[path = "docker_conformance/resources.rs"]
 mod resources;
 #[path = "docker_conformance/secrets.rs"]

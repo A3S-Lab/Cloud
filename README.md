@@ -77,8 +77,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Managed Replica Foundation**: Persist an inference-neutral owner,
   effective placement policy, stable replica/member identity, exact deployment
   binding, current-inventory requirement compilation, shared scalar capacity,
-  Agent-journaled Claim preparation and release, and Runtime allocation-binding
-  evidence without exposing Cloud placement identity to Runtime
+  Agent-journaled Claim preparation and release, Runtime allocation-binding
+  evidence, and process-death fencing without exposing Cloud placement identity
+  to Runtime
 - **Managed Reachability**: Create tenant-scoped logical Gateway scopes, persist
   ordered physical membership and explicit rollout thresholds, verify domain
   ownership, provision TLS, compile complete expiring ACL snapshots from
@@ -216,9 +217,21 @@ PostgreSQL process-death tests cover reservation-before-placement,
 activation-before-retirement, Secret-rotation recovery, and stop-before-release
 ordering. `cloud.deployment@1` and `@2` remain registered only to replay
 persisted histories; all newly created, updated, rolled-back, source-derived,
-and Secret-rotation deployments use v3. The `H0.1` implementation is complete,
-but the sub-gate remains in progress until its isolated real-provider
-process-death certification is recorded.
+and Secret-rotation deployments use v3.
+
+The isolated Docker provider suite now makes the `H0.1` process-death
+certification mandatory. A child node Agent persists Claim prepare, starts the
+bound apply, creates one real container, and pauses before either the Runtime
+receipt or command acknowledgement can complete. The gate replaces the
+isolated provider process, sends `SIGKILL` to the child, reconstructs both
+Runtime state and the Agent command journal, and replays the exact command. It
+requires the original single provider unit and exact Claim ID/binding-digest
+evidence, rejects release and a capacity-conflicting Claim before fencing,
+executes real stop and removal, accepts the higher-generation release, and only
+then permits the competing Claim. The provider release gate requires the
+stable certification marker plus empty provider and Artifact inventories.
+`H0.1` is therefore implemented as a closed exact-SHA acceptance gate; `H0`
+continues with logical reachability and multi-node placement.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to

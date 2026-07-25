@@ -341,10 +341,17 @@ boundary, reservation-before-placement recovery, activation-before-retirement
 process death, healthy update stop-before-release ordering, and Secret-rotation
 replay.
 
-`H0.1` remains in progress only for the isolated real-provider process-death
-certification that proves one provider unit for one replica generation and no
-prematurely reusable Claim. Its application, protocol, journal, reconciliation,
-and persistence slices are implemented.
+The isolated real-provider gate now closes the `H0.1` process boundary. It
+persists prepare in the real Agent journal, pauses a bound apply after Docker
+creates one provider unit but before acknowledgement, replaces the provider
+process, kills the Agent process, and reconstructs both Runtime and command
+journals. Exact replay must reattach the same sole container and carry the
+matching Claim ID and binding digest. Release and a capacity-conflicting Claim
+must remain rejected until real Runtime stop/removal and the exact
+higher-generation Agent release; only then may the competing Claim prepare.
+The provider gate requires one stable pass marker and zero provider or Artifact
+residue. `H0.1` is a closed exact-SHA acceptance gate; `H0.2` and `H0.3` remain
+the active production-scale foundations.
 
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
@@ -423,9 +430,9 @@ The default portfolio priority is:
 2. finish the remaining `G0` external private-provider and signed-evidence
    process-death gates;
 3. advance `C0.1` and the first `S0` foundation independently when staffed;
-4. certify the implemented `H0.1` Claim lifecycle against the isolated real
-   provider while beginning `I0.0`, then follow the ordered inference slices
-   without bypassing their generic platform dependencies;
+4. preserve the closed `H0.1` real-provider Claim certification while beginning
+   `I0.0`, then follow the ordered inference slices without bypassing their
+   generic platform dependencies;
 5. start `P0` and `A0` only on the verified `G0` contracts they consume;
 6. advance `H0.2` and `H0.3` as real consumers require target projection and
    multi-node placement; and
