@@ -1,6 +1,9 @@
 use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::shared_kernel::domain::{NodeCommandId, NodeId};
-use a3s_cloud_contracts::{NodeCommandEnvelope, NodeCommandMetadata, NodeCommandPayload};
+use a3s_cloud_contracts::{
+    NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
+    NodeCommandPayload, NodeCommandResult,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -86,6 +89,29 @@ impl NodeCommand {
             self.payload.clone(),
         )
     }
+
+    pub fn canonicalize_acknowledgement(mut acknowledgement: NodeCommandAck) -> NodeCommandAck {
+        acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
+        if let NodeCommandOutcome::Succeeded { result } = &mut acknowledgement.outcome {
+            match result.as_mut() {
+                NodeCommandResult::ResourceClaimPrepared { prepared } => {
+                    prepared.prepared_at = canonical_timestamp(prepared.prepared_at);
+                }
+                NodeCommandResult::ResourceClaimReleased { released } => {
+                    released.released_at = canonical_timestamp(released.released_at);
+                }
+                NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
+                    acknowledgement.acknowledged_at =
+                        canonical_timestamp(acknowledgement.acknowledged_at);
+                }
+                NodeCommandResult::RuntimeApplied { .. }
+                | NodeCommandResult::RuntimeInspected { .. }
+                | NodeCommandResult::RuntimeStopped { .. }
+                | NodeCommandResult::RuntimeRemoved { .. } => {}
+            }
+        }
+        acknowledgement
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,7 +128,10 @@ pub struct NodeCommandDraft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::NodeCommandPayload;
+    use a3s_cloud_contracts::{
+        NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+        NodeResourceClaimPrepared,
+    };
     use chrono::{TimeZone, Timelike};
 
     #[test]
@@ -130,5 +159,44 @@ mod tests {
         assert_eq!(command, replay);
         assert_eq!(command.issued_at.nanosecond(), 123_456_000);
         assert_eq!(command.not_after.nanosecond(), 123_456_000);
+    }
+
+    #[test]
+    fn acknowledgement_evidence_is_canonicalized_with_its_completion() {
+        let timestamp = Utc
+            .timestamp_opt(1_700_000_000, 123_456_789)
+            .single()
+            .expect("timestamp");
+        let acknowledgement = NodeCommand::canonicalize_acknowledgement(NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: Uuid::now_v7(),
+            lease_id: Uuid::now_v7(),
+            node_id: Uuid::now_v7(),
+            sequence: 1,
+            payload_digest: format!("sha256:{}", "a".repeat(64)),
+            completed_at: timestamp,
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::ResourceClaimPrepared {
+                    prepared: NodeResourceClaimPrepared {
+                        schema: NodeResourceClaimPrepared::SCHEMA.into(),
+                        claim_id: Uuid::now_v7(),
+                        claim_generation: 1,
+                        claim_digest: format!("sha256:{}", "b".repeat(64)),
+                        binding_digest: format!("sha256:{}", "c".repeat(64)),
+                        slots: Vec::new(),
+                        prepared_at: timestamp,
+                    },
+                }),
+            },
+        });
+
+        let NodeCommandOutcome::Succeeded { result } = acknowledgement.outcome else {
+            panic!("acknowledgement must succeed");
+        };
+        let NodeCommandResult::ResourceClaimPrepared { prepared } = result.as_ref() else {
+            panic!("acknowledgement must contain prepared Claim evidence");
+        };
+        assert_eq!(acknowledgement.completed_at.nanosecond(), 123_456_000);
+        assert_eq!(prepared.prepared_at, acknowledgement.completed_at);
     }
 }

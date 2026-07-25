@@ -464,10 +464,10 @@ pub(super) async fn lease(
 
 pub(super) async fn acknowledge(
     executor: &PostgresExecutor,
-    mut acknowledgement: NodeCommandAck,
+    acknowledgement: NodeCommandAck,
     _received_at: DateTime<Utc>,
 ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
-    acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
+    let acknowledgement = NodeCommand::canonicalize_acknowledgement(acknowledgement);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

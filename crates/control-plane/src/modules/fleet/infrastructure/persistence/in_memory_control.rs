@@ -276,10 +276,10 @@ impl INodeControlRepository for InMemoryNodeRepository {
 
     async fn acknowledge_command(
         &self,
-        mut acknowledgement: NodeCommandAck,
+        acknowledgement: NodeCommandAck,
         _received_at: DateTime<Utc>,
     ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
-        acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
+        let acknowledgement = NodeCommand::canonicalize_acknowledgement(acknowledgement);
         let mut state = self.state.write().await;
         let stored = state
             .commands
