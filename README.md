@@ -67,6 +67,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Outbound Node Control**: Enroll Linux nodes, rotate mTLS identities, lease
   idempotent commands, and receive observations without opening inbound node
   management ports
+- **Versioned Node Inventory**: Detect real host CPU and state-filesystem
+  capacity, report Linux memory when available, preserve content-addressed
+  generations across Agent restarts, and bind v2 heartbeats to the current
+  Fleet snapshot
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
@@ -138,27 +142,42 @@ state; managed Workloads reject direct mutations that do not carry the exact
 owner and policy. Workload list/detail responses expose this control and
 placement state explicitly.
 
-Hard-resource reservations use canonical sorted slot requests and a durable
-claim state machine from database reservation through Agent preparation,
-Runtime binding, release, or operator-visible orphaning. Every slot has a
-monotonic generation and a new unguessable fence token. An orphan or timeout
-continues to block the slot; only exact Agent release, provider NotFound, or
-trusted compute-fencing evidence makes it reusable. Migrations 040 and 041
-backfill the replica foundation and add claim, slot-evidence, and current-lease
-tables. The complete Workloads PostgreSQL repository now uses A3S ORM typed
-tables and builders for reads, JOINs, ordering, counts, inserts, updates,
-idempotency records, outbox writes, PostgreSQL row and advisory locks,
-`SKIP LOCKED`, and parameterized JSONPath Secret-binding predicates. No
-Workloads production persistence file uses raw SQL or a direct database
-driver; an architecture test enforces that boundary. In-memory and PostgreSQL
-17 gates cover 100-way exact replay, competing reservations, fencing, and
-generation/token rotation.
+Hard-resource reservations define canonical sorted slot requests and a durable
+claim state machine for database reservation, Agent preparation, Runtime
+binding, release, and operator-visible orphaning. Every slot has a monotonic
+generation and a new unguessable fence token. An orphan or timeout continues
+to block the slot; only exact Agent release, provider NotFound, or trusted
+compute-fencing evidence makes it reusable. Migrations 040 and 041 backfill the
+replica foundation and add claim, slot-evidence, and current-lease tables. The
+complete Workloads PostgreSQL repository now uses A3S ORM typed tables and
+builders for reads, JOINs, ordering, counts, inserts, updates, idempotency
+records, outbox writes, PostgreSQL row and advisory locks, `SKIP LOCKED`, and
+parameterized JSONPath Secret-binding predicates. No Workloads production
+persistence file uses raw SQL or a direct database driver; an architecture
+test enforces that boundary. In-memory and PostgreSQL 17 gates cover 100-way
+exact replay, competing reservations, fencing, and generation/token rotation.
 
-This does not complete `H0.1`: Fleet inventory ingestion, resource requirement
-compilation, Agent prepare/release commands and journal evidence, Runtime
-allocation evidence, and process-death reconciliation still have to converge
-through the ordinary deployment workflow before the provider-unit exit gate
-can pass.
+Fleet now persists strict `NodeResourceInventory` snapshots, their normalized
+slots, and one current generation/digest head per enrolled node. The node agent
+detects CPU and state-filesystem capacity, adds Linux `MemTotal` when the host
+can report it, and deliberately omits accelerators, ports, volumes, memory on
+unsupported hosts, and networking it cannot prove. It stores the canonical
+snapshot locally, keeps its generation across restart, and advances that
+generation only when slot content changes. The authenticated
+`POST /v1/node-control/inventories` endpoint accepts exact replay and exact
+next-generation content changes while rejecting skips, reused generations, and
+identity conflicts. New v2 observation batches are accepted only when their
+heartbeat references the current inventory generation and digest; legacy v1
+batches remain readable during migration. Migration 042 and the inventory
+persistence adapter use only typed A3S ORM tables, expressions, transactions,
+locks, inserts, updates, and joins. Contract, Agent, API, in-memory, and real
+PostgreSQL 17 gates cover canonical digests, restart reuse, concurrent replay,
+historical replay without head regression, and stale-heartbeat rejection.
+
+This does not complete `H0.1`: resource requirement compilation, Agent
+prepare/release commands and journal evidence, Runtime allocation evidence,
+and process-death claim reconciliation still have to converge through the
+ordinary deployment workflow before the provider-unit exit gate can pass.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to
@@ -483,7 +502,7 @@ A3S Boot control-plane API
 node agent
         +----> A3S Runtime ----> Docker / containerd / A3S Box
         +----> A3S Gateway ----> active edge revision
-        +----> observations and durable acknowledgements
+        +----> inventories, observations, and durable acknowledgements
 ```
 
 | Component | Responsibility |
@@ -515,7 +534,7 @@ credential values do not belong in ACL.
 | --- | --- |
 | `server`, `auth`, `postgres` | API role, bootstrap, and durable state |
 | `events`, `operations` | Outbox publication and durable operation timing |
-| `node_control`, `fleet` | Outbound mTLS protocol, leases, and observations |
+| `node_control`, `fleet` | Outbound mTLS protocol, leases, inventories, and observations |
 | `deployments`, `builds`, `artifacts` | Workload and source-build execution bounds |
 | `registry`, `sources` | OCI publication and GitHub delivery policy |
 | `edge`, `gateway` | Route compilation, certificates, snapshot validity, and node-local native Gateway application |

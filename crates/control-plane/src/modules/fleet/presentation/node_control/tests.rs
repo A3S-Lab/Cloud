@@ -22,9 +22,11 @@ use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCertificateRotationRequest,
     NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch,
-    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
+    NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeHeartbeatV2,
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
+    NodeObservationBatch, NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolError,
+    NodeProtocolErrorCode, NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
+    ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
 };
 use a3s_cloud_node_agent::{EnrolledNodeIdentity, FileNodeIdentityStore, NodeIdentityState};
 use a3s_runtime::contract::{
@@ -329,6 +331,87 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .expect("replayed observation receipt");
     assert_eq!(replayed_observation.accepted_reports, 0);
     assert_eq!(replayed_observation.replayed_reports, 1);
+
+    let inventory = NodeResourceInventory::new(
+        node_id,
+        agent_instance_id,
+        1,
+        Utc::now(),
+        vec![NodeResourceSlot::new(
+            ResourceKind::Cpu,
+            "cpu/shared",
+            ResourceAllocation::Scalar {
+                amount: 2_000,
+                unit: ResourceUnit::MilliCpu,
+            },
+        )
+        .expect("CPU inventory slot")],
+    )
+    .expect("resource inventory");
+    let inventory_endpoint = format!(
+        "https://localhost:{}/v1/node-control/inventories",
+        address.port()
+    );
+    let first_inventory = client
+        .post(&inventory_endpoint)
+        .json(&inventory)
+        .send()
+        .await
+        .expect("record resource inventory")
+        .json::<NodeResourceInventoryReceipt>()
+        .await
+        .expect("resource inventory receipt");
+    assert!(!first_inventory.replayed);
+    let replayed_inventory = client
+        .post(&inventory_endpoint)
+        .json(&inventory)
+        .send()
+        .await
+        .expect("replay resource inventory")
+        .json::<NodeResourceInventoryReceipt>()
+        .await
+        .expect("replayed resource inventory receipt");
+    assert!(replayed_inventory.replayed);
+
+    let v2_observed_at = Utc::now();
+    let v2_heartbeat = NodeObservationBatchV2 {
+        schema: NodeObservationBatchV2::SCHEMA.into(),
+        node_id,
+        agent_instance_id,
+        sent_at: v2_observed_at,
+        heartbeat: NodeHeartbeatV2 {
+            schema: NodeHeartbeatV2::SCHEMA.into(),
+            node_id,
+            agent_instance_id,
+            observed_at: v2_observed_at,
+            agent_version: "0.1.0".into(),
+            runtime_capabilities: capabilities(),
+            inventory: inventory.reference(),
+        },
+        observations: Vec::new(),
+    };
+    let v2_receipt = client
+        .post(&observations_endpoint)
+        .json(&v2_heartbeat)
+        .send()
+        .await
+        .expect("record v2 heartbeat")
+        .json::<NodeObservationReceipt>()
+        .await
+        .expect("v2 heartbeat receipt");
+    assert_eq!(v2_receipt.accepted_reports, 0);
+    let mut unknown_inventory = v2_heartbeat;
+    unknown_inventory.heartbeat.inventory.generation = 2;
+    assert_eq!(
+        client
+            .post(&observations_endpoint)
+            .json(&unknown_inventory)
+            .send()
+            .await
+            .expect("reject unknown inventory reference")
+            .status(),
+        reqwest::StatusCode::CONFLICT
+    );
 
     let gateway_issued_at = Utc::now();
     let gateway_not_after = gateway_issued_at + Duration::minutes(1);

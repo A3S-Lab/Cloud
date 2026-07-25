@@ -11,6 +11,7 @@ mod gateway_certificate;
 mod identity;
 mod journal;
 mod log_shipper;
+mod resource_inventory;
 mod secret;
 mod state_file;
 
@@ -37,6 +38,7 @@ pub use identity::{
 };
 pub use journal::{CommandJournalError, FileCommandJournal, JournalDecision, RuntimeLogTarget};
 pub use log_shipper::LogShippingError;
+pub use resource_inventory::ResourceInventoryError;
 pub use secret::{NodeSecretTransport, SecretMaterial};
 
 use a3s_runtime::ProviderId;

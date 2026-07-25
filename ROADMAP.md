@@ -258,7 +258,7 @@ not a product capability until restore passes against a clean environment.
 
 | Sub-gate | Foundation | Required evidence |
 | --- | --- | --- |
-| `H0.1` | Managed-owner references, durable replica identity, effective placement policy, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
+| `H0.1` | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
 | `H0.3` | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
 | `H0.4` | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
@@ -289,10 +289,24 @@ direct drivers anywhere in Workloads production persistence. A PostgreSQL 17
 gate proves 100-way exact replay, 100-way competing reservation, orphan
 blocking, and generation/token rotation after fencing.
 
-`H0.1` remains in progress. The open exit work is Fleet inventory and
-requirement compilation, Agent-side prepare/release journal enforcement,
-Runtime allocation evidence, deployment-flow integration, and process-death
-reconciliation proving one provider unit for one replica generation.
+Migration 042 adds strict, immutable Fleet inventory snapshots, normalized
+slots, and one current generation/digest head per enrolled node. The node agent
+persists its canonical inventory across restart, advances generation only for
+changed slot content, reports detected CPU and state-filesystem capacity plus
+Linux memory when available, and omits resources it cannot prove. The
+authenticated inventory endpoint accepts exact and historical replay without
+regressing the current head, requires exact next-generation content changes,
+and rejects identity conflicts. New v2 heartbeats must reference the current
+inventory while legacy v1 batches remain readable during migration. The
+PostgreSQL adapter uses only typed A3S ORM tables and builders, and the real
+PostgreSQL 17 gate verifies concurrent replay, recovery, head monotonicity, and
+stale-heartbeat rejection.
+
+`H0.1` remains in progress. The open exit work is requirement compilation
+against the current Fleet inventory, Agent-side prepare/release journal
+enforcement, Runtime allocation evidence, deployment-flow integration, and
+process-death reconciliation proving one provider unit for one replica
+generation.
 
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
@@ -371,8 +385,9 @@ The default portfolio priority is:
 2. finish the remaining `G0` external private-provider and signed-evidence
    process-death gates;
 3. advance `C0.1` and the first `S0` foundation independently when staffed;
-4. begin `I0.0` plus `H0.1`, then follow the ordered inference slices without
-   bypassing their generic platform dependencies;
+4. finish the remaining `H0.1` claim-command, Runtime-binding, and
+   reconciliation work while beginning `I0.0`, then follow the ordered
+   inference slices without bypassing their generic platform dependencies;
 5. start `P0` and `A0` only on the verified `G0` contracts they consume;
 6. advance `H0.2` and `H0.3` as real consumers require target projection and
    multi-node placement; and

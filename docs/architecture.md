@@ -433,6 +433,24 @@ generation, member, node, placement generation, and opaque Runtime unit
 identity. Runtime and Gateway never receive organization, logical placement,
 replica, member, or claim identities.
 
+Fleet separately owns immutable node resource inventories. One strict snapshot
+contains an enrolled node and Agent identity, positive generation,
+content-addressed digest, observation time, and a canonical sorted set of
+stable resource slots. The digest covers only the versioned canonical slot
+content, so the same capacity remains addressable across Agent restart.
+Migration 042 persists every historical snapshot, normalized slots, and one
+current head. An exact historical replay is accepted without moving that head;
+a new snapshot must advance generation exactly once, advance observation time,
+and change content.
+
+The node agent currently proves host CPU and state-filesystem capacity and
+Linux `MemTotal` when available. It omits memory on unsupported hosts and never
+fabricates accelerators, ports, volumes, or networking. Its local secure state
+retains inventory generation and digest across restart and advances them only
+when the canonical slots change. A v2 heartbeat is accepted only when it binds
+the current Fleet generation and digest for that exact Agent identity. Legacy
+v1 observation batches remain readable during the protocol migration.
+
 Hard resources are reserved by an independent Workloads repository. A
 canonical request names the exact stable slots and allocation shapes. The
 repository transaction assigns each slot a monotonically increasing generation
@@ -463,8 +481,9 @@ outbox writes. The same typed AST owns transaction-scoped advisory locks,
 targeted row locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding
 predicates. Architecture tests reject raw SQL or direct drivers anywhere in
 Workloads production persistence. The provider prepare/bind/release command
-path is still open, so this is a persistence and domain foundation rather than
-a completed `H0.1` rollout.
+path, resource-requirement compilation, Runtime allocation evidence, and
+process-death claim reconciliation are still open, so this is a persistence,
+inventory, and domain foundation rather than a completed `H0.1` rollout.
 
 New deployment operations use `cloud.deployment@2`. The version 1 workflow is
 registered only to replay runs persisted before routed update semantics. At
@@ -530,10 +549,11 @@ consumer gate.
 
 ## 7. Node agent and control protocol
 
-The node agent is intentionally small. It discovers provider capabilities,
-leases commands, calls the local Runtime provider, persists command outcomes,
-reports observations, streams bounded log chunks, and publishes local Gateway
-snapshots. It does not schedule workloads or evaluate tenant authorization.
+The node agent is intentionally small. It discovers provider capabilities and
+provable host capacity, leases commands, calls the local Runtime provider,
+persists command outcomes, reports inventories and observations, streams
+bounded log chunks, and publishes local Gateway snapshots. It does not
+schedule workloads or evaluate tenant authorization.
 
 Enrollment uses a short-lived one-time token. The node creates its private key
 locally and exchanges a proof for a short-lived client certificate. Normal
@@ -542,6 +562,7 @@ traffic is outbound mutually authenticated HTTPS:
 ```text
 POST /v1/node-control/commands:lease       # bounded long poll
 POST /v1/node-control/commands/{id}:ack
+POST /v1/node-control/inventories
 POST /v1/node-control/observations
 POST /v1/node-control/log-chunks
 POST /v1/node-control/gateway-acks
@@ -554,6 +575,15 @@ A command envelope contains `command_id`, `node_id`, `sequence`,
 acknowledgement exists. The agent rejects expired, regressed, mismatched, or
 digest-conflicting commands and returns the previous result for an exact
 duplicate.
+
+Before sending a v2 observation batch, the agent detects its current resource
+slots, atomically restores or advances its local inventory record, and reports
+that exact snapshot through the authenticated inventory endpoint. The control
+plane accepts exact replay, rejects skipped or content-conflicting generations,
+and returns a receipt bound to the same node, generation, and digest. Only
+after that receipt does the Agent send a heartbeat referencing the inventory.
+The control-plane transaction rejects an unknown or stale reference instead of
+updating node observations against ambiguous capacity.
 
 Gateway publication is a distinct node command and never enters A3S Runtime.
 Its payload carries one complete ACL snapshot, a positive revision, the

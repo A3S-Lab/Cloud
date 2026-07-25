@@ -1,6 +1,10 @@
+mod inventory;
 mod observations;
 mod telemetry;
 
+pub(super) use inventory::{
+    current as current_resource_inventory, record as record_resource_inventory,
+};
 pub(super) use observations::{latest_runtime_observation, record_observations};
 pub(super) use telemetry::{
     compact_log_tombstones, list_log_chunks, list_log_chunks_for_retention,
@@ -17,7 +21,8 @@ use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
     NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange, NodeLogCompactionResult,
-    NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget, RuntimeObservationRecord,
+    NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget, NodeObservationSubmission,
+    RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -26,7 +31,8 @@ use crate::modules::shared_kernel::domain::{
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayManagementProtocolDiscovery, NodeCommandAck, NodeCommandLeaseRequest,
     NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
+    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatchEnvelope,
+    NodeObservationReceipt,
 };
 use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
 use a3s_runtime::contract::RuntimeLogDiscontinuityReason;

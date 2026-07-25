@@ -391,6 +391,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/041_hard_resource_claims.sql"
             )),
         ),
+        Migration::new(
+            "042",
+            "node resource inventories",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/042_node_resource_inventories.sql"
+            )),
+        ),
     ]
 }
 

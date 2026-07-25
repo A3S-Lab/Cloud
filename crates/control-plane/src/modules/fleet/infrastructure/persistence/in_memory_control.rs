@@ -5,7 +5,7 @@ use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
     NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange,
     NodeLogCompactionResult, NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget,
-    RuntimeObservationRecord,
+    NodeObservationSubmission, NodeResourceInventoryRecord, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -13,8 +13,9 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome,
-    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatch,
-    NodeObservationReceipt, RuntimeObservationReport,
+    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatchEnvelope,
+    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
+    RuntimeObservationReport,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -346,29 +347,25 @@ impl INodeControlRepository for InMemoryNodeRepository {
 
     async fn record_observations(
         &self,
-        mut batch: NodeObservationBatch,
+        batch: NodeObservationBatchEnvelope,
         received_at: DateTime<Utc>,
     ) -> Result<NodeObservationReceipt, RepositoryError> {
-        batch.sent_at = canonical_timestamp(batch.sent_at);
-        batch.heartbeat.observed_at = canonical_timestamp(batch.heartbeat.observed_at);
-        for report in &mut batch.observations {
-            report.observed_at = canonical_timestamp(report.observed_at);
-        }
+        let batch =
+            NodeObservationSubmission::try_from(batch).map_err(RepositoryError::Conflict)?;
         let _received_at = canonical_timestamp(received_at);
-        batch.validate().map_err(RepositoryError::Conflict)?;
         let capabilities = NodeCapabilities::new(
-            batch.heartbeat.runtime_capabilities.provider_id.to_string(),
-            batch.heartbeat.runtime_capabilities.provider_build.clone(),
-            serde_json::to_value(&batch.heartbeat.runtime_capabilities)
+            batch.runtime_capabilities.provider_id.to_string(),
+            batch.runtime_capabilities.provider_build.clone(),
+            serde_json::to_value(&batch.runtime_capabilities)
                 .map_err(|error| RepositoryError::Storage(error.to_string()))?,
         )
         .map_err(RepositoryError::Conflict)?;
         let update = crate::modules::fleet::domain::repositories::NodeHeartbeatUpdate {
             node_id: NodeId::from_uuid(batch.node_id),
             agent_instance_id: batch.agent_instance_id,
-            agent_version: batch.heartbeat.agent_version.clone(),
+            agent_version: batch.agent_version.clone(),
             capabilities,
-            observed_at: batch.heartbeat.observed_at,
+            observed_at: batch.heartbeat_observed_at,
         };
         let mut state = self.state.write().await;
         let node_key = state
@@ -384,6 +381,28 @@ impl INodeControlRepository for InMemoryNodeRepository {
                 .ok_or_else(|| RepositoryError::Storage("observation node disappeared".into()))?,
             &update,
         )?;
+        if let Some(reference) = &batch.inventory {
+            let current = state
+                .inventory_heads
+                .get(&NodeId::from_uuid(batch.node_id))
+                .and_then(|generation| {
+                    state
+                        .resource_inventories
+                        .get(&(NodeId::from_uuid(batch.node_id), *generation))
+                })
+                .ok_or_else(|| {
+                    RepositoryError::Conflict(
+                        "node heartbeat references an unknown resource inventory".into(),
+                    )
+                })?;
+            if current.inventory.reference() != *reference
+                || current.inventory.agent_instance_id != batch.agent_instance_id
+            {
+                return Err(RepositoryError::Conflict(
+                    "node heartbeat does not reference the current resource inventory".into(),
+                ));
+            }
+        }
 
         let mut new_reports = Vec::new();
         let mut replayed_reports = 0_usize;
@@ -427,7 +446,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
         let receipt = NodeObservationReceipt {
             schema: NodeObservationReceipt::SCHEMA.into(),
             node_id: batch.node_id,
-            heartbeat_observed_at: batch.heartbeat.observed_at,
+            heartbeat_observed_at: batch.heartbeat_observed_at,
             accepted_reports: u16::try_from(new_reports.len()).map_err(|_| {
                 RepositoryError::Storage("observation acceptance count overflowed".into())
             })?,
@@ -437,6 +456,108 @@ impl INodeControlRepository for InMemoryNodeRepository {
         };
         receipt.validate().map_err(RepositoryError::Storage)?;
         Ok(receipt)
+    }
+
+    async fn record_resource_inventory(
+        &self,
+        mut inventory: NodeResourceInventory,
+        received_at: DateTime<Utc>,
+    ) -> Result<NodeResourceInventoryReceipt, RepositoryError> {
+        inventory.validate().map_err(RepositoryError::Conflict)?;
+        inventory.observed_at = canonical_timestamp(inventory.observed_at);
+        let received_at = canonical_timestamp(received_at);
+        inventory.validate().map_err(RepositoryError::Conflict)?;
+        let node_id = NodeId::from_uuid(inventory.node_id);
+        let mut state = self.state.write().await;
+        let node = state
+            .nodes
+            .values()
+            .find(|node| node.id == node_id)
+            .ok_or(RepositoryError::NotFound)?;
+        if node.state == NodeState::Revoked {
+            return Err(RepositoryError::NotFound);
+        }
+        if node.agent_instance_id != inventory.agent_instance_id {
+            return Err(RepositoryError::Conflict(
+                "resource inventory agent identity does not match the enrolled node".into(),
+            ));
+        }
+        if let Some(existing) = state
+            .resource_inventories
+            .get(&(node_id, inventory.generation))
+        {
+            if existing.inventory != inventory {
+                return Err(RepositoryError::Conflict(
+                    "resource inventory generation was reused with different content".into(),
+                ));
+            }
+            return Ok(resource_inventory_receipt(&inventory, true));
+        }
+        match state
+            .inventory_heads
+            .get(&node_id)
+            .and_then(|generation| state.resource_inventories.get(&(node_id, *generation)))
+        {
+            Some(current) => {
+                let next_generation =
+                    current.inventory.generation.checked_add(1).ok_or_else(|| {
+                        RepositoryError::Conflict(
+                            "resource inventory generation is exhausted".into(),
+                        )
+                    })?;
+                if inventory.generation != next_generation {
+                    return Err(RepositoryError::Conflict(
+                        "resource inventory generation did not advance exactly once".into(),
+                    ));
+                }
+                if inventory.observed_at <= current.inventory.observed_at {
+                    return Err(RepositoryError::Conflict(
+                        "resource inventory observation time did not advance".into(),
+                    ));
+                }
+                if inventory.digest == current.inventory.digest {
+                    return Err(RepositoryError::Conflict(
+                        "resource inventory generation advanced without a content change".into(),
+                    ));
+                }
+            }
+            None if inventory.generation != 1 => {
+                return Err(RepositoryError::Conflict(
+                    "first resource inventory generation must be one".into(),
+                ))
+            }
+            None => {}
+        }
+        let generation = inventory.generation;
+        let record = NodeResourceInventoryRecord {
+            inventory: inventory.clone(),
+            received_at,
+        };
+        record.validate().map_err(RepositoryError::Storage)?;
+        state
+            .resource_inventories
+            .insert((node_id, generation), record);
+        state.inventory_heads.insert(node_id, generation);
+        Ok(resource_inventory_receipt(&inventory, false))
+    }
+
+    async fn current_resource_inventory(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<NodeResourceInventoryRecord>, RepositoryError> {
+        let state = self.state.read().await;
+        let Some(generation) = state.inventory_heads.get(&node_id) else {
+            return Ok(None);
+        };
+        let record = state
+            .resource_inventories
+            .get(&(node_id, *generation))
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("resource inventory head is orphaned".into())
+            })?;
+        record.validate().map_err(RepositoryError::Storage)?;
+        Ok(Some(record))
     }
 
     async fn latest_runtime_observation(
@@ -996,6 +1117,19 @@ fn gateway_receipt(acknowledgement: &NodeGatewayAck, replayed: bool) -> NodeGate
         acknowledgement_id: acknowledgement.acknowledgement_id,
         command_id: acknowledgement.command_id,
         node_id: acknowledgement.node_id,
+        replayed,
+    }
+}
+
+fn resource_inventory_receipt(
+    inventory: &NodeResourceInventory,
+    replayed: bool,
+) -> NodeResourceInventoryReceipt {
+    NodeResourceInventoryReceipt {
+        schema: NodeResourceInventoryReceipt::SCHEMA.into(),
+        node_id: inventory.node_id,
+        generation: inventory.generation,
+        digest: inventory.digest.clone(),
         replayed,
     }
 }

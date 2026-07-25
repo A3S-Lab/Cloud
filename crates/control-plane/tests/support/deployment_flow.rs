@@ -271,7 +271,8 @@ pub async fn exercise_deployment_flow(
                     observed_at,
                     observation,
                 }],
-            },
+            }
+            .into(),
             observed_at,
         )
         .await?;
@@ -760,7 +761,8 @@ pub(super) async fn persist_command_result(
                     runtime_capabilities: capabilities,
                 },
                 observations,
-            },
+            }
+            .into(),
             observed_at,
         )
         .await?;

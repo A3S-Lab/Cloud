@@ -1,38 +1,38 @@
-use super::RecordNodeObservations;
+use super::RecordNodeResourceInventory;
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
 
-pub struct RecordNodeObservationsHandler {
+pub struct RecordNodeResourceInventoryHandler {
     nodes: Arc<dyn INodeControlRepository>,
 }
 
-impl RecordNodeObservationsHandler {
+impl RecordNodeResourceInventoryHandler {
     pub fn new(nodes: Arc<dyn INodeControlRepository>) -> Self {
         Self { nodes }
     }
 }
 
-impl CommandHandler<RecordNodeObservations> for RecordNodeObservationsHandler {
+impl CommandHandler<RecordNodeResourceInventory> for RecordNodeResourceInventoryHandler {
     fn execute(
         &self,
-        command: RecordNodeObservations,
+        command: RecordNodeResourceInventory,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<
         'static,
-        a3s_boot::Result<ApplicationResult<a3s_cloud_contracts::NodeObservationReceipt>>,
+        a3s_boot::Result<ApplicationResult<a3s_cloud_contracts::NodeResourceInventoryReceipt>>,
     > {
         let nodes = Arc::clone(&self.nodes);
         Box::pin(async move {
-            if command.batch.node_id() != command.authenticated_node_id.as_uuid() {
+            if command.inventory.node_id != command.authenticated_node_id.as_uuid() {
                 return Ok(Err(ApplicationError::Forbidden(
-                    "authenticated certificate does not belong to the observation batch".into(),
+                    "authenticated certificate does not belong to the resource inventory".into(),
                 )));
             }
             Ok(
                 match nodes
-                    .record_observations(command.batch, command.received_at)
+                    .record_resource_inventory(command.inventory, command.received_at)
                     .await
                 {
                     Ok(receipt) => Ok(receipt),

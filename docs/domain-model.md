@@ -169,14 +169,16 @@ Primary aggregate:
 ### 3.6 Fleet
 
 Owns enrollment, node identity, capabilities, scheduling eligibility, drain,
-revocation, last accepted observation, and authenticated bounded log ingestion
-and body-retention/compaction metadata. A node agent does not receive direct
+revocation, immutable resource-inventory history and current heads, last
+accepted observation, and authenticated bounded log ingestion and
+body-retention/compaction metadata. A node agent does not receive direct
 database or NATS credentials. Log bodies are immutable object-store payloads
 rather than Fleet table values.
 
-Primary aggregate:
+Primary aggregate and durable projection:
 
 - `Node`
+- `NodeResourceInventory`
 
 ### 3.7 Workloads and deployments
 
@@ -1077,8 +1079,9 @@ Gateway revision.
 | Artifact bytes | OCI registry or S3-compatible object store |
 | Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
 | Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
-| Workload replicas, placement members, accelerator reservations and claims | PostgreSQL Workloads tables |
-| Accelerator inventory and node Artifact-cache observations | Node agent plus PostgreSQL Fleet projection |
+| Workload replicas, placement members, and generic hard-resource claims | PostgreSQL Workloads tables |
+| Generic node resource-inventory history, normalized slots, and current generation/digest head | Node agent detection plus PostgreSQL Fleet tables |
+| Accelerator topology/health and node Artifact-cache observations | Planned node-agent extensions plus PostgreSQL Fleet projection |
 | Raw accelerator and inference time-series metrics | Configured metrics backend |
 | Inference request, attempt and token usage facts, including the request-time project/environment and immutable attribution reference | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
 | Operation history | A3S Flow PostgreSQL event store |

@@ -3,7 +3,8 @@ use crate::GatewaySnapshotInstallOutcome;
 use a3s_cloud_contracts::{
     GatewaySnapshot, NodeCertificate, NodeCommandEnvelope, NodeCommandLeaseResponse,
     NodeCommandMetadata, NodeCommandPayload, NodeGatewayAck, NodeGatewayAckReceipt,
-    NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationReceipt,
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatchV2, NodeObservationReceipt,
+    NodeResourceInventory, NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
@@ -68,6 +69,7 @@ struct TransportState {
     events: Vec<String>,
     reports: BTreeSet<Uuid>,
     gateway_acknowledgements: BTreeSet<Uuid>,
+    inventories: Vec<NodeResourceInventory>,
 }
 
 #[derive(Default)]
@@ -139,10 +141,21 @@ impl NodeControlTransport for FakeTransport {
 
     async fn record_observations(
         &self,
-        batch: &NodeObservationBatch,
+        batch: &NodeObservationBatchV2,
     ) -> Result<NodeObservationReceipt, NodeControlClientError> {
         batch.validate().map_err(NodeControlClientError::Invalid)?;
         let mut state = self.state.lock().await;
+        if state
+            .inventories
+            .last()
+            .map(NodeResourceInventory::reference)
+            .as_ref()
+            != Some(&batch.heartbeat.inventory)
+        {
+            return Err(NodeControlClientError::Invalid(
+                "heartbeat referenced an unreported inventory".into(),
+            ));
+        }
         let mut accepted = 0_u16;
         let mut replayed = 0_u16;
         for report in &batch.observations {
@@ -162,6 +175,39 @@ impl NodeControlTransport for FakeTransport {
             heartbeat_observed_at: batch.heartbeat.observed_at,
             accepted_reports: accepted,
             replayed_reports: replayed,
+        })
+    }
+
+    async fn report_resource_inventory(
+        &self,
+        inventory: &NodeResourceInventory,
+    ) -> Result<NodeResourceInventoryReceipt, NodeControlClientError> {
+        inventory
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        let mut state = self.state.lock().await;
+        let replayed = state
+            .inventories
+            .iter()
+            .any(|existing| existing == inventory);
+        if state
+            .inventories
+            .iter()
+            .any(|existing| existing.generation == inventory.generation && existing != inventory)
+        {
+            return Err(NodeControlClientError::Invalid(
+                "inventory generation conflict".into(),
+            ));
+        }
+        if !replayed {
+            state.inventories.push(inventory.clone());
+        }
+        Ok(NodeResourceInventoryReceipt {
+            schema: NodeResourceInventoryReceipt::SCHEMA.into(),
+            node_id: inventory.node_id,
+            generation: inventory.generation,
+            digest: inventory.digest.clone(),
+            replayed,
         })
     }
 
@@ -545,7 +591,14 @@ async fn heartbeat_contains_no_synthetic_runtime_observation() {
 
     session.heartbeat_once().await.expect("heartbeat");
 
-    assert_eq!(transport.state.lock().await.events, vec!["heartbeat"]);
+    let state = transport.state.lock().await;
+    assert_eq!(state.events, vec!["heartbeat"]);
+    assert_eq!(state.inventories.len(), 1);
+    assert_eq!(state.inventories[0].generation, 1);
+    assert!(state.inventories[0]
+        .slots
+        .iter()
+        .any(|slot| slot.stable_resource_id == "cpu/shared"));
 }
 
 #[tokio::test]

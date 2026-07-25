@@ -123,7 +123,7 @@ for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-23:
+Status as of 2026-07-25:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -1239,7 +1239,7 @@ reconciliation, process death, and provider recovery.
 
 | Gate | Owned foundation | Exit evidence before a consumer advances |
 | --- | --- | --- |
-| `H0.1` | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
+| `H0.1` | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
 | `H0.4` | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
@@ -1272,8 +1272,31 @@ drivers throughout Workloads production persistence. In-memory and isolated
 PostgreSQL 17 tests cover 100-way exact replay, 100-way competing claims,
 orphan retention, trusted fencing, and generation/token rotation.
 
-`H0.1` is not complete. Next, Fleet must persist negotiated inventory and
-compile exact requirements; the node protocol and Agent journal must implement
+The implemented inventory slice moves the generic resource types into the
+shared Cloud contract crate and adds strict `NodeResourceInventory`, receipt,
+reference, heartbeat-v2, and observation-batch-v2 contracts while retaining
+legacy v1 reads. The node agent detects CPU and state-filesystem capacity, adds
+Linux `MemTotal` when available, and never invents accelerator, port, volume,
+unsupported memory, or network capacity. It persists one canonical inventory
+locally, reuses its generation and digest across restart while content is
+unchanged, advances exactly once when canonical slots change, and reports the
+inventory before sending a v2 heartbeat.
+
+Fleet accepts authenticated inventories at
+`POST /v1/node-control/inventories`. Migration 042 persists immutable
+snapshots, normalized slots, and a current head. In-memory and PostgreSQL
+repositories require generation one for the first snapshot, exact increments
+for changed content, exact replay for a reused generation, and current
+generation/digest identity for every v2 heartbeat. Historical exact replay
+cannot move the head backward. The PostgreSQL inventory adapter uses only A3S
+ORM typed tables, query builders, transactions, joins, row and advisory locks,
+bulk inserts, and optimistic updates; a source test forbids untyped access in
+that adapter. Contract, Agent, mTLS API, in-memory, and isolated PostgreSQL 17
+tests cover canonical digesting, restart reuse, concurrent replay, recovery,
+head monotonicity, and stale-heartbeat rejection.
+
+`H0.1` is not complete. Next, the requirements compiler must consume the
+current Fleet inventory; the node protocol and Agent journal must implement
 prepare/release fencing evidence; Runtime observations must prove allocation
 binding; and the deployment reconciler must adopt or release claims after
 process/provider failure. Only the combined real-provider crash/replay gate may

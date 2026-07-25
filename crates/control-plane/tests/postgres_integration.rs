@@ -191,6 +191,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists node_log_batches cascade;
              drop table if exists node_log_chunk_receipts cascade;
              drop table if exists runtime_observations cascade;
+             drop table if exists node_resource_inventory_heads cascade;
+             drop table if exists node_resource_inventory_slots cascade;
+             drop table if exists node_resource_inventories cascade;
              drop table if exists node_commands cascade;
              drop table if exists node_certificate_rotations cascade;
              drop table if exists node_certificates cascade;
@@ -220,7 +223,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 41);
+    assert_eq!(applied, 42);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
@@ -637,7 +640,23 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 )),
             ),
             Migration::new(
+                "041",
+                "fenced hard resource claims",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/041_hard_resource_claims.sql"
+                )),
+            ),
+            Migration::new(
                 "042",
+                "node resource inventories",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/042_node_resource_inventories.sql"
+                )),
+            ),
+            Migration::new(
+                "043",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

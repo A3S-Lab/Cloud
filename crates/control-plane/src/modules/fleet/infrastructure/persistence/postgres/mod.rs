@@ -4,6 +4,7 @@ mod enrollment;
 mod nodes;
 mod queries;
 mod rows;
+mod schema;
 
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{
@@ -12,7 +13,7 @@ use crate::modules::fleet::domain::repositories::{
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
     NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogGapMetadata,
-    NodeLogRetentionTarget, NodeStateChange, RuntimeObservationRecord,
+    NodeLogRetentionTarget, NodeResourceInventoryRecord, NodeStateChange, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
@@ -21,8 +22,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
-    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatch,
-    NodeObservationReceipt,
+    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatchEnvelope,
+    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -248,10 +249,25 @@ impl INodeControlRepository for PostgresNodeRepository {
 
     async fn record_observations(
         &self,
-        batch: NodeObservationBatch,
+        batch: NodeObservationBatchEnvelope,
         received_at: DateTime<Utc>,
     ) -> Result<NodeObservationReceipt, RepositoryError> {
         control::record_observations(&self.executor, batch, received_at).await
+    }
+
+    async fn record_resource_inventory(
+        &self,
+        inventory: NodeResourceInventory,
+        received_at: DateTime<Utc>,
+    ) -> Result<NodeResourceInventoryReceipt, RepositoryError> {
+        control::record_resource_inventory(&self.executor, inventory, received_at).await
+    }
+
+    async fn current_resource_inventory(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<NodeResourceInventoryRecord>, RepositoryError> {
+        control::current_resource_inventory(&self.executor, node_id).await
     }
 
     async fn latest_runtime_observation(

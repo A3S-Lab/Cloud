@@ -1,4 +1,5 @@
 use super::*;
+use crate::{ResourceAllocation, ResourceKind, ResourceUnit};
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
     RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeUnitClass,
@@ -219,6 +220,91 @@ fn observation_batches_bind_agent_and_node_identity() {
     batch.validate().expect("valid observation batch");
     batch.agent_instance_id = Uuid::now_v7();
     assert!(batch.validate().is_err());
+}
+
+#[test]
+fn resource_inventory_is_canonical_digest_addressed_and_versions_heartbeat_explicitly() {
+    let node_id = Uuid::now_v7();
+    let instance_id = Uuid::now_v7();
+    let observed_at = Utc::now();
+    let inventory = NodeResourceInventory::new(
+        node_id,
+        instance_id,
+        1,
+        observed_at,
+        vec![
+            NodeResourceSlot::new(
+                ResourceKind::Memory,
+                "memory/system",
+                ResourceAllocation::Scalar {
+                    amount: 8 * 1024 * 1024 * 1024,
+                    unit: ResourceUnit::Byte,
+                },
+            )
+            .expect("memory slot"),
+            NodeResourceSlot::new(
+                ResourceKind::Cpu,
+                "cpu/shared",
+                ResourceAllocation::Scalar {
+                    amount: 4_000,
+                    unit: ResourceUnit::MilliCpu,
+                },
+            )
+            .expect("CPU slot"),
+        ],
+    )
+    .expect("resource inventory");
+    assert_eq!(inventory.slots[0].kind, ResourceKind::Cpu);
+    inventory.validate().expect("valid inventory");
+    let same_content = NodeResourceInventory::new(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        7,
+        observed_at + Duration::seconds(1),
+        inventory.slots.clone(),
+    )
+    .expect("same inventory content");
+    assert_eq!(same_content.digest, inventory.digest);
+
+    let mut changed = inventory.clone();
+    changed.slots[0].allocation = ResourceAllocation::Scalar {
+        amount: 2_000,
+        unit: ResourceUnit::MilliCpu,
+    };
+    assert_eq!(
+        changed.validate().expect_err("stale digest"),
+        "node inventory digest does not match its canonical slots"
+    );
+
+    let batch = NodeObservationBatchV2 {
+        schema: NodeObservationBatchV2::SCHEMA.into(),
+        node_id,
+        agent_instance_id: instance_id,
+        sent_at: observed_at,
+        heartbeat: NodeHeartbeatV2 {
+            schema: NodeHeartbeatV2::SCHEMA.into(),
+            node_id,
+            agent_instance_id: instance_id,
+            observed_at,
+            agent_version: "0.1.0".into(),
+            runtime_capabilities: capabilities(),
+            inventory: inventory.reference(),
+        },
+        observations: Vec::new(),
+    };
+    batch.validate().expect("v2 observation batch");
+    let encoded = serde_json::to_value(&batch).expect("encode v2 batch");
+    assert!(matches!(
+        serde_json::from_value::<NodeObservationBatchEnvelope>(encoded).expect("decode v2 batch"),
+        NodeObservationBatchEnvelope::V2(_)
+    ));
+
+    let mut inventory_value = serde_json::to_value(&inventory).expect("encode inventory");
+    inventory_value
+        .as_object_mut()
+        .expect("inventory object")
+        .insert("accelerators".into(), json!([]));
+    assert!(serde_json::from_value::<NodeResourceInventory>(inventory_value).is_err());
 }
 
 #[test]

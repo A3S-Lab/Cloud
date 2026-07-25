@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use super::{
     validate_sha256, validate_single_line, validate_uuid, GatewayManagementProtocol,
-    GatewaySnapshot,
+    GatewaySnapshot, NodeInventoryReference,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +36,36 @@ impl NodeHeartbeat {
         validate_uuid("agent_instance_id", self.agent_instance_id)?;
         validate_single_line("agent version", &self.agent_version, 255)?;
         self.runtime_capabilities.validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeHeartbeatV2 {
+    pub schema: String,
+    pub node_id: Uuid,
+    pub agent_instance_id: Uuid,
+    pub observed_at: DateTime<Utc>,
+    pub agent_version: String,
+    pub runtime_capabilities: RuntimeCapabilities,
+    pub inventory: NodeInventoryReference,
+}
+
+impl NodeHeartbeatV2 {
+    pub const SCHEMA: &'static str = "a3s.cloud.node-heartbeat.v2";
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported node heartbeat schema {:?}",
+                self.schema
+            ));
+        }
+        validate_uuid("node_id", self.node_id)?;
+        validate_uuid("agent_instance_id", self.agent_instance_id)?;
+        validate_single_line("agent version", &self.agent_version, 255)?;
+        self.runtime_capabilities.validate()?;
+        self.inventory.validate()
     }
 }
 
@@ -115,17 +145,92 @@ impl NodeObservationBatch {
         {
             return Err("node observation batch identity does not match its heartbeat".into());
         }
-        if self.observations.len() > 256 {
-            return Err("node observation batch exceeds 256 entries".into());
-        }
-        for observation in &self.observations {
-            observation.validate()?;
-            if observation.observed_at > self.sent_at {
-                return Err("Runtime observation is newer than its enclosing batch".into());
-            }
-        }
-        Ok(())
+        validate_observations(&self.observations, self.sent_at)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeObservationBatchV2 {
+    pub schema: String,
+    pub node_id: Uuid,
+    pub agent_instance_id: Uuid,
+    pub sent_at: DateTime<Utc>,
+    pub heartbeat: NodeHeartbeatV2,
+    pub observations: Vec<RuntimeObservationReport>,
+}
+
+impl NodeObservationBatchV2 {
+    pub const SCHEMA: &'static str = "a3s.cloud.node-observation-batch.v2";
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported node observation batch schema {:?}",
+                self.schema
+            ));
+        }
+        validate_uuid("node_id", self.node_id)?;
+        validate_uuid("agent_instance_id", self.agent_instance_id)?;
+        self.heartbeat.validate()?;
+        if self.heartbeat.node_id != self.node_id
+            || self.heartbeat.agent_instance_id != self.agent_instance_id
+        {
+            return Err("node observation batch identity does not match its heartbeat".into());
+        }
+        validate_observations(&self.observations, self.sent_at)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum NodeObservationBatchEnvelope {
+    V2(NodeObservationBatchV2),
+    V1(NodeObservationBatch),
+}
+
+impl NodeObservationBatchEnvelope {
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::V1(batch) => batch.validate(),
+            Self::V2(batch) => batch.validate(),
+        }
+    }
+
+    pub const fn node_id(&self) -> Uuid {
+        match self {
+            Self::V1(batch) => batch.node_id,
+            Self::V2(batch) => batch.node_id,
+        }
+    }
+}
+
+impl From<NodeObservationBatch> for NodeObservationBatchEnvelope {
+    fn from(value: NodeObservationBatch) -> Self {
+        Self::V1(value)
+    }
+}
+
+impl From<NodeObservationBatchV2> for NodeObservationBatchEnvelope {
+    fn from(value: NodeObservationBatchV2) -> Self {
+        Self::V2(value)
+    }
+}
+
+fn validate_observations(
+    observations: &[RuntimeObservationReport],
+    sent_at: DateTime<Utc>,
+) -> Result<(), String> {
+    if observations.len() > 256 {
+        return Err("node observation batch exceeds 256 entries".into());
+    }
+    for observation in observations {
+        observation.validate()?;
+        if observation.observed_at > sent_at {
+            return Err("Runtime observation is newer than its enclosing batch".into());
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

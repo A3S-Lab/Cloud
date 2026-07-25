@@ -1,11 +1,17 @@
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::NodeLogCompactionRange;
-use crate::modules::shared_kernel::domain::{IdempotentWrite, NodeId, RepositoryError};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, IdempotentWrite, NodeId, RepositoryError,
+};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
+    NodeGatewayAckReceipt, NodeInventoryReference, NodeLogChunkReceipt,
+    NodeObservationBatchEnvelope, NodeObservationReceipt, NodeResourceInventory,
+    NodeResourceInventoryReceipt, RuntimeObservationReport,
 };
-use a3s_runtime::contract::{RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeObservation};
+use a3s_runtime::contract::{
+    RuntimeCapabilities, RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeObservation,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -95,6 +101,66 @@ pub struct RuntimeObservationRecord {
     pub observed_at: DateTime<Utc>,
     pub received_at: DateTime<Utc>,
     pub observation: RuntimeObservation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeObservationSubmission {
+    pub node_id: Uuid,
+    pub agent_instance_id: Uuid,
+    pub sent_at: DateTime<Utc>,
+    pub heartbeat_observed_at: DateTime<Utc>,
+    pub agent_version: String,
+    pub runtime_capabilities: RuntimeCapabilities,
+    pub inventory: Option<NodeInventoryReference>,
+    pub observations: Vec<RuntimeObservationReport>,
+}
+
+impl TryFrom<NodeObservationBatchEnvelope> for NodeObservationSubmission {
+    type Error = String;
+
+    fn try_from(batch: NodeObservationBatchEnvelope) -> Result<Self, Self::Error> {
+        batch.validate()?;
+        let mut submission = match batch {
+            NodeObservationBatchEnvelope::V1(batch) => Self {
+                node_id: batch.node_id,
+                agent_instance_id: batch.agent_instance_id,
+                sent_at: batch.sent_at,
+                heartbeat_observed_at: batch.heartbeat.observed_at,
+                agent_version: batch.heartbeat.agent_version,
+                runtime_capabilities: batch.heartbeat.runtime_capabilities,
+                inventory: None,
+                observations: batch.observations,
+            },
+            NodeObservationBatchEnvelope::V2(batch) => Self {
+                node_id: batch.node_id,
+                agent_instance_id: batch.agent_instance_id,
+                sent_at: batch.sent_at,
+                heartbeat_observed_at: batch.heartbeat.observed_at,
+                agent_version: batch.heartbeat.agent_version,
+                runtime_capabilities: batch.heartbeat.runtime_capabilities,
+                inventory: Some(batch.heartbeat.inventory),
+                observations: batch.observations,
+            },
+        };
+        submission.sent_at = canonical_timestamp(submission.sent_at);
+        submission.heartbeat_observed_at = canonical_timestamp(submission.heartbeat_observed_at);
+        for report in &mut submission.observations {
+            report.observed_at = canonical_timestamp(report.observed_at);
+        }
+        Ok(submission)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeResourceInventoryRecord {
+    pub inventory: NodeResourceInventory,
+    pub received_at: DateTime<Utc>,
+}
+
+impl NodeResourceInventoryRecord {
+    pub fn validate(&self) -> Result<(), String> {
+        self.inventory.validate()
+    }
 }
 
 impl NodeLogBatchReceiptDraft {
@@ -326,9 +392,20 @@ pub trait INodeControlRepository: Send + Sync {
 
     async fn record_observations(
         &self,
-        batch: NodeObservationBatch,
+        batch: NodeObservationBatchEnvelope,
         received_at: DateTime<Utc>,
     ) -> Result<NodeObservationReceipt, RepositoryError>;
+
+    async fn record_resource_inventory(
+        &self,
+        inventory: NodeResourceInventory,
+        received_at: DateTime<Utc>,
+    ) -> Result<NodeResourceInventoryReceipt, RepositoryError>;
+
+    async fn current_resource_inventory(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<NodeResourceInventoryRecord>, RepositoryError>;
 
     async fn latest_runtime_observation(
         &self,

@@ -442,7 +442,23 @@ conflicting resources, digest, generation, node, or fence token fail closed.
 
 ### 6.2 Inventory and telemetry
 
-The node agent reports a versioned, digest-addressed inventory snapshot with:
+The generic `H0.1` baseline now defines strict, versioned
+`NodeResourceInventory`, receipt, reference, heartbeat-v2, and
+observation-batch-v2 contracts. The node agent detects host CPU and
+state-filesystem capacity, reports Linux `MemTotal` when available, and omits
+unsupported memory, accelerators, ports, volumes, and networking rather than
+inventing capacity. It persists the canonical slot content, generation, and
+digest across restart and advances generation only when that content changes.
+
+Fleet accepts the authenticated snapshot through
+`POST /v1/node-control/inventories`. Migration 042 stores immutable historical
+snapshots, normalized slots, and one current head. Exact replay is idempotent,
+historical replay cannot regress the head, and changed content must advance the
+generation exactly once. A v2 heartbeat references the latest inventory
+generation and digest and is rejected unless that exact reference is current;
+legacy v1 observation batches remain readable during migration.
+
+The completed inference profile extends this generic inventory with:
 
 - allocatable CPU, RAM, ephemeral storage, dedicated Artifact-cache storage,
   provider mount support, and bounded host/private-network port ranges;
@@ -454,19 +470,19 @@ The node agent reports a versioned, digest-addressed inventory snapshot with:
 - private-network and optional fabric/RDMA capabilities needed by distributed
   backends.
 
-Heartbeat references the latest inventory generation and digest. Full bounded
-inventory uses a separate idempotent report endpoint. High-frequency
-utilization, temperature, KV-cache pressure, TTFT, and throughput go to the
-metrics pipeline; they are not desired state or hard capacity truth.
+High-frequency utilization, temperature, KV-cache pressure, TTFT, and
+throughput go to the metrics pipeline; they are not desired state or hard
+capacity truth.
 
 Inventory projections use generation compare-and-swap. Claim prepare and
-Runtime apply both revalidate the exact inventory generation/digest, resource
-health, partition identity, and topology digest. A MIG reconfiguration, device
-replacement, port-range change, or capacity regression invalidates the old
-candidate instead of being accepted as an equivalent node.
+Runtime apply in the remaining `H0.1`/`I0.1` path must both revalidate the exact
+inventory generation/digest, resource health, partition identity, and topology
+digest. A MIG reconfiguration, device replacement, port-range change, or
+capacity regression invalidates the old candidate instead of being accepted as
+an equivalent node.
 
-The node agent implements a small `AcceleratorDetector` infrastructure trait.
-I0 supplies a deterministic virtual detector and a real NVIDIA detector. It
+`I0.1` adds a small `AcceleratorDetector` infrastructure trait with a
+deterministic virtual detector and a real NVIDIA detector. That slice also
 persists a resource-claim journal, translates stable IDs to CDI or Docker
 device requests, labels provider resources with claim/fencing/spec identity,
 and proves that an unclaimed device is invisible. Inference engine names never
@@ -961,6 +977,12 @@ aggregate and generation. Closed typed specifications store a canonical digest.
 Gang reservations and all members commit in one PostgreSQL transaction. Raw
 high-frequency metrics do not enter these tables.
 
+Migration 042 implements the generic Resource inventory slice for CPU, memory,
+and ephemeral-storage slots. Accelerator topology, device health,
+Artifact-cache observations, port ranges, and private-network/fabric
+capabilities remain `I0.1`/`H0.3` extensions over the same contract and Fleet
+head; they do not create a second inventory store.
+
 ## 12. Delivery gates
 
 ### I0.0: contracts and mixed-version safety
@@ -1141,8 +1163,10 @@ The recommended merge order is:
 
 1. accelerator contract ADR, failing protocol fixtures, and Runtime vNext;
 2. Cloud nested v2 contracts, session negotiation, and compatibility fixtures;
-3. H0.1 managed-owner, one-replica and generic claim state machine;
-4. virtual inventory, then NVIDIA detection/enforcement and the real-host gate;
+3. H0.1 managed-owner, one-replica, generic inventory and claim state-machine
+   foundations;
+4. H0.1 prepare/release journal and Runtime binding, then virtual inventory,
+   NVIDIA detection/enforcement, and the real-host gate;
 5. model file-manifest ingest/materialization/cache over the existing Artifacts
    and E0 Secret foundations;
 6. Inference domain/application skeleton and model/backend repositories;

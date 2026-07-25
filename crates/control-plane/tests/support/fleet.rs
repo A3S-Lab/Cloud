@@ -2,7 +2,9 @@ use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
     NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest, NodeEnrollmentResponse,
-    NodeGatewayAck, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    NodeGatewayAck, NodeHeartbeat, NodeHeartbeatV2, NodeInventoryReference, NodeObservationBatch,
+    NodeObservationBatchV2, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
+    ResourceKind, ResourceUnit, RuntimeObservationReport,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::{
     NodeCertificate, NodeCommandDraft,
@@ -171,6 +173,14 @@ pub async fn exercise_fleet(
         Err(RepositoryError::Conflict(_))
     ));
 
+    let inventory = exercise_resource_inventory(
+        executor,
+        nodes.as_ref(),
+        node_id,
+        enrollment_request.agent_instance_id,
+        now,
+    )
+    .await?;
     exercise_command_control(
         executor,
         nodes.as_ref(),
@@ -184,6 +194,7 @@ pub async fn exercise_fleet(
         nodes.as_ref(),
         node_id,
         enrollment_request.agent_instance_id,
+        inventory.reference(),
         now,
     )
     .await?;
@@ -287,6 +298,109 @@ pub async fn exercise_fleet(
         4
     );
     Ok(())
+}
+
+async fn exercise_resource_inventory(
+    executor: &PostgresExecutor,
+    nodes: &PostgresNodeRepository,
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> Result<NodeResourceInventory, Box<dyn std::error::Error>> {
+    let first = resource_inventory(
+        node_id,
+        agent_instance_id,
+        1,
+        2_000,
+        now + Duration::seconds(3),
+    );
+    let (left, right) = tokio::join!(
+        nodes.record_resource_inventory(first.clone(), now + Duration::seconds(3)),
+        nodes.record_resource_inventory(first.clone(), now + Duration::seconds(3)),
+    );
+    let left = left?;
+    let right = right?;
+    assert_ne!(left.replayed, right.replayed);
+    assert_eq!(left.generation, 1);
+    let reopened = PostgresNodeRepository::new(executor.clone());
+    assert_eq!(
+        reopened
+            .current_resource_inventory(node_id)
+            .await?
+            .ok_or("resource inventory head was not restored")?
+            .inventory,
+        first
+    );
+
+    let conflict = resource_inventory(
+        node_id,
+        agent_instance_id,
+        1,
+        3_000,
+        now + Duration::seconds(3),
+    );
+    assert!(matches!(
+        nodes
+            .record_resource_inventory(conflict, now + Duration::seconds(4))
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let second = resource_inventory(
+        node_id,
+        agent_instance_id,
+        2,
+        3_000,
+        now + Duration::seconds(4),
+    );
+    assert!(
+        !nodes
+            .record_resource_inventory(second.clone(), now + Duration::seconds(4))
+            .await?
+            .replayed
+    );
+    assert!(
+        nodes
+            .record_resource_inventory(first, now + Duration::seconds(5))
+            .await?
+            .replayed
+    );
+    assert_eq!(
+        reopened
+            .current_resource_inventory(node_id)
+            .await?
+            .ok_or("advanced resource inventory head was not restored")?
+            .inventory,
+        second
+    );
+    Ok(second)
+}
+
+fn resource_inventory(
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+    generation: u64,
+    milli_cpu: u64,
+    observed_at: chrono::DateTime<Utc>,
+) -> NodeResourceInventory {
+    let observed_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000)
+        .expect("canonical resource inventory timestamp");
+    NodeResourceInventory::new(
+        node_id.as_uuid(),
+        agent_instance_id,
+        generation,
+        observed_at,
+        vec![NodeResourceSlot::new(
+            ResourceKind::Cpu,
+            "cpu/shared",
+            ResourceAllocation::Scalar {
+                amount: milli_cpu,
+                unit: ResourceUnit::MilliCpu,
+            },
+        )
+        .expect("CPU inventory slot")],
+    )
+    .expect("node resource inventory")
 }
 
 async fn exercise_command_control(
@@ -528,6 +642,7 @@ async fn exercise_observation_control(
     nodes: &PostgresNodeRepository,
     node_id: NodeId,
     agent_instance_id: Uuid,
+    inventory: NodeInventoryReference,
     now: chrono::DateTime<Utc>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let observed_at = now + Duration::seconds(22);
@@ -571,14 +686,17 @@ async fn exercise_observation_control(
         }],
     };
     let accepted = nodes
-        .record_observations(batch.clone(), observed_at)
+        .record_observations(batch.clone().into(), observed_at)
         .await?;
     assert_eq!(
         (accepted.accepted_reports, accepted.replayed_reports),
         (1, 0)
     );
     let replayed = nodes
-        .record_observations(batch.clone(), observed_at + Duration::milliseconds(1))
+        .record_observations(
+            batch.clone().into(),
+            observed_at + Duration::milliseconds(1),
+        )
         .await?;
     assert_eq!(
         (replayed.accepted_reports, replayed.replayed_reports),
@@ -598,7 +716,38 @@ async fn exercise_observation_control(
     conflict.observations[0].observation.unit_id = "different-service".into();
     assert!(matches!(
         nodes
-            .record_observations(conflict, observed_at + Duration::milliseconds(2))
+            .record_observations(conflict.into(), observed_at + Duration::milliseconds(2))
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let v2_heartbeat = NodeObservationBatchV2 {
+        schema: NodeObservationBatchV2::SCHEMA.into(),
+        node_id: node_id.as_uuid(),
+        agent_instance_id,
+        sent_at: observed_at + Duration::milliseconds(3),
+        heartbeat: NodeHeartbeatV2 {
+            schema: NodeHeartbeatV2::SCHEMA.into(),
+            node_id: node_id.as_uuid(),
+            agent_instance_id,
+            observed_at: observed_at + Duration::milliseconds(3),
+            agent_version: "0.1.1".into(),
+            runtime_capabilities: capabilities(),
+            inventory: inventory.clone(),
+        },
+        observations: Vec::new(),
+    };
+    nodes
+        .record_observations(
+            v2_heartbeat.clone().into(),
+            observed_at + Duration::milliseconds(3),
+        )
+        .await?;
+    let mut stale = v2_heartbeat;
+    stale.heartbeat.inventory.generation -= 1;
+    assert!(matches!(
+        nodes
+            .record_observations(stale.into(), observed_at + Duration::milliseconds(4))
             .await,
         Err(RepositoryError::Conflict(_))
     ));

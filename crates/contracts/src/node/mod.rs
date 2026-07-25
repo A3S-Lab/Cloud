@@ -3,6 +3,7 @@ mod command;
 mod enrollment;
 mod error;
 mod gateway;
+mod inventory;
 mod observation;
 mod runtime_endpoint;
 mod secret;
@@ -27,9 +28,13 @@ pub use gateway::{
     GatewayCertificateRequest, GatewayCertificateSigningRequest, GatewayCertificateSigningResponse,
     GatewayManagementProtocol, GatewayManagementProtocolDiscovery, GatewaySnapshot,
 };
+pub use inventory::{
+    NodeInventoryReference, NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
+};
 pub use observation::{
-    GatewayAckState, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch,
+    GatewayAckState, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeHeartbeatV2,
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
+    NodeObservationBatch, NodeObservationBatchEnvelope, NodeObservationBatchV2,
     NodeObservationReceipt, RuntimeObservationReport,
 };
 pub use runtime_endpoint::RuntimeServiceEndpoint;

@@ -782,7 +782,8 @@ async fn persist_apply_result(
                     observed_at: completed_at,
                     observation: observation.clone(),
                 }],
-            },
+            }
+            .into(),
             sent_at,
         )
         .await?;
