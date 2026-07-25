@@ -4,11 +4,15 @@ pub use crate::modules::fleet::application::{
 use crate::modules::fleet::domain::repositories::RuntimeObservationRecord;
 use crate::modules::operations::domain::entities::OperationProjection;
 use crate::modules::shared_kernel::domain::{NodeId, WorkloadId, WorkloadRevisionId};
-use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
+use crate::modules::workloads::domain::entities::{
+    Deployment, DeploymentReplicaBinding, Workload, WorkloadControl, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeploymentQueryResult {
     pub deployment: Deployment,
+    pub replica_binding: DeploymentReplicaBinding,
     pub revision: WorkloadRevision,
     pub operation: Option<OperationProjection>,
     pub observation: Option<RuntimeObservationRecord>,
@@ -17,8 +21,16 @@ pub struct DeploymentQueryResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkloadQueryResult {
     pub workload: Workload,
+    pub control: WorkloadControl,
+    pub replicas: Vec<WorkloadReplicaQueryResult>,
     pub revisions: Vec<WorkloadRevision>,
     pub deployments: Vec<DeploymentQueryResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkloadReplicaQueryResult {
+    pub replica: WorkloadReplica,
+    pub members: Vec<WorkloadReplicaMember>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

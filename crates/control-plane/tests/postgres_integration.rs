@@ -57,6 +57,8 @@ mod gateway_rollouts_support;
 mod github_connection_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
+#[path = "support/resource_claims.rs"]
+mod resource_claims_support;
 #[path = "support/secret_rotation_provider_crash.rs"]
 mod secret_rotation_provider_crash_support;
 #[path = "support/secret_rotation_restart.rs"]
@@ -156,6 +158,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop table if exists resource_slot_leases cascade;
+             drop table if exists resource_claim_slots cascade;
+             drop table if exists resource_claims cascade;
              drop table if exists github_connection_lifecycle_inbox cascade;
              drop table if exists github_repository_subscriptions cascade;
              drop table if exists github_source_connections cascade;
@@ -215,7 +220,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 39);
+    assert_eq!(applied, 41);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
@@ -625,6 +630,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "040",
+                "managed Workload replica foundation",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/040_workload_replica_foundation.sql"
+                )),
+            ),
+            Migration::new(
+                "042",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1761,6 +1774,27 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(listed[0]["id"], workload_id);
     assert_eq!(listed[0]["desiredRevision"]["generation"], 2);
     assert_eq!(listed[0]["activeRevision"]["generation"], 2);
+    assert_eq!(listed[0]["control"]["managedOwner"], Value::Null);
+    assert_eq!(
+        listed[0]["control"]["placementPolicy"]["schema"],
+        "a3s.cloud.effective-placement-policy.v1"
+    );
+    assert_eq!(
+        listed[0]["control"]["placementPolicy"]["desiredReplicas"],
+        1
+    );
+    assert_eq!(listed[0]["replicas"].as_array().map(Vec::len), Some(1));
+    assert_eq!(listed[0]["replicas"][0]["id"], workload_id);
+    assert_eq!(listed[0]["replicas"][0]["generation"], 2);
+    assert_eq!(
+        listed[0]["replicas"][0]["members"][0]["nodeId"],
+        listed[0]["deployments"][0]["nodeId"]
+    );
+    assert!(
+        listed[0]["replicas"][0]["members"][0]["placementGeneration"]
+            .as_u64()
+            .is_some_and(|generation| generation > 0)
+    );
     assert_eq!(listed[0]["deployments"][0]["status"], "active");
     assert_eq!(
         listed[0]["deployments"][0]["observedRuntime"]["state"],
@@ -1910,6 +1944,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         Uuid::parse_str(&organization_id)?,
         Uuid::parse_str(&project_id)?,
         Uuid::parse_str(&environment_id)?,
+    )
+    .await?;
+    resource_claims_support::exercise_resource_claims(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        &workload_fixture,
     )
     .await?;
     edge_support::exercise_edge(

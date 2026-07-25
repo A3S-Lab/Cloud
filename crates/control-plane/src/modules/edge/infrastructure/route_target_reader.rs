@@ -96,9 +96,27 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
         let runtime_command_id = deployment.command_id.ok_or_else(|| {
             RepositoryError::Storage("active deployment has no Runtime command identity".into())
         })?;
+        let binding = self
+            .workloads
+            .find_deployment_replica_binding(organization_id, deployment.id)
+            .await?;
+        if binding.workload_id != workload.id
+            || binding.revision_id != revision.id
+            || binding.node_id != Some(node_id)
+            || binding.runtime_unit_id != revision.runtime_unit_id()
+            || binding.runtime_generation != revision.generation
+        {
+            return Err(RepositoryError::Storage(
+                "route target deployment has an inconsistent replica binding".into(),
+            ));
+        }
         let observation = self
             .observations
-            .latest_runtime_observation(node_id, &revision.runtime_unit_id(), revision.generation)
+            .latest_runtime_observation(
+                node_id,
+                &binding.runtime_unit_id,
+                binding.runtime_generation,
+            )
             .await?
             .ok_or_else(|| {
                 RepositoryError::Conflict("route target has no current Runtime observation".into())

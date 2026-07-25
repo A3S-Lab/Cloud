@@ -6,7 +6,7 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::WorkloadLogPage;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
-use a3s_boot::{CqrsContext, QueryHandler};
+use a3s_boot::{BootError, CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct GetWorkloadLogsHandler {
@@ -64,14 +64,11 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                 Ok(deployments) => deployments,
                 Err(error) => return Ok(Err(error.into())),
             };
-            let node_id = deployments
-                .into_iter()
-                .find(|deployment| {
-                    deployment.revision_id == revision.id && deployment.node_id.is_some()
-                })
-                .and_then(|deployment| deployment.node_id);
-            let unit_id = revision.runtime_unit_id();
-            let Some(node_id) = node_id else {
+            let deployment = deployments.into_iter().find(|deployment| {
+                deployment.revision_id == revision.id && deployment.node_id.is_some()
+            });
+            let Some(deployment) = deployment else {
+                let unit_id = revision.runtime_unit_id();
                 return Ok(Ok(WorkloadLogPage {
                     workload_id: workload.id,
                     revision_id: revision.id,
@@ -82,11 +79,33 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                     next_after_sequence: None,
                 }));
             };
+            let node_id = deployment.node_id.ok_or_else(|| {
+                BootError::Internal("selected deployment omitted its node".into())
+            })?;
+            let binding = match workloads
+                .find_deployment_replica_binding(query.organization_id, deployment.id)
+                .await
+            {
+                Ok(binding)
+                    if binding.workload_id == workload.id
+                        && binding.revision_id == revision.id
+                        && binding.node_id == Some(node_id) =>
+                {
+                    binding
+                }
+                Ok(_) => {
+                    return Err(BootError::Internal(
+                        "deployment replica binding is inconsistent".into(),
+                    ))
+                }
+                Err(error) => return Ok(Err(error.into())),
+            };
+            let unit_id = binding.runtime_unit_id;
             let page = match logs
                 .read(NodeLogReadQuery {
                     node_id,
                     unit_id,
-                    generation: revision.generation,
+                    generation: binding.runtime_generation,
                     after_sequence: query.after_sequence,
                     limit: query.limit,
                     stream: query.stream,

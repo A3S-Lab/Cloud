@@ -373,6 +373,22 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/039_gateway_replica_rollouts.sql"
             )),
         ),
+        Migration::new(
+            "040",
+            "managed Workload replica foundation",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/040_workload_replica_foundation.sql"
+            )),
+        ),
+        Migration::new(
+            "041",
+            "fenced hard resource claims",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/041_hard_resource_claims.sql"
+            )),
+        ),
     ]
 }
 

@@ -1,4 +1,4 @@
-use super::{create, queries};
+use super::{create, queries, replicas};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, transaction_error,
     PostgresPersistenceError,
@@ -256,10 +256,17 @@ async fn reconcile_in_transaction(
             rotation.correlation_id,
             rotation.event_id,
         )?;
+        let control = replicas::control_spec_in_transaction(
+            transaction,
+            workload.organization_id,
+            workload.id,
+        )
+        .await?;
         let response = create::deployment_in_transaction(
             transaction,
             CreateDeploymentBundle {
                 workload,
+                control,
                 revision,
                 deployment,
                 operation,

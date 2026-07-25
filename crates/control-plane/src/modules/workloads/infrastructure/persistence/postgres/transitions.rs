@@ -1,4 +1,4 @@
-use super::queries;
+use super::{queries, replicas};
 use crate::infrastructure::{
     execute, idempotency_replay, require_one_row, store_idempotency, store_outbox,
     transaction_error, PostgresPersistenceError,
@@ -170,12 +170,16 @@ pub(super) async fn mutate(
                 }
                 require_expected_version(&deployment, expected_version)?;
                 let previous_version = deployment.aggregate_version;
+                let updates_placement = matches!(&mutation, DeploymentMutation::Schedule { .. });
                 mutation.apply(&mut deployment).map_err(|error| {
                     RepositoryError::Conflict(format!(
                         "deployment transition was rejected: {error}"
                     ))
                 })?;
                 persist_deployment(transaction, &deployment, previous_version).await?;
+                if updates_placement {
+                    replicas::place(transaction, &deployment).await?;
+                }
                 Ok(deployment)
             })
         })
@@ -202,6 +206,12 @@ pub(super) async fn request_cancellation(
                     queries::deployment_in_transaction(transaction, request.deployment.id, true)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
+                replicas::require_direct_mutation(
+                    transaction,
+                    current.organization_id,
+                    current.workload_id,
+                )
+                .await?;
                 if current.aggregate_version != request.expected_version {
                     return Err(RepositoryError::Conflict(format!(
                         "deployment changed from expected version {} to {}",

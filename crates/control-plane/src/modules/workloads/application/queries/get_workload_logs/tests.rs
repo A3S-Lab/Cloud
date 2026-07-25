@@ -645,6 +645,7 @@ async fn seed_workload() -> SeededWorkload {
     repository
         .create_deployment(CreateDeploymentBundle {
             workload: workload.clone(),
+            control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
             revision: revision.clone(),
             deployment: deployment.clone(),
             operation,

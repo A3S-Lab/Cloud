@@ -14,7 +14,7 @@ use super::DeploymentFlowRuntime;
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId};
 use crate::modules::workloads::domain::entities::{
-    DeploymentStatus, SecretBindingTarget, WorkloadRevision,
+    DeploymentReplicaBinding, DeploymentStatus, SecretBindingTarget, WorkloadRevision,
 };
 use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
 use crate::modules::workloads::infrastructure::project_runtime_spec;
@@ -151,6 +151,12 @@ async fn resolve(
     validate_rollback_source(runtime, &input, &revision).await?;
     let spec = project_runtime_spec(&revision)
         .map_err(|error| flow_error("could not project Runtime specification", error))?;
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(input.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load deployment replica binding", error))?;
+    validate_replica_binding(&replica_binding, &deployment, &revision, &spec)?;
     let previous_runtime = previous_runtime(runtime, &input, &revision).await?;
 
     let convergence_deadline = deployment
@@ -266,11 +272,44 @@ async fn previous_runtime(
         .ok_or_else(|| FlowError::Runtime("active deployment omitted its node".into()))?;
     let spec = project_runtime_spec(&previous_revision)
         .map_err(|error| flow_error("could not project previous Runtime specification", error))?;
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(input.organization_id, previous_deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load previous deployment replica binding", error))?;
+    validate_replica_binding(
+        &replica_binding,
+        &previous_deployment,
+        &previous_revision,
+        &spec,
+    )?;
     Ok(Some(PreviousRuntime {
         revision_id: previous_revision.id,
         node_id,
         spec,
     }))
+}
+
+fn validate_replica_binding(
+    binding: &DeploymentReplicaBinding,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
+    revision: &WorkloadRevision,
+    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+) -> a3s_flow::Result<()> {
+    if binding.deployment_id != deployment.id
+        || binding.organization_id != deployment.organization_id
+        || binding.workload_id != deployment.workload_id
+        || binding.revision_id != revision.id
+        || binding.replica_generation != revision.generation
+        || binding.runtime_unit_id != spec.unit_id
+        || binding.runtime_generation != spec.generation
+        || binding.node_id != deployment.node_id
+    {
+        return Err(FlowError::Runtime(
+            "deployment replica binding does not match its Runtime projection".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn registry_credential_reference(

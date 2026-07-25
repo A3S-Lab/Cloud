@@ -181,11 +181,15 @@ Primary aggregate:
 ### 3.7 Workloads and deployments
 
 Owns desired service state, immutable workload revisions, placement intent,
-deployments, active revision selection, update, stop, and rollback.
+deployments, active revision selection, update, stop, rollback, stable replica
+identity, and fenced hard-resource claims.
 
 Primary aggregates:
 
 - `Workload`
+- `WorkloadControl`
+- `WorkloadReplica`
+- `ResourceClaim`
 - `Deployment`
 
 `Workload` is the single deployment abstraction. Its source may be a generic
@@ -193,6 +197,11 @@ application image or an Agent/MCP release. This avoids parallel deployment
 engines while preserving the stricter Asset domain. Workloads also owns the
 tenant-authorized query that maps one exact revision and assigned deployment to
 ordered Fleet log metadata; it does not become the owner of log bodies.
+One current single-instance Workload maps to canonical replica/member ordinal
+zero. A deployment binding records the exact replica, placement, and opaque
+Runtime unit generation. Resource claims bind stable slots to that projection;
+an orphaned or timed-out claim remains allocated until exact release or trusted
+fencing evidence is durable.
 
 ### 3.8 Edge routing
 

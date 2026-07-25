@@ -420,6 +420,45 @@ A deployment follows these durable steps:
     require durable stopped-or-absent evidence before the deployment becomes
     terminal `active`.
 
+The `H0.1` persistence foundation overlays this existing workflow rather than
+creating another deployment engine. `WorkloadControl` owns the managed-owner
+reference and effective placement policy. One stable `WorkloadReplica` and
+`WorkloadReplicaMember` currently represent canonical ordinal zero.
+`DeploymentReplicaBinding` freezes the deployment revision, replica
+generation, member, node, placement generation, and opaque Runtime unit
+identity. Runtime and Gateway never receive organization, logical placement,
+replica, member, or claim identities.
+
+Hard resources are reserved by an independent Workloads repository. A
+canonical request names the exact stable slots and allocation shapes. The
+repository transaction assigns each slot a monotonically increasing generation
+and new fence token, then persists one digest-bound claim:
+
+```text
+reserved_in_db
+  -> preparing_on_agent
+  -> prepared_on_agent
+  -> bound_to_runtime_unit
+  -> releasing
+  -> released
+  +-> orphaned
+```
+
+`orphaned` remains an active allocation, including when a timeout caused the
+uncertainty. Release requires exact slot generation/token evidence from the
+Agent, a provider NotFound result, or a trusted compute fence. PostgreSQL keeps
+immutable per-claim slot evidence and a current slot ledger; releasing a claim,
+marking every claim slot released, and clearing each matching ledger owner are
+one transaction. A partial unique index prevents two active claims for the same
+organization/node/resource-kind/stable-resource tuple.
+
+Migrations 040 and 041 own these tables. Their new CRUD and aggregate reads use
+A3S ORM typed table definitions and query builders, including the claim/slot
+JOIN. One isolated `pg_advisory_xact_lock` statement serializes exact claim-ID
+replay because the pinned ORM AST cannot express PostgreSQL advisory or row
+locks. The provider prepare/bind/release command path is still open, so this is
+a persistence and domain foundation rather than a completed `H0.1` rollout.
+
 New deployment operations use `cloud.deployment@2`. The version 1 workflow is
 registered only to replay runs persisted before routed update semantics. At
 most one nonterminal deployment may exist for a workload. Cancellation is

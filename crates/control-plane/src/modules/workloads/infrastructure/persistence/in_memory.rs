@@ -1,9 +1,11 @@
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
+    ProjectId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, OciArtifact, Workload, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IWorkloadRepository,
@@ -33,6 +35,10 @@ struct State {
     >,
     revisions: BTreeMap<WorkloadRevisionId, WorkloadRevision>,
     deployments: BTreeMap<DeploymentId, Deployment>,
+    controls: BTreeMap<WorkloadId, WorkloadControl>,
+    replicas: BTreeMap<WorkloadReplicaId, WorkloadReplica>,
+    replica_members: BTreeMap<WorkloadReplicaMemberId, WorkloadReplicaMember>,
+    deployment_replica_bindings: BTreeMap<DeploymentId, DeploymentReplicaBinding>,
     idempotency: BTreeMap<(String, String), (String, DeploymentBundle)>,
     cancellation_idempotency: BTreeMap<(String, String), (String, Deployment)>,
     stop_idempotency: BTreeMap<(String, String), (String, WorkloadStopBundle)>,
@@ -69,7 +75,10 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             return Ok(response);
         }
         validate_bundle(&request)?;
-        let workload = if let Some(existing) = state.workloads.get(&request.workload.id) {
+        let is_new_workload = !state.workloads.contains_key(&request.workload.id);
+        let (workload, control, replica, member) = if let Some(existing) =
+            state.workloads.get(&request.workload.id)
+        {
             if existing != &request.workload {
                 return Err(RepositoryError::Conflict(
                     "workload changed before a new revision was requested".into(),
@@ -82,7 +91,30 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                     "workload already has a nonterminal deployment".into(),
                 ));
             }
-            existing.clone()
+            let control = state.controls.get(&existing.id).cloned().ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its durable control record".into())
+            })?;
+            control
+                .require_authority(&request.control)
+                .map_err(RepositoryError::Conflict)?;
+            let replica_id = WorkloadReplicaId::from_uuid(existing.id.as_uuid());
+            let mut replica = state.replicas.get(&replica_id).cloned().ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its canonical replica".into())
+            })?;
+            replica
+                .advance(&request.revision, request.revision.created_at)
+                .map_err(RepositoryError::Conflict)?;
+            let member_id = WorkloadReplicaMemberId::from_uuid(existing.id.as_uuid());
+            let member = state
+                .replica_members
+                .get(&member_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "Workload is missing its canonical replica member".into(),
+                    )
+                })?;
+            (existing.clone(), control, replica, member)
         } else {
             let name_key = (
                 request.workload.organization_id,
@@ -94,11 +126,13 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                     "workload name is already in use".into(),
                 ));
             }
-            state.names.insert(name_key, request.workload.id);
-            state
-                .workloads
-                .insert(request.workload.id, request.workload.clone());
-            request.workload.clone()
+            let control = WorkloadControl::create(&request.workload, request.control.clone())
+                .map_err(RepositoryError::Conflict)?;
+            let replica = WorkloadReplica::canonical(&request.workload, &request.revision)
+                .map_err(RepositoryError::Conflict)?;
+            let member = WorkloadReplicaMember::canonical(&request.workload, &replica)
+                .map_err(RepositoryError::Conflict)?;
+            (request.workload.clone(), control, replica, member)
         };
         let next_generation = state
             .revisions
@@ -116,17 +150,46 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         }
         if state.revisions.contains_key(&request.revision.id)
             || state.deployments.contains_key(&request.deployment.id)
+            || state
+                .deployment_replica_bindings
+                .contains_key(&request.deployment.id)
         {
             return Err(RepositoryError::Conflict(
                 "workload revision or deployment identity is already in use".into(),
             ));
         }
+        let binding = DeploymentReplicaBinding::create(
+            &request.deployment,
+            &request.revision,
+            &replica,
+            &member,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        if is_new_workload {
+            state.names.insert(
+                (
+                    request.workload.organization_id,
+                    request.workload.environment_id,
+                    request.workload.name.key().to_owned(),
+                ),
+                request.workload.id,
+            );
+            state
+                .workloads
+                .insert(request.workload.id, request.workload.clone());
+            state.controls.insert(request.workload.id, control);
+            state.replica_members.insert(member.id, member);
+        }
+        state.replicas.insert(replica.id, replica);
         state
             .revisions
             .insert(request.revision.id, request.revision.clone());
         state
             .deployments
             .insert(request.deployment.id, request.deployment.clone());
+        state
+            .deployment_replica_bindings
+            .insert(request.deployment.id, binding);
         state.outbox.push(request.event);
         let response = DeploymentBundle {
             workload,
@@ -179,6 +242,14 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .deployments
             .get(&request.deployment.id)
             .ok_or(RepositoryError::NotFound)?;
+        state
+            .controls
+            .get(&current.workload_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its durable control record".into())
+            })?
+            .require_direct_mutation()
+            .map_err(RepositoryError::Conflict)?;
         validate_cancellation_bundle(&request, current)?;
         state
             .deployments
@@ -235,6 +306,14 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .filter(|workload| workload.organization_id == request.workload.organization_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
+        state
+            .controls
+            .get(&current.id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its durable control record".into())
+            })?
+            .require_direct_mutation()
+            .map_err(RepositoryError::Conflict)?;
         if current.aggregate_version != request.expected_version {
             return Err(RepositoryError::Conflict(format!(
                 "workload changed from expected version {} to {}",
@@ -314,6 +393,72 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
     ) -> Result<Workload, RepositoryError> {
         let state = self.state.read().await;
         state_workload(&state, organization_id, workload_id)
+    }
+
+    async fn find_workload_control(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<WorkloadControl, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .controls
+            .get(&workload_id)
+            .filter(|control| control.organization_id == organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn find_workload_replica(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+        replica_id: WorkloadReplicaId,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .replicas
+            .get(&replica_id)
+            .filter(|replica| {
+                replica.organization_id == organization_id && replica.workload_id == workload_id
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn find_workload_replica_member(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+        member_id: WorkloadReplicaMemberId,
+    ) -> Result<WorkloadReplicaMember, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .replica_members
+            .get(&member_id)
+            .filter(|member| {
+                member.organization_id == organization_id && member.replica_id == replica_id
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn find_deployment_replica_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<DeploymentReplicaBinding, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .deployment_replica_bindings
+            .get(&deployment_id)
+            .filter(|binding| binding.organization_id == organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
     }
 
     async fn list_workloads(
@@ -456,10 +601,47 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         node_id: NodeId,
         at: DateTime<Utc>,
     ) -> Result<Deployment, RepositoryError> {
-        mutate(&self.state, deployment_id, expected_version, |deployment| {
-            deployment.schedule(node_id, at)
-        })
-        .await
+        let mut state = self.state.write().await;
+        let mut deployment = state
+            .deployments
+            .get(&deployment_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if deployment.aggregate_version != expected_version {
+            return Err(version_conflict(
+                expected_version,
+                deployment.aggregate_version,
+            ));
+        }
+        deployment.schedule(node_id, at).map_err(transition_error)?;
+        let mut binding = state
+            .deployment_replica_bindings
+            .get(&deployment_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "deployment is missing its canonical replica binding".into(),
+                )
+            })?;
+        let mut member = state
+            .replica_members
+            .get(&binding.member_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "deployment replica binding references a missing member".into(),
+                )
+            })?;
+        member.place(node_id, at).map_err(transition_error)?;
+        binding
+            .assign(&deployment, &member)
+            .map_err(transition_error)?;
+        state.replica_members.insert(member.id, member);
+        state
+            .deployment_replica_bindings
+            .insert(deployment_id, binding);
+        state.deployments.insert(deployment_id, deployment.clone());
+        Ok(deployment)
     }
 
     async fn mark_dispatched(
@@ -691,10 +873,20 @@ impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
                             "active Runtime target has no active deployment".into(),
                         )
                     })?;
+                let replica_binding = state
+                    .deployment_replica_bindings
+                    .get(&deployment.id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "active Runtime target is missing its replica binding".into(),
+                        )
+                    })?;
                 Ok(ActiveRuntimeTarget {
                     workload,
                     revision,
                     deployment,
+                    replica_binding,
                 })
             })
             .collect()
@@ -702,6 +894,10 @@ impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
 }
 
 fn validate_bundle(request: &CreateDeploymentBundle) -> Result<(), RepositoryError> {
+    request
+        .control
+        .validate()
+        .map_err(RepositoryError::Conflict)?;
     if request.revision.workload_id != request.workload.id
         || request.deployment.organization_id != request.workload.organization_id
         || request.deployment.workload_id != request.workload.id

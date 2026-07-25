@@ -436,6 +436,7 @@ pub(super) fn deployment_bundle(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,
@@ -482,6 +483,7 @@ pub(super) fn rollback_deployment_bundle(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,
@@ -551,6 +553,7 @@ pub(super) fn requested_deployment_bundle_with_secrets(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,

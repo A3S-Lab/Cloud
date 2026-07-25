@@ -70,6 +70,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
+- **Managed Replica Foundation**: Persist an inference-neutral owner,
+  effective placement policy, stable replica/member identity, exact deployment
+  binding, and fenced hard-resource claims without exposing Cloud placement
+  identity to Runtime
 - **Managed Reachability**: Create tenant-scoped logical Gateway scopes, persist
   ordered physical membership and explicit rollout thresholds, verify domain
   ownership, provision TLS, compile complete expiring ACL snapshots from
@@ -124,6 +128,34 @@ providers, durable evidence restoration, evidence API/web download, replay
 adoption, cleanup, and explicit deployment handoff. It remains in progress
 until external private-provider certification and the production
 signed-evidence process-death gate pass.
+
+The current `H0.1` foundation maps every existing single-instance Workload to
+one stable replica and member. Replica identity survives immutable revision
+changes, while every deployment records the exact replica generation, member,
+node, placement generation, and opaque Runtime unit identity it projects.
+Managed-owner references and the effective placement policy are durable Cloud
+state; managed Workloads reject direct mutations that do not carry the exact
+owner and policy. Workload list/detail responses expose this control and
+placement state explicitly.
+
+Hard-resource reservations use canonical sorted slot requests and a durable
+claim state machine from database reservation through Agent preparation,
+Runtime binding, release, or operator-visible orphaning. Every slot has a
+monotonic generation and a new unguessable fence token. An orphan or timeout
+continues to block the slot; only exact Agent release, provider NotFound, or
+trusted compute-fencing evidence makes it reusable. Migrations 040 and 041
+backfill the replica foundation and add claim, slot-evidence, and current-lease
+tables. New persistence uses A3S ORM typed tables, JOINs, inserts, and updates;
+one isolated PostgreSQL advisory-lock statement remains because the pinned ORM
+AST cannot express that lock primitive. In-memory and PostgreSQL 17 gates cover
+100-way exact replay, competing reservations, fencing, and generation/token
+rotation.
+
+This does not complete `H0.1`: Fleet inventory ingestion, resource requirement
+compilation, Agent prepare/release commands and journal evidence, Runtime
+allocation evidence, and process-death reconciliation still have to converge
+through the ordinary deployment workflow before the provider-unit exit gate
+can pass.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to

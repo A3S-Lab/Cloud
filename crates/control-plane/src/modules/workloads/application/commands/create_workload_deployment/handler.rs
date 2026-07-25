@@ -148,6 +148,7 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
+                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
                     revision,
                     deployment,
                     operation,

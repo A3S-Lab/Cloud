@@ -1,3 +1,4 @@
+use super::replicas;
 use super::rows::{
     self, DeploymentRow, RevisionRow, WorkloadRow, SELECT_DEPLOYMENTS, SELECT_REVISIONS,
     SELECT_WORKLOADS,
@@ -180,6 +181,8 @@ pub(super) async fn list_active_runtime_targets(
             DeploymentId::from_uuid(deployment_id),
         )
         .await?;
+        let replica_binding =
+            replicas::find_binding(executor, organization_id, deployment.id).await?;
         if workload.desired_state
             != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
             || workload.active_revision_id != Some(revision.id)
@@ -198,6 +201,7 @@ pub(super) async fn list_active_runtime_targets(
             workload,
             revision,
             deployment,
+            replica_binding,
         });
     }
     Ok(targets)

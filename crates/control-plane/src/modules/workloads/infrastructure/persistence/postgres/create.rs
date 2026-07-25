@@ -1,4 +1,4 @@
-use super::queries;
+use super::{queries, replicas};
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
     require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
@@ -55,6 +55,14 @@ pub(super) async fn deployment_in_transaction(
     insert_revision(transaction, &request).await?;
     insert_operation(transaction, &request).await?;
     insert_deployment(transaction, &request).await?;
+    replicas::record_generation(
+        transaction,
+        &workload,
+        &request.control,
+        &request.revision,
+        &request.deployment,
+    )
+    .await?;
 
     let response = DeploymentBundle {
         workload,
@@ -91,6 +99,10 @@ async fn require_no_nonterminal_deployment(
 }
 
 fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceError> {
+    request
+        .control
+        .validate()
+        .map_err(RepositoryError::Conflict)?;
     let workload = &request.workload;
     let revision = &request.revision;
     let deployment = &request.deployment;

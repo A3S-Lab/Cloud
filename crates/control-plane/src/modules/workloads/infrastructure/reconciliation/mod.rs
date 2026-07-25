@@ -522,6 +522,14 @@ fn validate_target(target: &ActiveRuntimeTarget) -> Result<(), String> {
         )
         || target.deployment.node_id.is_none()
         || target.deployment.command_id.is_none()
+        || target.replica_binding.deployment_id != target.deployment.id
+        || target.replica_binding.organization_id != target.workload.organization_id
+        || target.replica_binding.workload_id != target.workload.id
+        || target.replica_binding.revision_id != target.revision.id
+        || target.replica_binding.replica_generation != target.revision.generation
+        || target.replica_binding.node_id != target.deployment.node_id
+        || target.replica_binding.runtime_unit_id != target.revision.runtime_unit_id()
+        || target.replica_binding.runtime_generation != target.revision.generation
     {
         return Err("active Runtime target is inconsistent".into());
     }

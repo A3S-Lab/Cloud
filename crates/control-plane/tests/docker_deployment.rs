@@ -661,6 +661,7 @@ fn deployment_bundle(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: a3s_cloud_control_plane::modules::workloads::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,
@@ -707,6 +708,7 @@ fn rollback_deployment_bundle(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: a3s_cloud_control_plane::modules::workloads::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,

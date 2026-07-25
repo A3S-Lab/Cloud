@@ -22,4 +22,5 @@ pub use queries::{
     DeploymentQueryResult, GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler,
     GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
+    WorkloadReplicaQueryResult,
 };

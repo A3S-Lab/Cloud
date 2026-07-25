@@ -5,8 +5,9 @@ use crate::modules::shared_kernel::domain::{
     ResourceName, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, HttpHealthCheck, OciArtifact, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate, Workload, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, HttpHealthCheck, OciArtifact, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision,
 };
 use a3s_cloud_contracts::{NodeCommandFailure, NodeCommandResult};
 use a3s_runtime::contract::{
@@ -371,10 +372,16 @@ fn runtime_target(
     deployment.verify(at)?;
     deployment.activate(retirement_required, at)?;
     workload.activate(revision.id, at)?;
+    let replica = WorkloadReplica::canonical(&workload, &revision)?;
+    let mut member = WorkloadReplicaMember::canonical(&workload, &replica)?;
+    member.place(node_id, at)?;
+    let replica_binding =
+        DeploymentReplicaBinding::create(&deployment, &revision, &replica, &member)?;
     Ok(ActiveRuntimeTarget {
         workload,
         revision,
         deployment,
+        replica_binding,
     })
 }
 

@@ -267,6 +267,30 @@ not a product capability until restore passes against a clean environment.
 Kubernetes or Helm may package Cloud, but Workloads remains the only workload
 scheduler and Cloud product configuration remains ACL.
 
+The current `H0.1` foundation persists inference-neutral managed-owner
+references, one effective single-replica placement policy, one stable
+replica/member, and one exact deployment-to-Runtime binding for every existing
+Workload. Migration 040 backfills legacy Workloads without changing their
+Runtime unit identity. Workload list/detail responses expose owner, policy,
+replica generation, member, node, and placement generation.
+
+Migration 041 and the independent Resource Claim repository add canonical hard
+resource slots, monotonic slot generations, unguessable fence tokens, and the
+durable `reserved_in_db -> preparing_on_agent -> prepared_on_agent ->
+bound_to_runtime_unit -> releasing -> released` lifecycle with an
+operator-visible `orphaned` branch. Orphaning and timeout retain the active
+lease. Only exact Agent release, provider NotFound, or trusted compute fencing
+can release it. The schema-backed claim CRUD and aggregate JOIN use A3S ORM
+typed builders; the only raw statement in this path is an isolated PostgreSQL
+advisory lock that the pinned typed AST cannot represent. A PostgreSQL 17 gate
+proves 100-way exact replay, 100-way competing reservation, orphan blocking,
+and generation/token rotation after fencing.
+
+`H0.1` remains in progress. The open exit work is Fleet inventory and
+requirement compilation, Agent-side prepare/release journal enforcement,
+Runtime allocation evidence, deployment-flow integration, and process-death
+reconciliation proving one provider unit for one replica generation.
+
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
 ordered desired member set, a membership generation, and explicit `min_ready`

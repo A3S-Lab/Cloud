@@ -1245,6 +1245,36 @@ reconciliation, process death, and provider recovery.
 | `H0.4` | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
 | `H0.5` | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
+The implemented `H0.1` foundation introduces `WorkloadControl`,
+`WorkloadReplica`, `WorkloadReplicaMember`, and
+`DeploymentReplicaBinding`. Existing single-instance deployments map to
+canonical ordinal zero without changing their revision-derived Runtime unit
+identity. Replica identity remains stable as immutable revisions advance;
+deployment resolution, reconciliation, route targeting, logs, and query
+responses validate the exact replica, member, placement, Runtime unit, and
+generation projection. Migration 040 backfills these records and managed
+Workloads reject direct mutation outside their exact owner and effective
+placement policy.
+
+The same slice defines generic CPU, memory, ephemeral-storage, host-port,
+accelerator, and volume slot allocations plus a complete `ResourceClaim`
+aggregate. Each claim binds tenant, deployment, replica/member, placement,
+node inventory, topology, Runtime identity, canonical slot set, claim digest,
+slot generation, and fence token. Migration 041 persists claims, immutable
+claim-slot evidence, and the current slot ledger. Its new PostgreSQL
+persistence uses A3S ORM typed tables, JOINs, inserts, and optimistic updates.
+The only raw statement is a documented claim-ID advisory lock because the
+pinned ORM AST has no advisory-lock or row-lock node. In-memory and isolated
+PostgreSQL 17 tests cover 100-way exact replay, 100-way competing claims,
+orphan retention, trusted fencing, and generation/token rotation.
+
+`H0.1` is not complete. Next, Fleet must persist negotiated inventory and
+compile exact requirements; the node protocol and Agent journal must implement
+prepare/release fencing evidence; Runtime observations must prove allocation
+binding; and the deployment reconciler must adopt or release claims after
+process/provider failure. Only the combined real-provider crash/replay gate may
+mark the sub-gate complete.
+
 The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
 cardinality-one private target projection. A scope belongs to one organization,
 project, and environment and now persists ordered desired physical membership,

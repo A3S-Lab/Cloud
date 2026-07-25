@@ -1,4 +1,4 @@
-use super::{queries, transitions};
+use super::{queries, replicas, transitions};
 use crate::infrastructure::{
     execute, idempotency_replay, is_foreign_key_violation, is_unique_violation, require_one_row,
     store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
@@ -34,6 +34,8 @@ pub(super) async fn request(
                 )
                 .await?
                 .ok_or(RepositoryError::NotFound)?;
+                replicas::require_direct_mutation(transaction, current.organization_id, current.id)
+                    .await?;
                 if current.aggregate_version != request.expected_version {
                     return Err(RepositoryError::Conflict(format!(
                         "workload changed from expected version {} to {}",

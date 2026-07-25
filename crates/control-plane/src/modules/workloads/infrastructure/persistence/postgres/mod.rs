@@ -1,16 +1,23 @@
 mod create;
 mod queries;
+mod replicas;
+mod resource_claim_rows;
+mod resource_claim_writes;
+mod resource_claims;
 mod rows;
+mod schema;
 mod secret_rotation_restarts;
 mod stop;
 mod transitions;
 
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
+    ProjectId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, OciArtifact, Workload, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
@@ -21,6 +28,8 @@ use crate::modules::workloads::domain::repositories::{
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+
+pub use resource_claims::PostgresResourceClaimRepository;
 
 #[derive(Clone)]
 pub struct PostgresWorkloadRepository {
@@ -94,6 +103,40 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
         workload_id: WorkloadId,
     ) -> Result<Workload, RepositoryError> {
         queries::find_workload(&self.executor, organization_id, workload_id).await
+    }
+
+    async fn find_workload_control(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<WorkloadControl, RepositoryError> {
+        replicas::find_control(&self.executor, organization_id, workload_id).await
+    }
+
+    async fn find_workload_replica(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+        replica_id: WorkloadReplicaId,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        replicas::find_replica(&self.executor, organization_id, workload_id, replica_id).await
+    }
+
+    async fn find_workload_replica_member(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+        member_id: WorkloadReplicaMemberId,
+    ) -> Result<WorkloadReplicaMember, RepositoryError> {
+        replicas::find_member(&self.executor, organization_id, replica_id, member_id).await
+    }
+
+    async fn find_deployment_replica_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<DeploymentReplicaBinding, RepositoryError> {
+        replicas::find_binding(&self.executor, organization_id, deployment_id).await
     }
 
     async fn list_workloads(

@@ -1,6 +1,10 @@
 use crate::modules::operations::domain::entities::OperationProjection;
-use crate::modules::workloads::application::{DeploymentQueryResult, WorkloadQueryResult};
-use crate::modules::workloads::domain::entities::WorkloadRevision;
+use crate::modules::workloads::application::{
+    DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResult,
+};
+use crate::modules::workloads::domain::entities::{
+    PlacementTopology, WorkloadControl, WorkloadRevision,
+};
 use crate::modules::workloads::presentation::dto::ServiceTemplateDto;
 use a3s_runtime::contract::{RuntimeHealthState, RuntimeUnitState};
 use chrono::{DateTime, Utc};
@@ -16,9 +20,66 @@ pub struct WorkloadResponse {
     pub environment_id: Uuid,
     pub name: String,
     pub desired_state: String,
+    pub control: WorkloadControlResponse,
+    pub replicas: Vec<WorkloadReplicaResponse>,
     pub desired_revision: Option<WorkloadRevisionResponse>,
     pub active_revision: Option<WorkloadRevisionResponse>,
     pub deployments: Vec<DeploymentResponse>,
+    pub aggregate_version: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadControlResponse {
+    pub managed_owner: Option<ManagedOwnerResponse>,
+    pub placement_policy: EffectivePlacementPolicyResponse,
+    pub aggregate_version: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedOwnerResponse {
+    pub kind: String,
+    pub owner_id: Uuid,
+    pub owner_generation: u64,
+    pub owner_spec_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectivePlacementPolicyResponse {
+    pub schema: String,
+    pub generation: u64,
+    pub desired_replicas: u32,
+    pub members_per_replica: u32,
+    pub topology: String,
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadReplicaResponse {
+    pub id: Uuid,
+    pub ordinal: u32,
+    pub revision_id: Uuid,
+    pub generation: u64,
+    pub members: Vec<WorkloadReplicaMemberResponse>,
+    pub aggregate_version: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadReplicaMemberResponse {
+    pub id: Uuid,
+    pub ordinal: u32,
+    pub node_id: Option<Uuid>,
+    pub placement_generation: u64,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -50,9 +111,15 @@ pub struct WorkloadRevisionResponse {
 pub struct DeploymentResponse {
     pub id: Uuid,
     pub workload_id: Uuid,
+    pub replica_id: Uuid,
+    pub replica_generation: u64,
+    pub member_id: Uuid,
+    pub placement_generation: u64,
     pub revision: WorkloadRevisionResponse,
     pub operation_id: Uuid,
     pub node_id: Option<Uuid>,
+    pub runtime_unit_id: String,
+    pub runtime_generation: u64,
     pub command_id: Option<Uuid>,
     pub cleanup_command_id: Option<Uuid>,
     pub retirement_command_id: Option<Uuid>,
@@ -109,12 +176,74 @@ impl From<WorkloadQueryResult> for WorkloadResponse {
             environment_id: workload.environment_id.as_uuid(),
             name: workload.name.as_str().to_owned(),
             desired_state: workload.desired_state.as_str().into(),
+            control: result.control.into(),
+            replicas: result.replicas.into_iter().map(Into::into).collect(),
             desired_revision,
             active_revision,
             deployments: result.deployments.into_iter().map(Into::into).collect(),
             aggregate_version: workload.aggregate_version,
             created_at: workload.created_at,
             updated_at: workload.updated_at,
+        }
+    }
+}
+
+impl From<WorkloadControl> for WorkloadControlResponse {
+    fn from(control: WorkloadControl) -> Self {
+        let managed_owner = control
+            .spec
+            .managed_owner
+            .map(|owner| ManagedOwnerResponse {
+                kind: owner.kind().as_str().to_owned(),
+                owner_id: owner.owner_id(),
+                owner_generation: owner.owner_generation(),
+                owner_spec_digest: owner.owner_spec_digest().to_owned(),
+            });
+        let policy = control.spec.placement_policy;
+        let topology = match policy.topology() {
+            PlacementTopology::SingleNode => "single_node",
+        };
+        Self {
+            managed_owner,
+            placement_policy: EffectivePlacementPolicyResponse {
+                schema: policy.schema().to_owned(),
+                generation: policy.generation(),
+                desired_replicas: policy.desired_replicas(),
+                members_per_replica: policy.members_per_replica(),
+                topology: topology.into(),
+                digest: policy.digest().to_owned(),
+            },
+            aggregate_version: control.aggregate_version,
+            created_at: control.created_at,
+            updated_at: control.updated_at,
+        }
+    }
+}
+
+impl From<WorkloadReplicaQueryResult> for WorkloadReplicaResponse {
+    fn from(result: WorkloadReplicaQueryResult) -> Self {
+        let replica = result.replica;
+        Self {
+            id: replica.id.as_uuid(),
+            ordinal: replica.ordinal,
+            revision_id: replica.revision_id.as_uuid(),
+            generation: replica.generation,
+            members: result
+                .members
+                .into_iter()
+                .map(|member| WorkloadReplicaMemberResponse {
+                    id: member.id.as_uuid(),
+                    ordinal: member.ordinal,
+                    node_id: member.node_id.map(|node_id| node_id.as_uuid()),
+                    placement_generation: member.placement_generation,
+                    aggregate_version: member.aggregate_version,
+                    created_at: member.created_at,
+                    updated_at: member.updated_at,
+                })
+                .collect(),
+            aggregate_version: replica.aggregate_version,
+            created_at: replica.created_at,
+            updated_at: replica.updated_at,
         }
     }
 }
@@ -162,12 +291,19 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
 impl From<DeploymentQueryResult> for DeploymentResponse {
     fn from(result: DeploymentQueryResult) -> Self {
         let deployment = result.deployment;
+        let replica_binding = result.replica_binding;
         Self {
             id: deployment.id.as_uuid(),
             workload_id: deployment.workload_id.as_uuid(),
+            replica_id: replica_binding.replica_id.as_uuid(),
+            replica_generation: replica_binding.replica_generation,
+            member_id: replica_binding.member_id.as_uuid(),
+            placement_generation: replica_binding.placement_generation,
             revision: result.revision.into(),
             operation_id: deployment.operation_id.as_uuid(),
             node_id: deployment.node_id.map(|id| id.as_uuid()),
+            runtime_unit_id: replica_binding.runtime_unit_id,
+            runtime_generation: replica_binding.runtime_generation,
             command_id: deployment.command_id.map(|id| id.as_uuid()),
             cleanup_command_id: deployment.cleanup_command_id.map(|id| id.as_uuid()),
             retirement_command_id: deployment.retirement_command_id.map(|id| id.as_uuid()),

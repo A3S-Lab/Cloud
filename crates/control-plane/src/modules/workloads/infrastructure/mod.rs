@@ -11,7 +11,10 @@ pub use deployment_flow::{
     STOP_WORKFLOW_VERSION,
 };
 pub use oci_registry::OciRegistryArtifactResolver;
-pub use persistence::{InMemoryWorkloadRepository, PostgresWorkloadRepository};
+pub use persistence::{
+    InMemoryResourceClaimRepository, InMemoryWorkloadRepository, PostgresResourceClaimRepository,
+    PostgresWorkloadRepository,
+};
 pub use reconciliation::{
     IWorkloadRuntimeControl, WorkloadReconciliationFailure, WorkloadReconciliationReport,
     WorkloadRuntimeReconciler,
