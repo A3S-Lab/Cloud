@@ -89,6 +89,14 @@ async fn replicated_rollout_persists_independent_acknowledgements_and_explicit_d
     assert!(!staged.replayed);
     assert!(replay.replayed);
     assert_eq!(staged.rollout, rollout);
+    let dispatches = repository
+        .pending_gateway_rollout_dispatches(10)
+        .await
+        .expect("pending rollout dispatches");
+    assert_eq!(dispatches.len(), 1);
+    dispatches[0].validate().expect("dispatch target");
+    assert_eq!(dispatches[0].rollout, rollout);
+    assert_eq!(dispatches[0].publications.len(), 3);
 
     repository
         .project_gateway_acknowledgement(
@@ -107,6 +115,15 @@ async fn replicated_rollout_persists_independent_acknowledgements_and_explicit_d
         .expect("pending rollout");
     assert_eq!(pending.state, GatewayRolloutState::Pending);
     assert_eq!(pending.ready_replicas, 1);
+    assert_eq!(
+        repository
+            .pending_gateway_rollout_dispatches(10)
+            .await
+            .expect("remaining pending rollout dispatches")[0]
+            .publications
+            .len(),
+        2
+    );
 
     repository
         .project_gateway_acknowledgement(
@@ -125,6 +142,14 @@ async fn replicated_rollout_persists_independent_acknowledgements_and_explicit_d
         .expect("ready rollout");
     assert_eq!(ready.state, GatewayRolloutState::Ready);
     assert!(ready.serves_traffic().expect("readiness"));
+    assert_eq!(
+        repository
+            .pending_gateway_rollout_dispatches(10)
+            .await
+            .expect("ready rollout dispatches")[0]
+            .publications,
+        vec![publications[2].clone()]
+    );
 
     let degraded = repository
         .mark_gateway_rollout_replica_unavailable(
@@ -141,6 +166,11 @@ async fn replicated_rollout_persists_independent_acknowledgements_and_explicit_d
     assert_eq!(degraded.ready_replicas, 2);
     assert_eq!(degraded.unavailable_replicas, 1);
     assert!(degraded.serves_traffic().expect("degraded readiness"));
+    assert!(repository
+        .pending_gateway_rollout_dispatches(10)
+        .await
+        .expect("terminal rollout dispatches")
+        .is_empty());
     assert!(matches!(
         repository
             .mark_gateway_rollout_replica_unavailable(
@@ -154,6 +184,10 @@ async fn replicated_rollout_persists_independent_acknowledgements_and_explicit_d
             .await,
         Err(RepositoryError::Conflict(_))
     ));
+    assert!(repository
+        .pending_gateway_rollout_dispatches(0)
+        .await
+        .is_err());
 }
 
 fn publication(

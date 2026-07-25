@@ -174,17 +174,22 @@ explicitly degraded. Migrations 038 and 039 preserve legacy single-member
 scopes, add membership and rollout constraints, and recover the aggregate from
 PostgreSQL. The new schema-backed CRUD uses A3S ORM typed table and query
 builders; reviewed static SQL is retained only where the current typed AST
-cannot express PostgreSQL locking or aggregation.
+cannot express PostgreSQL locking or aggregation. A worker-role reconciler
+loads each active rollout and its publications through one typed CTE/JOIN
+query, idempotently redispatches every pending member command after process or
+queue interruption, and records a member as unavailable only after its exact
+command deadline passes.
 
 The real pinned-Gateway gate rotates independently signed certificates and
 upstream targets, rejects the superseded certificate and selector, removes the
 old certificate material, and recovers only the replacement after Gateway
 restart. Same-policy validity renewal continues to retain the exact ACL digest
 and active certificate until its successor is ready. Contract-level
-mixed-version delivery and PostgreSQL replica-threshold recovery are verified.
-The application coordinator that compiles and enqueues every member snapshot,
-real multi-Gateway failure evidence, and joint production HA recovery remain
-open, so this foundation does not complete `H0.2` or `H0`.
+mixed-version delivery, PostgreSQL replica-threshold recovery, and durable
+Fleet command redispatch are verified. The coordinator that derives and
+compiles a healthy target set for every member, real multi-Gateway failure
+evidence, and joint production HA recovery remain open, so this foundation does
+not complete `H0.2` or `H0`.
 
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
 evidence, and the ordered product portfolio.
@@ -405,9 +410,11 @@ PostgreSQL recovery, and real certificate/target rotation are verified for the
 bootstrap-primary route path. Mixed-version delivery is verified at the
 protocol boundary. Cloud also persists independent per-member rollout evidence
 and computes ready, succeeded, or degraded aggregate outcomes without assuming
-a global atomic reload. Multi-member snapshot coordination, real Gateway loss
-and partial-availability evidence, and joint production HA recovery remain to
-be implemented and verified.
+a global atomic reload. Its rollout reconciler recovers pending Fleet command
+dispatch after restart and turns deadline expiry into explicit unavailable
+evidence. Per-member healthy target compilation, real Gateway loss and
+partial-availability evidence, and joint production HA recovery remain to be
+implemented and verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

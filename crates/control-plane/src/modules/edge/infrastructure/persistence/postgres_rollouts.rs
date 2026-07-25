@@ -26,6 +26,10 @@ use uuid::Uuid;
 const SELECT_ROLLOUTS_FOR_UPDATE: &str = "select id, organization_id, gateway_scope_id, membership_generation, generation, correlation_id, min_ready, max_unavailable, desired_replicas, state, ready_replicas, unavailable_replicas, aggregate_version, started_at, completed_at from gateway_rollouts";
 const SELECT_REPLICAS_FOR_UPDATE: &str = "select node_id, revision, command_id, snapshot_digest, snapshot_expires_at, gateway_certificate_id, state, failure, acknowledged_at from gateway_rollout_replicas";
 
+mod dispatches;
+
+pub(super) use dispatches::pending as pending_dispatches;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RolloutRow {
     id: Uuid,

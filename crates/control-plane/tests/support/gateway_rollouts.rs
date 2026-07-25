@@ -9,8 +9,11 @@ use a3s_cloud_control_plane::modules::edge::domain::repositories::{
 };
 use a3s_cloud_control_plane::modules::edge::infrastructure::persistence::PostgresEdgeRepository;
 use a3s_cloud_control_plane::modules::edge::{
-    GatewayPublication, GatewayRollout, GatewayRolloutPolicy, GatewayRolloutState, GatewayScope,
+    FleetGatewayCommandQueue, GatewayPublication, GatewayRollout, GatewayRolloutPolicy,
+    GatewayRolloutReconciler, GatewayRolloutState, GatewayScope,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     EnvironmentId, GatewayRolloutId, GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId,
     OrganizationId, ProjectId,
@@ -18,6 +21,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct GatewayRolloutFixture {
@@ -132,6 +136,46 @@ pub async fn exercise_replicated_gateway_rollout(
             .await?,
         rollout
     );
+    let dispatches = restarted.pending_gateway_rollout_dispatches(10).await?;
+    assert_eq!(dispatches.len(), 1);
+    dispatches[0].validate()?;
+    assert_eq!(dispatches[0].rollout, rollout);
+    assert_eq!(dispatches[0].publications.len(), 3);
+    let node_commands: Arc<dyn INodeControlRepository> =
+        Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let commands = Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_commands)));
+    let dispatch_repository: Arc<dyn IEdgeRepository> =
+        Arc::new(PostgresEdgeRepository::new(executor.clone()));
+    let dispatched = GatewayRolloutReconciler::new(
+        Arc::clone(&dispatch_repository),
+        commands.clone(),
+        std::time::Duration::from_secs(1),
+        10,
+    )?
+    .run_once(now + Duration::milliseconds(1))
+    .await?;
+    assert_eq!(dispatched.dispatched_commands, 3);
+    assert_eq!(dispatched.replayed_commands, 0);
+    assert!(dispatched.failures.is_empty());
+    let replayed = GatewayRolloutReconciler::new(
+        dispatch_repository,
+        commands,
+        std::time::Duration::from_secs(1),
+        10,
+    )?
+    .run_once(now + Duration::milliseconds(2))
+    .await?;
+    assert_eq!(replayed.dispatched_commands, 3);
+    assert_eq!(replayed.replayed_commands, 3);
+    assert!(replayed.failures.is_empty());
+    for publication in &publications {
+        let command = node_commands
+            .find_command(publication.node_id, publication.command_id)
+            .await?
+            .ok_or("Gateway rollout command was not durably enqueued")?;
+        assert_eq!(command.id, publication.command_id);
+        assert_eq!(command.node_id, publication.node_id);
+    }
 
     for (index, publication) in publications.iter().take(2).enumerate() {
         let acknowledged_at = now + Duration::seconds(i64::try_from(index + 1)?);
@@ -151,6 +195,10 @@ pub async fn exercise_replicated_gateway_rollout(
     assert_eq!(ready.ready_replicas, 2);
     assert_eq!(ready.unavailable_replicas, 0);
     assert!(ready.serves_traffic()?);
+    assert_eq!(
+        restarted.pending_gateway_rollout_dispatches(10).await?[0].publications,
+        vec![publications[2].clone()]
+    );
 
     let degraded = restarted
         .mark_gateway_rollout_replica_unavailable(
@@ -167,6 +215,10 @@ pub async fn exercise_replicated_gateway_rollout(
     assert_eq!(degraded.unavailable_replicas, 1);
     assert!(degraded.completed_at.is_some());
     assert!(degraded.serves_traffic()?);
+    assert!(restarted
+        .pending_gateway_rollout_dispatches(10)
+        .await?
+        .is_empty());
     assert!(
         database
             .execute(

@@ -1,8 +1,9 @@
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
-    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget, GatewayRolloutResult,
-    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
-    StageGatewayRollout, StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayRolloutDispatchTarget, GatewayRolloutResult, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRouteCutover,
+    StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
@@ -506,6 +507,14 @@ impl IEdgeRepository for InMemoryEdgeRepository {
     ) -> Result<GatewayRolloutResult, RepositoryError> {
         let mut state = self.state.write().await;
         rollouts::stage(&mut state, bundle)
+    }
+
+    async fn pending_gateway_rollout_dispatches(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayRolloutDispatchTarget>, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::pending_dispatches(&state, limit)
     }
 
     async fn find_gateway_rollout(

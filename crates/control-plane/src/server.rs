@@ -1,6 +1,6 @@
 use crate::infrastructure::FlowOperationCoordinator;
 use crate::modules::artifacts::application::BuildRunReconciler;
-use crate::modules::edge::GatewayCertificateReconciler;
+use crate::modules::edge::{GatewayCertificateReconciler, GatewayRolloutReconciler};
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
@@ -18,6 +18,7 @@ pub(crate) struct ControlPlaneWorkers {
     github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
+    gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
@@ -33,6 +34,7 @@ impl ControlPlaneWorkers {
         github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
+        gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
@@ -45,6 +47,7 @@ impl ControlPlaneWorkers {
             github_authority_reconciler,
             operation_coordinator,
             gateway_certificate_reconciler,
+            gateway_rollout_reconciler,
             secret_rotation_restart_reconciler,
             workload_reconciler,
             log_retention_worker,
@@ -87,6 +90,9 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.gateway_certificate_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.gateway_rollout_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {

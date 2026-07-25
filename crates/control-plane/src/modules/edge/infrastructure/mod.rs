@@ -3,6 +3,7 @@ mod domain_ownership_verifier;
 mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
+mod gateway_rollout_reconciler;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 pub mod persistence;
@@ -11,6 +12,8 @@ mod vault_gateway_certificate_authority;
 
 #[cfg(test)]
 mod gateway_certificate_reconciler_tests;
+#[cfg(test)]
+mod gateway_rollout_reconciler_tests;
 #[cfg(test)]
 mod gateway_snapshot_compiler_tests;
 
@@ -22,6 +25,10 @@ pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciliationReport,
 };
 pub use gateway_command_queue::FleetGatewayCommandQueue;
+pub use gateway_rollout_reconciler::{
+    GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
+    GatewayRolloutReconciliationReport,
+};
 pub use gateway_snapshot_compiler::{
     GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
 };

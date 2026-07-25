@@ -16,12 +16,12 @@ use crate::modules::edge::domain::services::{
 use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, DnsDomainOwnershipVerifier,
     EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, EdgeModule,
-    FleetGatewayCommandQueue, GatewayCertificateReconciler, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
-    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    FleetGatewayCommandQueue, GatewayCertificateReconciler, GatewayRolloutReconciler,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler,
+    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
+    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    PostgresEdgeRepository, PublishRouteHandler, RevokeDomainClaimHandler,
+    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
@@ -368,6 +368,13 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
+    let gateway_rollout_reconciler = GatewayRolloutReconciler::new(
+        Arc::clone(&routes),
+        Arc::clone(&route_commands),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
         EdgeDeploymentRouteUpdater::new(
             Arc::clone(&routes),
@@ -589,6 +596,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
+            run_operations.then_some(gateway_rollout_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
             run_operations.then_some(workload_reconciler),
             run_operations.then_some(log_retention_worker),

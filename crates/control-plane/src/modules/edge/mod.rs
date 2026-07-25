@@ -16,9 +16,9 @@ pub use application::{
 pub use domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
-    GatewayCertificateRouteStatus, GatewayRolloutResult, GatewayRouteCutoverResult,
-    IEdgeRepository, StageGatewayCertificateConvergence, StageGatewayRollout,
-    StageGatewayRouteCutover, TransitionDomainClaim,
+    GatewayCertificateRouteStatus, GatewayRolloutDispatchTarget, GatewayRolloutResult,
+    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
+    StageGatewayRollout, StageGatewayRouteCutover, TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
@@ -39,7 +39,9 @@ pub use infrastructure::{
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
     FleetGatewayCommandQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
+    GatewayRolloutReconciliationReport, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

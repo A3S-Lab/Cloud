@@ -4,9 +4,10 @@ use crate::infrastructure::{
 };
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
-    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget, GatewayRolloutResult,
-    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
-    StageGatewayRollout, StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayRolloutDispatchTarget, GatewayRolloutResult, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRouteCutover,
+    StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
@@ -508,6 +509,13 @@ impl IEdgeRepository for PostgresEdgeRepository {
         bundle: StageGatewayRollout,
     ) -> Result<GatewayRolloutResult, RepositoryError> {
         postgres_rollouts::stage(&self.executor, bundle).await
+    }
+
+    async fn pending_gateway_rollout_dispatches(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayRolloutDispatchTarget>, RepositoryError> {
+        postgres_rollouts::pending_dispatches(&self.executor, limit).await
     }
 
     async fn find_gateway_rollout(

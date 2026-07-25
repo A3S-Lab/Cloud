@@ -1,6 +1,7 @@
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceState, GatewayPublication, GatewayRollout, GatewayRouteCutover,
+    GatewayCertificateConvergenceState, GatewayPublication, GatewayPublicationState,
+    GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutState, GatewayRouteCutover,
     GatewayRouteCutoverState, GatewayScope, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
@@ -329,6 +330,67 @@ pub struct GatewayRolloutResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayRolloutDispatchTarget {
+    pub organization_id: OrganizationId,
+    pub rollout: GatewayRollout,
+    pub publications: Vec<GatewayPublication>,
+}
+
+impl GatewayRolloutDispatchTarget {
+    pub fn validate(&self) -> Result<(), String> {
+        self.rollout.validate()?;
+        if self.organization_id.as_uuid().is_nil()
+            || !matches!(
+                self.rollout.state,
+                GatewayRolloutState::Pending | GatewayRolloutState::Ready
+            )
+            || self
+                .publications
+                .windows(2)
+                .any(|publications| publications[0].node_id >= publications[1].node_id)
+        {
+            return Err("Gateway rollout dispatch target is invalid".into());
+        }
+        let pending_replicas = self
+            .rollout
+            .replicas
+            .iter()
+            .filter(|replica| replica.state == GatewayReplicaRolloutState::Pending)
+            .collect::<Vec<_>>();
+        if pending_replicas.is_empty() || pending_replicas.len() != self.publications.len() {
+            return Err(
+                "Gateway rollout dispatch target does not cover every pending replica".into(),
+            );
+        }
+        for (replica, publication) in pending_replicas.into_iter().zip(&self.publications) {
+            publication.snapshot()?;
+            if publication.node_id != replica.node_id
+                || publication.revision != replica.revision
+                || publication.command_id != replica.command_id
+                || publication.command_correlation_id != self.rollout.correlation_id
+                || publication.snapshot_digest != replica.snapshot_digest
+                || publication.snapshot_expires_at != replica.snapshot_expires_at
+                || publication
+                    .certificate_request
+                    .as_ref()
+                    .map(|request| GatewayCertificateId::from_uuid(request.certificate_id))
+                    != replica.gateway_certificate_id
+                || publication.state != GatewayPublicationState::Pending
+                || publication.failure.is_some()
+                || publication.acknowledged_at.is_some()
+                || publication.command_issued_at != self.rollout.started_at
+            {
+                return Err(
+                    "Gateway rollout dispatch publication does not match its pending replica"
+                        .into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayCertificateRouteStatus {
     pub route: Route,
     pub domain_claim_state: DomainClaimState,
@@ -450,6 +512,11 @@ pub trait IEdgeRepository: Send + Sync {
         &self,
         bundle: StageGatewayRollout,
     ) -> Result<GatewayRolloutResult, RepositoryError>;
+
+    async fn pending_gateway_rollout_dispatches(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayRolloutDispatchTarget>, RepositoryError>;
 
     async fn find_gateway_rollout(
         &self,

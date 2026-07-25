@@ -759,9 +759,14 @@ serve, but only exact acknowledgement from every desired member makes it
 succeeded. Once every member is terminal, any rejected or unavailable member
 makes the result explicitly degraded. Staging and acknowledgement transitions
 are transactional, versioned, and recoverable through PostgreSQL without
-assuming an atomic reload across Gateway processes. The application coordinator
-that compiles and enqueues all member publications is still required before
-this persistence foundation becomes a replicated delivery path.
+assuming an atomic reload across Gateway processes. A worker-role reconciler
+selects a bounded set of active rollouts, restores each aggregate, replica, and
+publication with one typed A3S ORM CTE/JOIN query, and idempotently writes every
+pending publication to the durable Fleet command queue. A queue or process
+failure is retried from PostgreSQL; once the exact command deadline passes, the
+same optimistic aggregate transition records that member as unavailable.
+Per-member healthy target derivation and snapshot compilation are still
+required before this foundation becomes a replicated traffic path.
 
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route

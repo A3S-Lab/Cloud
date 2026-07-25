@@ -304,9 +304,13 @@ durable per-member `GatewayRollout` aggregate. Every physical member owns an
 independent revision, command, digest, expiry, certificate, and result. Meeting
 the configured threshold makes a rollout ready, exact success from every
 member makes it succeeded, and a fully observed mixed result becomes degraded.
-Domain, in-memory, typed A3S ORM, migration, and recreated-PostgreSQL tests
-cover this foundation. The application coordinator, real multi-Gateway
-delivery and loss evidence, and joint production HA remain open.
+The worker-role rollout reconciler restores the complete active aggregate and
+its publications through typed A3S ORM, idempotently redispatches pending Fleet
+commands after restart, and projects exact command-deadline expiry as
+unavailable. Domain, in-memory, migration, recreated-PostgreSQL, and durable
+Fleet queue tests cover this foundation. Per-member healthy target compilation,
+real multi-Gateway delivery and loss evidence, and joint production HA remain
+open.
 
 ### 5.7 `I0`: inference profile
 
@@ -403,7 +407,7 @@ are allowed only before the first response byte.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical Gateway scopes, ordered desired membership, rollout thresholds, durable per-member outcomes, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and command-bound revision/unit/generation target projection are available; multi-member coordination remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement and restart recovery, plus PostgreSQL threshold aggregation are verified; real replicated delivery, Gateway loss, and production HA gates remain open |
+| `H0.2` | Logical Gateway scopes, ordered desired membership, rollout thresholds, durable per-member outcomes and Fleet redispatch recovery, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and command-bound revision/unit/generation target projection are available; per-member target compilation remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement and restart recovery, PostgreSQL threshold aggregation, and command redispatch are verified; real replicated delivery, Gateway loss, and production HA gates remain open |
 | `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |

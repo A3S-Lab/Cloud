@@ -1,7 +1,10 @@
 use super::State;
-use crate::modules::edge::domain::repositories::{GatewayRolloutResult, StageGatewayRollout};
+use crate::modules::edge::domain::repositories::{
+    GatewayRolloutDispatchTarget, GatewayRolloutResult, StageGatewayRollout,
+};
 use crate::modules::edge::domain::{
-    GatewayPublicationState, GatewayRollout, GatewayRolloutState, GatewayScopeState,
+    GatewayPublicationState, GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutState,
+    GatewayScopeState,
 };
 use crate::modules::shared_kernel::domain::{
     GatewayRolloutId, NodeId, OrganizationId, RepositoryError,
@@ -185,6 +188,68 @@ pub(super) fn find(
     Ok(rollout)
 }
 
+pub(super) fn pending_dispatches(
+    state: &State,
+    limit: usize,
+) -> Result<Vec<GatewayRolloutDispatchTarget>, RepositoryError> {
+    validate_batch_limit(limit)?;
+    let mut rollouts = state
+        .rollouts
+        .values()
+        .filter(|rollout| {
+            matches!(
+                rollout.state,
+                GatewayRolloutState::Pending | GatewayRolloutState::Ready
+            )
+        })
+        .collect::<Vec<_>>();
+    rollouts.sort_by_key(|rollout| (rollout.started_at, rollout.id));
+    rollouts.truncate(limit);
+
+    let mut targets = Vec::with_capacity(rollouts.len());
+    for rollout in rollouts {
+        let scope = state
+            .gateway_scopes
+            .get(&rollout.gateway_scope_id)
+            .ok_or_else(|| RepositoryError::Storage("Gateway rollout scope disappeared".into()))?;
+        let mut publications = Vec::new();
+        for replica in rollout
+            .replicas
+            .iter()
+            .filter(|replica| replica.state == GatewayReplicaRolloutState::Pending)
+        {
+            let publication = state
+                .publications
+                .get(&(replica.node_id, replica.revision))
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "Gateway rollout pending publication disappeared".into(),
+                    )
+                })?;
+            if state
+                .rollout_publications
+                .get(&(replica.node_id, replica.revision))
+                != Some(&rollout.id)
+            {
+                return Err(RepositoryError::Storage(
+                    "Gateway rollout publication ownership is inconsistent".into(),
+                ));
+            }
+            publications.push(publication);
+        }
+        publications.sort_by_key(|publication| publication.node_id);
+        let target = GatewayRolloutDispatchTarget {
+            organization_id: scope.organization_id,
+            rollout: rollout.clone(),
+            publications,
+        };
+        target.validate().map_err(RepositoryError::Storage)?;
+        targets.push(target);
+    }
+    Ok(targets)
+}
+
 pub(super) fn mark_unavailable(
     state: &mut State,
     organization_id: OrganizationId,
@@ -205,4 +270,13 @@ pub(super) fn mark_unavailable(
         .map_err(RepositoryError::Conflict)?;
     state.rollouts.insert(rollout_id, rollout.clone());
     Ok(rollout)
+}
+
+fn validate_batch_limit(limit: usize) -> Result<(), RepositoryError> {
+    if limit == 0 || limit > 10_000 {
+        return Err(RepositoryError::Conflict(
+            "Gateway rollout dispatch batch limit is invalid".into(),
+        ));
+    }
+    Ok(())
 }

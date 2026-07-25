@@ -1277,9 +1277,11 @@ desired member. The aggregate becomes ready at the configured threshold,
 succeeds only when every member applies the exact snapshot, and otherwise
 terminates explicitly degraded after all replicas are terminal. Domain,
 in-memory, A3S ORM-backed PostgreSQL, migration, and restart tests cover this
-foundation. Multi-member compile/enqueue coordination, real replicated Gateway
-delivery and loss evidence, and production HA remain open, so `H0.2` is not
-complete.
+foundation. A worker-role reconciler now restores active rollouts and their
+publications in one typed query, idempotently redispatches pending Fleet
+commands, and records exact command-deadline expiry as unavailable. Per-member
+healthy target compilation, real replicated Gateway delivery and loss evidence,
+and production HA remain open, so `H0.2` is not complete.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
 job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the
@@ -1312,11 +1314,12 @@ remains ACL.
   isolation, partition, and recovery evidence across real nodes.
 - Add highly available control-plane roles, leader/lease contention tests,
   backup/restore for control-plane PostgreSQL, and disaster runbooks.
-- Complete the replicated Gateway coordinator on the implemented
-  `min_ready`/`max_unavailable` and per-member aggregate foundation. It must
-  compile and enqueue an independent exact snapshot for every desired member,
-  resume partial delivery after restart, and never assume a global atomic
-  reload.
+- Complete the replicated Gateway target compiler on the implemented
+  `min_ready`/`max_unavailable`, per-member aggregate, and restart-safe dispatch
+  foundation. It must derive a healthy exact target set and compile an
+  independent snapshot for every desired member. The implemented reconciler
+  handles partial Fleet delivery and command expiry without assuming a global
+  atomic reload.
 - Add versioned control-plane export/import manifests for tenant-owned desired
   state, provenance, audit metadata, and referenced artifacts. Secret values are
   re-encrypted for the destination through an explicit migration ceremony;
