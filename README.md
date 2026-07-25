@@ -83,9 +83,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Managed Reachability**: Create tenant-scoped logical Gateway scopes, persist
   ordered physical membership and explicit rollout thresholds, verify domain
   ownership, provision TLS, compile complete expiring ACL snapshots from
-  command-bound healthy Runtime targets, renew unchanged policy without
-  reissuing TLS, and advance routes only after Gateway acknowledges the exact
-  identity, revision, digest, validity, and readiness
+  command-bound healthy Runtime targets, atomically stage every physical
+  projection, activate only at the acknowledgement threshold, renew unchanged
+  policy without reissuing TLS, and recover or roll back each member from exact
+  native Gateway state
 - **Encrypted Secrets**: Store tenant-scoped immutable Secret versions and
   materialize exact bindings only at authenticated registry or assigned-node
   boundaries
@@ -237,8 +238,8 @@ The closing evidence is Cloud commit
 [Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417),
 where both `Real Docker provider` and `Cloud consumer recovery` passed.
 
-`H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
-snapshot and generation-bound private-target foundation. A scope belongs to
+The verified `H0.2` gate adds Cloud-owned logical Gateway scopes plus a
+Gateway-native snapshot and generation-bound private-target foundation. A scope belongs to
 one organization, project, and environment. Its desired state can contain an
 ordered set of physical Gateway members, a membership generation, and explicit
 `minReady` and `maxUnavailable` policy; the legacy `nodeId` request remains the
@@ -249,11 +250,11 @@ generation, and fresh healthy node-local endpoint for every desired member. It
 rejects missing, ambiguous, mixed-revision, and mixed-port target sets, then
 compiles an independent complete snapshot, certificate, command, and staged
 Route projection for every member. Single-member publication continues through
-the established atomic Route path; replicated publication fails closed until
-the logical Route and complete rollout can be persisted together, so Cloud
-never falls back to a bootstrap-primary partial apply. Gateway receives only
-its node-addressed managed snapshot and does not become the owner of Cloud
-tenancy.
+the established path. Replicated publication commits the logical Route, every
+physical projection, rollout, publication, certificate, ownership row,
+idempotency result, and outbox fact in one transaction; any conflict rolls back
+the complete bundle. Gateway receives only its node-addressed managed snapshot
+and does not become the owner of Cloud tenancy.
 
 Every route persists its immutable workload revision, deterministic Runtime
 unit identity, positive generation, declared port, canonical node-local HTTP
@@ -282,7 +283,7 @@ PostgreSQL and migration gates verify recovery and reject cross-environment or
 wrong-node publication. Migration 037 stores new protocol evidence without
 inventing it for legacy acknowledgements.
 
-The replicated control-plane foundation persists one `GatewayRollout`
+The replicated control plane persists one `GatewayRollout`
 aggregate with an independent revision, command, digest, expiry, certificate,
 and terminal result for every desired physical member. Meeting the configured
 threshold makes the rollout ready to serve; only exact success from every
@@ -302,19 +303,26 @@ persistence behavior ships. A worker-role reconciler loads each active rollout
 and its publications through one typed CTE/JOIN query, idempotently
 redispatches every pending member command after process or queue interruption,
 and records a member as unavailable only after its exact command deadline
-passes.
+passes. Migration 045 adds atomic logical-to-physical Route projections;
+migration 046 adds read-only snapshot observation commands; migration 047
+persists per-member physical recovery; migration 048 adds deterministic exact
+rollback; and migration 049 makes expired certificate convergence unavailable
+without disturbing the prior applied state.
 
-The real pinned-Gateway gate rotates independently signed certificates and
-upstream targets, rejects the superseded certificate and selector, removes the
-old certificate material, and recovers only the replacement after Gateway
-restart. Same-policy validity renewal continues to retain the exact ACL digest
-and active certificate until its successor is ready. Contract-level
-mixed-version delivery, PostgreSQL replica-threshold recovery, durable Fleet
-command redispatch, and per-member target derivation and snapshot compilation
-are verified. Atomic logical Route plus `GatewayRollout` staging,
-threshold-driven Route activation, real multi-Gateway delivery and loss
-evidence, and joint production HA recovery remain open, so this foundation does
-not complete `H0.2` or `H0`.
+The real pinned-Gateway gates rotate independently signed certificates and
+upstream targets, reject superseded certificates and selectors, and recover
+only the replacement after restart. Two real Gateway processes use independent
+identities, trust roots, native journals, and Agent journals; either member can
+continue serving when its peer is lost, and the returning member reconstructs
+the exact snapshot without another apply. Agent process death after native
+apply but before Cloud acknowledgement also replays without duplicate mutation.
+The PostgreSQL 17 gate proves atomic staging, threshold-driven Route activation,
+prior-route retention, member observation, deterministic exact rollback,
+certificate renewal/revocation convergence, and restart-safe Fleet dispatch.
+These gates use Gateway commit
+`7a146b6d53635861e5db4870fb4603a5c59c87ee` and close `H0.2`. Multi-node
+placement and production HA remain in `H0.3` and `H0.4`, so the broader `H0`
+gate remains in progress.
 
 See the [Product Roadmap](ROADMAP.md) for dependencies, sub-gates, current
 evidence, and the ordered product portfolio.
@@ -330,6 +338,14 @@ evidence, and the ordered product portfolio.
   `tools/gateway-conformance/gateway-revision` for routed service operation
 - Bun and Node.js 22 or later for the web console
 - NATS JetStream only when the NATS event provider is selected
+
+Redis is not required by the current Cloud profile. PostgreSQL owns durable
+state and leases, A3S Flow owns workflow work, and NATS owns distributed event
+fan-out when selected. Planned `I0.2b` requires a typed Redis counter provider
+only for limits advertised as globally exact across replicated Gateways;
+without it, limits are explicitly per-Gateway approximations. Redis may also
+back shared ephemeral cache, but it never becomes authority for desired state,
+operations, sessions, locks, or queues.
 
 ### Run the control plane
 
@@ -524,28 +540,28 @@ logical and physical identities together with the exact workload revision,
 deterministic Runtime unit identity, positive generation, port, canonical
 node-local origin, and observation time. Gateway receives the resulting
 complete policy but does not infer a target, interpret the logical scope, or
-store Cloud tenancy. Replicated API publication currently fails closed before
-mutation while atomic Route-and-rollout persistence is completed.
+store Cloud tenancy. Replicated API publication atomically stages the logical
+Route and complete per-member rollout; invalid or conflicting bundles leave no
+partial publication, certificate, ownership, idempotency, or outbox state.
 
 Gateway's native journal is the sole source of truth for applied snapshot
 state. The node agent does not maintain a second installed-snapshot CAS file,
 so command redelivery and process restart converge through Gateway's idempotent
-apply and status contract. This is the Gateway-native foundation of `H0.2`;
+apply and status contract. This is the Gateway-native boundary verified by `H0.2`;
 the periodic Edge reconciler renews an unchanged applied ACL before expiry,
 reuses the existing certificate files, and keeps the prior revision
-authoritative when renewal is rejected. Logical-scope ownership, migration,
-same-environment/node enforcement, generation-bound target replacement,
-PostgreSQL recovery, and real certificate/target rotation are verified for the
-bootstrap-primary route path. Mixed-version delivery is verified at the
-protocol boundary. Cloud also persists independent per-member rollout evidence
-and computes ready, succeeded, or degraded aggregate outcomes without assuming
-a global atomic reload. Its rollout reconciler recovers pending Fleet command
-dispatch after restart and turns deadline expiry into explicit unavailable
-evidence. The per-member target planner and snapshot compiler now reject partial
-or ambiguous desired membership. Atomic logical Route plus rollout staging,
-threshold-driven Route activation, real Gateway loss and partial-availability
-evidence, and joint production HA recovery remain to be implemented and
-verified.
+authoritative when renewal is rejected or unavailable. Logical-scope ownership,
+migration, same-environment/node enforcement, generation-bound target
+replacement, mixed-version delivery, PostgreSQL recovery, and real
+certificate/target rotation are verified. Cloud persists independent per-member
+rollout evidence and computes ready, succeeded, or degraded aggregate outcomes
+without assuming a global atomic reload. Its reconcilers recover pending Fleet
+dispatch, observe exact physical state after ambiguous loss, retain prior Route
+and certificate ownership, and stage one exact higher-revision rollback when a
+terminal rollout misses its threshold. The real two-Gateway gate verifies
+partial availability, loss, restart, cross-CA isolation, independent cursor
+advancement, and apply-before-ack replay. Production multi-node placement and
+HA remain separate `H0.3` and `H0.4` work.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

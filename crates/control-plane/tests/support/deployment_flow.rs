@@ -365,7 +365,7 @@ pub async fn exercise_deployment_flow(
                 postgres_url,
                 executor,
                 node_id,
-                Arc::clone(&runtime),
+                Arc::clone(runtime),
                 &request.spec,
                 security_state_dir,
                 sensitive_plaintexts,
@@ -961,7 +961,8 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             | NodeCommandResult::RuntimeRemoved { .. }
             | NodeCommandResult::ResourceClaimPrepared { .. }
             | NodeCommandResult::ResourceClaimReleased { .. }
-            | NodeCommandResult::GatewaySnapshotInstalled { .. } => None,
+            | NodeCommandResult::GatewaySnapshotInstalled { .. }
+            | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }

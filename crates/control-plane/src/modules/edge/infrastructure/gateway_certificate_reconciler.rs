@@ -22,6 +22,8 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 const OBSOLETE_CERTIFICATE_REASON: &str = "superseded by installed Gateway certificate";
+const EXPIRED_CONVERGENCE_FAILURE: &str =
+    "Gateway certificate convergence command expired before acknowledgement";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayCertificateReconciliationFailure {
@@ -34,6 +36,7 @@ pub struct GatewayCertificateReconciliationFailure {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCertificateReconciliationReport {
     pub pending_convergences: usize,
+    pub unavailable_convergences: usize,
     pub convergence_targets: usize,
     pub staged_convergences: usize,
     pub dispatched_commands: usize,
@@ -120,6 +123,44 @@ impl GatewayCertificateReconciler {
             .await?;
         report.pending_convergences = pending.len();
         for convergence in pending {
+            if convergence.publication.command_issued_at > now {
+                report.failures.push(failure(
+                    convergence.convergence.node_id,
+                    convergence
+                        .convergence
+                        .replacement_certificate_id
+                        .unwrap_or(convergence.convergence.previous_certificate_id),
+                    "validate",
+                    "Gateway certificate reconciliation time predates publication",
+                ));
+                continue;
+            }
+            if convergence.publication.command_not_after <= now {
+                match self
+                    .repository
+                    .mark_gateway_certificate_convergence_unavailable(
+                        convergence.convergence.organization_id,
+                        convergence.convergence.node_id,
+                        convergence.convergence.gateway_revision,
+                        convergence.convergence.gateway_command_id,
+                        EXPIRED_CONVERGENCE_FAILURE,
+                        now,
+                    )
+                    .await
+                {
+                    Ok(_) => report.unavailable_convergences += 1,
+                    Err(_) => report.failures.push(failure(
+                        convergence.convergence.node_id,
+                        convergence
+                            .convergence
+                            .replacement_certificate_id
+                            .unwrap_or(convergence.convergence.previous_certificate_id),
+                        "expire",
+                        "Gateway certificate convergence expiry projection failed",
+                    )),
+                }
+                continue;
+            }
             self.dispatch(&convergence, &mut report).await;
         }
 

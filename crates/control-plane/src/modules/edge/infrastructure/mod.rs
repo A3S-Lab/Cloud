@@ -3,7 +3,11 @@ mod domain_ownership_verifier;
 mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
+mod gateway_observation_queue;
+mod gateway_replica_recovery_reconciler;
 mod gateway_rollout_reconciler;
+mod gateway_rollout_rollback_compiler;
+mod gateway_rollout_rollback_reconciler;
 mod gateway_route_rollout_compiler;
 mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
@@ -15,7 +19,11 @@ mod vault_gateway_certificate_authority;
 #[cfg(test)]
 mod gateway_certificate_reconciler_tests;
 #[cfg(test)]
+mod gateway_replica_recovery_reconciler_tests;
+#[cfg(test)]
 mod gateway_rollout_reconciler_tests;
+#[cfg(test)]
+mod gateway_rollout_rollback_compiler_tests;
 #[cfg(test)]
 mod gateway_route_rollout_compiler_tests;
 #[cfg(test)]
@@ -29,9 +37,22 @@ pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciliationReport,
 };
 pub use gateway_command_queue::FleetGatewayCommandQueue;
+pub use gateway_observation_queue::FleetGatewayObservationQueue;
+pub use gateway_replica_recovery_reconciler::{
+    GatewayReplicaRecoveryReconciler, GatewayReplicaRecoveryReconciliationFailure,
+    GatewayReplicaRecoveryReconciliationReport,
+};
 pub use gateway_rollout_reconciler::{
     GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
     GatewayRolloutReconciliationReport,
+};
+pub use gateway_rollout_rollback_compiler::{
+    CompileGatewayRolloutRollback, CompiledGatewayRolloutRollback,
+    GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler,
+};
+pub use gateway_rollout_rollback_reconciler::{
+    GatewayRolloutRollbackReconciler, GatewayRolloutRollbackReconciliationFailure,
+    GatewayRolloutRollbackReconciliationReport,
 };
 pub use gateway_route_rollout_compiler::{
     CompileGatewayRouteRollout, CompiledGatewayRouteRollout, GatewayMemberSnapshotContext,

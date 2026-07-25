@@ -1,4 +1,4 @@
-use crate::modules::edge::domain::events::GatewayRolloutStaged;
+use crate::modules::edge::domain::events::{GatewayRolloutStaged, RoutePublicationStaged};
 use crate::modules::edge::domain::repositories::StageGatewayRollout;
 use crate::modules::edge::domain::services::ResolvedRouteTargetSet;
 use crate::modules::edge::domain::{
@@ -58,15 +58,28 @@ impl CompiledGatewayRouteRollout {
         &self,
         idempotency: IdempotencyRequest,
     ) -> Result<StageGatewayRollout, String> {
+        let primary_route = self.primary_route()?;
+        let primary_publication = self
+            .publications
+            .iter()
+            .find(|publication| publication.node_id == self.scope.node_id)
+            .ok_or_else(|| {
+                "compiled Gateway rollout omitted its primary publication".to_string()
+            })?;
         let bundle = StageGatewayRollout {
             scope: self.scope.clone(),
             rollout: self.rollout.clone(),
+            route_replicas: self.route_replicas.clone(),
             publications: self.publications.clone(),
             certificates: self.certificates.clone(),
             expected_scope_versions: self.expected_scope_versions.clone(),
             idempotency,
             event: GatewayRolloutStaged::envelope(&self.scope, &self.rollout)
                 .map_err(|error| error.to_string())?,
+            route_event: Some(RoutePublicationStaged::envelope(
+                primary_route,
+                primary_publication,
+            )?),
         };
         bundle.validate()?;
         Ok(bundle)

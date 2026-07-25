@@ -604,6 +604,10 @@ fn state_mutation_digest(
             snapshot.validate().map_err(CommandJournalError::Invalid)?;
             Ok(Some(snapshot.snapshot_digest.clone()))
         }
+        NodeCommandPayload::GatewaySnapshotObserve { request } => {
+            request.validate().map_err(CommandJournalError::Invalid)?;
+            Ok(None)
+        }
         NodeCommandPayload::RuntimeInspect { .. }
         | NodeCommandPayload::RuntimeStop { .. }
         | NodeCommandPayload::RuntimeRemove { .. } => Ok(None),
@@ -647,7 +651,8 @@ impl ResourceClaimJournalProjection {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
-            | NodeCommandPayload::GatewaySnapshotInstall { .. } => {}
+            | NodeCommandPayload::GatewaySnapshotInstall { .. }
+            | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
         }
 
         let Some(completion) = &entry.completion else {

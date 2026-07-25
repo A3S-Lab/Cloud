@@ -1,6 +1,9 @@
 use crate::infrastructure::FlowOperationCoordinator;
 use crate::modules::artifacts::application::BuildRunReconciler;
-use crate::modules::edge::{GatewayCertificateReconciler, GatewayRolloutReconciler};
+use crate::modules::edge::{
+    GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
+    GatewayRolloutRollbackReconciler,
+};
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
@@ -19,6 +22,8 @@ pub(crate) struct ControlPlaneWorkers {
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
     gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
+    gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
+    gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
@@ -35,6 +40,8 @@ impl ControlPlaneWorkers {
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
         gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
+        gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
+        gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
@@ -48,6 +55,8 @@ impl ControlPlaneWorkers {
             operation_coordinator,
             gateway_certificate_reconciler,
             gateway_rollout_reconciler,
+            gateway_replica_recovery_reconciler,
+            gateway_rollout_rollback_reconciler,
             secret_rotation_restart_reconciler,
             workload_reconciler,
             log_retention_worker,
@@ -93,6 +102,12 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.gateway_rollout_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.gateway_replica_recovery_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.gateway_rollout_rollback_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {

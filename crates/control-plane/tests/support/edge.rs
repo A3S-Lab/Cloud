@@ -1,7 +1,8 @@
 use a3s_boot::{BootRequest, CommandHandler, CqrsContext, HttpMethod, ModuleRef};
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
-    NodeCommandPayload, NodeGatewayAck, RuntimeServiceEndpoint,
+    NodeCommandPayload, NodeGatewayAck, NodeHeartbeatV2, NodeObservationBatchV2,
+    RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
     DomainClaimChanged, GatewayRouteCutoverStaged, GatewayScopeCreated,
@@ -17,7 +18,9 @@ use a3s_cloud_control_plane::modules::edge::{
     GatewayScope, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
     UpstreamEndpoint,
 };
-use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeRepository, RuntimeObservationRecord,
+};
 use a3s_cloud_control_plane::modules::fleet::{
     IGatewayAcknowledgementProjector, PostgresNodeRepository, RecordGatewayAcknowledgement,
     RecordGatewayAcknowledgementHandler,
@@ -139,9 +142,17 @@ pub async fn exercise_edge_api(
         "workload:{}:revision:{}",
         fixture.workload_id, fixture.workload_revision_id
     );
-    let nodes: Arc<dyn INodeControlRepository> =
-        Arc::new(PostgresNodeRepository::new(executor.clone()));
-    let target_observation = nodes
+    let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let target_observation = refresh_runtime_target_observation(
+        node_repository.as_ref(),
+        OrganizationId::from_uuid(Uuid::parse_str(fixture.organization_id)?),
+        fixture.node_id,
+        &runtime_unit_id,
+        fixture.runtime_generation,
+    )
+    .await?;
+    let nodes: Arc<dyn INodeControlRepository> = node_repository;
+    let persisted_target_observation = nodes
         .latest_runtime_observation(
             fixture.node_id,
             &runtime_unit_id,
@@ -149,6 +160,7 @@ pub async fn exercise_edge_api(
         )
         .await?
         .ok_or("route fixture has no current Runtime observation")?;
+    assert_eq!(persisted_target_observation, target_observation);
     let expected_upstream =
         RuntimeServiceEndpoint::from_observation(&target_observation.observation, "http")?.origin;
 
@@ -365,6 +377,74 @@ pub async fn exercise_edge_api(
         "revoked"
     );
     Ok(())
+}
+
+async fn refresh_runtime_target_observation(
+    repository: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    runtime_unit_id: &str,
+    runtime_generation: u64,
+) -> Result<RuntimeObservationRecord, Box<dyn std::error::Error>> {
+    let current = repository
+        .latest_runtime_observation(node_id, runtime_unit_id, runtime_generation)
+        .await?
+        .ok_or("route fixture has no Runtime observation to refresh")?;
+    let command_id = current
+        .command_id
+        .ok_or("route fixture Runtime observation is not command-bound")?;
+    let node = repository.find(organization_id, node_id).await?;
+    let inventory = repository
+        .current_resource_inventory(node_id)
+        .await?
+        .ok_or("route fixture node has no current inventory")?;
+    let runtime_capabilities: a3s_runtime::contract::RuntimeCapabilities =
+        serde_json::from_value(node.capabilities.document().clone())?;
+    let observed_at = Utc::now();
+    let observed_at_ms = u64::try_from(observed_at.timestamp_millis())
+        .map_err(|_| "route fixture clock predates the Unix epoch")?;
+    let mut observation = current.observation;
+    observation.observed_at_ms = observed_at_ms;
+    if let Some(health) = observation.health.as_mut() {
+        health.checked_at_ms = observed_at_ms;
+    }
+    let report_id = Uuid::now_v7();
+    let receipt = repository
+        .record_observations(
+            NodeObservationBatchV2 {
+                schema: NodeObservationBatchV2::SCHEMA.into(),
+                node_id: node_id.as_uuid(),
+                agent_instance_id: node.agent_instance_id,
+                sent_at: observed_at,
+                heartbeat: NodeHeartbeatV2 {
+                    schema: NodeHeartbeatV2::SCHEMA.into(),
+                    node_id: node_id.as_uuid(),
+                    agent_instance_id: node.agent_instance_id,
+                    observed_at,
+                    agent_version: node.agent_version,
+                    runtime_capabilities,
+                    inventory: inventory.inventory.reference(),
+                },
+                observations: vec![RuntimeObservationReport {
+                    report_id,
+                    command_id: Some(command_id.as_uuid()),
+                    observed_at,
+                    observation,
+                }],
+            }
+            .into(),
+            observed_at,
+        )
+        .await?;
+    assert_eq!(receipt.accepted_reports, 1);
+    assert_eq!(receipt.replayed_reports, 0);
+    let refreshed = repository
+        .latest_runtime_observation(node_id, runtime_unit_id, runtime_generation)
+        .await?
+        .ok_or("route fixture refresh did not persist a Runtime observation")?;
+    assert_eq!(refreshed.report_id, report_id);
+    assert_eq!(refreshed.command_id, Some(command_id));
+    Ok(refreshed)
 }
 
 pub async fn exercise_edge(

@@ -9,7 +9,8 @@ use crate::modules::edge::domain::{
     GatewayRouteVersion, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, GatewayCertificateId, NodeCommandId, NodeId, RepositoryError, RouteId,
+    canonical_timestamp, GatewayCertificateId, GatewayRolloutId, NodeCommandId, NodeId,
+    OrganizationId, RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::NodeGatewayAck;
 use chrono::{DateTime, Utc};
@@ -42,13 +43,8 @@ pub(super) fn targets(
                     "installed Gateway scope has no applied publication".into(),
                 )
             })?;
-        let mut routes = state
-            .routes
-            .values()
-            .filter(|route| {
-                route.gateway_node_id == scope.node_id && route.state == RouteState::Active
-            })
-            .cloned()
+        let mut routes = active_routes_for_node(state, scope.node_id)
+            .into_iter()
             .map(|route| {
                 let domain_claim_state = route
                     .domain_claim_id
@@ -255,6 +251,84 @@ pub(super) fn find(
         .cloned()
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn mark_unavailable(
+    state: &mut State,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    gateway_revision: u64,
+    gateway_command_id: NodeCommandId,
+    failure: &str,
+    observed_at: DateTime<Utc>,
+) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+    let key = (node_id, gateway_revision);
+    let mut convergence = state
+        .certificate_convergences
+        .get(&key)
+        .cloned()
+        .ok_or(RepositoryError::NotFound)?;
+    if convergence.organization_id != organization_id
+        || convergence.gateway_command_id != gateway_command_id
+    {
+        return Err(RepositoryError::NotFound);
+    }
+    let mut publication = state.publications.get(&key).cloned().ok_or_else(|| {
+        RepositoryError::Storage("Gateway certificate convergence publication disappeared".into())
+    })?;
+    if publication.command_id != gateway_command_id {
+        return Err(RepositoryError::Storage(
+            "Gateway certificate convergence command identity diverged".into(),
+        ));
+    }
+    publication
+        .mark_unavailable(failure, observed_at)
+        .map_err(RepositoryError::Conflict)?;
+    convergence
+        .mark_unavailable(failure, observed_at)
+        .map_err(RepositoryError::Conflict)?;
+    let certificate = convergence
+        .replacement_certificate_id
+        .map(|certificate_id| {
+            let mut certificate = state
+                .certificates
+                .get(&certificate_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "Gateway convergence replacement certificate disappeared".into(),
+                    )
+                })?;
+            if certificate.organization_id != organization_id
+                || certificate.node_id != node_id
+                || certificate.gateway_revision != gateway_revision
+                || certificate.gateway_command_id != gateway_command_id
+            {
+                return Err(RepositoryError::Storage(
+                    "Gateway convergence replacement certificate identity diverged".into(),
+                ));
+            }
+            certificate
+                .mark_delivery_unavailable(failure, observed_at)
+                .map_err(RepositoryError::Conflict)?;
+            Ok(certificate)
+        })
+        .transpose()?;
+    state.publications.insert(key, publication.clone());
+    state
+        .certificate_convergences
+        .insert(key, convergence.clone());
+    if let Some(certificate) = &certificate {
+        state
+            .certificates
+            .insert(certificate.id, certificate.clone());
+    }
+    Ok(GatewayCertificateConvergenceResult {
+        convergence,
+        certificate,
+        publication,
+    })
+}
+
 pub(super) fn obsolete(
     state: &State,
     limit: usize,
@@ -270,10 +344,7 @@ pub(super) fn obsolete(
                     .get(&certificate.node_id)
                     .and_then(|scope| scope.installed_revision)
                     .is_some_and(|installed| installed > certificate.gateway_revision)
-                && !state.routes.values().any(|route| {
-                    route.state == RouteState::Active
-                        && route.gateway_certificate_id == Some(certificate.id)
-                })
+                && !active_route_uses_certificate(state, certificate.id)
         })
         .take(limit)
         .cloned()
@@ -287,6 +358,52 @@ pub(super) fn apply(
 ) -> Result<(), RepositoryError> {
     let active_certificate_id = convergence.active_certificate_id();
     for version in &convergence.retained_routes {
+        if let Some(key) = projection_key(state, version.route_id, convergence.node_id)? {
+            let projection = state
+                .rollout_route_projections
+                .get_mut(&key)
+                .ok_or_else(|| {
+                    RepositoryError::Storage("retained Gateway Route projection disappeared".into())
+                })?;
+            if projection.aggregate_version != version.aggregate_version {
+                return Err(RepositoryError::Conflict(
+                    "retained Gateway Route projection changed before convergence applied".into(),
+                ));
+            }
+            projection
+                .bind_gateway_certificate(
+                    convergence.gateway_revision,
+                    convergence.gateway_command_id,
+                    convergence.snapshot_digest.clone(),
+                    active_certificate_id.ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "retained convergence route has no active certificate".into(),
+                        )
+                    })?,
+                    acknowledgement.acknowledged_at,
+                )
+                .map_err(RepositoryError::Conflict)?;
+            let logical = state
+                .routes
+                .get_mut(&version.route_id)
+                .ok_or(RepositoryError::NotFound)?;
+            if logical.gateway_node_id == convergence.node_id {
+                logical
+                    .bind_gateway_certificate(
+                        convergence.gateway_revision,
+                        convergence.gateway_command_id,
+                        convergence.snapshot_digest.clone(),
+                        active_certificate_id.ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "retained convergence route has no active certificate".into(),
+                            )
+                        })?,
+                        acknowledgement.acknowledged_at,
+                    )
+                    .map_err(RepositoryError::Conflict)?;
+            }
+            continue;
+        }
         let route = state
             .routes
             .get_mut(&version.route_id)
@@ -311,6 +428,108 @@ pub(super) fn apply(
             .map_err(RepositoryError::Conflict)?;
     }
     for version in &convergence.rejected_routes {
+        if let Some(key) = projection_key(state, version.route_id, convergence.node_id)? {
+            let ownership_key = {
+                let projection =
+                    state
+                        .rollout_route_projections
+                        .get_mut(&key)
+                        .ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "rejected Gateway Route projection disappeared".into(),
+                            )
+                        })?;
+                if projection.aggregate_version != version.aggregate_version {
+                    return Err(RepositoryError::Conflict(
+                        "rejected Gateway Route projection changed before convergence applied"
+                            .into(),
+                    ));
+                }
+                projection
+                    .reject_for_domain_revocation(
+                        convergence.gateway_revision,
+                        convergence.gateway_command_id,
+                        convergence.snapshot_digest.clone(),
+                        acknowledgement.acknowledged_at,
+                    )
+                    .map_err(RepositoryError::Conflict)?;
+                (
+                    convergence.node_id,
+                    projection.hostname.as_str().to_owned(),
+                    projection.path_prefix.as_str().to_owned(),
+                )
+            };
+            match state.ownership.remove(&ownership_key) {
+                Some(route_id) if route_id == version.route_id => {}
+                Some(_) => {
+                    return Err(RepositoryError::Storage(
+                        "domain revocation Route ownership changed identity".into(),
+                    ))
+                }
+                None => {
+                    return Err(RepositoryError::Storage(
+                        "domain revocation Route ownership disappeared before acknowledgement"
+                            .into(),
+                    ))
+                }
+            }
+            let has_active_projection =
+                state.rollout_route_projections.values().any(|projection| {
+                    projection.id == version.route_id && projection.state == RouteState::Active
+                });
+            if !has_active_projection {
+                let primary_node_id = state
+                    .routes
+                    .get(&version.route_id)
+                    .ok_or(RepositoryError::NotFound)?
+                    .gateway_node_id;
+                let primary_key = projection_key(state, version.route_id, primary_node_id)?
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "replicated domain revocation lost its primary Route projection".into(),
+                        )
+                    })?;
+                let primary = state
+                    .rollout_route_projections
+                    .get(&primary_key)
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "replicated domain revocation primary projection disappeared".into(),
+                        )
+                    })?;
+                if primary.state != RouteState::Rejected {
+                    return Err(RepositoryError::Storage(
+                        "replicated domain revocation completed before its primary member".into(),
+                    ));
+                }
+                let logical = state
+                    .routes
+                    .get_mut(&version.route_id)
+                    .ok_or(RepositoryError::NotFound)?;
+                logical
+                    .reject_for_domain_revocation(
+                        primary.gateway_revision.ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "rejected primary Route projection omitted its revision".into(),
+                            )
+                        })?,
+                        primary.gateway_command_id.ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "rejected primary Route projection omitted its command".into(),
+                            )
+                        })?,
+                        primary.snapshot_digest.ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "rejected primary Route projection omitted its digest".into(),
+                            )
+                        })?,
+                        acknowledgement.acknowledged_at.max(primary.updated_at),
+                    )
+                    .map_err(RepositoryError::Conflict)?;
+            }
+            continue;
+        }
         let route = state
             .routes
             .get_mut(&version.route_id)
@@ -328,13 +547,33 @@ pub(super) fn apply(
                 acknowledgement.acknowledged_at,
             )
             .map_err(RepositoryError::Conflict)?;
-        state.ownership.remove(&(
-            route.gateway_node_id,
-            route.hostname.as_str().to_owned(),
-            route.path_prefix.as_str().to_owned(),
-        ));
+        let route_id = route.id;
+        state
+            .ownership
+            .retain(|_, owned_route_id| *owned_route_id != route_id);
     }
     Ok(())
+}
+
+fn projection_key(
+    state: &State,
+    route_id: RouteId,
+    node_id: NodeId,
+) -> Result<Option<(GatewayRolloutId, NodeId)>, RepositoryError> {
+    let mut keys = state
+        .rollout_route_projections
+        .iter()
+        .filter(|(_, route)| route.id == route_id && route.gateway_node_id == node_id)
+        .map(|(key, _)| *key)
+        .collect::<Vec<_>>();
+    keys.sort();
+    match keys.as_slice() {
+        [] => Ok(None),
+        [key] => Ok(Some(*key)),
+        _ => Err(RepositoryError::Storage(
+            "one logical Route has duplicate physical projections on a Gateway member".into(),
+        )),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -347,6 +586,12 @@ pub(super) fn bind_active_routes(
     certificate_id: GatewayCertificateId,
     acknowledged_at: DateTime<Utc>,
 ) -> Result<(), RepositoryError> {
+    let logical_active_route_ids = state
+        .routes
+        .values()
+        .filter(|route| route.state == RouteState::Active)
+        .map(|route| route.id)
+        .collect::<std::collections::BTreeSet<_>>();
     let route_ids = state
         .routes
         .values()
@@ -367,7 +612,53 @@ pub(super) fn bind_active_routes(
             )
             .map_err(RepositoryError::Conflict)?;
     }
+    let projection_keys = state
+        .rollout_route_projections
+        .iter()
+        .filter(|(_, route)| {
+            route.gateway_node_id == node_id
+                && route.state == RouteState::Active
+                && logical_active_route_ids.contains(&route.id)
+        })
+        .map(|(key, _)| *key)
+        .collect::<Vec<_>>();
+    for key in projection_keys {
+        state
+            .rollout_route_projections
+            .get_mut(&key)
+            .ok_or_else(|| {
+                RepositoryError::Storage("active Gateway Route projection disappeared".into())
+            })?
+            .bind_gateway_certificate(
+                revision,
+                command_id,
+                snapshot_digest.into(),
+                certificate_id,
+                acknowledged_at,
+            )
+            .map_err(RepositoryError::Conflict)?;
+    }
     Ok(())
+}
+
+pub(super) fn has_active_routes(state: &State, node_id: NodeId) -> bool {
+    let projected_route_ids = state
+        .rollout_route_projections
+        .values()
+        .map(|route| route.id)
+        .collect::<BTreeSet<_>>();
+    state.routes.values().any(|route| {
+        route.gateway_node_id == node_id
+            && route.state == RouteState::Active
+            && !projected_route_ids.contains(&route.id)
+    }) || state.rollout_route_projections.values().any(|projection| {
+        projection.gateway_node_id == node_id
+            && projection.state == RouteState::Active
+            && state
+                .routes
+                .get(&projection.id)
+                .is_some_and(|logical| logical.state == RouteState::Active)
+    })
 }
 
 fn validate_batch_limit(limit: usize) -> Result<(), RepositoryError> {
@@ -443,12 +734,9 @@ fn validate_convergence_routes(
     state: &State,
     convergence: &GatewayCertificateConvergence,
 ) -> Result<(), RepositoryError> {
-    let active = state
-        .routes
-        .values()
-        .filter(|route| {
-            route.gateway_node_id == convergence.node_id && route.state == RouteState::Active
-        })
+    let active_routes = active_routes_for_node(state, convergence.node_id);
+    let active = active_routes
+        .iter()
         .map(|route| (route.id, route))
         .collect::<BTreeMap<_, _>>();
     let planned = convergence
@@ -471,16 +759,62 @@ fn validate_active_certificate(
     convergence: &GatewayCertificateConvergence,
     certificate_id: GatewayCertificateId,
 ) -> Result<(), RepositoryError> {
-    if state.routes.values().any(|route| {
-        route.gateway_node_id == convergence.node_id
-            && route.state == RouteState::Active
-            && route.gateway_certificate_id != Some(certificate_id)
-    }) {
+    if active_routes_for_node(state, convergence.node_id)
+        .iter()
+        .any(|route| route.gateway_certificate_id != Some(certificate_id))
+    {
         return Err(RepositoryError::Conflict(
             "active Gateway routes changed certificate during convergence".into(),
         ));
     }
     Ok(())
+}
+
+fn active_routes_for_node(state: &State, node_id: NodeId) -> Vec<Route> {
+    let projected_route_ids = state
+        .rollout_route_projections
+        .values()
+        .map(|route| route.id)
+        .collect::<BTreeSet<_>>();
+    let mut routes = state
+        .routes
+        .values()
+        .filter(|route| {
+            route.gateway_node_id == node_id
+                && route.state == RouteState::Active
+                && !projected_route_ids.contains(&route.id)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    routes.extend(
+        state
+            .rollout_route_projections
+            .values()
+            .filter(|projection| {
+                projection.gateway_node_id == node_id
+                    && projection.state == RouteState::Active
+                    && state
+                        .routes
+                        .get(&projection.id)
+                        .is_some_and(|logical| logical.state == RouteState::Active)
+            })
+            .cloned(),
+    );
+    routes.sort_by_key(|route| route.id);
+    routes
+}
+
+fn active_route_uses_certificate(state: &State, certificate_id: GatewayCertificateId) -> bool {
+    state.routes.values().any(|route| {
+        route.state == RouteState::Active && route.gateway_certificate_id == Some(certificate_id)
+    }) || state.rollout_route_projections.values().any(|projection| {
+        projection.state == RouteState::Active
+            && projection.gateway_certificate_id == Some(certificate_id)
+            && state
+                .routes
+                .get(&projection.id)
+                .is_some_and(|logical| logical.state == RouteState::Active)
+    })
 }
 
 fn validate_route_versions_and_claims(

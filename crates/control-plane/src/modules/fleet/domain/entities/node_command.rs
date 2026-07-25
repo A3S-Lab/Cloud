@@ -59,6 +59,7 @@ impl NodeCommand {
             NodeCommandPayload::RuntimeRemove { .. } => "runtime_remove",
             NodeCommandPayload::ResourceClaimRelease { .. } => "resource_claim_release",
             NodeCommandPayload::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
+            NodeCommandPayload::GatewaySnapshotObserve { .. } => "gateway_snapshot_observe",
         }
     }
 
@@ -103,6 +104,14 @@ impl NodeCommand {
                 NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
                     acknowledgement.acknowledged_at =
                         canonical_timestamp(acknowledgement.acknowledged_at);
+                }
+                NodeCommandResult::GatewaySnapshotObserved { observation } => {
+                    observation.observed_at = canonical_timestamp(observation.observed_at);
+                    if let Some(applied) = &mut observation.applied {
+                        applied.issued_at = canonical_timestamp(applied.issued_at);
+                        applied.expires_at = canonical_timestamp(applied.expires_at);
+                        applied.applied_at = canonical_timestamp(applied.applied_at);
+                    }
                 }
                 NodeCommandResult::RuntimeApplied { .. }
                 | NodeCommandResult::RuntimeInspected { .. }

@@ -5,22 +5,26 @@ use crate::infrastructure::{
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
-    GatewayRolloutDispatchTarget, GatewayRolloutResult, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRouteCutover,
-    StageRoutePublication, TransitionDomainClaim,
+    GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget, GatewayRolloutResult,
+    GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRolloutRollback,
+    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
-    GatewayPublicationState, GatewayRollout, GatewayRouteCutover, GatewayScope, GatewayScopeState,
-    Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayPublicationState, GatewayRollout, GatewayRolloutRollback, GatewayRouteCutover,
+    GatewayScope, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+    RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
-    GatewayScopeId, IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId,
-    RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
+    GatewayScopeId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
 };
-use a3s_cloud_contracts::{GatewayCertificateRequest, NodeGatewayAck};
-use a3s_orm::expression::Selection;
+use a3s_cloud_contracts::{
+    GatewayCertificateRequest, NodeGatewayAck, NodeGatewaySnapshotObservation,
+};
+use a3s_orm::expression::{exists, not, Selection};
 use a3s_orm::{
     insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
     OrderDirection, PostgresDialect, PostgresExecutor, Query, Row,
@@ -29,10 +33,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use super::postgres_schema::{GatewayPublications, GatewayScopes, Nodes, Routes};
+use super::postgres_schema::{
+    GatewayPublications, GatewayRouteProjections, GatewayScopes, Nodes, Routes,
+};
 use super::postgres_tls::{self as tls, insert_certificate};
 use super::{
-    postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes, postgres_rollouts,
+    postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes,
+    postgres_rollout_routes, postgres_rollouts,
 };
 
 #[derive(Clone)]
@@ -46,246 +53,9 @@ impl PostgresEdgeRepository {
     }
 }
 
-pub(super) struct RouteRow {
-    id: Uuid,
-    organization_id: Uuid,
-    project_id: Uuid,
-    environment_id: Uuid,
-    gateway_scope_id: Uuid,
-    gateway_node_id: Uuid,
-    hostname: String,
-    path_prefix: String,
-    workload_id: Uuid,
-    workload_revision_id: Uuid,
-    runtime_unit_id: String,
-    runtime_generation: u64,
-    port_name: String,
-    upstream_origin: String,
-    target_observed_at: DateTime<Utc>,
-    state: String,
-    gateway_revision: u64,
-    gateway_command_id: Uuid,
-    snapshot_digest: String,
-    failure: Option<String>,
-    aggregate_version: u64,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-    activated_at: Option<DateTime<Utc>>,
-    domain_claim_id: Option<Uuid>,
-    domain_pattern: Option<String>,
-    gateway_certificate_id: Option<Uuid>,
-}
+mod models;
 
-pub(super) struct RouteSelection;
-
-impl Selection for RouteSelection {
-    type Output = RouteRow;
-
-    fn expressions(self) -> Vec<Expression> {
-        vec![
-            Routes::id().expression(),
-            Routes::organization_id().expression(),
-            Routes::project_id().expression(),
-            Routes::environment_id().expression(),
-            Routes::gateway_scope_id().expression(),
-            Routes::gateway_node_id().expression(),
-            Routes::hostname().expression(),
-            Routes::path_prefix().expression(),
-            Routes::workload_id().expression(),
-            Routes::workload_revision_id().expression(),
-            Routes::runtime_unit_id().expression(),
-            Routes::runtime_generation().expression(),
-            Routes::port_name().expression(),
-            Routes::upstream_origin().expression(),
-            Routes::target_observed_at().expression(),
-            Routes::state().expression(),
-            Routes::gateway_revision().expression(),
-            Routes::gateway_command_id().expression(),
-            Routes::snapshot_digest().expression(),
-            Routes::failure().expression(),
-            Routes::aggregate_version().expression(),
-            Routes::created_at().expression(),
-            Routes::updated_at().expression(),
-            Routes::activated_at().expression(),
-            Routes::domain_claim_id().expression(),
-            Routes::domain_pattern().expression(),
-            Routes::gateway_certificate_id().expression(),
-        ]
-    }
-}
-
-impl FromRow for RouteRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            id: decode(row, 0)?,
-            organization_id: decode(row, 1)?,
-            project_id: decode(row, 2)?,
-            environment_id: decode(row, 3)?,
-            gateway_scope_id: decode(row, 4)?,
-            gateway_node_id: decode(row, 5)?,
-            hostname: decode(row, 6)?,
-            path_prefix: decode(row, 7)?,
-            workload_id: decode(row, 8)?,
-            workload_revision_id: decode(row, 9)?,
-            runtime_unit_id: decode(row, 10)?,
-            runtime_generation: decode(row, 11)?,
-            port_name: decode(row, 12)?,
-            upstream_origin: decode(row, 13)?,
-            target_observed_at: decode(row, 14)?,
-            state: decode(row, 15)?,
-            gateway_revision: decode(row, 16)?,
-            gateway_command_id: decode(row, 17)?,
-            snapshot_digest: decode(row, 18)?,
-            failure: decode(row, 19)?,
-            aggregate_version: decode(row, 20)?,
-            created_at: decode(row, 21)?,
-            updated_at: decode(row, 22)?,
-            activated_at: decode(row, 23)?,
-            domain_claim_id: decode(row, 24)?,
-            domain_pattern: decode(row, 25)?,
-            gateway_certificate_id: decode(row, 26)?,
-        })
-    }
-}
-
-impl RouteRow {
-    pub(super) fn route(self) -> Result<Route, RepositoryError> {
-        let workload_id = WorkloadId::from_uuid(self.workload_id);
-        let target = RouteTarget::new(
-            workload_id,
-            WorkloadRevisionId::from_uuid(self.workload_revision_id),
-            self.runtime_unit_id,
-            self.runtime_generation,
-            RoutePortName::parse(self.port_name).map_err(stored("port name"))?,
-            UpstreamEndpoint::parse(self.upstream_origin).map_err(stored("upstream endpoint"))?,
-            self.target_observed_at,
-        )
-        .map_err(stored("target"))?;
-        let route = Route {
-            id: RouteId::from_uuid(self.id),
-            organization_id: OrganizationId::from_uuid(self.organization_id),
-            project_id: ProjectId::from_uuid(self.project_id),
-            environment_id: EnvironmentId::from_uuid(self.environment_id),
-            gateway_scope_id: GatewayScopeId::from_uuid(self.gateway_scope_id),
-            gateway_node_id: NodeId::from_uuid(self.gateway_node_id),
-            hostname: RouteHostname::parse(self.hostname).map_err(stored("hostname"))?,
-            path_prefix: RoutePath::parse(self.path_prefix).map_err(stored("path"))?,
-            domain_claim_id: self.domain_claim_id.map(DomainClaimId::from_uuid),
-            domain_pattern: self
-                .domain_pattern
-                .map(DomainNamePattern::parse)
-                .transpose()
-                .map_err(stored("domain pattern"))?,
-            gateway_certificate_id: self
-                .gateway_certificate_id
-                .map(GatewayCertificateId::from_uuid),
-            workload_id,
-            target,
-            state: RouteState::parse(&self.state).map_err(stored("state"))?,
-            gateway_revision: Some(self.gateway_revision),
-            gateway_command_id: Some(NodeCommandId::from_uuid(self.gateway_command_id)),
-            snapshot_digest: Some(self.snapshot_digest),
-            failure: self.failure,
-            aggregate_version: self.aggregate_version,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-            activated_at: self.activated_at,
-        };
-        validate_stored_route(&route)?;
-        Ok(route)
-    }
-}
-
-pub(super) struct PublicationRow {
-    node_id: Uuid,
-    revision: u64,
-    expected_revision: Option<u64>,
-    command_id: Uuid,
-    command_correlation_id: Uuid,
-    snapshot_digest: String,
-    acl: String,
-    state: String,
-    failure: Option<String>,
-    command_issued_at: DateTime<Utc>,
-    command_not_after: DateTime<Utc>,
-    snapshot_expires_at: DateTime<Utc>,
-    acknowledged_at: Option<DateTime<Utc>>,
-    certificate_request: Option<serde_json::Value>,
-}
-
-pub(super) struct PublicationSelection;
-
-impl Selection for PublicationSelection {
-    type Output = PublicationRow;
-
-    fn expressions(self) -> Vec<Expression> {
-        vec![
-            GatewayPublications::node_id().expression(),
-            GatewayPublications::revision().expression(),
-            GatewayPublications::expected_revision().expression(),
-            GatewayPublications::command_id().expression(),
-            GatewayPublications::command_correlation_id().expression(),
-            GatewayPublications::snapshot_digest().expression(),
-            GatewayPublications::acl().expression(),
-            GatewayPublications::state().expression(),
-            GatewayPublications::failure().expression(),
-            GatewayPublications::command_issued_at().expression(),
-            GatewayPublications::command_not_after().expression(),
-            GatewayPublications::snapshot_expires_at().expression(),
-            GatewayPublications::acknowledged_at().expression(),
-            GatewayPublications::certificate_request().expression(),
-        ]
-    }
-}
-
-impl FromRow for PublicationRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            node_id: decode(row, 0)?,
-            revision: decode(row, 1)?,
-            expected_revision: decode(row, 2)?,
-            command_id: decode(row, 3)?,
-            command_correlation_id: decode(row, 4)?,
-            snapshot_digest: decode(row, 5)?,
-            acl: decode(row, 6)?,
-            state: decode(row, 7)?,
-            failure: decode(row, 8)?,
-            command_issued_at: decode(row, 9)?,
-            command_not_after: decode(row, 10)?,
-            snapshot_expires_at: decode(row, 11)?,
-            acknowledged_at: decode(row, 12)?,
-            certificate_request: decode(row, 13)?,
-        })
-    }
-}
-
-impl PublicationRow {
-    pub(super) fn publication(self) -> Result<GatewayPublication, RepositoryError> {
-        let certificate_request = self
-            .certificate_request
-            .map(serde_json::from_value::<GatewayCertificateRequest>)
-            .transpose()
-            .map_err(|error| stored("certificate request")(error.to_string()))?;
-        let publication = GatewayPublication {
-            node_id: NodeId::from_uuid(self.node_id),
-            revision: self.revision,
-            expected_revision: self.expected_revision,
-            command_id: NodeCommandId::from_uuid(self.command_id),
-            command_correlation_id: self.command_correlation_id,
-            snapshot_digest: self.snapshot_digest,
-            acl: self.acl,
-            certificate_request,
-            state: GatewayPublicationState::parse(&self.state).map_err(stored("state"))?,
-            failure: self.failure,
-            command_issued_at: self.command_issued_at,
-            command_not_after: self.command_not_after,
-            snapshot_expires_at: self.snapshot_expires_at,
-            acknowledged_at: self.acknowledged_at,
-        };
-        publication.snapshot().map_err(stored("snapshot"))?;
-        Ok(publication)
-    }
-}
+pub(super) use models::{PublicationRow, PublicationSelection, RouteRow, RouteSelection};
 
 #[async_trait]
 impl IEdgeRepository for PostgresEdgeRepository {
@@ -402,17 +172,32 @@ impl IEdgeRepository for PostgresEdgeRepository {
     }
 
     async fn active_routes(&self, node_id: NodeId) -> Result<Vec<Route>, RepositoryError> {
-        query_routes(
+        let projected_route = exists(
+            select_from::<GatewayRouteProjections>()
+                .select(GatewayRouteProjections::route_id())
+                .filter(GatewayRouteProjections::route_id().eq_column(Routes::id())),
+        );
+        let mut routes = query_routes(
             &self.executor,
             select_from::<Routes>()
                 .select(RouteSelection)
                 .filter(Routes::gateway_node_id().eq(node_id.as_uuid()))
                 .filter(Routes::state().eq("active"))
+                .filter(not(projected_route))
                 .order_by(Routes::hostname(), OrderDirection::Asc)
                 .order_by(Routes::path_prefix(), OrderDirection::Asc)
                 .order_by(Routes::id(), OrderDirection::Asc),
         )
-        .await
+        .await?;
+        routes.extend(postgres_rollout_routes::active(&self.executor, node_id).await?);
+        routes.sort_by(|left, right| {
+            (left.hostname.as_str(), left.path_prefix.as_str(), left.id).cmp(&(
+                right.hostname.as_str(),
+                right.path_prefix.as_str(),
+                right.id,
+            ))
+        });
+        Ok(routes)
     }
 
     async fn stage_route_publication(
@@ -608,6 +393,28 @@ impl IEdgeRepository for PostgresEdgeRepository {
         postgres_rollouts::stage(&self.executor, bundle).await
     }
 
+    async fn stage_gateway_rollout_rollback(
+        &self,
+        bundle: StageGatewayRolloutRollback,
+    ) -> Result<GatewayRolloutRollbackResult, RepositoryError> {
+        postgres_rollouts::stage_rollback(&self.executor, bundle).await
+    }
+
+    async fn replay_gateway_rollout(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<GatewayRolloutResult>, RepositoryError> {
+        postgres_rollouts::replay(&self.executor, idempotency).await
+    }
+
+    async fn next_gateway_rollout_generation(
+        &self,
+        organization_id: OrganizationId,
+        gateway_scope_id: GatewayScopeId,
+    ) -> Result<u64, RepositoryError> {
+        postgres_rollouts::next_generation(&self.executor, organization_id, gateway_scope_id).await
+    }
+
     async fn pending_gateway_rollout_dispatches(
         &self,
         limit: usize,
@@ -621,6 +428,24 @@ impl IEdgeRepository for PostgresEdgeRepository {
         rollout_id: GatewayRolloutId,
     ) -> Result<GatewayRollout, RepositoryError> {
         postgres_rollouts::find(&self.executor, organization_id, rollout_id).await
+    }
+
+    async fn find_gateway_rollout_rollback(
+        &self,
+        organization_id: OrganizationId,
+        failed_rollout_id: GatewayRolloutId,
+    ) -> Result<GatewayRolloutRollback, RepositoryError> {
+        postgres_rollouts::find_rollback(&self.executor, organization_id, failed_rollout_id).await
+    }
+
+    async fn pending_gateway_rollout_rollbacks(
+        &self,
+        limit: usize,
+    ) -> Result<
+        Vec<crate::modules::edge::domain::repositories::GatewayRolloutRollbackTarget>,
+        RepositoryError,
+    > {
+        postgres_rollouts::pending_rollbacks(&self.executor, limit).await
     }
 
     async fn mark_gateway_rollout_replica_unavailable(
@@ -640,6 +465,80 @@ impl IEdgeRepository for PostgresEdgeRepository {
             expected_version,
             failure,
             observed_at,
+        )
+        .await
+    }
+
+    async fn pending_gateway_replica_recoveries(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayReplicaRecoveryTarget>, RepositoryError> {
+        postgres_rollouts::pending_recoveries(&self.executor, limit).await
+    }
+
+    async fn stage_gateway_replica_recovery_observation(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        issued_at: DateTime<Utc>,
+        not_after: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        postgres_rollouts::stage_recovery_observation(
+            &self.executor,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            command_id,
+            issued_at,
+            not_after,
+        )
+        .await
+    }
+
+    async fn record_gateway_replica_recovery_observation(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        observation: NodeGatewaySnapshotObservation,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        postgres_rollouts::record_recovery_observation(
+            &self.executor,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            observation,
+        )
+        .await
+    }
+
+    async fn record_gateway_replica_recovery_failure(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        failure: &str,
+        retryable: bool,
+        failed_at: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        postgres_rollouts::record_recovery_failure(
+            &self.executor,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            command_id,
+            failure,
+            retryable,
+            failed_at,
         )
         .await
     }
@@ -671,6 +570,27 @@ impl IEdgeRepository for PostgresEdgeRepository {
         bundle: StageGatewayCertificateConvergence,
     ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
         postgres_certificate_convergence::stage(&self.executor, bundle).await
+    }
+
+    async fn mark_gateway_certificate_convergence_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+        gateway_revision: u64,
+        gateway_command_id: NodeCommandId,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+        postgres_certificate_convergence::mark_unavailable(
+            &self.executor,
+            organization_id,
+            node_id,
+            gateway_revision,
+            gateway_command_id,
+            failure,
+            observed_at,
+        )
+        .await
     }
 
     async fn find_gateway_certificate_convergence(
@@ -828,7 +748,7 @@ pub(super) async fn insert_publication(
     map_insert("Gateway publication", result)
 }
 
-async fn insert_route(
+pub(super) async fn insert_route(
     transaction: &a3s_orm::PostgresTransaction,
     route: &Route,
 ) -> Result<(), PostgresPersistenceError> {
@@ -951,7 +871,9 @@ fn validate_stored_route(route: &Route) -> Result<(), RepositoryError> {
         RouteState::Pending => false,
         RouteState::Publishing => route.failure.is_none() && route.activated_at.is_none(),
         RouteState::Active => route.failure.is_none() && route.activated_at.is_some(),
-        RouteState::Rejected => route.failure.is_some() && route.activated_at.is_none(),
+        RouteState::Rejected | RouteState::Unavailable => {
+            route.failure.is_some() && route.activated_at.is_none()
+        }
     };
     let tls_consistent = match (
         route.domain_claim_id,

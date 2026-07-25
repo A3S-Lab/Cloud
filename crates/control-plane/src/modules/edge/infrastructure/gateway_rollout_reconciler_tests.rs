@@ -118,6 +118,7 @@ async fn reconciler_redispatches_partial_rollout_and_expires_only_the_missing_re
         .stage_gateway_rollout(StageGatewayRollout {
             scope: scope.clone(),
             rollout: rollout.clone(),
+            route_replicas: Vec::new(),
             publications: publications.clone(),
             certificates: Vec::new(),
             expected_scope_versions: scope
@@ -132,6 +133,7 @@ async fn reconciler_redispatches_partial_rollout_and_expires_only_the_missing_re
             )
             .expect("rollout idempotency"),
             event: GatewayRolloutStaged::envelope(&scope, &rollout).expect("rollout event"),
+            route_event: None,
         })
         .await
         .expect("stage Gateway rollout");

@@ -65,6 +65,219 @@ impl GatewayManagementProtocol {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GatewaySnapshotObservationRequest {
+    pub schema: String,
+    pub gateway_id: Uuid,
+    pub revision: u64,
+    pub snapshot_digest: String,
+}
+
+impl GatewaySnapshotObservationRequest {
+    pub const SCHEMA: &'static str = "a3s.cloud.gateway-snapshot-observation-request.v1";
+
+    pub fn new(
+        gateway_id: Uuid,
+        revision: u64,
+        snapshot_digest: impl Into<String>,
+    ) -> Result<Self, String> {
+        let request = Self {
+            schema: Self::SCHEMA.into(),
+            gateway_id,
+            revision,
+            snapshot_digest: snapshot_digest.into(),
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported Gateway snapshot observation request schema {:?}",
+                self.schema
+            ));
+        }
+        validate_uuid("Gateway snapshot observation Gateway ID", self.gateway_id)?;
+        if self.revision == 0 {
+            return Err("Gateway snapshot observation revision must be positive".into());
+        }
+        validate_sha256("Gateway snapshot observation digest", &self.snapshot_digest)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GatewaySnapshotObservationState {
+    Applying,
+    Applied,
+    Rejected,
+    Expired,
+    NotApplied,
+    Uninitialized,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppliedGatewaySnapshot {
+    pub gateway_id: Uuid,
+    pub revision: u64,
+    pub expected_revision: Option<u64>,
+    pub snapshot_digest: String,
+    pub issued_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub applied_at: DateTime<Utc>,
+}
+
+impl AppliedGatewaySnapshot {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_uuid("applied Gateway snapshot Gateway ID", self.gateway_id)?;
+        if self.revision == 0
+            || self
+                .expected_revision
+                .is_some_and(|revision| revision == 0 || revision >= self.revision)
+        {
+            return Err("applied Gateway snapshot revision chain is invalid".into());
+        }
+        validate_sha256("applied Gateway snapshot digest", &self.snapshot_digest)?;
+        if self.expires_at <= self.issued_at
+            || self.applied_at < self.issued_at
+            || self.applied_at >= self.expires_at
+        {
+            return Err("applied Gateway snapshot timestamps are invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn matches(&self, request: &GatewaySnapshotObservationRequest) -> bool {
+        self.gateway_id == request.gateway_id
+            && self.revision == request.revision
+            && self.snapshot_digest == request.snapshot_digest
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeGatewaySnapshotObservation {
+    pub schema: String,
+    pub observation_id: Uuid,
+    pub command_id: Uuid,
+    pub node_id: Uuid,
+    pub gateway_id: Uuid,
+    pub revision: u64,
+    pub snapshot_digest: String,
+    pub state: GatewaySnapshotObservationState,
+    pub ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied: Option<AppliedGatewaySnapshot>,
+    pub observed_at: DateTime<Utc>,
+    pub management_protocol: GatewayManagementProtocol,
+}
+
+impl NodeGatewaySnapshotObservation {
+    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-snapshot-observation.v1";
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported node Gateway snapshot observation schema {:?}",
+                self.schema
+            ));
+        }
+        validate_uuid("Gateway snapshot observation ID", self.observation_id)?;
+        validate_uuid("Gateway snapshot observation command ID", self.command_id)?;
+        validate_uuid("Gateway snapshot observation node ID", self.node_id)?;
+        validate_uuid("Gateway snapshot observation Gateway ID", self.gateway_id)?;
+        if self.node_id != self.gateway_id || self.revision == 0 {
+            return Err("Gateway snapshot observation identity is inconsistent".into());
+        }
+        validate_sha256("Gateway snapshot observation digest", &self.snapshot_digest)?;
+        self.management_protocol.validate()?;
+        if let Some(applied) = &self.applied {
+            applied.validate()?;
+            if applied.gateway_id != self.gateway_id || applied.applied_at > self.observed_at {
+                return Err(
+                    "Gateway snapshot observation applied state identity or time is inconsistent"
+                        .into(),
+                );
+            }
+        }
+        let requested_is_applied = self.applied.as_ref().is_some_and(|applied| {
+            applied.gateway_id == self.gateway_id
+                && applied.revision == self.revision
+                && applied.snapshot_digest == self.snapshot_digest
+        });
+        match self.state {
+            GatewaySnapshotObservationState::Applied => {
+                if !self.ready
+                    || !requested_is_applied
+                    || self
+                        .applied
+                        .as_ref()
+                        .is_some_and(|applied| applied.expires_at <= self.observed_at)
+                {
+                    return Err(
+                        "applied Gateway snapshot observation is not exact and ready".into(),
+                    );
+                }
+            }
+            GatewaySnapshotObservationState::Expired => {
+                if self.ready
+                    || !requested_is_applied
+                    || self
+                        .applied
+                        .as_ref()
+                        .is_none_or(|applied| applied.expires_at > self.observed_at)
+                {
+                    return Err("expired Gateway snapshot observation is inconsistent".into());
+                }
+            }
+            GatewaySnapshotObservationState::Rejected
+            | GatewaySnapshotObservationState::NotApplied => {
+                if self.ready || requested_is_applied {
+                    return Err(
+                        "unapplied Gateway snapshot observation retained the requested state"
+                            .into(),
+                    );
+                }
+            }
+            GatewaySnapshotObservationState::Uninitialized => {
+                if self.ready || self.applied.is_some() {
+                    return Err("uninitialized Gateway snapshot observation is inconsistent".into());
+                }
+            }
+            GatewaySnapshotObservationState::Applying => {
+                if self.ready {
+                    return Err("applying Gateway snapshot observation cannot be ready".into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_for(
+        &self,
+        command_id: Uuid,
+        node_id: Uuid,
+        request: &GatewaySnapshotObservationRequest,
+    ) -> Result<(), String> {
+        self.validate()?;
+        request.validate()?;
+        if self.command_id != command_id
+            || self.node_id != node_id
+            || self.gateway_id != request.gateway_id
+            || self.revision != request.revision
+            || self.snapshot_digest != request.snapshot_digest
+        {
+            return Err(
+                "Gateway snapshot observation does not match its exact node command".into(),
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GatewayCertificateRequest {
     pub schema: String,
     pub certificate_id: Uuid,

@@ -14,6 +14,7 @@ pub enum RouteState {
     Publishing,
     Active,
     Rejected,
+    Unavailable,
 }
 
 impl RouteState {
@@ -23,6 +24,7 @@ impl RouteState {
             Self::Publishing => "publishing",
             Self::Active => "active",
             Self::Rejected => "rejected",
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -32,6 +34,7 @@ impl RouteState {
             "publishing" => Ok(Self::Publishing),
             "active" => Ok(Self::Active),
             "rejected" => Ok(Self::Rejected),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err(format!("unsupported route state {value:?}")),
         }
     }
@@ -233,6 +236,93 @@ impl Route {
         Ok(())
     }
 
+    pub fn activate_from_gateway_rollout(
+        &mut self,
+        activated_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let activated_at = canonical_timestamp(activated_at);
+        if self.state == RouteState::Active {
+            return Ok(false);
+        }
+        if self.state != RouteState::Publishing
+            || self.gateway_revision.is_none()
+            || self.gateway_command_id.is_none()
+            || self.snapshot_digest.is_none()
+            || self.failure.is_some()
+            || self.domain_claim_id.is_none()
+            || self.domain_pattern.is_none()
+            || self.gateway_certificate_id.is_none()
+        {
+            return Err(
+                "only a complete publishing Route can activate from a Gateway rollout".into(),
+            );
+        }
+        self.ensure_time(activated_at)?;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Route aggregate version space is exhausted".to_string())?;
+        self.state = RouteState::Active;
+        self.updated_at = activated_at;
+        self.activated_at = Some(activated_at);
+        Ok(true)
+    }
+
+    pub fn reject_from_gateway_rollout(
+        &mut self,
+        failure: impl Into<String>,
+        rejected_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = validate_rollout_failure(failure.into())?;
+        let rejected_at = canonical_timestamp(rejected_at);
+        if self.state == RouteState::Rejected && self.failure.as_deref() == Some(&failure) {
+            return Ok(false);
+        }
+        if self.state != RouteState::Publishing {
+            return Err("only a publishing Route can be rejected by its Gateway rollout".into());
+        }
+        self.ensure_time(rejected_at)?;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Route aggregate version space is exhausted".to_string())?;
+        self.state = RouteState::Rejected;
+        self.failure = Some(failure);
+        self.updated_at = rejected_at;
+        self.activated_at = None;
+        Ok(true)
+    }
+
+    pub fn mark_unavailable_from_gateway_rollout(
+        &mut self,
+        failure: impl Into<String>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = validate_rollout_failure(failure.into())?;
+        let observed_at = canonical_timestamp(observed_at);
+        if self.state == RouteState::Unavailable
+            && self.failure.as_deref() == Some(&failure)
+            && self.updated_at == observed_at
+        {
+            return Ok(false);
+        }
+        if self.state != RouteState::Publishing {
+            return Err(
+                "only a publishing Route can become unavailable during a Gateway rollout".into(),
+            );
+        }
+        self.ensure_time(observed_at)?;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Route aggregate version space is exhausted".to_string())?;
+        self.state = RouteState::Unavailable;
+        self.failure = Some(failure);
+        self.updated_at = observed_at;
+        self.activated_at = None;
+        Ok(true)
+    }
+
     pub fn bind_gateway_certificate(
         &mut self,
         revision: u64,
@@ -312,4 +402,15 @@ fn valid_sha256(value: &str) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     })
+}
+
+fn validate_rollout_failure(value: String) -> Result<String, String> {
+    if value.is_empty()
+        || value.len() > 4096
+        || value.trim() != value
+        || value.contains(['\0', '\r', '\n'])
+    {
+        return Err("Gateway rollout Route failure must be a bounded single-line value".into());
+    }
+    Ok(value)
 }

@@ -231,6 +231,13 @@ impl WorkloadRuntimeReconciler {
             .ok_or_else(|| "active deployment omitted its node".to_string())?;
         let spec = project_runtime_spec(&target.revision)?;
         let resource_binding = self.resource_binding(target, &spec, node_id).await?;
+        let context = ReconciliationContext {
+            target,
+            spec: &spec,
+            node_id,
+            resource_binding: resource_binding.as_ref(),
+            now,
+        };
         let latest = self
             .control
             .latest_runtime_observation(node_id, &spec.unit_id, spec.generation)
@@ -243,17 +250,7 @@ impl WorkloadRuntimeReconciler {
                 .command_id
                 .map(NodeCommandId::as_uuid)
                 .unwrap_or_else(|| target.deployment.id.as_uuid());
-            return self
-                .ensure_inspection(
-                    target,
-                    &spec,
-                    node_id,
-                    resource_binding.as_ref(),
-                    evidence_id,
-                    now,
-                    report,
-                )
-                .await;
+            return self.ensure_inspection(context, evidence_id, report).await;
         };
         latest
             .observation
@@ -262,15 +259,7 @@ impl WorkloadRuntimeReconciler {
         validate_resource_observation(resource_binding.as_ref(), &latest.observation)?;
         if latest.observation.state == RuntimeUnitState::Unknown {
             return self
-                .ensure_recovery(
-                    target,
-                    &spec,
-                    node_id,
-                    resource_binding.as_ref(),
-                    latest.report_id,
-                    now,
-                    report,
-                )
+                .ensure_recovery(context, latest.report_id, report)
                 .await;
         }
         if latest.observation.state.is_terminal() {
@@ -287,28 +276,23 @@ impl WorkloadRuntimeReconciler {
             report.converged += 1;
             return Ok(());
         }
-        self.ensure_inspection(
-            target,
-            &spec,
-            node_id,
-            resource_binding.as_ref(),
-            latest.report_id,
-            now,
-            report,
-        )
-        .await
+        self.ensure_inspection(context, latest.report_id, report)
+            .await
     }
 
     async fn ensure_inspection(
         &self,
-        target: &ActiveRuntimeTarget,
-        spec: &RuntimeUnitSpec,
-        node_id: NodeId,
-        resource_binding: Option<&NodeResourceClaimBinding>,
+        context: ReconciliationContext<'_>,
         mut evidence_id: Uuid,
-        now: DateTime<Utc>,
         report: &mut WorkloadReconciliationReport,
     ) -> Result<(), String> {
+        let ReconciliationContext {
+            target,
+            spec,
+            node_id,
+            resource_binding,
+            now,
+        } = context;
         for _ in 0..MAX_COMMAND_CHAIN {
             let command_id = reconciliation_command_id("inspect", target, evidence_id);
             let command = match self
@@ -364,15 +348,7 @@ impl WorkloadRuntimeReconciler {
                         validate_resource_observation(resource_binding, &observation)?;
                         if observation.state == RuntimeUnitState::Unknown {
                             return self
-                                .ensure_recovery(
-                                    target,
-                                    spec,
-                                    node_id,
-                                    resource_binding,
-                                    command_id.as_uuid(),
-                                    now,
-                                    report,
-                                )
+                                .ensure_recovery(context, command_id.as_uuid(), report)
                                 .await;
                         }
                         report.converged += usize::from(observation.converges(spec));
@@ -382,15 +358,7 @@ impl WorkloadRuntimeReconciler {
                         inspection: RuntimeInspection::NotFound { unit_id, .. },
                     } if unit_id == spec.unit_id => {
                         return self
-                            .ensure_recovery(
-                                target,
-                                spec,
-                                node_id,
-                                resource_binding,
-                                command_id.as_uuid(),
-                                now,
-                                report,
-                            )
+                            .ensure_recovery(context, command_id.as_uuid(), report)
                             .await;
                     }
                     _ => return Err("Runtime inspect acknowledgement has the wrong result".into()),
@@ -415,14 +383,17 @@ impl WorkloadRuntimeReconciler {
 
     async fn ensure_recovery(
         &self,
-        target: &ActiveRuntimeTarget,
-        spec: &RuntimeUnitSpec,
-        node_id: NodeId,
-        resource_binding: Option<&NodeResourceClaimBinding>,
+        context: ReconciliationContext<'_>,
         mut evidence_id: Uuid,
-        now: DateTime<Utc>,
         report: &mut WorkloadReconciliationReport,
     ) -> Result<(), String> {
+        let ReconciliationContext {
+            target,
+            spec,
+            node_id,
+            resource_binding,
+            ..
+        } = context;
         for _ in 0..MAX_COMMAND_CHAIN {
             let command_id = reconciliation_command_id("apply", target, evidence_id);
             let command = match self
@@ -436,14 +407,10 @@ impl WorkloadRuntimeReconciler {
                     let command = self
                         .enqueue_or_reload(
                             recovery_draft(
-                                target,
-                                spec,
-                                node_id,
+                                context,
                                 command_id,
-                                now,
                                 self.command_ttl,
                                 self.runtime_apply_timeout,
-                                resource_binding.cloned(),
                             )?,
                             ExpectedCommand::Apply {
                                 spec,
@@ -638,6 +605,15 @@ enum ExpectedCommand<'a> {
     },
 }
 
+#[derive(Clone, Copy)]
+struct ReconciliationContext<'a> {
+    target: &'a ActiveRuntimeTarget,
+    spec: &'a RuntimeUnitSpec,
+    node_id: NodeId,
+    resource_binding: Option<&'a NodeResourceClaimBinding>,
+    now: DateTime<Utc>,
+}
+
 fn validate_target(target: &ActiveRuntimeTarget) -> Result<(), String> {
     if target.workload.desired_state != WorkloadDesiredState::Running
         || target.workload.active_revision_id != Some(target.revision.id)
@@ -708,15 +684,18 @@ fn inspection_draft(
 }
 
 fn recovery_draft(
-    target: &ActiveRuntimeTarget,
-    spec: &RuntimeUnitSpec,
-    node_id: NodeId,
+    context: ReconciliationContext<'_>,
     command_id: NodeCommandId,
-    issued_at: DateTime<Utc>,
     command_ttl: chrono::Duration,
     runtime_apply_timeout: chrono::Duration,
-    resource_binding: Option<NodeResourceClaimBinding>,
 ) -> Result<NodeCommandDraft, String> {
+    let ReconciliationContext {
+        target,
+        spec,
+        node_id,
+        resource_binding,
+        now: issued_at,
+    } = context;
     let not_after = checked_add(issued_at, command_ttl, "Runtime recovery command")?;
     let runtime_deadline =
         checked_add(issued_at, runtime_apply_timeout, "Runtime recovery apply")?.min(not_after);
@@ -731,7 +710,7 @@ fn recovery_draft(
                 deadline_at_ms: Some(timestamp_millis(runtime_deadline)?),
                 spec: spec.clone(),
             }),
-            resource_claim: resource_binding.map(Box::new),
+            resource_claim: resource_binding.cloned().map(Box::new),
         },
         issued_at,
         not_after,

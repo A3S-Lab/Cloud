@@ -26,8 +26,10 @@ pub use enrollment::{
 };
 pub use error::{NodeProtocolError, NodeProtocolErrorCode};
 pub use gateway::{
-    GatewayCertificateRequest, GatewayCertificateSigningRequest, GatewayCertificateSigningResponse,
-    GatewayManagementProtocol, GatewayManagementProtocolDiscovery, GatewaySnapshot,
+    AppliedGatewaySnapshot, GatewayCertificateRequest, GatewayCertificateSigningRequest,
+    GatewayCertificateSigningResponse, GatewayManagementProtocol,
+    GatewayManagementProtocolDiscovery, GatewaySnapshot, GatewaySnapshotObservationRequest,
+    GatewaySnapshotObservationState, NodeGatewaySnapshotObservation,
 };
 pub use inventory::{
     NodeInventoryReference, NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,

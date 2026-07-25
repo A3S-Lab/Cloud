@@ -31,7 +31,7 @@ pub use docker::DockerRuntimeDriver;
 pub use executor::{CommandExecutionError, CommandExecutor};
 pub use gateway::{
     DurableGatewaySnapshotInstaller, GatewaySnapshotInstallError, GatewaySnapshotInstallOutcome,
-    GatewaySnapshotInstaller,
+    GatewaySnapshotInstaller, GatewaySnapshotObservationOutcome,
 };
 pub use identity::{
     EnrolledNodeIdentity, FileNodeIdentityStore, IdentityStoreError, NodeIdentityState,

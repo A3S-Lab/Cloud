@@ -194,6 +194,69 @@ orm_table! {
         state: String => "state",
         failure: Option<String> => "failure",
         acknowledged_at: Option<DateTime<Utc>> => "acknowledged_at",
+        recovery: Option<serde_json::Value> => "recovery",
+    }
+}
+
+orm_table! {
+    pub(super) struct GatewayRolloutRollbacks => "gateway_rollout_rollbacks" {
+        failed_rollout_id: Uuid => "failed_rollout_id",
+        gateway_scope_id: Uuid => "gateway_scope_id",
+        membership_generation: u64 => "membership_generation",
+        failed_generation: u64 => "failed_generation",
+        rollback_rollout_id: Uuid => "rollback_rollout_id",
+        rollback_generation: u64 => "rollback_generation",
+        state: String => "state",
+        aggregate_version: u64 => "aggregate_version",
+        required_at: DateTime<Utc> => "required_at",
+        staged_at: Option<DateTime<Utc>> => "staged_at",
+        completed_at: Option<DateTime<Utc>> => "completed_at",
+        failure: Option<String> => "failure",
+    }
+}
+
+orm_table! {
+    pub(super) struct GatewayRouteProjections => "gateway_route_projections" {
+        gateway_rollout_id: Uuid => "gateway_rollout_id",
+        route_id: Uuid => "route_id",
+        gateway_scope_id: Uuid => "gateway_scope_id",
+        membership_generation: u64 => "membership_generation",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        gateway_node_id: Uuid => "gateway_node_id",
+        hostname: String => "hostname",
+        path_prefix: String => "path_prefix",
+        workload_id: Uuid => "workload_id",
+        workload_revision_id: Uuid => "workload_revision_id",
+        runtime_unit_id: String => "runtime_unit_id",
+        runtime_generation: u64 => "runtime_generation",
+        port_name: String => "port_name",
+        upstream_origin: String => "upstream_origin",
+        target_observed_at: DateTime<Utc> => "target_observed_at",
+        state: String => "state",
+        gateway_revision: u64 => "gateway_revision",
+        gateway_command_id: Uuid => "gateway_command_id",
+        snapshot_digest: String => "snapshot_digest",
+        failure: Option<String> => "failure",
+        aggregate_version: u64 => "aggregate_version",
+        created_at: DateTime<Utc> => "created_at",
+        updated_at: DateTime<Utc> => "updated_at",
+        activated_at: Option<DateTime<Utc>> => "activated_at",
+        domain_claim_id: Option<Uuid> => "domain_claim_id",
+        domain_pattern: Option<String> => "domain_pattern",
+        gateway_certificate_id: Option<Uuid> => "gateway_certificate_id",
+    }
+}
+
+orm_table! {
+    pub(super) struct GatewayRouteOwnership => "gateway_route_ownership" {
+        gateway_rollout_id: Uuid => "gateway_rollout_id",
+        route_id: Uuid => "route_id",
+        gateway_node_id: Uuid => "gateway_node_id",
+        hostname: String => "hostname",
+        path_prefix: String => "path_prefix",
+        created_at: DateTime<Utc> => "created_at",
     }
 }
 

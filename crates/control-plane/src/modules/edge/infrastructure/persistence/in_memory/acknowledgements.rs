@@ -1,7 +1,7 @@
 use super::{certificate_convergence, validate_applied_cutover_routes, State};
 use crate::modules::edge::domain::{
-    GatewayCertificateConvergenceState, GatewayPublicationState, GatewayRouteCutoverState,
-    RouteState,
+    GatewayCertificateConvergenceState, GatewayPublicationState, GatewayRollout,
+    GatewayRouteCutoverState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, NodeCommandId, NodeId, RepositoryError,
@@ -69,35 +69,41 @@ pub(super) async fn project(
                     && replica.revision == revision
             })
             .and_then(|replica| replica.gateway_certificate_id);
-        let certificate_ids = state
-            .certificates
-            .values()
-            .filter(|certificate| {
-                certificate.node_id == node_id
-                    && certificate.gateway_revision == revision
-                    && certificate.gateway_command_id == command_id
-            })
-            .map(|certificate| certificate.id)
-            .collect::<Vec<_>>();
-        if certificate_ids.len() != usize::from(expected_certificate_id.is_some())
-            || certificate_ids.first().copied() != expected_certificate_id
-        {
-            return Err(RepositoryError::Storage(
-                "Gateway rollout has inconsistent staged certificate material".into(),
-            ));
+        let certificate_valid_at = match acknowledgement.state {
+            GatewayAckState::Applied => acknowledgement.acknowledged_at,
+            GatewayAckState::Rejected => rollout.started_at,
+        };
+        if let Some((mut certificate, reused)) = super::rollouts::certificate_binding(
+            &state,
+            &rollout,
+            &publication,
+            certificate_valid_at,
+        )? {
+            if !reused {
+                certificate
+                    .apply_gateway_acknowledgement(&acknowledgement)
+                    .map_err(RepositoryError::Conflict)?;
+                state.certificates.insert(certificate.id, certificate);
+            }
         }
-        if let Some(certificate_id) = expected_certificate_id {
-            let mut certificate = state
-                .certificates
-                .get(&certificate_id)
-                .cloned()
-                .ok_or_else(|| {
-                    RepositoryError::Storage("Gateway rollout certificate disappeared".into())
-                })?;
-            certificate
-                .apply_gateway_acknowledgement(&acknowledgement)
-                .map_err(RepositoryError::Conflict)?;
-            state.certificates.insert(certificate.id, certificate);
+        project_rollout_route(&mut state, &rollout, &acknowledgement)?;
+        super::rollouts::project_terminal_rollback(&mut state, &rollout)?;
+        if acknowledgement.state == GatewayAckState::Applied {
+            if let Some(certificate_id) = expected_certificate_id {
+                certificate_convergence::bind_active_routes(
+                    &mut state,
+                    node_id,
+                    revision,
+                    command_id,
+                    &acknowledgement.snapshot_digest,
+                    certificate_id,
+                    acknowledgement.acknowledged_at,
+                )?;
+            } else if certificate_convergence::has_active_routes(&state, node_id) {
+                return Err(RepositoryError::Storage(
+                    "certificate-free Gateway rollout retained active routes".into(),
+                ));
+            }
         }
         state.publications.insert((node_id, revision), publication);
         if acknowledgement.state == GatewayAckState::Applied {
@@ -257,11 +263,7 @@ pub(super) async fn project(
                 certificate_id,
                 acknowledgement.acknowledged_at,
             )?;
-        } else if state
-            .routes
-            .values()
-            .any(|route| route.gateway_node_id == node_id && route.state == RouteState::Active)
-        {
+        } else if certificate_convergence::has_active_routes(&state, node_id) {
             return Err(RepositoryError::Storage(
                 "certificate-free Gateway snapshot retained active routes".into(),
             ));
@@ -276,4 +278,82 @@ pub(super) async fn project(
     }
     *stored_state = state;
     Ok(true)
+}
+
+fn project_rollout_route(
+    state: &mut State,
+    rollout: &GatewayRollout,
+    acknowledgement: &NodeGatewayAck,
+) -> Result<(), RepositoryError> {
+    let node_id = NodeId::from_uuid(acknowledgement.node_id);
+    let key = (rollout.id, node_id);
+    let Some(mut projection) = state.rollout_route_projections.get(&key).cloned() else {
+        if state
+            .rollout_route_projections
+            .keys()
+            .any(|(rollout_id, _)| *rollout_id == rollout.id)
+        {
+            return Err(RepositoryError::Storage(
+                "Gateway Route rollout omitted a member projection".into(),
+            ));
+        }
+        return Ok(());
+    };
+    projection
+        .apply_gateway_acknowledgement(acknowledgement)
+        .map_err(RepositoryError::Conflict)?;
+    let mut logical = state.routes.get(&projection.id).cloned().ok_or_else(|| {
+        RepositoryError::Storage("Gateway Route rollout logical Route disappeared".into())
+    })?;
+    validate_logical_projection(&logical, &projection, rollout)?;
+    let observed_at = rollout
+        .replicas
+        .iter()
+        .filter_map(|replica| replica.acknowledged_at)
+        .max()
+        .unwrap_or(rollout.started_at);
+    if rollout.serves_traffic().map_err(RepositoryError::Storage)? {
+        logical
+            .activate_from_gateway_rollout(observed_at)
+            .map_err(RepositoryError::Conflict)?;
+    } else if rollout.state.terminal() {
+        logical
+            .reject_from_gateway_rollout(
+                "Gateway rollout did not reach its readiness threshold",
+                observed_at,
+            )
+            .map_err(RepositoryError::Conflict)?;
+    }
+    state.rollout_route_projections.insert(key, projection);
+    state.routes.insert(logical.id, logical);
+    Ok(())
+}
+
+fn validate_logical_projection(
+    logical: &Route,
+    projection: &Route,
+    rollout: &GatewayRollout,
+) -> Result<(), RepositoryError> {
+    if logical.id != projection.id
+        || logical.organization_id != projection.organization_id
+        || logical.project_id != projection.project_id
+        || logical.environment_id != projection.environment_id
+        || logical.gateway_scope_id != rollout.gateway_scope_id
+        || projection.gateway_scope_id != rollout.gateway_scope_id
+        || logical.hostname != projection.hostname
+        || logical.path_prefix != projection.path_prefix
+        || logical.domain_claim_id != projection.domain_claim_id
+        || logical.domain_pattern != projection.domain_pattern
+        || logical.workload_id != projection.workload_id
+        || logical.target.workload_revision_id != projection.target.workload_revision_id
+        || logical.target.runtime_unit_id != projection.target.runtime_unit_id
+        || logical.target.runtime_generation != projection.target.runtime_generation
+        || logical.target.port_name != projection.target.port_name
+        || logical.created_at != projection.created_at
+    {
+        return Err(RepositoryError::Storage(
+            "Gateway rollout logical and physical Route projections diverged".into(),
+        ));
+    }
+    Ok(())
 }

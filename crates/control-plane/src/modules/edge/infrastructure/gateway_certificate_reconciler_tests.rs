@@ -32,6 +32,9 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[path = "gateway_certificate_reconciler_tests/expiration_tests.rs"]
+mod expiration_tests;
+
 #[derive(Default)]
 struct RecordingGatewayQueue {
     fail: AtomicBool,

@@ -47,6 +47,7 @@ pub enum GatewayCertificateConvergenceState {
     Pending,
     Applied,
     Rejected,
+    Unavailable,
 }
 
 impl GatewayCertificateConvergenceState {
@@ -55,6 +56,7 @@ impl GatewayCertificateConvergenceState {
             Self::Pending => "pending",
             Self::Applied => "applied",
             Self::Rejected => "rejected",
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -63,6 +65,7 @@ impl GatewayCertificateConvergenceState {
             "pending" => Ok(Self::Pending),
             "applied" => Ok(Self::Applied),
             "rejected" => Ok(Self::Rejected),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err(format!(
                 "unsupported Gateway certificate convergence state {value:?}"
             )),
@@ -177,6 +180,34 @@ impl GatewayCertificateConvergence {
         self.validate()
     }
 
+    pub fn mark_unavailable(
+        &mut self,
+        failure: impl Into<String>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = failure.into();
+        let observed_at = canonical_timestamp(observed_at);
+        if !valid_failure(&failure) || observed_at < self.staged_at {
+            return Err("Gateway certificate convergence unavailability is invalid".into());
+        }
+        if self.state == GatewayCertificateConvergenceState::Unavailable
+            && self.failure.as_deref() == Some(failure.as_str())
+            && self.acknowledged_at == Some(observed_at)
+        {
+            return Ok(false);
+        }
+        if self.state != GatewayCertificateConvergenceState::Pending {
+            return Err(
+                "only a pending Gateway certificate convergence can become unavailable".into(),
+            );
+        }
+        self.state = GatewayCertificateConvergenceState::Unavailable;
+        self.failure = Some(failure);
+        self.acknowledged_at = Some(observed_at);
+        self.validate()?;
+        Ok(true)
+    }
+
     pub fn active_certificate_id(&self) -> Option<GatewayCertificateId> {
         if self.retained_routes.is_empty() {
             None
@@ -227,6 +258,9 @@ impl GatewayCertificateConvergence {
                 self.failure.is_none() && self.acknowledged_at.is_some()
             }
             GatewayCertificateConvergenceState::Rejected => {
+                self.failure.as_deref().is_some_and(valid_failure) && self.acknowledged_at.is_some()
+            }
+            GatewayCertificateConvergenceState::Unavailable => {
                 self.failure.as_deref().is_some_and(valid_failure) && self.acknowledged_at.is_some()
             }
         };

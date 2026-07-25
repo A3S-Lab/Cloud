@@ -1,13 +1,17 @@
 use super::{PublishRoute, PublishRouteResult};
-use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
+use crate::modules::edge::domain::repositories::{
+    EdgeRoutePublicationResult, GatewayRolloutResult, IEdgeRepository, StageRoutePublication,
+};
 use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
-use crate::modules::edge::domain::{RouteHostname, RoutePath, RoutePortName};
+use crate::modules::edge::domain::{GatewayPublication, RouteHostname, RoutePath, RoutePortName};
 use crate::modules::edge::infrastructure::{
     GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
     PlanGatewayRouteRollout,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{GatewayRolloutId, IdempotencyRequest, RouteId};
+use crate::modules::shared_kernel::domain::{
+    GatewayRolloutId, IdempotencyRequest, NodeId, RepositoryError, RouteId,
+};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Duration;
 use std::sync::Arc;
@@ -83,19 +87,56 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            match routes.replay_route_publication(&idempotency).await {
-                Ok(Some(publication)) => {
-                    let dispatched = match commands.enqueue(&publication.publication).await {
-                        Ok(value) => value,
-                        Err(error) => return Ok(Err(error.into())),
-                    };
-                    return Ok(Ok(PublishRouteResult {
-                        publication,
-                        command_replayed: dispatched.replayed,
-                    }));
+            let gateway_scope = match routes
+                .find_gateway_scope(command.organization_id, command.gateway_scope_id)
+                .await
+            {
+                Ok(value)
+                    if value.project_id == command.project_id
+                        && value.environment_id == command.environment_id =>
+                {
+                    value
                 }
-                Ok(None) => {}
+                Ok(_) => {
+                    return Ok(Err(ApplicationError::Conflict(
+                        "Gateway scope does not belong to this project and environment".into(),
+                    )))
+                }
                 Err(error) => return Ok(Err(error.into())),
+            };
+            if gateway_scope.member_node_ids.len() == 1 {
+                match routes.replay_route_publication(&idempotency).await {
+                    Ok(Some(publication)) => {
+                        let dispatched = match commands.enqueue(&publication.publication).await {
+                            Ok(value) => value,
+                            Err(error) => return Ok(Err(error.into())),
+                        };
+                        return Ok(Ok(PublishRouteResult {
+                            publication,
+                            command_replayed: dispatched.replayed,
+                        }));
+                    }
+                    Ok(None) => {}
+                    Err(error) => return Ok(Err(error.into())),
+                }
+            } else {
+                match routes.replay_gateway_rollout(&idempotency).await {
+                    Ok(Some(rollout)) => {
+                        let command_replayed =
+                            match dispatch_rollout(&commands, &rollout.publications).await {
+                                Ok(value) => value,
+                                Err(error) => return Ok(Err(error.into())),
+                            };
+                        let publication =
+                            primary_route_publication(&rollout, gateway_scope.node_id)?;
+                        return Ok(Ok(PublishRouteResult {
+                            publication,
+                            command_replayed,
+                        }));
+                    }
+                    Ok(None) => {}
+                    Err(error) => return Ok(Err(error.into())),
+                }
             }
             let claim = match routes
                 .find_domain_claim(command.organization_id, command.domain_claim_id)
@@ -115,34 +156,22 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            let gateway_scope = match routes
-                .find_gateway_scope(command.organization_id, command.gateway_scope_id)
-                .await
-            {
-                Ok(value)
-                    if value.project_id == command.project_id
-                        && value.environment_id == command.environment_id =>
+            let generation = if gateway_scope.member_node_ids.len() == 1 {
+                1
+            } else {
+                match routes
+                    .next_gateway_rollout_generation(command.organization_id, gateway_scope.id)
+                    .await
                 {
-                    value
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(error.into())),
                 }
-                Ok(_) => {
-                    return Ok(Err(ApplicationError::Conflict(
-                        "Gateway scope does not belong to this project and environment".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
             };
-            if gateway_scope.member_node_ids.len() != 1 {
-                return Ok(Err(ApplicationError::Conflict(
-                    "replicated Gateway scope route publication requires durable rollout staging"
-                        .into(),
-                )));
-            }
             let planned = match rollout_planner
                 .plan(PlanGatewayRouteRollout {
                     scope: gateway_scope.clone(),
                     rollout_id: GatewayRolloutId::new(),
-                    generation: 1,
+                    generation,
                     correlation_id: command.request_id,
                     route_id: RouteId::new(),
                     workload_revision_id: command.workload_revision_id,
@@ -158,6 +187,26 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
+            if gateway_scope.member_node_ids.len() > 1 {
+                let bundle = match planned.stage_bundle(idempotency) {
+                    Ok(value) => value,
+                    Err(error) => return Err(BootError::Internal(error)),
+                };
+                let staged = match routes.stage_gateway_rollout(bundle).await {
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(error.into())),
+                };
+                let command_replayed = match dispatch_rollout(&commands, &staged.publications).await
+                {
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(error.into())),
+                };
+                let publication = primary_route_publication(&staged, gateway_scope.node_id)?;
+                return Ok(Ok(PublishRouteResult {
+                    publication,
+                    command_replayed,
+                }));
+            }
             let target_node_id = gateway_scope.node_id;
             let route = planned
                 .primary_route()
@@ -224,4 +273,51 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
             }))
         })
     }
+}
+
+async fn dispatch_rollout(
+    commands: &Arc<dyn IGatewayCommandQueue>,
+    publications: &[GatewayPublication],
+) -> Result<bool, RepositoryError> {
+    let mut all_replayed = true;
+    for publication in publications {
+        all_replayed &= commands.enqueue(publication).await?.replayed;
+    }
+    Ok(all_replayed)
+}
+
+fn primary_route_publication(
+    rollout: &GatewayRolloutResult,
+    primary_node_id: NodeId,
+) -> Result<EdgeRoutePublicationResult, BootError> {
+    let route = rollout
+        .route_replicas
+        .iter()
+        .find(|route| route.gateway_node_id == primary_node_id)
+        .cloned()
+        .ok_or_else(|| {
+            BootError::Internal("Gateway rollout omitted its primary Route projection".into())
+        })?;
+    let publication = rollout
+        .publications
+        .iter()
+        .find(|publication| publication.node_id == primary_node_id)
+        .cloned()
+        .ok_or_else(|| {
+            BootError::Internal("Gateway rollout omitted its primary publication".into())
+        })?;
+    let certificate = rollout
+        .certificates
+        .iter()
+        .find(|certificate| certificate.node_id == primary_node_id)
+        .cloned()
+        .ok_or_else(|| {
+            BootError::Internal("Gateway rollout omitted its primary certificate".into())
+        })?;
+    Ok(EdgeRoutePublicationResult {
+        route,
+        certificate,
+        publication,
+        replayed: rollout.replayed,
+    })
 }

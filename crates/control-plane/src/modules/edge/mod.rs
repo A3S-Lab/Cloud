@@ -16,34 +16,42 @@ pub use application::{
 pub use domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
-    GatewayCertificateRouteStatus, GatewayRolloutDispatchTarget, GatewayRolloutResult,
+    GatewayCertificateRouteStatus, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
+    GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRolloutRollbackTarget,
     GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
-    StageGatewayRollout, StageGatewayRouteCutover, TransitionDomainClaim,
+    StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
+    TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
-    GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, IDomainOwnershipVerifier,
-    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, ResolvedRouteTarget,
-    ResolvedRouteTargetSet,
+    GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayObservationCommand,
+    GatewayObservationCommandOutcome, GatewayObservationDispatch, IDomainOwnershipVerifier,
+    IGatewayCertificateAuthority, IGatewayCommandQueue, IGatewayObservationQueue,
+    IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
     GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
-    GatewayPublication, GatewayPublicationState, GatewayReplicaRollout, GatewayReplicaRolloutState,
-    GatewayRollout, GatewayRolloutPolicy, GatewayRolloutState, GatewayRouteCutover,
-    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, Route,
-    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayPublication, GatewayPublicationState, GatewayReplicaRecovery,
+    GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
+    GatewayRolloutPolicy, GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState,
+    GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope,
+    GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+    UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
-    FleetGatewayCommandQueue, GatewayCertificateReconciler,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
-    GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
-    GatewayRolloutReconciliationReport, GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, PlanGatewayRouteRollout, VaultGatewayCertificateAuthority,
-    WorkloadRouteTargetReader,
+    GatewayReplicaRecoveryReconciler, GatewayReplicaRecoveryReconciliationFailure,
+    GatewayReplicaRecoveryReconciliationReport, GatewayRolloutReconciler,
+    GatewayRolloutReconciliationFailure, GatewayRolloutReconciliationReport,
+    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
+    GatewayRolloutRollbackReconciliationFailure, GatewayRolloutRollbackReconciliationReport,
+    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    PlanGatewayRouteRollout, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

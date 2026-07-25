@@ -267,21 +267,42 @@ Secret material, redacted logs, and complete cleanup.
 
 Build the Gateway revision pinned in
 `tools/gateway-conformance/gateway-revision`, then run the node-agent's
-real-binary gate:
+four real-binary gates:
 
 ```bash
 export A3S_CLOUD_TEST_GATEWAY_BIN=/absolute/path/to/a3s-gateway
-cargo test -p a3s-cloud-node-agent \
-  installed_a3s_gateway_validates_and_reloads_complete_snapshots \
-  -- --ignored --nocapture
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::remote_tests::installed_a3s_gateway_validates_and_reloads_complete_snapshots \
+  -- --ignored --exact --nocapture --test-threads=1
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::remote_tests::installed_a3s_gateway_rotates_managed_tls_and_target_generation \
+  -- --ignored --exact --nocapture --test-threads=1
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::remote_tests::replicated_gateway_tests::installed_a3s_gateways_converge_independently_and_recover_member_loss \
+  -- --ignored --exact --nocapture --test-threads=1
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::reload_crash_tests::installed_a3s_gateway_recovers_native_apply_after_agent_process_death \
+  -- --ignored --exact --nocapture --test-threads=1
 ```
 
-The gate applies two complete native snapshots, rejects an invalid successor
-without changing exact readiness, and then renews the proven snapshot with the
-same ACL bytes and digest. The renewal must advance revision and expiry, expose
-only the successor selector as ready, preserve traffic, and avoid a certificate
-request. Separate managed TLS and apply-before-acknowledgement crash fixtures
-remain mandatory regressions.
+The first gate applies two complete native snapshots, rejects an invalid
+successor without changing exact readiness, and renews the proven snapshot with
+the same ACL bytes and digest. The renewal advances revision and expiry,
+exposes only the successor selector as ready, preserves traffic, and avoids a
+certificate request. The TLS gate rotates independently signed certificates
+and generation-bound targets, rejects the superseded certificate and selector,
+and restores only the replacement after Gateway restart.
+
+The replicated gate starts two real Gateway processes with independent Gateway
+IDs, trust roots, native journals, Agent journals, revisions, and Cloud cursors.
+Both serve one exact target; cross-member CA trust fails; either member remains
+available after peer loss; and the returning member reconstructs its applied
+state without another certificate issue or apply. The crash gate kills the
+Agent after Gateway has durably applied the snapshot but before the Cloud
+acknowledgement exists, then requires redelivery to project one exact durable
+acknowledgement without repeating native mutation. Together with the
+PostgreSQL 17 logical Route, threshold, recovery, rollback, and certificate
+convergence fixtures, these tests are the `H0.2` acceptance boundary.
 
 ## Clean-host E0 release acceptance
 

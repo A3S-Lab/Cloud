@@ -1,4 +1,4 @@
-use super::{ReplicaRow, ReplicaSelection, RolloutRow, RolloutSelection};
+use super::models::{ReplicaRow, ReplicaSelection, RolloutRow, RolloutSelection};
 use crate::modules::edge::domain::repositories::GatewayRolloutDispatchTarget;
 use crate::modules::edge::domain::{
     GatewayPublication, GatewayPublicationState, GatewayReplicaRollout, GatewayReplicaRolloutState,
@@ -203,11 +203,10 @@ fn validate_rollout_publication(
         .snapshot()
         .map_err(|error| RepositoryError::Storage(error.to_string()))?;
     let expected_publication_state = match replica.state {
-        GatewayReplicaRolloutState::Pending | GatewayReplicaRolloutState::Unavailable => {
-            GatewayPublicationState::Pending
-        }
+        GatewayReplicaRolloutState::Pending => GatewayPublicationState::Pending,
         GatewayReplicaRolloutState::Applied => GatewayPublicationState::Applied,
         GatewayReplicaRolloutState::Rejected => GatewayPublicationState::Rejected,
+        GatewayReplicaRolloutState::Unavailable => GatewayPublicationState::Unavailable,
     };
     if publication.node_id != replica.node_id
         || publication.revision != replica.revision
@@ -221,6 +220,8 @@ fn validate_rollout_publication(
             .map(|request| GatewayCertificateId::from_uuid(request.certificate_id))
             != replica.gateway_certificate_id
         || publication.state != expected_publication_state
+        || publication.failure != replica.failure
+        || publication.acknowledged_at != replica.acknowledged_at
         || publication.command_issued_at != rollout.started_at
     {
         return Err(RepositoryError::Storage(

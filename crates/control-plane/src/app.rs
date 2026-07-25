@@ -11,17 +11,19 @@ use crate::modules::artifacts::{
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
-    IRouteTargetReader,
+    IGatewayObservationQueue, IRouteTargetReader,
 };
 use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, DnsDomainOwnershipVerifier,
     EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, EdgeModule,
-    FleetGatewayCommandQueue, GatewayCertificateReconciler, GatewayRolloutReconciler,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler,
-    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
-    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    PostgresEdgeRepository, PublishRouteHandler, RevokeDomainClaimHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
+    GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
+    GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
@@ -350,6 +352,8 @@ pub async fn build_application_with_source_resolver(
     );
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
+    let gateway_observations: Arc<dyn IGatewayObservationQueue> =
+        Arc::new(FleetGatewayObservationQueue::new(Arc::clone(&node_control)));
     let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -375,6 +379,26 @@ pub async fn build_application_with_source_resolver(
     let gateway_rollout_reconciler = GatewayRolloutReconciler::new(
         Arc::clone(&routes),
         Arc::clone(&route_commands),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
+    let gateway_replica_recovery_reconciler = GatewayReplicaRecoveryReconciler::new(
+        Arc::clone(&routes),
+        gateway_observations,
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
+    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new(
+        Arc::clone(&routes),
+        GatewayRolloutRollbackCompiler::new(
+            deployment_route_compiler.clone(),
+            chrono_duration(config.edge.command_ttl_ms)?,
+            chrono::Duration::hours(24),
+        )
+        .map_err(ControlPlaneStartupError::Edge)?,
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         100,
     )
@@ -605,6 +629,8 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
             run_operations.then_some(gateway_rollout_reconciler),
+            run_operations.then_some(gateway_replica_recovery_reconciler),
+            run_operations.then_some(gateway_rollout_rollback_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
             run_operations.then_some(workload_reconciler),
             run_operations.then_some(log_retention_worker),

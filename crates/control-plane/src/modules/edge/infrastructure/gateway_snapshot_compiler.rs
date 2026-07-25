@@ -80,7 +80,7 @@ impl GatewaySnapshotCompiler {
         certificate_id: GatewayCertificateId,
         routes: &[Route],
     ) -> Result<GatewaySnapshot, String> {
-        self.compile_snapshot(metadata, Some(certificate_id), routes, true)
+        self.compile_snapshot(metadata, Some(certificate_id), routes, true, None)
     }
 
     pub fn compile_certificate_convergence(
@@ -95,7 +95,23 @@ impl GatewaySnapshotCompiler {
                     .into(),
             );
         }
-        self.compile_snapshot(metadata, certificate_id, routes, false)
+        self.compile_snapshot(metadata, certificate_id, routes, false, None)
+    }
+
+    pub fn compile_certificate_reuse(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        certificate_request: GatewayCertificateRequest,
+        routes: &[Route],
+    ) -> Result<GatewaySnapshot, String> {
+        let certificate_id = GatewayCertificateId::from_uuid(certificate_request.certificate_id);
+        self.compile_snapshot(
+            metadata,
+            Some(certificate_id),
+            routes,
+            false,
+            Some(certificate_request),
+        )
     }
 
     pub fn compile_validity_renewal(
@@ -120,6 +136,7 @@ impl GatewaySnapshotCompiler {
         certificate_id: Option<GatewayCertificateId>,
         routes: &[Route],
         require_pending_route: bool,
+        certificate_request_override: Option<GatewayCertificateRequest>,
     ) -> Result<GatewaySnapshot, String> {
         let mut routes = routes.iter().collect::<Vec<_>>();
         routes.sort_by(|left, right| {
@@ -173,26 +190,42 @@ impl GatewaySnapshotCompiler {
             return Err("complete Gateway publication must contain a pending route".into());
         }
 
-        let certificate_request = certificate_id
-            .map(|certificate_id| {
-                let certificate_root =
-                    Path::new(&self.config.certificate_directory).join(certificate_id.to_string());
-                let certificate_file = certificate_root
-                    .join("certificate.pem")
-                    .to_string_lossy()
-                    .into_owned();
-                let private_key_file = certificate_root
-                    .join("private-key.pem")
-                    .to_string_lossy()
-                    .into_owned();
-                GatewayCertificateRequest::new(
-                    certificate_id.as_uuid(),
-                    dns_names.into_iter().collect(),
-                    certificate_file,
-                    private_key_file,
+        let certificate_request = match (certificate_id, certificate_request_override) {
+            (Some(certificate_id), Some(request)) => {
+                request.validate()?;
+                let expected = managed_certificate_request(
+                    &self.config.certificate_directory,
+                    certificate_id,
+                    request.dns_names.clone(),
+                )?;
+                let request_names = request
+                    .dns_names
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
+                if request != expected
+                    || dns_names
+                        .iter()
+                        .any(|dns_name| !request_names.contains(dns_name.as_str()))
+                {
+                    return Err(
+                        "reused Gateway certificate does not cover the complete snapshot".into(),
+                    );
+                }
+                Some(request)
+            }
+            (Some(certificate_id), None) => Some(managed_certificate_request(
+                &self.config.certificate_directory,
+                certificate_id,
+                dns_names.into_iter().collect(),
+            )?),
+            (None, None) => None,
+            (None, Some(_)) => {
+                return Err(
+                    "Gateway certificate reuse requires an exact certificate identity".into(),
                 )
-            })
-            .transpose()?;
+            }
+        };
         let mut acl = format!(
             "# a3s-cloud complete Gateway snapshot {revision}\n\
              mode {{ kind = \"cloud-managed\" }}\n\n\
@@ -241,6 +274,28 @@ impl GatewaySnapshotCompiler {
             certificate_request,
         )
     }
+}
+
+fn managed_certificate_request(
+    certificate_directory: &str,
+    certificate_id: GatewayCertificateId,
+    dns_names: Vec<String>,
+) -> Result<GatewayCertificateRequest, String> {
+    let certificate_root = Path::new(certificate_directory).join(certificate_id.to_string());
+    let certificate_file = certificate_root
+        .join("certificate.pem")
+        .to_string_lossy()
+        .into_owned();
+    let private_key_file = certificate_root
+        .join("private-key.pem")
+        .to_string_lossy()
+        .into_owned();
+    GatewayCertificateRequest::new(
+        certificate_id.as_uuid(),
+        dns_names,
+        certificate_file,
+        private_key_file,
+    )
 }
 
 fn acl_string(value: &str) -> String {

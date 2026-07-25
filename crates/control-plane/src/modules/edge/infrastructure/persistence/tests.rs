@@ -21,6 +21,8 @@ use a3s_cloud_contracts::{
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
+#[path = "tests/gateway_recovery_tests.rs"]
+mod gateway_recovery_tests;
 #[path = "tests/gateway_rollout_tests.rs"]
 mod gateway_rollout_tests;
 

@@ -8,9 +8,11 @@ pub use entities::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
     GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
-    GatewayPublicationState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
-    GatewayRolloutState, GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion,
-    GatewayScope, GatewayScopeState, Route, RouteState,
+    GatewayPublicationState, GatewayReplicaRecovery, GatewayReplicaRecoveryState,
+    GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutRollback,
+    GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
+    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, Route,
+    RouteState,
 };
 pub use value_objects::{
     DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,

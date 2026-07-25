@@ -415,6 +415,46 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/044_resource_claim_commands.sql"
             )),
         ),
+        Migration::new(
+            "045",
+            "Gateway Route rollout projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/045_gateway_route_rollout_projections.sql"
+            )),
+        ),
+        Migration::new(
+            "046",
+            "Gateway snapshot observation commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/046_gateway_snapshot_observation_commands.sql"
+            )),
+        ),
+        Migration::new(
+            "047",
+            "Gateway replica physical-state recovery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/047_gateway_replica_recovery.sql"
+            )),
+        ),
+        Migration::new(
+            "048",
+            "Gateway rollout exact rollback",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/048_gateway_rollout_rollbacks.sql"
+            )),
+        ),
+        Migration::new(
+            "049",
+            "Gateway certificate convergence unavailability",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/049_gateway_certificate_convergence_unavailable.sql"
+            )),
+        ),
     ]
 }
 

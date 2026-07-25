@@ -8,7 +8,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
-    validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot, NodeGatewayAck,
+    validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
+    GatewaySnapshotObservationRequest, NodeGatewayAck, NodeGatewaySnapshotObservation,
     NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
     NodeResourceClaimRelease, NodeResourceClaimReleased,
 };
@@ -39,6 +40,9 @@ pub enum NodeCommandPayload {
     },
     GatewaySnapshotInstall {
         snapshot: Box<GatewaySnapshot>,
+    },
+    GatewaySnapshotObserve {
+        request: GatewaySnapshotObservationRequest,
     },
 }
 
@@ -71,6 +75,7 @@ impl NodeCommandPayload {
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
             Self::ResourceClaimRelease { .. } => NodeResourceClaimRelease::SCHEMA,
             Self::GatewaySnapshotInstall { .. } => GatewaySnapshot::SCHEMA,
+            Self::GatewaySnapshotObserve { .. } => GatewaySnapshotObservationRequest::SCHEMA,
         }
     }
 
@@ -82,6 +87,7 @@ impl NodeCommandPayload {
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
             Self::ResourceClaimRelease { request } => request.claim_generation,
             Self::GatewaySnapshotInstall { snapshot } => snapshot.revision,
+            Self::GatewaySnapshotObserve { request } => request.revision,
         }
     }
 
@@ -111,6 +117,7 @@ impl NodeCommandPayload {
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
             Self::ResourceClaimRelease { request } => request.validate(),
             Self::GatewaySnapshotInstall { snapshot } => snapshot.validate(),
+            Self::GatewaySnapshotObserve { request } => request.validate(),
         }
     }
 
@@ -179,15 +186,24 @@ impl NodeCommandEnvelope {
             return Err("command expiry must follow issue time".into());
         }
         self.payload.validate()?;
-        if let NodeCommandPayload::GatewaySnapshotInstall { snapshot } = &self.payload {
-            if snapshot.gateway_id != self.node_id
-                || snapshot.issued_at != self.issued_at
-                || snapshot.expires_at < self.not_after
-            {
-                return Err(
-                    "Gateway snapshot identity and validity must contain its node command".into(),
-                );
+        match &self.payload {
+            NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
+                if snapshot.gateway_id != self.node_id
+                    || snapshot.issued_at != self.issued_at
+                    || snapshot.expires_at < self.not_after
+                {
+                    return Err(
+                        "Gateway snapshot identity and validity must contain its node command"
+                            .into(),
+                    );
+                }
             }
+            NodeCommandPayload::GatewaySnapshotObserve { request }
+                if request.gateway_id != self.node_id =>
+            {
+                return Err("Gateway snapshot observation targets another command node".into());
+            }
+            _ => {}
         }
         match &self.payload {
             NodeCommandPayload::ResourceClaimPrepare { request } => {
@@ -225,7 +241,8 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
-            | NodeCommandPayload::GatewaySnapshotInstall { .. } => {}
+            | NodeCommandPayload::GatewaySnapshotInstall { .. }
+            | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
         }
         if self.generation != self.payload.generation() {
             return Err("command generation does not match its payload".into());
@@ -269,6 +286,9 @@ pub enum NodeCommandResult {
     GatewaySnapshotInstalled {
         acknowledgement: NodeGatewayAck,
     },
+    GatewaySnapshotObserved {
+        observation: NodeGatewaySnapshotObservation,
+    },
 }
 
 impl NodeCommandResult {
@@ -282,6 +302,7 @@ impl NodeCommandResult {
             Self::RuntimeRemoved { removal } => removal.validate(),
             Self::ResourceClaimReleased { released } => released.validate(),
             Self::GatewaySnapshotInstalled { acknowledgement } => acknowledgement.validate(),
+            Self::GatewaySnapshotObserved { observation } => observation.validate(),
         }
     }
 
@@ -341,6 +362,10 @@ impl NodeCommandResult {
                 NodeCommandPayload::GatewaySnapshotInstall { snapshot },
                 Self::GatewaySnapshotInstalled { acknowledgement },
             ) => acknowledgement.validate_for(command.command_id, command.node_id, snapshot),
+            (
+                NodeCommandPayload::GatewaySnapshotObserve { request },
+                Self::GatewaySnapshotObserved { observation },
+            ) => observation.validate_for(command.command_id, command.node_id, request),
             _ => Err("node command result kind does not match its payload".into()),
         }
     }
@@ -465,7 +490,8 @@ impl NodeCommandAck {
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
                 | NodeCommandResult::RuntimeRemoved { .. }
-                | NodeCommandResult::GatewaySnapshotInstalled { .. } => None,
+                | NodeCommandResult::GatewaySnapshotInstalled { .. }
+                | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
             };
             if resource_evidence_at
                 .is_some_and(|at| at < command.issued_at || at > self.completed_at)
@@ -504,6 +530,21 @@ impl NodeCommandAck {
                 {
                     return Err(
                         "Gateway acknowledgement time falls outside command execution".into(),
+                    );
+                }
+            }
+            if let NodeCommandResult::GatewaySnapshotObserved { observation } = result.as_ref() {
+                if self.schema != Self::SCHEMA {
+                    return Err(
+                        "Gateway snapshot observations require the current acknowledgement schema"
+                            .into(),
+                    );
+                }
+                if observation.observed_at < command.issued_at
+                    || observation.observed_at > self.completed_at
+                {
+                    return Err(
+                        "Gateway snapshot observation time falls outside command execution".into(),
                     );
                 }
             }

@@ -15,6 +15,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[path = "gateway_remote_tests/replicated_gateway_tests.rs"]
+mod replicated_gateway_tests;
+
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const GATEWAY_TOKEN: &str = "a3s-cloud-gateway-integration-token";

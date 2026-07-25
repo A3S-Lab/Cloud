@@ -6,8 +6,8 @@ use crate::{
 };
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandEnvelope, NodeCommandFailure, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, NodeGatewayAck, NodeResourceClaimPrepared,
-    NodeResourceClaimReleased,
+    NodeCommandPayload, NodeCommandResult, NodeGatewayAck, NodeGatewaySnapshotObservation,
+    NodeResourceClaimPrepared, NodeResourceClaimReleased,
 };
 use a3s_runtime::contract::RuntimeInspection;
 use a3s_runtime::{RuntimeClient, RuntimeError};
@@ -226,6 +226,29 @@ impl CommandExecutor {
                     })?;
                 Ok(NodeCommandResult::GatewaySnapshotInstalled { acknowledgement })
             }
+            NodeCommandPayload::GatewaySnapshotObserve { request } => {
+                let observed = self.gateway.observe(request).await?;
+                let observation = NodeGatewaySnapshotObservation {
+                    schema: NodeGatewaySnapshotObservation::SCHEMA.into(),
+                    observation_id: uuid::Uuid::now_v7(),
+                    command_id: envelope.command_id,
+                    node_id: envelope.node_id,
+                    gateway_id: request.gateway_id,
+                    revision: request.revision,
+                    snapshot_digest: request.snapshot_digest.clone(),
+                    state: observed.state,
+                    ready: observed.ready,
+                    applied: observed.applied,
+                    observed_at: observed.observed_at.max(envelope.issued_at),
+                    management_protocol: observed.protocol,
+                };
+                observation
+                    .validate_for(envelope.command_id, envelope.node_id, request)
+                    .map_err(|error| {
+                        DispatchError::Gateway(GatewaySnapshotInstallError::Protocol(error))
+                    })?;
+                Ok(NodeCommandResult::GatewaySnapshotObserved { observation })
+            }
         }
     }
 
@@ -255,6 +278,9 @@ fn completion_timestamp(
             NodeCommandResult::ResourceClaimReleased { released } => Some(released.released_at),
             NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
                 Some(acknowledgement.acknowledged_at)
+            }
+            NodeCommandResult::GatewaySnapshotObserved { observation } => {
+                Some(observation.observed_at)
             }
             NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
@@ -447,9 +473,11 @@ fn sanitize_error(message: &str) -> String {
 mod tests {
     use super::*;
     use a3s_cloud_contracts::{
-        GatewaySnapshot, NodeCommandMetadata, NodeCommandPayload, NodeResourceClaimBinding,
-        NodeResourceClaimPrepare, NodeResourceClaimRelease, NodeResourceInventory,
-        NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceSlotBinding, ResourceUnit,
+        AppliedGatewaySnapshot, GatewaySnapshot, GatewaySnapshotObservationRequest,
+        GatewaySnapshotObservationState, NodeCommandMetadata, NodeCommandPayload,
+        NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimRelease,
+        NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind,
+        ResourceSlotBinding, ResourceUnit,
     };
     use a3s_runtime::contract::{
         ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
@@ -472,7 +500,9 @@ mod tests {
 
     struct InspectGateway {
         calls: AtomicUsize,
+        observation_calls: AtomicUsize,
         outcome: GatewaySnapshotInstallOutcome,
+        observation: Option<crate::GatewaySnapshotObservationOutcome>,
     }
 
     struct FixedInventoryAuthority {
@@ -556,16 +586,30 @@ mod tests {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(self.outcome.clone())
         }
+
+        async fn observe(
+            &self,
+            _request: &GatewaySnapshotObservationRequest,
+        ) -> Result<crate::GatewaySnapshotObservationOutcome, GatewaySnapshotInstallError> {
+            self.observation_calls.fetch_add(1, Ordering::SeqCst);
+            self.observation.clone().ok_or_else(|| {
+                GatewaySnapshotInstallError::Protocol(
+                    "test Gateway observation is unavailable".into(),
+                )
+            })
+        }
     }
 
     fn gateway() -> Arc<InspectGateway> {
         Arc::new(InspectGateway {
             calls: AtomicUsize::new(0),
+            observation_calls: AtomicUsize::new(0),
             outcome: GatewaySnapshotInstallOutcome::Applied {
                 protocol: a3s_cloud_contracts::GatewayManagementProtocol::v1(
                     a3s_cloud_contracts::GatewayManagementProtocolDiscovery::Advertised,
                 ),
             },
+            observation: None,
         })
     }
 
@@ -1271,5 +1315,91 @@ mod tests {
             .validate_for(envelope.command_id, node_id, &snapshot)
             .expect("exact Gateway acknowledgement");
         assert_eq!(gateway.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn gateway_observation_is_read_only_exact_and_journaled_for_replay() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let node_id = Uuid::now_v7();
+        let issued_at = Utc::now() - Duration::seconds(1);
+        let not_after = issued_at + Duration::minutes(1);
+        let request = GatewaySnapshotObservationRequest::new(
+            node_id,
+            4,
+            format!("sha256:{}", "d".repeat(64)),
+        )
+        .expect("Gateway observation request");
+        let envelope = NodeCommandEnvelope::new(
+            NodeCommandMetadata {
+                command_id: Uuid::now_v7(),
+                lease_id: Uuid::now_v7(),
+                node_id,
+                sequence: 1,
+                aggregate_id: Uuid::now_v7(),
+                issued_at,
+                not_after,
+                correlation_id: Uuid::now_v7(),
+            },
+            NodeCommandPayload::GatewaySnapshotObserve {
+                request: request.clone(),
+            },
+        )
+        .expect("Gateway observation command");
+        let gateway = Arc::new(InspectGateway {
+            calls: AtomicUsize::new(0),
+            observation_calls: AtomicUsize::new(0),
+            outcome: GatewaySnapshotInstallOutcome::Applied {
+                protocol: a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            },
+            observation: Some(crate::GatewaySnapshotObservationOutcome {
+                state: GatewaySnapshotObservationState::NotApplied,
+                ready: false,
+                applied: Some(AppliedGatewaySnapshot {
+                    gateway_id: node_id,
+                    revision: 3,
+                    expected_revision: Some(2),
+                    snapshot_digest: format!("sha256:{}", "c".repeat(64)),
+                    issued_at: issued_at - Duration::minutes(2),
+                    expires_at: issued_at + Duration::hours(1),
+                    applied_at: issued_at - Duration::minutes(1),
+                }),
+                observed_at: issued_at + Duration::milliseconds(10),
+                protocol: a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            }),
+        });
+        let executor = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+            Arc::new(InspectRuntime {
+                calls: AtomicUsize::new(0),
+                error: false,
+            }),
+            gateway.clone(),
+        );
+
+        let acknowledgement = executor
+            .execute(envelope.clone())
+            .await
+            .expect("execute Gateway observation");
+        let NodeCommandOutcome::Succeeded { result } = &acknowledgement.outcome else {
+            panic!("Gateway observation must produce a result");
+        };
+        let NodeCommandResult::GatewaySnapshotObserved { observation } = result.as_ref() else {
+            panic!("Gateway observation returned the wrong result kind");
+        };
+        observation
+            .validate_for(envelope.command_id, node_id, &request)
+            .expect("exact Gateway observation");
+        assert_eq!(gateway.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(gateway.observation_calls.load(Ordering::SeqCst), 1);
+
+        let mut redelivered = envelope;
+        redelivered.lease_id = Uuid::now_v7();
+        let replayed = executor
+            .execute(redelivered)
+            .await
+            .expect("replay Gateway observation");
+        assert_eq!(replayed.outcome, acknowledgement.outcome);
+        assert_eq!(gateway.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(gateway.observation_calls.load(Ordering::SeqCst), 1);
     }
 }

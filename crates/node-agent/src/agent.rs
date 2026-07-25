@@ -432,7 +432,8 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             | NodeCommandResult::RuntimeRemoved { .. }
             | NodeCommandResult::ResourceClaimPrepared { .. }
             | NodeCommandResult::ResourceClaimReleased { .. }
-            | NodeCommandResult::GatewaySnapshotInstalled { .. } => return None,
+            | NodeCommandResult::GatewaySnapshotInstalled { .. }
+            | NodeCommandResult::GatewaySnapshotObserved { .. } => return None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => return None,
     };
@@ -455,7 +456,8 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
-            | NodeCommandResult::RuntimeRemoved { .. } => None,
+            | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }

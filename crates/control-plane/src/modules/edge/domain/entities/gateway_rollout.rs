@@ -1,11 +1,12 @@
 use crate::modules::edge::domain::{
-    GatewayPublication, GatewayPublicationState, GatewayRolloutPolicy, GatewayScope,
+    GatewayPublication, GatewayPublicationState, GatewayReplicaRecovery, GatewayRolloutPolicy,
+    GatewayScope,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, GatewayRolloutId, GatewayScopeId, NodeCommandId,
     NodeId,
 };
-use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
+use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck, NodeGatewaySnapshotObservation};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -53,6 +54,8 @@ pub struct GatewayReplicaRollout {
     pub state: GatewayReplicaRolloutState,
     pub failure: Option<String>,
     pub acknowledged_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<GatewayReplicaRecovery>,
 }
 
 impl GatewayReplicaRollout {
@@ -77,6 +80,7 @@ impl GatewayReplicaRollout {
             state: GatewayReplicaRolloutState::Pending,
             failure: None,
             acknowledged_at: None,
+            recovery: None,
         })
     }
 
@@ -133,6 +137,7 @@ impl GatewayReplicaRollout {
         self.state = GatewayReplicaRolloutState::Unavailable;
         self.failure = Some(failure.into());
         self.acknowledged_at = Some(observed_at);
+        self.recovery = Some(GatewayReplicaRecovery::required(failure, observed_at)?);
         Ok(true)
     }
 }
@@ -196,7 +201,39 @@ impl GatewayRollout {
         publications: &[GatewayPublication],
         started_at: DateTime<Utc>,
     ) -> Result<Self, String> {
+        Self::stage_with_policy(
+            id,
+            scope,
+            generation,
+            scope.rollout_policy,
+            publications,
+            started_at,
+        )
+    }
+
+    pub fn stage_rollback(
+        id: GatewayRolloutId,
+        scope: &GatewayScope,
+        generation: u64,
+        publications: &[GatewayPublication],
+        started_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let desired_replicas = u32::try_from(scope.member_node_ids.len())
+            .map_err(|_| "Gateway rollback replica count exceeds supported bounds".to_string())?;
+        let policy = GatewayRolloutPolicy::new(desired_replicas, 0, scope.member_node_ids.len())?;
+        Self::stage_with_policy(id, scope, generation, policy, publications, started_at)
+    }
+
+    fn stage_with_policy(
+        id: GatewayRolloutId,
+        scope: &GatewayScope,
+        generation: u64,
+        policy: GatewayRolloutPolicy,
+        publications: &[GatewayPublication],
+        started_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
         scope.validate()?;
+        policy.validate(scope.member_node_ids.len())?;
         if id.as_uuid().is_nil() || generation == 0 {
             return Err("Gateway rollout identity and generation must be positive".into());
         }
@@ -244,7 +281,7 @@ impl GatewayRollout {
             membership_generation: scope.membership_generation,
             generation,
             correlation_id,
-            policy: scope.rollout_policy,
+            policy,
             replicas,
             state: GatewayRolloutState::Pending,
             ready_replicas: 0,
@@ -316,6 +353,81 @@ impl GatewayRollout {
             .ok_or_else(|| "Gateway rollout version space is exhausted".to_string())?;
         next.recompute(observed_at)?;
         next.aggregate_version = next_version;
+        next.validate()?;
+        *self = next;
+        Ok(true)
+    }
+
+    pub fn stage_recovery_observation(
+        &mut self,
+        node_id: NodeId,
+        command_id: NodeCommandId,
+        issued_at: DateTime<Utc>,
+        not_after: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let mut next = self.clone();
+        let replica = next.unavailable_replica_mut(node_id)?;
+        let recovery = replica
+            .recovery
+            .as_mut()
+            .ok_or_else(|| "unavailable Gateway replica omitted its recovery state".to_string())?;
+        if !recovery.stage_observation(command_id, issued_at, not_after)? {
+            return Ok(false);
+        }
+        next.advance_version()?;
+        next.validate()?;
+        *self = next;
+        Ok(true)
+    }
+
+    pub fn record_recovery_observation(
+        &mut self,
+        node_id: NodeId,
+        candidate: &GatewayPublication,
+        prior: Option<&GatewayPublication>,
+        observation: NodeGatewaySnapshotObservation,
+    ) -> Result<bool, String> {
+        let mut next = self.clone();
+        let replica = next.unavailable_replica_mut(node_id)?;
+        if candidate.node_id != replica.node_id
+            || candidate.revision != replica.revision
+            || candidate.command_id != replica.command_id
+            || candidate.snapshot_digest != replica.snapshot_digest
+            || candidate.snapshot_expires_at != replica.snapshot_expires_at
+        {
+            return Err("Gateway recovery candidate does not match its rollout replica".into());
+        }
+        let recovery = replica
+            .recovery
+            .as_mut()
+            .ok_or_else(|| "unavailable Gateway replica omitted its recovery state".to_string())?;
+        if !recovery.record_observation(node_id, candidate, prior, observation)? {
+            return Ok(false);
+        }
+        next.advance_version()?;
+        next.validate()?;
+        *self = next;
+        Ok(true)
+    }
+
+    pub fn record_recovery_command_failure(
+        &mut self,
+        node_id: NodeId,
+        command_id: NodeCommandId,
+        failure: impl Into<String>,
+        retryable: bool,
+        failed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let mut next = self.clone();
+        let replica = next.unavailable_replica_mut(node_id)?;
+        let recovery = replica
+            .recovery
+            .as_mut()
+            .ok_or_else(|| "unavailable Gateway replica omitted its recovery state".to_string())?;
+        if !recovery.record_command_failure(command_id, failure, retryable, failed_at)? {
+            return Ok(false);
+        }
+        next.advance_version()?;
         next.validate()?;
         *self = next;
         Ok(true)
@@ -465,18 +577,55 @@ impl GatewayRollout {
         }
         Ok(false)
     }
+
+    fn unavailable_replica_mut(
+        &mut self,
+        node_id: NodeId,
+    ) -> Result<&mut GatewayReplicaRollout, String> {
+        let replica = self
+            .replicas
+            .iter_mut()
+            .find(|replica| replica.node_id == node_id)
+            .ok_or_else(|| "Gateway rollout does not contain this member".to_string())?;
+        if replica.state != GatewayReplicaRolloutState::Unavailable {
+            return Err("only an unavailable Gateway replica can recover physical state".into());
+        }
+        Ok(replica)
+    }
+
+    fn advance_version(&mut self) -> Result<(), String> {
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Gateway rollout version space is exhausted".to_string())?;
+        Ok(())
+    }
 }
 
 fn replica_state_is_consistent(replica: &GatewayReplicaRollout) -> bool {
     match replica.state {
         GatewayReplicaRolloutState::Pending => {
-            replica.failure.is_none() && replica.acknowledged_at.is_none()
+            replica.failure.is_none()
+                && replica.acknowledged_at.is_none()
+                && replica.recovery.is_none()
         }
         GatewayReplicaRolloutState::Applied => {
-            replica.failure.is_none() && replica.acknowledged_at.is_some()
+            replica.failure.is_none()
+                && replica.acknowledged_at.is_some()
+                && replica.recovery.is_none()
         }
-        GatewayReplicaRolloutState::Rejected | GatewayReplicaRolloutState::Unavailable => {
-            replica.failure.is_some() && replica.acknowledged_at.is_some()
+        GatewayReplicaRolloutState::Rejected => {
+            replica.failure.is_some()
+                && replica.acknowledged_at.is_some()
+                && replica.recovery.is_none()
+        }
+        GatewayReplicaRolloutState::Unavailable => {
+            replica.failure.is_some()
+                && replica.acknowledged_at.is_some()
+                && replica
+                    .recovery
+                    .as_ref()
+                    .is_some_and(|recovery| recovery.validate().is_ok())
         }
     }
 }

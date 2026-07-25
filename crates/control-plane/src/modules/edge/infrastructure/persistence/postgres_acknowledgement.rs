@@ -1,8 +1,11 @@
 use super::postgres::{PublicationRow, PublicationSelection, RouteRow, RouteSelection};
 use super::postgres_certificate_convergence;
 use super::postgres_cutovers;
+use super::postgres_rollout_routes;
 use super::postgres_rollouts;
-use super::postgres_schema::{GatewayCertificates, GatewayPublications, GatewayScopes, Routes};
+use super::postgres_schema::{
+    GatewayCertificates, GatewayPublications, GatewayRouteProjections, GatewayScopes, Routes,
+};
 use super::postgres_tls::{update_certificate, CertificateRow, CertificateSelection};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, transaction_error,
@@ -13,7 +16,7 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
-use a3s_orm::{select_from, update_table, PostgresExecutor};
+use a3s_orm::{exists, not, select_from, update_table, PostgresExecutor};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -56,13 +59,14 @@ pub(super) async fn project(
                 if !was_pending {
                     return Ok(true);
                 }
-                if let Some(mut rollout) = postgres_rollouts::lock_by_gateway_identity(
-                    transaction,
-                    acknowledgement.node_id,
-                    acknowledgement.revision,
-                    acknowledgement.command_id,
-                )
-                .await?
+                if let Some((organization_id, mut rollout)) =
+                    postgres_rollouts::lock_by_gateway_identity(
+                        transaction,
+                        acknowledgement.node_id,
+                        acknowledgement.revision,
+                        acknowledgement.command_id,
+                    )
+                    .await?
                 {
                     let expected_rollout_version = rollout.aggregate_version;
                     if !rollout
@@ -82,48 +86,62 @@ pub(super) async fn project(
                                 && replica.command_id.as_uuid() == acknowledgement.command_id
                         })
                         .and_then(|replica| replica.gateway_certificate_id);
-                    let certificate_rows = fetch_all::<CertificateRow, _>(
+                    let certificate_valid_at = match acknowledgement.state {
+                        GatewayAckState::Applied => acknowledgement.acknowledged_at,
+                        GatewayAckState::Rejected => rollout.started_at,
+                    };
+                    let certificate = postgres_rollouts::lock_certificate_binding(
                         transaction,
-                        select_from::<GatewayCertificates>()
-                            .select(CertificateSelection)
-                            .filter(GatewayCertificates::node_id().eq(acknowledgement.node_id))
-                            .filter(
-                                GatewayCertificates::gateway_revision()
-                                    .eq(acknowledgement.revision),
-                            )
-                            .filter(
-                                GatewayCertificates::gateway_command_id()
-                                    .eq(acknowledgement.command_id),
-                            )
-                            .for_update(),
+                        organization_id,
+                        &rollout,
+                        &publication,
+                        certificate_valid_at,
                     )
                     .await?;
-                    let mut certificates = certificate_rows
-                        .into_iter()
-                        .map(CertificateRow::certificate)
-                        .collect::<Result<Vec<_>, _>>()?;
-                    if certificates.len() != usize::from(expected_certificate_id.is_some())
-                        || certificates.first().map(|certificate| certificate.id)
-                            != expected_certificate_id
-                    {
-                        return Err(PostgresPersistenceError::Invariant(
-                            "Gateway rollout has inconsistent staged certificate material".into(),
-                        ));
-                    }
-                    let mut certificate = certificates.pop();
-                    let certificate_version = certificate
-                        .as_ref()
-                        .map(|certificate| certificate.aggregate_version);
-                    if let Some(certificate) = &mut certificate {
-                        certificate
-                            .apply_gateway_acknowledgement(&acknowledgement)
-                            .map_err(RepositoryError::Conflict)?;
-                    }
+                    let (certificate, certificate_version) = match certificate {
+                        Some((mut certificate, false)) => {
+                            let version = certificate.aggregate_version;
+                            certificate
+                                .apply_gateway_acknowledgement(&acknowledgement)
+                                .map_err(RepositoryError::Conflict)?;
+                            (Some(certificate), Some(version))
+                        }
+                        Some((_, true)) | None => (None, None),
+                    };
                     persist_publication_acknowledgement(transaction, &publication).await?;
                     if let (Some(certificate), Some(certificate_version)) =
                         (&certificate, certificate_version)
                     {
                         update_certificate(transaction, certificate, certificate_version).await?;
+                    }
+                    postgres_rollout_routes::project_acknowledgement(
+                        transaction,
+                        &rollout,
+                        &acknowledgement,
+                    )
+                    .await?;
+                    if acknowledgement.state == GatewayAckState::Applied {
+                        if let Some(certificate_id) = expected_certificate_id {
+                            postgres_certificate_convergence::bind_active_routes_to_certificate(
+                                transaction,
+                                NodeId::from_uuid(acknowledgement.node_id),
+                                acknowledgement.revision,
+                                NodeCommandId::from_uuid(acknowledgement.command_id),
+                                &acknowledgement.snapshot_digest,
+                                certificate_id,
+                                acknowledgement.acknowledged_at,
+                            )
+                            .await?;
+                        } else if has_active_routes(
+                            transaction,
+                            NodeId::from_uuid(acknowledgement.node_id),
+                        )
+                        .await?
+                        {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "certificate-free Gateway rollout retained active routes".into(),
+                            ));
+                        }
                     }
                     postgres_rollouts::persist_acknowledgement(
                         transaction,
@@ -293,16 +311,11 @@ pub(super) async fn project(
                             acknowledgement.acknowledged_at,
                         )
                         .await?;
-                    } else if fetch_optional::<Uuid, _>(
+                    } else if has_active_routes(
                         transaction,
-                        select_from::<Routes>()
-                            .select(Routes::id())
-                            .filter(Routes::gateway_node_id().eq(acknowledgement.node_id))
-                            .filter(Routes::state().eq("active"))
-                            .limit(1),
+                        NodeId::from_uuid(acknowledgement.node_id),
                     )
                     .await?
-                    .is_some()
                     {
                         return Err(PostgresPersistenceError::Invariant(
                             "certificate-free Gateway snapshot retained active routes".into(),
@@ -320,6 +333,32 @@ pub(super) async fn project(
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn has_active_routes(
+    transaction: &a3s_orm::PostgresTransaction,
+    node_id: NodeId,
+) -> Result<bool, PostgresPersistenceError> {
+    let projected_route = exists(
+        select_from::<GatewayRouteProjections>()
+            .select(GatewayRouteProjections::route_id())
+            .filter(GatewayRouteProjections::route_id().eq_column(Routes::id())),
+    );
+    if fetch_optional::<Uuid, _>(
+        transaction,
+        select_from::<Routes>()
+            .select(Routes::id())
+            .filter(Routes::gateway_node_id().eq(node_id.as_uuid()))
+            .filter(Routes::state().eq("active"))
+            .filter(not(projected_route))
+            .limit(1),
+    )
+    .await?
+    .is_some()
+    {
+        return Ok(true);
+    }
+    postgres_rollout_routes::has_active(transaction, node_id).await
 }
 
 async fn persist_publication_acknowledgement(

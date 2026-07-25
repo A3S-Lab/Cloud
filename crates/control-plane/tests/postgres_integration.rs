@@ -51,6 +51,8 @@ mod edge_certificate_lifecycle_support;
 mod edge_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
+#[path = "support/gateway_replica_recovery.rs"]
+mod gateway_replica_recovery_support;
 #[path = "support/gateway_rollouts.rs"]
 mod gateway_rollouts_support;
 #[path = "support/github_connection.rs"]
@@ -198,6 +200,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists secrets cascade;
              drop table if exists gateway_certificate_convergences cascade;
              drop table if exists gateway_route_cutovers cascade;
+             drop table if exists gateway_route_ownership cascade;
+             drop table if exists gateway_rollout_rollbacks cascade;
+             drop table if exists gateway_route_projections cascade;
+             drop table if exists gateway_rollout_replicas cascade;
+             drop table if exists gateway_rollouts cascade;
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
@@ -246,7 +253,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 44);
+    assert_eq!(applied, 49);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
@@ -696,6 +703,46 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "045",
+                "Gateway Route rollout projections",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/045_gateway_route_rollout_projections.sql"
+                )),
+            ),
+            Migration::new(
+                "046",
+                "Gateway snapshot observation commands",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/046_gateway_snapshot_observation_commands.sql"
+                )),
+            ),
+            Migration::new(
+                "047",
+                "Gateway replica physical-state recovery",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/047_gateway_replica_recovery.sql"
+                )),
+            ),
+            Migration::new(
+                "048",
+                "Gateway rollout exact rollback",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/048_gateway_rollout_rollbacks.sql"
+                )),
+            ),
+            Migration::new(
+                "049",
+                "Gateway certificate convergence unavailability",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/049_gateway_certificate_convergence_unavailable.sql"
+                )),
+            ),
+            Migration::new(
+                "050",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -982,7 +1029,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
         ))
         .await?;
-    assert_eq!(source.status(), 201);
+    assert_eq!(
+        source.status(),
+        201,
+        "unexpected source revision response: {}",
+        response_json(&source)?
+    );
     assert_eq!(source_replay.status(), 200);
     assert_eq!(source_canonical_duplicate.status(), 200);
     assert_eq!(response_id(&source)?, response_id(&source_replay)?);
@@ -1000,7 +1052,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
         ))
         .await?;
-    assert_eq!(moved_delivery.status(), 409);
+    assert_eq!(
+        moved_delivery.status(),
+        409,
+        "unexpected moved source revision response: {}",
+        response_json(&moved_delivery)?,
+    );
     let listed_sources = app.call(get_as(&source_path, ADMIN_TOKEN)).await?;
     assert_eq!(listed_sources.status(), 200);
     assert_eq!(
@@ -2032,19 +2089,27 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         },
     )
     .await?;
+    let gateway_rollout_fixture = gateway_rollouts_support::GatewayRolloutFixture {
+        organization_id: OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        project_id: a3s_cloud_control_plane::modules::shared_kernel::domain::ProjectId::from_uuid(
+            Uuid::parse_str(&project_id)?,
+        ),
+        environment_id:
+            a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
+                Uuid::parse_str(&environment_id)?,
+            ),
+        workload_id: workload_fixture.workload_id,
+        workload_revision_id: workload_fixture.revision_id,
+        workload_revision_generation: workload_fixture.revision_generation,
+    };
+    gateway_replica_recovery_support::exercise_gateway_replica_recovery(
+        &executor,
+        gateway_rollout_fixture,
+    )
+    .await?;
     gateway_rollouts_support::exercise_replicated_gateway_rollout(
         &executor,
-        gateway_rollouts_support::GatewayRolloutFixture {
-            organization_id: OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
-            project_id:
-                a3s_cloud_control_plane::modules::shared_kernel::domain::ProjectId::from_uuid(
-                    Uuid::parse_str(&project_id)?,
-                ),
-            environment_id:
-                a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
-                    Uuid::parse_str(&environment_id)?,
-                ),
-        },
+        gateway_rollout_fixture,
     )
     .await?;
 

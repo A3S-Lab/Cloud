@@ -12,6 +12,7 @@ pub enum GatewayPublicationState {
     Pending,
     Applied,
     Rejected,
+    Unavailable,
 }
 
 impl GatewayPublicationState {
@@ -20,6 +21,7 @@ impl GatewayPublicationState {
             Self::Pending => "pending",
             Self::Applied => "applied",
             Self::Rejected => "rejected",
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -28,6 +30,7 @@ impl GatewayPublicationState {
             "pending" => Ok(Self::Pending),
             "applied" => Ok(Self::Applied),
             "rejected" => Ok(Self::Rejected),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err(format!("unsupported Gateway publication state {value:?}")),
         }
     }
@@ -142,6 +145,31 @@ impl GatewayPublication {
         self.acknowledged_at = Some(acknowledged_at);
         Ok(())
     }
+
+    pub fn mark_unavailable(
+        &mut self,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        validate_failure(failure)?;
+        let observed_at = canonical_timestamp(observed_at);
+        if observed_at < self.command_not_after {
+            return Err("Gateway publication cannot expire before its command deadline".into());
+        }
+        if self.state == GatewayPublicationState::Unavailable
+            && self.failure.as_deref() == Some(failure)
+            && self.acknowledged_at == Some(observed_at)
+        {
+            return Ok(false);
+        }
+        if self.state != GatewayPublicationState::Pending {
+            return Err("only a pending Gateway publication can become unavailable".into());
+        }
+        self.state = GatewayPublicationState::Unavailable;
+        self.failure = Some(failure.into());
+        self.acknowledged_at = Some(observed_at);
+        Ok(true)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,4 +195,15 @@ impl GatewayScopeState {
             .checked_add(1)
             .ok_or_else(|| "Gateway revision space is exhausted".into())
     }
+}
+
+fn validate_failure(failure: &str) -> Result<(), String> {
+    if failure.is_empty()
+        || failure.len() > 16 * 1024
+        || failure.contains(['\0', '\r', '\n'])
+        || failure.trim() != failure
+    {
+        return Err("Gateway publication failure must be a bounded single-line value".into());
+    }
+    Ok(())
 }

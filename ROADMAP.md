@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-25.**
+**Status as of 2026-07-26.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -256,13 +256,13 @@ not a product capability until restore passes against a clean environment.
 
 ### 5.6 `H0`: production scale
 
-| Sub-gate | Foundation | Required evidence |
-| --- | --- | --- |
-| `H0.1` | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
-| `H0.2` | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
-| `H0.3` | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
-| `H0.4` | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
-| `H0.5` | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
+| Sub-gate | State | Foundation | Required evidence |
+| --- | --- | --- | --- |
+| `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
+| `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
+| `H0.3` | Planned | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.4` | Planned | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
+| `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
 Kubernetes or Helm may package Cloud, but Workloads remains the only workload
 scheduler and Cloud product configuration remains ACL.
@@ -350,14 +350,14 @@ matching Claim ID and binding digest. Release and a capacity-conflicting Claim
 must remain rejected until real Runtime stop/removal and the exact
 higher-generation Agent release; only then may the competing Claim prepare.
 The provider gate requires one stable pass marker and zero provider or Artifact
-residue. `H0.1` is a closed exact-SHA acceptance gate; `H0.2` and `H0.3` remain
-the active production-scale foundations.
+residue. `H0.1` is a closed exact-SHA acceptance gate; `H0.3` is the next open
+production-scale foundation after the verified `H0.2` Gateway projection gate.
 The closing evidence is Cloud commit
 `5cd7c4eebc21905cb2758856d0e96b31a111116c` in
 [Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417);
 both the real-provider and Cloud-consumer jobs passed.
 
-The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
+The verified `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
 ordered desired member set, a membership generation, and explicit `min_ready`
 and `max_unavailable` policy. Environment-scoped create/list APIs persist the
@@ -367,9 +367,11 @@ or retiring Deployment, replica binding, Runtime command, generation, and fresh
 healthy node-local endpoint. It rejects partial, ambiguous, mixed-revision, and
 mixed-port target sets and compiles an independent complete snapshot,
 certificate, command, and staged Route projection for every member.
-Single-member publication retains the established atomic path; replicated API
-publication fails closed until the logical Route and complete rollout can be
-staged in one transaction, preventing a bootstrap-primary partial apply.
+Single-member publication retains the established path. Replicated publication
+atomically commits the logical Route, every physical projection, rollout,
+publication, certificate, ownership record, idempotency result, and outbox fact.
+A conflict rolls back the complete bundle, preventing a bootstrap-primary or
+partially addressable apply.
 
 Cloud persists each private route target as an exact immutable revision,
 deterministic Runtime unit, positive generation, declared port, canonical
@@ -407,10 +409,30 @@ convergence, and rollouts. A source architecture test rejects raw SQL and direct
 database drivers throughout Edge production persistence. Domain, in-memory,
 migration, recreated-PostgreSQL 17, and durable Fleet queue tests cover this
 foundation, including route cutover and certificate-convergence recovery.
-Per-member healthy target derivation and complete snapshot compilation are now
-covered. Atomic logical Route plus rollout staging, threshold-driven Route
-activation, real multi-Gateway delivery and loss evidence, and joint production
-HA remain open.
+
+Migration 045 adds the logical-to-physical Route projections and atomic rollout
+ownership model. Migration 046 adds read-only Gateway observation commands;
+migration 047 persists per-member physical-state recovery; migration 048 adds
+deterministic exact rollback; and migration 049 makes expired certificate
+convergence explicitly unavailable without disturbing the prior applied state.
+A logical Route activates only when the exact applied projections meet its
+threshold. A terminal rollout below threshold keeps the prior active Route,
+records rejected or unavailable candidate state, observes ambiguous members,
+and stages one higher-revision rollback to the exact known physical state.
+Rollback reuses only still-valid Ready certificates and remains visibly blocked
+when any compensation is rejected or unavailable. Domain revocation and
+certificate replacement release physical ownership member by member only after
+the matching acknowledgement.
+
+The cross-repository gate builds Gateway commit
+`7a146b6d53635861e5db4870fb4603a5c59c87ee`. Real Gateway processes prove
+complete snapshot reload, independent certificate and target replacement, two
+member-specific journals and trust roots, continued service after one member is
+lost, exact native-journal recovery when it returns, independent Cloud cursors,
+and Agent process death after native apply but before acknowledgement. Together
+with the recreated PostgreSQL 17 gate, this closes `H0.2`. Independently placed
+multi-node Gateways remain `H0.3`; production control-plane and Gateway HA remain
+`H0.4`.
 
 ### 5.7 `I0`: inference profile
 
@@ -419,7 +441,7 @@ HA remain open.
 | `I0.0` | Versioned accelerator and node contracts with mixed-version safety | Verified `E0` node control |
 | `I0.1` | Single-node accelerator inventory, claims, Docker/CDI enforcement, and recovery | `I0.0` + `H0.1` |
 | `I0.2a` | Immutable model catalog/cache, typed backend compiler, and one healthy private vLLM Workload | `I0.1` |
-| `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, limits, streaming, and fallback | `H0.2` + `I0.2a` |
+| `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, per-Gateway limits, Redis-backed globally exact limits, streaming, and fallback | `H0.2` + `I0.2a` |
 | `I0.2c` | Durable Gateway usage spool, Cloud ledger, observability, model rollout, and rollback | `I0.2b` |
 | `I0.2d` | Credential-isolated external OpenAI-compatible Provider targets | `I0.2b` + `I0.2c` |
 | `I0.2e` | Grant-derived model/key self-service, diagnostics, playground, search, and usage showback | `C0.3` + `I0.2d` |
@@ -443,8 +465,8 @@ The default portfolio priority is:
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
 5. start `P0` and `A0` only on the verified `G0` contracts they consume;
-6. advance `H0.2` and `H0.3` as real consumers require target projection and
-   multi-node placement; and
+6. preserve the verified `H0.2` projection gate while advancing `H0.3`
+   multi-node placement and networking; and
 7. close full production packaging, HA, autoscaling, and inference hardening
    through `H0.4`, `H0.5`, and `I0.5`.
 
@@ -508,8 +530,8 @@ are allowed only before the first response byte.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical Gateway scopes, ordered desired membership, rollout thresholds, durable per-member outcomes and Fleet redispatch recovery, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and exact per-member revision/unit/generation target derivation and complete snapshot compilation are available; atomic Route-and-rollout staging remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement and restart recovery, PostgreSQL threshold aggregation, command redispatch, and fail-closed replicated planning are verified; real replicated delivery, Gateway loss, and production HA gates remain open |
-| `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
+| `H0.2` | Logical Gateway scopes, ordered membership, exact target derivation, atomic Route-and-rollout staging, threshold activation, per-member recovery, certificate convergence, and exact rollback | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, read-only observation, and rejection of local control loops | Verified against Gateway `7a146b6`: two real members converge independently, preserve service through member loss, recover from native journals, reject cross-member trust, and replay apply-before-ack without duplicate mutation; PostgreSQL 17 proves atomic staging, threshold projection, failure retention, recovery, rollback, and typed A3S ORM persistence |
+| `I0.2b` | Inference routes, keys, grants, typed local/global limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, Redis-backed globally exact counters, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, local and shared-counter enforcement, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |
 | `C0.3` + `I0.2e` | Grants, authorized search, key lifecycle, role-focused console, diagnostics, playground, and showback | Expose bounded operational state only | Consumer, steward, and operator surfaces cannot reveal an ungranted resource |
