@@ -1,6 +1,10 @@
+use super::schema::{
+    ActiveWorkloads, Deployments, SecretRotationReconciliations, SecretRotationRestarts,
+    SecretVersions, Secrets, WorkloadRevisions, Workloads,
+};
 use super::{create, queries, replicas};
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, require_one_row, transaction_error,
+    execute, fetch_all, fetch_optional, require_one_row, transaction_error, OutboxEvents,
     PostgresPersistenceError,
 };
 use crate::modules::operations::domain::entities::OperationRequest;
@@ -16,11 +20,16 @@ use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, DeploymentBundle, SecretRotation, SecretRotationCompletion,
     SecretRotationReconciliation,
 };
-use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor, PostgresTransaction};
+use a3s_orm::{
+    bound, cast, count_all, exists, insert_into, not, select_from, select_from_as, sql_function,
+    Database, Expression, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
+};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 type RotationRow = (Uuid, Uuid, Uuid, DateTime<Utc>, Uuid, serde_json::Value);
+
+struct JsonPath;
 
 pub(super) async fn pending(
     executor: &PostgresExecutor,
@@ -29,10 +38,24 @@ pub(super) async fn pending(
     let limit = checked_limit(limit, "Secret rotation event")?;
     Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
-            sql_query::<RotationRow>(
-                "select e.event_id, e.organization_id, e.aggregate_id, e.occurred_at, e.correlation_id, e.payload from outbox_events e left join secret_rotation_reconciliations r on r.secret_event_id = e.event_id where e.event_key = 'secret.version.created' and r.secret_event_id is null order by e.occurred_at asc, e.event_id asc limit ",
-            )
-            .bind(limit),
+            select_from::<OutboxEvents>()
+                .select((
+                    OutboxEvents::event_id(),
+                    OutboxEvents::organization_id(),
+                    OutboxEvents::aggregate_id(),
+                    OutboxEvents::occurred_at(),
+                    OutboxEvents::correlation_id(),
+                    OutboxEvents::payload(),
+                ))
+                .left_join::<SecretRotationReconciliations>(
+                    SecretRotationReconciliations::secret_event_id()
+                        .eq_column(OutboxEvents::event_id()),
+                )
+                .filter(OutboxEvents::event_key().eq("secret.version.created"))
+                .filter(SecretRotationReconciliations::secret_event_id().is_null())
+                .order_by(OutboxEvents::occurred_at(), OrderDirection::Asc)
+                .order_by(OutboxEvents::event_id(), OrderDirection::Asc)
+                .limit(limit),
         )
         .await
         .map_err(storage)?
@@ -67,7 +90,7 @@ pub(super) async fn reconcile(
 async fn reconcile_in_transaction(
     transaction: &PostgresTransaction,
     rotation: SecretRotation,
-    workload_limit: i64,
+    workload_limit: u64,
     reconciled_at: DateTime<Utc>,
 ) -> Result<SecretRotationReconciliation, PostgresPersistenceError> {
     lock_rotation(transaction, rotation.event_id).await?;
@@ -79,11 +102,17 @@ async fn reconcile_in_transaction(
     }
     let authoritative = fetch_optional::<RotationRow, _>(
         transaction,
-        sql_query::<RotationRow>(
-            "select event_id, organization_id, aggregate_id, occurred_at, correlation_id, payload from outbox_events where event_id = ",
-        )
-        .bind(rotation.event_id)
-        .append(" and event_key = 'secret.version.created'"),
+        select_from::<OutboxEvents>()
+            .select((
+                OutboxEvents::event_id(),
+                OutboxEvents::organization_id(),
+                OutboxEvents::aggregate_id(),
+                OutboxEvents::occurred_at(),
+                OutboxEvents::correlation_id(),
+                OutboxEvents::payload(),
+            ))
+            .filter(OutboxEvents::event_id().eq(rotation.event_id))
+            .filter(OutboxEvents::event_key().eq("secret.version.created")),
     )
     .await?
     .ok_or(RepositoryError::NotFound)?;
@@ -96,15 +125,7 @@ async fn reconcile_in_transaction(
 
     let secret = fetch_optional::<(u64, String, String, Uuid, Uuid), _>(
         transaction,
-        sql_query::<(u64, String, String, Uuid, Uuid)>(
-            "select s.current_version, s.state, v.state, s.project_id, s.environment_id from secrets s join secret_versions v on v.secret_id = s.id and v.version = ",
-        )
-        .bind(rotation.version)
-        .append(" where s.organization_id = ")
-        .bind(rotation.organization_id.as_uuid())
-        .append(" and s.id = ")
-        .bind(rotation.secret_id.as_uuid())
-        .append(" for update of s, v"),
+        secret_version_for_update(&rotation),
     )
     .await?
     .ok_or(RepositoryError::NotFound)?;
@@ -185,7 +206,7 @@ async fn reconcile_in_transaction(
                 "Secret rotation source revision belongs to another workload".into(),
             ));
         }
-        let generation = next_generation(transaction, workload.id).await?;
+        let generation = queries::next_revision_generation(transaction, workload.id).await?;
         let requested_at = canonical_timestamp(
             reconciled_at
                 .max(workload.updated_at)
@@ -307,28 +328,9 @@ async fn reconcile_in_transaction(
 async fn candidate_workloads(
     transaction: &PostgresTransaction,
     rotation: &SecretRotation,
-    limit: i64,
+    limit: u64,
 ) -> Result<Vec<(Uuid, Uuid)>, PostgresPersistenceError> {
-    let rows = fetch_all::<(Uuid, Option<Uuid>), _>(
-        transaction,
-        affected_workloads_query(rotation)
-            .append(
-                " and not exists (select 1 from deployments pending where pending.workload_id = w.id and pending.status not in ('active', 'failed', 'orphaned', 'cancelled')) order by w.updated_at asc, w.id asc for update of w skip locked limit ",
-            )
-            .bind(limit),
-    )
-    .await?;
-    rows.into_iter()
-        .map(|(workload_id, revision_id)| {
-            revision_id
-                .map(|revision_id| (workload_id, revision_id))
-                .ok_or_else(|| {
-                    PostgresPersistenceError::Invariant(
-                        "affected workload omitted its active revision".into(),
-                    )
-                })
-        })
-        .collect()
+    fetch_all::<(Uuid, Uuid), _>(transaction, candidate_workloads_query(rotation, limit)).await
 }
 
 async fn affected_workload_count(
@@ -337,21 +339,7 @@ async fn affected_workload_count(
 ) -> Result<i64, PostgresPersistenceError> {
     fetch_optional::<i64, _>(
         transaction,
-        sql_query::<i64>(
-            "select count(*) from workloads w join workload_revisions r on r.workload_id = w.id and r.id = w.active_revision_id where w.organization_id = ",
-        )
-        .bind(rotation.organization_id.as_uuid())
-        .append(" and w.project_id = ")
-        .bind(rotation.project_id.as_uuid())
-        .append(" and w.environment_id = ")
-        .bind(rotation.environment_id.as_uuid())
-        .append(" and w.desired_state = 'running' and w.active_revision_id is not null and exists (select 1 from deployments active where active.workload_id = w.id and active.revision_id = w.active_revision_id and active.status = 'active') and not exists (select 1 from secret_rotation_restarts handled where handled.secret_event_id = ")
-        .bind(rotation.event_id)
-        .append(" and handled.workload_id = w.id) and exists (select 1 from jsonb_array_elements(r.template_request -> 'secrets') binding where binding ->> 'secret_id' = ")
-        .bind(rotation.secret_id.to_string())
-        .append(" and (binding ->> 'version')::bigint < ")
-        .bind(rotation.version)
-        .append(")"),
+        affected_workloads(rotation).select(count_all()),
     )
     .await?
     .ok_or_else(|| {
@@ -359,44 +347,6 @@ async fn affected_workload_count(
             "Secret rotation affected-workload count returned no row".into(),
         )
     })
-}
-
-fn affected_workloads_query(rotation: &SecretRotation) -> a3s_orm::SqlQuery<(Uuid, Option<Uuid>)> {
-    sql_query::<(Uuid, Option<Uuid>)>(
-        "select w.id, w.active_revision_id from workloads w join workload_revisions r on r.workload_id = w.id and r.id = w.active_revision_id where w.organization_id = ",
-    )
-    .bind(rotation.organization_id.as_uuid())
-    .append(" and w.project_id = ")
-    .bind(rotation.project_id.as_uuid())
-    .append(" and w.environment_id = ")
-    .bind(rotation.environment_id.as_uuid())
-    .append(" and w.desired_state = 'running' and w.active_revision_id is not null and exists (select 1 from deployments active where active.workload_id = w.id and active.revision_id = w.active_revision_id and active.status = 'active') and not exists (select 1 from secret_rotation_restarts handled where handled.secret_event_id = ")
-    .bind(rotation.event_id)
-    .append(" and handled.workload_id = w.id) and exists (select 1 from jsonb_array_elements(r.template_request -> 'secrets') binding where binding ->> 'secret_id' = ")
-    .bind(rotation.secret_id.to_string())
-    .append(" and (binding ->> 'version')::bigint < ")
-    .bind(rotation.version)
-    .append(")")
-}
-
-async fn next_generation(
-    transaction: &PostgresTransaction,
-    workload_id: WorkloadId,
-) -> Result<u64, PostgresPersistenceError> {
-    let latest = fetch_optional::<Option<i64>, _>(
-        transaction,
-        sql_query::<Option<i64>>(
-            "select max(generation) from workload_revisions where workload_id = ",
-        )
-        .bind(workload_id.as_uuid()),
-    )
-    .await?
-    .flatten()
-    .unwrap_or_default();
-    u64::try_from(latest)
-        .ok()
-        .and_then(|value| value.checked_add(1))
-        .ok_or_else(|| PostgresPersistenceError::Invariant("workload generation overflowed".into()))
 }
 
 async fn store_restart(
@@ -410,29 +360,38 @@ async fn store_restart(
         "Secret rotation restart",
         execute(
             transaction,
-            sql_query::<()>(
-                "insert into secret_rotation_restarts (secret_event_id, organization_id, secret_id, secret_version, workload_id, source_revision_id, target_revision_id, deployment_id, operation_id, created_at) values (",
-            )
-            .bind(rotation.event_id)
-            .append(", ")
-            .bind(rotation.organization_id.as_uuid())
-            .append(", ")
-            .bind(rotation.secret_id.as_uuid())
-            .append(", ")
-            .bind(rotation.version)
-            .append(", ")
-            .bind(response.workload.id.as_uuid())
-            .append(", ")
-            .bind(source_revision_id.as_uuid())
-            .append(", ")
-            .bind(response.revision.id.as_uuid())
-            .append(", ")
-            .bind(response.deployment.id.as_uuid())
-            .append(", ")
-            .bind(response.operation.id.as_uuid())
-            .append(", ")
-            .bind(created_at)
-            .append(")"),
+            insert_into::<SecretRotationRestarts>()
+                .value(SecretRotationRestarts::secret_event_id(), rotation.event_id)
+                .value(
+                    SecretRotationRestarts::organization_id(),
+                    rotation.organization_id.as_uuid(),
+                )
+                .value(
+                    SecretRotationRestarts::secret_id(),
+                    rotation.secret_id.as_uuid(),
+                )
+                .value(SecretRotationRestarts::secret_version(), rotation.version)
+                .value(
+                    SecretRotationRestarts::workload_id(),
+                    response.workload.id.as_uuid(),
+                )
+                .value(
+                    SecretRotationRestarts::source_revision_id(),
+                    source_revision_id.as_uuid(),
+                )
+                .value(
+                    SecretRotationRestarts::target_revision_id(),
+                    response.revision.id.as_uuid(),
+                )
+                .value(
+                    SecretRotationRestarts::deployment_id(),
+                    response.deployment.id.as_uuid(),
+                )
+                .value(
+                    SecretRotationRestarts::operation_id(),
+                    response.operation.id.as_uuid(),
+                )
+                .value(SecretRotationRestarts::created_at(), created_at),
         )
         .await?,
     )
@@ -444,8 +403,9 @@ async fn restart_count(
 ) -> Result<i64, PostgresPersistenceError> {
     fetch_optional::<i64, _>(
         transaction,
-        sql_query::<i64>("select count(*) from secret_rotation_restarts where secret_event_id = ")
-            .bind(event_id),
+        select_from::<SecretRotationRestarts>()
+            .select(count_all())
+            .filter(SecretRotationRestarts::secret_event_id().eq(event_id)),
     )
     .await?
     .ok_or_else(|| {
@@ -464,23 +424,35 @@ async fn store_completion(
         "Secret rotation reconciliation",
         execute(
             transaction,
-            sql_query::<()>(
-                "insert into secret_rotation_reconciliations (secret_event_id, organization_id, secret_id, secret_version, outcome, restart_count, reconciled_at) values (",
-            )
-            .bind(rotation.event_id)
-            .append(", ")
-            .bind(rotation.organization_id.as_uuid())
-            .append(", ")
-            .bind(rotation.secret_id.as_uuid())
-            .append(", ")
-            .bind(rotation.version)
-            .append(", ")
-            .bind(completion_name(outcome))
-            .append(", ")
-            .bind(restart_count)
-            .append(", ")
-            .bind(reconciled_at)
-            .append(")"),
+            insert_into::<SecretRotationReconciliations>()
+                .value(
+                    SecretRotationReconciliations::secret_event_id(),
+                    rotation.event_id,
+                )
+                .value(
+                    SecretRotationReconciliations::organization_id(),
+                    rotation.organization_id.as_uuid(),
+                )
+                .value(
+                    SecretRotationReconciliations::secret_id(),
+                    rotation.secret_id.as_uuid(),
+                )
+                .value(
+                    SecretRotationReconciliations::secret_version(),
+                    rotation.version,
+                )
+                .value(
+                    SecretRotationReconciliations::outcome(),
+                    completion_name(outcome),
+                )
+                .value(
+                    SecretRotationReconciliations::restart_count(),
+                    restart_count,
+                )
+                .value(
+                    SecretRotationReconciliations::reconciled_at(),
+                    reconciled_at,
+                ),
         )
         .await?,
     )
@@ -492,10 +464,9 @@ async fn stored_completion(
 ) -> Result<Option<SecretRotationCompletion>, PostgresPersistenceError> {
     fetch_optional::<String, _>(
         transaction,
-        sql_query::<String>(
-            "select outcome from secret_rotation_reconciliations where secret_event_id = ",
-        )
-        .bind(event_id),
+        select_from::<SecretRotationReconciliations>()
+            .select(SecretRotationReconciliations::outcome())
+            .filter(SecretRotationReconciliations::secret_event_id().eq(event_id)),
     )
     .await?
     .map(|outcome| {
@@ -512,22 +483,102 @@ async fn lock_rotation(
     transaction: &PostgresTransaction,
     event_id: Uuid,
 ) -> Result<(), PostgresPersistenceError> {
-    let locked = fetch_optional::<i32, _>(
-        transaction,
-        sql_query::<i32>("select 1 from (select pg_advisory_xact_lock(hashtext(")
-            .bind("cloud.secret-rotation-restart")
-            .append("), hashtext(")
-            .bind(event_id.to_string())
-            .append("))) as locked"),
-    )
-    .await?;
-    if locked == Some(1) {
-        Ok(())
-    } else {
-        Err(PostgresPersistenceError::Invariant(
-            "Secret rotation advisory lock did not return a row".into(),
+    transaction
+        .advisory_xact_lock("cloud.secret-rotation-restart", &event_id.to_string())
+        .await?;
+    Ok(())
+}
+
+fn secret_version_for_update(
+    rotation: &SecretRotation,
+) -> a3s_orm::query::SelectQuery<Secrets, (u64, String, String, Uuid, Uuid)> {
+    select_from::<Secrets>()
+        .select((
+            Secrets::current_version(),
+            Secrets::state(),
+            SecretVersions::state(),
+            Secrets::project_id(),
+            Secrets::environment_id(),
         ))
-    }
+        .inner_join::<SecretVersions>(Secrets::id().eq_column(SecretVersions::secret_id()))
+        .filter(SecretVersions::version().eq(rotation.version))
+        .filter(Secrets::organization_id().eq(rotation.organization_id.as_uuid()))
+        .filter(Secrets::id().eq(rotation.secret_id.as_uuid()))
+        .for_update_of::<Secrets>()
+        .for_update_of::<SecretVersions>()
+}
+
+fn affected_workloads(
+    rotation: &SecretRotation,
+) -> a3s_orm::query::SelectQuery<ActiveWorkloads, (Uuid, Uuid)> {
+    let active_deployment = select_from::<Deployments>()
+        .select(Deployments::id())
+        .filter(Deployments::workload_id().eq_column(ActiveWorkloads::id()))
+        .filter(Deployments::revision_id().eq_column(ActiveWorkloads::active_revision_id()))
+        .filter(Deployments::status().eq("active"));
+    let handled_restart = select_from::<SecretRotationRestarts>()
+        .select(SecretRotationRestarts::workload_id())
+        .filter(SecretRotationRestarts::secret_event_id().eq(rotation.event_id))
+        .filter(SecretRotationRestarts::workload_id().eq_column(ActiveWorkloads::id()));
+
+    select_from_as::<Workloads, ActiveWorkloads>()
+        .select((ActiveWorkloads::id(), ActiveWorkloads::active_revision_id()))
+        .inner_join::<WorkloadRevisions>(
+            WorkloadRevisions::workload_id()
+                .eq_column(ActiveWorkloads::id())
+                .and(WorkloadRevisions::id().eq_column(ActiveWorkloads::active_revision_id())),
+        )
+        .filter(ActiveWorkloads::organization_id().eq(rotation.organization_id.as_uuid()))
+        .filter(ActiveWorkloads::project_id().eq(rotation.project_id.as_uuid()))
+        .filter(ActiveWorkloads::environment_id().eq(rotation.environment_id.as_uuid()))
+        .filter(ActiveWorkloads::desired_state().eq("running"))
+        .filter(exists(active_deployment))
+        .filter(not(exists(handled_restart)))
+        .filter(references_rotated_secret(rotation))
+}
+
+fn candidate_workloads_query(
+    rotation: &SecretRotation,
+    limit: u64,
+) -> a3s_orm::query::SelectQuery<ActiveWorkloads, (Uuid, Uuid)> {
+    let pending_deployment = select_from::<Deployments>()
+        .select(Deployments::id())
+        .filter(Deployments::workload_id().eq_column(ActiveWorkloads::id()))
+        .filter(Deployments::status().ne("active"))
+        .filter(Deployments::status().ne("failed"))
+        .filter(Deployments::status().ne("orphaned"))
+        .filter(Deployments::status().ne("cancelled"));
+
+    affected_workloads(rotation)
+        .filter(not(exists(pending_deployment)))
+        .order_by(ActiveWorkloads::updated_at(), OrderDirection::Asc)
+        .order_by(ActiveWorkloads::id(), OrderDirection::Asc)
+        .for_update_of::<ActiveWorkloads>()
+        .skip_locked()
+        .limit(limit)
+}
+
+fn references_rotated_secret(rotation: &SecretRotation) -> Expression {
+    let path = cast::<String, JsonPath>(
+        cast::<String, String>(
+            bound::<String>("$.secrets[*] ? (@.secret_id == $secret_id && @.version < $version)"),
+            "text",
+        ),
+        "jsonpath",
+    );
+    let variables = serde_json::json!({
+        "secret_id": rotation.secret_id.to_string(),
+        "version": rotation.version,
+    });
+    sql_function::<bool>(
+        "jsonb_path_exists",
+        [
+            WorkloadRevisions::template_request().expression(),
+            path.expression(),
+            bound::<serde_json::Value>(variables).expression(),
+        ],
+    )
+    .eq(true)
 }
 
 fn decode_rotation(row: RotationRow) -> Result<SecretRotation, RepositoryError> {
@@ -560,13 +611,13 @@ fn decode_rotation(row: RotationRow) -> Result<SecretRotation, RepositoryError> 
     Ok(rotation)
 }
 
-fn checked_limit(limit: usize, label: &str) -> Result<i64, RepositoryError> {
+fn checked_limit(limit: usize, label: &str) -> Result<u64, RepositoryError> {
     if limit == 0 || limit > 10_000 {
         return Err(RepositoryError::Conflict(format!(
             "{label} limit must be between 1 and 10000"
         )));
     }
-    i64::try_from(limit).map_err(|_| RepositoryError::Conflict(format!("{label} limit is invalid")))
+    u64::try_from(limit).map_err(|_| RepositoryError::Conflict(format!("{label} limit is invalid")))
 }
 
 const fn completion_name(completion: SecretRotationCompletion) -> &'static str {
@@ -590,4 +641,58 @@ fn parse_completion(value: &str) -> Option<SecretRotationCompletion> {
 
 fn storage(error: impl std::fmt::Display) -> RepositoryError {
     RepositoryError::Storage(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId};
+    use a3s_orm::{PostgresDialect, Query, Value};
+
+    #[test]
+    fn typed_rotation_queries_preserve_locks_and_bound_jsonpath_values() {
+        let rotation = rotation();
+        let secret = secret_version_for_update(&rotation)
+            .compile(&PostgresDialect)
+            .expect("Secret version lock query");
+        assert!(secret
+            .sql
+            .ends_with("for update of \"secrets\", \"secret_versions\""));
+        assert_eq!(secret.parameters.len(), 3);
+
+        let candidates = candidate_workloads_query(&rotation, 25)
+            .compile(&PostgresDialect)
+            .expect("Secret rotation candidate query");
+        assert!(candidates.sql.contains("\"jsonb_path_exists\""));
+        assert!(candidates
+            .sql
+            .ends_with("for update of \"active_workloads\" skip locked"));
+        assert!(!candidates.sql.contains(&rotation.secret_id.to_string()));
+        assert_eq!(candidates.parameters.len(), 14);
+        assert!(candidates
+            .parameters
+            .iter()
+            .any(|parameter| matches!(parameter, Value::Json(_))));
+
+        let affected = affected_workloads(&rotation)
+            .select(count_all())
+            .compile(&PostgresDialect)
+            .expect("Secret rotation affected count query");
+        assert!(affected.sql.contains("\"jsonb_path_exists\""));
+        assert!(!affected.sql.contains("for update"));
+        assert_eq!(affected.parameters.len(), 9);
+    }
+
+    fn rotation() -> SecretRotation {
+        SecretRotation {
+            event_id: Uuid::new_v4(),
+            correlation_id: Uuid::new_v4(),
+            organization_id: OrganizationId::new(),
+            project_id: ProjectId::new(),
+            environment_id: EnvironmentId::new(),
+            secret_id: SecretId::new(),
+            version: 2,
+            occurred_at: Utc::now(),
+        }
+    }
 }

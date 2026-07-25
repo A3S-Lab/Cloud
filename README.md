@@ -145,11 +145,14 @@ monotonic generation and a new unguessable fence token. An orphan or timeout
 continues to block the slot; only exact Agent release, provider NotFound, or
 trusted compute-fencing evidence makes it reusable. Migrations 040 and 041
 backfill the replica foundation and add claim, slot-evidence, and current-lease
-tables. New persistence uses A3S ORM typed tables, JOINs, inserts, and updates;
-one isolated PostgreSQL advisory-lock statement remains because the pinned ORM
-AST cannot express that lock primitive. In-memory and PostgreSQL 17 gates cover
-100-way exact replay, competing reservations, fencing, and generation/token
-rotation.
+tables. The complete Workloads PostgreSQL repository now uses A3S ORM typed
+tables and builders for reads, JOINs, ordering, counts, inserts, updates,
+idempotency records, outbox writes, PostgreSQL row and advisory locks,
+`SKIP LOCKED`, and parameterized JSONPath Secret-binding predicates. No
+Workloads production persistence file uses raw SQL or a direct database
+driver; an architecture test enforces that boundary. In-memory and PostgreSQL
+17 gates cover 100-way exact replay, competing reservations, fencing, and
+generation/token rotation.
 
 This does not complete `H0.1`: Fleet inventory ingestion, resource requirement
 compilation, Agent prepare/release commands and journal evidence, Runtime
@@ -205,12 +208,13 @@ member makes it succeeded, while a fully observed mixed result becomes
 explicitly degraded. Migrations 038 and 039 preserve legacy single-member
 scopes, add membership and rollout constraints, and recover the aggregate from
 PostgreSQL. The new schema-backed CRUD uses A3S ORM typed table and query
-builders; reviewed static SQL is retained only where the current typed AST
-cannot express PostgreSQL locking or aggregation. A worker-role reconciler
-loads each active rollout and its publications through one typed CTE/JOIN
-query, idempotently redispatches every pending member command after process or
-queue interruption, and records a member as unavailable only after its exact
-command deadline passes.
+builders. Remaining reviewed static queries are legacy migration debt and may
+not be extended; any missing typed primitive must be added and tested in A3S
+ORM before new persistence behavior ships. A worker-role reconciler loads each
+active rollout and its publications through one typed CTE/JOIN query,
+idempotently redispatches every pending member command after process or queue
+interruption, and records a member as unavailable only after its exact command
+deadline passes.
 
 The real pinned-Gateway gate rotates independently signed certificates and
 upstream targets, rejects the superseded certificate and selector, removes the

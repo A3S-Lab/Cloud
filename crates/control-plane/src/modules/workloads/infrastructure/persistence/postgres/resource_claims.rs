@@ -2,9 +2,7 @@ use super::replicas;
 use super::resource_claim_rows::{restore_claim, ClaimWithSlotRow, ClaimWithSlotSelection};
 use super::resource_claim_writes;
 use super::schema::{ResourceClaimSlots, ResourceClaims};
-use crate::infrastructure::{
-    fetch_all, fetch_optional, transaction_error, PostgresPersistenceError,
-};
+use crate::infrastructure::{fetch_all, transaction_error, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, OrganizationId, RepositoryError, ResourceClaimId,
 };
@@ -14,8 +12,8 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use a3s_orm::{
-    select_from, sql_query, Database, OrderDirection, PostgresDialect, PostgresExecutor,
-    PostgresTransaction, Query,
+    select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
+    Query,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -291,25 +289,10 @@ async fn lock_claim_id(
     transaction: &PostgresTransaction,
     claim_id: ResourceClaimId,
 ) -> Result<(), PostgresPersistenceError> {
-    // The pinned A3S ORM AST does not expose PostgreSQL advisory locks or
-    // SELECT ... FOR UPDATE. Keep this one lock primitive isolated; every
-    // claim CRUD/JOIN statement is built through the typed ORM DSL.
-    let locked = fetch_optional::<i32, _>(
-        transaction,
-        sql_query::<i32>(
-            "select 1 from (select pg_advisory_xact_lock(hashtext('a3s.cloud.resource-claim'), hashtext(",
-        )
-        .bind(claim_id.to_string())
-        .append("))) as claim_lock"),
-    )
-    .await?;
-    if locked == Some(1) {
-        Ok(())
-    } else {
-        Err(PostgresPersistenceError::Invariant(
-            "resource claim advisory lock did not return a row".into(),
-        ))
-    }
+    transaction
+        .advisory_xact_lock("a3s.cloud.resource-claim", &claim_id.to_string())
+        .await?;
+    Ok(())
 }
 
 enum ClaimMutation {

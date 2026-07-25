@@ -1,12 +1,14 @@
+use super::postgres_schema::{IdempotencyRecords, MigrationRecords, OutboxEvents};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use a3s_boot::HealthIndicatorResult;
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::migration::MigrationRunError;
 use a3s_orm::{
-    sql_query, Database, DecodeError, Executor, FromRow, Migration, Migrator, PostgresDialect,
-    PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
+    insert_into, select_from, Database, DecodeError, Executor, FromRow, Migration, Migrator,
+    PostgresDialect, PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
     PostgresTransactionError, Query,
 };
+use chrono::Utc;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -394,7 +396,7 @@ fn cloud_migrations() -> Vec<Migration> {
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Database::new(PostgresDialect, executor.clone())
-        .fetch_one_as(sql_query::<i32>("select 1"))
+        .fetch_one_as(readiness_query())
         .await
         .map(|_| ())
         .map_err(|error| PostgresBootstrapError::Readiness(error.to_string()))
@@ -402,13 +404,18 @@ async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBoot
 
 pub async fn postgres_health(executor: PostgresExecutor) -> HealthIndicatorResult {
     match Database::new(PostgresDialect, executor)
-        .fetch_one_as(sql_query::<i32>("select 1"))
+        .fetch_one_as(readiness_query())
         .await
     {
-        Ok(1) => HealthIndicatorResult::up(),
-        Ok(_) => HealthIndicatorResult::down().with_detail_value("error", "unexpected response"),
+        Ok(_) => HealthIndicatorResult::up(),
         Err(error) => HealthIndicatorResult::down().with_detail_value("error", error.to_string()),
     }
+}
+
+fn readiness_query() -> a3s_orm::query::SelectQuery<MigrationRecords, String> {
+    select_from::<MigrationRecords>()
+        .select(MigrationRecords::version())
+        .limit(1)
 }
 
 pub(crate) async fn execute<Q>(
@@ -460,20 +467,9 @@ pub(crate) async fn lock_idempotency_key(
     transaction: &PostgresTransaction,
     idempotency: &IdempotencyRequest,
 ) -> Result<(), PostgresPersistenceError> {
-    let locked = fetch_optional::<i32, _>(
-        transaction,
-        sql_query::<i32>("select 1 from (select pg_advisory_xact_lock(hashtext(")
-            .bind(idempotency.scope.as_str())
-            .append("), hashtext(")
-            .bind(idempotency.key.as_str())
-            .append("))) as locked"),
-    )
-    .await?;
-    if locked != Some(1) {
-        return Err(PostgresPersistenceError::Invariant(
-            "idempotency advisory lock did not return a row".into(),
-        ));
-    }
+    transaction
+        .advisory_xact_lock(idempotency.scope.as_str(), idempotency.key.as_str())
+        .await?;
     Ok(())
 }
 
@@ -487,13 +483,13 @@ where
     lock_idempotency_key(transaction, idempotency).await?;
     let existing = fetch_optional::<(String, serde_json::Value), _>(
         transaction,
-        sql_query::<(String, serde_json::Value)>(
-            "select request_digest, response from idempotency_records where scope_key = ",
-        )
-        .bind(idempotency.scope.as_str())
-        .append(" and idempotency_key = ")
-        .bind(idempotency.key.as_str())
-        .append(" for update"),
+        select_from::<IdempotencyRecords>()
+            .select((
+                IdempotencyRecords::request_digest(),
+                IdempotencyRecords::response(),
+            ))
+            .filter(IdempotencyRecords::scope_key().eq(idempotency.scope.as_str()))
+            .filter(IdempotencyRecords::idempotency_key().eq(idempotency.key.as_str())),
     )
     .await?;
     let Some((request_digest, response)) = existing else {
@@ -518,17 +514,21 @@ where
 {
     let rows = execute(
         transaction,
-        sql_query::<()>(
-            "insert into idempotency_records (scope_key, idempotency_key, request_digest, response, created_at) values (",
-        )
-        .bind(idempotency.scope.as_str())
-        .append(", ")
-        .bind(idempotency.key.as_str())
-        .append(", ")
-        .bind(idempotency.request_digest.as_str())
-        .append(", ")
-        .bind(serde_json::to_value(response)?)
-        .append(", now())"),
+        insert_into::<IdempotencyRecords>()
+            .value(IdempotencyRecords::scope_key(), idempotency.scope.as_str())
+            .value(
+                IdempotencyRecords::idempotency_key(),
+                idempotency.key.as_str(),
+            )
+            .value(
+                IdempotencyRecords::request_digest(),
+                idempotency.request_digest.as_str(),
+            )
+            .value(
+                IdempotencyRecords::response(),
+                serde_json::to_value(response)?,
+            )
+            .value(IdempotencyRecords::created_at(), Utc::now()),
     )
     .await?;
     require_one_row("idempotency record", rows)
@@ -540,29 +540,17 @@ pub(crate) async fn store_outbox(
 ) -> Result<(), PostgresPersistenceError> {
     let rows = execute(
         transaction,
-        sql_query::<()>(
-            "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (",
-        )
-        .bind(event.event_id)
-        .append(", ")
-        .bind(event.event_key.as_str())
-        .append(", ")
-        .bind(event.schema_version)
-        .append(", ")
-        .bind(event.organization_id)
-        .append(", ")
-        .bind(event.aggregate_id)
-        .append(", ")
-        .bind(event.aggregate_version)
-        .append(", ")
-        .bind(event.occurred_at)
-        .append(", ")
-        .bind(event.correlation_id)
-        .append(", ")
-        .bind(event.causation_id)
-        .append(", ")
-        .bind(event.payload.clone())
-        .append(")"),
+        insert_into::<OutboxEvents>()
+            .value(OutboxEvents::event_id(), event.event_id)
+            .value(OutboxEvents::event_key(), event.event_key.as_str())
+            .value(OutboxEvents::schema_version(), event.schema_version)
+            .value(OutboxEvents::organization_id(), event.organization_id)
+            .value(OutboxEvents::aggregate_id(), event.aggregate_id)
+            .value(OutboxEvents::aggregate_version(), event.aggregate_version)
+            .value(OutboxEvents::occurred_at(), event.occurred_at)
+            .value(OutboxEvents::correlation_id(), event.correlation_id)
+            .value(OutboxEvents::causation_id(), event.causation_id)
+            .value(OutboxEvents::payload(), event.payload.clone()),
     )
     .await?;
     require_one_row("outbox event", rows)

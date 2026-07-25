@@ -379,12 +379,16 @@ cloud-gateway` exercises the production topology after building the SPA.
 
 PostgreSQL is authoritative for aggregates, desired state, idempotency records,
 the outbox, and UI projections. A3S ORM supplies parameterized queries,
-transactions, migrations, and PostgreSQL access. New schema-backed CRUD uses
-its typed table and query builders. Reviewed static SQL remains bounded to
-locking, aggregation, backend expressions that the current typed AST cannot
-represent, and legacy paths that have not yet migrated. Each aggregate row
-carries a version; commands use optimistic concurrency rather than
-last-write-wins.
+transactions, migrations, and PostgreSQL access. All database access must go
+through A3S ORM; direct driver access from a business persistence adapter is
+forbidden. New or modified ordinary reads, JOINs, ordering, aggregation,
+inserts, updates, deletes, and concurrency controls must use typed tables and
+query builders. If the typed AST cannot preserve a required database
+primitive, the capability must be filed, implemented, and tested in A3S ORM,
+then Cloud must upgrade its pinned revision before the business behavior
+ships. A local raw-SQL workaround is not an accepted permanent boundary for
+new or modified persistence. Each aggregate row carries a version; commands
+use optimistic concurrency rather than last-write-wins.
 
 The Flow event store uses a separate PostgreSQL schema. A business transaction
 does not attempt a distributed transaction with Flow. The deployment command
@@ -452,12 +456,15 @@ marking every claim slot released, and clearing each matching ledger owner are
 one transaction. A partial unique index prevents two active claims for the same
 organization/node/resource-kind/stable-resource tuple.
 
-Migrations 040 and 041 own these tables. Their new CRUD and aggregate reads use
-A3S ORM typed table definitions and query builders, including the claim/slot
-JOIN. One isolated `pg_advisory_xact_lock` statement serializes exact claim-ID
-replay because the pinned ORM AST cannot express PostgreSQL advisory or row
-locks. The provider prepare/bind/release command path is still open, so this is
-a persistence and domain foundation rather than a completed `H0.1` rollout.
+Migrations 040 and 041 own these tables. The complete Workloads repository now
+uses A3S ORM typed table definitions and query builders for ordinary CRUD,
+aggregate reads, the claim/slot JOIN, generation lookup, idempotency, and
+outbox writes. The same typed AST owns transaction-scoped advisory locks,
+targeted row locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding
+predicates. Architecture tests reject raw SQL or direct drivers anywhere in
+Workloads production persistence. The provider prepare/bind/release command
+path is still open, so this is a persistence and domain foundation rather than
+a completed `H0.1` rollout.
 
 New deployment operations use `cloud.deployment@2`. The version 1 workflow is
 registered only to replay runs persisted before routed update semantics. At

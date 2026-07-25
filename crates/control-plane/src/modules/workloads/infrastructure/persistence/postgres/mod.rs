@@ -1,4 +1,5 @@
 mod create;
+mod operation_requests;
 mod queries;
 mod replicas;
 mod resource_claim_rows;

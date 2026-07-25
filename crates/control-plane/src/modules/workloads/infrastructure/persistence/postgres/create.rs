@@ -1,4 +1,5 @@
-use super::{queries, replicas};
+use super::schema::{Deployments, WorkloadRevisions, Workloads};
+use super::{operation_requests, queries, replicas};
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
     require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
@@ -6,7 +7,7 @@ use crate::infrastructure::{
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};
-use a3s_orm::{sql_query, PostgresExecutor, PostgresTransaction};
+use a3s_orm::{insert_into, select_from, PostgresExecutor, PostgresTransaction};
 
 pub(super) async fn deployment(
     executor: &PostgresExecutor,
@@ -80,13 +81,19 @@ async fn require_no_nonterminal_deployment(
     transaction: &PostgresTransaction,
     workload: &Workload,
 ) -> Result<(), PostgresPersistenceError> {
-    let existing = fetch_optional::<i32, _>(
+    // The workload row is already locked by `lock_or_insert_workload`, so all
+    // deployment creation for this workload is serialized without a second
+    // row-locking statement.
+    let existing = fetch_optional::<uuid::Uuid, _>(
         transaction,
-        sql_query::<i32>("select 1 from deployments where workload_id = ")
-            .bind(workload.id.as_uuid())
-            .append(
-                " and status not in ('active', 'failed', 'orphaned', 'cancelled') limit 1 for update",
-            ),
+        select_from::<Deployments>()
+            .select(Deployments::id())
+            .filter(Deployments::workload_id().eq(workload.id.as_uuid()))
+            .filter(Deployments::status().ne("active"))
+            .filter(Deployments::status().ne("failed"))
+            .filter(Deployments::status().ne("orphaned"))
+            .filter(Deployments::status().ne("cancelled"))
+            .limit(1),
     )
     .await?;
     if existing.is_some() {
@@ -164,31 +171,27 @@ async fn lock_or_insert_workload(
 
     let inserted = execute(
         transaction,
-        sql_query::<()>(
-            "insert into workloads (id, organization_id, project_id, environment_id, name, name_key, desired_state, active_revision_id, aggregate_version, created_at, updated_at) values (",
-        )
-        .bind(workload.id.as_uuid())
-        .append(", ")
-        .bind(workload.organization_id.as_uuid())
-        .append(", ")
-        .bind(workload.project_id.as_uuid())
-        .append(", ")
-        .bind(workload.environment_id.as_uuid())
-        .append(", ")
-        .bind(workload.name.as_str())
-        .append(", ")
-        .bind(workload.name.key())
-        .append(", ")
-        .bind(workload.desired_state.as_str())
-        .append(", ")
-        .bind(workload.active_revision_id.map(|id| id.as_uuid()))
-        .append(", ")
-        .bind(workload.aggregate_version)
-        .append(", ")
-        .bind(workload.created_at)
-        .append(", ")
-        .bind(workload.updated_at)
-        .append(")"),
+        insert_into::<Workloads>()
+            .value(Workloads::id(), workload.id.as_uuid())
+            .value(
+                Workloads::organization_id(),
+                workload.organization_id.as_uuid(),
+            )
+            .value(Workloads::project_id(), workload.project_id.as_uuid())
+            .value(
+                Workloads::environment_id(),
+                workload.environment_id.as_uuid(),
+            )
+            .value(Workloads::name(), workload.name.as_str())
+            .value(Workloads::name_key(), workload.name.key())
+            .value(Workloads::desired_state(), workload.desired_state.as_str())
+            .value(
+                Workloads::active_revision_id(),
+                workload.active_revision_id.map(|id| id.as_uuid()),
+            )
+            .value(Workloads::aggregate_version(), workload.aggregate_version)
+            .value(Workloads::created_at(), workload.created_at)
+            .value(Workloads::updated_at(), workload.updated_at),
     )
     .await;
     match inserted {
@@ -211,22 +214,7 @@ async fn require_next_generation(
     transaction: &PostgresTransaction,
     request: &CreateDeploymentBundle,
 ) -> Result<(), PostgresPersistenceError> {
-    let latest = fetch_optional::<Option<i64>, _>(
-        transaction,
-        sql_query::<Option<i64>>(
-            "select max(generation) from workload_revisions where workload_id = ",
-        )
-        .bind(request.workload.id.as_uuid()),
-    )
-    .await?
-    .flatten()
-    .unwrap_or_default();
-    let next = u64::try_from(latest)
-        .ok()
-        .and_then(|generation| generation.checked_add(1))
-        .ok_or_else(|| {
-            PostgresPersistenceError::Invariant("workload generation overflowed".into())
-        })?;
+    let next = queries::next_revision_generation(transaction, request.workload.id).await?;
     if request.revision.generation != next {
         return Err(RepositoryError::Conflict(format!(
             "workload revision generation must be {next}"
@@ -253,53 +241,76 @@ async fn insert_revision(
     let external_build = revision.external_build.as_ref();
     let result = execute(
         transaction,
-        sql_query::<()>(
-            "insert into workload_revisions (id, workload_id, generation, resolution_state, artifact_source_uri, expected_artifact_digest, template_request, request_digest, artifact_uri, artifact_digest, artifact_media_type, template, template_digest, created_at, resolved_at, external_build_organization_id, external_build_project_id, external_build_environment_id, external_source_revision_id, external_build_run_id) values (",
-        )
-        .bind(revision.id.as_uuid())
-        .append(", ")
-        .bind(revision.workload_id.as_uuid())
-        .append(", ")
-        .bind(revision.generation)
-        .append(", ")
-        .bind(if revision.template.is_some() {
-            "resolved"
-        } else {
-            "pending"
-        })
-        .append(", ")
-        .bind(revision.request.artifact.uri.as_str())
-        .append(", ")
-        .bind(revision.request.artifact.expected_digest.as_deref())
-        .append(", ")
-        .bind(serde_json::to_value(&revision.request)?)
-        .append(", ")
-        .bind(revision.request_digest.as_str())
-        .append(", ")
-        .bind(artifact.map(|artifact| artifact.uri.as_str()))
-        .append(", ")
-        .bind(artifact.map(|artifact| artifact.digest.as_str()))
-        .append(", ")
-        .bind(artifact.map(|artifact| artifact.media_type.as_str()))
-        .append(", ")
-        .bind(template)
-        .append(", ")
-        .bind(revision.template_digest.as_deref())
-        .append(", ")
-        .bind(revision.created_at)
-        .append(", ")
-        .bind(revision.resolved_at)
-        .append(", ")
-        .bind(external_build.map(|reference| reference.organization_id.as_uuid()))
-        .append(", ")
-        .bind(external_build.map(|reference| reference.project_id.as_uuid()))
-        .append(", ")
-        .bind(external_build.map(|reference| reference.environment_id.as_uuid()))
-        .append(", ")
-        .bind(external_build.map(|reference| reference.source_revision_id.as_uuid()))
-        .append(", ")
-        .bind(external_build.map(|reference| reference.build_run_id.as_uuid()))
-        .append(")"),
+        insert_into::<WorkloadRevisions>()
+            .value(WorkloadRevisions::id(), revision.id.as_uuid())
+            .value(
+                WorkloadRevisions::workload_id(),
+                revision.workload_id.as_uuid(),
+            )
+            .value(WorkloadRevisions::generation(), revision.generation)
+            .value(
+                WorkloadRevisions::resolution_state(),
+                if revision.template.is_some() {
+                    "resolved"
+                } else {
+                    "pending"
+                },
+            )
+            .value(
+                WorkloadRevisions::artifact_source_uri(),
+                revision.request.artifact.uri.as_str(),
+            )
+            .value(
+                WorkloadRevisions::expected_artifact_digest(),
+                revision.request.artifact.expected_digest.clone(),
+            )
+            .value(
+                WorkloadRevisions::template_request(),
+                serde_json::to_value(&revision.request)?,
+            )
+            .value(
+                WorkloadRevisions::request_digest(),
+                revision.request_digest.as_str(),
+            )
+            .value(
+                WorkloadRevisions::artifact_uri(),
+                artifact.map(|artifact| artifact.uri.clone()),
+            )
+            .value(
+                WorkloadRevisions::artifact_digest(),
+                artifact.map(|artifact| artifact.digest.clone()),
+            )
+            .value(
+                WorkloadRevisions::artifact_media_type(),
+                artifact.map(|artifact| artifact.media_type.clone()),
+            )
+            .value(WorkloadRevisions::template(), template)
+            .value(
+                WorkloadRevisions::template_digest(),
+                revision.template_digest.clone(),
+            )
+            .value(WorkloadRevisions::created_at(), revision.created_at)
+            .value(WorkloadRevisions::resolved_at(), revision.resolved_at)
+            .value(
+                WorkloadRevisions::external_build_organization_id(),
+                external_build.map(|reference| reference.organization_id.as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::external_build_project_id(),
+                external_build.map(|reference| reference.project_id.as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::external_build_environment_id(),
+                external_build.map(|reference| reference.environment_id.as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::external_source_revision_id(),
+                external_build.map(|reference| reference.source_revision_id.as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::external_build_run_id(),
+                external_build.map(|reference| reference.build_run_id.as_uuid()),
+            ),
     )
     .await;
     match result {
@@ -316,39 +327,7 @@ async fn insert_operation(
     transaction: &PostgresTransaction,
     request: &CreateDeploymentBundle,
 ) -> Result<(), PostgresPersistenceError> {
-    let operation = &request.operation;
-    let result = execute(
-        transaction,
-        sql_query::<()>(
-            "insert into operation_requests (operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at) values (",
-        )
-        .bind(operation.id.as_uuid())
-        .append(", ")
-        .bind(operation.organization_id.as_uuid())
-        .append(", ")
-        .bind(operation.subject.kind())
-        .append(", ")
-        .bind(operation.subject.id())
-        .append(", ")
-        .bind(operation.workflow.name())
-        .append(", ")
-        .bind(operation.workflow.version())
-        .append(", ")
-        .bind(operation.input.clone())
-        .append(", ")
-        .bind(operation.requested_at)
-        .append(")"),
-    )
-    .await;
-    match result {
-        Ok(rows) => require_one_row("deployment operation request", rows),
-        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
-        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
-            "deployment operation identity is already in use".into(),
-        )
-        .into()),
-        Err(error) => Err(error),
-    }
+    operation_requests::insert(transaction, &request.operation).await
 }
 
 async fn insert_deployment(
@@ -358,43 +337,48 @@ async fn insert_deployment(
     let deployment = &request.deployment;
     let result = execute(
         transaction,
-        sql_query::<()>(
-            "insert into deployments (id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, retirement_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at) values (",
-        )
-        .bind(deployment.id.as_uuid())
-        .append(", ")
-        .bind(deployment.organization_id.as_uuid())
-        .append(", ")
-        .bind(deployment.workload_id.as_uuid())
-        .append(", ")
-        .bind(deployment.revision_id.as_uuid())
-        .append(", ")
-        .bind(deployment.operation_id.as_uuid())
-        .append(", ")
-        .bind(deployment.node_id.map(|id| id.as_uuid()))
-        .append(", ")
-        .bind(deployment.command_id.map(|id| id.as_uuid()))
-        .append(", ")
-        .bind(deployment.cleanup_command_id.map(|id| id.as_uuid()))
-        .append(", ")
-        .bind(deployment.retirement_command_id.map(|id| id.as_uuid()))
-        .append(", ")
-        .bind(deployment.status.as_str())
-        .append(", ")
-        .bind(deployment.failure.as_deref())
-        .append(", ")
-        .bind(deployment.aggregate_version)
-        .append(", ")
-        .bind(deployment.requested_at)
-        .append(", ")
-        .bind(deployment.updated_at)
-        .append(", ")
-        .bind(deployment.activated_at)
-        .append(", ")
-        .bind(deployment.cancellation_requested_at)
-        .append(", ")
-        .bind(deployment.cancelled_at)
-        .append(")"),
+        insert_into::<Deployments>()
+            .value(Deployments::id(), deployment.id.as_uuid())
+            .value(
+                Deployments::organization_id(),
+                deployment.organization_id.as_uuid(),
+            )
+            .value(Deployments::workload_id(), deployment.workload_id.as_uuid())
+            .value(Deployments::revision_id(), deployment.revision_id.as_uuid())
+            .value(
+                Deployments::operation_id(),
+                deployment.operation_id.as_uuid(),
+            )
+            .value(
+                Deployments::node_id(),
+                deployment.node_id.map(|id| id.as_uuid()),
+            )
+            .value(
+                Deployments::command_id(),
+                deployment.command_id.map(|id| id.as_uuid()),
+            )
+            .value(
+                Deployments::cleanup_command_id(),
+                deployment.cleanup_command_id.map(|id| id.as_uuid()),
+            )
+            .value(
+                Deployments::retirement_command_id(),
+                deployment.retirement_command_id.map(|id| id.as_uuid()),
+            )
+            .value(Deployments::status(), deployment.status.as_str())
+            .value(Deployments::failure(), deployment.failure.clone())
+            .value(
+                Deployments::aggregate_version(),
+                deployment.aggregate_version,
+            )
+            .value(Deployments::requested_at(), deployment.requested_at)
+            .value(Deployments::updated_at(), deployment.updated_at)
+            .value(Deployments::activated_at(), deployment.activated_at)
+            .value(
+                Deployments::cancellation_requested_at(),
+                deployment.cancellation_requested_at,
+            )
+            .value(Deployments::cancelled_at(), deployment.cancelled_at),
     )
     .await;
     match result {

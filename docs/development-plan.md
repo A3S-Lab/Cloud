@@ -1262,9 +1262,13 @@ aggregate. Each claim binds tenant, deployment, replica/member, placement,
 node inventory, topology, Runtime identity, canonical slot set, claim digest,
 slot generation, and fence token. Migration 041 persists claims, immutable
 claim-slot evidence, and the current slot ledger. Its new PostgreSQL
-persistence uses A3S ORM typed tables, JOINs, inserts, and optimistic updates.
-The only raw statement is a documented claim-ID advisory lock because the
-pinned ORM AST has no advisory-lock or row-lock node. In-memory and isolated
+persistence and all pre-existing Workloads persistence use A3S ORM typed
+tables and builders for ordinary reads, JOINs, ordering, counts, inserts, and
+optimistic updates. Shared idempotency and outbox operations on this path are
+typed as well. PostgreSQL advisory and row locks, `SKIP LOCKED`, and
+parameterized JSONPath Secret-binding predicates are represented by the same
+typed AST. Source architecture tests prohibit raw SQL or direct database
+drivers throughout Workloads production persistence. In-memory and isolated
 PostgreSQL 17 tests cover 100-way exact replay, 100-way competing claims,
 orphan retention, trusted fencing, and generation/token rotation.
 

@@ -1,6 +1,7 @@
 mod flow;
 mod oci_registry_client;
 mod postgres;
+mod postgres_schema;
 mod vault_client;
 
 pub use flow::{
@@ -17,4 +18,5 @@ pub(crate) use postgres::{
     is_unique_violation, lock_idempotency_key, require_one_row, store_idempotency, store_outbox,
     transaction_error, PostgresPersistenceError,
 };
+pub(crate) use postgres_schema::OutboxEvents;
 pub(crate) use vault_client::{VaultClient, VaultClientError};

@@ -281,10 +281,13 @@ bound_to_runtime_unit -> releasing -> released` lifecycle with an
 operator-visible `orphaned` branch. Orphaning and timeout retain the active
 lease. Only exact Agent release, provider NotFound, or trusted compute fencing
 can release it. The schema-backed claim CRUD and aggregate JOIN use A3S ORM
-typed builders; the only raw statement in this path is an isolated PostgreSQL
-advisory lock that the pinned typed AST cannot represent. A PostgreSQL 17 gate
-proves 100-way exact replay, 100-way competing reservation, orphan blocking,
-and generation/token rotation after fencing.
+typed builders. The full Workloads repository and its shared
+idempotency/outbox writes now use typed builders for every query and mutation,
+including PostgreSQL advisory and row locks, `SKIP LOCKED`, and parameterized
+JSONPath Secret-binding predicates. An architecture test rejects raw SQL and
+direct drivers anywhere in Workloads production persistence. A PostgreSQL 17
+gate proves 100-way exact replay, 100-way competing reservation, orphan
+blocking, and generation/token rotation after fencing.
 
 `H0.1` remains in progress. The open exit work is Fleet inventory and
 requirement compilation, Agent-side prepare/release journal enforcement,
