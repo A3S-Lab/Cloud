@@ -235,7 +235,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             rejected_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             rejected_operation.input.clone(),
         )
         .await?;
@@ -349,7 +349,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             accepted_operation.input.clone(),
         )
         .await?;
@@ -483,7 +483,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             accepted_operation.input.clone(),
         )
         .await?;
@@ -550,7 +550,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             accepted_operation.input,
         )
         .await?;
@@ -593,7 +593,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             rollback_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             rollback_operation.input.clone(),
         )
         .await?;

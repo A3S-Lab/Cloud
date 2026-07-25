@@ -25,17 +25,20 @@ use a3s_cloud_control_plane::modules::secrets::{
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DeploymentId, EnrollmentTokenId, IdempotencyRequest, NodeId, OperationId, OrganizationId,
+    ResourceClaimId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     DeploymentCancellationRequested, DeploymentFlowConfig, DeploymentFlowDependencies,
-    DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver, IWorkloadRepository,
-    IWorkloadRuntimeControl, IWorkloadRuntimeTargetRepository, OciArtifact, OciArtifactReference,
-    OciArtifactResolutionError, OciRegistryArtifactResolver, PostgresResourceClaimRepository,
-    PostgresWorkloadRepository, RequestDeploymentCancellationBundle, WorkloadRuntimeReconciler,
+    DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver, IResourceClaimRepository,
+    IWorkloadRepository, IWorkloadRuntimeControl, IWorkloadRuntimeTargetRepository, OciArtifact,
+    OciArtifactReference, OciArtifactResolutionError, OciRegistryArtifactResolver,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    RequestDeploymentCancellationBundle, ResourceClaimState, WorkloadRuntimeReconciler,
 };
 use a3s_cloud_node_agent::{
     CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeControlClientError,
-    NodeRuntimeBinding, NodeSecretTransport, SecretMaterial,
+    NodeResourceInventoryAuthority, NodeRuntimeBinding, NodeSecretTransport,
+    ResourceInventoryError, SecretMaterial,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
@@ -74,6 +77,19 @@ pub struct DeploymentFlowFixture {
     pub log_recovery: Option<LogRecoveryFixture>,
 }
 
+struct FixedResourceInventoryAuthority {
+    inventory: NodeResourceInventory,
+}
+
+#[async_trait]
+impl NodeResourceInventoryAuthority for FixedResourceInventoryAuthority {
+    async fn current_resource_inventory(
+        &self,
+    ) -> Result<NodeResourceInventory, ResourceInventoryError> {
+        Ok(self.inventory.clone())
+    }
+}
+
 pub async fn exercise_deployment_flow(
     executor: &PostgresExecutor,
     postgres_url: &str,
@@ -94,15 +110,16 @@ pub async fn exercise_deployment_flow(
             .append(" and state = 'ready'"),
         )
         .await?;
-    let (node_id, agent_instance_id, capabilities) =
+    let (node_id, agent_instance_id, capabilities, inventory) =
         ready_node(&node_repository, organization_id).await?;
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
+    let resource_claims = Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
             workloads,
-            Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+            resource_claims.clone(),
             deployment_artifact_resolver(executor, security_state_dir)?,
             nodes,
             node_control,
@@ -131,62 +148,19 @@ pub async fn exercise_deployment_flow(
         Duration::from_secs(1),
     )?;
 
-    let mut reconciled_before_apply = 0;
-    for _ in 0..8 {
-        let cycle = coordinator.run_once().await?;
-        reconciled_before_apply += cycle.reconciled_before_work;
-        if workload_repository
-            .find_deployment(organization_id, deployment_id)
-            .await?
-            .status
-            == DeploymentStatus::Applying
-        {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
-    assert!(reconciled_before_apply > 0);
-    let applying = workload_repository
-        .find_deployment(organization_id, deployment_id)
-        .await?;
-    assert_eq!(applying.status, DeploymentStatus::Applying);
-    let command_id = applying.command_id.ok_or("deployment has no command")?;
-    let now = Utc::now();
-    let lease = node_repository
-        .lease_commands(
-            &NodeCommandLeaseRequest {
-                schema: NodeCommandLeaseRequest::SCHEMA.into(),
-                node_id: node_id.as_uuid(),
-                agent_instance_id,
-                after_sequence: 0,
-                max_commands: 10,
-                wait_ms: 0,
-            },
-            Uuid::now_v7(),
-            now,
-            now + ChronoDuration::seconds(10),
-        )
-        .await?;
-    let command = lease
-        .commands
-        .iter()
-        .find(|command| command.command_id == command_id.as_uuid())
-        .ok_or("deployment command was not leased")?;
-    let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request } = &command.payload else {
-        return Err("deployment command is not Runtime apply".into());
-    };
     let mut docker_runtime: Option<Arc<dyn RuntimeClient>> = None;
     let mut docker_state_directory = None;
     let mut docker_secret_directory = None;
+    let mut command_executor = None;
     let mut log_recovery = None;
-    let (observation, acknowledgement, observed_at) = if docker_tests_enabled() {
+    if docker_tests_enabled() {
         let state_directory = tempfile::tempdir()?;
         let namespace = format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]);
         let secret_memory_dir = docker_secret_memory_dir();
         let secret_namespace_dir = secret_memory_dir.join(&namespace);
         let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
             socket: docker_socket(),
-            namespace: namespace.clone(),
+            namespace,
             operation_timeout_ms: 30_000,
             secret_memory_dir: secret_memory_dir.clone(),
         })?);
@@ -207,32 +181,185 @@ pub async fn exercise_deployment_flow(
         let runtime_driver: Arc<dyn RuntimeDriver> = driver;
         let runtime: Arc<dyn RuntimeClient> =
             Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-        let command_executor = CommandExecutor::runtime_only(
-            FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
-            runtime.clone(),
+        command_executor = Some(
+            CommandExecutor::runtime_only(
+                FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
+                runtime.clone(),
+            )
+            .with_resource_inventory(Arc::new(FixedResourceInventoryAuthority {
+                inventory: inventory.clone(),
+            })),
         );
-        let serialized_command = serde_json::to_string(command)?;
+        docker_runtime = Some(runtime);
+        docker_state_directory = Some(state_directory);
+        docker_secret_directory = Some(secret_namespace_dir);
+    }
+
+    let mut reconciled_before_prepare = 0;
+    for _ in 0..8 {
+        let cycle = coordinator.run_once().await?;
+        reconciled_before_prepare += cycle.reconciled_before_work;
+        if workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?
+            .status
+            == DeploymentStatus::Scheduled
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert!(reconciled_before_prepare > 0);
+    let scheduled = workload_repository
+        .find_deployment(organization_id, deployment_id)
+        .await?;
+    assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
+    for _ in 0..16 {
+        tokio::time::sleep(Duration::from_millis(6)).await;
+        coordinator.run_once().await?;
+        if resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(deployment_id.as_uuid()),
+            )
+            .await?
+            .prepare_command_id
+            .is_some()
+        {
+            break;
+        }
+    }
+    let claim_before_prepare = resource_claims
+        .find(
+            organization_id,
+            ResourceClaimId::from_uuid(deployment_id.as_uuid()),
+        )
+        .await?;
+    if claim_before_prepare.prepare_command_id.is_none() {
+        let snapshot = flow.engine().snapshot(&operation_id.to_string()).await?;
+        return Err(format!(
+            "deployment resource preparation was not dispatched; claim_state={}; flow_status={:?}",
+            claim_before_prepare.state.as_str(),
+            snapshot.status
+        )
+        .into());
+    }
+    let now = Utc::now();
+    let preparation_lease = node_repository
+        .lease_commands(
+            &NodeCommandLeaseRequest {
+                schema: NodeCommandLeaseRequest::SCHEMA.into(),
+                node_id: node_id.as_uuid(),
+                agent_instance_id,
+                after_sequence: 0,
+                max_commands: 10,
+                wait_ms: 0,
+            },
+            Uuid::now_v7(),
+            now,
+            now + ChronoDuration::seconds(10),
+        )
+        .await?;
+    let preparation = preparation_lease
+        .commands
+        .into_iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimPrepare { .. }
+            )
+        })
+        .ok_or("deployment resource preparation command was not leased")?;
+    let preparation_acknowledgement = match command_executor.as_ref() {
+        Some(command_executor) => command_executor.execute(preparation.clone()).await?,
+        None => resource_claim_acknowledgement(&preparation)?,
+    };
+    persist_command_result(
+        &node_repository,
+        node_id,
+        agent_instance_id,
+        capabilities.clone(),
+        preparation_acknowledgement,
+    )
+    .await?;
+
+    for _ in 0..12 {
+        tokio::time::sleep(Duration::from_millis(6)).await;
+        coordinator.run_once().await?;
+        if workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?
+            .status
+            == DeploymentStatus::Applying
+        {
+            break;
+        }
+    }
+    let applying = workload_repository
+        .find_deployment(organization_id, deployment_id)
+        .await?;
+    assert_eq!(applying.status, DeploymentStatus::Applying);
+    let command_id = applying.command_id.ok_or("deployment has no command")?;
+    let now = Utc::now();
+    let apply_lease = node_repository
+        .lease_commands(
+            &NodeCommandLeaseRequest {
+                schema: NodeCommandLeaseRequest::SCHEMA.into(),
+                node_id: node_id.as_uuid(),
+                agent_instance_id,
+                after_sequence: preparation.sequence,
+                max_commands: 10,
+                wait_ms: 0,
+            },
+            Uuid::now_v7(),
+            now,
+            now + ChronoDuration::seconds(10),
+        )
+        .await?;
+    let command = apply_lease
+        .commands
+        .into_iter()
+        .find(|command| command.command_id == command_id.as_uuid())
+        .ok_or("deployment command was not leased")?;
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request, .. } = &command.payload
+    else {
+        return Err("deployment command is not Runtime apply".into());
+    };
+    let acknowledgement = if let Some(command_executor) = command_executor.as_ref() {
+        let serialized_command = serde_json::to_string(&command)?;
         assert!(sensitive_plaintexts
             .iter()
             .all(|plaintext| !serialized_command.contains(plaintext)));
         let acknowledgement = command_executor.execute(command.clone()).await?;
-        assert_secret_file_modes(&secret_namespace_dir, &[0o400])?;
+        assert_secret_file_modes(
+            docker_secret_directory
+                .as_deref()
+                .ok_or("Docker Secret directory was not retained")?,
+            &[0o400],
+        )?;
         assert_eq!(
             command_executor.execute(command.clone()).await?,
             acknowledgement
         );
-        assert_tree_excludes_plaintext(state_directory.path(), sensitive_plaintexts)?;
-        let observation = match &acknowledgement.outcome {
+        assert_tree_excludes_plaintext(
+            docker_state_directory
+                .as_ref()
+                .ok_or("Docker state directory was not retained")?
+                .path(),
+            sensitive_plaintexts,
+        )?;
+        match &acknowledgement.outcome {
             a3s_cloud_contracts::NodeCommandOutcome::Succeeded { result } => {
                 match result.as_ref() {
-                    a3s_cloud_contracts::NodeCommandResult::RuntimeApplied { observation } => {
-                        observation.as_ref().clone()
-                    }
+                    a3s_cloud_contracts::NodeCommandResult::RuntimeApplied { .. } => {}
                     _ => return Err("Docker command returned the wrong result kind".into()),
                 }
             }
             outcome => return Err(format!("Docker Runtime apply failed: {outcome:?}").into()),
-        };
+        }
+        let runtime = docker_runtime
+            .as_ref()
+            .ok_or("Docker Runtime was not retained")?;
         log_recovery = Some(
             persist_redacted_docker_logs(
                 postgres_url,
@@ -245,49 +372,18 @@ pub async fn exercise_deployment_flow(
             )
             .await?,
         );
-        let observed_at = acknowledgement.completed_at;
-        docker_runtime = Some(runtime);
-        docker_state_directory = Some(state_directory);
-        docker_secret_directory = Some(secret_namespace_dir);
-        (observation, Some(acknowledgement), observed_at)
+        acknowledgement
     } else {
-        (healthy_observation(&request.spec)?, None, Utc::now())
+        runtime_apply_acknowledgement(&command, healthy_observation(&request.spec)?)?
     };
-    let sent_at = Utc::now().max(observed_at);
-    node_repository
-        .record_observations(
-            NodeObservationBatch {
-                schema: NodeObservationBatch::SCHEMA.into(),
-                node_id: node_id.as_uuid(),
-                agent_instance_id,
-                sent_at,
-                heartbeat: NodeHeartbeat {
-                    schema: NodeHeartbeat::SCHEMA.into(),
-                    node_id: node_id.as_uuid(),
-                    agent_instance_id,
-                    observed_at: sent_at,
-                    agent_version: "0.1.0".into(),
-                    runtime_capabilities: capabilities.clone(),
-                },
-                observations: vec![RuntimeObservationReport {
-                    report_id: command.command_id,
-                    command_id: Some(command.command_id),
-                    observed_at,
-                    observation,
-                }],
-            }
-            .into(),
-            observed_at,
-        )
-        .await?;
-    if let Some(acknowledgement) = acknowledgement {
-        assert!(
-            !node_repository
-                .acknowledge_command(acknowledgement, sent_at)
-                .await?
-                .replayed
-        );
-    }
+    persist_command_result(
+        &node_repository,
+        node_id,
+        agent_instance_id,
+        capabilities.clone(),
+        acknowledgement,
+    )
+    .await?;
     let before_restart = workload_repository
         .find_deployment(organization_id, deployment_id)
         .await?;
@@ -374,6 +470,7 @@ pub async fn exercise_deployment_flow(
     let workload_reconciler = WorkloadRuntimeReconciler::new(
         target_port,
         runtime_control,
+        Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
         Duration::from_millis(1),
         Duration::from_secs(10),
         Duration::from_secs(5),
@@ -460,10 +557,20 @@ pub async fn exercise_deployment_flow(
         .ok_or("workload reconciliation did not dispatch Runtime recovery")?;
     let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply {
         request: recovery_request,
+        resource_claim: recovery_binding,
     } = &recovery_command.payload
     else {
         return Err("workload reconciliation recovery is not Runtime apply".into());
     };
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply {
+        resource_claim: original_binding,
+        ..
+    } = &command.payload
+    else {
+        unreachable!("validated deployment Runtime apply");
+    };
+    assert_eq!(recovery_binding, original_binding);
+    assert!(recovery_binding.is_some());
     assert_eq!(recovery_request.spec.generation, request.spec.generation);
     assert_eq!(recovery_request.spec.digest()?, request.spec.digest()?);
     assert_eq!(
@@ -475,20 +582,10 @@ pub async fn exercise_deployment_flow(
         node_id,
         agent_instance_id,
         capabilities.clone(),
-        NodeCommandAck {
-            schema: NodeCommandAck::SCHEMA.into(),
-            command_id: recovery_command.command_id,
-            lease_id: recovery_command.lease_id,
-            node_id: recovery_command.node_id,
-            sequence: recovery_command.sequence,
-            payload_digest: recovery_command.payload_digest.clone(),
-            completed_at: Utc::now(),
-            outcome: NodeCommandOutcome::Succeeded {
-                result: Box::new(NodeCommandResult::RuntimeApplied {
-                    observation: Box::new(healthy_observation(&request.spec)?),
-                }),
-            },
-        },
+        runtime_apply_acknowledgement(
+            recovery_command,
+            healthy_observation(&recovery_request.spec)?,
+        )?,
     )
     .await?;
     assert!(workload_reconciler
@@ -782,6 +879,76 @@ pub(super) async fn persist_command_result(
     Ok(())
 }
 
+pub(super) fn resource_claim_acknowledgement(
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+) -> Result<NodeCommandAck, Box<dyn std::error::Error>> {
+    let completed_at = Utc::now().max(command.issued_at);
+    let result = match &command.payload {
+        a3s_cloud_contracts::NodeCommandPayload::ResourceClaimPrepare { request } => {
+            NodeCommandResult::ResourceClaimPrepared {
+                prepared: a3s_cloud_contracts::NodeResourceClaimPrepared::new(
+                    request,
+                    completed_at,
+                )?,
+            }
+        }
+        a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { request } => {
+            NodeCommandResult::ResourceClaimReleased {
+                released: a3s_cloud_contracts::NodeResourceClaimReleased::new(
+                    request,
+                    completed_at,
+                )?,
+            }
+        }
+        _ => return Err("node command is not a resource Claim command".into()),
+    };
+    Ok(successful_acknowledgement(command, result, completed_at))
+}
+
+pub(super) fn runtime_apply_acknowledgement(
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+    mut observation: RuntimeObservation,
+) -> Result<NodeCommandAck, Box<dyn std::error::Error>> {
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply {
+        request,
+        resource_claim,
+    } = &command.payload
+    else {
+        return Err("node command is not Runtime apply".into());
+    };
+    observation.validate_against(&request.spec)?;
+    if let Some(binding) = resource_claim {
+        binding.bind_runtime_observation(&mut observation)?;
+    }
+    let completed_at = Utc::now().max(command.issued_at);
+    Ok(successful_acknowledgement(
+        command,
+        NodeCommandResult::RuntimeApplied {
+            observation: Box::new(observation),
+        },
+        completed_at,
+    ))
+}
+
+fn successful_acknowledgement(
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+    result: NodeCommandResult,
+    completed_at: chrono::DateTime<Utc>,
+) -> NodeCommandAck {
+    NodeCommandAck {
+        schema: NodeCommandAck::SCHEMA.into(),
+        command_id: command.command_id,
+        lease_id: command.lease_id,
+        node_id: command.node_id,
+        sequence: command.sequence,
+        payload_digest: command.payload_digest.clone(),
+        completed_at,
+        outcome: NodeCommandOutcome::Succeeded {
+            result: Box::new(result),
+        },
+    }
+}
+
 fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObservation> {
     match &acknowledgement.outcome {
         NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
@@ -792,6 +959,8 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::ResourceClaimPrepared { .. }
+            | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
@@ -801,7 +970,8 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
 async fn ready_node(
     repository: &Arc<PostgresNodeRepository>,
     organization_id: OrganizationId,
-) -> Result<(NodeId, Uuid, RuntimeCapabilities), Box<dyn std::error::Error>> {
+) -> Result<(NodeId, Uuid, RuntimeCapabilities, NodeResourceInventory), Box<dyn std::error::Error>>
+{
     let now = Utc::now();
     let unique = Uuid::now_v7().simple().to_string();
     let node_name = format!("deployment-flow-{}", &unique[..12]);
@@ -858,34 +1028,32 @@ async fn ready_node(
             },
         )
         .await?;
-    repository
-        .record_resource_inventory(
-            NodeResourceInventory::new(
-                reservation.node.id.as_uuid(),
-                agent_instance_id,
-                1,
-                now + ChronoDuration::milliseconds(1),
-                vec![
-                    NodeResourceSlot::new(
-                        ResourceKind::Cpu,
-                        "cpu/shared",
-                        ResourceAllocation::Scalar {
-                            amount: 8_000,
-                            unit: ResourceUnit::MilliCpu,
-                        },
-                    )?,
-                    NodeResourceSlot::new(
-                        ResourceKind::Memory,
-                        "memory/system",
-                        ResourceAllocation::Scalar {
-                            amount: 8 * 1024 * 1024 * 1024,
-                            unit: ResourceUnit::Byte,
-                        },
-                    )?,
-                ],
+    let inventory = NodeResourceInventory::new(
+        reservation.node.id.as_uuid(),
+        agent_instance_id,
+        1,
+        now + ChronoDuration::milliseconds(1),
+        vec![
+            NodeResourceSlot::new(
+                ResourceKind::Cpu,
+                "cpu/shared",
+                ResourceAllocation::Scalar {
+                    amount: 8_000,
+                    unit: ResourceUnit::MilliCpu,
+                },
             )?,
-            now + ChronoDuration::milliseconds(2),
-        )
+            NodeResourceSlot::new(
+                ResourceKind::Memory,
+                "memory/system",
+                ResourceAllocation::Scalar {
+                    amount: 8 * 1024 * 1024 * 1024,
+                    unit: ResourceUnit::Byte,
+                },
+            )?,
+        ],
+    )?;
+    repository
+        .record_resource_inventory(inventory.clone(), now + ChronoDuration::milliseconds(2))
         .await?;
     repository
         .record_heartbeat(NodeHeartbeatUpdate {
@@ -896,7 +1064,12 @@ async fn ready_node(
             observed_at: now + ChronoDuration::milliseconds(3),
         })
         .await?;
-    Ok((reservation.node.id, agent_instance_id, capabilities))
+    Ok((
+        reservation.node.id,
+        agent_instance_id,
+        capabilities,
+        inventory,
+    ))
 }
 
 pub(super) fn healthy_observation(

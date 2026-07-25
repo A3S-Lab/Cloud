@@ -1,12 +1,20 @@
 use super::*;
-use crate::{ResourceAllocation, ResourceKind, ResourceUnit};
+use crate::{
+    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
+    NodeResourceClaimRelease, NodeResourceClaimReleased, ResourceAllocation, ResourceKind,
+    ResourceSlotBinding, ResourceUnit,
+};
 use a3s_runtime::contract::{
-    IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeUnitClass,
+    ArtifactRef, IsolationLevel, NetworkMode, ResourceControl, ResourceLimits, RestartPolicy,
+    RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence, RuntimeFeature,
+    RuntimeHealthObservation, RuntimeHealthState, RuntimeLogChunk, RuntimeLogDiscontinuityReason,
+    RuntimeLogStream, RuntimeNetworkSpec, RuntimeObservation, RuntimeProcessSpec, RuntimeUnitClass,
+    RuntimeUnitSpec, RuntimeUnitState,
 };
 use chrono::{Duration, Utc};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 fn capabilities() -> RuntimeCapabilities {
@@ -81,6 +89,79 @@ fn gateway_snapshot(
     .expect("valid Gateway snapshot")
 }
 
+fn resource_bound_runtime_spec() -> RuntimeUnitSpec {
+    RuntimeUnitSpec {
+        schema: RuntimeUnitSpec::SCHEMA.into(),
+        unit_id: "workload:resource-bound:revision:1".into(),
+        generation: 1,
+        class: RuntimeUnitClass::Service,
+        artifact: ArtifactRef {
+            uri: format!(
+                "oci://registry.example/a3s/resource-bound@sha256:{}",
+                "a".repeat(64)
+            ),
+            digest: format!("sha256:{}", "a".repeat(64)),
+            media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+        },
+        process: RuntimeProcessSpec {
+            command: vec!["/bin/service".into()],
+            args: Vec::new(),
+            working_directory: None,
+            environment: BTreeMap::new(),
+        },
+        mounts: Vec::new(),
+        secrets: Vec::new(),
+        network: RuntimeNetworkSpec {
+            mode: NetworkMode::None,
+            ports: Vec::new(),
+        },
+        resources: ResourceLimits {
+            cpu_millis: 500,
+            memory_bytes: 1024 * 1024,
+            pids: 32,
+            ephemeral_storage_bytes: None,
+            execution_timeout_ms: None,
+        },
+        isolation: IsolationLevel::Container,
+        health: None,
+        restart: RestartPolicy::Always,
+        outputs: Vec::new(),
+        semantics_profile_digest: None,
+    }
+}
+
+fn resource_bound_runtime_observation(spec: &RuntimeUnitSpec) -> RuntimeObservation {
+    let spec_digest = spec.digest().expect("Runtime spec digest");
+    RuntimeObservation {
+        schema: RuntimeObservation::SCHEMA.into(),
+        unit_id: spec.unit_id.clone(),
+        generation: spec.generation,
+        spec_digest: spec_digest.clone(),
+        class: spec.class,
+        state: RuntimeUnitState::Running,
+        provider_resource_id: Some("provider-resource-1".into()),
+        provider_build: Some("provider-build-1".into()),
+        observed_at_ms: 1_000,
+        started_at_ms: Some(1_000),
+        finished_at_ms: None,
+        health: Some(RuntimeHealthObservation {
+            state: RuntimeHealthState::Healthy,
+            checked_at_ms: 1_000,
+            message: None,
+        }),
+        outputs: Vec::new(),
+        usage: None,
+        evidence: Some(RuntimeEvidence {
+            provider_build: "provider-build-1".into(),
+            spec_digest,
+            semantics_profile_digest: None,
+            claims: BTreeMap::new(),
+        }),
+        provider_attestation: None,
+        failure: None,
+    }
+}
+
 #[test]
 fn enrollment_is_closed_and_requires_a_real_token_shape() {
     let request = NodeEnrollmentRequest {
@@ -132,6 +213,207 @@ fn command_digest_generation_and_expiry_are_bound() {
             .expect_err("generation conflict"),
         "command generation does not match its payload"
     );
+}
+
+#[test]
+fn resource_claim_commands_bind_inventory_runtime_and_exact_agent_evidence() {
+    let node_id = Uuid::now_v7();
+    let agent_instance_id = Uuid::now_v7();
+    let claim_id = Uuid::now_v7();
+    let now = Utc::now();
+    let inventory = NodeResourceInventory::new(
+        node_id,
+        agent_instance_id,
+        7,
+        now,
+        vec![
+            NodeResourceSlot::new(
+                ResourceKind::Cpu,
+                "cpu/shared",
+                ResourceAllocation::Scalar {
+                    amount: 4_000,
+                    unit: ResourceUnit::MilliCpu,
+                },
+            )
+            .expect("CPU inventory"),
+            NodeResourceSlot::new(
+                ResourceKind::Memory,
+                "memory/system",
+                ResourceAllocation::Scalar {
+                    amount: 8 * 1024 * 1024,
+                    unit: ResourceUnit::Byte,
+                },
+            )
+            .expect("memory inventory"),
+        ],
+    )
+    .expect("resource inventory");
+    let spec = resource_bound_runtime_spec();
+    let binding = NodeResourceClaimBinding {
+        schema: NodeResourceClaimBinding::SCHEMA.into(),
+        claim_id,
+        node_id,
+        agent_instance_id,
+        inventory_generation: inventory.generation,
+        inventory_digest: inventory.digest.clone(),
+        runtime_unit_id: spec.unit_id.clone(),
+        runtime_generation: spec.generation,
+        topology_digest: format!("sha256:{}", "b".repeat(64)),
+        slots: vec![
+            ResourceSlotBinding {
+                kind: ResourceKind::Cpu,
+                stable_resource_id: "cpu/shared".into(),
+                allocation: ResourceAllocation::Scalar {
+                    amount: spec.resources.cpu_millis,
+                    unit: ResourceUnit::MilliCpu,
+                },
+                slot_generation: 3,
+                fence_token: Uuid::now_v7(),
+            },
+            ResourceSlotBinding {
+                kind: ResourceKind::Memory,
+                stable_resource_id: "memory/system".into(),
+                allocation: ResourceAllocation::Scalar {
+                    amount: spec.resources.memory_bytes,
+                    unit: ResourceUnit::Byte,
+                },
+                slot_generation: 4,
+                fence_token: Uuid::now_v7(),
+            },
+        ],
+    };
+    binding
+        .validate_inventory(&inventory)
+        .expect("inventory-bound claim");
+    binding
+        .validate_runtime_spec(&spec)
+        .expect("Runtime-bound claim");
+
+    let prepare = NodeResourceClaimPrepare {
+        schema: NodeResourceClaimPrepare::SCHEMA.into(),
+        claim_generation: 1,
+        claim_digest: format!("sha256:{}", "c".repeat(64)),
+        binding: binding.clone(),
+    };
+    let mut prepare_metadata = metadata(1);
+    prepare_metadata.node_id = node_id;
+    prepare_metadata.aggregate_id = claim_id;
+    let prepare_command = NodeCommandEnvelope::new(
+        prepare_metadata,
+        NodeCommandPayload::ResourceClaimPrepare {
+            request: Box::new(prepare.clone()),
+        },
+    )
+    .expect("resource claim prepare command");
+    let prepared = NodeResourceClaimPrepared::new(
+        &prepare,
+        prepare_command.issued_at + Duration::milliseconds(1),
+    )
+    .expect("prepared evidence");
+    let prepare_ack = NodeCommandAck {
+        schema: NodeCommandAck::SCHEMA.into(),
+        command_id: prepare_command.command_id,
+        lease_id: prepare_command.lease_id,
+        node_id,
+        sequence: prepare_command.sequence,
+        payload_digest: prepare_command.payload_digest.clone(),
+        completed_at: prepared.prepared_at,
+        outcome: NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::ResourceClaimPrepared {
+                prepared: prepared.clone(),
+            }),
+        },
+    };
+    prepare_ack
+        .validate_against(&prepare_command)
+        .expect("exact prepare acknowledgement");
+
+    let mut observation = resource_bound_runtime_observation(&spec);
+    binding
+        .bind_runtime_observation(&mut observation)
+        .expect("bind Runtime observation");
+    binding
+        .validate_runtime_observation(&observation)
+        .expect("allocation-binding evidence");
+    let mut apply_metadata = metadata(2);
+    apply_metadata.node_id = node_id;
+    let apply_command = NodeCommandEnvelope::new(
+        apply_metadata,
+        NodeCommandPayload::RuntimeApply {
+            request: Box::new(RuntimeApplyRequest {
+                schema: RuntimeApplyRequest::SCHEMA.into(),
+                request_id: "resource-bound-apply".into(),
+                deadline_at_ms: None,
+                spec,
+            }),
+            resource_claim: Some(Box::new(binding.clone())),
+        },
+    )
+    .expect("resource-bound Runtime apply");
+    let apply_ack = NodeCommandAck {
+        schema: NodeCommandAck::SCHEMA.into(),
+        command_id: apply_command.command_id,
+        lease_id: apply_command.lease_id,
+        node_id,
+        sequence: apply_command.sequence,
+        payload_digest: apply_command.payload_digest.clone(),
+        completed_at: apply_command.issued_at + Duration::milliseconds(1),
+        outcome: NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::RuntimeApplied {
+                observation: Box::new(observation),
+            }),
+        },
+    };
+    apply_ack
+        .validate_against(&apply_command)
+        .expect("resource-bound Runtime acknowledgement");
+
+    let release = NodeResourceClaimRelease {
+        schema: NodeResourceClaimRelease::SCHEMA.into(),
+        claim_generation: 2,
+        claim_digest: format!("sha256:{}", "d".repeat(64)),
+        binding,
+    };
+    let mut release_metadata = metadata(3);
+    release_metadata.node_id = node_id;
+    release_metadata.aggregate_id = claim_id;
+    let release_command = NodeCommandEnvelope::new(
+        release_metadata,
+        NodeCommandPayload::ResourceClaimRelease {
+            request: Box::new(release.clone()),
+        },
+    )
+    .expect("resource claim release command");
+    let released = NodeResourceClaimReleased::new(
+        &release,
+        release_command.issued_at + Duration::milliseconds(1),
+    )
+    .expect("released evidence");
+    let release_ack = NodeCommandAck {
+        schema: NodeCommandAck::SCHEMA.into(),
+        command_id: release_command.command_id,
+        lease_id: release_command.lease_id,
+        node_id,
+        sequence: release_command.sequence,
+        payload_digest: release_command.payload_digest.clone(),
+        completed_at: released.released_at,
+        outcome: NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::ResourceClaimReleased {
+                released: released.clone(),
+            }),
+        },
+    };
+    release_ack
+        .validate_against(&release_command)
+        .expect("exact release acknowledgement");
+
+    let mut changed = released;
+    changed.slots[0].slot_generation += 1;
+    let mut changed_ack = release_ack;
+    changed_ack.outcome = NodeCommandOutcome::Succeeded {
+        result: Box::new(NodeCommandResult::ResourceClaimReleased { released: changed }),
+    };
+    assert!(changed_ack.validate_against(&release_command).is_err());
 }
 
 #[test]

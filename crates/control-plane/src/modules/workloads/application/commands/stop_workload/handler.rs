@@ -3,6 +3,7 @@ use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, OperationId, RepositoryError};
+use crate::modules::workloads::application::{STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION};
 use crate::modules::workloads::domain::events::WorkloadStopRequested;
 use crate::modules::workloads::domain::repositories::{
     IWorkloadRepository, RequestWorkloadStopBundle,
@@ -64,7 +65,8 @@ impl CommandHandler<StopWorkload> for StopWorkloadHandler {
                 workload.organization_id,
                 OperationSubject::new("workload", workload.id.as_uuid())
                     .map_err(BootError::Internal)?,
-                WorkflowIdentity::new("cloud.workload.stop", "1").map_err(BootError::Internal)?,
+                WorkflowIdentity::new(STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION)
+                    .map_err(BootError::Internal)?,
                 serde_json::json!({
                     "operationId": operation_id,
                     "organizationId": workload.organization_id,

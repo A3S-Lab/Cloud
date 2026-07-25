@@ -407,6 +407,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/043_shared_resource_capacity.sql"
             )),
         ),
+        Migration::new(
+            "044",
+            "Agent resource Claim commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/044_resource_claim_commands.sql"
+            )),
+        ),
     ]
 }
 

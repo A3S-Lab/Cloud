@@ -21,6 +21,13 @@ trait ResourceInventoryDetector: Send + Sync {
     async fn detect(&self) -> Result<Vec<NodeResourceSlot>, ResourceInventoryError>;
 }
 
+#[async_trait]
+pub trait NodeResourceInventoryAuthority: Send + Sync {
+    async fn current_resource_inventory(
+        &self,
+    ) -> Result<NodeResourceInventory, ResourceInventoryError>;
+}
+
 #[derive(Debug, Clone)]
 struct HostResourceInventoryDetector {
     state_directory: PathBuf,
@@ -187,6 +194,12 @@ impl ResourceInventoryManager {
     pub(crate) async fn ensure_reported(
         &self,
     ) -> Result<NodeInventoryReference, ResourceInventoryError> {
+        Ok(self.ensure_reported_inventory().await?.reference())
+    }
+
+    async fn ensure_reported_inventory(
+        &self,
+    ) -> Result<NodeResourceInventory, ResourceInventoryError> {
         let mut confirmed = self.confirmed.lock().await;
         let slots = self.detector.detect().await?;
         let inventory = self
@@ -209,7 +222,16 @@ impl ResourceInventoryManager {
             }
             *confirmed = Some(reference.clone());
         }
-        Ok(reference)
+        Ok(inventory)
+    }
+}
+
+#[async_trait]
+impl NodeResourceInventoryAuthority for ResourceInventoryManager {
+    async fn current_resource_inventory(
+        &self,
+    ) -> Result<NodeResourceInventory, ResourceInventoryError> {
+        self.ensure_reported_inventory().await
     }
 }
 

@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod queries;
+mod workflow;
 
 pub use commands::cancel_deployment::{
     CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult,
@@ -23,4 +24,8 @@ pub use queries::{
     GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
     WorkloadReplicaQueryResult,
+};
+pub use workflow::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
+    PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };

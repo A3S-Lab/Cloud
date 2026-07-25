@@ -89,10 +89,15 @@ pub async fn recover_provider_apply(
         return Err("Secret-rotation provider crash gate requires real Docker".into());
     }
     command.validate()?;
-    let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+    let NodeCommandPayload::RuntimeApply {
+        request,
+        resource_claim,
+    } = &command.payload
+    else {
         return Err("Secret-rotation provider crash command is not Runtime apply".into());
     };
     let request = request.clone();
+    let resource_claim = resource_claim.as_deref().cloned();
     let provider_socket = docker_socket();
     let state_directory = tempfile::tempdir()?;
     let request_path = state_directory.path().join("runtime-apply-request.json");
@@ -219,6 +224,10 @@ pub async fn recover_provider_apply(
     require_redacted_secret_logs(runtime.as_ref(), &request.spec, sensitive_plaintexts).await?;
     assert_tree_excludes_plaintext(state_directory.path(), sensitive_plaintexts)?;
 
+    let mut acknowledgement_observation = recovered_observation.clone();
+    if let Some(binding) = &resource_claim {
+        binding.bind_runtime_observation(&mut acknowledgement_observation)?;
+    }
     let acknowledgement = NodeCommandAck {
         schema: NodeCommandAck::SCHEMA.into(),
         command_id: command.command_id,
@@ -229,7 +238,7 @@ pub async fn recover_provider_apply(
         completed_at: Utc::now(),
         outcome: NodeCommandOutcome::Succeeded {
             result: Box::new(NodeCommandResult::RuntimeApplied {
-                observation: Box::new(recovered_observation),
+                observation: Box::new(acknowledgement_observation),
             }),
         },
     };

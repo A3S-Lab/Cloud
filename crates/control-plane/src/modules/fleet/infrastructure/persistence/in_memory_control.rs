@@ -99,7 +99,9 @@ impl INodeControlRepository for InMemoryNodeRepository {
             return Err(RepositoryError::NotFound);
         }
 
-        if let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request } = &draft.payload {
+        if let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request, .. } =
+            &draft.payload
+        {
             let requested_generation = draft.payload.generation();
             let requested_digest = request.spec.digest().map_err(RepositoryError::Conflict)?;
             let mut prior_applies = state
@@ -118,6 +120,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
             {
                 let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply {
                     request: existing_request,
+                    ..
                 } = &existing.command.payload
                 else {
                     return Err(RepositoryError::Storage(

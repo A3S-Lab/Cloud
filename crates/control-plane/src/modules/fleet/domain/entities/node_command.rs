@@ -49,10 +49,12 @@ impl NodeCommand {
 
     pub fn kind(&self) -> &'static str {
         match self.payload {
+            NodeCommandPayload::ResourceClaimPrepare { .. } => "resource_claim_prepare",
             NodeCommandPayload::RuntimeApply { .. } => "runtime_apply",
             NodeCommandPayload::RuntimeInspect { .. } => "runtime_inspect",
             NodeCommandPayload::RuntimeStop { .. } => "runtime_stop",
             NodeCommandPayload::RuntimeRemove { .. } => "runtime_remove",
+            NodeCommandPayload::ResourceClaimRelease { .. } => "resource_claim_release",
             NodeCommandPayload::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
         }
     }

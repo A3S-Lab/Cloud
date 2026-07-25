@@ -1,4 +1,5 @@
 mod legacy_workflow;
+mod previous_workflow;
 mod steps;
 mod stop_workflow;
 #[cfg(test)]
@@ -10,6 +11,10 @@ use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeR
 use crate::modules::shared_kernel::domain::{
     DeploymentId, OrganizationId, RepositoryError, ResourceClaimId,
 };
+pub use crate::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
+    PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+};
 use crate::modules::workloads::domain::entities::ResourceClaimState;
 use crate::modules::workloads::domain::repositories::{
     IResourceClaimRepository, IWorkloadRepository,
@@ -19,12 +24,6 @@ use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowI
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
-
-pub const DEPLOYMENT_WORKFLOW_NAME: &str = "cloud.deployment";
-pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "2";
-pub const LEGACY_DEPLOYMENT_WORKFLOW_VERSION: &str = "1";
-pub const STOP_WORKFLOW_NAME: &str = "cloud.workload.stop";
-pub const STOP_WORKFLOW_VERSION: &str = "1";
 
 #[derive(Debug, Clone)]
 pub struct DeploymentFlowConfig {
@@ -165,6 +164,9 @@ impl FlowRuntime for DeploymentFlowRuntime {
         ) {
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION) => {
                 workflow::replay(&self.config, invocation)
+            }
+            (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION) => {
+                previous_workflow::replay(&self.config, invocation)
             }
             (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION) => {
                 legacy_workflow::replay(&self.config, invocation)

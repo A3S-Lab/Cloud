@@ -14,6 +14,9 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, IdempotencyRequest, OperationId, OrganizationId,
     RepositoryError, SecretId, WorkloadId, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+};
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -241,11 +244,13 @@ async fn reconcile_in_transaction(
                     "could not create Secret rotation operation subject: {error}"
                 ))
             })?,
-            WorkflowIdentity::new("cloud.deployment", "2").map_err(|error| {
-                PostgresPersistenceError::Invariant(format!(
-                    "could not create Secret rotation workflow identity: {error}"
-                ))
-            })?,
+            WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION).map_err(
+                |error| {
+                    PostgresPersistenceError::Invariant(format!(
+                        "could not create Secret rotation workflow identity: {error}"
+                    ))
+                },
+            )?,
             serde_json::json!({
                 "deploymentId": deployment.id,
                 "organizationId": workload.organization_id,

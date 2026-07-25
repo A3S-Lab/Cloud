@@ -217,13 +217,6 @@ pub(super) async fn observe_cleanup(
                     })
                 }
             },
-            NodeCommandOutcome::Rejected { failure }
-                if matches!(failure.code.as_str(), "not_found" | "stale_generation") =>
-            {
-                return Ok(CleanupObserveStepOutput::Ready {
-                    cleaned_at: acknowledgement.completed_at,
-                })
-            }
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
                 let now = Utc::now();
                 if failure.retryable && now < input.dispatched.cleanup_deadline {
@@ -268,6 +261,224 @@ pub(super) async fn observe_cleanup(
             .dispatched
             .result_deadline
             .min(input.dispatched.cleanup_deadline),
+    })
+}
+
+pub(super) async fn dispatch_failed(
+    runtime: &DeploymentFlowRuntime,
+    input: CleanupDispatchStepInput,
+) -> a3s_flow::Result<CleanupDispatchStepOutput> {
+    let deployment = runtime
+        .workloads
+        .find_deployment(input.resolved.organization_id, input.resolved.deployment_id)
+        .await
+        .map_err(|error| {
+            flow_error("could not load failed candidate for Runtime cleanup", error)
+        })?;
+    validate_resolved_deployment(&input.resolved, &deployment)?;
+    if !matches!(
+        deployment.status,
+        DeploymentStatus::Resolving
+            | DeploymentStatus::Scheduled
+            | DeploymentStatus::Applying
+            | DeploymentStatus::Verifying
+    ) {
+        return Err(FlowError::Runtime(format!(
+            "failed candidate cannot clean up from {}",
+            deployment.status.as_str()
+        )));
+    }
+    let cleanup_deadline = input
+        .resolved
+        .convergence_deadline
+        .checked_add_signed(runtime.config.cleanup_timeout)
+        .ok_or_else(|| FlowError::Runtime("failed candidate cleanup deadline overflowed".into()))?;
+    let now = Utc::now().max(deployment.updated_at);
+    if now >= cleanup_deadline {
+        return Ok(CleanupDispatchStepOutput::Failed {
+            reason: "failed candidate Runtime was not fenced before its cleanup deadline".into(),
+        });
+    }
+    if deployment.command_id.is_none() {
+        return Ok(CleanupDispatchStepOutput::NotRequired { cleaned_at: now });
+    }
+    let node_id = deployment
+        .node_id
+        .ok_or_else(|| FlowError::Runtime("failed candidate omitted its Runtime node".into()))?;
+    let issued_at = input.issued_at.unwrap_or(now).max(deployment.updated_at);
+    let not_after = issued_at
+        .checked_add_signed(runtime.config.command_ttl)
+        .ok_or_else(|| FlowError::Runtime("failed cleanup command deadline overflowed".into()))?
+        .min(cleanup_deadline);
+    let runtime_deadline = issued_at
+        .checked_add_signed(runtime.config.runtime_stop_timeout)
+        .ok_or_else(|| FlowError::Runtime("failed Runtime stop deadline overflowed".into()))?
+        .min(cleanup_deadline);
+    let result_deadline = not_after.min(runtime_deadline);
+    if now >= result_deadline {
+        return Ok(CleanupDispatchStepOutput::Retry {
+            reason: "failed Runtime cleanup attempt expired before dispatch".into(),
+            next_attempt_at: now,
+            deadline_at: cleanup_deadline,
+        });
+    }
+    let command_id = failed_cleanup_command_id(deployment.id, input.attempt);
+    let payload = NodeCommandPayload::RuntimeStop {
+        request: RuntimeActionRequest {
+            schema: RuntimeActionRequest::SCHEMA.into(),
+            request_id: format!("deployment:{}:failed-stop:{}", deployment.id, input.attempt),
+            unit_id: input.resolved.spec.unit_id.clone(),
+            generation: input.resolved.spec.generation,
+            deadline_at_ms: Some(timestamp_millis(runtime_deadline)?),
+        },
+    };
+    let command = runtime
+        .node_control
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: command_id,
+            node_id,
+            aggregate_id: deployment.workload_id.as_uuid(),
+            payload,
+            issued_at,
+            not_after,
+            correlation_id: deployment.operation_id.as_uuid(),
+        })
+        .await
+        .map_err(|error| flow_error("could not enqueue failed Runtime cleanup", error))?
+        .value;
+    if command.id != command_id || command.node_id != node_id {
+        return Err(FlowError::Runtime(
+            "failed Runtime cleanup command identity changed".into(),
+        ));
+    }
+    let result_deadline = stop_result_deadline(&command, &input.resolved.spec)?;
+    Ok(CleanupDispatchStepOutput::Ready {
+        dispatched: DispatchedCleanup {
+            node_id,
+            command_id,
+            result_deadline,
+            cleanup_deadline,
+            attempt: input.attempt,
+        },
+    })
+}
+
+pub(super) async fn observe_failed(
+    runtime: &DeploymentFlowRuntime,
+    input: CleanupObserveStepInput,
+) -> a3s_flow::Result<CleanupObserveStepOutput> {
+    let deployment = runtime
+        .workloads
+        .find_deployment(input.resolved.organization_id, input.resolved.deployment_id)
+        .await
+        .map_err(|error| {
+            flow_error("could not load failed candidate cleanup observation", error)
+        })?;
+    validate_resolved_deployment(&input.resolved, &deployment)?;
+    if !matches!(
+        deployment.status,
+        DeploymentStatus::Applying | DeploymentStatus::Verifying
+    ) || deployment.node_id != Some(input.dispatched.node_id)
+    {
+        return Err(FlowError::Runtime(
+            "failed candidate cleanup observation changed its Runtime identity".into(),
+        ));
+    }
+
+    if let Some(record) = runtime
+        .node_control
+        .latest_runtime_observation(
+            input.dispatched.node_id,
+            &input.resolved.spec.unit_id,
+            input.resolved.spec.generation,
+        )
+        .await
+        .map_err(|error| flow_error("could not load failed Runtime cleanup observation", error))?
+    {
+        if record.command_id == Some(input.dispatched.command_id)
+            && record.observation.state == RuntimeUnitState::Stopped
+        {
+            return Ok(CleanupObserveStepOutput::Ready {
+                cleaned_at: record.received_at,
+            });
+        }
+    }
+    if let Some(acknowledgement) = runtime
+        .node_control
+        .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
+        .await
+        .map_err(|error| {
+            flow_error(
+                "could not load failed Runtime cleanup acknowledgement",
+                error,
+            )
+        })?
+    {
+        match acknowledgement.outcome {
+            NodeCommandOutcome::Succeeded { result } => {
+                match result.as_ref() {
+                    a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
+                        inspection: RuntimeInspection::NotFound { .. },
+                    } => {
+                        return Ok(CleanupObserveStepOutput::Ready {
+                            cleaned_at: acknowledgement.completed_at,
+                        })
+                    }
+                    a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
+                        inspection: RuntimeInspection::Found { observation, .. },
+                    } if observation.state == RuntimeUnitState::Stopped => {
+                        return Ok(CleanupObserveStepOutput::Ready {
+                            cleaned_at: acknowledgement.completed_at,
+                        })
+                    }
+                    _ => return Ok(CleanupObserveStepOutput::Failed {
+                        reason:
+                            "failed Runtime cleanup completed without stopped or absent evidence"
+                                .into(),
+                    }),
+                }
+            }
+            NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
+                let now = Utc::now();
+                let reason = bounded_reason(format!("{}: {}", failure.code, failure.message));
+                if (failure.retryable
+                    || matches!(
+                        failure.code.as_str(),
+                        "command_expired" | "stale_generation"
+                    ))
+                    && now < input.dispatched.cleanup_deadline
+                {
+                    return Ok(CleanupObserveStepOutput::Retry {
+                        reason,
+                        next_attempt_at: now,
+                        deadline_at: input.dispatched.cleanup_deadline,
+                    });
+                }
+                return Ok(CleanupObserveStepOutput::Failed { reason });
+            }
+        }
+    }
+    let now = Utc::now();
+    if now >= input.dispatched.cleanup_deadline {
+        return Ok(CleanupObserveStepOutput::Failed {
+            reason: "failed candidate Runtime was not fenced before its cleanup deadline".into(),
+        });
+    }
+    if now >= input.dispatched.result_deadline {
+        return Ok(CleanupObserveStepOutput::Retry {
+            reason: "failed Runtime cleanup produced no durable fencing evidence".into(),
+            next_attempt_at: now,
+            deadline_at: input.dispatched.cleanup_deadline,
+        });
+    }
+    let deadline_at = input
+        .dispatched
+        .result_deadline
+        .min(input.dispatched.cleanup_deadline);
+    Ok(CleanupObserveStepOutput::Pending {
+        reason: "waiting for failed Runtime stopped or absent evidence".into(),
+        next_poll_at: next_poll(now, runtime.config.cleanup_poll, deadline_at)?,
+        deadline_at,
     })
 }
 
@@ -336,5 +547,15 @@ fn cleanup_command_id(
     NodeCommandId::from_uuid(Uuid::new_v5(
         &deployment_id.as_uuid(),
         format!("runtime-stop:{attempt}").as_bytes(),
+    ))
+}
+
+fn failed_cleanup_command_id(
+    deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+    attempt: u32,
+) -> NodeCommandId {
+    NodeCommandId::from_uuid(Uuid::new_v5(
+        &deployment_id.as_uuid(),
+        format!("failed-runtime-stop:{attempt}").as_bytes(),
     ))
 }

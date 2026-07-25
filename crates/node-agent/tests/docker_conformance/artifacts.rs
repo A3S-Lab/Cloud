@@ -106,6 +106,7 @@ impl DockerConformanceArtifacts {
                     deadline_at_ms: None,
                     spec: spec.clone(),
                 }),
+                resource_claim: None,
             },
         )
         .map_err(RuntimeError::InvalidRequest)?;

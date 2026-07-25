@@ -149,8 +149,55 @@ candidate waits for the exact Gateway acknowledgement and atomically retargets
 routes before retiring C. The PostgreSQL application gate calls the public
 rollback endpoint, verifies the new generation exactly clones the older
 resolved template and records `rollbackSourceRevisionId` in
-`cloud.deployment@2`, then proves durable idempotent replay still succeeds after
+`cloud.deployment@3`, then proves durable idempotent replay still succeeds after
 the workload stops.
+
+## Cloud Resource Claim lifecycle acceptance
+
+Every new workload deployment uses `cloud.deployment@3` and the exact sequence:
+
+```text
+database reserve
+  -> Agent-journaled Claim prepare
+  -> resource-bound Runtime apply
+  -> matching Claim ID and binding-digest observation
+  -> Runtime stop/remove evidence
+  -> higher-generation Agent Claim release
+```
+
+Versions 1 and 2 remain registered only for persisted Flow replay. The ordinary
+node-agent unit gate reconstructs the command journal after prepare, apply,
+stop, and release and rejects missing bindings, changed inventory, conflicting
+slots, premature release, and generation/digest regression. Run its focused
+restart case with:
+
+```bash
+cargo test -p a3s-cloud-node-agent --lib \
+  resource_claim_prepare_bind_and_release_are_restart_safe_and_fenced \
+  --locked
+```
+
+The isolated PostgreSQL 17 gate exercises reservation-before-placement
+recovery, real command leasing, exact prepare/apply acknowledgements,
+allocation-binding persistence, Secret-rotation derivation, update retirement,
+stop-before-release ordering, release retry, and activation-before-retirement
+process death. It also proves that rejected `not_found` or `stale_generation`
+stop outcomes do not fence a bound Claim:
+
+```bash
+A3S_CLOUD_TEST_POSTGRES_URL=postgres://USER:PASSWORD@HOST/DATABASE \
+cargo test -p a3s-cloud-control-plane \
+  --test postgres_integration \
+  postgres_foundation_is_migrated_atomic_and_idempotent \
+  --locked -- --nocapture --test-threads=1
+```
+
+When the isolated Cloud consumer environment enables Docker, the same fixture
+executes prepare and bound apply through the real node `CommandExecutor` and
+uses current inventory evidence. The remaining `H0.1` certification is a
+dedicated process-death run that records one real provider unit for one replica
+generation and proves no Claim becomes reusable before exact Runtime fencing
+and Agent release.
 
 ## Cloud Secret and log acceptance
 

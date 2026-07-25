@@ -116,7 +116,7 @@ reconciliation engine.
   worker-pruned real cache-hit evidence;
 - complete OCI graph validation, deterministic registry targets,
   authenticated digest-only publication, remote verification, replay adoption,
-  cleanup, and explicit deployment handoff to `cloud.deployment@2`; and
+  cleanup, and explicit deployment handoff to `cloud.deployment@3`; and
 - deterministic SPDX 2.3 and SLSA provenance, locally verified Ed25519 DSSE
   signing through persistent local or Vault Transit providers, durable
   evidence restoration, and tenant-scoped API/web inspection and download.
@@ -287,6 +287,17 @@ kinds. Each PostgreSQL reservation serializes the stable slot, totals active
 allocations, rejects over-capacity requests, and advances the slot generation
 and fence token.
 
+Migration 044 extends the durable Fleet command queue with
+`resource_claim_prepare` and `resource_claim_release`. The node agent journals
+the exact Claim generation, digest, current inventory identity, Runtime
+unit/generation, sorted slots, and per-slot fencing evidence before
+acknowledgement. A resource-bound Runtime apply must match that prepared
+binding, and its observation must carry the exact Claim ID and binding digest
+before Cloud persists `bound_to_runtime_unit`. A bound Claim cannot release
+until the same Agent journal has durable Runtime stopped-or-absent evidence;
+the release command advances the Claim generation and digest and returns exact
+slot evidence.
+
 The schema-backed claim CRUD and aggregate JOIN use A3S ORM typed builders. The
 full Workloads repository and its shared idempotency/outbox writes use typed
 builders for every query and mutation, including PostgreSQL advisory and row
@@ -319,10 +330,21 @@ typed capacity conflict. Normal cancellation, retirement, and stop paths may
 cancel only a never-issued `reserved_in_db` claim; later states retain the
 Agent/trusted-fence requirement.
 
-`H0.1` remains in progress. The open exit work is Agent-side prepare/release
-command and journal enforcement, Runtime allocation-binding evidence, and
-process/provider reconciliation proving one provider unit for one replica
-generation.
+New deployment operations use `cloud.deployment@3`; v1 and v2 remain executable
+only for persisted Flow history. Create, update, rollback, source handoff, and
+Secret rotation share one version source. The v3 workflow reserves, prepares,
+binds, retires, and releases through deterministic commands. Reconciliation
+adopts an exact bound Claim, retries failed release with a higher generation and
+digest, and preserves allocation ownership when stop evidence is rejected or
+ambiguous. Unit and PostgreSQL 17 gates cover Agent journal restart after every
+boundary, reservation-before-placement recovery, activation-before-retirement
+process death, healthy update stop-before-release ordering, and Secret-rotation
+replay.
+
+`H0.1` remains in progress only for the isolated real-provider process-death
+certification that proves one provider unit for one replica generation and no
+prematurely reusable Claim. Its application, protocol, journal, reconciliation,
+and persistence slices are implemented.
 
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
@@ -401,9 +423,9 @@ The default portfolio priority is:
 2. finish the remaining `G0` external private-provider and signed-evidence
    process-death gates;
 3. advance `C0.1` and the first `S0` foundation independently when staffed;
-4. finish the remaining `H0.1` claim-command, Runtime-binding, and
-   reconciliation work while beginning `I0.0`, then follow the ordered
-   inference slices without bypassing their generic platform dependencies;
+4. certify the implemented `H0.1` Claim lifecycle against the isolated real
+   provider while beginning `I0.0`, then follow the ordered inference slices
+   without bypassing their generic platform dependencies;
 5. start `P0` and `A0` only on the verified `G0` contracts they consume;
 6. advance `H0.2` and `H0.3` as real consumers require target projection and
    multi-node placement; and

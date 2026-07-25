@@ -1,5 +1,6 @@
 use crate::deployment_flow_support::{
-    healthy_observation, persist_command_result, DeploymentFlowFixture,
+    healthy_observation, persist_command_result, resource_claim_acknowledgement,
+    runtime_apply_acknowledgement, DeploymentFlowFixture,
 };
 use a3s_cloud_contracts::{
     CloudSecretReference, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
@@ -16,13 +17,15 @@ use a3s_cloud_control_plane::modules::operations::{
     PostgresOperationRepository, ReconcileOperationsHandler,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DeploymentId, OperationId, OrganizationId, SecretId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, OperationId, OrganizationId, ResourceClaimId, SecretId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
-    IOciArtifactResolver, ISecretRotationRestartRepository, IWorkloadRepository, OciArtifact,
-    OciArtifactReference, OciArtifactResolutionError, OciRegistryCredentialReference,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository, SecretRotationRestartReconciler,
+    IOciArtifactResolver, IResourceClaimRepository, ISecretRotationRestartRepository,
+    IWorkloadRepository, OciArtifact, OciArtifactReference, OciArtifactResolutionError,
+    OciRegistryCredentialReference, PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    ResourceClaimState, SecretRotationRestartReconciler,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeInspection;
@@ -65,6 +68,13 @@ pub async fn exercise_secret_rotation_restart(
     let source_revision = workload_repository
         .find_revision(organization_id, source_revision_id)
         .await?;
+    let source_deployment_id = workload_repository
+        .list_deployments(organization_id, workload_id)
+        .await?
+        .into_iter()
+        .find(|deployment| deployment.revision_id == source_revision_id)
+        .ok_or("Secret rotation fixture has no source deployment")?
+        .id;
     assert!(source_revision
         .request
         .secrets
@@ -124,6 +134,18 @@ pub async fn exercise_secret_rotation_restart(
     let target_revision_id = WorkloadRevisionId::from_uuid(target_revision_id);
     let deployment_id = DeploymentId::from_uuid(deployment_id);
     let operation_id = OperationId::from_uuid(operation_id);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(String, String)>(
+                    "select workflow_name, workflow_version from operation_requests where operation_id = ",
+                )
+                .bind(operation_id.as_uuid()),
+            )
+            .await?,
+        ("cloud.deployment".into(), "3".into()),
+        "Secret rotation must derive new deployments with the current workflow"
+    );
 
     let revisions = workload_repository
         .list_revisions(organization_id, workload_id)
@@ -195,6 +217,7 @@ pub async fn exercise_secret_rotation_restart(
         node_repository.clone(),
     )
     .await?;
+    let resource_claims = PostgresResourceClaimRepository::new(executor.clone());
     let operation_repository: Arc<dyn IOperationRepository> =
         Arc::new(PostgresOperationRepository::new(executor.clone()));
     let coordinator = build_coordinator(&flow, operation_repository.clone())?;
@@ -204,11 +227,84 @@ pub async fn exercise_secret_rotation_restart(
             .find_deployment(organization_id, deployment_id)
             .await?
             .status
-            == DeploymentStatus::Applying
+            == DeploymentStatus::Scheduled
         {
             break;
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let scheduled = workload_repository
+        .find_deployment(organization_id, deployment_id)
+        .await?;
+    assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
+    for _ in 0..16 {
+        tokio::time::sleep(Duration::from_millis(6)).await;
+        coordinator.run_once().await?;
+        if resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(deployment_id.as_uuid()),
+            )
+            .await?
+            .prepare_command_id
+            .is_some()
+        {
+            break;
+        }
+    }
+    assert!(resource_claims
+        .find(
+            organization_id,
+            ResourceClaimId::from_uuid(deployment_id.as_uuid()),
+        )
+        .await?
+        .prepare_command_id
+        .is_some());
+    let preparation_lease = node_repository
+        .lease_commands(
+            &NodeCommandLeaseRequest {
+                schema: NodeCommandLeaseRequest::SCHEMA.into(),
+                node_id: node.node_id.as_uuid(),
+                agent_instance_id: node.agent_instance_id,
+                after_sequence: node.after_sequence,
+                max_commands: 10,
+                wait_ms: 0,
+            },
+            Uuid::now_v7(),
+            Utc::now(),
+            Utc::now() + ChronoDuration::seconds(10),
+        )
+        .await?;
+    let preparation = preparation_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                NodeCommandPayload::ResourceClaimPrepare { .. }
+            )
+        })
+        .ok_or("Secret rotation resource preparation command was not leased")?;
+    persist_command_result(
+        &node_repository,
+        node.node_id,
+        node.agent_instance_id,
+        node.capabilities.clone(),
+        resource_claim_acknowledgement(preparation)?,
+    )
+    .await?;
+
+    for _ in 0..12 {
+        tokio::time::sleep(Duration::from_millis(6)).await;
+        coordinator.run_once().await?;
+        if workload_repository
+            .find_deployment(organization_id, deployment_id)
+            .await?
+            .status
+            == DeploymentStatus::Applying
+        {
+            break;
+        }
     }
     let applying = workload_repository
         .find_deployment(organization_id, deployment_id)
@@ -224,7 +320,7 @@ pub async fn exercise_secret_rotation_restart(
                 schema: NodeCommandLeaseRequest::SCHEMA.into(),
                 node_id: node.node_id.as_uuid(),
                 agent_instance_id: node.agent_instance_id,
-                after_sequence: node.after_sequence,
+                after_sequence: preparation.sequence,
                 max_commands: 10,
                 wait_ms: 0,
             },
@@ -238,7 +334,7 @@ pub async fn exercise_secret_rotation_restart(
         .iter()
         .find(|command| command.command_id == command_id.as_uuid())
         .ok_or("Secret rotation Runtime apply command was not leased")?;
-    let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
         return Err("Secret rotation command is not Runtime apply".into());
     };
     assert_eq!(request.spec.generation, target_revision.generation);
@@ -290,20 +386,7 @@ pub async fn exercise_secret_rotation_restart(
     let acknowledgement = if let Some(recovery) = provider_recovery.as_ref() {
         recovery.acknowledgement().clone()
     } else {
-        NodeCommandAck {
-            schema: NodeCommandAck::SCHEMA.into(),
-            command_id: command.command_id,
-            lease_id: command.lease_id,
-            node_id: command.node_id,
-            sequence: command.sequence,
-            payload_digest: command.payload_digest.clone(),
-            completed_at: Utc::now(),
-            outcome: NodeCommandOutcome::Succeeded {
-                result: Box::new(NodeCommandResult::RuntimeApplied {
-                    observation: Box::new(healthy_observation(&request.spec)?),
-                }),
-            },
-        }
+        runtime_apply_acknowledgement(command, healthy_observation(&request.spec)?)?
     };
     persist_command_result(
         &node_repository,
@@ -424,6 +507,43 @@ pub async fn exercise_secret_rotation_restart(
     )
     .await?;
     for _ in 0..12 {
+        tokio::time::sleep(Duration::from_millis(6)).await;
+        coordinator.run_once().await?;
+    }
+    let release_lease = node_repository
+        .lease_commands(
+            &NodeCommandLeaseRequest {
+                schema: NodeCommandLeaseRequest::SCHEMA.into(),
+                node_id: node.node_id.as_uuid(),
+                agent_instance_id: node.agent_instance_id,
+                after_sequence: retirement_command.sequence,
+                max_commands: 10,
+                wait_ms: 0,
+            },
+            Uuid::now_v7(),
+            Utc::now(),
+            Utc::now() + ChronoDuration::seconds(10),
+        )
+        .await?;
+    let release_command = release_lease
+        .commands
+        .iter()
+        .find(|candidate| {
+            matches!(
+                candidate.payload,
+                NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or("Secret rotation previous Claim release command was not leased")?;
+    persist_command_result(
+        &node_repository,
+        node.node_id,
+        node.agent_instance_id,
+        node.capabilities.clone(),
+        resource_claim_acknowledgement(release_command)?,
+    )
+    .await?;
+    for _ in 0..12 {
         coordinator.run_once().await?;
         let deployment = workload_repository
             .find_deployment(organization_id, deployment_id)
@@ -461,10 +581,31 @@ pub async fn exercise_secret_rotation_restart(
         OperationStatus::Succeeded
     );
     assert_eq!(
+        PostgresResourceClaimRepository::new(executor.clone())
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(source_deployment_id.as_uuid()),
+            )
+            .await?
+            .state,
+        ResourceClaimState::Released
+    );
+    assert_eq!(
         database
             .fetch_one_as(
-                sql_query::<i64>("select count(*) from node_commands where payload::text like ",)
-                    .bind(format!("%{}%", target_revision_id)),
+                sql_query::<i64>("select count(*) from node_commands where correlation_id = ",)
+                    .bind(operation_id.as_uuid())
+                    .append(" and command_kind = 'resource_claim_prepare'"),
+            )
+            .await?,
+        1
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from node_commands where correlation_id = ",)
+                    .bind(operation_id.as_uuid())
+                    .append(" and command_kind = 'runtime_apply'"),
             )
             .await?,
         1

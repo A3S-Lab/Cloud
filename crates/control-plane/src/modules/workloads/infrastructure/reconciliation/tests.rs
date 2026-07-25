@@ -5,11 +5,15 @@ use crate::modules::shared_kernel::domain::{
     ResourceName, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentReplicaBinding, HttpHealthCheck, OciArtifact, ServicePort,
+    CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, HttpHealthCheck,
+    OciArtifact, ResourceClaimBindingEvidence, ResourceClaimReservation, ServicePort,
     ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadReplica,
     WorkloadReplicaMember, WorkloadRevision,
 };
-use a3s_cloud_contracts::{NodeCommandFailure, NodeCommandResult};
+use a3s_cloud_contracts::{
+    NodeCommandFailure, NodeCommandResult, NodeResourceClaimPrepare, NodeResourceInventory,
+    NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit,
+};
 use a3s_runtime::contract::{
     RuntimeHealthObservation, RuntimeHealthState, RuntimeObservation, RuntimeUnitClass,
 };
@@ -183,6 +187,7 @@ async fn missing_provider_evidence_reapplies_the_same_revision_once_and_stop_rem
     let reconciler = WorkloadRuntimeReconciler::new(
         targets.clone(),
         control.clone(),
+        Arc::new(crate::modules::workloads::infrastructure::InMemoryResourceClaimRepository::new()),
         Duration::from_secs(10),
         Duration::from_secs(60),
         Duration::from_secs(30),
@@ -224,7 +229,7 @@ async fn missing_provider_evidence_reapplies_the_same_revision_once_and_stop_rem
         .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
         .ok_or("recovery command")?
         .clone();
-    let NodeCommandPayload::RuntimeApply { request } = &recovery.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &recovery.payload else {
         return Err("recovery command payload".into());
     };
     assert_eq!(request.spec.generation, target.revision.generation);
@@ -273,6 +278,202 @@ async fn missing_provider_evidence_reapplies_the_same_revision_once_and_stop_rem
 }
 
 #[tokio::test]
+async fn bound_claim_recovery_reuses_the_exact_durable_prepare_binding(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now();
+    let target = active_target(now - ChronoDuration::minutes(1))?;
+    let spec = project_runtime_spec(&target.revision)?;
+    let node_id = target.deployment.node_id.ok_or("target node")?;
+    let agent_instance_id = Uuid::now_v7();
+    let inventory = NodeResourceInventory::new(
+        node_id.as_uuid(),
+        agent_instance_id,
+        7,
+        now - ChronoDuration::seconds(2),
+        vec![
+            NodeResourceSlot::new(
+                ResourceKind::Cpu,
+                "cpu/shared",
+                ResourceAllocation::Scalar {
+                    amount: 8_000,
+                    unit: ResourceUnit::MilliCpu,
+                },
+            )?,
+            NodeResourceSlot::new(
+                ResourceKind::Memory,
+                "memory/system",
+                ResourceAllocation::Scalar {
+                    amount: 8 * 1024 * 1024 * 1024,
+                    unit: ResourceUnit::Byte,
+                },
+            )?,
+        ],
+    )?;
+    let requirements = CompiledResourceRequirements::compile(
+        &target.revision.resolved_template()?.resources,
+        &inventory,
+    )?;
+    let claims =
+        Arc::new(crate::modules::workloads::infrastructure::InMemoryResourceClaimRepository::new());
+    let reserved = claims
+        .reserve(ResourceClaimReservation {
+            id: ResourceClaimId::from_uuid(target.deployment.id.as_uuid()),
+            binding: target.replica_binding.clone(),
+            node_id,
+            inventory,
+            topology_digest: requirements.topology_digest,
+            slots: requirements.slots,
+            reserved_at: now - ChronoDuration::seconds(1),
+        })
+        .await?
+        .value;
+    let binding = reserved.node_binding(agent_instance_id)?;
+    let control = Arc::new(FakeControl::default());
+    let prepare_command_id = NodeCommandId::new();
+    let prepare = control
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: prepare_command_id,
+            node_id,
+            aggregate_id: reserved.id.as_uuid(),
+            payload: NodeCommandPayload::ResourceClaimPrepare {
+                request: Box::new(NodeResourceClaimPrepare {
+                    schema: NodeResourceClaimPrepare::SCHEMA.into(),
+                    claim_generation: reserved.claim_generation,
+                    claim_digest: reserved.claim_digest.clone(),
+                    binding: binding.clone(),
+                }),
+            },
+            issued_at: now - ChronoDuration::seconds(1),
+            not_after: now + ChronoDuration::minutes(1),
+            correlation_id: target.deployment.operation_id.as_uuid(),
+        })
+        .await?
+        .value;
+    let preparing = claims
+        .begin_preparation(
+            reserved.organization_id,
+            reserved.id,
+            reserved.aggregate_version,
+            prepare.id,
+            prepare.issued_at,
+        )
+        .await?;
+    let binding_digest = binding.digest()?;
+    let prepared = claims
+        .record_prepared(
+            preparing.organization_id,
+            preparing.id,
+            preparing.aggregate_version,
+            prepare.id,
+            binding_digest.clone(),
+            now,
+        )
+        .await?;
+    claims
+        .bind(
+            prepared.organization_id,
+            prepared.id,
+            prepared.aggregate_version,
+            ResourceClaimBindingEvidence {
+                runtime_unit_id: binding.runtime_unit_id.clone(),
+                runtime_generation: binding.runtime_generation,
+                binding_digest,
+                slots: prepared.slot_evidence(),
+                observed_at: now,
+            },
+            now,
+        )
+        .await?;
+
+    let targets = Arc::new(FakeTargets {
+        targets: RwLock::new(vec![target.clone()]),
+    });
+    let mut initial_observation = running_observation(&spec)?;
+    binding.bind_runtime_observation(&mut initial_observation)?;
+    control
+        .set_latest(observation_record(
+            node_id,
+            Uuid::now_v7(),
+            now - ChronoDuration::minutes(1),
+            initial_observation,
+        ))
+        .await;
+    let reconciler = WorkloadRuntimeReconciler::new(
+        targets,
+        control.clone(),
+        claims,
+        Duration::from_secs(10),
+        Duration::from_secs(60),
+        Duration::from_secs(30),
+        100,
+    )?;
+
+    let inspected = reconciler.run_once(now).await?;
+    assert_eq!(inspected.inspect_commands, 1);
+    let inspect = control
+        .commands()
+        .await
+        .into_iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeInspect { .. }))
+        .ok_or("inspect command")?;
+    control
+        .acknowledge(
+            &inspect,
+            NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeInspected {
+                    inspection: RuntimeInspection::NotFound {
+                        schema: RuntimeInspection::SCHEMA.into(),
+                        unit_id: spec.unit_id.clone(),
+                        last_generation: Some(spec.generation),
+                    },
+                }),
+            },
+        )
+        .await;
+
+    let recovered = reconciler
+        .run_once(now + ChronoDuration::seconds(1))
+        .await?;
+    assert_eq!(recovered.recovery_commands, 1);
+    let recovery = control
+        .commands()
+        .await
+        .into_iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
+        .ok_or("bound recovery command")?;
+    let NodeCommandPayload::RuntimeApply {
+        request,
+        resource_claim,
+    } = &recovery.payload
+    else {
+        unreachable!("selected Runtime apply");
+    };
+    assert_eq!(request.spec.digest()?, spec.digest()?);
+    assert_eq!(resource_claim.as_deref(), Some(&binding));
+
+    let mut recovery_observation = running_observation(&spec)?;
+    binding.bind_runtime_observation(&mut recovery_observation)?;
+    control
+        .acknowledge(
+            &recovery,
+            NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeApplied {
+                    observation: Box::new(recovery_observation),
+                }),
+            },
+        )
+        .await;
+    assert_eq!(
+        reconciler
+            .run_once(now + ChronoDuration::seconds(2))
+            .await?
+            .converged,
+        1
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn retryable_inspect_failure_uses_a_new_deterministic_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
@@ -294,6 +495,7 @@ async fn retryable_inspect_failure_uses_a_new_deterministic_command(
     let reconciler = WorkloadRuntimeReconciler::new(
         targets,
         control.clone(),
+        Arc::new(crate::modules::workloads::infrastructure::InMemoryResourceClaimRepository::new()),
         Duration::from_secs(10),
         Duration::from_secs(60),
         Duration::from_secs(30),

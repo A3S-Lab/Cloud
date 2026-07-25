@@ -77,8 +77,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Managed Replica Foundation**: Persist an inference-neutral owner,
   effective placement policy, stable replica/member identity, exact deployment
   binding, current-inventory requirement compilation, shared scalar capacity,
-  and fenced hard-resource claims without exposing Cloud placement identity to
-  Runtime
+  Agent-journaled Claim preparation and release, and Runtime allocation-binding
+  evidence without exposing Cloud placement identity to Runtime
 - **Managed Reachability**: Create tenant-scoped logical Gateway scopes, persist
   ordered physical membership and explicit rollout thresholds, verify domain
   ownership, provision TLS, compile complete expiring ACL snapshots from
@@ -168,15 +168,17 @@ Agent or trusted fencing evidence.
 Migrations 040 and 041 backfill the replica foundation and add claim,
 slot-evidence, and current-lease tables. Migration 043 replaces universal
 active-slot uniqueness with exclusive-kind uniqueness so shared capacities can
-carry multiple bounded claims. The complete Workloads PostgreSQL repository
-uses A3S ORM typed tables and builders for reads, JOINs, ordering, counts,
-inserts, updates, idempotency records, outbox writes, PostgreSQL row and
-advisory locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding
-predicates. No Workloads production persistence file uses raw SQL or a direct
-database driver; an architecture test enforces that boundary. In-memory and
-PostgreSQL 17 gates cover exact replay, competing exclusive and shared
-reservations, over-capacity rejection, stale inventory rejection, fencing,
-release, and generation/token rotation.
+carry multiple bounded claims. Migration 044 admits the versioned
+`resource_claim_prepare` and `resource_claim_release` commands to the durable
+Fleet queue. The complete Workloads PostgreSQL repository uses A3S ORM typed
+tables and builders for reads, JOINs, ordering, counts, inserts, updates,
+idempotency records, outbox writes, PostgreSQL row and advisory locks,
+`SKIP LOCKED`, and parameterized JSONPath Secret-binding predicates. No
+Workloads production persistence file uses raw SQL or a direct database driver;
+an architecture test enforces that boundary. In-memory and PostgreSQL 17 gates
+cover exact replay, competing exclusive and shared reservations, over-capacity
+rejection, stale inventory rejection, fencing, release, and generation/token
+rotation.
 
 Fleet now persists strict `NodeResourceInventory` snapshots, their normalized
 slots, and one current generation/digest head per enrolled node. The node agent
@@ -196,10 +198,27 @@ PostgreSQL 17 gates cover canonical digests, restart reuse, concurrent replay,
 historical replay without head regression, stale-heartbeat rejection, and
 claim rejection after the inventory head advances.
 
-This does not complete `H0.1`: Agent prepare/release commands and journal
-enforcement, Runtime allocation-binding evidence, and process/provider crash
-reconciliation still have to converge through the ordinary deployment
-workflow before the provider-unit exit gate can pass.
+Deployment operations now use `cloud.deployment@3`. After database reservation
+and placement, Flow sends an exact Claim prepare command and waits for the
+Agent's durable journal evidence before it can dispatch Runtime apply. The apply
+envelope carries that prepared binding; the Agent revalidates current inventory
+and Runtime identity, then adds the Claim ID and binding digest to the Runtime
+observation. Cloud persists that evidence before treating the Claim as bound.
+Cancellation, failed-candidate cleanup, prior-revision retirement, and Workload
+stop release a prepared or bound Claim only after stopped-or-absent Runtime
+evidence and an exact higher-generation Agent release acknowledgement.
+
+The Agent reconstructs prepare, bind, stop/remove, and release state from its
+command journal after restart. Control-plane reconciliation adopts exact bound
+Claims, retries release with a new generation and digest, and never interprets
+a rejected `not_found` or `stale_generation` stop as fencing evidence.
+PostgreSQL process-death tests cover reservation-before-placement,
+activation-before-retirement, Secret-rotation recovery, and stop-before-release
+ordering. `cloud.deployment@1` and `@2` remain registered only to replay
+persisted histories; all newly created, updated, rolled-back, source-derived,
+and Secret-rotation deployments use v3. The `H0.1` implementation is complete,
+but the sub-gate remains in progress until its isolated real-provider
+process-death certification is recorded.
 
 `H0.2` now has Cloud-owned logical Gateway scopes plus a Gateway-native
 snapshot and generation-bound private-target foundation. A scope belongs to
@@ -405,9 +424,11 @@ generations until success is proven or a terminal failure is recorded.
 
 An accepted workload template becomes an immutable revision. Mutable OCI tags
 are resolved before scheduling, and only the digest is persisted as deployment
-authority. A deployment selects an eligible node, applies one Runtime Service,
-waits for durable health evidence, publishes the required Gateway state, and
-activates only after the matching edge acknowledgement.
+authority. A v3 deployment reserves current-inventory capacity, prepares the
+exact Claim on the assigned Agent, applies one bound Runtime Service, persists
+matching allocation evidence, waits for durable health, publishes the required
+Gateway state, and activates only after the matching edge acknowledgement.
+Replacement cleanup stops the old Runtime before releasing its Claim.
 
 Update and rollback use the same path. A candidate cannot replace the active
 revision until Runtime health and Gateway cutover succeed. Rollback clones a
@@ -427,7 +448,7 @@ GitHub reference
   -> complete OCI and trusted retry-cache graph validation
   -> deterministic digest-only registry publication
   -> deterministic SPDX/SLSA evidence and locally verified DSSE signature
-  -> explicit cloud.deployment@2 workload handoff
+  -> explicit cloud.deployment@3 workload handoff
 ```
 
 Private access uses short-lived GitHub App credentials that are revalidated for

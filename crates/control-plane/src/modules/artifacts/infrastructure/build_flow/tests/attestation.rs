@@ -31,7 +31,7 @@ async fn lost_attestation_completion_replays_durable_prefix_without_repeating_si
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     record_observation(
@@ -189,7 +189,7 @@ async fn transient_attestation_failure_retries_without_republishing_or_early_cle
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     record_observation(
@@ -291,7 +291,7 @@ async fn terminal_attestation_failure_after_cancel_fails_flow_without_releasing_
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     record_observation(

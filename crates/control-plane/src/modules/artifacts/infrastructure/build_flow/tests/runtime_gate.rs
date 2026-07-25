@@ -207,6 +207,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         1,
         NodeCommandPayload::RuntimeApply {
             request: Box::new(apply),
+            resource_claim: None,
         },
     )?;
     build.dispatch(
@@ -421,6 +422,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         3,
         NodeCommandPayload::RuntimeApply {
             request: Box::new(retry_apply),
+            resource_claim: None,
         },
     )?;
     retry.dispatch(

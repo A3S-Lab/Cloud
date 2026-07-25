@@ -228,13 +228,6 @@ pub(super) async fn observe(
                     })
                 }
             },
-            NodeCommandOutcome::Rejected { failure }
-                if matches!(failure.code.as_str(), "not_found" | "stale_generation") =>
-            {
-                return Ok(RetirementObserveStepOutput::Ready {
-                    retired_at: acknowledgement.completed_at,
-                })
-            }
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
                 let now = Utc::now();
                 if failure.retryable && now < input.dispatched.retirement_deadline {

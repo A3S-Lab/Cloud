@@ -10,7 +10,9 @@ use crate::modules::shared_kernel::domain::{
     WorkloadRevisionId,
 };
 use crate::modules::sources::domain::ISourceRevisionRepository;
-use crate::modules::workloads::application::commands::validate_secret_bindings;
+use crate::modules::workloads::application::{
+    commands::validate_secret_bindings, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+};
 use crate::modules::workloads::domain::entities::{
     Deployment, ExternalBuildReference, OciArtifact, Workload, WorkloadRevision,
 };
@@ -215,7 +217,8 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                 workload.organization_id,
                 OperationSubject::new("deployment", deployment.id.as_uuid())
                     .map_err(BootError::Internal)?,
-                WorkflowIdentity::new("cloud.deployment", "2").map_err(BootError::Internal)?,
+                WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
+                    .map_err(BootError::Internal)?,
                 serde_json::json!({
                     "deploymentId": deployment.id,
                     "organizationId": workload.organization_id,

@@ -498,7 +498,7 @@ pub(super) fn deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
+        WorkflowIdentity::new("cloud.deployment", "3")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -544,7 +544,7 @@ pub(super) fn rollback_deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
+        WorkflowIdentity::new("cloud.deployment", "3")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -615,7 +615,7 @@ pub(super) fn requested_deployment_bundle_with_secrets(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
+        WorkflowIdentity::new("cloud.deployment", "3")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -667,14 +667,137 @@ pub(super) async fn lease(
         .await
 }
 
+pub(super) async fn prepare_and_lease_apply(
+    engine: &FlowEngine,
+    nodes: &InMemoryNodeRepository,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    agent_instance_id: Uuid,
+    after_sequence: u64,
+) -> Result<a3s_cloud_contracts::NodeCommandLeaseResponse, Box<dyn std::error::Error>> {
+    let preparation_lease = lease(nodes, node_id, agent_instance_id, after_sequence).await?;
+    let preparation = preparation_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimPrepare { .. }
+            )
+        })
+        .ok_or("resource preparation command was not leased")?;
+    acknowledge_resource_claim(nodes, preparation).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let apply_lease = lease(nodes, node_id, agent_instance_id, preparation.sequence).await?;
+    if !apply_lease.commands.iter().any(|command| {
+        matches!(
+            command.payload,
+            a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { .. }
+        )
+    }) {
+        return Err("resource-bound Runtime apply was not leased".into());
+    }
+    Ok(apply_lease)
+}
+
+pub(super) async fn release_after_runtime_fence(
+    engine: &FlowEngine,
+    nodes: &InMemoryNodeRepository,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    agent_instance_id: Uuid,
+    after_sequence: u64,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let release_lease = lease(nodes, node_id, agent_instance_id, after_sequence).await?;
+    let release = release_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or_else(|| {
+            format!(
+                "resource release command was not leased; commands={:?}",
+                release_lease
+                    .commands
+                    .iter()
+                    .map(|command| command.payload.schema())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    acknowledge_resource_claim(nodes, release).await?;
+    let sequence = release.sequence;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    Ok(sequence)
+}
+
+pub(super) async fn acknowledge_resource_claim(
+    nodes: &InMemoryNodeRepository,
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let completed_at = Utc::now().max(command.issued_at);
+    let result = match &command.payload {
+        a3s_cloud_contracts::NodeCommandPayload::ResourceClaimPrepare { request } => {
+            a3s_cloud_contracts::NodeCommandResult::ResourceClaimPrepared {
+                prepared: a3s_cloud_contracts::NodeResourceClaimPrepared::new(
+                    request,
+                    completed_at,
+                )?,
+            }
+        }
+        a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { request } => {
+            a3s_cloud_contracts::NodeCommandResult::ResourceClaimReleased {
+                released: a3s_cloud_contracts::NodeResourceClaimReleased::new(
+                    request,
+                    completed_at,
+                )?,
+            }
+        }
+        _ => return Err("node command is not a resource Claim command".into()),
+    };
+    nodes
+        .acknowledge_command(
+            a3s_cloud_contracts::NodeCommandAck {
+                schema: a3s_cloud_contracts::NodeCommandAck::SCHEMA.into(),
+                command_id: command.command_id,
+                lease_id: command.lease_id,
+                node_id: command.node_id,
+                sequence: command.sequence,
+                payload_digest: command.payload_digest.clone(),
+                completed_at,
+                outcome: a3s_cloud_contracts::NodeCommandOutcome::Succeeded {
+                    result: Box::new(result),
+                },
+            },
+            completed_at,
+        )
+        .await?;
+    Ok(())
+}
+
 pub(super) async fn record_observation(
     nodes: &InMemoryNodeRepository,
     node_id: crate::modules::shared_kernel::domain::NodeId,
     agent_instance_id: Uuid,
     capabilities: &RuntimeCapabilities,
     command: &a3s_cloud_contracts::NodeCommandEnvelope,
-    observation: RuntimeObservation,
+    mut observation: RuntimeObservation,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply {
+        resource_claim: Some(binding),
+        ..
+    } = &command.payload
+    {
+        binding.bind_runtime_observation(&mut observation)?;
+    }
     let observed_at = Utc::now();
     nodes
         .record_observations(
@@ -853,6 +976,10 @@ pub(super) fn template(digest_character: char) -> ServiceTemplate {
 }
 
 pub(super) fn workflow_spec() -> WorkflowSpec {
+    WorkflowSpec::rust_embedded("cloud.deployment", "3", "a3s-cloud", "main")
+}
+
+pub(super) fn previous_workflow_spec() -> WorkflowSpec {
     WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main")
 }
 

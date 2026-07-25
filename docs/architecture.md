@@ -47,7 +47,9 @@ recovers deterministic old-revision retirement after activation. Unhealthy,
 mismatched, and rejected outcomes preserve the previous active revision and
 route rows. Manual rollback now selects an older successfully activated
 revision, derives a new generation from its exact resolved template, and reuses
-the version 2 deployment, cutover, and retirement workflow. PostgreSQL API
+the version 3 deployment, Claim, cutover, and retirement workflow. Versions 1
+and 2 remain replay-compatible for histories persisted before the Claim
+protocol. PostgreSQL API
 coverage proves the durable clone and replay contract, the routed suite proves
 exact Gateway cutover, and the isolated Docker suite proves real rollback apply
 and retirement. Workload queries now project the complete immutable requested
@@ -113,7 +115,7 @@ The published-build
 deployment handoff is implemented: it
 accepts an artifact-free service template only for an exact tenant-owned
 successful BuildRun whose source revision and remotely verified digest match,
-then reuses `cloud.deployment@2` with durable source/build lineage.
+then reuses `cloud.deployment@3` with durable source/build lineage.
 Registry publication is implemented and covered by hostile-protocol fixtures
 plus an authenticated private Distribution CI gate. The combined
 Runtime/BuildKit/Registry gate provisions the operator-controlled shared socket
@@ -415,19 +417,25 @@ A deployment follows these durable steps:
    reserve the exact current-inventory capacity under a deterministic Claim ID,
    and then persist the node assignment. Replay recovers the assignment from a
    claim committed before a process crash.
-5. Lease an apply command to that node using `deployment_id` and generation.
-6. Wait for a matching Runtime observation from the node.
-7. Run the declared health check through the actual service path.
-8. When the previous revision owns routes, stage a complete Gateway snapshot
+5. Lease an exact Claim prepare command to that node. The Agent revalidates its
+   current inventory and journals the binding before acknowledging preparation.
+6. Lease a Runtime apply command carrying that prepared binding. The Agent
+   rejects a missing or changed binding and keeps Cloud placement identity
+   outside the nested Runtime request.
+7. Wait for an observation that matches the Runtime unit/generation, Claim ID,
+   and binding digest, then persist the Claim as bound.
+8. Run the declared health check through the actual service path.
+9. When the previous revision owns routes, stage a complete Gateway snapshot
    and a durable `GatewayRouteCutover` without mutating the active route rows.
-9. Wait for an `applied` acknowledgement matching the exact node, command,
+10. Wait for an `applied` acknowledgement matching the exact node, command,
    Gateway revision, and snapshot digest.
-10. Replace all affected route targets atomically and select the healthy
-   candidate as active. The deployment enters `retiring` when a previous
-   Runtime revision exists.
-11. Issue the deterministic stop command for the previous Runtime revision and
-    require durable stopped-or-absent evidence before the deployment becomes
-    terminal `active`.
+11. Replace all affected route targets atomically and select the healthy
+    candidate as active. The deployment enters `retiring` when a previous
+    Runtime revision exists.
+12. Issue the deterministic stop command for the previous Runtime revision and
+    require durable stopped-or-absent evidence.
+13. Release the previous Claim with an exact higher Claim generation/digest and
+    Agent acknowledgement before the deployment becomes terminal `active`.
 
 The `H0.1` persistence foundation overlays this existing workflow rather than
 creating another deployment engine. `WorkloadControl` owns the managed-owner
@@ -485,29 +493,45 @@ also clears the matching ledger owner. Migration 043 limits active-slot
 uniqueness to the exclusive resource kinds and allows multiple bounded scalar
 claims on one CPU, memory, or ephemeral-storage slot.
 
-Migrations 040, 041, and 043 own these tables. The complete Workloads repository
-uses A3S ORM typed table definitions and query builders for ordinary CRUD,
-aggregate reads, the claim/slot JOIN, generation lookup, idempotency, and
-outbox writes. The same typed AST owns transaction-scoped advisory locks,
-targeted row locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding
-predicates. Architecture tests reject raw SQL or direct drivers anywhere in
-Workloads production persistence.
+Migrations 040, 041, and 043 own these tables. Migration 044 admits the
+versioned `resource_claim_prepare` and `resource_claim_release` kinds to the
+durable Fleet command queue. The complete Workloads repository uses A3S ORM
+typed table definitions and query builders for ordinary CRUD, aggregate reads,
+the claim/slot JOIN, generation lookup, idempotency, and outbox writes. The same
+typed AST owns transaction-scoped advisory locks, targeted row locks,
+`SKIP LOCKED`, and parameterized JSONPath Secret-binding predicates.
+Architecture tests reject raw SQL or direct drivers anywhere in Workloads
+production persistence.
 
 The current requirements compiler deterministically maps CPU, memory, and
 optional ephemeral storage to inventory-backed scalar slots and one topology
 digest. PID limits remain Runtime-local. Deployment Flow reserves before
 placement, skips a candidate only for a typed capacity conflict, and recovers
 the reservation-before-placement crash gap. A stopped normal path may cancel
-only an unissued `reserved_in_db` claim with database evidence. The Agent
-prepare/bind/release command path, Runtime allocation evidence, and
-process/provider reconciliation remain open, so `H0.1` is not complete.
+only an unissued `reserved_in_db` claim with database evidence.
 
-New deployment operations use `cloud.deployment@2`. The version 1 workflow is
-registered only to replay runs persisted before routed update semantics. At
-most one nonterminal deployment may exist for a workload. Cancellation is
-available during resolution, scheduling, and apply, but closes when the
-deployment enters `verifying`, because health-verified work may already be
-participating in a Gateway cutover.
+The Agent command journal reconstructs exact prepare, bound Runtime,
+stop/remove fencing, and release state after restart. It rejects a Runtime
+apply that omits or changes an active prepared binding, revalidates that binding
+against current inventory, and adds the Claim ID plus binding digest to apply
+and inspection observations. A bound Claim cannot release until the journal
+contains stopped-or-absent evidence for the same Runtime generation. Cloud
+validates the prepare/release acknowledgement against the exact command,
+persists allocation-binding evidence, retries release by advancing Claim
+generation and digest, and retains ownership when stop or release evidence is
+rejected or ambiguous. Provider `not_found` is fencing evidence only when it is
+the successful inspection carried by a Runtime stop result; a rejected
+`not_found` or `stale_generation` outcome is never accepted as release
+authority.
+
+New deployment operations use `cloud.deployment@3`. Versions 1 and 2 are
+registered only to replay runs persisted before routed-update and
+resource-Claim semantics respectively. Create, update, rollback, source
+handoff, and Secret-rotation derivation use the same application-owned current
+identity. At most one nonterminal deployment may exist for a workload.
+Cancellation is available during resolution, scheduling, and apply, but closes
+when the deployment enters `verifying`, because health-verified work may
+already be participating in a Gateway cutover.
 
 Manual rollback enters this same workflow through:
 
@@ -657,7 +681,7 @@ running workloads in the Secret's project and environment. A workload with a
 nonterminal deployment is deferred. Otherwise the worker clones the resolved
 template, keeps the exact OCI artifact digest and every unrelated field,
 advances all bindings for that Secret, and creates the next immutable
-generation. The revision, deployment, `cloud.deployment@2` operation,
+generation. The revision, deployment, `cloud.deployment@3` operation,
 `workload.deployment.requested` event whose `causation_id` is the Secret event,
 idempotency record, and per-workload restart record commit in one PostgreSQL
 transaction. A terminal event checkpoint is written only when no affected
@@ -1193,7 +1217,7 @@ reservation and retry, one-child parent lineage, the pre-enqueue crash gap,
 operation replay, tenant ownership, foreign-key integrity, cleanup order, and
 optimistic conflicts. The production worker runs this reconciler before the
 generic operation coordinator; a closed Flow router keeps
-`cloud.deployment@1/@2`, `cloud.workload.stop@1`, and
+`cloud.deployment@1/@2/@3`, `cloud.workload.stop@1`, and
 `cloud.build@1/@2/@3` on their own Runtime implementations.
 
 The Artifacts presentation layer exposes environment-scoped BuildRun lists and
@@ -1248,7 +1272,7 @@ validation, authoritative registry publication, and cleanup. A separate
 Workload command resolves only the deterministic successful BuildRun for the
 exact organization, project, environment, and source revision, converts its
 verified publication to a digest-pinned Workload artifact, and reuses
-`cloud.deployment@2`. Its idempotency identity covers the BuildRun, published
+`cloud.deployment@3`. Its idempotency identity covers the BuildRun, published
 digest, name, and complete artifact-free service template. The resulting
 revision retains an `ExternalBuildReference` across rollback and Secret
 rotation so Workload and Operation projections expose the originating source

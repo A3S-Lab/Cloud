@@ -5,6 +5,7 @@ mod error;
 mod gateway;
 mod inventory;
 mod observation;
+mod resource_claim;
 mod runtime_endpoint;
 mod secret;
 #[cfg(test)]
@@ -36,6 +37,11 @@ pub use observation::{
     NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
     NodeObservationBatch, NodeObservationBatchEnvelope, NodeObservationBatchV2,
     NodeObservationReceipt, RuntimeObservationReport,
+};
+pub use resource_claim::{
+    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
+    NodeResourceClaimRelease, NodeResourceClaimReleased, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
+    RUNTIME_RESOURCE_CLAIM_ID_KEY,
 };
 pub use runtime_endpoint::RuntimeServiceEndpoint;
 pub use secret::{CloudSecretReference, NodeSecretMaterialRequest, NodeSecretMaterialResponse};

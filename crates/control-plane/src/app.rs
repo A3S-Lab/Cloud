@@ -411,7 +411,7 @@ pub async fn build_application_with_source_resolver(
     let deployment_runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
             Arc::clone(&workloads),
-            resource_claims,
+            Arc::clone(&resource_claims),
             artifacts,
             Arc::clone(&nodes),
             Arc::clone(&node_control),
@@ -542,6 +542,7 @@ pub async fn build_application_with_source_resolver(
     let workload_reconciler = WorkloadRuntimeReconciler::new(
         workload_targets,
         workload_runtime_control,
+        resource_claims,
         Duration::from_millis(config.deployments.reconcile_interval_ms),
         Duration::from_millis(config.deployments.command_ttl_ms),
         Duration::from_millis(config.deployments.runtime_apply_timeout_ms),

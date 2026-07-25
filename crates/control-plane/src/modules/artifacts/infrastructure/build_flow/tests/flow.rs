@@ -100,7 +100,7 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
     assert_eq!(apply_lease.commands.len(), 1);
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
     assert_eq!(apply.command_id, expected_apply_id.as_uuid());
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     assert_eq!(
@@ -236,7 +236,7 @@ async fn retry_imports_only_its_verified_parent_cache_as_a_read_only_artifact(
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing parent apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("parent build command is not Runtime apply".into());
     };
     record_observation(
@@ -310,7 +310,7 @@ async fn retry_imports_only_its_verified_parent_cache_as_a_read_only_artifact(
     )
     .await?;
     let retry_apply = retry_lease.commands.first().ok_or("missing retry apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &retry_apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &retry_apply.payload else {
         return Err("retry build command is not Runtime apply".into());
     };
     assert_eq!(request.spec.mounts.len(), 4);
@@ -354,7 +354,7 @@ async fn publication_step_replay_does_not_repeat_a_durably_projected_push(
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     record_observation(
@@ -418,7 +418,7 @@ async fn cancellation_racing_a_completed_push_adopts_the_published_artifact(
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     record_observation(
@@ -526,7 +526,7 @@ async fn rejected_runtime_output_is_failed_only_after_cleanup(
     )
     .await?;
     let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request } = &apply.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
         return Err("build command is not Runtime apply".into());
     };
     record_observation(

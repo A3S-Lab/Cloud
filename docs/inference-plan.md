@@ -428,17 +428,20 @@ modes, not placement preferences. Runtime observations echo the opaque
 allocation identity, stable resource IDs, fence tokens, and binding digest;
 Cloud maps that evidence back to its Workloads/Fleet claim record.
 
-Node command v2 adds idempotent `PrepareResourceClaim` and
-`ReleaseResourceClaim` payloads. The Cloud RuntimeApply command envelope may
-reference only a claim that the target agent has durably prepared at the same
-generation and per-slot fence tokens; the nested Runtime request receives only
-the opaque product-neutral binding above. Both Claim commands use
+The generic `H0.1` node protocol now carries idempotent
+`PrepareResourceClaim` and `ReleaseResourceClaim` payloads. The Cloud
+RuntimeApply command envelope may reference only a claim that the target Agent
+has durably prepared at the same generation and per-slot fence tokens; the
+nested Runtime request remains free of Cloud placement identity. Both Claim
+commands use
 `aggregate_id = claim_id` and
 `generation = claim_generation`. Placement generation, inventory
 generation/digest, Runtime unit generation, and the complete sorted slot list
 are payload preconditions covered by `claim_digest`; they are never substituted
 for the command generation. An exact replay returns the journaled result;
 conflicting resources, digest, generation, node, or fence token fail closed.
+The Agent adds the exact Claim ID and binding digest to Runtime observation
+evidence, and Cloud persists that match before treating the Claim as bound.
 
 ### 6.2 Inventory and telemetry
 
@@ -480,13 +483,12 @@ High-frequency utilization, temperature, KV-cache pressure, TTFT, and
 throughput go to the metrics pipeline; they are not desired state or hard
 capacity truth.
 
-Inventory projections use generation compare-and-swap. Database reservation
-already rejects a stale Fleet head. Claim prepare and Runtime apply in the
-remaining Agent/Runtime `H0.1`/`I0.1` path must revalidate the exact inventory
-generation/digest, resource health, partition identity, and topology digest.
-A MIG reconfiguration, device replacement, port-range change, or capacity
-regression invalidates the old candidate instead of being accepted as an
-equivalent node.
+Inventory projections use generation compare-and-swap. Database reservation,
+Agent Claim prepare, and bound Runtime apply already reject a stale generic
+Fleet head. The `I0.1` extension must additionally revalidate accelerator
+health, partition identity, and topology digest. A MIG reconfiguration, device
+replacement, port-range change, or capacity regression invalidates the old
+candidate instead of being accepted as an equivalent node.
 
 `I0.1` adds a small `AcceleratorDetector` infrastructure trait with a
 deterministic virtual detector and a real NVIDIA detector. That slice also
@@ -509,8 +511,10 @@ Claim ID. A committed reservation recovers the exact node after a process
 crash; a typed capacity conflict falls through to the next eligible candidate.
 CPU, memory, and ephemeral-storage slots allow multiple active claims up to
 their scalar capacity. Accelerator, host-port, and volume slots remain
-exclusive. Agent prepare and Runtime bind are still required before this
-pipeline reaches its `H0.1` exit gate.
+exclusive. Agent prepare, bound Runtime evidence, stopped-or-absent fencing,
+and exact Agent release are implemented for the generic scalar path.
+Accelerator-specific enforcement remains an `I0.1` extension over the same
+protocol and journal.
 
 One resource claim follows this durable state machine:
 
@@ -547,6 +551,12 @@ Prepared-TTL cleanup applies only to a never-bound claim and reconciles both
 the server row and agent journal. Failure to obtain release or trusted fencing
 evidence produces an operator-visible `orphaned` claim that continues blocking
 the old resource.
+
+New deployments use `cloud.deployment@3` for this lifecycle. Versions 1 and 2
+remain executable only to replay persisted histories. The Agent reconstructs
+prepare, bind, stop/remove, and release state from its command journal; release
+advances Claim generation and digest, and a rejected `not_found` or
+`stale_generation` stop is never accepted as fencing evidence.
 
 Hard filters are evaluated before scoring:
 
@@ -1010,6 +1020,11 @@ host ports, and volumes. Workloads uses typed A3S ORM queries and
 transaction-scoped locks for both capacity accounting and exact-current Fleet
 head validation; inference does not add another claim store.
 
+Migration 044 admits Claim prepare and release command kinds to the durable
+Fleet queue. It changes no Inference ownership: accelerator extensions reuse
+the same typed Workloads Claim repository, Agent journal, Runtime binding
+evidence, and fenced release protocol.
+
 ## 12. Delivery gates
 
 ### I0.0: contracts and mixed-version safety
@@ -1025,8 +1040,9 @@ head validation; inference does not add another claim store.
 
 - Depend on H0.1 managed-owner, single-replica and generic resource-claim
   foundations; I0 does not create a private claim implementation.
-- Add virtual and NVIDIA inventory, exclusive claim reservation, agent journal,
-  Docker/CDI enforcement, allocation evidence, and recovery.
+- Add virtual and NVIDIA inventory, exclusive device reservation, accelerator
+  evidence, and Docker/CDI enforcement to the existing Agent Claim journal and
+  recovery path.
 - Prove 100 concurrent reservations never allocate one device twice.
 - On a real NVIDIA host, expose exactly the claimed UUID and no other device.
 
@@ -1192,8 +1208,8 @@ The recommended merge order is:
 2. Cloud nested v2 contracts, session negotiation, and compatibility fixtures;
 3. H0.1 managed-owner, one-replica, generic inventory and claim state-machine
    foundations;
-4. H0.1 prepare/release journal and Runtime binding, then virtual inventory,
-   NVIDIA detection/enforcement, and the real-host gate;
+4. extend the implemented H0.1 prepare/release journal and Runtime binding with
+   virtual inventory, NVIDIA detection/enforcement, and the real-host gate;
 5. model file-manifest ingest/materialization/cache over the existing Artifacts
    and E0 Secret foundations;
 6. Inference domain/application skeleton and model/backend repositories;

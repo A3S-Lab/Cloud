@@ -132,7 +132,7 @@ Status as of 2026-07-25:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@2`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence and the remaining production fault-injection gate still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence and the remaining production fault-injection gate still block G0 verification |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -483,7 +483,7 @@ Complete the first user-visible release loop.
 - Implemented: `POST
   /organizations/{organization_id}/workloads/{workload_id}/deployments`
   commits a complete immutable replacement template and a
-  `cloud.deployment@2` operation. Version 1 remains executable only for
+  `cloud.deployment@3` operation. Versions 1 and 2 remain executable only for
   persisted-run replay. A workload permits one nonterminal deployment, the
   candidate stays on the previous Runtime node, cancellation closes at
   `verifying`, and health must converge before any routed cutover is staged.
@@ -510,7 +510,7 @@ Complete the first user-visible release loop.
   accepts only an older, successfully activated revision of the same active
   running workload. It clones the exact resolved template into the next
   generation, revalidates Secret bindings, records
-  `rollbackSourceRevisionId`, and uses the same `cloud.deployment@2` health,
+  `rollbackSourceRevisionId`, and uses the same `cloud.deployment@3` health,
   Gateway cutover, activation, and retirement path without reactivating the
   source revision ID.
 - Implemented: the PostgreSQL API gate verifies the persisted clone, operation
@@ -834,7 +834,9 @@ The current independently testable G0 slices are implemented:
   remote verification, idempotent replay, removal, and terminal BuildRun
   completion.
 - `cloud.build@1/@2/@3` are registered in the production Flow router alongside
-  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. New work uses v3; v2
+  `cloud.deployment@1/@2/@3` and `cloud.workload.stop@1`. New deployment work
+  uses deployment v3; deployment v1/v2 replay their persisted histories. New
+  build work uses build v3; build v2
   replays publication-era runs without evidence, while v1 drains
   upgrade-invalidated pre-publication runs without rewriting persisted history.
   The worker-role BuildRun reconciler reserves revisions and enqueues their
@@ -1267,6 +1269,8 @@ exclusive accelerator, host-port, and volume ownership. A PostgreSQL
 reservation takes a transaction-scoped advisory lock for each stable slot,
 totals active shared allocations in Rust from typed query results, rejects
 over-capacity requests, and advances the slot generation and fence token.
+Migration 044 admits exact `resource_claim_prepare` and
+`resource_claim_release` payloads to the durable Fleet command queue.
 
 Its PostgreSQL persistence and all pre-existing Workloads persistence use A3S
 ORM typed tables and builders for ordinary reads, JOINs, ordering, counts,
@@ -1312,15 +1316,33 @@ tenant, node, Agent, generation, and digest, before reserving slots.
 Deployment Flow reserves the deterministic Deployment-ID claim before
 persisting node assignment. Replay recovers the exact node after a crash in
 that gap, and a typed capacity conflict falls through to another eligible node.
-Cancellation, prior-runtime retirement, and Workload stop cancel a
-database-only reservation only while it remains `reserved_in_db`; prepared or
-orphaned claims retain the Agent/trusted-fence release requirement.
+The v3 workflow then dispatches deterministic Claim preparation before Runtime
+apply. The Agent revalidates the exact current inventory, journals the prepared
+binding before acknowledgement, rejects bound apply without that exact
+binding, and stamps the Claim ID and binding digest into Runtime apply and
+inspection evidence. Cloud validates and persists that evidence before
+advancing `bound_to_runtime_unit`.
 
-`H0.1` is not complete. Next, the node protocol and Agent journal must
-implement prepare/release fencing evidence, Runtime observations must prove
-allocation binding, and the deployment reconciler must adopt or release claims
-after process/provider failure. Only the combined real-provider crash/replay
-gate may mark the sub-gate complete.
+Cancellation, failed-candidate cleanup, prior-runtime retirement, and Workload
+stop cancel a database-only reservation only while it remains
+`reserved_in_db`. Prepared and bound Claims require an exact
+higher-generation/higher-digest Agent release acknowledgement. The Agent
+journal rejects release of a bound Claim until the same Runtime
+unit/generation has successful stopped-or-absent evidence. A rejected
+`not_found` or `stale_generation` stop never counts as fencing. Failed release
+is retried with the new durable Claim identity; ambiguous outcomes retain an
+operator-visible active or orphaned allocation.
+
+The implementation gates cover command replay, Agent restart after prepare,
+apply, stop, and release, exact bound-Claim adoption, healthy update
+stop-before-release ordering, release retry, Secret-rotation derivation through
+`cloud.deployment@3`, reservation-before-placement recovery, and
+activation-before-retirement process death on PostgreSQL 17. Deployment v1 and
+v2 remain registered only for persisted histories. `H0.1` is not yet marked
+complete because the combined isolated real-provider crash/replay certification
+must still record one provider unit for one replica generation and no
+prematurely reusable Claim; no application, protocol, journal,
+reconciliation, or persistence slice remains open.
 
 The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
 cardinality-one private target projection. A scope belongs to one organization,

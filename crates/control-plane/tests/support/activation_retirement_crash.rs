@@ -27,7 +27,10 @@ pub async fn kill_after_activation_before_retirement(
 ) -> TestResult {
     let lock_client = executor.pool().get().await?;
     lock_client
-        .batch_execute("begin; lock table node_commands in access exclusive mode")
+        // Runtime observation reloads the resource-bound apply command before
+        // activation. A SHARE lock keeps that evidence readable while still
+        // blocking the ROW EXCLUSIVE lock required to insert retirement.
+        .batch_execute("begin; lock table node_commands in share mode")
         .await?;
 
     let crash_result = run_parent_crash_probe(

@@ -46,7 +46,7 @@ impl NodeArtifactManager {
                 "artifact command belongs to a different node".into(),
             ));
         }
-        let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+        let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
             return Ok(());
         };
         let spec_digest = request.spec.digest().map_err(NodeArtifactError::Invalid)?;
@@ -88,7 +88,7 @@ impl NodeArtifactManager {
                 "artifact command belongs to a different node".into(),
             ));
         }
-        let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+        let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
             return Ok(observation.clone());
         };
         observation

@@ -8,6 +8,9 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+};
 use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -134,7 +137,8 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
                 workload.organization_id,
                 OperationSubject::new("deployment", deployment.id.as_uuid())
                     .map_err(BootError::Internal)?,
-                WorkflowIdentity::new("cloud.deployment", "2").map_err(BootError::Internal)?,
+                WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
+                    .map_err(BootError::Internal)?,
                 serde_json::json!({
                     "deploymentId": deployment.id,
                     "organizationId": workload.organization_id,

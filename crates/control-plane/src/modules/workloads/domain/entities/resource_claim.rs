@@ -7,7 +7,7 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, ResourceClaimId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
 };
 use crate::modules::workloads::domain::entities::DeploymentReplicaBinding;
-use a3s_cloud_contracts::NodeResourceInventory;
+use a3s_cloud_contracts::{NodeResourceClaimBinding, NodeResourceInventory};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -650,6 +650,27 @@ impl ResourceClaim {
             .iter()
             .map(ResourceSlotBinding::evidence)
             .collect()
+    }
+
+    pub fn node_binding(
+        &self,
+        agent_instance_id: uuid::Uuid,
+    ) -> Result<NodeResourceClaimBinding, String> {
+        self.validate()?;
+        let binding = NodeResourceClaimBinding {
+            schema: NodeResourceClaimBinding::SCHEMA.into(),
+            claim_id: self.id.as_uuid(),
+            node_id: self.node_id.as_uuid(),
+            agent_instance_id,
+            inventory_generation: self.inventory_generation,
+            inventory_digest: self.inventory_digest.clone(),
+            runtime_unit_id: self.runtime_unit_id.clone(),
+            runtime_generation: self.runtime_generation,
+            topology_digest: self.topology_digest.clone(),
+            slots: self.slots.clone(),
+        };
+        binding.validate()?;
+        Ok(binding)
     }
 
     fn slot_evidence_matches(&self, evidence: &[ResourceSlotEvidence]) -> bool {

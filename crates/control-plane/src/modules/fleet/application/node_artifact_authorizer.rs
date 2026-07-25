@@ -37,7 +37,7 @@ impl NodeArtifactAuthorizer {
             Ok(command) => command,
             Err(error) => return Ok(Err(error)),
         };
-        let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request: apply } =
+        let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request: apply, .. } =
             &command.payload
         else {
             return Ok(Err(not_authorized()));
@@ -82,7 +82,7 @@ impl NodeArtifactAuthorizer {
             Ok(command) => command,
             Err(error) => return Ok(Err(error)),
         };
-        let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request: apply } =
+        let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request: apply, .. } =
             &command.payload
         else {
             return Ok(Err(not_authorized()));
@@ -122,7 +122,8 @@ impl NodeArtifactAuthorizer {
         if command.node_id != authenticated_node_id || transferred_at >= command.not_after {
             return Ok(Err(not_authorized()));
         }
-        let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request } = &command.payload
+        let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request, .. } =
+            &command.payload
         else {
             return Ok(Err(not_authorized()));
         };

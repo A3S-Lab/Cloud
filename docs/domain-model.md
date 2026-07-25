@@ -206,9 +206,12 @@ CPU, memory, and ephemeral-storage slots are shared scalar capacities, while
 accelerator, host-port, and volume slots are exclusive. A reservation binds
 the exact current Fleet inventory generation and digest, and Deployment Flow
 persists it before node assignment so replay can recover the selected node.
-An orphaned or timed-out claim remains allocated until exact release or trusted
-fencing evidence is durable. Database-only cancellation is valid only for a
-claim that never advanced beyond `reserved_in_db`.
+The assigned Agent must durably prepare that exact binding before Runtime
+apply. A matching Runtime observation binds the Claim; stopped-or-absent
+Runtime evidence and an exact higher-generation Agent acknowledgement release
+it. An orphaned or timed-out claim remains allocated until exact release or
+trusted fencing evidence is durable. Database-only cancellation is valid only
+for a claim that never advanced beyond `reserved_in_db`.
 
 ### 3.8 Edge routing
 
@@ -515,8 +518,8 @@ tables directly. Audit records are append-only and separate from event delivery.
 - `deployment_id` is also the idempotent business key for its Flow run.
 - Repeating a deploy command with the same idempotency key returns the same
   deployment; a different request under that key is a conflict.
-- New operations use `cloud.deployment@2`; version 1 is executable only for
-  persisted-run compatibility.
+- New operations use `cloud.deployment@3`; versions 1 and 2 are executable only
+  for persisted-run compatibility.
 - A workload has at most one nonterminal deployment. An update requires an
   active running workload and commits a complete new immutable template.
 - Manual rollback requires an older revision of that same active running
@@ -541,8 +544,32 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Failure never rewrites the previously active healthy deployment.
 - After candidate activation, `retiring` means the new revision is selected
   while deterministic cleanup of the previous Runtime revision is still
-  required. Only durable stopped-or-absent evidence makes it terminal
-  `active`.
+  required. Durable stopped-or-absent evidence must precede exact Claim
+  release; both are required before terminal `active`.
+
+### Resource Claim
+
+- The Claim ID is deterministic from its Deployment ID. A Claim binds one
+  organization, deployment, replica/member, placement generation, node and
+  Agent, current inventory generation/digest, Runtime unit/generation,
+  topology digest, and canonical sorted slot set.
+- CPU, memory, and ephemeral-storage slots are shared scalar capacities.
+  Accelerator, host-port, and volume slots are exclusive.
+- Each slot carries its own monotonic generation and unguessable fence token.
+  The Claim digest covers the complete binding; a changed generation, digest,
+  inventory, Runtime identity, allocation, or token is a conflict.
+- The lifecycle is `reserved_in_db -> preparing_on_agent ->
+  prepared_on_agent -> bound_to_runtime_unit -> releasing -> released`, with
+  `orphaned` retaining allocation ownership.
+- Agent preparation is durable before acknowledgement. Runtime apply must carry
+  the exact prepared binding, and its observation must contain the exact Claim
+  ID and binding digest before Cloud may persist `bound_to_runtime_unit`.
+- The Agent command journal reconstructs prepare, bind, Runtime stop/remove,
+  and release state after restart. It rejects release of a bound Claim until
+  the same Runtime unit/generation has successful stopped-or-absent evidence.
+- Release advances Claim generation and digest and returns exact slot evidence.
+  A rejected `not_found` or `stale_generation` Runtime stop is not fencing
+  evidence. Ambiguous cleanup keeps the Claim active or `orphaned`.
 
 ### Route
 
@@ -837,7 +864,7 @@ signature plus every derived digest when restoring durable state. The published
 digest can be handed to
 Workloads only through an artifact-free command that resolves the exact
 tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
-`cloud.deployment@2`. That revision stores an `ExternalBuildReference` binding
+`cloud.deployment@3`. That revision stores an `ExternalBuildReference` binding
 the organization, project, environment, source revision, and BuildRun; derived
 rollback and Secret-rotation revisions preserve the reference, while ordinary
 manual Workload revisions do not invent one. The Artifacts context owns a

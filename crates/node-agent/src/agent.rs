@@ -136,7 +136,7 @@ pub struct NodeAgentSession {
     identity: EnrolledNodeIdentity,
     capabilities: RuntimeCapabilities,
     agent_version: String,
-    resource_inventory: ResourceInventoryManager,
+    resource_inventory: Arc<ResourceInventoryManager>,
     log_poll_interval: Duration,
     retry_initial: Duration,
     retry_maximum: Duration,
@@ -172,12 +172,12 @@ impl NodeAgentSession {
             ));
         }
         let journal = FileCommandJournal::new(state_dir.clone(), identity.response.node_id)?;
-        let resource_inventory = ResourceInventoryManager::host(
+        let resource_inventory = Arc::new(ResourceInventoryManager::host(
             identity.response.node_id,
             identity.agent_instance_id,
             state_dir.clone(),
             Arc::clone(&transport),
-        );
+        ));
         let log_poll_interval = Duration::from_millis(log_config.poll_interval_ms);
         let log_shipper = LogShipper::new(
             identity.response.node_id,
@@ -188,7 +188,8 @@ impl NodeAgentSession {
         )?;
         Ok(Self {
             transport,
-            executor: CommandExecutor::new(journal, runtime, gateway),
+            executor: CommandExecutor::new(journal, runtime, gateway)
+                .with_resource_inventory(resource_inventory.clone()),
             log_shipper,
             identity,
             capabilities,
@@ -220,6 +221,7 @@ impl NodeAgentSession {
     }
 
     pub async fn synchronize_once(&self) -> Result<(), NodeAgentError> {
+        self.resource_inventory.ensure_reported().await?;
         let mut must_redeliver = false;
         for acknowledgement in self.executor.journal().pending_acknowledgements().await? {
             match self.deliver_completion(&acknowledgement).await? {
@@ -428,6 +430,8 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::ResourceClaimPrepared { .. }
+            | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. } => return None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => return None,
@@ -446,7 +450,9 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
                 Some(acknowledgement)
             }
-            NodeCommandResult::RuntimeApplied { .. }
+            NodeCommandResult::ResourceClaimPrepared { .. }
+            | NodeCommandResult::ResourceClaimReleased { .. }
+            | NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. } => None,

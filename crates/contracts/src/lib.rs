@@ -20,10 +20,12 @@ pub use node::{
     NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeHeartbeatV2, NodeInventoryReference,
     NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
     NodeObservationBatch, NodeObservationBatchEnvelope, NodeObservationBatchV2,
-    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, NodeResourceInventory,
-    NodeResourceInventoryReceipt, NodeResourceSlot, NodeSecretMaterialRequest,
-    NodeSecretMaterialResponse, RuntimeObservationReport, RuntimeServiceEndpoint,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, NodeResourceClaimBinding,
+    NodeResourceClaimPrepare, NodeResourceClaimPrepared, NodeResourceClaimRelease,
+    NodeResourceClaimReleased, NodeResourceInventory, NodeResourceInventoryReceipt,
+    NodeResourceSlot, NodeSecretMaterialRequest, NodeSecretMaterialResponse,
+    RuntimeObservationReport, RuntimeServiceEndpoint, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    RUNTIME_RESOURCE_BINDING_DIGEST_KEY, RUNTIME_RESOURCE_CLAIM_ID_KEY,
 };
 pub use registry_credential::RegistryCredentialMaterial;
 pub use resource::{

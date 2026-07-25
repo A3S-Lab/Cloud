@@ -217,7 +217,7 @@ pub(super) async fn enqueue(
                     return Err(RepositoryError::NotFound.into());
                 }
 
-                if let NodeCommandPayload::RuntimeApply { request } = &draft.payload {
+                if let NodeCommandPayload::RuntimeApply { request, .. } = &draft.payload {
                     let requested_spec_digest = request
                         .spec
                         .digest()
@@ -238,6 +238,7 @@ pub(super) async fn enqueue(
                         let command = existing.command()?;
                         let NodeCommandPayload::RuntimeApply {
                             request: existing_request,
+                            ..
                         } = &command.payload
                         else {
                             return Err(PostgresPersistenceError::Invariant(

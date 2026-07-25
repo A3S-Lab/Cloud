@@ -78,6 +78,32 @@ pub(super) enum ScheduleStepOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareClaimStepInput {
+    pub resolved: ResolveStepOutput,
+    pub node_id: NodeId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum PrepareClaimStepOutput {
+    Ready {
+        node_id: NodeId,
+        binding_digest: String,
+        prepared_at: DateTime<Utc>,
+    },
+    Pending {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+    CancellationRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct DispatchStepInput {
     pub resolved: ResolveStepOutput,
     pub node_id: NodeId,
@@ -97,6 +123,31 @@ pub(super) enum DispatchStepOutput {
     Ready { dispatched: DispatchedRuntime },
     Failed { reason: String },
     CancellationRequested,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReleaseClaimStepInput {
+    pub organization_id: OrganizationId,
+    pub deployment_id: DeploymentId,
+    pub released_after: DateTime<Utc>,
+    pub deadline_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum ReleaseClaimStepOutput {
+    Ready {
+        released_at: DateTime<Utc>,
+    },
+    Pending {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

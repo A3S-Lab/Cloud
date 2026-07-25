@@ -48,10 +48,10 @@ use crate::modules::workloads::infrastructure::{
     project_runtime_spec, InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
 };
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, GatewayAckState, NodeCommandLeaseRequest, NodeCommandPayload,
-    NodeGatewayAck, NodeHeartbeat, NodeObservationBatch, NodeResourceInventory, NodeResourceSlot,
-    ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
-    RuntimeServiceEndpoint,
+    DomainEventEnvelope, GatewayAckState, NodeCommandAck, NodeCommandFailure,
+    NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeGatewayAck, NodeHeartbeat,
+    NodeObservationBatch, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
+    ResourceKind, ResourceUnit, RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, InMemoryEventStore,
@@ -222,13 +222,15 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
             operation.input.clone(),
         )
         .await?;
-    let lease = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let lease = prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
     let apply = lease
         .commands
         .first()
         .ok_or("Runtime apply was not dispatched")?;
     let runtime_artifact = match &apply.payload {
-        a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request } => &request.spec.artifact,
+        a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { request, .. } => {
+            &request.spec.artifact
+        }
         _ => return Err("deployment dispatched a non-apply command".into()),
     };
     assert_eq!(runtime_artifact.digest, first_digest);
@@ -334,7 +336,13 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let (node_id, agent_instance_id, capabilities) =
         ready_node(&nodes, organization_id, base).await?;
-    let runtime = runtime(&workloads, &nodes, Duration::seconds(10))?;
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let runtime = runtime_with_resource_claims(
+        &workloads,
+        &nodes,
+        resource_claims.clone(),
+        Duration::seconds(10),
+    )?;
     let store = Arc::new(FailOnceStepCompletionStore::new("stop-dispatch"));
     let engine = FlowEngine::new(store.clone(), Arc::new(runtime.clone()));
     let bundle = deployment_bundle(
@@ -361,7 +369,8 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
             deployment_operation.input,
         )
         .await?;
-    let apply_lease = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let apply_lease =
+        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
     let spec = project_runtime_spec(&revision)?;
     record_observation(
         &nodes,
@@ -378,7 +387,6 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(1))
         .await?;
-
     let requested_at = Utc::now();
     let mut workload = workloads
         .find_workload(organization_id, revision.workload_id)
@@ -488,6 +496,14 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(1))
         .await?;
+    release_after_runtime_fence(
+        &engine,
+        &nodes,
+        node_id,
+        agent_instance_id,
+        stop_command.sequence,
+    )
+    .await?;
     assert_eq!(
         engine
             .snapshot(&stop_operation.id.to_string())
@@ -512,7 +528,13 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let (node_id, agent_instance_id, capabilities) =
         ready_node(&nodes, organization_id, base).await?;
-    let runtime = runtime(&workloads, &nodes, Duration::seconds(10))?;
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let runtime = runtime_with_resource_claims(
+        &workloads,
+        &nodes,
+        resource_claims.clone(),
+        Duration::seconds(10),
+    )?;
     let engine = FlowEngine::in_memory(Arc::new(runtime));
     let workload = Workload::create(
         WorkloadId::new(),
@@ -543,7 +565,8 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
             .status,
         WorkflowRunStatus::Suspended
     );
-    let first_lease = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let first_lease =
+        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
     assert_eq!(first_lease.commands.len(), 1);
     assert_eq!(
         first_lease.commands[0].command_id,
@@ -573,6 +596,16 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
         .find_deployment(organization_id, first_deployment.id)
         .await?;
     assert_eq!(active.status, DeploymentStatus::Active);
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(first_deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        crate::modules::workloads::domain::entities::ResourceClaimState::BoundToRuntimeUnit
+    );
     assert_eq!(
         workloads
             .find_workload(organization_id, first_deployment.workload_id)
@@ -608,7 +641,8 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
             second_operation.input.clone(),
         )
         .await?;
-    let second_lease = lease(
+    let second_lease = prepare_and_lease_apply(
+        &engine,
         &nodes,
         node_id,
         agent_instance_id,
@@ -629,6 +663,41 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(1))
         .await?;
+    let failed_cleanup = lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        second_lease.commands[0].sequence,
+    )
+    .await?;
+    let failed_stop = failed_cleanup
+        .commands
+        .first()
+        .ok_or("failed candidate stop was not dispatched")?;
+    assert!(matches!(
+        failed_stop.payload,
+        a3s_cloud_contracts::NodeCommandPayload::RuntimeStop { .. }
+    ));
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        failed_stop,
+        stopped_observation(&second_runtime_spec)?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    release_after_runtime_fence(
+        &engine,
+        &nodes,
+        node_id,
+        agent_instance_id,
+        failed_stop.sequence,
+    )
+    .await?;
     assert_eq!(
         engine
             .snapshot(&second_operation.id.to_string())
@@ -649,6 +718,197 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
             .await?
             .active_revision_id,
         Some(first_revision.id)
+    );
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(second_deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        crate::modules::workloads::domain::entities::ResourceClaimState::Released
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn healthy_v3_update_retires_the_previous_runtime_before_releasing_its_claim(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id, capabilities) =
+        ready_node(&nodes, organization_id, base).await?;
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let runtime = runtime_with_resource_claims(
+        &workloads,
+        &nodes,
+        resource_claims.clone(),
+        Duration::seconds(10),
+    )?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("healthy update retirement")?,
+        base,
+    );
+
+    let first = deployment_bundle(workload, 1, '3', base, "healthy-retirement-first")?;
+    let first_revision = first.revision.clone();
+    let first_deployment = first.deployment.clone();
+    let first_operation = first.operation.clone();
+    workloads.create_deployment(first).await?;
+    engine
+        .start_with_id(
+            first_operation.id.to_string(),
+            workflow_spec(),
+            first_operation.input,
+        )
+        .await?;
+    let first_apply =
+        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
+    let first_apply = first_apply.commands.first().ok_or("first Runtime apply")?;
+    let first_spec = project_runtime_spec(&first_revision)?;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        first_apply,
+        healthy_observation(&first_spec, RuntimeHealthState::Healthy)?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(first_deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        crate::modules::workloads::domain::entities::ResourceClaimState::BoundToRuntimeUnit
+    );
+
+    let active_workload = workloads
+        .find_workload(organization_id, first_deployment.workload_id)
+        .await?;
+    let second = deployment_bundle(
+        active_workload,
+        2,
+        '4',
+        Utc::now(),
+        "healthy-retirement-second",
+    )?;
+    let second_revision = second.revision.clone();
+    let second_deployment = second.deployment.clone();
+    let second_operation = second.operation.clone();
+    workloads.create_deployment(second).await?;
+    engine
+        .start_with_id(
+            second_operation.id.to_string(),
+            workflow_spec(),
+            second_operation.input,
+        )
+        .await?;
+    let second_apply = prepare_and_lease_apply(
+        &engine,
+        &nodes,
+        node_id,
+        agent_instance_id,
+        first_apply.sequence,
+    )
+    .await?;
+    let second_apply = second_apply
+        .commands
+        .first()
+        .ok_or("second Runtime apply")?;
+    let second_spec = project_runtime_spec(&second_revision)?;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        second_apply,
+        healthy_observation(&second_spec, RuntimeHealthState::Healthy)?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+
+    let retirement_lease = lease(&nodes, node_id, agent_instance_id, second_apply.sequence).await?;
+    let retirement = retirement_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::RuntimeStop { .. }
+            )
+        })
+        .ok_or("previous Runtime retirement command")?;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        retirement,
+        stopped_observation(&first_spec)?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    release_after_runtime_fence(
+        &engine,
+        &nodes,
+        node_id,
+        agent_instance_id,
+        retirement.sequence,
+    )
+    .await?;
+
+    assert_eq!(
+        engine
+            .snapshot(&second_operation.id.to_string())
+            .await?
+            .status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, second_deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Active
+    );
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(first_deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        crate::modules::workloads::domain::entities::ResourceClaimState::Released
+    );
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(second_deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        crate::modules::workloads::domain::entities::ResourceClaimState::BoundToRuntimeUnit
     );
     Ok(())
 }
@@ -1033,7 +1293,7 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
 }
 
 #[tokio::test]
-async fn cancellation_after_dispatch_waits_for_durable_stopped_evidence(
+async fn cancellation_after_dispatch_retries_claim_release_after_durable_stopped_evidence(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base = Utc::now() - Duration::seconds(1);
     let organization_id = OrganizationId::new();
@@ -1041,7 +1301,13 @@ async fn cancellation_after_dispatch_waits_for_durable_stopped_evidence(
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let (node_id, agent_instance_id, capabilities) =
         ready_node(&nodes, organization_id, base).await?;
-    let runtime = runtime(&workloads, &nodes, Duration::seconds(10))?;
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let runtime = runtime_with_resource_claims(
+        &workloads,
+        &nodes,
+        resource_claims.clone(),
+        Duration::seconds(10),
+    )?;
     let engine = FlowEngine::in_memory(Arc::new(runtime));
     let bundle = deployment_bundle(
         Workload::create(
@@ -1068,7 +1334,8 @@ async fn cancellation_after_dispatch_waits_for_durable_stopped_evidence(
             operation.input.clone(),
         )
         .await?;
-    let apply_lease = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let apply_lease =
+        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
     assert_eq!(apply_lease.commands.len(), 1);
     let applying = workloads
         .find_deployment(organization_id, deployment.id)
@@ -1112,6 +1379,85 @@ async fn cancellation_after_dispatch_waits_for_durable_stopped_evidence(
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(2))
         .await?;
+    let first_release_lease = lease(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        cleanup_lease.commands[0].sequence,
+    )
+    .await?;
+    let first_release = first_release_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or("first resource release command")?;
+    let a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease {
+        request: first_request,
+    } = &first_release.payload
+    else {
+        unreachable!("selected resource release command");
+    };
+    let failed_at = Utc::now().max(first_release.issued_at);
+    nodes
+        .acknowledge_command(
+            NodeCommandAck {
+                schema: NodeCommandAck::SCHEMA.into(),
+                command_id: first_release.command_id,
+                lease_id: first_release.lease_id,
+                node_id: first_release.node_id,
+                sequence: first_release.sequence,
+                payload_digest: first_release.payload_digest.clone(),
+                completed_at: failed_at,
+                outcome: NodeCommandOutcome::Failed {
+                    failure: NodeCommandFailure {
+                        code: "resource_claim_journal".into(),
+                        message: "injected durable release failure".into(),
+                        retryable: true,
+                    },
+                },
+            },
+            failed_at,
+        )
+        .await?;
+
+    for offset in 3..7 {
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(offset))
+            .await?;
+    }
+    let retried_release_lease =
+        lease(&nodes, node_id, agent_instance_id, first_release.sequence).await?;
+    let retried_release = retried_release_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or("retried resource release command")?;
+    let a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease {
+        request: retried_request,
+    } = &retried_release.payload
+    else {
+        unreachable!("selected retried resource release command");
+    };
+    assert_eq!(
+        retried_request.claim_generation,
+        first_request.claim_generation + 1
+    );
+    assert_ne!(retried_request.claim_digest, first_request.claim_digest);
+    assert_eq!(retried_request.binding, first_request.binding);
+    acknowledge_resource_claim(&nodes, retried_release).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(20))
+        .await?;
 
     assert_eq!(
         engine.snapshot(&operation.id.to_string()).await?.status,
@@ -1126,5 +1472,15 @@ async fn cancellation_after_dispatch_waits_for_durable_stopped_evidence(
         Some(cleanup_lease.commands[0].command_id)
     );
     assert!(cancelled.cancelled_at.is_some());
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        crate::modules::workloads::domain::entities::ResourceClaimState::Released
+    );
     Ok(())
 }
