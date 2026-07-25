@@ -165,7 +165,11 @@ pub async fn exercise_edge_api(
         .await?;
     let first_body = response_json(&first)?;
     let replay_body = response_json(&replay)?;
-    assert_eq!(first.status(), 202);
+    assert_eq!(
+        first.status(),
+        202,
+        "unexpected first publication: {first_body}"
+    );
     assert_eq!(replay.status(), 200, "unexpected replay: {replay_body}");
     assert_eq!(first_body["data"]["replayed"], false);
     assert_eq!(replay_body["data"]["replayed"], true);
