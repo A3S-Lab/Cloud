@@ -438,7 +438,20 @@ pub async fn exercise_dispatched_cancellation(
                     .append(" and acknowledgement is not null"),
             )
             .await?,
-        4
+        3
+    );
+    assert_eq!(
+        Database::new(PostgresDialect, executor.clone())
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from node_commands where correlation_id = ",)
+                    .bind(deployment_id.as_uuid())
+                    .append(
+                        " and command_kind = 'resource_claim_release'
+                      and acknowledgement is not null",
+                    ),
+            )
+            .await?,
+        1
     );
     runtime_client
         .remove(&RuntimeActionRequest {
