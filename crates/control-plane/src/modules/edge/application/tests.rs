@@ -15,8 +15,8 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
-    GatewayCertificateMaterial, GatewayPublication, GatewayScope, RoutePortName, RouteTarget,
-    UpstreamEndpoint,
+    GatewayCertificateMaterial, GatewayPublication, GatewayRolloutPolicy, GatewayScope,
+    RoutePortName, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::infrastructure::{

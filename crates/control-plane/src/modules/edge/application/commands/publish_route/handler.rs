@@ -1,24 +1,21 @@
 use super::{PublishRoute, PublishRouteResult};
 use crate::modules::edge::domain::repositories::{IEdgeRepository, StageRoutePublication};
 use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
-use crate::modules::edge::domain::{
-    GatewayCertificate, GatewayPublication, Route, RouteHostname, RoutePath, RoutePortName,
+use crate::modules::edge::domain::{RouteHostname, RoutePath, RoutePortName};
+use crate::modules::edge::infrastructure::{
+    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
+    PlanGatewayRouteRollout,
 };
-use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{
-    GatewayCertificateId, IdempotencyRequest, NodeCommandId, RouteId,
-};
+use crate::modules::shared_kernel::domain::{GatewayRolloutId, IdempotencyRequest, RouteId};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Duration;
 use std::sync::Arc;
 
 pub struct PublishRouteHandler {
     routes: Arc<dyn IEdgeRepository>,
-    targets: Arc<dyn IRouteTargetReader>,
     commands: Arc<dyn IGatewayCommandQueue>,
-    compiler: GatewaySnapshotCompiler,
-    command_ttl: Duration,
+    rollout_planner: GatewayRouteRolloutPlanner,
 }
 
 impl PublishRouteHandler {
@@ -29,15 +26,14 @@ impl PublishRouteHandler {
         compiler: GatewaySnapshotCompiler,
         command_ttl: Duration,
     ) -> Result<Self, String> {
-        if command_ttl <= Duration::zero() {
-            return Err("Gateway publication command TTL must be positive".into());
-        }
+        let rollout_compiler =
+            GatewayRouteRolloutCompiler::new(compiler, command_ttl, Duration::hours(24))?;
+        let rollout_planner =
+            GatewayRouteRolloutPlanner::new(Arc::clone(&routes), targets, rollout_compiler);
         Ok(Self {
             routes,
-            targets,
             commands,
-            compiler,
-            command_ttl,
+            rollout_planner,
         })
     }
 }
@@ -49,10 +45,8 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<PublishRouteResult>>> {
         let routes = Arc::clone(&self.routes);
-        let targets = Arc::clone(&self.targets);
         let commands = Arc::clone(&self.commands);
-        let compiler = self.compiler.clone();
-        let command_ttl = self.command_ttl;
+        let rollout_planner = self.rollout_planner.clone();
         Box::pin(async move {
             let hostname = match RouteHostname::parse(command.hostname) {
                 Ok(value) => value,
@@ -138,137 +132,66 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            let target = match targets
-                .resolve_healthy_target(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                    command.workload_revision_id,
-                    &port_name,
-                    command.requested_at,
-                )
+            if gateway_scope.member_node_ids.len() != 1 {
+                return Ok(Err(ApplicationError::Conflict(
+                    "replicated Gateway scope route publication requires durable rollout staging"
+                        .into(),
+                )));
+            }
+            let planned = match rollout_planner
+                .plan(PlanGatewayRouteRollout {
+                    scope: gateway_scope.clone(),
+                    rollout_id: GatewayRolloutId::new(),
+                    generation: 1,
+                    correlation_id: command.request_id,
+                    route_id: RouteId::new(),
+                    workload_revision_id: command.workload_revision_id,
+                    hostname,
+                    path_prefix,
+                    port_name,
+                    domain_claim_id: claim.id,
+                    domain_pattern: claim.pattern,
+                    issued_at: command.requested_at,
+                })
                 .await
             {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
-            let target_node_id = target.node_id;
-            if gateway_scope.node_id != target_node_id {
-                return Ok(Err(ApplicationError::Conflict(
-                    "Gateway scope is not mapped to the healthy target node".into(),
-                )));
-            }
-            let certificate_id = GatewayCertificateId::new();
-            let mut route = match Route::create(
-                RouteId::new(),
-                command.organization_id,
-                command.project_id,
-                command.environment_id,
-                gateway_scope.id,
-                target_node_id,
-                hostname,
-                path_prefix,
-                claim.id,
-                claim.pattern,
-                certificate_id,
-                target.workload_id,
-                target.target,
-                command.requested_at,
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            let (scope, mut active_routes) = match tokio::try_join!(
-                routes.gateway_scope(target_node_id),
-                routes.active_routes(target_node_id)
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(error.into())),
-            };
-            let revision = match scope.next_revision() {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Conflict(error))),
-            };
-            let not_after = match command.requested_at.checked_add_signed(command_ttl) {
-                Some(value) => value,
-                None => {
-                    return Ok(Err(ApplicationError::Invalid(
-                        "Gateway publication command expiry exceeds supported time".into(),
-                    )))
-                }
-            };
-            let snapshot_expires_at =
-                match command.requested_at.checked_add_signed(Duration::hours(24)) {
-                    Some(value) => value,
-                    None => {
-                        return Ok(Err(ApplicationError::Invalid(
-                            "Gateway snapshot expiry exceeds supported time".into(),
-                        )))
-                    }
-                };
-            active_routes.push(route.clone());
-            let snapshot = match compiler.compile(
-                GatewaySnapshotMetadata::new(
-                    target_node_id,
-                    revision,
-                    scope.installed_revision,
-                    command.requested_at,
-                    snapshot_expires_at,
-                ),
-                certificate_id,
-                &active_routes,
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            let command_id = NodeCommandId::new();
-            if let Err(error) = route.stage(
-                revision,
-                command_id,
-                snapshot.snapshot_digest.clone(),
-                command.requested_at,
-            ) {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
-            let publication = match GatewayPublication::stage(
-                target_node_id,
-                command_id,
-                command.request_id,
-                snapshot,
-                command.requested_at,
-                not_after,
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            let certificate_request = match publication.certificate_request.clone() {
-                Some(value) => value,
-                None => {
-                    return Err(BootError::Internal(
-                        "TLS Gateway publication omitted its certificate request".into(),
-                    ))
-                }
-            };
-            let mut domain_claim_ids = active_routes
+            let target_node_id = gateway_scope.node_id;
+            let route = planned
+                .primary_route()
+                .map_err(BootError::Internal)?
+                .clone();
+            let publication = planned
+                .publications
                 .iter()
-                .filter_map(|route| route.domain_claim_id)
-                .collect::<Vec<_>>();
-            domain_claim_ids.sort();
-            domain_claim_ids.dedup();
-            let certificate = match GatewayCertificate::provision(
-                certificate_id,
-                command.organization_id,
-                target_node_id,
-                domain_claim_ids,
-                revision,
-                command_id,
-                publication.snapshot_digest.clone(),
-                certificate_request,
-                command.requested_at,
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
+                .find(|publication| publication.node_id == target_node_id)
+                .cloned()
+                .ok_or_else(|| {
+                    BootError::Internal(
+                        "compiled Gateway rollout omitted its primary publication".into(),
+                    )
+                })?;
+            let certificate = planned
+                .certificates
+                .iter()
+                .find(|certificate| certificate.node_id == target_node_id)
+                .cloned()
+                .ok_or_else(|| {
+                    BootError::Internal(
+                        "compiled Gateway rollout omitted its primary certificate".into(),
+                    )
+                })?;
+            let expected_scope_version = planned
+                .expected_scope_versions
+                .get(&target_node_id)
+                .copied()
+                .ok_or_else(|| {
+                    BootError::Internal(
+                        "compiled Gateway rollout omitted its primary scope version".into(),
+                    )
+                })?;
             let event = match crate::modules::edge::domain::events::RoutePublicationStaged::envelope(
                 &route,
                 &publication,
@@ -282,7 +205,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                     gateway_scope,
                     certificate,
                     publication,
-                    expected_scope_version: scope.aggregate_version,
+                    expected_scope_version,
                     idempotency,
                     event,
                 })

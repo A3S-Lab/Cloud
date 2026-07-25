@@ -4,6 +4,8 @@ mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
 mod gateway_rollout_reconciler;
+mod gateway_route_rollout_compiler;
+mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 pub mod persistence;
@@ -14,6 +16,8 @@ mod vault_gateway_certificate_authority;
 mod gateway_certificate_reconciler_tests;
 #[cfg(test)]
 mod gateway_rollout_reconciler_tests;
+#[cfg(test)]
+mod gateway_route_rollout_compiler_tests;
 #[cfg(test)]
 mod gateway_snapshot_compiler_tests;
 
@@ -29,6 +33,11 @@ pub use gateway_rollout_reconciler::{
     GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
     GatewayRolloutReconciliationReport,
 };
+pub use gateway_route_rollout_compiler::{
+    CompileGatewayRouteRollout, CompiledGatewayRouteRollout, GatewayMemberSnapshotContext,
+    GatewayRouteRolloutCompiler,
+};
+pub use gateway_route_rollout_planner::{GatewayRouteRolloutPlanner, PlanGatewayRouteRollout};
 pub use gateway_snapshot_compiler::{
     GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
 };

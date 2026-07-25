@@ -24,6 +24,7 @@ pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, IDomainOwnershipVerifier,
     IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, ResolvedRouteTarget,
+    ResolvedRouteTargetSet,
 };
 pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
@@ -40,8 +41,9 @@ pub use infrastructure::{
     FleetGatewayCommandQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
     GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
-    GatewayRolloutReconciliationReport, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    GatewayRolloutReconciliationReport, GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, PlanGatewayRouteRollout, VaultGatewayCertificateAuthority,
+    WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

@@ -356,13 +356,16 @@ the active production-scale foundations.
 The current `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
 scope belongs to one organization, project, and environment and now stores an
 ordered desired member set, a membership generation, and explicit `min_ready`
-and `max_unavailable` policy. The first member remains the bootstrap primary
-for the current cardinality-one route compiler. Environment-scoped create/list
-APIs persist the resource idempotently and retain the legacy single-`nodeId`
-request. Route publication requires the logical scope, stores both scope and
-node identities, and rejects a cross-environment scope or a bootstrap primary
-that differs from the healthy Runtime target. Cutover retains the same logical
-scope.
+and `max_unavailable` policy. Environment-scoped create/list APIs persist the
+resource idempotently and retain the legacy single-`nodeId` request. A
+Cloud-owned planner now resolves every desired member through its exact active
+or retiring Deployment, replica binding, Runtime command, generation, and fresh
+healthy node-local endpoint. It rejects partial, ambiguous, mixed-revision, and
+mixed-port target sets and compiles an independent complete snapshot,
+certificate, command, and staged Route projection for every member.
+Single-member publication retains the established atomic path; replicated API
+publication fails closed until the logical Route and complete rollout can be
+staged in one transaction, preventing a bootstrap-primary partial apply.
 
 Cloud persists each private route target as an exact immutable revision,
 deterministic Runtime unit, positive generation, declared port, canonical
@@ -400,8 +403,10 @@ convergence, and rollouts. A source architecture test rejects raw SQL and direct
 database drivers throughout Edge production persistence. Domain, in-memory,
 migration, recreated-PostgreSQL 17, and durable Fleet queue tests cover this
 foundation, including route cutover and certificate-convergence recovery.
-Per-member healthy target compilation, real multi-Gateway delivery and loss
-evidence, and joint production HA remain open.
+Per-member healthy target derivation and complete snapshot compilation are now
+covered. Atomic logical Route plus rollout staging, threshold-driven Route
+activation, real multi-Gateway delivery and loss evidence, and joint production
+HA remain open.
 
 ### 5.7 `I0`: inference profile
 
@@ -499,7 +504,7 @@ are allowed only before the first response byte.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical Gateway scopes, ordered desired membership, rollout thresholds, durable per-member outcomes and Fleet redispatch recovery, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and command-bound revision/unit/generation target projection are available; per-member target compilation remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement and restart recovery, PostgreSQL threshold aggregation, and command redispatch are verified; real replicated delivery, Gateway loss, and production HA gates remain open |
+| `H0.2` | Logical Gateway scopes, ordered desired membership, rollout thresholds, durable per-member outcomes and Fleet redispatch recovery, same-environment/node binding, native identity/validity/readiness bridge, same-policy renewal, protocol-selection evidence, and exact per-member revision/unit/generation target derivation and complete snapshot compilation are available; atomic Route-and-rollout staging remains | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, and rejection of local control loops are available | Logical-scope migration/isolation, advertised and legacy-v1 compatibility, single-Gateway certificate/target replacement and restart recovery, PostgreSQL threshold aggregation, command redispatch, and fail-closed replicated planning are verified; real replicated delivery, Gateway loss, and production HA gates remain open |
 | `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |

@@ -238,13 +238,18 @@ snapshot and generation-bound private-target foundation. A scope belongs to
 one organization, project, and environment. Its desired state can contain an
 ordered set of physical Gateway members, a membership generation, and explicit
 `minReady` and `maxUnavailable` policy; the legacy `nodeId` request remains the
-single-member form. The first member is the bootstrap primary used by the
-current route compiler. `POST` and `GET` on the environment's
-`/gateway-scopes` resource create and list these scopes. Route publication
-requires a `gatewayScopeId` whose tenancy and bootstrap primary match the
-verified DomainClaim and healthy Runtime target. `Route` stores both the
-logical scope and physical node; Gateway continues to receive only its
-node-addressed managed snapshot and does not become the owner of Cloud tenancy.
+single-member form. `POST` and `GET` on the environment's `/gateway-scopes`
+resource create and list these scopes. The per-member planning boundary resolves
+one exact active or retiring Deployment, replica binding, Runtime command,
+generation, and fresh healthy node-local endpoint for every desired member. It
+rejects missing, ambiguous, mixed-revision, and mixed-port target sets, then
+compiles an independent complete snapshot, certificate, command, and staged
+Route projection for every member. Single-member publication continues through
+the established atomic Route path; replicated publication fails closed until
+the logical Route and complete rollout can be persisted together, so Cloud
+never falls back to a bootstrap-primary partial apply. Gateway receives only
+its node-addressed managed snapshot and does not become the owner of Cloud
+tenancy.
 
 Every route persists its immutable workload revision, deterministic Runtime
 unit identity, positive generation, declared port, canonical node-local HTTP
@@ -300,9 +305,10 @@ upstream targets, rejects the superseded certificate and selector, removes the
 old certificate material, and recovers only the replacement after Gateway
 restart. Same-policy validity renewal continues to retain the exact ACL digest
 and active certificate until its successor is ready. Contract-level
-mixed-version delivery, PostgreSQL replica-threshold recovery, and durable
-Fleet command redispatch are verified. The coordinator that derives and
-compiles a healthy target set for every member, real multi-Gateway failure
+mixed-version delivery, PostgreSQL replica-threshold recovery, durable Fleet
+command redispatch, and per-member target derivation and snapshot compilation
+are verified. Atomic logical Route plus `GatewayRollout` staging,
+threshold-driven Route activation, real multi-Gateway delivery and loss
 evidence, and joint production HA recovery remain open, so this foundation does
 not complete `H0.2` or `H0`.
 
@@ -506,14 +512,16 @@ than a fabricated backfill.
 
 Cloud owns a logical Gateway scope inside one organization, project, and
 environment. The scope stores ordered desired physical membership, a
-membership generation, and readiness policy. Its first member remains the
-bootstrap primary for the current node-local route compiler. Each route carries
-both logical and physical identities together with the exact workload revision,
+membership generation, and readiness policy. Cloud resolves each member to the
+same immutable workload revision and declared port through an exact
+command-bound healthy Runtime observation, then compiles a separate complete
+node-local snapshot for that member. The staged Route projections carry both
+logical and physical identities together with the exact workload revision,
 deterministic Runtime unit identity, positive generation, port, canonical
-node-local origin, and command-bound observation time. Those fields are durable
-Cloud state and part of the compiled ACL digest; Gateway receives the resulting
+node-local origin, and observation time. Gateway receives the resulting
 complete policy but does not infer a target, interpret the logical scope, or
-store Cloud tenancy.
+store Cloud tenancy. Replicated API publication currently fails closed before
+mutation while atomic Route-and-rollout persistence is completed.
 
 Gateway's native journal is the sole source of truth for applied snapshot
 state. The node agent does not maintain a second installed-snapshot CAS file,
@@ -529,9 +537,11 @@ protocol boundary. Cloud also persists independent per-member rollout evidence
 and computes ready, succeeded, or degraded aggregate outcomes without assuming
 a global atomic reload. Its rollout reconciler recovers pending Fleet command
 dispatch after restart and turns deadline expiry into explicit unavailable
-evidence. Per-member healthy target compilation, real Gateway loss and
-partial-availability evidence, and joint production HA recovery remain to be
-implemented and verified.
+evidence. The per-member target planner and snapshot compiler now reject partial
+or ambiguous desired membership. Atomic logical Route plus rollout staging,
+threshold-driven Route activation, real Gateway loss and partial-availability
+evidence, and joint production HA recovery remain to be implemented and
+verified.
 
 Standalone Gateway remains independent with operator-owned ACL desired state.
 In `cloud-managed` mode, Gateway rejects local providers and local scaling or

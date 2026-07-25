@@ -10,4 +10,4 @@ pub use gateway_certificate_authority::{
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, IGatewayCertificateAuthority,
 };
 pub use gateway_command_queue::{GatewayCommandDispatch, IGatewayCommandQueue};
-pub use route_target_reader::{IRouteTargetReader, ResolvedRouteTarget};
+pub use route_target_reader::{IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet};

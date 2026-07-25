@@ -1345,14 +1345,18 @@ prematurely reusable Claim; no application, protocol, journal,
 reconciliation, or persistence slice remains open.
 
 The current `H0.2` slice implements Cloud-owned logical Gateway scopes and
-cardinality-one private target projection. A scope belongs to one organization,
-project, and environment and now persists ordered desired physical membership,
-a membership generation, and explicit readiness policy. The first member is
-the bootstrap primary used by the current route compiler. Environment-scoped
-create/list APIs persist it idempotently and retain the legacy single-member
-request. Route publication requires the scope, stores both logical scope and
-physical primary identity, and rejects a cross-environment or wrong-node
-binding; cutover cannot change the logical scope.
+private target projection. A scope belongs to one organization, project, and
+environment and persists ordered desired physical membership, a membership
+generation, and explicit readiness policy. Environment-scoped create/list APIs
+persist it idempotently and retain the legacy single-member request. A
+Cloud-owned planner resolves every desired member through the exact active or
+retiring Deployment, replica binding, Runtime command, generation, and fresh
+healthy node-local endpoint. It rejects partial, ambiguous, mixed-revision, and
+mixed-port sets, then compiles an independent complete snapshot, certificate,
+command, and staged Route projection for every member. Single-member
+publication continues through the established atomic path; replicated
+publication fails closed before mutation until logical Route and rollout
+staging share one transaction.
 
 A route also persists its immutable revision, deterministic Runtime unit,
 positive generation, port, canonical node-local origin, and command-bound
@@ -1379,8 +1383,10 @@ in-memory, A3S ORM-backed PostgreSQL, migration, and restart tests cover this
 foundation. A worker-role reconciler now restores active rollouts and their
 publications in one typed query, idempotently redispatches pending Fleet
 commands, and records exact command-deadline expiry as unavailable. Per-member
-healthy target compilation, real replicated Gateway delivery and loss evidence,
-and production HA remain open, so `H0.2` is not complete.
+healthy target derivation and complete snapshot compilation are covered. Atomic
+logical Route plus rollout staging, threshold-driven Route activation, real
+replicated Gateway delivery and loss evidence, and production HA remain open,
+so `H0.2` is not complete.
 
 The complete Edge PostgreSQL persistence path now uses A3S ORM typed tables,
 queries, and expressions for logical scopes and members, publications, routes,
