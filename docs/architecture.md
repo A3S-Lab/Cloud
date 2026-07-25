@@ -814,6 +814,16 @@ same optimistic aggregate transition records that member as unavailable.
 Per-member healthy target derivation and snapshot compilation are still
 required before this foundation becomes a replicated traffic path.
 
+Every Edge PostgreSQL adapter uses A3S ORM typed tables, queries, and
+expressions. This includes logical Gateway scopes and membership, publications,
+routes, cutovers, acknowledgement projection, DomainClaims, managed
+certificates, certificate convergence, and replicated rollouts. Correlated
+`EXISTS`, scalar aggregate subqueries, `COALESCE`/`LEAST` ordering, optimistic
+updates, row locks, and the DomainClaim table lock remain inside the typed AST.
+A source architecture test rejects raw SQL and direct database drivers in Edge
+production persistence, and the PostgreSQL 17 foundation gate exercises the
+combined recovery paths.
+
 Domain claims are organization, project, and environment scoped. Canonical
 exact names cover only themselves; a wildcard covers exactly one label. A route
 can compile only from verified claims that cover every hostname in the complete

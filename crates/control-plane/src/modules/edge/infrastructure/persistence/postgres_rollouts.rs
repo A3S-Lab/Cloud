@@ -1,6 +1,8 @@
 use super::postgres::insert_publication;
 use super::postgres_gateway_scopes;
-use super::postgres_schema::{GatewayRolloutReplicas, GatewayRollouts, GatewayScopes};
+use super::postgres_schema::{
+    GatewayPublications, GatewayRolloutReplicas, GatewayRollouts, GatewayScopes,
+};
 use super::postgres_tls::insert_certificate;
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_unique_violation, require_one_row,
@@ -17,14 +19,11 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{
-    insert_into, select_from, sql_query, update_table, Database, DecodeError, Expression, FromRow,
-    FromValue, OrderDirection, PostgresDialect, PostgresExecutor, Row,
+    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
+    OrderDirection, PostgresDialect, PostgresExecutor, Row,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-
-const SELECT_ROLLOUTS_FOR_UPDATE: &str = "select id, organization_id, gateway_scope_id, membership_generation, generation, correlation_id, min_ready, max_unavailable, desired_replicas, state, ready_replicas, unavailable_replicas, aggregate_version, started_at, completed_at from gateway_rollouts";
-const SELECT_REPLICAS_FOR_UPDATE: &str = "select node_id, revision, command_id, snapshot_digest, snapshot_expires_at, gateway_certificate_id, state, failure, acknowledged_at from gateway_rollout_replicas";
 
 mod dispatches;
 
@@ -265,9 +264,15 @@ pub(super) async fn stage(
                 }
                 if fetch_optional::<Uuid, _>(
                     transaction,
-                    sql_query::<Uuid>("select id from gateway_rollouts where gateway_scope_id = ")
-                        .bind(bundle.scope.id.as_uuid())
-                        .append(" and state in ('pending', 'ready') for update"),
+                    select_from::<GatewayRollouts>()
+                        .select(GatewayRollouts::id())
+                        .filter(GatewayRollouts::gateway_scope_id().eq(bundle.scope.id.as_uuid()))
+                        .filter(
+                            GatewayRollouts::state()
+                                .eq("pending")
+                                .or(GatewayRollouts::state().eq("ready")),
+                        )
+                        .for_update(),
                 )
                 .await?
                 .is_some()
@@ -296,11 +301,15 @@ pub(super) async fn stage(
                         )
                         .into());
                     }
-                    if fetch_optional::<i32, _>(
+                    if fetch_optional::<u64, _>(
                         transaction,
-                        sql_query::<i32>("select 1 from gateway_publications where node_id = ")
-                            .bind(publication.node_id.as_uuid())
-                            .append(" and state = 'pending' for update"),
+                        select_from::<GatewayPublications>()
+                            .select(GatewayPublications::revision())
+                            .filter(
+                                GatewayPublications::node_id().eq(publication.node_id.as_uuid()),
+                            )
+                            .filter(GatewayPublications::state().eq("pending"))
+                            .for_update(),
                     )
                     .await?
                     .is_some()
@@ -454,10 +463,10 @@ async fn lock_by_id(
 ) -> Result<Option<(Uuid, GatewayRollout)>, PostgresPersistenceError> {
     let row = fetch_optional::<RolloutRow, _>(
         transaction,
-        sql_query::<RolloutRow>(SELECT_ROLLOUTS_FOR_UPDATE)
-            .append(" where id = ")
-            .bind(rollout_id.as_uuid())
-            .append(" for update"),
+        select_from::<GatewayRollouts>()
+            .select(RolloutSelection)
+            .filter(GatewayRollouts::id().eq(rollout_id.as_uuid()))
+            .for_update(),
     )
     .await?;
     let Some(row) = row else {
@@ -466,10 +475,11 @@ async fn lock_by_id(
     let organization_id = row.organization_id;
     let replicas = fetch_all::<ReplicaRow, _>(
         transaction,
-        sql_query::<ReplicaRow>(SELECT_REPLICAS_FOR_UPDATE)
-            .append(" where gateway_rollout_id = ")
-            .bind(rollout_id.as_uuid())
-            .append(" order by node_id for update"),
+        select_from::<GatewayRolloutReplicas>()
+            .select(ReplicaSelection)
+            .filter(GatewayRolloutReplicas::gateway_rollout_id().eq(rollout_id.as_uuid()))
+            .order_by(GatewayRolloutReplicas::node_id(), OrderDirection::Asc)
+            .for_update(),
     )
     .await?
     .into_iter()
@@ -484,11 +494,14 @@ async fn lock_physical_scope(
 ) -> Result<GatewayScopeState, PostgresPersistenceError> {
     let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
         transaction,
-        sql_query::<(u64, Option<u64>, u64)>(
-            "select last_issued_revision, installed_revision, aggregate_version from gateway_scopes where node_id = ",
-        )
-        .bind(node_id.as_uuid())
-        .append(" for update"),
+        select_from::<GatewayScopes>()
+            .select((
+                GatewayScopes::last_issued_revision(),
+                GatewayScopes::installed_revision(),
+                GatewayScopes::aggregate_version(),
+            ))
+            .filter(GatewayScopes::node_id().eq(node_id.as_uuid()))
+            .for_update(),
     )
     .await?;
     match scope {

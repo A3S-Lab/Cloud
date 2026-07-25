@@ -1,9 +1,9 @@
-use super::postgres::{PublicationRow, RouteRow, SELECT_PUBLICATIONS, SELECT_ROUTES};
+use super::postgres::{PublicationRow, PublicationSelection, RouteRow, RouteSelection};
 use super::postgres_certificate_convergence;
 use super::postgres_cutovers;
 use super::postgres_rollouts;
-use super::postgres_schema::GatewayPublications;
-use super::postgres_tls::{update_certificate, CertificateRow, SELECT_CERTIFICATES};
+use super::postgres_schema::{GatewayCertificates, GatewayPublications, GatewayScopes, Routes};
+use super::postgres_tls::{update_certificate, CertificateRow, CertificateSelection};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, transaction_error,
     PostgresPersistenceError,
@@ -13,8 +13,9 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
-use a3s_orm::{sql_query, update_table, PostgresExecutor};
+use a3s_orm::{select_from, update_table, PostgresExecutor};
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 pub(super) async fn project(
     executor: &PostgresExecutor,
@@ -37,12 +38,11 @@ pub(super) async fn project(
             Box::pin(async move {
                 let row = fetch_optional::<PublicationRow, _>(
                     transaction,
-                    sql_query::<PublicationRow>(SELECT_PUBLICATIONS)
-                        .append(" where node_id = ")
-                        .bind(acknowledgement.node_id)
-                        .append(" and command_id = ")
-                        .bind(acknowledgement.command_id)
-                        .append(" for update"),
+                    select_from::<GatewayPublications>()
+                        .select(PublicationSelection)
+                        .filter(GatewayPublications::node_id().eq(acknowledgement.node_id))
+                        .filter(GatewayPublications::command_id().eq(acknowledgement.command_id))
+                        .for_update(),
                 )
                 .await?;
                 let Some(row) = row else {
@@ -84,14 +84,18 @@ pub(super) async fn project(
                         .and_then(|replica| replica.gateway_certificate_id);
                     let certificate_rows = fetch_all::<CertificateRow, _>(
                         transaction,
-                        sql_query::<CertificateRow>(SELECT_CERTIFICATES)
-                            .append(" where node_id = ")
-                            .bind(acknowledgement.node_id)
-                            .append(" and gateway_revision = ")
-                            .bind(acknowledgement.revision)
-                            .append(" and gateway_command_id = ")
-                            .bind(acknowledgement.command_id)
-                            .append(" for update"),
+                        select_from::<GatewayCertificates>()
+                            .select(CertificateSelection)
+                            .filter(GatewayCertificates::node_id().eq(acknowledgement.node_id))
+                            .filter(
+                                GatewayCertificates::gateway_revision()
+                                    .eq(acknowledgement.revision),
+                            )
+                            .filter(
+                                GatewayCertificates::gateway_command_id()
+                                    .eq(acknowledgement.command_id),
+                            )
+                            .for_update(),
                     )
                     .await?;
                     let mut certificates = certificate_rows
@@ -140,26 +144,27 @@ pub(super) async fn project(
                 }
                 let certificate_rows = fetch_all::<CertificateRow, _>(
                     transaction,
-                    sql_query::<CertificateRow>(SELECT_CERTIFICATES)
-                        .append(" where node_id = ")
-                        .bind(acknowledgement.node_id)
-                        .append(" and gateway_revision = ")
-                        .bind(acknowledgement.revision)
-                        .append(" and gateway_command_id = ")
-                        .bind(acknowledgement.command_id)
-                        .append(" for update"),
+                    select_from::<GatewayCertificates>()
+                        .select(CertificateSelection)
+                        .filter(GatewayCertificates::node_id().eq(acknowledgement.node_id))
+                        .filter(
+                            GatewayCertificates::gateway_revision().eq(acknowledgement.revision),
+                        )
+                        .filter(
+                            GatewayCertificates::gateway_command_id()
+                                .eq(acknowledgement.command_id),
+                        )
+                        .for_update(),
                 )
                 .await?;
                 let rows = fetch_all::<RouteRow, _>(
                     transaction,
-                    sql_query::<RouteRow>(SELECT_ROUTES)
-                        .append(" where gateway_node_id = ")
-                        .bind(acknowledgement.node_id)
-                        .append(" and gateway_revision = ")
-                        .bind(acknowledgement.revision)
-                        .append(" and gateway_command_id = ")
-                        .bind(acknowledgement.command_id)
-                        .append(" for update"),
+                    select_from::<Routes>()
+                        .select(RouteSelection)
+                        .filter(Routes::gateway_node_id().eq(acknowledgement.node_id))
+                        .filter(Routes::gateway_revision().eq(acknowledgement.revision))
+                        .filter(Routes::gateway_command_id().eq(acknowledgement.command_id))
+                        .for_update(),
                 )
                 .await?;
                 let mut cutover = postgres_cutovers::lock_by_gateway_identity(
@@ -263,20 +268,14 @@ pub(super) async fn project(
                             "route Gateway acknowledgement",
                             execute(
                                 transaction,
-                                sql_query::<()>("update routes set state = ")
-                                    .bind(route.state.as_str())
-                                    .append(", failure = ")
-                                    .bind(route.failure.as_deref())
-                                    .append(", aggregate_version = ")
-                                    .bind(route.aggregate_version)
-                                    .append(", updated_at = ")
-                                    .bind(route.updated_at)
-                                    .append(", activated_at = ")
-                                    .bind(route.activated_at)
-                                    .append(" where id = ")
-                                    .bind(route.id.as_uuid())
-                                    .append(" and aggregate_version = ")
-                                    .bind(expected_version),
+                                update_table::<Routes>()
+                                    .set(Routes::state(), route.state.as_str())
+                                    .set(Routes::failure(), route.failure.clone())
+                                    .set(Routes::aggregate_version(), route.aggregate_version)
+                                    .set(Routes::updated_at(), route.updated_at)
+                                    .set(Routes::activated_at(), route.activated_at)
+                                    .filter(Routes::id().eq(route.id.as_uuid()))
+                                    .filter(Routes::aggregate_version().eq(expected_version)),
                             )
                             .await?,
                         )?;
@@ -294,11 +293,13 @@ pub(super) async fn project(
                             acknowledgement.acknowledged_at,
                         )
                         .await?;
-                    } else if fetch_optional::<i32, _>(
+                    } else if fetch_optional::<Uuid, _>(
                         transaction,
-                        sql_query::<i32>("select 1 from routes where gateway_node_id = ")
-                            .bind(acknowledgement.node_id)
-                            .append(" and state = 'active' limit 1"),
+                        select_from::<Routes>()
+                            .select(Routes::id())
+                            .filter(Routes::gateway_node_id().eq(acknowledgement.node_id))
+                            .filter(Routes::state().eq("active"))
+                            .limit(1),
                     )
                     .await?
                     .is_some()
@@ -350,18 +351,45 @@ async fn persist_installed_scope_revision(
     publication: &crate::modules::edge::domain::GatewayPublication,
     acknowledged_at: DateTime<Utc>,
 ) -> Result<(), PostgresPersistenceError> {
+    let (installed_revision, aggregate_version) = fetch_optional::<(Option<u64>, u64), _>(
+        transaction,
+        select_from::<GatewayScopes>()
+            .select((
+                GatewayScopes::installed_revision(),
+                GatewayScopes::aggregate_version(),
+            ))
+            .filter(GatewayScopes::node_id().eq(publication.node_id.as_uuid()))
+            .for_update(),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "installed Gateway scope revision has no physical scope".into(),
+        )
+    })?;
+    if installed_revision != publication.expected_revision {
+        return Err(PostgresPersistenceError::Invariant(
+            "installed Gateway scope revision changed before acknowledgement".into(),
+        ));
+    }
+    let next_version = aggregate_version.checked_add(1).ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "installed Gateway scope aggregate version overflowed".into(),
+        )
+    })?;
     require_one_row(
         "installed Gateway scope revision",
         execute(
             transaction,
-            sql_query::<()>("update gateway_scopes set installed_revision = ")
-                .bind(publication.revision)
-                .append(", aggregate_version = aggregate_version + 1, updated_at = ")
-                .bind(acknowledged_at)
-                .append(" where node_id = ")
-                .bind(publication.node_id.as_uuid())
-                .append(" and installed_revision is not distinct from ")
-                .bind(publication.expected_revision),
+            update_table::<GatewayScopes>()
+                .set(
+                    GatewayScopes::installed_revision(),
+                    Some(publication.revision),
+                )
+                .set(GatewayScopes::aggregate_version(), next_version)
+                .set(GatewayScopes::updated_at(), acknowledged_at)
+                .filter(GatewayScopes::node_id().eq(publication.node_id.as_uuid()))
+                .filter(GatewayScopes::aggregate_version().eq(aggregate_version)),
         )
         .await?,
     )?;

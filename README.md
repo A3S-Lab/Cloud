@@ -207,14 +207,20 @@ threshold makes the rollout ready to serve; only exact success from every
 member makes it succeeded, while a fully observed mixed result becomes
 explicitly degraded. Migrations 038 and 039 preserve legacy single-member
 scopes, add membership and rollout constraints, and recover the aggregate from
-PostgreSQL. The new schema-backed CRUD uses A3S ORM typed table and query
-builders. Remaining reviewed static queries are legacy migration debt and may
-not be extended; any missing typed primitive must be added and tested in A3S
-ORM before new persistence behavior ships. A worker-role reconciler loads each
-active rollout and its publications through one typed CTE/JOIN query,
-idempotently redispatches every pending member command after process or queue
-interruption, and records a member as unavailable only after its exact command
-deadline passes.
+PostgreSQL. The complete Edge PostgreSQL repository now uses A3S ORM typed
+tables and query builders for logical scopes and membership, publications,
+routes, cutovers, acknowledgements, DomainClaims, managed certificates,
+certificate convergence, and replicated rollouts. Typed expressions preserve
+joins, correlated `EXISTS`, scalar aggregate subqueries, `COALESCE`/`LEAST`
+deadline ordering, optimistic updates, row locks, and the DomainClaim table
+lock. No Edge production persistence file uses raw SQL or a direct database
+driver; a source architecture test enforces that boundary. Any missing typed
+primitive must be filed, implemented, and tested in A3S ORM before new
+persistence behavior ships. A worker-role reconciler loads each active rollout
+and its publications through one typed CTE/JOIN query, idempotently
+redispatches every pending member command after process or queue interruption,
+and records a member as unavailable only after its exact command deadline
+passes.
 
 The real pinned-Gateway gate rotates independently signed certificates and
 upstream targets, rejects the superseded certificate and selector, removes the

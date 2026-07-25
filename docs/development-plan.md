@@ -1317,6 +1317,17 @@ commands, and records exact command-deadline expiry as unavailable. Per-member
 healthy target compilation, real replicated Gateway delivery and loss evidence,
 and production HA remain open, so `H0.2` is not complete.
 
+The complete Edge PostgreSQL persistence path now uses A3S ORM typed tables,
+queries, and expressions for logical scopes and members, publications, routes,
+cutovers, acknowledgement projection, DomainClaims, managed certificates,
+certificate convergence, and replicated rollouts. The typed AST preserves
+correlated `EXISTS`, scalar aggregate subqueries, `COALESCE`/`LEAST` deadline
+ordering, optimistic concurrency, row locks, and the DomainClaim table lock.
+Source architecture tests prohibit raw SQL and direct database drivers in Edge
+production persistence. The PostgreSQL 17 foundation gate exercises scope
+recovery, rollout dispatch, route cutover, exact acknowledgement, and
+certificate-renewal, rejection, filtering, and revocation paths.
+
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
 job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the
 OpenTelemetry Collector remain replaceable dependencies with explicit health

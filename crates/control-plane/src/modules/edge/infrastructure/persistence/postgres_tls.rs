@@ -13,14 +13,15 @@ use crate::modules::shared_kernel::domain::{
     NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, GatewayCertificateRequest};
+use a3s_orm::expression::Selection;
 use a3s_orm::{
-    sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
+    insert_into, lock_table, select_from, update_table, Database, DecodeError, Expression, FromRow,
+    FromValue, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTableLockMode, Row,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-pub(super) const SELECT_DOMAIN_CLAIMS: &str = "select id, organization_id, project_id, environment_id, pattern, challenge_dns_name, challenge_value, state, failure, aggregate_version, created_at, updated_at, verified_at, revoked_at from domain_claims";
-pub(super) const SELECT_CERTIFICATES: &str = "select id, organization_id, node_id, domain_claim_ids, gateway_revision, gateway_command_id, snapshot_digest, request, state, csr_digest, serial_number, fingerprint, certificate_pem, ca_bundle_pem, issued_at, expires_at, failure, aggregate_version, created_at, updated_at, ready_at, revoked_at from gateway_certificates";
+use super::postgres_schema::{DomainClaims, GatewayCertificates};
 
 pub(super) struct DomainClaimRow {
     id: Uuid,
@@ -37,6 +38,31 @@ pub(super) struct DomainClaimRow {
     updated_at: DateTime<Utc>,
     verified_at: Option<DateTime<Utc>>,
     revoked_at: Option<DateTime<Utc>>,
+}
+
+pub(super) struct DomainClaimSelection;
+
+impl Selection for DomainClaimSelection {
+    type Output = DomainClaimRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            DomainClaims::id().expression(),
+            DomainClaims::organization_id().expression(),
+            DomainClaims::project_id().expression(),
+            DomainClaims::environment_id().expression(),
+            DomainClaims::pattern().expression(),
+            DomainClaims::challenge_dns_name().expression(),
+            DomainClaims::challenge_value().expression(),
+            DomainClaims::state().expression(),
+            DomainClaims::failure().expression(),
+            DomainClaims::aggregate_version().expression(),
+            DomainClaims::created_at().expression(),
+            DomainClaims::updated_at().expression(),
+            DomainClaims::verified_at().expression(),
+            DomainClaims::revoked_at().expression(),
+        ]
+    }
 }
 
 impl FromRow for DomainClaimRow {
@@ -137,6 +163,39 @@ pub(super) struct CertificateRow {
     updated_at: DateTime<Utc>,
     ready_at: Option<DateTime<Utc>>,
     revoked_at: Option<DateTime<Utc>>,
+}
+
+pub(super) struct CertificateSelection;
+
+impl Selection for CertificateSelection {
+    type Output = CertificateRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            GatewayCertificates::id().expression(),
+            GatewayCertificates::organization_id().expression(),
+            GatewayCertificates::node_id().expression(),
+            GatewayCertificates::domain_claim_ids().expression(),
+            GatewayCertificates::gateway_revision().expression(),
+            GatewayCertificates::gateway_command_id().expression(),
+            GatewayCertificates::snapshot_digest().expression(),
+            GatewayCertificates::request().expression(),
+            GatewayCertificates::state().expression(),
+            GatewayCertificates::csr_digest().expression(),
+            GatewayCertificates::serial_number().expression(),
+            GatewayCertificates::fingerprint().expression(),
+            GatewayCertificates::certificate_pem().expression(),
+            GatewayCertificates::ca_bundle_pem().expression(),
+            GatewayCertificates::issued_at().expression(),
+            GatewayCertificates::expires_at().expression(),
+            GatewayCertificates::failure().expression(),
+            GatewayCertificates::aggregate_version().expression(),
+            GatewayCertificates::created_at().expression(),
+            GatewayCertificates::updated_at().expression(),
+            GatewayCertificates::ready_at().expression(),
+            GatewayCertificates::revoked_at().expression(),
+        ]
+    }
 }
 
 impl FromRow for CertificateRow {
@@ -324,13 +383,19 @@ pub(super) async fn create_domain_claim(
                 }
                 execute(
                     transaction,
-                    sql_query::<()>("lock table domain_claims in share row exclusive mode"),
+                    lock_table::<DomainClaims>(PostgresTableLockMode::ShareRowExclusive),
                 )
                 .await?;
                 let rows = fetch_all::<DomainClaimRow, _>(
                     transaction,
-                    sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
-                        .append(" where state in ('pending', 'verified') for update"),
+                    select_from::<DomainClaims>()
+                        .select(DomainClaimSelection)
+                        .filter(
+                            DomainClaims::state()
+                                .eq("pending")
+                                .or(DomainClaims::state().eq("verified")),
+                        )
+                        .for_update(),
                 )
                 .await?;
                 for existing in rows {
@@ -374,12 +439,14 @@ pub(super) async fn transition_domain_claim(
                 }
                 let existing = fetch_optional::<DomainClaimRow, _>(
                     transaction,
-                    sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
-                        .append(" where organization_id = ")
-                        .bind(bundle.claim.organization_id.as_uuid())
-                        .append(" and id = ")
-                        .bind(bundle.claim.id.as_uuid())
-                        .append(" for update"),
+                    select_from::<DomainClaims>()
+                        .select(DomainClaimSelection)
+                        .filter(
+                            DomainClaims::organization_id()
+                                .eq(bundle.claim.organization_id.as_uuid()),
+                        )
+                        .filter(DomainClaims::id().eq(bundle.claim.id.as_uuid()))
+                        .for_update(),
                 )
                 .await?
                 .ok_or(RepositoryError::NotFound)?
@@ -389,22 +456,18 @@ pub(super) async fn transition_domain_claim(
                     "domain claim transition",
                     execute(
                         transaction,
-                        sql_query::<()>("update domain_claims set state = ")
-                            .bind(bundle.claim.state.as_str())
-                            .append(", failure = ")
-                            .bind(bundle.claim.failure.as_deref())
-                            .append(", aggregate_version = ")
-                            .bind(bundle.claim.aggregate_version)
-                            .append(", updated_at = ")
-                            .bind(bundle.claim.updated_at)
-                            .append(", verified_at = ")
-                            .bind(bundle.claim.verified_at)
-                            .append(", revoked_at = ")
-                            .bind(bundle.claim.revoked_at)
-                            .append(" where id = ")
-                            .bind(bundle.claim.id.as_uuid())
-                            .append(" and aggregate_version = ")
-                            .bind(bundle.expected_version),
+                        update_table::<DomainClaims>()
+                            .set(DomainClaims::state(), bundle.claim.state.as_str())
+                            .set(DomainClaims::failure(), bundle.claim.failure.clone())
+                            .set(
+                                DomainClaims::aggregate_version(),
+                                bundle.claim.aggregate_version,
+                            )
+                            .set(DomainClaims::updated_at(), bundle.claim.updated_at)
+                            .set(DomainClaims::verified_at(), bundle.claim.verified_at)
+                            .set(DomainClaims::revoked_at(), bundle.claim.revoked_at)
+                            .filter(DomainClaims::id().eq(bundle.claim.id.as_uuid()))
+                            .filter(DomainClaims::aggregate_version().eq(bundle.expected_version)),
                     )
                     .await?,
                 )?;
@@ -427,11 +490,10 @@ pub(super) async fn find_domain_claim(
 ) -> Result<DomainClaim, RepositoryError> {
     Database::new(PostgresDialect, executor.clone())
         .fetch_optional_as(
-            sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
-                .append(" where organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" and id = ")
-                .bind(claim_id.as_uuid()),
+            select_from::<DomainClaims>()
+                .select(DomainClaimSelection)
+                .filter(DomainClaims::organization_id().eq(organization_id.as_uuid()))
+                .filter(DomainClaims::id().eq(claim_id.as_uuid())),
         )
         .await
         .map_err(storage)?
@@ -447,14 +509,13 @@ pub(super) async fn list_domain_claims(
 ) -> Result<Vec<DomainClaim>, RepositoryError> {
     Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
-            sql_query::<DomainClaimRow>(SELECT_DOMAIN_CLAIMS)
-                .append(" where organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" and project_id = ")
-                .bind(project_id.as_uuid())
-                .append(" and environment_id = ")
-                .bind(environment_id.as_uuid())
-                .append(" order by created_at, id"),
+            select_from::<DomainClaims>()
+                .select(DomainClaimSelection)
+                .filter(DomainClaims::organization_id().eq(organization_id.as_uuid()))
+                .filter(DomainClaims::project_id().eq(project_id.as_uuid()))
+                .filter(DomainClaims::environment_id().eq(environment_id.as_uuid()))
+                .order_by(DomainClaims::created_at(), OrderDirection::Asc)
+                .order_by(DomainClaims::id(), OrderDirection::Asc),
         )
         .await
         .map_err(storage)?
@@ -471,11 +532,10 @@ pub(super) async fn find_gateway_certificate(
 ) -> Result<GatewayCertificate, RepositoryError> {
     Database::new(PostgresDialect, executor.clone())
         .fetch_optional_as(
-            sql_query::<CertificateRow>(SELECT_CERTIFICATES)
-                .append(" where node_id = ")
-                .bind(node_id.as_uuid())
-                .append(" and id = ")
-                .bind(certificate_id.as_uuid()),
+            select_from::<GatewayCertificates>()
+                .select(CertificateSelection)
+                .filter(GatewayCertificates::node_id().eq(node_id.as_uuid()))
+                .filter(GatewayCertificates::id().eq(certificate_id.as_uuid())),
         )
         .await
         .map_err(storage)?
@@ -489,10 +549,11 @@ pub(super) async fn list_gateway_certificates(
 ) -> Result<Vec<GatewayCertificate>, RepositoryError> {
     Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
-            sql_query::<CertificateRow>(SELECT_CERTIFICATES)
-                .append(" where organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" order by created_at, id"),
+            select_from::<GatewayCertificates>()
+                .select(CertificateSelection)
+                .filter(GatewayCertificates::organization_id().eq(organization_id.as_uuid()))
+                .order_by(GatewayCertificates::created_at(), OrderDirection::Asc)
+                .order_by(GatewayCertificates::id(), OrderDirection::Asc),
         )
         .await
         .map_err(storage)?
@@ -512,10 +573,10 @@ pub(super) async fn transition_gateway_certificate(
             Box::pin(async move {
                 let existing = fetch_optional::<CertificateRow, _>(
                     transaction,
-                    sql_query::<CertificateRow>(SELECT_CERTIFICATES)
-                        .append(" where id = ")
-                        .bind(certificate.id.as_uuid())
-                        .append(" for update"),
+                    select_from::<GatewayCertificates>()
+                        .select(CertificateSelection)
+                        .filter(GatewayCertificates::id().eq(certificate.id.as_uuid()))
+                        .for_update(),
                 )
                 .await?
                 .ok_or(RepositoryError::NotFound)?
@@ -535,37 +596,33 @@ pub(super) async fn insert_domain_claim(
 ) -> Result<(), PostgresPersistenceError> {
     let result = execute(
         transaction,
-        sql_query::<()>(
-            "insert into domain_claims (id, organization_id, project_id, environment_id, pattern, challenge_dns_name, challenge_value, state, failure, aggregate_version, created_at, updated_at, verified_at, revoked_at) values (",
-        )
-        .bind(claim.id.as_uuid())
-        .append(", ")
-        .bind(claim.organization_id.as_uuid())
-        .append(", ")
-        .bind(claim.project_id.as_uuid())
-        .append(", ")
-        .bind(claim.environment_id.as_uuid())
-        .append(", ")
-        .bind(claim.pattern.as_str())
-        .append(", ")
-        .bind(claim.challenge_dns_name.as_str())
-        .append(", ")
-        .bind(claim.challenge_value.as_str())
-        .append(", ")
-        .bind(claim.state.as_str())
-        .append(", ")
-        .bind(claim.failure.as_deref())
-        .append(", ")
-        .bind(claim.aggregate_version)
-        .append(", ")
-        .bind(claim.created_at)
-        .append(", ")
-        .bind(claim.updated_at)
-        .append(", ")
-        .bind(claim.verified_at)
-        .append(", ")
-        .bind(claim.revoked_at)
-        .append(")"),
+        insert_into::<DomainClaims>()
+            .value(DomainClaims::id(), claim.id.as_uuid())
+            .value(
+                DomainClaims::organization_id(),
+                claim.organization_id.as_uuid(),
+            )
+            .value(DomainClaims::project_id(), claim.project_id.as_uuid())
+            .value(
+                DomainClaims::environment_id(),
+                claim.environment_id.as_uuid(),
+            )
+            .value(DomainClaims::pattern(), claim.pattern.as_str())
+            .value(
+                DomainClaims::challenge_dns_name(),
+                claim.challenge_dns_name.as_str(),
+            )
+            .value(
+                DomainClaims::challenge_value(),
+                claim.challenge_value.as_str(),
+            )
+            .value(DomainClaims::state(), claim.state.as_str())
+            .value(DomainClaims::failure(), claim.failure.clone())
+            .value(DomainClaims::aggregate_version(), claim.aggregate_version)
+            .value(DomainClaims::created_at(), claim.created_at)
+            .value(DomainClaims::updated_at(), claim.updated_at)
+            .value(DomainClaims::verified_at(), claim.verified_at)
+            .value(DomainClaims::revoked_at(), claim.revoked_at),
     )
     .await;
     map_domain_insert(result)
@@ -585,55 +642,71 @@ pub(super) async fn insert_certificate(
     .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?;
     let request = serde_json::to_value(&certificate.request)
         .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?;
+    let material = certificate.material.as_ref();
     let result = execute(
         transaction,
-        sql_query::<()>(
-            "insert into gateway_certificates (id, organization_id, node_id, domain_claim_ids, gateway_revision, gateway_command_id, snapshot_digest, request, state, csr_digest, serial_number, fingerprint, certificate_pem, ca_bundle_pem, issued_at, expires_at, failure, aggregate_version, created_at, updated_at, ready_at, revoked_at) values (",
-        )
-        .bind(certificate.id.as_uuid())
-        .append(", ")
-        .bind(certificate.organization_id.as_uuid())
-        .append(", ")
-        .bind(certificate.node_id.as_uuid())
-        .append(", ")
-        .bind(claim_ids)
-        .append(", ")
-        .bind(certificate.gateway_revision)
-        .append(", ")
-        .bind(certificate.gateway_command_id.as_uuid())
-        .append(", ")
-        .bind(certificate.snapshot_digest.as_str())
-        .append(", ")
-        .bind(request)
-        .append(", ")
-        .bind(certificate.state.as_str())
-        .append(", ")
-        .bind(certificate.csr_digest.as_deref())
-        .append(", ")
-        .bind(certificate.material.as_ref().map(|value| value.serial_number.as_str()))
-        .append(", ")
-        .bind(certificate.material.as_ref().map(|value| value.fingerprint.as_str()))
-        .append(", ")
-        .bind(certificate.material.as_ref().map(|value| value.certificate_pem.as_str()))
-        .append(", ")
-        .bind(certificate.material.as_ref().map(|value| value.ca_bundle_pem.as_str()))
-        .append(", ")
-        .bind(certificate.material.as_ref().map(|value| value.issued_at))
-        .append(", ")
-        .bind(certificate.material.as_ref().map(|value| value.expires_at))
-        .append(", ")
-        .bind(certificate.failure.as_deref())
-        .append(", ")
-        .bind(certificate.aggregate_version)
-        .append(", ")
-        .bind(certificate.created_at)
-        .append(", ")
-        .bind(certificate.updated_at)
-        .append(", ")
-        .bind(certificate.ready_at)
-        .append(", ")
-        .bind(certificate.revoked_at)
-        .append(")"),
+        insert_into::<GatewayCertificates>()
+            .value(GatewayCertificates::id(), certificate.id.as_uuid())
+            .value(
+                GatewayCertificates::organization_id(),
+                certificate.organization_id.as_uuid(),
+            )
+            .value(
+                GatewayCertificates::node_id(),
+                certificate.node_id.as_uuid(),
+            )
+            .value(GatewayCertificates::domain_claim_ids(), claim_ids)
+            .value(
+                GatewayCertificates::gateway_revision(),
+                certificate.gateway_revision,
+            )
+            .value(
+                GatewayCertificates::gateway_command_id(),
+                certificate.gateway_command_id.as_uuid(),
+            )
+            .value(
+                GatewayCertificates::snapshot_digest(),
+                certificate.snapshot_digest.as_str(),
+            )
+            .value(GatewayCertificates::request(), request)
+            .value(GatewayCertificates::state(), certificate.state.as_str())
+            .value(
+                GatewayCertificates::csr_digest(),
+                certificate.csr_digest.clone(),
+            )
+            .value(
+                GatewayCertificates::serial_number(),
+                material.map(|value| value.serial_number.clone()),
+            )
+            .value(
+                GatewayCertificates::fingerprint(),
+                material.map(|value| value.fingerprint.clone()),
+            )
+            .value(
+                GatewayCertificates::certificate_pem(),
+                material.map(|value| value.certificate_pem.clone()),
+            )
+            .value(
+                GatewayCertificates::ca_bundle_pem(),
+                material.map(|value| value.ca_bundle_pem.clone()),
+            )
+            .value(
+                GatewayCertificates::issued_at(),
+                material.map(|value| value.issued_at),
+            )
+            .value(
+                GatewayCertificates::expires_at(),
+                material.map(|value| value.expires_at),
+            )
+            .value(GatewayCertificates::failure(), certificate.failure.clone())
+            .value(
+                GatewayCertificates::aggregate_version(),
+                certificate.aggregate_version,
+            )
+            .value(GatewayCertificates::created_at(), certificate.created_at)
+            .value(GatewayCertificates::updated_at(), certificate.updated_at)
+            .value(GatewayCertificates::ready_at(), certificate.ready_at)
+            .value(GatewayCertificates::revoked_at(), certificate.revoked_at),
     )
     .await;
     match result {
@@ -657,36 +730,46 @@ pub(super) async fn update_certificate(
         "Gateway certificate transition",
         execute(
             transaction,
-            sql_query::<()>("update gateway_certificates set state = ")
-                .bind(certificate.state.as_str())
-                .append(", csr_digest = ")
-                .bind(certificate.csr_digest.as_deref())
-                .append(", serial_number = ")
-                .bind(material.map(|value| value.serial_number.as_str()))
-                .append(", fingerprint = ")
-                .bind(material.map(|value| value.fingerprint.as_str()))
-                .append(", certificate_pem = ")
-                .bind(material.map(|value| value.certificate_pem.as_str()))
-                .append(", ca_bundle_pem = ")
-                .bind(material.map(|value| value.ca_bundle_pem.as_str()))
-                .append(", issued_at = ")
-                .bind(material.map(|value| value.issued_at))
-                .append(", expires_at = ")
-                .bind(material.map(|value| value.expires_at))
-                .append(", failure = ")
-                .bind(certificate.failure.as_deref())
-                .append(", aggregate_version = ")
-                .bind(certificate.aggregate_version)
-                .append(", updated_at = ")
-                .bind(certificate.updated_at)
-                .append(", ready_at = ")
-                .bind(certificate.ready_at)
-                .append(", revoked_at = ")
-                .bind(certificate.revoked_at)
-                .append(" where id = ")
-                .bind(certificate.id.as_uuid())
-                .append(" and aggregate_version = ")
-                .bind(expected_version),
+            update_table::<GatewayCertificates>()
+                .set(GatewayCertificates::state(), certificate.state.as_str())
+                .set(
+                    GatewayCertificates::csr_digest(),
+                    certificate.csr_digest.clone(),
+                )
+                .set(
+                    GatewayCertificates::serial_number(),
+                    material.map(|value| value.serial_number.clone()),
+                )
+                .set(
+                    GatewayCertificates::fingerprint(),
+                    material.map(|value| value.fingerprint.clone()),
+                )
+                .set(
+                    GatewayCertificates::certificate_pem(),
+                    material.map(|value| value.certificate_pem.clone()),
+                )
+                .set(
+                    GatewayCertificates::ca_bundle_pem(),
+                    material.map(|value| value.ca_bundle_pem.clone()),
+                )
+                .set(
+                    GatewayCertificates::issued_at(),
+                    material.map(|value| value.issued_at),
+                )
+                .set(
+                    GatewayCertificates::expires_at(),
+                    material.map(|value| value.expires_at),
+                )
+                .set(GatewayCertificates::failure(), certificate.failure.clone())
+                .set(
+                    GatewayCertificates::aggregate_version(),
+                    certificate.aggregate_version,
+                )
+                .set(GatewayCertificates::updated_at(), certificate.updated_at)
+                .set(GatewayCertificates::ready_at(), certificate.ready_at)
+                .set(GatewayCertificates::revoked_at(), certificate.revoked_at)
+                .filter(GatewayCertificates::id().eq(certificate.id.as_uuid()))
+                .filter(GatewayCertificates::aggregate_version().eq(expected_version)),
         )
         .await?,
     )

@@ -7,16 +7,15 @@ use crate::modules::edge::domain::{GatewayRolloutPolicy, GatewayScope, Route};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayScopeId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
 };
+use a3s_orm::expression::Selection;
 use a3s_orm::{
-    insert_into, sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect,
-    PostgresExecutor, Row,
+    insert_into, select_from, Database, DecodeError, Expression, FromRow, FromValue,
+    OrderDirection, PostgresDialect, PostgresExecutor, Row,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use super::postgres_schema::{GatewayRouteScopes, GatewayScopeMembers};
-
-const SELECT_GATEWAY_SCOPES: &str = "select scope.id, scope.organization_id, scope.project_id, scope.environment_id, scope.node_id, scope.membership_generation, scope.min_ready, scope.max_unavailable, scope.aggregate_version, scope.created_at, scope.updated_at, coalesce((select jsonb_agg(member.node_id order by member.ordinal) from gateway_scope_members member where member.gateway_scope_id = scope.id), '[]'::jsonb) from gateway_route_scopes scope";
 
 struct GatewayScopeRow {
     id: Uuid,
@@ -30,7 +29,28 @@ struct GatewayScopeRow {
     aggregate_version: u64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
-    member_node_ids: serde_json::Value,
+}
+
+struct GatewayScopeSelection;
+
+impl Selection for GatewayScopeSelection {
+    type Output = GatewayScopeRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            GatewayRouteScopes::id().expression(),
+            GatewayRouteScopes::organization_id().expression(),
+            GatewayRouteScopes::project_id().expression(),
+            GatewayRouteScopes::environment_id().expression(),
+            GatewayRouteScopes::node_id().expression(),
+            GatewayRouteScopes::membership_generation().expression(),
+            GatewayRouteScopes::min_ready().expression(),
+            GatewayRouteScopes::max_unavailable().expression(),
+            GatewayRouteScopes::aggregate_version().expression(),
+            GatewayRouteScopes::created_at().expression(),
+            GatewayRouteScopes::updated_at().expression(),
+        ]
+    }
 }
 
 impl FromRow for GatewayScopeRow {
@@ -47,15 +67,13 @@ impl FromRow for GatewayScopeRow {
             aggregate_version: decode(row, 8)?,
             created_at: decode(row, 9)?,
             updated_at: decode(row, 10)?,
-            member_node_ids: decode(row, 11)?,
         })
     }
 }
 
 impl GatewayScopeRow {
-    fn scope(self) -> Result<GatewayScope, RepositoryError> {
-        let member_node_ids = serde_json::from_value::<Vec<Uuid>>(self.member_node_ids)
-            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+    fn scope(self, member_node_ids: Vec<Uuid>) -> Result<GatewayScope, RepositoryError> {
+        let member_node_ids = member_node_ids
             .into_iter()
             .map(crate::modules::shared_kernel::domain::NodeId::from_uuid)
             .collect::<Vec<_>>();
@@ -215,18 +233,28 @@ pub(super) async fn find(
     organization_id: OrganizationId,
     scope_id: GatewayScopeId,
 ) -> Result<GatewayScope, RepositoryError> {
-    Database::new(PostgresDialect, executor.clone())
+    let database = Database::new(PostgresDialect, executor.clone());
+    let row = database
         .fetch_optional_as(
-            sql_query::<GatewayScopeRow>(SELECT_GATEWAY_SCOPES)
-                .append(" where scope.organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" and scope.id = ")
-                .bind(scope_id.as_uuid()),
+            select_from::<GatewayRouteScopes>()
+                .select(GatewayScopeSelection)
+                .filter(GatewayRouteScopes::organization_id().eq(organization_id.as_uuid()))
+                .filter(GatewayRouteScopes::id().eq(scope_id.as_uuid())),
         )
         .await
         .map_err(storage)?
-        .ok_or(RepositoryError::NotFound)?
-        .scope()
+        .ok_or(RepositoryError::NotFound)?;
+    let member_node_ids = database
+        .fetch_all_as(
+            select_from::<GatewayScopeMembers>()
+                .select(GatewayScopeMembers::node_id())
+                .filter(GatewayScopeMembers::gateway_scope_id().eq(scope_id.as_uuid()))
+                .order_by(GatewayScopeMembers::ordinal(), OrderDirection::Asc),
+        )
+        .await
+        .map_err(storage)?
+        .rows;
+    row.scope(member_node_ids)
 }
 
 pub(super) async fn list(
@@ -235,22 +263,49 @@ pub(super) async fn list(
     project_id: ProjectId,
     environment_id: EnvironmentId,
 ) -> Result<Vec<GatewayScope>, RepositoryError> {
-    Database::new(PostgresDialect, executor.clone())
+    let database = Database::new(PostgresDialect, executor.clone());
+    let rows = database
         .fetch_all_as(
-            sql_query::<GatewayScopeRow>(SELECT_GATEWAY_SCOPES)
-                .append(" where scope.organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" and scope.project_id = ")
-                .bind(project_id.as_uuid())
-                .append(" and scope.environment_id = ")
-                .bind(environment_id.as_uuid())
-                .append(" order by scope.created_at, scope.id"),
+            select_from::<GatewayRouteScopes>()
+                .select(GatewayScopeSelection)
+                .filter(GatewayRouteScopes::organization_id().eq(organization_id.as_uuid()))
+                .filter(GatewayRouteScopes::project_id().eq(project_id.as_uuid()))
+                .filter(GatewayRouteScopes::environment_id().eq(environment_id.as_uuid()))
+                .order_by(GatewayRouteScopes::created_at(), OrderDirection::Asc)
+                .order_by(GatewayRouteScopes::id(), OrderDirection::Asc),
+        )
+        .await
+        .map_err(storage)?
+        .rows;
+    let mut members = database
+        .fetch_all_as(
+            select_from::<GatewayScopeMembers>()
+                .select((
+                    GatewayScopeMembers::gateway_scope_id(),
+                    GatewayScopeMembers::node_id(),
+                ))
+                .filter(GatewayScopeMembers::organization_id().eq(organization_id.as_uuid()))
+                .filter(GatewayScopeMembers::project_id().eq(project_id.as_uuid()))
+                .filter(GatewayScopeMembers::environment_id().eq(environment_id.as_uuid()))
+                .order_by(GatewayScopeMembers::gateway_scope_id(), OrderDirection::Asc)
+                .order_by(GatewayScopeMembers::ordinal(), OrderDirection::Asc),
         )
         .await
         .map_err(storage)?
         .rows
         .into_iter()
-        .map(GatewayScopeRow::scope)
+        .fold(
+            std::collections::BTreeMap::<Uuid, Vec<Uuid>>::new(),
+            |mut grouped, (scope_id, node_id)| {
+                grouped.entry(scope_id).or_default().push(node_id);
+                grouped
+            },
+        );
+    rows.into_iter()
+        .map(|row| {
+            let member_node_ids = members.remove(&row.id).unwrap_or_default();
+            row.scope(member_node_ids)
+        })
         .collect()
 }
 
@@ -328,17 +383,28 @@ pub(super) async fn load_for_share(
     transaction: &a3s_orm::PostgresTransaction,
     scope_id: GatewayScopeId,
 ) -> Result<Option<GatewayScope>, PostgresPersistenceError> {
-    fetch_optional::<GatewayScopeRow, _>(
+    let row = fetch_optional::<GatewayScopeRow, _>(
         transaction,
-        sql_query::<GatewayScopeRow>(SELECT_GATEWAY_SCOPES)
-            .append(" where scope.id = ")
-            .bind(scope_id.as_uuid())
-            .append(" for share"),
+        select_from::<GatewayRouteScopes>()
+            .select(GatewayScopeSelection)
+            .filter(GatewayRouteScopes::id().eq(scope_id.as_uuid()))
+            .for_share(),
     )
-    .await?
-    .map(GatewayScopeRow::scope)
-    .transpose()
-    .map_err(PostgresPersistenceError::from)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let member_node_ids = crate::infrastructure::fetch_all::<Uuid, _>(
+        transaction,
+        select_from::<GatewayScopeMembers>()
+            .select(GatewayScopeMembers::node_id())
+            .filter(GatewayScopeMembers::gateway_scope_id().eq(scope_id.as_uuid()))
+            .order_by(GatewayScopeMembers::ordinal(), OrderDirection::Asc),
+    )
+    .await?;
+    row.scope(member_node_ids)
+        .map(Some)
+        .map_err(PostgresPersistenceError::from)
 }
 
 fn storage(error: impl std::fmt::Display) -> RepositoryError {

@@ -1,4 +1,4 @@
-use super::postgres::{insert_publication, RouteRow, SELECT_ROUTES};
+use super::postgres::{insert_publication, RouteRow, RouteSelection};
 use super::postgres_gateway_scopes;
 use super::postgres_tls::insert_certificate;
 use crate::infrastructure::{
@@ -16,15 +16,18 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId, RepositoryError,
     WorkloadId, WorkloadRevisionId,
 };
+use a3s_orm::expression::Selection;
 use a3s_orm::{
-    sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor,
-    PostgresTransaction, Row,
+    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
+    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
 };
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-const SELECT_CUTOVERS: &str = "select deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, previous_generation, candidate_generation, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at from gateway_route_cutovers";
+use super::postgres_schema::{
+    GatewayPublications, GatewayRouteCutovers, GatewayScopes, Nodes, Routes,
+};
 
 struct CutoverRow {
     deployment_id: Uuid,
@@ -45,6 +48,35 @@ struct CutoverRow {
     failure: Option<String>,
     staged_at: DateTime<Utc>,
     acknowledged_at: Option<DateTime<Utc>>,
+}
+
+struct CutoverSelection;
+
+impl Selection for CutoverSelection {
+    type Output = CutoverRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            GatewayRouteCutovers::deployment_id().expression(),
+            GatewayRouteCutovers::organization_id().expression(),
+            GatewayRouteCutovers::workload_id().expression(),
+            GatewayRouteCutovers::previous_revision_id().expression(),
+            GatewayRouteCutovers::candidate_revision_id().expression(),
+            GatewayRouteCutovers::previous_generation().expression(),
+            GatewayRouteCutovers::candidate_generation().expression(),
+            GatewayRouteCutovers::node_id().expression(),
+            GatewayRouteCutovers::gateway_revision().expression(),
+            GatewayRouteCutovers::gateway_command_id().expression(),
+            GatewayRouteCutovers::gateway_certificate_id().expression(),
+            GatewayRouteCutovers::snapshot_digest().expression(),
+            GatewayRouteCutovers::snapshot_expires_at().expression(),
+            GatewayRouteCutovers::routes().expression(),
+            GatewayRouteCutovers::state().expression(),
+            GatewayRouteCutovers::failure().expression(),
+            GatewayRouteCutovers::staged_at().expression(),
+            GatewayRouteCutovers::acknowledged_at().expression(),
+        ]
+    }
 }
 
 impl FromRow for CutoverRow {
@@ -149,9 +181,10 @@ pub(super) async fn stage(
                 .await?;
                 let organization_id = fetch_optional::<Uuid, _>(
                     transaction,
-                    sql_query::<Uuid>("select organization_id from nodes where id = ")
-                        .bind(bundle.publication.node_id.as_uuid())
-                        .append(" for update"),
+                    select_from::<Nodes>()
+                        .select(Nodes::organization_id())
+                        .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
+                        .for_update(),
                 )
                 .await?
                 .ok_or(RepositoryError::NotFound)?;
@@ -160,11 +193,14 @@ pub(super) async fn stage(
                 }
                 let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
                     transaction,
-                    sql_query::<(u64, Option<u64>, u64)>(
-                        "select last_issued_revision, installed_revision, aggregate_version from gateway_scopes where node_id = ",
-                    )
-                    .bind(bundle.publication.node_id.as_uuid())
-                    .append(" for update"),
+                    select_from::<GatewayScopes>()
+                        .select((
+                            GatewayScopes::last_issued_revision(),
+                            GatewayScopes::installed_revision(),
+                            GatewayScopes::aggregate_version(),
+                        ))
+                        .filter(GatewayScopes::node_id().eq(bundle.publication.node_id.as_uuid()))
+                        .for_update(),
                 )
                 .await?;
                 let current = match scope {
@@ -185,11 +221,15 @@ pub(super) async fn stage(
                     )
                     .into());
                 }
-                let pending = fetch_optional::<i32, _>(
+                let pending = fetch_optional::<u64, _>(
                     transaction,
-                    sql_query::<i32>("select 1 from gateway_publications where node_id = ")
-                        .bind(bundle.publication.node_id.as_uuid())
-                        .append(" and state = 'pending' for update"),
+                    select_from::<GatewayPublications>()
+                        .select(GatewayPublications::revision())
+                        .filter(
+                            GatewayPublications::node_id().eq(bundle.publication.node_id.as_uuid()),
+                        )
+                        .filter(GatewayPublications::state().eq("pending"))
+                        .for_update(),
                 )
                 .await?;
                 if pending.is_some() {
@@ -210,12 +250,15 @@ pub(super) async fn stage(
                 }
                 let active_rows = fetch_all::<RouteRow, _>(
                     transaction,
-                    sql_query::<RouteRow>(SELECT_ROUTES)
-                        .append(" where organization_id = ")
-                        .bind(bundle.cutover.organization_id.as_uuid())
-                        .append(" and workload_id = ")
-                        .bind(bundle.cutover.workload_id.as_uuid())
-                        .append(" and state = 'active' order by id for update"),
+                    select_from::<Routes>()
+                        .select(RouteSelection)
+                        .filter(
+                            Routes::organization_id().eq(bundle.cutover.organization_id.as_uuid()),
+                        )
+                        .filter(Routes::workload_id().eq(bundle.cutover.workload_id.as_uuid()))
+                        .filter(Routes::state().eq("active"))
+                        .order_by(Routes::id(), OrderDirection::Asc)
+                        .for_update(),
                 )
                 .await?;
                 let active_routes = active_rows
@@ -232,35 +275,56 @@ pub(super) async fn stage(
                         "Gateway scope",
                         execute(
                             transaction,
-                            sql_query::<()>(
-                                "insert into gateway_scopes (node_id, last_issued_revision, installed_revision, aggregate_version, updated_at) values (",
-                            )
-                            .bind(bundle.publication.node_id.as_uuid())
-                            .append(", ")
-                            .bind(bundle.publication.revision)
-                            .append(", ")
-                            .bind(current.installed_revision)
-                            .append(", 1, ")
-                            .bind(bundle.publication.command_issued_at)
-                            .append(")"),
+                            insert_into::<GatewayScopes>()
+                                .value(
+                                    GatewayScopes::node_id(),
+                                    bundle.publication.node_id.as_uuid(),
+                                )
+                                .value(
+                                    GatewayScopes::last_issued_revision(),
+                                    bundle.publication.revision,
+                                )
+                                .value(
+                                    GatewayScopes::installed_revision(),
+                                    current.installed_revision,
+                                )
+                                .value(GatewayScopes::aggregate_version(), 1_u64)
+                                .value(
+                                    GatewayScopes::updated_at(),
+                                    bundle.publication.command_issued_at,
+                                ),
                         )
                         .await?,
                     )?;
                 } else {
+                    let next_version =
+                        current.aggregate_version.checked_add(1).ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "Gateway scope aggregate version overflowed".into(),
+                            )
+                        })?;
                     require_one_row(
                         "Gateway scope",
                         execute(
                             transaction,
-                            sql_query::<()>("update gateway_scopes set last_issued_revision = ")
-                                .bind(bundle.publication.revision)
-                                .append(
-                                    ", aggregate_version = aggregate_version + 1, updated_at = ",
+                            update_table::<GatewayScopes>()
+                                .set(
+                                    GatewayScopes::last_issued_revision(),
+                                    bundle.publication.revision,
                                 )
-                                .bind(bundle.publication.command_issued_at)
-                                .append(" where node_id = ")
-                                .bind(bundle.publication.node_id.as_uuid())
-                                .append(" and aggregate_version = ")
-                                .bind(current.aggregate_version),
+                                .set(GatewayScopes::aggregate_version(), next_version)
+                                .set(
+                                    GatewayScopes::updated_at(),
+                                    bundle.publication.command_issued_at,
+                                )
+                                .filter(
+                                    GatewayScopes::node_id()
+                                        .eq(bundle.publication.node_id.as_uuid()),
+                                )
+                                .filter(
+                                    GatewayScopes::aggregate_version()
+                                        .eq(current.aggregate_version),
+                                ),
                         )
                         .await?,
                     )?;
@@ -287,11 +351,10 @@ pub(super) async fn find(
 ) -> Result<Option<GatewayRouteCutover>, RepositoryError> {
     Database::new(PostgresDialect, executor.clone())
         .fetch_optional_as(
-            sql_query::<CutoverRow>(SELECT_CUTOVERS)
-                .append(" where organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" and deployment_id = ")
-                .bind(deployment_id.as_uuid()),
+            select_from::<GatewayRouteCutovers>()
+                .select(CutoverSelection)
+                .filter(GatewayRouteCutovers::organization_id().eq(organization_id.as_uuid()))
+                .filter(GatewayRouteCutovers::deployment_id().eq(deployment_id.as_uuid())),
         )
         .await
         .map_err(storage)?
@@ -307,14 +370,12 @@ pub(super) async fn lock_by_gateway_identity(
 ) -> Result<Option<GatewayRouteCutover>, PostgresPersistenceError> {
     fetch_optional::<CutoverRow, _>(
         transaction,
-        sql_query::<CutoverRow>(SELECT_CUTOVERS)
-            .append(" where node_id = ")
-            .bind(node_id)
-            .append(" and gateway_revision = ")
-            .bind(gateway_revision)
-            .append(" and gateway_command_id = ")
-            .bind(gateway_command_id)
-            .append(" for update"),
+        select_from::<GatewayRouteCutovers>()
+            .select(CutoverSelection)
+            .filter(GatewayRouteCutovers::node_id().eq(node_id))
+            .filter(GatewayRouteCutovers::gateway_revision().eq(gateway_revision))
+            .filter(GatewayRouteCutovers::gateway_command_id().eq(gateway_command_id))
+            .for_update(),
     )
     .await?
     .map(CutoverRow::cutover)
@@ -330,10 +391,10 @@ pub(super) async fn persist_acknowledgement(
         for candidate in &cutover.routes {
             let current = fetch_optional::<RouteRow, _>(
                 transaction,
-                sql_query::<RouteRow>(SELECT_ROUTES)
-                    .append(" where id = ")
-                    .bind(candidate.id.as_uuid())
-                    .append(" for update"),
+                select_from::<Routes>()
+                    .select(RouteSelection)
+                    .filter(Routes::id().eq(candidate.id.as_uuid()))
+                    .for_update(),
             )
             .await?
             .ok_or_else(|| {
@@ -346,44 +407,58 @@ pub(super) async fn persist_acknowledgement(
                     "Gateway cutover route version underflowed".into(),
                 )
             })?;
+            let gateway_revision = candidate.gateway_revision.ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "Gateway cutover route omitted its revision".into(),
+                )
+            })?;
+            let gateway_command_id = candidate.gateway_command_id.ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "Gateway cutover route omitted its command".into(),
+                )
+            })?;
+            let snapshot_digest = candidate.snapshot_digest.as_deref().ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "Gateway cutover route omitted its snapshot digest".into(),
+                )
+            })?;
             require_one_row(
                 "Gateway route cutover",
                 execute(
                     transaction,
-                    sql_query::<()>("update routes set workload_revision_id = ")
-                        .bind(candidate.target.workload_revision_id.as_uuid())
-                        .append(", runtime_unit_id = ")
-                        .bind(candidate.target.runtime_unit_id.as_str())
-                        .append(", runtime_generation = ")
-                        .bind(candidate.target.runtime_generation)
-                        .append(", port_name = ")
-                        .bind(candidate.target.port_name.as_str())
-                        .append(", upstream_origin = ")
-                        .bind(candidate.target.upstream.as_str())
-                        .append(", target_observed_at = ")
-                        .bind(candidate.target.observed_at)
-                        .append(", state = ")
-                        .bind(candidate.state.as_str())
-                        .append(", gateway_revision = ")
-                        .bind(candidate.gateway_revision)
-                        .append(", gateway_command_id = ")
-                        .bind(candidate.gateway_command_id.map(|id| id.as_uuid()))
-                        .append(", snapshot_digest = ")
-                        .bind(candidate.snapshot_digest.as_deref())
-                        .append(", failure = ")
-                        .bind(candidate.failure.as_deref())
-                        .append(", aggregate_version = ")
-                        .bind(candidate.aggregate_version)
-                        .append(", updated_at = ")
-                        .bind(candidate.updated_at)
-                        .append(", activated_at = ")
-                        .bind(candidate.activated_at)
-                        .append(", gateway_certificate_id = ")
-                        .bind(candidate.gateway_certificate_id.map(|id| id.as_uuid()))
-                        .append(" where id = ")
-                        .bind(candidate.id.as_uuid())
-                        .append(" and aggregate_version = ")
-                        .bind(expected_version),
+                    update_table::<Routes>()
+                        .set(
+                            Routes::workload_revision_id(),
+                            candidate.target.workload_revision_id.as_uuid(),
+                        )
+                        .set(
+                            Routes::runtime_unit_id(),
+                            candidate.target.runtime_unit_id.as_str(),
+                        )
+                        .set(
+                            Routes::runtime_generation(),
+                            candidate.target.runtime_generation,
+                        )
+                        .set(Routes::port_name(), candidate.target.port_name.as_str())
+                        .set(
+                            Routes::upstream_origin(),
+                            candidate.target.upstream.as_str(),
+                        )
+                        .set(Routes::target_observed_at(), candidate.target.observed_at)
+                        .set(Routes::state(), candidate.state.as_str())
+                        .set(Routes::gateway_revision(), gateway_revision)
+                        .set(Routes::gateway_command_id(), gateway_command_id.as_uuid())
+                        .set(Routes::snapshot_digest(), snapshot_digest)
+                        .set(Routes::failure(), candidate.failure.clone())
+                        .set(Routes::aggregate_version(), candidate.aggregate_version)
+                        .set(Routes::updated_at(), candidate.updated_at)
+                        .set(Routes::activated_at(), candidate.activated_at)
+                        .set(
+                            Routes::gateway_certificate_id(),
+                            candidate.gateway_certificate_id.map(|id| id.as_uuid()),
+                        )
+                        .filter(Routes::id().eq(candidate.id.as_uuid()))
+                        .filter(Routes::aggregate_version().eq(expected_version)),
                 )
                 .await?,
             )?;
@@ -395,17 +470,16 @@ pub(super) async fn persist_acknowledgement(
         "Gateway route cutover acknowledgement",
         execute(
             transaction,
-            sql_query::<()>("update gateway_route_cutovers set routes = ")
-                .bind(routes)
-                .append(", state = ")
-                .bind(cutover.state.as_str())
-                .append(", failure = ")
-                .bind(cutover.failure.as_deref())
-                .append(", acknowledged_at = ")
-                .bind(cutover.acknowledged_at)
-                .append(" where deployment_id = ")
-                .bind(cutover.deployment_id.as_uuid())
-                .append(" and state = 'pending'"),
+            update_table::<GatewayRouteCutovers>()
+                .set(GatewayRouteCutovers::routes(), routes)
+                .set(GatewayRouteCutovers::state(), cutover.state.as_str())
+                .set(GatewayRouteCutovers::failure(), cutover.failure.clone())
+                .set(
+                    GatewayRouteCutovers::acknowledged_at(),
+                    cutover.acknowledged_at,
+                )
+                .filter(GatewayRouteCutovers::deployment_id().eq(cutover.deployment_id.as_uuid()))
+                .filter(GatewayRouteCutovers::state().eq("pending")),
         )
         .await?,
     )
@@ -419,45 +493,64 @@ async fn insert_cutover(
         .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?;
     let result = execute(
         transaction,
-        sql_query::<()>(
-            "insert into gateway_route_cutovers (deployment_id, organization_id, workload_id, previous_revision_id, candidate_revision_id, previous_generation, candidate_generation, node_id, gateway_revision, gateway_command_id, gateway_certificate_id, snapshot_digest, snapshot_expires_at, routes, state, failure, staged_at, acknowledged_at) values (",
-        )
-        .bind(cutover.deployment_id.as_uuid())
-        .append(", ")
-        .bind(cutover.organization_id.as_uuid())
-        .append(", ")
-        .bind(cutover.workload_id.as_uuid())
-        .append(", ")
-        .bind(cutover.previous_revision_id.as_uuid())
-        .append(", ")
-        .bind(cutover.candidate_revision_id.as_uuid())
-        .append(", ")
-        .bind(cutover.previous_generation)
-        .append(", ")
-        .bind(cutover.candidate_generation)
-        .append(", ")
-        .bind(cutover.node_id.as_uuid())
-        .append(", ")
-        .bind(cutover.gateway_revision)
-        .append(", ")
-        .bind(cutover.gateway_command_id.as_uuid())
-        .append(", ")
-        .bind(cutover.gateway_certificate_id.as_uuid())
-        .append(", ")
-        .bind(cutover.snapshot_digest.as_str())
-        .append(", ")
-        .bind(cutover.snapshot_expires_at)
-        .append(", ")
-        .bind(routes)
-        .append(", ")
-        .bind(cutover.state.as_str())
-        .append(", ")
-        .bind(cutover.failure.as_deref())
-        .append(", ")
-        .bind(cutover.staged_at)
-        .append(", ")
-        .bind(cutover.acknowledged_at)
-        .append(")"),
+        insert_into::<GatewayRouteCutovers>()
+            .value(
+                GatewayRouteCutovers::deployment_id(),
+                cutover.deployment_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::organization_id(),
+                cutover.organization_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::workload_id(),
+                cutover.workload_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::previous_revision_id(),
+                cutover.previous_revision_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::candidate_revision_id(),
+                cutover.candidate_revision_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::previous_generation(),
+                cutover.previous_generation,
+            )
+            .value(
+                GatewayRouteCutovers::candidate_generation(),
+                cutover.candidate_generation,
+            )
+            .value(GatewayRouteCutovers::node_id(), cutover.node_id.as_uuid())
+            .value(
+                GatewayRouteCutovers::gateway_revision(),
+                cutover.gateway_revision,
+            )
+            .value(
+                GatewayRouteCutovers::gateway_command_id(),
+                cutover.gateway_command_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::gateway_certificate_id(),
+                cutover.gateway_certificate_id.as_uuid(),
+            )
+            .value(
+                GatewayRouteCutovers::snapshot_digest(),
+                cutover.snapshot_digest.as_str(),
+            )
+            .value(
+                GatewayRouteCutovers::snapshot_expires_at(),
+                cutover.snapshot_expires_at,
+            )
+            .value(GatewayRouteCutovers::routes(), routes)
+            .value(GatewayRouteCutovers::state(), cutover.state.as_str())
+            .value(GatewayRouteCutovers::failure(), cutover.failure.clone())
+            .value(GatewayRouteCutovers::staged_at(), cutover.staged_at)
+            .value(
+                GatewayRouteCutovers::acknowledged_at(),
+                cutover.acknowledged_at,
+            ),
     )
     .await;
     match result {

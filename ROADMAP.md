@@ -334,10 +334,15 @@ member makes it succeeded, and a fully observed mixed result becomes degraded.
 The worker-role rollout reconciler restores the complete active aggregate and
 its publications through typed A3S ORM, idempotently redispatches pending Fleet
 commands after restart, and projects exact command-deadline expiry as
-unavailable. Domain, in-memory, migration, recreated-PostgreSQL, and durable
-Fleet queue tests cover this foundation. Per-member healthy target compilation,
-real multi-Gateway delivery and loss evidence, and joint production HA remain
-open.
+unavailable. The complete Edge PostgreSQL repository uses typed A3S ORM tables,
+queries, expressions, row locks, and table locks for logical scopes,
+publications, routes, cutovers, acknowledgements, DomainClaims, certificates,
+convergence, and rollouts. A source architecture test rejects raw SQL and direct
+database drivers throughout Edge production persistence. Domain, in-memory,
+migration, recreated-PostgreSQL 17, and durable Fleet queue tests cover this
+foundation, including route cutover and certificate-convergence recovery.
+Per-member healthy target compilation, real multi-Gateway delivery and loss
+evidence, and joint production HA remain open.
 
 ### 5.7 `I0`: inference profile
 

@@ -7,6 +7,8 @@ mod postgres_gateway_scopes;
 mod postgres_rollouts;
 mod postgres_schema;
 mod postgres_tls;
+#[cfg(test)]
+mod postgres_typed_orm_tests;
 
 pub use in_memory::InMemoryEdgeRepository;
 pub use postgres::PostgresEdgeRepository;
