@@ -115,9 +115,32 @@ async fn secret_rotation_provider_crash_probe() {
         .expect("run Secret-rotation provider crash probe");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn postgres_foundation_is_migrated_atomic_and_idempotent(
-) -> Result<(), Box<dyn std::error::Error>> {
+#[test]
+fn postgres_foundation_is_migrated_atomic_and_idempotent() {
+    const STACK_SIZE: usize = 32 * 1024 * 1024;
+    let result = std::thread::Builder::new()
+        .name("postgres-foundation".into())
+        .stack_size(STACK_SIZE)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .thread_stack_size(STACK_SIZE)
+                .enable_all()
+                .build()
+                .map_err(|error| format!("build PostgreSQL test runtime: {error}"))?
+                .block_on(run_postgres_foundation_test())
+                .map_err(|error| error.to_string())
+        })
+        .expect("spawn PostgreSQL foundation test thread")
+        .join();
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => panic!("{error}"),
+        Err(panic_payload) => std::panic::resume_unwind(panic_payload),
+    }
+}
+
+async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>> {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return Ok(());
     };
