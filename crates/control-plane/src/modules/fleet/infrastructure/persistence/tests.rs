@@ -12,7 +12,8 @@ use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeAvailability, NodeCapabilities, NodeName, NodeState,
 };
 use crate::modules::shared_kernel::domain::{
-    EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
+    canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId,
+    NodeId, OrganizationId,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCommandAck, NodeCommandFailure,
@@ -36,7 +37,7 @@ use support::*;
 #[tokio::test]
 async fn resource_inventory_is_monotonic_replay_safe_and_required_by_v2_heartbeats() {
     let repository = InMemoryNodeRepository::new();
-    let now = Utc::now();
+    let now = canonical_timestamp(Utc::now());
     let (node_id, agent_instance_id) = command_node(&repository, now).await;
     let first = resource_inventory(node_id, agent_instance_id, 1, 2_000, now);
     let receipt = repository

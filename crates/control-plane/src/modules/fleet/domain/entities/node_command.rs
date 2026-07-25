@@ -21,7 +21,7 @@ pub struct NodeCommand {
 }
 
 impl NodeCommand {
-    pub fn issue(draft: NodeCommandDraft, sequence: u64) -> Result<Self, String> {
+    pub fn issue(mut draft: NodeCommandDraft, sequence: u64) -> Result<Self, String> {
         if draft.proposed_command_id.as_uuid().is_nil()
             || draft.node_id.as_uuid().is_nil()
             || draft.aggregate_id.is_nil()
@@ -36,6 +36,10 @@ impl NodeCommand {
         let not_after = canonical_timestamp(draft.not_after);
         if not_after <= issued_at {
             return Err("node command expiry must follow issue time".into());
+        }
+        if let NodeCommandPayload::GatewaySnapshotInstall { snapshot } = &mut draft.payload {
+            snapshot.issued_at = canonical_timestamp(snapshot.issued_at);
+            snapshot.expires_at = canonical_timestamp(snapshot.expires_at);
         }
         draft.payload.validate()?;
         Ok(Self {
@@ -138,7 +142,7 @@ pub struct NodeCommandDraft {
 mod tests {
     use super::*;
     use a3s_cloud_contracts::{
-        NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+        GatewaySnapshot, NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
         NodeResourceClaimPrepared,
     };
     use chrono::{TimeZone, Timelike};
@@ -149,13 +153,23 @@ mod tests {
             .timestamp_opt(1_700_000_000, 123_456_789)
             .single()
             .expect("timestamp");
+        let node_id = NodeId::new();
         let draft = NodeCommandDraft {
             proposed_command_id: NodeCommandId::new(),
-            node_id: NodeId::new(),
+            node_id,
             aggregate_id: Uuid::now_v7(),
-            payload: NodeCommandPayload::RuntimeInspect {
-                unit_id: "timestamp-fixture".into(),
-                generation: 1,
+            payload: NodeCommandPayload::GatewaySnapshotInstall {
+                snapshot: Box::new(
+                    GatewaySnapshot::new(
+                        node_id.as_uuid(),
+                        1,
+                        None,
+                        issued_at,
+                        issued_at + chrono::Duration::minutes(1),
+                        "management { enabled = true }\n",
+                    )
+                    .expect("Gateway snapshot"),
+                ),
             },
             issued_at,
             not_after: issued_at + chrono::Duration::minutes(1),
@@ -168,6 +182,14 @@ mod tests {
         assert_eq!(command, replay);
         assert_eq!(command.issued_at.nanosecond(), 123_456_000);
         assert_eq!(command.not_after.nanosecond(), 123_456_000);
+        let NodeCommandPayload::GatewaySnapshotInstall { snapshot } = &command.payload else {
+            panic!("command must install a Gateway snapshot");
+        };
+        assert_eq!(snapshot.issued_at, command.issued_at);
+        assert_eq!(snapshot.expires_at, command.not_after);
+        command
+            .envelope(Uuid::now_v7())
+            .expect("canonical Gateway command envelope");
     }
 
     #[test]

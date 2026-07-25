@@ -208,6 +208,9 @@ fn deployment_binding_projects_one_provider_identity_for_one_replica_generation(
 #[test]
 fn resource_claim_requires_exact_prepare_bind_and_release_evidence() {
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("nanosecond-precision Claim time");
     let binding = placed_replica_binding(now);
     let slots = vec![
         ResourceSlotBinding {
@@ -315,6 +318,9 @@ fn resource_claim_requires_exact_prepare_bind_and_release_evidence() {
 #[test]
 fn orphaned_resource_claim_blocks_until_trusted_fencing_evidence() {
     let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("nanosecond-precision Claim time");
     let binding = placed_replica_binding(now);
     let node_id = binding.node_id.expect("placed node");
     let slots = vec![ResourceSlotBinding {

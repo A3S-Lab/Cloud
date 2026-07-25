@@ -118,7 +118,8 @@ mod tests {
     };
     use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
     use crate::modules::shared_kernel::domain::{
-        EnrollmentTokenId, GatewayRolloutId, IdempotencyRequest, NodeCommandId, OrganizationId,
+        canonical_timestamp, EnrollmentTokenId, GatewayRolloutId, IdempotencyRequest,
+        NodeCommandId, OrganizationId,
     };
     use a3s_cloud_contracts::{
         DomainEventEnvelope, GatewayManagementProtocol, GatewaySnapshotObservationState,
@@ -130,7 +131,7 @@ mod tests {
     #[tokio::test]
     async fn fleet_queue_enqueues_replays_and_restores_exact_observation_outcomes() {
         let repository = Arc::new(InMemoryNodeRepository::new());
-        let now = Utc::now();
+        let now = canonical_timestamp(Utc::now());
         let organization_id = OrganizationId::new();
         let credential =
             EnrollmentTokenCredential::from_secret(&format!("a3sn_{}", "9".repeat(64)))

@@ -62,6 +62,10 @@ pub struct ResourceClaimBindingEvidence {
 }
 
 impl ResourceClaimBindingEvidence {
+    fn canonicalize(&mut self) {
+        self.observed_at = canonical_timestamp(self.observed_at);
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         validate_runtime_identity(&self.runtime_unit_id, self.runtime_generation)?;
         validate_sha256(&self.binding_digest, "Runtime resource binding digest")?;
@@ -97,6 +101,16 @@ pub enum ResourceClaimReleaseEvidence {
 }
 
 impl ResourceClaimReleaseEvidence {
+    fn canonicalize(&mut self) {
+        let observed_at = match self {
+            Self::DatabaseReservationCancelled { observed_at, .. }
+            | Self::AgentReleased { observed_at, .. }
+            | Self::ProviderNotFound { observed_at, .. }
+            | Self::ComputeFenced { observed_at, .. } => observed_at,
+        };
+        *observed_at = canonical_timestamp(*observed_at);
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if let Self::DatabaseReservationCancelled {
             reservation_digest,
@@ -196,7 +210,7 @@ impl ResourceClaimReservation {
             || self.binding.placement_generation == 0
             || self.binding.runtime_generation != self.binding.replica_generation
             || self.inventory.node_id != self.node_id.as_uuid()
-            || canonical_timestamp(self.reserved_at) < self.binding.updated_at
+            || canonical_timestamp(self.reserved_at) < canonical_timestamp(self.binding.updated_at)
         {
             return Err("resource claim reservation identity or generation is invalid".into());
         }
@@ -397,10 +411,11 @@ impl ResourceClaim {
 
     pub fn bind(
         &mut self,
-        evidence: ResourceClaimBindingEvidence,
+        mut evidence: ResourceClaimBindingEvidence,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
         let at = self.canonical_time(at)?;
+        evidence.canonicalize();
         evidence.validate()?;
         if self.state == ResourceClaimState::BoundToRuntimeUnit {
             return if self.binding_evidence_matches(&evidence) {
@@ -459,10 +474,11 @@ impl ResourceClaim {
 
     pub fn record_released(
         &mut self,
-        evidence: ResourceClaimReleaseEvidence,
+        mut evidence: ResourceClaimReleaseEvidence,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
         let at = self.canonical_time(at)?;
+        evidence.canonicalize();
         evidence.validate()?;
         if self.state == ResourceClaimState::Released {
             return if self.release_evidence.as_ref() == Some(&evidence) {
