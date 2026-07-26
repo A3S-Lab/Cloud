@@ -79,7 +79,7 @@ and generated through `a3s-acl`.
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Verified |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
-| `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | Planned |
+| `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
 | `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
@@ -101,7 +101,7 @@ Later work must reuse this path. A new interface, asset type, import format,
 accelerator, replica policy, or provider never creates a second deployment or
 reconciliation engine.
 
-### 3.2 Current in-progress gate
+### 3.2 Current in-progress gates
 
 `G0` currently includes:
 
@@ -123,6 +123,22 @@ reconciliation engine.
 
 `G0` remains in progress until external private-provider certification and the
 production signed-evidence process-death gate pass.
+
+`C0` now includes the first `C0.1` automation slice:
+
+- one maintained TypeScript client is shared by the web console and CLI;
+- the client validates success and error envelopes, preserves bounded error
+  metadata, applies request timeouts, and maps malformed or failed transport to
+  stable non-secret errors;
+- the CLI accepts authentication only through `A3S_CLOUD_TOKEN`, resolves URL
+  and tenant context from flags or environment without a credential file, and
+  emits bounded table or stable JSON output; and
+- organization, project, environment, node, and operation queries use the same
+  public REST paths and tenant guards as the web console.
+
+`C0.1` remains in progress. Full deployment, route, log, diagnostics and
+mutation parity, node bootstrap, authorized global search, contract
+compatibility policy, and cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -227,6 +243,12 @@ format never becomes a second mutable source of truth.
 
 No presentation surface owns business rules or bypasses tenant guards,
 idempotency, operations, or audit.
+
+The implemented first `C0.1` slice establishes the shared typed transport,
+non-persistent environment/flag context, safe output and exit-code contracts,
+and read-only organization, project, environment, node, and operation commands.
+It does not close `C0.1`; the remaining parity and authorized-search work above
+must land against the same client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

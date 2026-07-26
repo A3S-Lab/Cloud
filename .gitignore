@@ -6,6 +6,9 @@
 /web/node_modules/
 /web/dist/
 /web/.next/
+/cli/node_modules/
+/cli/dist/
+/packages/cloud-client/node_modules/
 /architecture-3d/node_modules/
 /architecture-3d/dist/
 

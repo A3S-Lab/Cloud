@@ -14,3 +14,7 @@ cloud-gateway:
 # Stop the local PostgreSQL, NATS, and registry dependencies
 cloud-down:
     docker compose --env-file deploy/dev/.env.example --file deploy/dev/compose.yaml down
+
+# Run the typed Cloud CLI without persisting credentials or context
+cloud-cli *args:
+    bun run --cwd cli src/main.ts {{args}}

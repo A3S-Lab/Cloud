@@ -102,6 +102,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   and hand successful builds to the existing workload deployment path
 - **Web Operations**: Inspect deployment history, route and certificate state,
   Runtime health, logs, BuildRuns, updates, rollback, cancellation, and retry
+- **Typed Automation Slice**: Reuse one validated TypeScript client across the
+  web console and `a3s-cloud` CLI, select tenant context without a credential
+  file, and list organizations, projects, environments, nodes, and operations
+  as bounded tables or stable JSON
 
 ### Delivery capability matrix
 
@@ -114,7 +118,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, ordered logs, immutable update, cloned rollback, web operations, and clean-host recovery | Verified |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, trusted retry caches, OCI validation and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
-| `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | Planned |
+| `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
 | `A0` — Release catalog | Immutable Agent and MCP releases plus Skill publication through the common delivery path | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
@@ -336,7 +340,7 @@ evidence, and the ordered product portfolio.
 - Docker for the first Runtime provider and real deployment gates
 - The A3S Gateway source revision pinned in
   `tools/gateway-conformance/gateway-revision` for routed service operation
-- Bun and Node.js 22 or later for the web console
+- Bun and Node.js 22 or later for the web console and CLI development
 - NATS JetStream only when the NATS event provider is selected
 
 Redis is not required by the current Cloud profile. PostgreSQL owns durable
@@ -402,6 +406,35 @@ Subsequent requests use
 stable `idempotency-key` header. Use OpenAPI and the web console for the current
 resource and operation surfaces instead of treating README examples as a second
 API specification.
+
+### Use the Cloud CLI
+
+The first `C0.1` automation slice uses the same typed client as the web console.
+The token is accepted only from `A3S_CLOUD_TOKEN`; it is never accepted as an
+argument or written to a context file.
+
+```bash
+bun install --cwd cli --frozen-lockfile
+
+export A3S_CLOUD_TOKEN="${A3S_CLOUD_ADMIN_TOKEN}"
+export A3S_CLOUD_URL="http://127.0.0.1:8080/api/v1"
+export A3S_CLOUD_ORGANIZATION_ID="<organization-uuid>"
+export A3S_CLOUD_PROJECT_ID="<project-uuid>"
+
+bun run --cwd cli src/main.ts context show
+bun run --cwd cli src/main.ts organizations list --output=json
+bun run --cwd cli src/main.ts projects list
+bun run --cwd cli src/main.ts environments list
+bun run --cwd cli src/main.ts nodes list
+bun run --cwd cli src/main.ts operations list
+```
+
+Use `bun run --cwd cli build` to produce the standalone `cli/dist/a3s-cloud`
+binary. Remote endpoints must use HTTPS and end in `/api/v1`; plain HTTP is
+accepted only for literal localhost or loopback addresses. See the
+[CLI reference](cli/README.md) for context variables, output contracts, and
+exit codes. Deployment, route, log, diagnostics, mutations, node bootstrap,
+and authorized search remain subsequent `C0.1` slices.
 
 ## Platform Model
 
@@ -641,6 +674,7 @@ Cloud is an application-local Rust workspace:
 ```text
 Cloud/
 ├── ROADMAP.md
+├── cli/
 ├── config/
 │   ├── cloud.acl
 │   └── node.example.acl
@@ -652,6 +686,8 @@ Cloud/
 ├── deploy/
 ├── docs/
 ├── migrations/
+├── packages/
+│   └── cloud-client/
 ├── tools/
 └── web/
 ```
@@ -677,6 +713,23 @@ bun run format:check
 bun run lint:check
 bun run test
 bun run build
+```
+
+Run the shared-client and CLI checks from their package directories:
+
+```bash
+bun install --cwd packages/cloud-client --frozen-lockfile
+bun run --cwd packages/cloud-client typecheck
+bun run --cwd packages/cloud-client format:check
+bun run --cwd packages/cloud-client lint:check
+bun run --cwd packages/cloud-client test
+
+bun install --cwd cli --frozen-lockfile
+bun run --cwd cli typecheck
+bun run --cwd cli format:check
+bun run --cwd cli lint:check
+bun run --cwd cli test
+bun run --cwd cli build
 ```
 
 Real-provider and release certification must run on an isolated Linux host.
