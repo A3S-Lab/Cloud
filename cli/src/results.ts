@@ -6,10 +6,13 @@ import type {
   CancelDeploymentResult,
   Deployment,
   Environment,
+  EnvironmentMutationResult,
   Node,
   Operation,
   Organization,
+  OrganizationMutationResult,
   Project,
+  ProjectMutationResult,
   RetryBuildRunResult,
   Route,
   StopWorkloadResult,
@@ -45,30 +48,54 @@ export function contextResult(context: PublicCloudContext): CommandResult {
   };
 }
 
+const ORGANIZATION_COLUMNS: readonly TableColumn<Organization>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'NAME', value: (row) => row.name },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
 export function organizationsResult(rows: Organization[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'VERSION', value: (row) => row.aggregateVersion },
-    { header: 'CREATED AT', value: (row) => row.createdAt },
+  return listResult(rows, ORGANIZATION_COLUMNS);
+}
+
+export function organizationMutationResult(row: OrganizationMutationResult): CommandResult {
+  return singleResult(row, [
+    ...ORGANIZATION_COLUMNS,
+    { header: 'REPLAYED', value: (value) => value.replayed },
   ]);
 }
+
+const PROJECT_COLUMNS: readonly TableColumn<Project>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'NAME', value: (row) => row.name },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
 
 export function projectsResult(rows: Project[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'VERSION', value: (row) => row.aggregateVersion },
-    { header: 'CREATED AT', value: (row) => row.createdAt },
-  ]);
+  return listResult(rows, PROJECT_COLUMNS);
 }
 
+export function projectMutationResult(row: ProjectMutationResult): CommandResult {
+  return singleResult(row, [...PROJECT_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]);
+}
+
+const ENVIRONMENT_COLUMNS: readonly TableColumn<Environment>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'NAME', value: (row) => row.name },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
 export function environmentsResult(rows: Environment[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'VERSION', value: (row) => row.aggregateVersion },
-    { header: 'CREATED AT', value: (row) => row.createdAt },
+  return listResult(rows, ENVIRONMENT_COLUMNS);
+}
+
+export function environmentMutationResult(row: EnvironmentMutationResult): CommandResult {
+  return singleResult(row, [
+    ...ENVIRONMENT_COLUMNS,
+    { header: 'REPLAYED', value: (value) => value.replayed },
   ]);
 }
 
@@ -80,6 +107,17 @@ export function nodesResult(rows: Node[]): CommandResult {
     { header: 'AVAILABILITY', value: (row) => row.availability },
     { header: 'PROVIDER', value: (row) => row.runtimeProviderId },
     { header: 'LAST OBSERVED', value: (row) => row.lastObservedAt },
+  ]);
+}
+
+export function nodeMutationResult(row: Node): CommandResult {
+  return singleResult(row, [
+    { header: 'ID', value: (value) => value.id },
+    { header: 'NAME', value: (value) => value.name },
+    { header: 'STATE', value: (value) => value.state },
+    { header: 'AVAILABILITY', value: (value) => value.availability },
+    { header: 'VERSION', value: (value) => value.aggregateVersion },
+    { header: 'REPLAYED', value: (value) => value.replayed },
   ]);
 }
 

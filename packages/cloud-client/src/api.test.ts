@@ -50,6 +50,110 @@ describe('CloudApi', () => {
     expect(calls[0]?.[0]).toBe('/api/v1/organizations/organization/nodes');
   });
 
+  it('creates core tenant resources through their existing idempotent REST paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, 201);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.createOrganization('Operations', 'cli:organization-1');
+    await api.createProject('organization', 'Cloud', 'cli:project-1');
+    await api.createEnvironment('organization', 'project', 'Production', 'cli:environment-1');
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        idempotencyKey: (init?.headers as Record<string, string>)['Idempotency-Key'],
+        contentType: (init?.headers as Record<string, string>)['Content-Type'],
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations',
+        method: 'POST',
+        idempotencyKey: 'cli:organization-1',
+        contentType: 'application/json',
+        body: JSON.stringify({ name: 'Operations' }),
+      },
+      {
+        input: '/api/v1/organizations/organization/projects',
+        method: 'POST',
+        idempotencyKey: 'cli:project-1',
+        contentType: 'application/json',
+        body: JSON.stringify({ name: 'Cloud' }),
+      },
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments',
+        method: 'POST',
+        idempotencyKey: 'cli:environment-1',
+        contentType: 'application/json',
+        body: JSON.stringify({ name: 'Production' }),
+      },
+    ]);
+  });
+
+  it('changes node lifecycle state with explicit optimistic concurrency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false });
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.markNodeReady('organization', 'node', 3, 'cli:node-ready-1');
+    await api.drainNode('organization', 'node', 4, 'cli:node-drain-1');
+    await api.revokeNode('organization', 'node', 5, 'cli:node-revoke-1');
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        idempotencyKey: (init?.headers as Record<string, string>)['Idempotency-Key'],
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations/organization/nodes/node/actions/ready',
+        method: 'POST',
+        idempotencyKey: 'cli:node-ready-1',
+        body: JSON.stringify({ expectedVersion: 3 }),
+      },
+      {
+        input: '/api/v1/organizations/organization/nodes/node/actions/drain',
+        method: 'POST',
+        idempotencyKey: 'cli:node-drain-1',
+        body: JSON.stringify({ expectedVersion: 4 }),
+      },
+      {
+        input: '/api/v1/organizations/organization/nodes/node/actions/revoke',
+        method: 'POST',
+        idempotencyKey: 'cli:node-revoke-1',
+        body: JSON.stringify({ expectedVersion: 5 }),
+      },
+    ]);
+  });
+
+  it('rejects an unsafe node aggregate version before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() => api.drainNode('organization', 'node', 0, 'cli:node-drain-1')).toThrow(
+      'expected node version must be a positive safe integer'
+    );
+    expect(() => api.drainNode('organization', 'node', 1.5, 'cli:node-drain-1')).toThrow(
+      'expected node version must be a positive safe integer'
+    );
+    expect(called).toBe(false);
+  });
+
   it('exposes operational resources through the public tenant paths', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

@@ -10,6 +10,7 @@ const REVISION_ID = '019c0000-0000-7000-8000-000000000005';
 const ROUTE_ID = '019c0000-0000-7000-8000-000000000006';
 const DEPLOYMENT_ID = '019c0000-0000-7000-8000-000000000007';
 const BUILD_RUN_ID = '019c0000-0000-7000-8000-000000000008';
+const NODE_ID = '019c0000-0000-7000-8000-000000000009';
 
 function envelope(data: unknown, status = 200): Response {
   return new Response(
@@ -102,6 +103,105 @@ describe('a3s-cloud CLI', () => {
 
     expect(exitCode).toBe(0);
     expect(output.stdout()).toBe('[]\n');
+  });
+
+  it.each([
+    {
+      command: ['organizations', 'create', 'Operations'],
+      path: '/organizations',
+      body: { name: 'Operations' },
+      response: {
+        id: ORGANIZATION_ID,
+        name: 'Operations',
+        aggregateVersion: 1,
+        createdAt: '2026-07-27T00:00:00.000Z',
+        replayed: false,
+      },
+    },
+    {
+      command: ['projects', 'create', 'Cloud'],
+      path: `/organizations/${ORGANIZATION_ID}/projects`,
+      body: { name: 'Cloud' },
+      response: {
+        organizationId: ORGANIZATION_ID,
+        id: PROJECT_ID,
+        name: 'Cloud',
+        aggregateVersion: 1,
+        createdAt: '2026-07-27T00:00:00.000Z',
+        replayed: false,
+      },
+    },
+    {
+      command: ['environments', 'create', 'Production'],
+      path: `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments`,
+      body: { name: 'Production' },
+      response: {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        id: ENVIRONMENT_ID,
+        name: 'Production',
+        aggregateVersion: 1,
+        createdAt: '2026-07-27T00:00:00.000Z',
+        replayed: false,
+      },
+    },
+  ] as const)('creates one core tenant resource idempotently %#', async (testCase) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(testCase.response, 201);
+    };
+    const output = capture();
+
+    const exitCode = await runCli(
+      [...testCase.command, '--idempotency-key=cli:resource-1', '--output=json'],
+      { ...output.runtime, environment: completeEnvironment(), fetch: fetcher }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${testCase.path}`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:resource-1' }),
+        body: JSON.stringify(testCase.body),
+      })
+    );
+    expect(output.stdout()).toContain('"replayed": false');
+    expect(output.stderr()).toBe('');
+  });
+
+  it.each([
+    ['ready', 'ready'],
+    ['drain', 'draining'],
+    ['revoke', 'revoked'],
+  ] as const)('changes one node lifecycle state idempotently with nodes %s', async (action, state) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(nodeResponse(state));
+    };
+    const output = capture();
+
+    const exitCode = await runCli(
+      ['nodes', action, NODE_ID, '--expected-version=7', '--idempotency-key=cli:node-1', '--output=json'],
+      { ...output.runtime, environment: completeEnvironment(), fetch: fetcher }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/nodes/${NODE_ID}/actions/${action}`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:node-1' }),
+        body: JSON.stringify({ expectedVersion: 7 }),
+      })
+    );
+    expect(output.stdout()).toContain(`"state": "${state}"`);
+    expect(output.stdout()).toContain('"replayed": false');
+    expect(output.stderr()).toBe('');
   });
 
   it.each([
@@ -479,6 +579,43 @@ describe('a3s-cloud CLI', () => {
     expect(invalidLimit.stderr()).toContain('log limit must be between 1 and 256');
   });
 
+  it('rejects missing, invalid, and misplaced node versions before the network', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return envelope({});
+    };
+    const missing = capture();
+    const invalid = capture();
+    const misplaced = capture();
+
+    expect(
+      await runCli(['nodes', 'drain', NODE_ID, '--idempotency-key=cli:node-missing'], {
+        ...missing.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(
+      await runCli(
+        ['nodes', 'ready', NODE_ID, '--expected-version=0', '--idempotency-key=cli:node-invalid'],
+        { ...invalid.runtime, environment: completeEnvironment(), fetch: fetcher }
+      )
+    ).toBe(2);
+    expect(
+      await runCli(['organizations', 'list', '--expected-version=1'], {
+        ...misplaced.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+
+    expect(called).toBe(false);
+    expect(missing.stderr()).toContain('--expected-version is required');
+    expect(invalid.stderr()).toContain('positive safe integer');
+    expect(misplaced.stderr()).toContain('valid only for node lifecycle mutations');
+  });
+
   it('fails before the network when required context is absent', async () => {
     let called = false;
     const fetcher: CloudFetch = async () => {
@@ -638,6 +775,26 @@ function workloadDeploymentResponse(): Record<string, unknown> {
     artifactDigest: 'sha256:artifact',
     templateDigest: 'sha256:template',
     requestedAt: '2026-07-27T00:00:00.000Z',
+    replayed: false,
+  };
+}
+
+function nodeResponse(state: 'ready' | 'draining' | 'revoked'): Record<string, unknown> {
+  return {
+    id: NODE_ID,
+    organizationId: ORGANIZATION_ID,
+    name: 'worker-1',
+    state,
+    availability: 'online',
+    agentInstanceId: '019c0000-0000-7000-8000-000000000010',
+    agentVersion: '0.1.0',
+    runtimeProviderId: 'docker',
+    runtimeProviderBuild: '27.0.0',
+    capabilitiesDigest: 'sha256:capabilities',
+    capabilities: {},
+    enrolledAt: '2026-07-27T00:00:00.000Z',
+    lastObservedAt: '2026-07-27T00:00:00.000Z',
+    aggregateVersion: 8,
     replayed: false,
   };
 }

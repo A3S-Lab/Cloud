@@ -1436,6 +1436,14 @@ it before transport and sends it only as `Idempotency-Key`. Replaying the same
 command with the same key returns the API's durable `replayed` result. The CLI
 does not synthesize a key or add a confirmation side channel.
 
+Core resource parity exposes Organization, Project, and Environment creation
+through their existing scoped commands. Node `ready`, `drain`, and `revoke`
+also reuse the existing Fleet command and require both an idempotency key and
+the current positive aggregate version. The CLI validates the UUID and safe
+integer before transport; stale versions remain an authoritative Cloud
+conflict. No command writes a projection directly or bypasses the A3S ORM
+repository adapter.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

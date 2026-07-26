@@ -16,9 +16,15 @@ Usage:
 Commands:
   context show          Show resolved non-secret context
   organizations list   List authorized organizations
+  organizations create NAME Create an organization idempotently
   projects list        List projects in the selected organization
+  projects create NAME Create a project idempotently
   environments list    List environments in the selected project
+  environments create NAME Create an environment idempotently
   nodes list            List nodes in the selected organization
+  nodes ready ID        Mark one current node ready
+  nodes drain ID        Drain one current node
+  nodes revoke ID       Revoke one current node
   operations list       List recent operations in the selected organization
   workloads list        List workloads in the selected environment
   workloads get ID      Get one workload
@@ -51,6 +57,7 @@ Global options:
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation
+  --expected-version <n>    Current aggregate version for a node mutation
   -h, --help              Show help
   -V, --version           Show version
 

@@ -73,6 +73,23 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses one optimistic-concurrency version', () => {
+    expect(
+      parseArguments([
+        'nodes',
+        'drain',
+        '019c0000-0000-7000-8000-000000000004',
+        '--expected-version=7',
+        '--idempotency-key=release:drain-42',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        expectedVersion: '7',
+        idempotencyKey: 'release:drain-42',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],

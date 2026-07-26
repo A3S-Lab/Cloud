@@ -6,11 +6,14 @@ import type {
   CancelDeploymentResult,
   Deployment,
   Environment,
+  EnvironmentMutationResult,
   GatewayCertificate,
   Node,
   Operation,
   Organization,
+  OrganizationMutationResult,
   Project,
+  ProjectMutationResult,
   RetryBuildRunResult,
   Route,
   ServiceTemplate,
@@ -77,8 +80,30 @@ export class CloudApi {
     return this.get('/organizations', signal);
   }
 
+  createOrganization(
+    name: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OrganizationMutationResult> {
+    return this.postJson('/organizations', idempotencyKey, { name }, signal);
+  }
+
   listProjects(organizationId: string, signal?: AbortSignal): Promise<Project[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/projects`, signal);
+  }
+
+  createProject(
+    organizationId: string,
+    name: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ProjectMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/projects`,
+      idempotencyKey,
+      { name },
+      signal
+    );
   }
 
   listEnvironments(organizationId: string, projectId: string, signal?: AbortSignal): Promise<Environment[]> {
@@ -88,8 +113,54 @@ export class CloudApi {
     );
   }
 
+  createEnvironment(
+    organizationId: string,
+    projectId: string,
+    name: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<EnvironmentMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/environments`,
+      idempotencyKey,
+      { name },
+      signal
+    );
+  }
+
   listNodes(organizationId: string, signal?: AbortSignal): Promise<Node[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/nodes`, signal);
+  }
+
+  markNodeReady(
+    organizationId: string,
+    nodeId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<Node> {
+    return this.changeNodeState(organizationId, nodeId, 'ready', expectedVersion, idempotencyKey, signal);
+  }
+
+  drainNode(
+    organizationId: string,
+    nodeId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<Node> {
+    return this.changeNodeState(organizationId, nodeId, 'drain', expectedVersion, idempotencyKey, signal);
+  }
+
+  revokeNode(
+    organizationId: string,
+    nodeId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<Node> {
+    return this.changeNodeState(organizationId, nodeId, 'revoke', expectedVersion, idempotencyKey, signal);
   }
 
   listOperations(organizationId: string, signal?: AbortSignal): Promise<Operation[]> {
@@ -401,6 +472,24 @@ export class CloudApi {
     return this.request('GET', path, { signal });
   }
 
+  private changeNodeState(
+    organizationId: string,
+    nodeId: string,
+    action: 'ready' | 'drain' | 'revoke',
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<Node> {
+    validateExpectedNodeVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/nodes/${encodeURIComponent(nodeId)}/actions/${action}`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
   private delete<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
     return this.request('DELETE', path, { idempotencyKey, signal });
   }
@@ -502,6 +591,12 @@ function validateWorkloadAcl(manifest: string): void {
   const bytes = new TextEncoder().encode(manifest).byteLength;
   if (bytes < 1 || bytes > MAX_WORKLOAD_ACL_BYTES) {
     throw new RangeError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
+  }
+}
+
+function validateExpectedNodeVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('expected node version must be a positive safe integer');
   }
 }
 

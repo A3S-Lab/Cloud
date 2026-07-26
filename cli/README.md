@@ -42,6 +42,11 @@ visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`, and must be at
 most 255 characters. The CLI never generates a key: retry the exact command
 with the same key to receive the durable replay result.
 
+Node `ready`, `drain`, and `revoke` additionally require
+`--expected-version=<current-aggregate-version>`. The positive safe integer is
+sent as the existing optimistic-concurrency precondition; Cloud rejects stale
+versions instead of applying a blind lifecycle transition.
+
 Desired-state commands additionally require `--file=<path>` and accept only a
 nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
 bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
@@ -57,9 +62,15 @@ is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 ```text
 context show
 organizations list
+organizations create <name>
 projects list
+projects create <name>
 environments list
+environments create <name>
 nodes list
+nodes ready <node-id> --expected-version=<version>
+nodes drain <node-id> --expected-version=<version>
+nodes revoke <node-id> --expected-version=<version>
 operations list
 workloads list
 workloads get <workload-id>
@@ -115,6 +126,8 @@ neutralized. Sensitive error-detail keys are redacted before JSON output.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
-create/update/source deployment are implemented. Remaining resource mutations,
-administrative diagnostics, node bootstrap, authorized search, and the
-compatibility/deprecation gate remain planned.
+create/update/source deployment are implemented. Core Organization, Project,
+and Environment creation and version-checked node lifecycle transitions are
+also implemented. Remaining edge, source, Secret, and identity resource
+mutations, administrative diagnostics, node bootstrap, authorized search, and
+the compatibility/deprecation gate remain planned.
