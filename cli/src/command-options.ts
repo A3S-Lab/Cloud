@@ -56,6 +56,14 @@ export function positionalUuid(positionals: readonly string[], index: number, la
   return parseUuid(value, label);
 }
 
+export function positionalResourceName(positionals: readonly string[], index: number): string {
+  const name = positionals[index]?.trim();
+  if (!name || [...name].length > 63 || /[\0\r\n]/.test(name)) {
+    throw usageError('resource name must contain 1 to 63 visible characters');
+  }
+  return name;
+}
+
 export function rejectLogOptions(arguments_: ParsedArguments): void {
   if (arguments_.cursor !== undefined || arguments_.limit !== undefined || arguments_.stream !== undefined) {
     throw usageError('cursor, limit, and stream options are valid only for log commands');

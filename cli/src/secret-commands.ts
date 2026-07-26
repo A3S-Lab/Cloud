@@ -1,6 +1,7 @@
 import { CloudApiError, MAX_SECRET_VALUE_BYTES, type CloudApi } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
+  positionalResourceName,
   positionalUuid,
   requireListCommand,
   requireMutationCommand,
@@ -11,10 +12,9 @@ import { requireEnvironment, requireOrganization, requireProject } from './conte
 import { usageError } from './errors';
 import type { CommandResult } from './results';
 import { secretDetailsResult, secretMutationResult, secretsResult } from './secret-results';
+import { readBoundedUtf8Stdin, type ReadStdin } from './standard-input';
 
 const SECRET_VALUE_COMMANDS = new Set(['secrets create', 'secrets add-version']);
-
-export type ReadStdin = (limitBytes: number) => Promise<Uint8Array>;
 
 export interface SecretCommandDependencies {
   readStdin?: ReadStdin;
@@ -58,7 +58,7 @@ export async function executeSecretCommand(
             scope.organizationId,
             scope.projectId,
             scope.environmentId,
-            resourceName(positionals[2]),
+            positionalResourceName(positionals, 2),
             value,
             idempotencyKey
           )
@@ -101,59 +101,12 @@ function requireSecretStdin(arguments_: ParsedArguments): void {
   }
 }
 
-async function readSecretValue(readStdin: ReadStdin = readLocalStdin): Promise<string> {
-  let bytes: Uint8Array;
-  try {
-    bytes = await readStdin(MAX_SECRET_VALUE_BYTES + 1);
-  } catch {
-    throw usageError('unable to read Secret value from standard input');
-  }
-  if (!(bytes instanceof Uint8Array)) {
-    throw usageError('unable to read Secret value from standard input');
-  }
-  if (bytes.byteLength < 1 || bytes.byteLength > MAX_SECRET_VALUE_BYTES) {
-    bytes.fill(0);
-    throw usageError('Secret value must contain between 1 byte and 1 MiB');
-  }
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    throw usageError('Secret value must be valid UTF-8');
-  } finally {
-    bytes.fill(0);
-  }
-}
-
-async function readLocalStdin(limitBytes: number): Promise<Uint8Array> {
-  const reader = Bun.stdin.stream().getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  try {
-    while (byteLength < limitBytes) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      const remaining = limitBytes - byteLength;
-      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
-      chunks.push(chunk.slice());
-      byteLength += chunk.byteLength;
-      if (byteLength === limitBytes) {
-        await reader.cancel();
-        break;
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    chunk.fill(0);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+async function readSecretValue(readStdin?: ReadStdin): Promise<string> {
+  return readBoundedUtf8Stdin(readStdin, 1, MAX_SECRET_VALUE_BYTES, {
+    read: 'unable to read Secret value from standard input',
+    size: 'Secret value must contain between 1 byte and 1 MiB',
+    utf8: 'Secret value must be valid UTF-8',
+  });
 }
 
 async function safeSecretMutation<Result>(operation: () => Promise<Result>): Promise<Result> {
@@ -165,14 +118,6 @@ async function safeSecretMutation<Result>(operation: () => Promise<Result>): Pro
     }
     throw error;
   }
-}
-
-function resourceName(value: string | undefined): string {
-  const name = value?.trim();
-  if (!name || [...name].length > 63 || /[\0\r\n]/.test(name)) {
-    throw usageError('resource name must contain 1 to 63 visible characters');
-  }
-  return name;
 }
 
 function positiveVersion(value: string | undefined): number {

@@ -1,6 +1,7 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
+  positionalResourceName,
   positionalUuid,
   rejectExpectedVersionOption,
   rejectFileOption,
@@ -24,6 +25,7 @@ import {
 } from './context';
 import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
+import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import {
   buildEvidenceResult,
   buildRunLogsResult,
@@ -54,7 +56,8 @@ import {
   workloadsResult,
 } from './results';
 import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
-import { executeSecretCommand, rejectMisplacedSecretValueOption, type ReadStdin } from './secret-commands';
+import { executeSecretCommand, rejectMisplacedSecretValueOption } from './secret-commands';
+import type { ReadStdin } from './standard-input';
 
 export interface CommandDependencies {
   fetch?: CloudFetch;
@@ -74,6 +77,7 @@ export async function executeCommand(
   const command = `${positionals[0]} ${positionals[1]}`;
   rejectMisplacedSourceRecipeOptions(command, arguments_);
   rejectMisplacedSecretValueOption(command, arguments_);
+  rejectMisplacedIdentityOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -112,6 +116,12 @@ export async function executeCommand(
   const sourceResult = await executeSourceCommand(command, arguments_, context, cloudApi);
   if (sourceResult !== undefined) {
     return sourceResult;
+  }
+  const identityResult = await executeIdentityCommand(command, arguments_, context, cloudApi, {
+    readStdin: dependencies.readStdin,
+  });
+  if (identityResult !== undefined) {
+    return identityResult;
   }
   const secretResult = await executeSecretCommand(command, arguments_, context, cloudApi, {
     readStdin: dependencies.readStdin,
@@ -367,11 +377,7 @@ function requireNamedMutationCommand(
   usage: string
 ): { idempotencyKey: string; name: string } {
   const idempotencyKey = requireMutationCommand(arguments_, 3, usage);
-  const value = arguments_.positionals[2];
-  const name = value?.trim();
-  if (!name || [...name].length > 63 || /[\0\r\n]/.test(name)) {
-    throw usageError('resource name must contain 1 to 63 visible characters');
-  }
+  const name = positionalResourceName(arguments_.positionals, 2);
   return { idempotencyKey, name };
 }
 
