@@ -25,14 +25,14 @@ impl Module for IdentityModule {
     }
 
     fn controllers(&self, module_ref: &ModuleRef) -> Result<Vec<ControllerDefinition>> {
-        let bus = module_ref.get::<CommandBus>()?;
+        let command_bus = module_ref.get::<CommandBus>()?;
         Ok(vec![
             bootstrap_controller(
-                bus.clone(),
+                command_bus.clone(),
                 BootstrapGuard::new(self.bootstrap_credential.clone()),
             )?,
-            organization_controller(bus.clone())?,
-            api_token_controller(bus)?,
+            organization_controller(command_bus.clone())?,
+            api_token_controller(command_bus, module_ref.get::<QueryBus>()?)?,
             organizations_query_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }

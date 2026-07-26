@@ -1,23 +1,74 @@
 use crate::modules::identity::application::commands::create_api_token::CreateApiToken;
 use crate::modules::identity::application::commands::revoke_api_token::RevokeApiToken;
+use crate::modules::identity::application::queries::get_api_token::GetApiToken;
+use crate::modules::identity::application::queries::list_api_tokens::ListApiTokens;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::dto::{ApiTokenResponse, CreateApiTokenRequest};
+use crate::modules::identity::presentation::dto::{
+    ApiTokenReadResponse, ApiTokenResponse, CreateApiTokenRequest,
+};
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
+    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
     AUTH_SCOPES_METADATA,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub fn api_token_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    let create_bus = Arc::clone(&bus);
+pub fn api_token_controller(
+    command_bus: Arc<CommandBus>,
+    query_bus: Arc<QueryBus>,
+) -> Result<ControllerDefinition> {
+    let create_bus = Arc::clone(&command_bus);
+    let list_bus = Arc::clone(&query_bus);
+    let get_bus = Arc::clone(&query_bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::TOKEN_WRITE])?
+        .get(
+            "/{organization_id}/api-tokens",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_bus);
+                async move {
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let request_id = request_id(&request)?;
+                    match bus.execute(ListApiTokens { organization_id }).await? {
+                        Ok(tokens) => BootResponse::json(
+                            &tokens
+                                .into_iter()
+                                .map(ApiTokenReadResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            "/{organization_id}/api-tokens/{token_id}",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_bus);
+                async move {
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let token_id = ApiTokenId::from_uuid(request.param_as::<Uuid>("token_id")?);
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetApiToken {
+                            organization_id,
+                            token_id,
+                        })
+                        .await?
+                    {
+                        Ok(token) => BootResponse::json(&ApiTokenReadResponse::from(token)),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .post(
             "/{organization_id}/api-tokens",
             move |request: BootRequest| {
@@ -58,7 +109,7 @@ pub fn api_token_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
         .delete(
             "/{organization_id}/api-tokens/{token_id}",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&command_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
@@ -95,4 +146,14 @@ fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
                 .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
         })?;
     Ok((idempotency_key, request_id))
+}
+
+fn request_id(request: &BootRequest) -> Result<Uuid> {
+    request
+        .header("x-request-id")
+        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
+        .and_then(|value| {
+            Uuid::parse_str(value)
+                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
+        })
 }

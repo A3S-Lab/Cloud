@@ -31,6 +31,9 @@ pub trait IApiTokenRepository: Send + Sync {
         token_id: ApiTokenId,
     ) -> Result<Option<ApiToken>, RepositoryError>;
 
+    async fn list(&self, organization_id: OrganizationId)
+        -> Result<Vec<ApiToken>, RepositoryError>;
+
     async fn authenticate(
         &self,
         digest: &ApiTokenDigest,

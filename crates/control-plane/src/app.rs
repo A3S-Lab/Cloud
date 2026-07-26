@@ -44,8 +44,9 @@ use crate::modules::identity::domain::repositories::IOrganizationRepository;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
-    BootstrapIdentityHandler, CreateApiTokenHandler, CreateOrganizationHandler, IdentityModule,
-    ListOrganizationsHandler, PostgresIdentityRepository, RevokeApiTokenHandler,
+    BootstrapIdentityHandler, CreateApiTokenHandler, CreateOrganizationHandler, GetApiTokenHandler,
+    IdentityModule, ListApiTokensHandler, ListOrganizationsHandler, PostgresIdentityRepository,
+    RevokeApiTokenHandler,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
@@ -736,6 +737,8 @@ fn build_application_with_health(
     let workload_list_operations = Arc::clone(&operations);
     let workload_get_operations = Arc::clone(&operations);
     let deployment_get_operations = Arc::clone(&operations);
+    let list_api_tokens = Arc::clone(&api_tokens);
+    let get_api_tokens = Arc::clone(&api_tokens);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
     let query_environments = Arc::clone(&environments);
@@ -1040,6 +1043,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::identity::ListOrganizations, _>(
                     ListOrganizationsHandler::new(query_organizations),
+                )
+                .query_handler::<crate::modules::identity::ListApiTokens, _>(
+                    ListApiTokensHandler::new(list_api_tokens),
+                )
+                .query_handler::<crate::modules::identity::GetApiToken, _>(
+                    GetApiTokenHandler::new(get_api_tokens),
                 )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),
