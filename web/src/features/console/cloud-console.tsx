@@ -1,4 +1,4 @@
-import { CircleDot, LogOut, PanelRightClose, PanelRightOpen, Radio, RotateCw } from 'lucide-react';
+import { CircleDot, RotateCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudApi } from '../../lib/api';
 import type {
@@ -9,16 +9,18 @@ import type {
   Organization,
   Project,
   Route,
+  SearchResult,
   ServiceTemplate,
   Workload,
 } from '../../types/api';
 import { BuildRunLogPanel } from '../logs/build-run-log-panel';
 import { LiveLogPanel } from '../logs/live-log-panel';
 import { useOperationStream } from '../operations/use-operation-stream';
-import { streamLabel } from './console-format';
+import { parseCloudLocation, selectionFromSearchResult, type CloudLocation } from '../search/cloud-location';
 import { BuildEvidencePanel } from './build-evidence-panel';
 import { BuildRunPanel } from './build-run-panel';
 import { ContextBar } from './context-bar';
+import { ConsoleTopbar } from './console-topbar';
 import { DeploymentTimeline } from './deployment-timeline';
 import { EdgeStatusPanel } from './edge-status-panel';
 import { AssetCatalogCard, EnvironmentHeading, InfrastructureCard } from './environment-summary';
@@ -40,27 +42,58 @@ const PROJECTION_REFRESH_MS = 5_000;
 
 export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudConsoleProps) {
   const api = useMemo(() => new CloudApi(token), [token]);
+  const initialLocation = useMemo(() => parseCloudLocation(window.location.hash), []);
   const [organizations, setOrganizations] = useState(initialOrganizations);
-  const [organizationId, setOrganizationId] = useState(() => sessionStorage.getItem(ORGANIZATION_KEY) ?? '');
+  const [organizationId, setOrganizationId] = useState(
+    () => initialLocation?.organizationId ?? sessionStorage.getItem(ORGANIZATION_KEY) ?? ''
+  );
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState(() => sessionStorage.getItem(PROJECT_KEY) ?? '');
+  const [projectId, setProjectId] = useState(
+    () => initialLocation?.projectId ?? sessionStorage.getItem(PROJECT_KEY) ?? ''
+  );
   const [environments, setEnvironments] = useState<Environment[]>([]);
-  const [environmentId, setEnvironmentId] = useState(() => sessionStorage.getItem(ENVIRONMENT_KEY) ?? '');
+  const [environmentId, setEnvironmentId] = useState(
+    () => initialLocation?.environmentId ?? sessionStorage.getItem(ENVIRONMENT_KEY) ?? ''
+  );
   const [operations, setOperations] = useState<Operation[]>([]);
   const [buildRuns, setBuildRuns] = useState<BuildRun[]>([]);
-  const [selectedBuildRunId, setSelectedBuildRunId] = useState('');
+  const [selectedBuildRunId, setSelectedBuildRunId] = useState(() =>
+    initialLocation?.resourceKind === 'build_run' ? (initialLocation.resourceId ?? '') : ''
+  );
   const [dismissedOperationIds, setDismissedOperationIds] = useState<ReadonlySet<string>>(() => new Set());
   const [workloads, setWorkloads] = useState<Workload[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [certificates, setCertificates] = useState<GatewayCertificate[]>([]);
-  const [workloadId, setWorkloadId] = useState('');
-  const [drawerOpen, setDrawerOpen] = useState(() => !window.matchMedia('(max-width: 780px)').matches);
+  const [workloadId, setWorkloadId] = useState(() =>
+    initialLocation?.resourceKind === 'workload' ? (initialLocation.resourceId ?? '') : ''
+  );
+  const [drawerOpen, setDrawerOpen] = useState(
+    () => initialLocation?.resourceKind === 'operation' || !window.matchMedia('(max-width: 780px)').matches
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancellingDeploymentId, setCancellingDeploymentId] = useState<string | null>(null);
   const [cancellingBuildRunId, setCancellingBuildRunId] = useState<string | null>(null);
   const [retryingBuildRunId, setRetryingBuildRunId] = useState<string | null>(null);
   const [stoppingWorkloadId, setStoppingWorkloadId] = useState<string | null>(null);
+
+  const applyLocation = useCallback((location: CloudLocation) => {
+    setOrganizationId(location.organizationId);
+    setProjectId(location.projectId ?? '');
+    setEnvironmentId(location.environmentId ?? '');
+    setWorkloadId(location.resourceKind === 'workload' ? (location.resourceId ?? '') : '');
+    setSelectedBuildRunId(location.resourceKind === 'build_run' ? (location.resourceId ?? '') : '');
+    if (location.resourceKind === 'operation') setDrawerOpen(true);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const location = parseCloudLocation(window.location.hash);
+      if (location) applyLocation(location);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [applyLocation]);
 
   const acceptSnapshot = useCallback((snapshot: Operation[]) => {
     setOperations(snapshot);
@@ -345,31 +378,28 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     });
   };
 
+  const selectSearchResult = useCallback((result: SearchResult) => {
+    const selection = selectionFromSearchResult(result);
+    setOrganizationId(selection.organizationId);
+    setProjectId(selection.projectId ?? '');
+    setEnvironmentId(selection.environmentId ?? '');
+    setWorkloadId(selection.workloadId ?? '');
+    setSelectedBuildRunId(selection.buildRunId ?? '');
+    if (selection.openOperations) setDrawerOpen(true);
+    if (selection.href) window.history.pushState(null, '', selection.href);
+  }, []);
+
   return (
     <div className={drawerOpen ? 'console-shell drawer-visible' : 'console-shell'}>
-      <header className='topbar'>
-        <div className='brand-lockup compact'>
-          <span className='brand-mark' aria-hidden='true'>
-            A3
-          </span>
-          <div>
-            <strong>A3S Cloud</strong>
-            <span>Control plane</span>
-          </div>
-        </div>
-        <div className='topbar-actions'>
-          <span className={`connection-pill ${streamState}`}>
-            <Radio size={14} /> {streamLabel(streamState)}
-          </span>
-          <button className='icon-button' type='button' onClick={() => setDrawerOpen((open) => !open)}>
-            {drawerOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-            <span className='sr-only'>{drawerOpen ? 'Close operations' : 'Open operations'}</span>
-          </button>
-          <button className='quiet-button' type='button' onClick={onSignOut}>
-            <LogOut size={16} /> Sign out
-          </button>
-        </div>
-      </header>
+      <ConsoleTopbar
+        api={api}
+        organizationId={organizationId || null}
+        streamState={streamState}
+        drawerOpen={drawerOpen}
+        onSelectSearchResult={selectSearchResult}
+        onToggleDrawer={() => setDrawerOpen((open) => !open)}
+        onSignOut={onSignOut}
+      />
 
       <main className='workspace'>
         <ContextBar
