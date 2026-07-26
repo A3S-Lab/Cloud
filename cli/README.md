@@ -259,5 +259,6 @@ standard-input-only credential creation and digest-only persistence. Node
 bootstrap is implemented with standard-input-only credential issuance,
 digest-only Fleet persistence, and a checksum-verified installation invocation.
 Organization-scoped authorized search parity is implemented through the same
-typed client. Web search, the compatibility/deprecation gate, and real
-cross-surface automation evidence remain planned.
+typed client and is also available in the Web console. The
+compatibility/deprecation gate and real cross-surface automation evidence remain
+planned.

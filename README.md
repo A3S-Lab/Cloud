@@ -118,7 +118,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   state, and create or rotate versions from bounded fatal-UTF-8 standard input
   without placing plaintext in arguments, environment, configuration, output,
   or errors; and inspect tokenless platform, liveness, and readiness
-  diagnostics with a stable unhealthy exit status
+  diagnostics with a stable unhealthy exit status; manage API-token metadata,
+  credential lifecycle, and one-time node bootstrap without rendering
+  stdin-only credentials; and search bounded organization-authorized resource
+  projections through the API, client, CLI, and Web without broad local reads
 
 ### Delivery capability matrix
 
@@ -473,6 +476,7 @@ bun run --cwd cli src/main.ts nodes drain "<node-uuid>" \
   --expected-version="<current-aggregate-version>" \
   --idempotency-key="fleet:drain:<request-id>"
 bun run --cwd cli src/main.ts operations list
+bun run --cwd cli src/main.ts search resources "cloud worker" --limit=20
 bun run --cwd cli src/main.ts workloads list
 bun run --cwd cli src/main.ts workloads get "<workload-uuid>"
 bun run --cwd cli src/main.ts workloads logs "<workload-uuid>" "<revision-uuid>" --limit=100
@@ -573,8 +577,18 @@ one HTTPS Agent release, verifies its caller-supplied SHA-256, installs it, and
 prompts for the credential on the target without putting it in argv or the
 pre-provisioned absolute `.acl` node configuration. The release URL and digest
 must come from trusted A3S release metadata; accepting a digest does not create
-a trust root. Authorized search, the compatibility/deprecation gate, and real
-cross-surface evidence remain subsequent `C0.1` slices.
+a trust root.
+
+Organization-scoped search accepts 1 through 128 safe characters and returns at
+most 50 credential-free resource projections, defaulting to 20. The public API
+applies the organization tenant guard before querying PostgreSQL through A3S
+ORM. The shared client, CLI, and Web console all call that endpoint; none loads
+broad resource lists for local filtering. Web search debounces requests,
+supports keyboard selection, and validates server-generated contextual links
+before navigation. This is organization-level `C0.1` authorization, not the
+grant-derived resource filtering planned for `C0.3`. The
+compatibility/deprecation gate and real cross-surface evidence remain the
+subsequent `C0.1` slices.
 
 ## Platform Model
 
