@@ -39,9 +39,10 @@ revision, GitHub connection, and repository-subscription methods use the
 existing Source controllers. Secret list/get/create/add-version/revoke-version
 methods use the existing Secret controllers and expose metadata and version
 state only. API-token list/get/create/revoke methods use the existing Identity
-controllers and return credential-free metadata. It is internal and versioned
-with Cloud until public package compatibility and deprecation policy are
-completed.
+controllers and return credential-free metadata. `issueEnrollmentToken` uses
+the existing Fleet controller and returns one credential-free enrollment-token
+projection. It is internal and versioned with Cloud until public package
+compatibility and deprecation policy are completed.
 
 Replayable mutating methods require a caller-owned idempotency key. The client
 accepts a portable visible-ASCII subset up to the server's 255-byte limit,
@@ -54,6 +55,14 @@ installation URL.
 resource commands. `markNodeReady`, `drainNode`, and `revokeNode` additionally
 require a positive safe-integer aggregate version and preserve the server's
 optimistic-concurrency contract.
+
+`issueEnrollmentToken` validates the fixed `a3sn_` plus 64-lowercase-hex
+credential format and RFC 3339 expiry before transport, then calls the existing
+tenant-scoped Fleet command with a caller-owned idempotency key. Cloud remains
+authoritative for the maximum 24-hour lifetime, one-time consumption, tenant
+guard, digest-only A3S ORM persistence, mTLS enrollment, and replay. CLI callers
+supply the credential only through the bounded `--enrollment-token-stdin` path;
+the client response type contains metadata and `replayed`, never the credential.
 
 `listApiTokens` and `getApiToken` expose tenant-scoped metadata only.
 `createApiToken` validates the fixed `a3s_` plus 64-lowercase-hex credential

@@ -51,6 +51,28 @@ Node `ready`, `drain`, and `revoke` additionally require
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale
 versions instead of applying a blind lifecycle transition.
 
+`nodes bootstrap <name>` requires `--enrollment-token-stdin`, an RFC 3339
+`--expires-at`, an HTTPS `--agent-release-url`, its exact lowercase
+`--agent-release-sha256`, an absolute `--node-config` ending in `.acl`, and a
+caller-owned idempotency key. The CLI reads at most 70 bytes to detect overflow,
+accepts exactly the 69 ASCII bytes formed by `a3sn_` plus 64 lowercase
+hexadecimal digits, applies fatal UTF-8 decoding, and clears the input buffer.
+It calls the existing `node:write` Fleet command and outputs safe token metadata
+plus a Bash installation invocation; the credential is absent from arguments,
+configuration, output, and errors. Cloud stores only the digest through the
+A3S ORM-backed Fleet repository.
+
+Run the printed invocation on the target Linux host after provisioning the
+referenced node configuration from
+[`config/node.example.acl`](../config/node.example.acl). The invocation
+downloads the HTTPS Agent binary, verifies the supplied SHA-256 before
+installation, prompts for the credential without echo, and exports it only for
+Agent enrollment. Obtain both URL and digest from trusted signed A3S release
+metadata; a caller-supplied checksum does not establish its own trust. Retrieve
+the same one-time credential from the trusted secret source when the target
+prompt appears. Cloud does not receive an SSH credential, and the CLI does not
+contact the node.
+
 `gateway-scopes create` accepts one through 100 unique node UUIDs.
 `--min-ready` defaults to `1` and cannot exceed the member count;
 `--max-unavailable` defaults to `0` and must remain below the member count.
@@ -113,6 +135,7 @@ projects create <name>
 environments list
 environments create <name>
 nodes list
+nodes bootstrap <name> --enrollment-token-stdin --expires-at=<timestamp> --agent-release-url=<https-url> --agent-release-sha256=<digest> --node-config=<absolute-acl-path>
 nodes ready <node-id> --expected-version=<version>
 nodes drain <node-id> --expected-version=<version>
 nodes revoke <node-id> --expected-version=<version>
@@ -209,6 +232,10 @@ add a value field or echo it in an error.
 API-token list/get output contains metadata only. Create/revoke output adds the
 authoritative `replayed` value; an unexpected response field or upstream error
 cannot make the submitted credential visible in table, JSON, or error output.
+Node bootstrap output contains credential-free enrollment-token metadata, the
+authoritative `replayed` value, and the checksum-verified Bash installation
+invocation. An unexpected response field or upstream error cannot render the
+submitted enrollment credential.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
@@ -222,5 +249,7 @@ implemented without bypassing the public API. Secret metadata and version
 lifecycle parity is implemented with standard-input-only material handling.
 Identity API-token metadata and lifecycle parity is implemented with
 standard-input-only credential creation and digest-only persistence. Node
-bootstrap, authorized search, the compatibility/deprecation gate, and real
-cross-surface automation evidence remain planned.
+bootstrap is implemented with standard-input-only credential issuance,
+digest-only Fleet persistence, and a checksum-verified installation invocation.
+Authorized search, the compatibility/deprecation gate, and real cross-surface
+automation evidence remain planned.
