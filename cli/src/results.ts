@@ -5,6 +5,7 @@ import type {
   CancelBuildRunResult,
   CancelDeploymentResult,
   Deployment,
+  CloudDiagnostics,
   Environment,
   EnvironmentMutationResult,
   Node,
@@ -22,11 +23,13 @@ import type {
   WorkloadLogsPage,
 } from '@a3s/cloud-client';
 import type { PublicCloudContext } from './context';
+import { ExitCode, type ExitCodeValue } from './errors';
 import { renderTable, sanitizeCell, type TableColumn } from './output';
 
 export interface CommandResult {
   json: unknown;
   table: string;
+  exitCode?: ExitCodeValue;
 }
 
 export function contextResult(context: PublicCloudContext): CommandResult {
@@ -46,6 +49,41 @@ export function contextResult(context: PublicCloudContext): CommandResult {
       { header: 'VALUE', value: (row) => row.value },
     ]),
   };
+}
+
+export function diagnosticsResult(diagnostics: CloudDiagnostics): CommandResult {
+  const rows = [
+    {
+      component: 'platform',
+      status: 'up',
+      details: `${diagnostics.platform.name}@${diagnostics.platform.version} role=${diagnostics.platform.role}`,
+    },
+    {
+      component: 'liveness',
+      status: diagnostics.liveness.status,
+      details: healthChecks(diagnostics.liveness.checks),
+    },
+    {
+      component: 'readiness',
+      status: diagnostics.readiness.status,
+      details: healthChecks(diagnostics.readiness.checks),
+    },
+  ];
+  const healthy = diagnostics.liveness.status === 'up' && diagnostics.readiness.status === 'up';
+  return {
+    json: diagnostics,
+    table: renderTable(rows, [
+      { header: 'COMPONENT', value: (row) => row.component },
+      { header: 'STATUS', value: (row) => row.status },
+      { header: 'DETAILS', value: (row) => row.details },
+    ]),
+    exitCode: healthy ? ExitCode.Success : ExitCode.Unhealthy,
+  };
+}
+
+function healthChecks(checks: CloudDiagnostics['readiness']['checks']): string {
+  const entries = Object.entries(checks).map(([name, result]) => `${name}=${result.status}`);
+  return entries.length === 0 ? '-' : entries.join(', ');
 }
 
 const ORGANIZATION_COLUMNS: readonly TableColumn<Organization>[] = [

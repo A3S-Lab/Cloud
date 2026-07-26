@@ -25,7 +25,7 @@ CLI does not create a context or credential file.
 
 | Variable | Flag | Purpose |
 | --- | --- | --- |
-| `A3S_CLOUD_TOKEN` | None | API token required by API commands |
+| `A3S_CLOUD_TOKEN` | None | API token required by authenticated API commands |
 | `A3S_CLOUD_URL` | `--url` | Absolute API URL ending in `/api/v1` |
 | `A3S_CLOUD_ORGANIZATION_ID` | `--organization` | Organization UUID |
 | `A3S_CLOUD_PROJECT_ID` | `--project` | Project UUID |
@@ -61,6 +61,7 @@ is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 
 ```text
 context show
+diagnostics status
 organizations list
 organizations create <name>
 projects list
@@ -104,7 +105,12 @@ and version references and exactly one `environment`, `file`, or
 fields.
 
 `context show` reports only whether a token is configured; it never prints the
-token. API commands require the context implied by their REST scope. Use
+token. `diagnostics status` is public: it calls `/platform`, `/health/live`, and
+`/health/ready` without requiring or sending a token. A wrapped health report
+returned with HTTP `503` is still diagnostic data, not an API failure. The
+command prints that report to stdout and exits with `8` when liveness or
+readiness is down. A `503` error envelope remains a normal Cloud API error.
+Other API commands require the context implied by their REST scope. Use
 `--output=json` for automation. Success JSON is the API resource or resource
 array, while failure JSON is written to stderr under an `error` object.
 
@@ -120,6 +126,7 @@ array, while failure JSON is written to stderr under an `error` object.
 | `5` | Conflict |
 | `6` | Other valid Cloud API failure |
 | `7` | Network, timeout, cancellation, or invalid response failure |
+| `8` | Cloud liveness or readiness is down; diagnostics remain on stdout |
 
 Table cells and error metadata are bounded and control characters are
 neutralized. Sensitive error-detail keys are redacted before JSON output.
@@ -128,6 +135,7 @@ This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
 create/update/source deployment are implemented. Core Organization, Project,
 and Environment creation and version-checked node lifecycle transitions are
-also implemented. Remaining edge, source, Secret, and identity resource
-mutations, administrative diagnostics, node bootstrap, authorized search, and
-the compatibility/deprecation gate remain planned.
+also implemented. Public platform and health diagnostics are implemented with
+a stable unhealthy exit contract. Remaining edge, source, Secret, and identity
+resource mutations, node bootstrap, authorized search, and the
+compatibility/deprecation gate remain planned.

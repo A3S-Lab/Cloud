@@ -38,6 +38,68 @@ describe('CloudApi', () => {
     expect(String(calls[0]?.[0])).not.toContain('a3s_secret');
   });
 
+  it('reads public platform and health diagnostics without requiring an authorization header', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      const path = String(args[0]);
+      if (path.endsWith('/platform')) {
+        return jsonResponse({ name: 'a3s-cloud', version: '0.1.0', role: 'api' });
+      }
+      if (path.endsWith('/health/live')) {
+        return jsonResponse({ status: 'up', checks: {} });
+      }
+      return jsonResponse(
+        {
+          status: 'down',
+          checks: { repositories: { status: 'down', details: { reason: 'unavailable' } } },
+        },
+        503
+      );
+    };
+
+    const diagnostics = await new CloudApi(undefined, '/api/v1', { fetch: fetcher }).getDiagnostics();
+
+    expect(diagnostics).toEqual({
+      platform: { name: 'a3s-cloud', version: '0.1.0', role: 'api' },
+      liveness: { status: 'up', checks: {} },
+      readiness: {
+        status: 'down',
+        checks: { repositories: { status: 'down', details: { reason: 'unavailable' } } },
+      },
+    });
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/platform',
+      '/api/v1/health/live',
+      '/api/v1/health/ready',
+    ]);
+    for (const [, init] of calls) {
+      expect(init?.headers).not.toHaveProperty('Authorization');
+    }
+  });
+
+  it('does not reinterpret a real readiness error envelope as a health report', async () => {
+    const api = new CloudApi(undefined, '/api/v1', {
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            code: 503,
+            statusCode: 'SERVICE_UNAVAILABLE',
+            message: 'Service unavailable',
+            details: {},
+            requestId: '019c0000-0000-7000-8000-000000000001',
+            timestamp: '2026-07-27T00:00:00.000Z',
+          }),
+          { status: 503, headers: { 'content-type': 'application/json' } }
+        ),
+    });
+
+    await expect(api.getReadiness()).rejects.toMatchObject({
+      status: 503,
+      statusCode: 'SERVICE_UNAVAILABLE',
+    });
+  });
+
   it('exposes the tenant-scoped node projection', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

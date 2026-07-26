@@ -8,4 +8,5 @@ export {
   type CloudFetch,
   type CloudLogQuery,
 } from './api';
+export * from './diagnostics';
 export * from './types';
