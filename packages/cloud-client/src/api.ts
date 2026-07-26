@@ -29,6 +29,9 @@ import type {
   RetryBuildRunResult,
   Route,
   RoutePublicationResult,
+  Secret,
+  SecretDetails,
+  SecretMutationResult,
   ServiceTemplate,
   SourceWorkloadTemplate,
   StopWorkloadResult,
@@ -62,6 +65,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKLOAD_ACL_BYTES = 64 * 1024;
+export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
@@ -429,6 +433,83 @@ export class CloudApi {
 
   listGatewayCertificates(organizationId: string, signal?: AbortSignal): Promise<GatewayCertificate[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/gateway-certificates`, signal);
+  }
+
+  listSecrets(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<Secret[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/secrets`,
+      signal
+    );
+  }
+
+  getSecret(organizationId: string, secretId: string, signal?: AbortSignal): Promise<SecretDetails> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/secrets/${encodeURIComponent(secretId)}`,
+      signal
+    );
+  }
+
+  createSecret(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    name: string,
+    value: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<SecretMutationResult> {
+    validateSecretValue(value);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/secrets`,
+      idempotencyKey,
+      { name, value },
+      signal
+    );
+  }
+
+  addSecretVersion(
+    organizationId: string,
+    secretId: string,
+    value: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<SecretMutationResult> {
+    validateSecretValue(value);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/secrets/${encodeURIComponent(secretId)}/versions`,
+      idempotencyKey,
+      { value },
+      signal
+    );
+  }
+
+  revokeSecretVersion(
+    organizationId: string,
+    secretId: string,
+    version: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<SecretMutationResult> {
+    if (!Number.isSafeInteger(version) || version < 1) {
+      throw new RangeError('Secret version must be a positive safe integer');
+    }
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/secrets/${encodeURIComponent(secretId)}` +
+        `/versions/${version}/revoke`,
+      idempotencyKey,
+      signal
+    );
   }
 
   listSourceRevisions(
@@ -849,6 +930,13 @@ function validateWorkloadAcl(manifest: string): void {
   const bytes = new TextEncoder().encode(manifest).byteLength;
   if (bytes < 1 || bytes > MAX_WORKLOAD_ACL_BYTES) {
     throw new RangeError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
+  }
+}
+
+function validateSecretValue(value: string): void {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value).byteLength : 0;
+  if (bytes < 1 || bytes > MAX_SECRET_VALUE_BYTES) {
+    throw new RangeError('Secret value must contain between 1 byte and 1 MiB');
   }
 }
 

@@ -170,11 +170,16 @@ repository currently has no configured G0 provider secrets.
   flow, resolves branch/tag/commit inputs into pinned revisions, and
   lists/creates/deactivates GitHub repository subscriptions. Replayable
   mutations require caller-owned idempotency keys and expose durable replay
-  state.
+  state; and
+- Secret automation lists metadata, inspects version state, creates Secrets,
+  adds versions, and revokes versions through the existing public controllers.
+  Plaintext enters the CLI only through bounded fatal-UTF-8 standard input,
+  never appears in arguments, environment, configuration, output, or errors,
+  and never bypasses Cloud encryption or A3S ORM persistence.
 
-`C0.1` remains in progress. Remaining Secret and identity resource parity,
-node bootstrap, authorized global search, contract compatibility policy, and
-real cross-surface automation evidence remain required.
+`C0.1` remains in progress. Remaining identity resource parity, node
+bootstrap, authorized global search, contract compatibility policy, and real
+cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -293,9 +298,11 @@ health inspection with a stable unhealthy exit contract. The Edge slice adds
 DomainClaim query/create/verify/revoke, logical Gateway-scope query/create, and
 route publication with explicit idempotency and replay projections. The Source
 slice adds GitHub connection inspection/bootstrap, immutable revision
-list/resolve, and repository-subscription list/create/deactivate. Remaining
-Secret, identity, bootstrap, compatibility, and authorized-search work above
-must land against the same client and application commands or queries.
+list/resolve, and repository-subscription list/create/deactivate. The Secret
+slice adds metadata list/get and idempotent create/add-version/revoke-version
+without exposing plaintext outside the request body. Remaining identity,
+bootstrap, compatibility, and authorized-search work above must land against
+the same client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

@@ -464,6 +464,91 @@ describe('CloudApi', () => {
     ]);
   });
 
+  it('exposes Secret queries and idempotent mutations without returning plaintext', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const initialValue = 'postgres://cloud:initial@database';
+    const rotatedValue = 'postgres://cloud:rotated@database';
+
+    await api.listSecrets('organization', 'project', 'environment');
+    await api.getSecret('organization', 'secret');
+    await api.createSecret(
+      'organization',
+      'project',
+      'environment',
+      'Database URL',
+      initialValue,
+      'cli:secret-create-1'
+    );
+    await api.addSecretVersion('organization', 'secret', rotatedValue, 'cli:secret-version-1');
+    await api.revokeSecretVersion('organization', 'secret', 1, 'cli:secret-revoke-1');
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/secrets',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/secrets/secret',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/secrets',
+        method: 'POST',
+        idempotencyKey: 'cli:secret-create-1',
+        body: JSON.stringify({ name: 'Database URL', value: initialValue }),
+      },
+      {
+        input: '/api/v1/organizations/organization/secrets/secret/versions',
+        method: 'POST',
+        idempotencyKey: 'cli:secret-version-1',
+        body: JSON.stringify({ value: rotatedValue }),
+      },
+      {
+        input: '/api/v1/organizations/organization/secrets/secret/versions/1/revoke',
+        method: 'POST',
+        idempotencyKey: 'cli:secret-revoke-1',
+        body: undefined,
+      },
+    ]);
+  });
+
+  it('rejects invalid Secret values and versions before transport', async () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createSecret('organization', 'project', 'environment', 'Empty', '', 'cli:secret-empty')
+    ).toThrow('Secret value must contain between 1 byte and 1 MiB');
+    expect(() =>
+      api.addSecretVersion('organization', 'secret', 'é'.repeat(524_289), 'cli:secret-large')
+    ).toThrow('Secret value must contain between 1 byte and 1 MiB');
+    expect(() => api.revokeSecretVersion('organization', 'secret', 0, 'cli:secret-version-zero')).toThrow(
+      'Secret version must be a positive safe integer'
+    );
+    expect(called).toBe(false);
+  });
+
   it('reads bounded workload and BuildRun log pages with opaque cursors', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

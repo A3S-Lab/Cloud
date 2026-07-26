@@ -3,6 +3,7 @@ export {
   CloudApi,
   CloudApiError,
   isValidIdempotencyKey,
+  MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
   type CloudApiClientOptions,
   type CloudFetch,
