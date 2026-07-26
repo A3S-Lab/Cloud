@@ -23,13 +23,18 @@ Commands:
   workloads list        List workloads in the selected environment
   workloads get ID      Get one workload
   workloads logs ID REV Read one page of workload revision logs
+  workloads stop ID     Stop one workload idempotently
+  workloads rollback ID REV Roll back by cloning a proven revision
   deployments get ID    Get one deployment
+  deployments cancel ID Request deployment cancellation idempotently
   routes list           List routes in the selected environment
   routes get ID         Get one route
   build-runs list       List recent BuildRuns in the selected environment
   build-runs get ID     Get one BuildRun
   build-runs evidence ID Get verified BuildRun evidence
   build-runs logs ID    Read one page of BuildRun logs
+  build-runs cancel ID  Request BuildRun cancellation idempotently
+  build-runs retry ID   Retry one terminal BuildRun idempotently
 
 Global options:
   --url <url>             Cloud API URL ending in /api/v1
@@ -41,6 +46,7 @@ Global options:
   --cursor <cursor>       Opaque cursor for a log command
   --limit <1..256>        Record limit for a log command
   --stream <stdout|stderr> Filter a log command by stream
+  --idempotency-key <key>  Required stable key for every mutation
   -h, --help              Show help
   -V, --version           Show version
 

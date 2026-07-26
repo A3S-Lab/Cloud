@@ -100,6 +100,77 @@ describe('CloudApi', () => {
     );
   });
 
+  it('sends operational mutations with one explicit idempotency key', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.stopWorkload('organization', 'workload', 'cli:stop-1');
+    await api.rollbackWorkload('organization', 'workload', 'revision', 'cli:rollback-1');
+    await api.cancelDeployment('organization', 'deployment', 'cli:cancel-deployment-1');
+    await api.cancelBuildRun('organization', 'build-run', 'cli:cancel-build-1');
+    await api.retryBuildRun('organization', 'build-run', 'cli:retry-build-1');
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        headers: init?.headers,
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations/organization/workloads/workload/stop',
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:stop-1' }),
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/workloads/workload/rollback',
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:rollback-1' }),
+        body: JSON.stringify({ revisionId: 'revision' }),
+      },
+      {
+        input: '/api/v1/organizations/organization/deployments/deployment',
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:cancel-deployment-1' }),
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/build-runs/build-run',
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:cancel-build-1' }),
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/build-runs/build-run/retry',
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:retry-build-1' }),
+        body: undefined,
+      },
+    ]);
+  });
+
+  it('rejects unsafe idempotency keys before transport', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    for (const key of ['', 'contains space', 'contains\nnewline', 'é', 'x'.repeat(256)]) {
+      await expect(api.stopWorkload('organization', 'workload', key)).rejects.toThrow(
+        'idempotency key is invalid'
+      );
+    }
+    expect(called).toBe(false);
+  });
+
   it('creates resumable event-stream headers without putting credentials in URLs', () => {
     const api = new CloudApi('a3s_secret');
 

@@ -137,11 +137,15 @@ production signed-evidence process-death gate pass.
   public REST paths and tenant guards as the web console; and
 - workload, deployment, route, BuildRun, signed-evidence, and bounded paged-log
   queries extend that same transport without reading PostgreSQL or contacting a
-  node directly.
+  node directly; and
+- workload stop/rollback plus deployment and BuildRun cancel/retry commands
+  require a caller-owned validated `Idempotency-Key`, surface replay state, and
+  call the existing application commands without a hidden confirmation path.
 
-`C0.1` remains in progress. Mutation parity, administrative diagnostics, node
-bootstrap, authorized global search, contract compatibility policy, and real
-cross-surface automation evidence remain required.
+`C0.1` remains in progress. ACL-backed desired-state and remaining resource
+mutation parity, administrative diagnostics, node bootstrap, authorized global
+search, contract compatibility policy, and real cross-surface automation
+evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -251,9 +255,10 @@ The implemented `C0.1` slices establish the shared typed transport,
 non-persistent environment/flag context, safe output and exit-code contracts,
 read-only tenant commands, then adds workload, deployment, route, BuildRun,
 signed-evidence, and bounded paged-log queries. It does not close `C0.1`; the
-remaining mutation, diagnostics, bootstrap, compatibility, and
-authorized-search work above must land against the same client and application
-commands or queries.
+operational mutation slice adds explicit idempotent stop, rollback, cancel, and
+retry commands. Remaining ACL-backed mutation, diagnostics, bootstrap,
+compatibility, and authorized-search work above must land against the same
+client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

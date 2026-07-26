@@ -42,6 +42,21 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses an explicit mutation idempotency key', () => {
+    expect(
+      parseArguments([
+        'workloads',
+        'stop',
+        '019c0000-0000-7000-8000-000000000004',
+        '--idempotency-key=release:stop-42',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        idempotencyKey: 'release:stop-42',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],

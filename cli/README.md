@@ -37,6 +37,11 @@ Log commands additionally accept an opaque `--cursor`, a `--limit` from 1
 through 256, and an optional `--stream=stdout|stderr` filter. These options are
 rejected for commands that do not read logs.
 
+Mutation commands require `--idempotency-key=<key>`. The key must contain only
+visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`, and must be at
+most 255 characters. The CLI never generates a key: retry the exact command
+with the same key to receive the durable replay result.
+
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 
@@ -52,13 +57,18 @@ operations list
 workloads list
 workloads get <workload-id>
 workloads logs <workload-id> <revision-id>
+workloads stop <workload-id>
+workloads rollback <workload-id> <revision-id>
 deployments get <deployment-id>
+deployments cancel <deployment-id>
 routes list
 routes get <route-id>
 build-runs list
 build-runs get <build-run-id>
 build-runs evidence <build-run-id>
 build-runs logs <build-run-id>
+build-runs cancel <build-run-id>
+build-runs retry <build-run-id>
 ```
 
 `context show` reports only whether a token is configured; it never prints the
@@ -82,6 +92,7 @@ array, while failure JSON is written to stderr under an `error` object.
 Table cells and error metadata are bounded and control characters are
 neutralized. Sensitive error-detail keys are redacted before JSON output.
 
-This is an in-progress `C0.1` surface. Tenant and operational reads are
-implemented. Mutations, administrative diagnostics, node bootstrap, authorized
-search, and the compatibility/deprecation gate remain planned.
+This is an in-progress `C0.1` surface. Tenant and operational reads plus
+explicitly idempotent stop/rollback/cancel/retry mutations are implemented.
+ACL-backed desired-state mutations, administrative diagnostics, node bootstrap,
+authorized search, and the compatibility/deprecation gate remain planned.

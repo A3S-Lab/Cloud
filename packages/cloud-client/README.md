@@ -23,3 +23,7 @@ operational-resource, evidence, and bounded paged-log queries. Its Workload,
 deployment, and route types match the current replica/member and Gateway scope
 REST projections. It is internal and versioned with Cloud until public package
 compatibility and deprecation policy are completed.
+
+Mutating methods require a caller-owned idempotency key. The client accepts a
+portable visible-ASCII subset up to the server's 255-byte limit, rejects an
+invalid key before transport, and sends the value only in `Idempotency-Key`.
