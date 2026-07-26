@@ -80,6 +80,28 @@ describe('CloudApi', () => {
     expect(fetchMock.mock.calls[0][0]).not.toContain('a3s_secret');
   });
 
+  it('searches only the selected tenant through the authorized server endpoint', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ code: 200, message: 'Success', data: [], requestId: '1', timestamp: 'now' }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new CloudApi('a3s_secret').searchResources('organization / one', '  Cloud worker  ', 12);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/organizations/organization%20%2F%20one/search?q=Cloud+worker&limit=12',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer a3s_secret' }),
+      })
+    );
+    expect(fetchMock.mock.calls[0][0]).not.toContain('a3s_secret');
+  });
+
   it('cancels one deployment with an explicit stable idempotency key', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
