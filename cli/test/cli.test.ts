@@ -189,6 +189,149 @@ describe('a3s-cloud CLI', () => {
     expect(output.stdout()).toContain(`"buildRunId": "${BUILD_RUN_ID}"`);
   });
 
+  it.each([
+    {
+      command: ['workloads', 'stop', WORKLOAD_ID],
+      method: 'POST',
+      path: `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}/stop`,
+      body: undefined,
+      response: {
+        organizationId: ORGANIZATION_ID,
+        workloadId: WORKLOAD_ID,
+        operationId: WORKLOAD_ID,
+        desiredState: 'stopped',
+        requestedAt: '2026-07-26T00:00:00.000Z',
+        replayed: false,
+      },
+    },
+    {
+      command: ['workloads', 'rollback', WORKLOAD_ID, REVISION_ID],
+      method: 'POST',
+      path: `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}/rollback`,
+      body: JSON.stringify({ revisionId: REVISION_ID }),
+      response: {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        environmentId: ENVIRONMENT_ID,
+        workloadId: WORKLOAD_ID,
+        revisionId: REVISION_ID,
+        deploymentId: DEPLOYMENT_ID,
+        operationId: DEPLOYMENT_ID,
+        generation: 2,
+        status: 'queued',
+        artifactSourceUri: 'oci://registry.example.test/api@sha256:abc',
+        expectedArtifactDigest: null,
+        requestDigest: 'sha256:request',
+        artifactDigest: 'sha256:artifact',
+        templateDigest: 'sha256:template',
+        requestedAt: '2026-07-26T00:00:00.000Z',
+        replayed: false,
+      },
+    },
+    {
+      command: ['deployments', 'cancel', DEPLOYMENT_ID],
+      method: 'DELETE',
+      path: `/organizations/${ORGANIZATION_ID}/deployments/${DEPLOYMENT_ID}`,
+      body: undefined,
+      response: {
+        deploymentId: DEPLOYMENT_ID,
+        operationId: DEPLOYMENT_ID,
+        status: 'cancelling',
+        replayed: false,
+      },
+    },
+    {
+      command: ['build-runs', 'cancel', BUILD_RUN_ID],
+      method: 'DELETE',
+      path: `/organizations/${ORGANIZATION_ID}/build-runs/${BUILD_RUN_ID}`,
+      body: undefined,
+      response: {
+        buildRunId: BUILD_RUN_ID,
+        operationId: BUILD_RUN_ID,
+        status: 'cancelling',
+        cancellationRequestedAt: '2026-07-26T00:00:00.000Z',
+        replayed: false,
+      },
+    },
+    {
+      command: ['build-runs', 'retry', BUILD_RUN_ID],
+      method: 'POST',
+      path: `/organizations/${ORGANIZATION_ID}/build-runs/${BUILD_RUN_ID}/retry`,
+      body: undefined,
+      response: {
+        buildRunId: '019c0000-0000-7000-8000-000000000009',
+        operationId: '019c0000-0000-7000-8000-000000000009',
+        sourceRevisionId: REVISION_ID,
+        attempt: 2,
+        retryOfBuildRunId: BUILD_RUN_ID,
+        status: 'queued',
+        replayed: false,
+      },
+    },
+  ] as const)('executes an explicitly idempotent operational mutation %#', async (testCase) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(testCase.response, 202);
+    };
+    const output = capture();
+
+    const exitCode = await runCli(
+      [...testCase.command, '--idempotency-key=cli:mutation-1', '--output=json'],
+      { ...output.runtime, environment: completeEnvironment(), fetch: fetcher }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${testCase.path}`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: testCase.method,
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:mutation-1' }),
+        body: testCase.body,
+      })
+    );
+    expect(output.stdout()).toContain('"replayed": false');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects missing, unsafe, and read-only idempotency options before the network', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return envelope({});
+    };
+    const missing = capture();
+    const unsafe = capture();
+    const readOnly = capture();
+
+    expect(
+      await runCli(['workloads', 'stop', WORKLOAD_ID], {
+        ...missing.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['build-runs', 'retry', BUILD_RUN_ID, '--idempotency-key=contains space'], {
+        ...unsafe.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['routes', 'get', ROUTE_ID, '--idempotency-key=read-only'], {
+        ...readOnly.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+
+    expect(called).toBe(false);
+    expect(missing.stderr()).toContain('--idempotency-key is required');
+    expect(unsafe.stderr()).toContain('idempotency key is invalid');
+    expect(readOnly.stderr()).toContain('valid only for mutation commands');
+  });
+
   it('rejects invalid resource IDs and log options before the network', async () => {
     let called = false;
     const fetcher: CloudFetch = async () => {

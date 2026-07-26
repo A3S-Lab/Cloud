@@ -1,23 +1,6 @@
-import {
-  type BuildEvidence,
-  type BuildRun,
-  type BuildRunLogsPage,
-  CloudApi,
-  type CloudFetch,
-  type CloudLogQuery,
-  type Deployment,
-  type Environment,
-  type Node,
-  type Operation,
-  type Organization,
-  type Project,
-  type Route,
-  type Workload,
-  type WorkloadLogRecord,
-  type WorkloadLogsPage,
-} from '@a3s/cloud-client';
+import { CloudApi, type CloudFetch, type CloudLogQuery, isValidIdempotencyKey } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
-import type { CloudContext, PublicCloudContext } from './context';
+import type { CloudContext } from './context';
 import {
   hasUnsafeControl,
   parseUuid,
@@ -28,12 +11,30 @@ import {
   requireToken,
 } from './context';
 import { usageError } from './errors';
-import { renderTable, sanitizeCell, type TableColumn } from './output';
-
-export interface CommandResult {
-  json: unknown;
-  table: string;
-}
+import {
+  buildEvidenceResult,
+  buildRunLogsResult,
+  buildRunResult,
+  buildRunsResult,
+  cancelBuildRunResult,
+  cancelDeploymentResult,
+  contextResult,
+  deploymentResult,
+  environmentsResult,
+  nodesResult,
+  operationsResult,
+  organizationsResult,
+  projectsResult,
+  retryBuildRunResult,
+  rollbackWorkloadResult,
+  routeResult,
+  routesResult,
+  stopWorkloadResult,
+  type CommandResult,
+  workloadLogsResult,
+  workloadResult,
+  workloadsResult,
+} from './results';
 
 export async function executeCommand(
   arguments_: ParsedArguments,
@@ -48,6 +49,7 @@ export async function executeCommand(
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
+    rejectIdempotencyOption(arguments_);
     return contextResult(publicContext(context));
   }
 
@@ -96,6 +98,7 @@ export async function executeCommand(
       );
     case 'workloads logs':
       requireArity(positionals, 4, 'workloads logs <workload-id> <revision-id>');
+      rejectIdempotencyOption(arguments_);
       return workloadLogsResult(
         await cloudApi().getWorkloadLogs(
           requireOrganization(context),
@@ -104,6 +107,25 @@ export async function executeCommand(
           parseLogQuery(arguments_)
         )
       );
+    case 'workloads stop': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'workloads stop <workload-id>');
+      const organizationId = requireOrganization(context);
+      const workloadId = positionalUuid(positionals, 2, 'workload ID');
+      return stopWorkloadResult(await cloudApi().stopWorkload(organizationId, workloadId, idempotencyKey));
+    }
+    case 'workloads rollback': {
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        4,
+        'workloads rollback <workload-id> <revision-id>'
+      );
+      const organizationId = requireOrganization(context);
+      const workloadId = positionalUuid(positionals, 2, 'workload ID');
+      const revisionId = positionalUuid(positionals, 3, 'revision ID');
+      return rollbackWorkloadResult(
+        await cloudApi().rollbackWorkload(organizationId, workloadId, revisionId, idempotencyKey)
+      );
+    }
     case 'deployments get':
       requireReadCommand(arguments_, 'deployments get <deployment-id>');
       return deploymentResult(
@@ -112,6 +134,14 @@ export async function executeCommand(
           positionalUuid(positionals, 2, 'deployment ID')
         )
       );
+    case 'deployments cancel': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'deployments cancel <deployment-id>');
+      const organizationId = requireOrganization(context);
+      const deploymentId = positionalUuid(positionals, 2, 'deployment ID');
+      return cancelDeploymentResult(
+        await cloudApi().cancelDeployment(organizationId, deploymentId, idempotencyKey)
+      );
+    }
     case 'routes list':
       requireListCommand(arguments_);
       return routesResult(
@@ -153,6 +183,7 @@ export async function executeCommand(
       );
     case 'build-runs logs':
       requireArity(positionals, 3, 'build-runs logs <build-run-id>');
+      rejectIdempotencyOption(arguments_);
       return buildRunLogsResult(
         await cloudApi().getBuildRunLogs(
           requireOrganization(context),
@@ -160,6 +191,20 @@ export async function executeCommand(
           parseLogQuery(arguments_)
         )
       );
+    case 'build-runs cancel': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'build-runs cancel <build-run-id>');
+      const organizationId = requireOrganization(context);
+      const buildRunId = positionalUuid(positionals, 2, 'BuildRun ID');
+      return cancelBuildRunResult(
+        await cloudApi().cancelBuildRun(organizationId, buildRunId, idempotencyKey)
+      );
+    }
+    case 'build-runs retry': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'build-runs retry <build-run-id>');
+      const organizationId = requireOrganization(context);
+      const buildRunId = positionalUuid(positionals, 2, 'BuildRun ID');
+      return retryBuildRunResult(await cloudApi().retryBuildRun(organizationId, buildRunId, idempotencyKey));
+    }
     default:
       throw usageError('unsupported command; run a3s-cloud --help');
   }
@@ -168,11 +213,26 @@ export async function executeCommand(
 function requireListCommand(arguments_: ParsedArguments): void {
   requireArity(arguments_.positionals, 2, `${arguments_.positionals[0]} list`);
   rejectLogOptions(arguments_);
+  rejectIdempotencyOption(arguments_);
 }
 
 function requireReadCommand(arguments_: ParsedArguments, usage: string): void {
   requireArity(arguments_.positionals, 3, usage);
   rejectLogOptions(arguments_);
+  rejectIdempotencyOption(arguments_);
+}
+
+function requireMutationCommand(arguments_: ParsedArguments, arity: number, usage: string): string {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectLogOptions(arguments_);
+  const key = arguments_.idempotencyKey;
+  if (key === undefined) {
+    throw usageError('--idempotency-key is required for mutation commands');
+  }
+  if (!isValidIdempotencyKey(key)) {
+    throw usageError('idempotency key is invalid');
+  }
+  return key;
 }
 
 function requireArity(positionals: readonly string[], expected: number, usage: string): void {
@@ -192,6 +252,12 @@ function positionalUuid(positionals: readonly string[], index: number, label: st
 function rejectLogOptions(arguments_: ParsedArguments): void {
   if (arguments_.cursor !== undefined || arguments_.limit !== undefined || arguments_.stream !== undefined) {
     throw usageError('cursor, limit, and stream options are valid only for log commands');
+  }
+}
+
+function rejectIdempotencyOption(arguments_: ParsedArguments): void {
+  if (arguments_.idempotencyKey !== undefined) {
+    throw usageError('--idempotency-key is valid only for mutation commands');
   }
 }
 
@@ -221,196 +287,4 @@ function parseLogQuery(arguments_: ParsedArguments): CloudLogQuery {
     query.stream = arguments_.stream;
   }
   return query;
-}
-
-function contextResult(context: PublicCloudContext): CommandResult {
-  const rows = [
-    { key: 'URL', value: context.url },
-    { key: 'Organization', value: context.organizationId ?? '' },
-    { key: 'Project', value: context.projectId ?? '' },
-    { key: 'Environment', value: context.environmentId ?? '' },
-    { key: 'Output', value: context.output },
-    { key: 'Timeout (ms)', value: context.timeoutMs },
-    { key: 'Token configured', value: context.tokenConfigured ? 'yes' : 'no' },
-  ];
-  return {
-    json: context,
-    table: renderTable(rows, [
-      { header: 'CONTEXT', value: (row) => row.key },
-      { header: 'VALUE', value: (row) => row.value },
-    ]),
-  };
-}
-
-function organizationsResult(rows: Organization[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'VERSION', value: (row) => row.aggregateVersion },
-    { header: 'CREATED AT', value: (row) => row.createdAt },
-  ]);
-}
-
-function projectsResult(rows: Project[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'VERSION', value: (row) => row.aggregateVersion },
-    { header: 'CREATED AT', value: (row) => row.createdAt },
-  ]);
-}
-
-function environmentsResult(rows: Environment[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'VERSION', value: (row) => row.aggregateVersion },
-    { header: 'CREATED AT', value: (row) => row.createdAt },
-  ]);
-}
-
-function nodesResult(rows: Node[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'NAME', value: (row) => row.name },
-    { header: 'STATE', value: (row) => row.state },
-    { header: 'AVAILABILITY', value: (row) => row.availability },
-    { header: 'PROVIDER', value: (row) => row.runtimeProviderId },
-    { header: 'LAST OBSERVED', value: (row) => row.lastObservedAt },
-  ]);
-}
-
-function operationsResult(rows: Operation[]): CommandResult {
-  return listResult(rows, [
-    { header: 'ID', value: (row) => row.id },
-    { header: 'SUBJECT', value: (row) => `${row.subjectKind}/${row.subjectId}` },
-    { header: 'WORKFLOW', value: (row) => `${row.workflowName}@${row.workflowVersion}` },
-    { header: 'STATUS', value: (row) => row.status },
-    { header: 'UPDATED AT', value: (row) => row.updatedAt },
-    { header: 'ERROR', value: (row) => row.error },
-  ]);
-}
-
-const WORKLOAD_COLUMNS: readonly TableColumn<Workload>[] = [
-  { header: 'ID', value: (row) => row.id },
-  { header: 'NAME', value: (row) => row.name },
-  { header: 'DESIRED', value: (row) => row.desiredState },
-  { header: 'ACTIVE REVISION', value: (row) => row.activeRevision?.generation },
-  { header: 'DEPLOYMENTS', value: (row) => row.deployments.length },
-  { header: 'UPDATED AT', value: (row) => row.updatedAt },
-];
-
-function workloadsResult(rows: Workload[]): CommandResult {
-  return listResult(rows, WORKLOAD_COLUMNS);
-}
-
-function workloadResult(row: Workload): CommandResult {
-  return singleResult(row, WORKLOAD_COLUMNS);
-}
-
-const DEPLOYMENT_COLUMNS: readonly TableColumn<Deployment>[] = [
-  { header: 'ID', value: (row) => row.id },
-  { header: 'WORKLOAD', value: (row) => row.workloadId },
-  { header: 'REVISION', value: (row) => row.revision.generation },
-  { header: 'STATUS', value: (row) => row.status },
-  { header: 'NODE', value: (row) => row.nodeId },
-  { header: 'HEALTH', value: (row) => row.observedRuntime?.healthState },
-  { header: 'UPDATED AT', value: (row) => row.updatedAt },
-  { header: 'FAILURE', value: (row) => row.failure },
-];
-
-function deploymentResult(row: Deployment): CommandResult {
-  return singleResult(row, DEPLOYMENT_COLUMNS);
-}
-
-const ROUTE_COLUMNS: readonly TableColumn<Route>[] = [
-  { header: 'ID', value: (row) => row.id },
-  { header: 'HOST', value: (row) => `${row.hostname}${row.pathPrefix}` },
-  { header: 'STATE', value: (row) => row.state },
-  { header: 'WORKLOAD', value: (row) => row.workloadId },
-  { header: 'REVISION', value: (row) => row.workloadRevisionId },
-  { header: 'GATEWAY', value: (row) => row.gatewayNodeId },
-  { header: 'UPDATED AT', value: (row) => row.updatedAt },
-  { header: 'FAILURE', value: (row) => row.failure },
-];
-
-function routesResult(rows: Route[]): CommandResult {
-  return listResult(rows, ROUTE_COLUMNS);
-}
-
-function routeResult(row: Route): CommandResult {
-  return singleResult(row, ROUTE_COLUMNS);
-}
-
-const BUILD_RUN_COLUMNS: readonly TableColumn<BuildRun>[] = [
-  { header: 'ID', value: (row) => row.id },
-  { header: 'STATUS', value: (row) => row.status },
-  { header: 'ATTEMPT', value: (row) => row.attempt },
-  { header: 'SOURCE REVISION', value: (row) => row.sourceRevisionId },
-  { header: 'ARTIFACT', value: (row) => row.publishedArtifact?.digest },
-  { header: 'UPDATED AT', value: (row) => row.updatedAt },
-  { header: 'FAILURE', value: (row) => row.failure },
-];
-
-function buildRunsResult(rows: BuildRun[]): CommandResult {
-  return listResult(rows, BUILD_RUN_COLUMNS);
-}
-
-function buildRunResult(row: BuildRun): CommandResult {
-  return singleResult(row, BUILD_RUN_COLUMNS);
-}
-
-function buildEvidenceResult(row: BuildEvidence): CommandResult {
-  return singleResult(row, [
-    { header: 'BUILD RUN', value: (value) => value.buildRunId },
-    { header: 'REPOSITORY', value: (value) => value.repository },
-    { header: 'COMMIT', value: (value) => value.commitSha },
-    { header: 'ARTIFACT', value: (value) => value.artifact.digest },
-    { header: 'VERIFICATION', value: (value) => value.verificationState },
-    { header: 'ATTESTED AT', value: (value) => value.attestedAt },
-  ]);
-}
-
-function workloadLogsResult(page: WorkloadLogsPage): CommandResult {
-  return logPageResult(page, page.records);
-}
-
-function buildRunLogsResult(page: BuildRunLogsPage): CommandResult {
-  return logPageResult(page, page.records);
-}
-
-function logPageResult(page: WorkloadLogsPage | BuildRunLogsPage, rows: WorkloadLogRecord[]): CommandResult {
-  const table = renderTable(rows, [
-    { header: 'SEQUENCE', value: (row) => row.sequence },
-    { header: 'STREAM', value: (row) => row.stream },
-    { header: 'KIND', value: (row) => row.kind },
-    { header: 'OBSERVED MS', value: (row) => row.observedAtMs },
-    { header: 'DATA / GAP', value: logRecordValue },
-  ]);
-  return {
-    json: page,
-    table: page.nextCursor ? `${table}Next cursor: ${sanitizeCell(page.nextCursor)}\n` : table,
-  };
-}
-
-function logRecordValue(row: WorkloadLogRecord): string | null {
-  if (row.kind === 'data') {
-    return row.data;
-  }
-  const range = row.fromSequence === null ? '' : ` ${row.fromSequence}-${row.throughSequence}`;
-  return `${row.gapReason ?? 'unknown'}${range}`;
-}
-
-function singleResult<Row>(row: Row, columns: readonly TableColumn<Row>[]): CommandResult {
-  return {
-    json: row,
-    table: renderTable([row], columns),
-  };
-}
-
-function listResult<Row>(rows: Row[], columns: readonly TableColumn<Row>[]): CommandResult {
-  return {
-    json: rows,
-    table: renderTable(rows, columns),
-  };
 }

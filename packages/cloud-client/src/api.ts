@@ -42,6 +42,10 @@ export interface CloudLogQuery {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 
+export function isValidIdempotencyKey(value: string): boolean {
+  return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
+}
+
 export class CloudApi {
   readonly baseUrl: string;
   private readonly token: string;
@@ -363,6 +367,9 @@ export class CloudApi {
       signal?: AbortSignal;
     }
   ): Promise<T> {
+    if (options.idempotencyKey !== undefined && !isValidIdempotencyKey(options.idempotencyKey)) {
+      throw new TypeError('idempotency key is invalid');
+    }
     const controller = new AbortController();
     let timedOut = false;
     const timeout = setTimeout(() => {
@@ -379,7 +386,7 @@ export class CloudApi {
       Accept: 'application/json',
       Authorization: `Bearer ${this.token}`,
     };
-    if (options.idempotencyKey) {
+    if (options.idempotencyKey !== undefined) {
       headers['Idempotency-Key'] = options.idempotencyKey;
     }
     let body: string | undefined;

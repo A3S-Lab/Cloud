@@ -1429,6 +1429,16 @@ log cursors remain opaque and limits stay bounded. Later mutation and MCP
 surfaces must continue through this API and the same application commands and
 queries.
 
+The first CLI mutation slice exposes Workload stop and rollback, Deployment
+cancel, and BuildRun cancel and retry. Every invocation requires a caller-owned
+visible-ASCII idempotency key of at most 255 bytes; the shared client validates
+it before transport and sends it only as `Idempotency-Key`. Replaying the same
+command with the same key returns the API's durable `replayed` result. The CLI
+does not synthesize a key or add a confirmation side channel. Desired-state
+templates are not accepted as JSON or TOML CLI configuration; their later CLI
+surface must parse validated A3S ACL before invoking the existing JSON REST
+transport.
+
 Secret mutations require the `secret:write` scope. The initial resource API is:
 
 - `POST /organizations/{organization}/projects/{project}/environments/{environment}/secrets`

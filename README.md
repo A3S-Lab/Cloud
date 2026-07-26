@@ -105,7 +105,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Typed Automation Slice**: Reuse one validated TypeScript client across the
   web console and `a3s-cloud` CLI, select tenant context without a credential
   file, inspect tenant and operational resources, BuildRun evidence, and paged
-  workload or build logs as bounded tables or stable JSON
+  workload or build logs as bounded tables or stable JSON, and request
+  stop/rollback/cancel/retry operations with caller-owned idempotency keys
 
 ### Delivery capability matrix
 
@@ -441,6 +442,14 @@ bun run --cwd cli src/main.ts routes list
 bun run --cwd cli src/main.ts routes get "<route-uuid>"
 bun run --cwd cli src/main.ts build-runs list
 bun run --cwd cli src/main.ts build-runs evidence "<build-run-uuid>" --output=json
+bun run --cwd cli src/main.ts workloads stop "<workload-uuid>" \
+  --idempotency-key="release:stop:<request-id>"
+bun run --cwd cli src/main.ts workloads rollback "<workload-uuid>" "<revision-uuid>" \
+  --idempotency-key="release:rollback:<request-id>"
+bun run --cwd cli src/main.ts deployments cancel "<deployment-uuid>" \
+  --idempotency-key="release:cancel-deployment:<request-id>"
+bun run --cwd cli src/main.ts build-runs retry "<build-run-uuid>" \
+  --idempotency-key="release:retry-build:<request-id>"
 ```
 
 Use `bun run --cwd cli build` to produce the standalone `cli/dist/a3s-cloud`
@@ -448,8 +457,10 @@ binary. Remote endpoints must use HTTPS and end in `/api/v1`; plain HTTP is
 accepted only for literal localhost or loopback addresses. See the
 [CLI reference](cli/README.md) for context variables, output contracts, and
 exit codes. Operational resource and paged-log reads are implemented;
-mutations, administrative diagnostics, node bootstrap, authorized search, and
-the compatibility/deprecation gate remain subsequent `C0.1` slices.
+stop/rollback/cancel/retry mutations require an explicit stable idempotency key.
+ACL-backed desired-state mutations, administrative diagnostics, node bootstrap,
+authorized search, and the compatibility/deprecation gate remain subsequent
+`C0.1` slices.
 
 ## Platform Model
 
