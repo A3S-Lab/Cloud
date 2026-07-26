@@ -1,114 +1,9 @@
-use a3s_boot::{
-    BootApplication, BootError, BootResponse, Module, OpenApiInfo, Result, RouteDefinition,
-    AUTH_PUBLIC_METADATA,
-};
+use super::components::response_ref;
+use super::OPENAPI_CONTRACT_VERSION;
+use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeSet;
 
-pub const API_PREFIX: &str = "/api/v1";
-pub const API_MAJOR_VERSION: u16 = 1;
-pub const OPENAPI_CONTRACT_VERSION: &str = "1.0.0";
-pub const OPENAPI_DOCUMENT_PATH: &str = "/openapi.json";
-pub const OPENAPI_PUBLIC_PATH: &str = "/api/v1/openapi.json";
-pub const API_CONTRACT_VERSION_HEADER: &str = "x-a3s-api-contract-version";
-pub const MINIMUM_DEPRECATION_DAYS: u16 = 180;
-
-const OPENAPI_DOCUMENT: &str = include_str!("../../../../openapi/v1.json");
-const HTTP_METHODS: [&str; 7] = ["delete", "get", "head", "options", "patch", "post", "put"];
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ApiContractModule;
-
-impl Module for ApiContractModule {
-    fn name(&self) -> &'static str {
-        "api-contract"
-    }
-
-    fn routes(&self) -> Result<Vec<RouteDefinition>> {
-        Ok(vec![RouteDefinition::get(
-            OPENAPI_DOCUMENT_PATH,
-            |_| async {
-                Ok(BootResponse::new(200, OPENAPI_DOCUMENT.as_bytes())
-                    .with_header("content-type", "application/json")
-                    .with_header("cache-control", "public, max-age=300")
-                    .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION)
-                    .with_header("x-a3s-api-envelope", "1"))
-            },
-        )?
-        .with_metadata(AUTH_PUBLIC_METADATA, true)?
-        .hide_from_openapi()])
-    }
-}
-
-pub fn openapi_info() -> OpenApiInfo {
-    OpenApiInfo::new("A3S Cloud REST API", OPENAPI_CONTRACT_VERSION)
-        .with_description(
-            "Stable version 1 REST contract shared by the A3S Cloud web console and CLI.",
-        )
-        .with_server_description(API_PREFIX, "A3S Cloud REST API v1")
-}
-
-pub fn generate_openapi_contract(application: &BootApplication) -> Result<Value> {
-    let mut document =
-        serde_json::to_value(application.openapi(openapi_info())).map_err(|error| {
-            BootError::Internal(format!("failed to serialize the OpenAPI contract: {error}"))
-        })?;
-    document["x-a3s-api-major-version"] = json!(API_MAJOR_VERSION);
-    document["x-a3s-api-contract-version"] = json!(OPENAPI_CONTRACT_VERSION);
-    document["x-a3s-minimum-deprecation-days"] = json!(MINIMUM_DEPRECATION_DAYS);
-
-    let public_operations = public_operations(application);
-    normalize_and_describe_paths(&mut document, &public_operations)?;
-    install_components(&mut document)?;
-    Ok(document)
-}
-
-fn public_operations(application: &BootApplication) -> BTreeSet<(String, String)> {
-    application
-        .routes()
-        .iter()
-        .filter(|route| !route.openapi().hidden)
-        .filter(|route| route.metadata_value(AUTH_PUBLIC_METADATA) == Some(&Value::Bool(true)))
-        .map(|route| {
-            (
-                normalize_route_path(route.path()),
-                route.method().as_str().to_ascii_lowercase(),
-            )
-        })
-        .collect()
-}
-
-fn normalize_and_describe_paths(
-    document: &mut Value,
-    public_operations: &BTreeSet<(String, String)>,
-) -> Result<()> {
-    let paths = document
-        .get_mut("paths")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| BootError::Internal("generated OpenAPI document has no paths".into()))?;
-    let generated = std::mem::take(paths);
-    let mut normalized = Map::new();
-
-    for (full_path, mut path_item) in generated {
-        let path = strip_api_prefix(&full_path)?;
-        let operations = path_item.as_object_mut().ok_or_else(|| {
-            BootError::Internal(format!("OpenAPI path `{full_path}` is not an object"))
-        })?;
-        for method in HTTP_METHODS {
-            let Some(operation) = operations.get_mut(method) else {
-                continue;
-            };
-            let is_public = public_operations.contains(&(full_path.clone(), method.to_owned()));
-            describe_operation(operation, method, &path, is_public)?;
-        }
-        normalized.insert(path, path_item);
-    }
-
-    document["paths"] = Value::Object(normalized);
-    Ok(())
-}
-
-fn describe_operation(
+pub(super) fn describe_operation(
     operation: &mut Value,
     method: &str,
     path: &str,
@@ -384,107 +279,6 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     vec![200]
 }
 
-fn install_components(document: &mut Value) -> Result<()> {
-    let document = document
-        .as_object_mut()
-        .ok_or_else(|| BootError::Internal("generated OpenAPI document is not an object".into()))?;
-    let components = document
-        .entry("components")
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-        .ok_or_else(|| BootError::Internal("generated OpenAPI components are invalid".into()))?;
-    components.insert(
-        "securitySchemes".into(),
-        json!({
-            "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "A3S API token" }
-        }),
-    );
-    components.insert(
-        "schemas".into(),
-        json!({
-            "ApiSuccessResponse": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["code", "message", "data", "requestId", "timestamp"],
-                "properties": {
-                    "code": { "type": "integer", "minimum": 200, "maximum": 399 },
-                    "message": { "type": "string" },
-                    "data": {},
-                    "requestId": { "type": "string", "format": "uuid" },
-                    "timestamp": { "type": "string", "format": "date-time" }
-                }
-            },
-            "ApiErrorResponse": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["code", "statusCode", "message", "details", "requestId", "timestamp"],
-                "properties": {
-                    "code": { "type": "integer", "minimum": 400, "maximum": 599 },
-                    "statusCode": { "type": "string", "minLength": 1 },
-                    "message": { "type": "string" },
-                    "details": { "type": "object" },
-                    "requestId": { "type": "string", "format": "uuid" },
-                    "timestamp": { "type": "string", "format": "date-time" }
-                }
-            }
-        }),
-    );
-
-    let mut response_components = Map::new();
-    for status in [200, 201, 202, 303] {
-        response_components.insert(
-            format!("Success{status}"),
-            response_component(status, "#/components/schemas/ApiSuccessResponse"),
-        );
-    }
-    for status in [200, 201] {
-        response_components.insert(
-            format!("RawSuccess{status}"),
-            response_component(status, ""),
-        );
-    }
-    response_components.insert("SseSuccess200".into(), sse_response_component());
-    for status in [400, 401, 403, 404, 409, 422, 429, 500, 503] {
-        response_components.insert(
-            format!("Error{status}"),
-            response_component(status, "#/components/schemas/ApiErrorResponse"),
-        );
-    }
-    components.insert("responses".into(), Value::Object(response_components));
-    Ok(())
-}
-
-fn response_component(status: u16, schema_ref: &str) -> Value {
-    let schema = if schema_ref.is_empty() {
-        json!({ "type": "object", "additionalProperties": true })
-    } else {
-        json!({ "$ref": schema_ref })
-    };
-    json!({
-        "description": status_description(status),
-        "headers": {
-            "x-request-id": { "schema": { "type": "string", "format": "uuid" } },
-            "x-a3s-api-contract-version": { "schema": { "type": "string", "example": OPENAPI_CONTRACT_VERSION } }
-        },
-        "content": { "application/json": { "schema": schema } }
-    })
-}
-
-fn sse_response_component() -> Value {
-    json!({
-        "description": "Resumable server-sent event stream",
-        "headers": {
-            "x-request-id": { "schema": { "type": "string", "format": "uuid" } },
-            "x-a3s-api-contract-version": { "schema": { "type": "string", "example": OPENAPI_CONTRACT_VERSION } }
-        },
-        "content": { "text/event-stream": { "schema": { "type": "string" } } }
-    })
-}
-
-fn response_ref(component: &str) -> Value {
-    json!({ "$ref": format!("#/components/responses/{component}") })
-}
-
 fn upsert_parameter(parameters: &mut Vec<Value>, candidate: Value) {
     let identity = parameter_identity(&candidate);
     if parameters
@@ -501,30 +295,6 @@ fn parameter_identity(parameter: &Value) -> Option<(&str, &str)> {
         parameter.get("in")?.as_str()?,
         parameter.get("name")?.as_str()?,
     ))
-}
-
-fn strip_api_prefix(path: &str) -> Result<String> {
-    let stripped = path.strip_prefix(API_PREFIX).ok_or_else(|| {
-        BootError::Internal(format!("public route `{path}` is outside `{API_PREFIX}`"))
-    })?;
-    Ok(if stripped.is_empty() {
-        "/".into()
-    } else {
-        stripped.into()
-    })
-}
-
-fn normalize_route_path(path: &str) -> String {
-    path.split('/')
-        .map(|segment| {
-            segment
-                .strip_prefix("{*")
-                .and_then(|value| value.strip_suffix('}'))
-                .map(|value| format!("{{{value}}}"))
-                .unwrap_or_else(|| segment.to_owned())
-        })
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 fn operation_id(method: &str, path: &str) -> String {
@@ -621,23 +391,4 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/source-revisions")
         || path.ends_with("/source-subscriptions/github")
         || path.ends_with("/source-connections/github")
-}
-
-fn status_description(status: u16) -> &'static str {
-    match status {
-        200 => "Success or idempotent replay",
-        201 => "Created",
-        202 => "Accepted",
-        303 => "See Other",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        409 => "Conflict",
-        422 => "Unprocessable Entity",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        503 => "Service Unavailable",
-        _ => "Response",
-    }
 }
