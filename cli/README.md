@@ -37,10 +37,13 @@ Log commands additionally accept an opaque `--cursor`, a `--limit` from 1
 through 256, and an optional `--stream=stdout|stderr` filter. These options are
 rejected for commands that do not read logs.
 
-Mutation commands require `--idempotency-key=<key>`. The key must contain only
-visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`, and must be at
-most 255 characters. The CLI never generates a key: retry the exact command
-with the same key to receive the durable replay result.
+Replayable mutation commands require `--idempotency-key=<key>`. The key must
+contain only visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`,
+and must be at most 255 characters. The CLI never generates a key: retry the
+exact command with the same key to receive the durable replay result.
+`source-connections begin` is the deliberate exception because the existing
+API starts a short-lived no-store browser installation flow instead of a
+replayable resource mutation.
 
 Node `ready`, `drain`, and `revoke` additionally require
 `--expected-version=<current-aggregate-version>`. The positive safe integer is
@@ -52,6 +55,15 @@ versions instead of applying a blind lifecycle transition.
 `--max-unavailable` defaults to `0` and must remain below the member count.
 Cloud remains authoritative for tenant ownership, membership, rollout policy,
 and idempotent creation.
+
+Source revision resolution and GitHub subscription creation require
+`--context-path`, `--dockerfile-path`, and a comma-separated `--platforms`
+value containing `linux/amd64`, `linux/arm64`, or both. `--target` optionally
+selects a Dockerfile stage. The CLI validates bounded repository-relative
+paths, exact HTTPS GitHub repository URLs, branch/tag/commit syntax, and the
+closed `a3s.cloud.build-recipe.v1` Dockerfile recipe before transport. Cloud
+remains the source policy, provider-resolution, tenancy, idempotency, and A3S
+ORM persistence authority.
 
 Desired-state commands additionally require `--file=<path>` and accept only a
 nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
@@ -86,7 +98,14 @@ workloads create --file=<path>
 workloads update <workload-id> --file=<path>
 workloads stop <workload-id>
 workloads rollback <workload-id> <revision-id>
+source-revisions list
+source-revisions resolve <repository-url> <branch|tag|commit> <reference> --context-path=<path> --dockerfile-path=<path> --platforms=<csv> [--target=<stage>]
 source-revisions deploy <source-revision-id> --file=<path>
+source-connections get
+source-connections begin
+source-subscriptions list
+source-subscriptions create <repository-url> <branch> --context-path=<path> --dockerfile-path=<path> --platforms=<csv> [--target=<stage>]
+source-subscriptions deactivate <subscription-id>
 deployments get <deployment-id>
 deployments cancel <deployment-id>
 domain-claims list
@@ -148,6 +167,10 @@ DomainClaim create/verify/revoke and Gateway-scope create output includes the
 server's durable `replayed` value. Route publication includes `replayed` and
 `commandReplayed`, so automation can distinguish request replay from Gateway
 command replay without inspecting internal state.
+Source revision resolution and repository-subscription create/deactivate output
+also includes the authoritative `replayed` value. `source-connections begin`
+returns a short-lived no-store installation URL; use `--output=json` when the
+complete URL must be copied because bounded table cells may abbreviate it.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
@@ -155,6 +178,8 @@ create/update/source deployment are implemented. Core Organization, Project,
 and Environment creation and version-checked node lifecycle transitions are
 also implemented. Public platform and health diagnostics are implemented with
 a stable unhealthy exit contract. DomainClaim, logical Gateway-scope, and route
-publication parity is implemented through the same typed client. Remaining
-source, Secret, and identity resource parity, node bootstrap, authorized
-search, and the compatibility/deprecation gate remain planned.
+publication parity is implemented through the same typed client. Source
+revision, GitHub connection, and repository-subscription parity is also
+implemented without bypassing the public API. Remaining Secret and identity
+resource parity, node bootstrap, authorized search, and the
+compatibility/deprecation gate remain planned.

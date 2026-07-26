@@ -34,13 +34,17 @@ The package currently exposes the Web management calls plus `C0.1` tenant,
 operational-resource, evidence, and bounded paged-log queries. Its Workload,
 deployment, and route types match the current replica/member and Gateway scope
 REST projections. DomainClaim and logical Gateway-scope queries and mutations,
-plus route publication, use the same tenant-guarded REST resources. It is
-internal and versioned with Cloud until public package compatibility and
-deprecation policy are completed.
+plus route publication, use the same tenant-guarded REST resources. Source
+revision, GitHub connection, and repository-subscription methods use the
+existing Source controllers. It is internal and versioned with Cloud until
+public package compatibility and deprecation policy are completed.
 
-Mutating methods require a caller-owned idempotency key. The client accepts a
-portable visible-ASCII subset up to the server's 255-byte limit, rejects an
-invalid key before transport, and sends the value only in `Idempotency-Key`.
+Replayable mutating methods require a caller-owned idempotency key. The client
+accepts a portable visible-ASCII subset up to the server's 255-byte limit,
+rejects an invalid key before transport, and sends the value only in
+`Idempotency-Key`. `beginGithubConnection` is intentionally non-replayable:
+it invokes the existing no-store endpoint that returns one short-lived browser
+installation URL.
 
 `createOrganization`, `createProject`, and `createEnvironment` use the existing
 resource commands. `markNodeReady`, `drainNode`, and `revokeNode` additionally
@@ -55,6 +59,17 @@ contract. `publishRoute` returns the Route, managed certificate, request replay
 state, and Gateway-command replay state. The client transports these commands;
 Cloud application services and A3S ORM-backed repositories remain
 authoritative for validation, tenancy, and persistence.
+
+`listSourceRevisions` and `resolveSourceRevision` expose the closed GitHub
+repository, branch/tag/commit, and `a3s.cloud.build-recipe.v1` Dockerfile
+contracts. `getGithubConnection` and `beginGithubConnection` expose
+authoritative provider status and the short-lived installation flow.
+`listGithubRepositorySubscriptions`,
+`createGithubRepositorySubscription`, and
+`deactivateGithubRepositorySubscription` reuse the existing tenant-guarded
+subscription commands. Resolution and subscription mutation results include
+the API's durable `replayed` state; the client never resolves Git references
+or contacts GitHub itself.
 
 `createWorkloadFromAcl`, `updateWorkloadFromAcl`, and
 `deploySourceRevisionFromAcl` transport one nonempty A3S ACL document of at

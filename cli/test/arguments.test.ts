@@ -111,6 +111,32 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses an explicit Source build recipe', () => {
+    expect(
+      parseArguments([
+        'source-revisions',
+        'resolve',
+        'https://github.com/A3S-Lab/Cloud.git',
+        'branch',
+        'main',
+        '--context-path=services/api',
+        '--dockerfile-path',
+        'Dockerfile',
+        '--target=release',
+        '--platforms=linux/amd64,linux/arm64',
+        '--idempotency-key=source:resolve-42',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        contextPath: 'services/api',
+        dockerfilePath: 'Dockerfile',
+        target: 'release',
+        platforms: 'linux/amd64,linux/arm64',
+        idempotencyKey: 'source:resolve-42',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],

@@ -133,7 +133,7 @@ Status as of 2026-07-27:
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
 | G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence and the remaining production fault-injection gate still block G0 verification |
-| C0 | In progress | One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, and replay-aware DomainClaim/Gateway-scope/Route mutation parity pass client, CLI, API, and Web tests. C0.1 still requires source, Secret, and identity parity, node bootstrap, authorized search, compatibility policy, and cross-surface evidence |
+| C0 | In progress | One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, and Source revision/GitHub connection/repository-subscription parity pass client, CLI, API, and Web tests. C0.1 still requires Secret and identity parity, node bootstrap, authorized search, compatibility policy, and cross-surface evidence |
 | H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
 | H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
 
@@ -1095,11 +1095,15 @@ packages:
   Gateway scopes with explicit rollout thresholds, and publishes Routes. These
   commands use the existing tenant guards and application handlers, expose
   durable replay state, and retain typed A3S ORM persistence as the sole
-  production database path.
+  production database path. Source automation lists and resolves immutable
+  source revisions, inspects and starts the short-lived no-store GitHub
+  connection flow, and lists/creates/deactivates repository subscriptions.
+  Replayable Source mutations carry explicit idempotency keys and reuse the
+  existing provider, policy, application, and A3S ORM persistence boundaries.
 
 This changes `C0` from planned to in progress, not verified. The next `C0.1`
-slices must add source, Secret, and identity parity through the same typed
-client, followed by node bootstrap, authorized global search, REST
+slices must add Secret and identity parity through the same typed client,
+followed by node bootstrap, authorized global search, REST
 compatibility/deprecation policy, and real cross-surface automation evidence.
 Desired-state files remain A3S ACL; the CLI must not add JSON or TOML
 configuration. No CLI command may read PostgreSQL or contact a node.

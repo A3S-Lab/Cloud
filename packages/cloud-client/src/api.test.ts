@@ -348,6 +348,122 @@ describe('CloudApi', () => {
     ]);
   });
 
+  it('exposes Source queries, connection bootstrap, and idempotent mutations through existing REST paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const recipe = {
+      schema: 'a3s.cloud.build-recipe.v1' as const,
+      kind: 'dockerfile' as const,
+      contextPath: 'services/api',
+      dockerfilePath: 'Dockerfile',
+      target: 'release',
+      platforms: ['linux/amd64' as const, 'linux/arm64' as const],
+    };
+
+    await api.listSourceRevisions('organization', 'project', 'environment');
+    await api.resolveSourceRevision(
+      'organization',
+      'project',
+      'environment',
+      {
+        repository: { provider: 'github', url: 'https://github.com/A3S-Lab/Cloud.git' },
+        reference: { kind: 'branch', value: 'main' },
+        recipe,
+      },
+      'cli:source-resolve-1'
+    );
+    await api.getGithubConnection('organization');
+    await api.beginGithubConnection('organization');
+    await api.listGithubRepositorySubscriptions('organization', 'project', 'environment');
+    await api.createGithubRepositorySubscription(
+      'organization',
+      'project',
+      'environment',
+      {
+        repository: { provider: 'github', url: 'https://github.com/A3S-Lab/Cloud.git' },
+        branch: 'main',
+        recipe,
+      },
+      'cli:source-subscribe-1'
+    );
+    await api.deactivateGithubRepositorySubscription(
+      'organization',
+      'project',
+      'environment',
+      'subscription',
+      'cli:source-deactivate-1'
+    );
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/source-revisions',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/source-revisions',
+        method: 'POST',
+        idempotencyKey: 'cli:source-resolve-1',
+        body: JSON.stringify({
+          repository: { provider: 'github', url: 'https://github.com/A3S-Lab/Cloud.git' },
+          reference: { kind: 'branch', value: 'main' },
+          recipe,
+        }),
+      },
+      {
+        input: '/api/v1/organizations/organization/source-connections/github',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/source-connections/github',
+        method: 'POST',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/source-subscriptions/github',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/source-subscriptions/github',
+        method: 'POST',
+        idempotencyKey: 'cli:source-subscribe-1',
+        body: JSON.stringify({
+          repository: { provider: 'github', url: 'https://github.com/A3S-Lab/Cloud.git' },
+          branch: 'main',
+          recipe,
+        }),
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/source-subscriptions/github/subscription/deactivate',
+        method: 'POST',
+        idempotencyKey: 'cli:source-deactivate-1',
+        body: undefined,
+      },
+    ]);
+  });
+
   it('reads bounded workload and BuildRun log pages with opaque cursors', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

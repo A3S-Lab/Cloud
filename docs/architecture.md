@@ -1463,6 +1463,24 @@ request replay state, and Gateway-command replay state. These response
 contracts let automation retry safely without reconstructing state from
 internal persistence.
 
+Source automation uses the existing Source controllers and application
+handlers. The shared client and CLI expose source-revision list/resolve,
+GitHub-connection get/begin, and repository-subscription
+list/create/deactivate. They submit the closed GitHub repository,
+branch/tag/commit, and `a3s.cloud.build-recipe.v1` Dockerfile contracts to
+Cloud; they never resolve a Git reference, contact GitHub, read PostgreSQL, or
+construct a Source aggregate locally. Source policy, tenant ownership,
+provider access, immutable commit resolution, and A3S ORM-backed persistence
+remain authoritative in Cloud.
+
+Revision resolution and subscription create/deactivate require explicit
+caller-owned idempotency keys and return the durable replay projection.
+GitHub-connection begin deliberately preserves the existing security boundary:
+it returns a short-lived no-store installation URL and has no replay contract.
+The CLI does not persist that URL and recommends JSON output when the complete
+value must be copied; provider setup and OAuth callbacks remain browser-facing
+Cloud endpoints.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize
