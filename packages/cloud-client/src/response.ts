@@ -7,6 +7,17 @@ const MAX_ERROR_DETAIL_ENTRIES = 50;
 const MAX_ERROR_DETAIL_STRING_LENGTH = 1_024;
 
 export async function readResponse<T>(response: Response): Promise<T> {
+  return readResponseWithAcceptedStatus(response, false);
+}
+
+export async function readHealthResponse<T>(response: Response): Promise<T> {
+  return readResponseWithAcceptedStatus(response, response.status === 503);
+}
+
+async function readResponseWithAcceptedStatus<T>(
+  response: Response,
+  acceptNonOkSuccess: boolean
+): Promise<T> {
   let payload: unknown;
   try {
     const declaredLength = Number(response.headers.get('content-length'));
@@ -22,23 +33,20 @@ export async function readResponse<T>(response: Response): Promise<T> {
     throw invalidResponse(response.status);
   }
 
-  if (response.ok) {
-    if (!isApiEnvelope(payload) || payload.code !== response.status) {
-      throw invalidResponse(response.status);
-    }
+  if ((response.ok || acceptNonOkSuccess) && isApiEnvelope(payload) && payload.code === response.status) {
     return payload.data as T;
   }
 
-  if (!isApiErrorEnvelope(payload) || payload.code !== response.status) {
-    throw invalidResponse(response.status);
+  if (!response.ok && isApiErrorEnvelope(payload) && payload.code === response.status) {
+    throw new CloudApiError(
+      response.status,
+      payload.message,
+      payload.statusCode,
+      payload.requestId,
+      boundErrorDetails(payload.details)
+    );
   }
-  throw new CloudApiError(
-    response.status,
-    payload.message,
-    payload.statusCode,
-    payload.requestId,
-    boundErrorDetails(payload.details)
-  );
+  throw invalidResponse(response.status);
 }
 
 function isApiEnvelope(value: unknown): value is ApiEnvelope<unknown> {

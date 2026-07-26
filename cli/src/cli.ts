@@ -15,6 +15,7 @@ Usage:
 
 Commands:
   context show          Show resolved non-secret context
+  diagnostics status    Show public platform and health diagnostics
   organizations list   List authorized organizations
   organizations create NAME Create an organization idempotently
   projects list        List projects in the selected organization
@@ -101,7 +102,7 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime = {}):
     writeStdout(
       redactToken(context.output === 'json' ? renderJson(result.json) : result.table, context.token)
     );
-    return ExitCode.Success;
+    return result.exitCode ?? ExitCode.Success;
   } catch (error) {
     const normalized = normalizeError(error);
     writeStderr(

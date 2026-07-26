@@ -10,6 +10,10 @@ import { CloudApi } from '@a3s/cloud-client';
 const api = new CloudApi(process.env.A3S_CLOUD_TOKEN!,
   'https://cloud.example.test/api/v1');
 const organizations = await api.listOrganizations();
+
+const publicApi = new CloudApi(undefined,
+  'https://cloud.example.test/api/v1');
+const diagnostics = await publicApi.getDiagnostics();
 ```
 
 Every request has a finite timeout and expects the standard Cloud success or
@@ -17,6 +21,14 @@ error envelope. Invalid JSON, invalid envelopes, network failure, timeout, and
 caller cancellation become stable `CloudApiError` values. Tokens are sent only
 in authorization headers and never appear in generated stream URLs or error
 messages.
+
+`getPlatform`, `getLiveness`, `getReadiness`, and `getDiagnostics` use the
+public Cloud endpoints and support a client without a token. No Authorization
+header is emitted when the token is absent. Health endpoints deliberately use
+HTTP `503` with a standard success envelope when the health report is down; the
+client returns that report as diagnostics. A `503` error envelope remains a
+`CloudApiError`. Authenticated methods still require server-authorized
+credentials.
 
 The package currently exposes the Web management calls plus `C0.1` tenant,
 operational-resource, evidence, and bounded paged-log queries. Its Workload,

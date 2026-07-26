@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { CloudFetch } from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
+import { ExitCode } from '../src/errors';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const PROJECT_ID = '019c0000-0000-7000-8000-000000000002';
@@ -57,6 +58,63 @@ describe('a3s-cloud CLI', () => {
     expect(exitCode).toBe(0);
     expect(output.stdout()).toContain('"tokenConfigured": true');
     expect(output.stdout()).not.toContain('a3s_secret');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('reports public platform, liveness, and readiness without requiring a token', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      const path = String(args[0]);
+      if (path.endsWith('/platform')) {
+        return envelope({ name: 'a3s-cloud', version: '0.1.0', role: 'api' });
+      }
+      return envelope({ status: 'up', checks: {} });
+    };
+    const output = capture();
+
+    const exitCode = await runCli(['diagnostics', 'status', '--output=json'], {
+      ...output.runtime,
+      environment: {},
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls.map(([input]) => input)).toEqual([
+      'http://127.0.0.1:8080/api/v1/platform',
+      'http://127.0.0.1:8080/api/v1/health/live',
+      'http://127.0.0.1:8080/api/v1/health/ready',
+    ]);
+    for (const [, init] of calls) {
+      expect(init?.headers).not.toHaveProperty('Authorization');
+    }
+    expect(output.stdout()).toContain('"liveness"');
+    expect(output.stdout()).toContain('"readiness"');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('returns a stable unhealthy exit code while preserving down diagnostics', async () => {
+    const fetcher: CloudFetch = async (input) => {
+      const path = String(input);
+      if (path.endsWith('/platform')) {
+        return envelope({ name: 'a3s-cloud', version: '0.1.0', role: 'worker' });
+      }
+      if (path.endsWith('/health/live')) {
+        return envelope({ status: 'up', checks: {} });
+      }
+      return envelope({ status: 'down', checks: { repositories: { status: 'down', details: {} } } }, 503);
+    };
+    const output = capture();
+
+    const exitCode = await runCli(['diagnostics', 'status', '--output=json'], {
+      ...output.runtime,
+      environment: {},
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(ExitCode.Unhealthy);
+    expect(output.stdout()).toContain('"status": "down"');
+    expect(output.stdout()).toContain('"repositories"');
     expect(output.stderr()).toBe('');
   });
 

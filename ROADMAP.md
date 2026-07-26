@@ -153,12 +153,16 @@ repository currently has no configured G0 provider secrets.
 - Organization, Project, and Environment creation plus node ready/drain/revoke
   use the existing scoped REST and application commands. Every call has a
   caller-owned idempotency key, and node transitions also require the current
-  aggregate version.
+  aggregate version; and
+- public administrative diagnostics read platform, liveness, and readiness
+  through the shared client without sending a bearer token. A health endpoint's
+  wrapped `503` down report remains diagnostic data, while an error envelope
+  remains a failure; the CLI preserves the report and returns exit code `8`.
 
 `C0.1` remains in progress. Remaining edge, source, Secret, and identity
-resource mutation parity, administrative diagnostics, node bootstrap,
-authorized global search, contract compatibility policy, and real
-cross-surface automation evidence remain required.
+resource mutation parity, node bootstrap, authorized global search, contract
+compatibility policy, and real cross-surface automation evidence remain
+required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -272,9 +276,10 @@ operational mutation slice adds explicit idempotent stop, rollback, cancel, and
 retry commands, while the desired-state slice adds Cloud-admitted A3S ACL for
 Workload create/update and SourceRevision deployment. The core-resource slice
 adds Organization, Project, and Environment creation plus version-checked node
-lifecycle transitions. Remaining mutation, diagnostics, bootstrap,
-compatibility, and authorized-search work above must land against the same
-client and application commands or queries.
+lifecycle transitions. The diagnostics slice adds tokenless platform and
+health inspection with a stable unhealthy exit contract. Remaining mutation,
+bootstrap, compatibility, and authorized-search work above must land against
+the same client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

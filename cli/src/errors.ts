@@ -9,6 +9,7 @@ export const ExitCode = {
   Conflict: 5,
   Api: 6,
   Transport: 7,
+  Unhealthy: 8,
 } as const;
 
 export type ExitCodeValue = (typeof ExitCode)[keyof typeof ExitCode];

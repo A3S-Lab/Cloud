@@ -109,7 +109,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stop/rollback/cancel/retry operations with caller-owned idempotency keys;
   create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud;
   create core tenant resources and transition nodes with explicit optimistic
-  concurrency
+  concurrency; and inspect tokenless platform, liveness, and readiness
+  diagnostics with a stable unhealthy exit status
 
 ### Delivery capability matrix
 
@@ -432,6 +433,7 @@ export A3S_CLOUD_PROJECT_ID="<project-uuid>"
 export A3S_CLOUD_ENVIRONMENT_ID="<environment-uuid>"
 
 bun run --cwd cli src/main.ts context show
+bun run --cwd cli src/main.ts diagnostics status --output=json
 bun run --cwd cli src/main.ts organizations list --output=json
 bun run --cwd cli src/main.ts organizations create "Operations" \
   --idempotency-key="tenant:organization:<request-id>"
@@ -484,10 +486,13 @@ ready/drain/revoke additionally require the current aggregate version and use
 the existing optimistic-concurrency command. Workload create, update, and
 SourceRevision deployment accept only a bounded UTF-8 A3S ACL file. Cloud
 parses it with `a3s-acl`, enforces the closed version-1 schema, and then
-dispatches the same application commands used by JSON clients. Remaining edge,
-source, Secret, and identity mutation parity, administrative diagnostics, node
-bootstrap, authorized search, and the compatibility/deprecation gate remain
-subsequent `C0.1` slices.
+dispatches the same application commands used by JSON clients. `diagnostics
+status` reads the public platform, liveness, and readiness endpoints without
+sending a bearer token. A legitimate unhealthy health report remains visible
+on stdout and returns exit code `8`, while a real API error remains an error.
+Remaining edge, source, Secret, and identity mutation parity, node bootstrap,
+authorized search, and the compatibility/deprecation gate remain subsequent
+`C0.1` slices.
 
 ## Platform Model
 

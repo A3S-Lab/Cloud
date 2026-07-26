@@ -24,8 +24,9 @@ import type {
   WorkloadLogsPage,
   WorkloadLogStreamFilter,
 } from './types';
+import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
-import { readResponse } from './response';
+import { readHealthResponse, readResponse } from './response';
 
 export { CloudApiError } from './error';
 
@@ -53,11 +54,11 @@ export function isValidIdempotencyKey(value: string): boolean {
 
 export class CloudApi {
   readonly baseUrl: string;
-  private readonly token: string;
+  private readonly token: string | undefined;
   private readonly fetcher: CloudFetch;
   private readonly requestTimeoutMs: number;
 
-  constructor(token: string, baseUrl = '/api/v1', options: CloudApiClientOptions = {}) {
+  constructor(token: string | undefined, baseUrl = '/api/v1', options: CloudApiClientOptions = {}) {
     const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
     if (!normalizedBaseUrl) {
       throw new TypeError('baseUrl must not be empty');
@@ -74,6 +75,27 @@ export class CloudApi {
     this.baseUrl = normalizedBaseUrl;
     this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = requestTimeoutMs;
+  }
+
+  getPlatform(signal?: AbortSignal): Promise<CloudPlatformInfo> {
+    return this.get('/platform', signal);
+  }
+
+  getLiveness(signal?: AbortSignal): Promise<CloudHealthReport> {
+    return this.getHealth('/health/live', signal);
+  }
+
+  getReadiness(signal?: AbortSignal): Promise<CloudHealthReport> {
+    return this.getHealth('/health/ready', signal);
+  }
+
+  async getDiagnostics(signal?: AbortSignal): Promise<CloudDiagnostics> {
+    const [platform, liveness, readiness] = await Promise.all([
+      this.getPlatform(signal),
+      this.getLiveness(signal),
+      this.getReadiness(signal),
+    ]);
+    return { platform, liveness, readiness };
   }
 
   listOrganizations(signal?: AbortSignal): Promise<Organization[]> {
@@ -435,7 +457,7 @@ export class CloudApi {
   eventStreamHeaders(lastEventId?: string): Record<string, string> {
     return {
       Accept: 'text/event-stream',
-      Authorization: `Bearer ${this.token}`,
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
       ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}),
     };
   }
@@ -470,6 +492,10 @@ export class CloudApi {
 
   private get<T>(path: string, signal?: AbortSignal): Promise<T> {
     return this.request('GET', path, { signal });
+  }
+
+  private getHealth<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.request('GET', path, { healthResponse: true, signal });
   }
 
   private changeNodeState(
@@ -528,6 +554,7 @@ export class CloudApi {
     options: {
       body?: string;
       contentType?: string;
+      healthResponse?: boolean;
       idempotencyKey?: string;
       signal?: AbortSignal;
     }
@@ -552,7 +579,7 @@ export class CloudApi {
 
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      Authorization: `Bearer ${this.token}`,
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
     };
     if (options.idempotencyKey !== undefined) {
       headers['Idempotency-Key'] = options.idempotencyKey;
@@ -568,7 +595,7 @@ export class CloudApi {
         body: options.body,
         signal: controller.signal,
       });
-      return await readResponse<T>(response);
+      return options.healthResponse ? await readHealthResponse<T>(response) : await readResponse<T>(response);
     } catch (error) {
       if (error instanceof CloudApiError) {
         throw error;

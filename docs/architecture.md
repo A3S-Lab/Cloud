@@ -1444,6 +1444,16 @@ integer before transport; stale versions remain an authoritative Cloud
 conflict. No command writes a projection directly or bypasses the A3S ORM
 repository adapter.
 
+Administrative diagnostics reuse the existing public `/platform`,
+`/health/live`, and `/health/ready` endpoints. The shared client omits the
+Authorization header for this operation even when the CLI environment contains
+a token. A health endpoint may return HTTP `503` with the standard success
+envelope carrying a truthful down report; the client preserves that report as
+data. A `503` error envelope is still a `CloudApiError`. The CLI writes the
+complete diagnostic result to stdout and returns stable exit code `8` whenever
+liveness or readiness is down, so automation can inspect both state and
+process status without treating an unhealthy report as a malformed response.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

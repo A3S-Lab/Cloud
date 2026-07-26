@@ -26,6 +26,7 @@ import {
   cancelDeploymentResult,
   contextResult,
   deploymentResult,
+  diagnosticsResult,
   environmentMutationResult,
   environmentsResult,
   nodeMutationResult,
@@ -68,6 +69,18 @@ export async function executeCommand(
     rejectFileOption(arguments_);
     rejectExpectedVersionOption(arguments_);
     return contextResult(publicContext(context));
+  }
+  if (command === 'diagnostics status') {
+    requireArity(positionals, 2, 'diagnostics status');
+    rejectLogOptions(arguments_);
+    rejectIdempotencyOption(arguments_);
+    rejectFileOption(arguments_);
+    rejectExpectedVersionOption(arguments_);
+    const api = new CloudApi(undefined, context.baseUrl, {
+      fetch: dependencies.fetch,
+      requestTimeoutMs: context.timeoutMs,
+    });
+    return diagnosticsResult(await api.getDiagnostics());
   }
 
   let api: CloudApi | undefined;
