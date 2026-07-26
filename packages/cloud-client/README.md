@@ -27,3 +27,10 @@ compatibility and deprecation policy are completed.
 Mutating methods require a caller-owned idempotency key. The client accepts a
 portable visible-ASCII subset up to the server's 255-byte limit, rejects an
 invalid key before transport, and sends the value only in `Idempotency-Key`.
+
+`createWorkloadFromAcl`, `updateWorkloadFromAcl`, and
+`deploySourceRevisionFromAcl` transport one nonempty A3S ACL document of at
+most 64 KiB without rewriting it. They use `application/vnd.a3s.acl`; Cloud is
+the sole parser and schema authority. Existing Web methods continue to use the
+semantically equivalent JSON request contract and share durable idempotency
+records with ACL requests.

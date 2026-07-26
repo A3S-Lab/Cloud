@@ -42,6 +42,13 @@ visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`, and must be at
 most 255 characters. The CLI never generates a key: retry the exact command
 with the same key to receive the durable replay result.
 
+Desired-state commands additionally require `--file=<path>` and accept only a
+nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
+bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
+bounded closed-schema validation, and dispatches the existing application
+command. The CLI does not parse ACL, accept JSON/TOML manifests, or place
+manifest content in command arguments.
+
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 
@@ -57,8 +64,11 @@ operations list
 workloads list
 workloads get <workload-id>
 workloads logs <workload-id> <revision-id>
+workloads create --file=<path>
+workloads update <workload-id> --file=<path>
 workloads stop <workload-id>
 workloads rollback <workload-id> <revision-id>
+source-revisions deploy <source-revision-id> --file=<path>
 deployments get <deployment-id>
 deployments cancel <deployment-id>
 routes list
@@ -70,6 +80,17 @@ build-runs logs <build-run-id>
 build-runs cancel <build-run-id>
 build-runs retry <build-run-id>
 ```
+
+Use [`examples/workload.oci.example.acl`](../examples/workload.oci.example.acl)
+for direct OCI create/update requests. Use
+[`examples/workload.source.example.acl`](../examples/workload.source.example.acl)
+for SourceRevision deployment; source manifests must omit `artifact` because
+Cloud derives the verified published artifact from the selected BuildRun.
+Every manifest declares `version = 1` and exactly one named `workload` block.
+Unknown fields and blocks are rejected. Secret bindings contain only Secret ID
+and version references and exactly one `environment`, `file`, or
+`registry_credential` target; plaintext secret values are not valid manifest
+fields.
 
 `context show` reports only whether a token is configured; it never prints the
 token. API commands require the context implied by their REST scope. Use
@@ -93,6 +114,7 @@ Table cells and error metadata are bounded and control characters are
 neutralized. Sensitive error-detail keys are redacted before JSON output.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
-explicitly idempotent stop/rollback/cancel/retry mutations are implemented.
-ACL-backed desired-state mutations, administrative diagnostics, node bootstrap,
-authorized search, and the compatibility/deprecation gate remain planned.
+explicitly idempotent operational mutations and ACL-backed Workload
+create/update/source deployment are implemented. Remaining resource mutations,
+administrative diagnostics, node bootstrap, authorized search, and the
+compatibility/deprecation gate remain planned.

@@ -12,6 +12,7 @@ export interface ParsedArguments {
   limit?: string;
   stream?: string;
   idempotencyKey?: string;
+  file?: string;
   help: boolean;
   version: boolean;
 }
@@ -29,6 +30,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--limit': 'limit',
   '--stream': 'stream',
   '--idempotency-key': 'idempotencyKey',
+  '--file': 'file',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {

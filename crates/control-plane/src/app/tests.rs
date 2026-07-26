@@ -433,6 +433,18 @@ fn post_json_as(
         .with_body(body.to_string().into_bytes())
 }
 
+fn post_acl(
+    path: impl Into<String>,
+    idempotency_key: &str,
+    body: impl Into<Vec<u8>>,
+) -> BootRequest {
+    BootRequest::new(HttpMethod::Post, path.into())
+        .with_header("content-type", "application/vnd.a3s.acl; charset=utf-8")
+        .with_header("idempotency-key", idempotency_key)
+        .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+        .with_body(body)
+}
+
 fn delete_as(path: impl Into<String>, idempotency_key: &str, token: &str) -> BootRequest {
     BootRequest::new(HttpMethod::Delete, path.into())
         .with_header("idempotency-key", idempotency_key)

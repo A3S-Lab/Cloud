@@ -192,7 +192,7 @@ export function stopWorkloadResult(row: StopWorkloadResult): CommandResult {
   ]);
 }
 
-export function rollbackWorkloadResult(row: WorkloadDeploymentResult): CommandResult {
+export function workloadDeploymentResult(row: WorkloadDeploymentResult): CommandResult {
   return singleResult(row, [
     { header: 'WORKLOAD', value: (value) => value.workloadId },
     { header: 'REVISION', value: (value) => value.revisionId },

@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub struct UpdateWorkloadDeployment {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
+    pub expected_name: Option<String>,
     pub template: RequestedServiceTemplate,
     pub idempotency_key: String,
     pub request_id: Uuid,

@@ -150,10 +150,10 @@ async fn source_build_deployment_requires_one_owned_success_and_replays_exactly(
             .map_err(|error| BootError::Internal(error.to_string()))?
     );
     let accepted = app
-        .call(post_json(
+        .call(post_acl(
             &workload_path,
             "source-deploy-workload",
-            body.clone(),
+            source_workload_acl("api"),
         ))
         .await?;
     let replayed = app
@@ -547,6 +547,33 @@ fn source_workload_body(name: &str) -> Value {
             }
         }
     })
+}
+
+fn source_workload_acl(name: &str) -> String {
+    format!(
+        r#"version = 1
+
+workload "{name}" {{
+  resources {{
+    cpu_millis = 100
+    memory_bytes = 33554432
+    pids = 32
+  }}
+  port "http" {{
+    container_port = 8080
+  }}
+  health {{
+    port_name = "http"
+    path = "/health"
+    interval_ms = 1000
+    timeout_ms = 500
+    healthy_threshold = 1
+    unhealthy_threshold = 3
+    stabilization_window_ms = 1000
+  }}
+}}
+"#
+    )
 }
 
 fn parse_project_id(value: &str) -> Result<ProjectId> {

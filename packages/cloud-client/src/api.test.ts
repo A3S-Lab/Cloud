@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { CloudApi, CloudApiError, type CloudFetch } from './api';
+import { A3S_ACL_MEDIA_TYPE, CloudApi, CloudApiError, type CloudFetch, MAX_WORKLOAD_ACL_BYTES } from './api';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(
@@ -153,6 +153,83 @@ describe('CloudApi', () => {
         body: undefined,
       },
     ]);
+  });
+
+  it('sends ACL desired state unchanged through the three workload mutation paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const manifest = 'version = 1\nworkload "api" {}\n';
+
+    await api.createWorkloadFromAcl('organization', 'project', 'environment', manifest, 'cli:create-1');
+    await api.updateWorkloadFromAcl('organization', 'workload', manifest, 'cli:update-1');
+    await api.deploySourceRevisionFromAcl(
+      'organization',
+      'project',
+      'environment',
+      'source-revision',
+      manifest,
+      'cli:source-1'
+    );
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        contentType: (init?.headers as Record<string, string>)['Content-Type'],
+        idempotencyKey: (init?.headers as Record<string, string>)['Idempotency-Key'],
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/workloads',
+        method: 'POST',
+        contentType: A3S_ACL_MEDIA_TYPE,
+        idempotencyKey: 'cli:create-1',
+        body: manifest,
+      },
+      {
+        input: '/api/v1/organizations/organization/workloads/workload/deployments',
+        method: 'POST',
+        contentType: A3S_ACL_MEDIA_TYPE,
+        idempotencyKey: 'cli:update-1',
+        body: manifest,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/source-revisions/source-revision/workloads',
+        method: 'POST',
+        contentType: A3S_ACL_MEDIA_TYPE,
+        idempotencyKey: 'cli:source-1',
+        body: manifest,
+      },
+    ]);
+  });
+
+  it('rejects empty and oversized ACL before transport', async () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createWorkloadFromAcl('organization', 'project', 'environment', '', 'cli:create-1')
+    ).toThrow('workload ACL must contain between');
+    expect(() =>
+      api.updateWorkloadFromAcl(
+        'organization',
+        'workload',
+        'é'.repeat(MAX_WORKLOAD_ACL_BYTES),
+        'cli:update-1'
+      )
+    ).toThrow('workload ACL must contain between');
+    expect(called).toBe(false);
   });
 
   it('rejects unsafe idempotency keys before transport', async () => {

@@ -23,8 +23,11 @@ Commands:
   workloads list        List workloads in the selected environment
   workloads get ID      Get one workload
   workloads logs ID REV Read one page of workload revision logs
+  workloads create      Create one workload from A3S ACL
+  workloads update ID   Update one workload from A3S ACL
   workloads stop ID     Stop one workload idempotently
   workloads rollback ID REV Roll back by cloning a proven revision
+  source-revisions deploy ID Deploy one built source revision from A3S ACL
   deployments get ID    Get one deployment
   deployments cancel ID Request deployment cancellation idempotently
   routes list           List routes in the selected environment
@@ -47,6 +50,7 @@ Global options:
   --limit <1..256>        Record limit for a log command
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
+  --file <path>             A3S ACL file for a desired-state mutation
   -h, --help              Show help
   -V, --version           Show version
 
@@ -63,6 +67,7 @@ Environment:
 export interface CliRuntime {
   environment?: ProcessEnvironment;
   fetch?: CloudFetch;
+  readFile?: (path: string) => Promise<Uint8Array>;
   writeStdout?: (value: string) => void;
   writeStderr?: (value: string) => void;
 }
@@ -82,7 +87,10 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime = {}):
       return ExitCode.Success;
     }
     const context = resolveContext(arguments_, environment);
-    const result = await executeCommand(arguments_, context, runtime.fetch);
+    const result = await executeCommand(arguments_, context, {
+      fetch: runtime.fetch,
+      readFile: runtime.readFile,
+    });
     writeStdout(
       redactToken(context.output === 'json' ? renderJson(result.json) : result.table, context.token)
     );

@@ -8,9 +8,9 @@ use crate::modules::workloads::application::{
     RollbackWorkloadDeployment, StopWorkload, UpdateWorkloadDeployment,
 };
 use crate::modules::workloads::presentation::dto::{
-    CancelDeploymentResponse, CreateSourceWorkloadRequest, CreateWorkloadRequest,
-    RollbackWorkloadRequest, UpdateWorkloadRequest, WorkloadDeploymentResponse,
-    WorkloadStopResponse,
+    parse_source_workload_manifest, parse_workload_manifest, CancelDeploymentResponse,
+    CreateSourceWorkloadRequest, CreateWorkloadRequest, RollbackWorkloadRequest,
+    UpdateWorkloadRequest, WorkloadDeploymentResponse, WorkloadStopResponse, A3S_ACL_MEDIA_TYPE,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -35,7 +35,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
             move |request: BootRequest| {
                 let bus = Arc::clone(&bus);
                 async move {
-                    let body: CreateWorkloadRequest = request.json_with_content_type()?;
+                    let body = create_workload_request(&request)?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
@@ -72,7 +72,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
             move |request: BootRequest| {
                 let bus = Arc::clone(&source_bus);
                 async move {
-                    let body: CreateSourceWorkloadRequest = request.json_with_content_type()?;
+                    let body = create_source_workload_request(&request)?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
@@ -113,7 +113,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
             move |request: BootRequest| {
                 let bus = Arc::clone(&update_bus);
                 async move {
-                    let body: UpdateWorkloadRequest = request.json_with_content_type()?;
+                    let (body, expected_name) = update_workload_request(&request)?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id = crate::modules::shared_kernel::domain::WorkloadId::from_uuid(
@@ -124,6 +124,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         .execute(UpdateWorkloadDeployment {
                             organization_id,
                             workload_id,
+                            expected_name,
                             template: body.template.into(),
                             idempotency_key,
                             request_id,
@@ -243,6 +244,53 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                 }
             },
         )
+}
+
+fn create_workload_request(request: &BootRequest) -> Result<CreateWorkloadRequest> {
+    if is_acl_request(request) {
+        let manifest = parse_workload_manifest(request.body())?;
+        Ok(CreateWorkloadRequest {
+            name: manifest.name,
+            template: manifest.template,
+        })
+    } else {
+        request.json_with_content_type()
+    }
+}
+
+fn create_source_workload_request(request: &BootRequest) -> Result<CreateSourceWorkloadRequest> {
+    if is_acl_request(request) {
+        let manifest = parse_source_workload_manifest(request.body())?;
+        Ok(CreateSourceWorkloadRequest {
+            name: manifest.name,
+            template: manifest.template,
+        })
+    } else {
+        request.json_with_content_type()
+    }
+}
+
+fn update_workload_request(
+    request: &BootRequest,
+) -> Result<(UpdateWorkloadRequest, Option<String>)> {
+    if is_acl_request(request) {
+        let manifest = parse_workload_manifest(request.body())?;
+        Ok((
+            UpdateWorkloadRequest {
+                template: manifest.template,
+            },
+            Some(manifest.name),
+        ))
+    } else {
+        Ok((request.json_with_content_type()?, None))
+    }
+}
+
+fn is_acl_request(request: &BootRequest) -> bool {
+    request
+        .header("content-type")
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case(A3S_ACL_MEDIA_TYPE))
 }
 
 fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {

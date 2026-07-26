@@ -106,7 +106,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   web console and `a3s-cloud` CLI, select tenant context without a credential
   file, inspect tenant and operational resources, BuildRun evidence, and paged
   workload or build logs as bounded tables or stable JSON, and request
-  stop/rollback/cancel/retry operations with caller-owned idempotency keys
+  stop/rollback/cancel/retry operations with caller-owned idempotency keys;
+  create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud
 
 ### Delivery capability matrix
 
@@ -442,6 +443,15 @@ bun run --cwd cli src/main.ts routes list
 bun run --cwd cli src/main.ts routes get "<route-uuid>"
 bun run --cwd cli src/main.ts build-runs list
 bun run --cwd cli src/main.ts build-runs evidence "<build-run-uuid>" --output=json
+bun run --cwd cli src/main.ts workloads create \
+  --file=examples/workload.oci.example.acl \
+  --idempotency-key="release:create:<request-id>"
+bun run --cwd cli src/main.ts workloads update "<workload-uuid>" \
+  --file=examples/workload.oci.example.acl \
+  --idempotency-key="release:update:<request-id>"
+bun run --cwd cli src/main.ts source-revisions deploy "<source-revision-uuid>" \
+  --file=examples/workload.source.example.acl \
+  --idempotency-key="release:source-deploy:<request-id>"
 bun run --cwd cli src/main.ts workloads stop "<workload-uuid>" \
   --idempotency-key="release:stop:<request-id>"
 bun run --cwd cli src/main.ts workloads rollback "<workload-uuid>" "<revision-uuid>" \
@@ -457,8 +467,11 @@ binary. Remote endpoints must use HTTPS and end in `/api/v1`; plain HTTP is
 accepted only for literal localhost or loopback addresses. See the
 [CLI reference](cli/README.md) for context variables, output contracts, and
 exit codes. Operational resource and paged-log reads are implemented;
-stop/rollback/cancel/retry mutations require an explicit stable idempotency key.
-ACL-backed desired-state mutations, administrative diagnostics, node bootstrap,
+all mutations require an explicit stable idempotency key. Workload create,
+update, and SourceRevision deployment accept only a bounded UTF-8 A3S ACL file.
+Cloud parses it with `a3s-acl`, enforces the closed version-1 schema, and then
+dispatches the same application commands used by JSON clients. Remaining
+resource mutation parity, administrative diagnostics, node bootstrap,
 authorized search, and the compatibility/deprecation gate remain subsequent
 `C0.1` slices.
 
@@ -719,6 +732,9 @@ Cloud/
 │   └── web-server/
 ├── deploy/
 ├── docs/
+├── examples/
+│   ├── workload.oci.example.acl
+│   └── workload.source.example.acl
 ├── migrations/
 ├── packages/
 │   └── cloud-client/

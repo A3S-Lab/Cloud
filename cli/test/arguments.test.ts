@@ -57,6 +57,22 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses one ACL desired-state file', () => {
+    expect(
+      parseArguments([
+        'workloads',
+        'create',
+        '--file=deploy/workload.acl',
+        '--idempotency-key=release:create-42',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        file: 'deploy/workload.acl',
+        idempotencyKey: 'release:create-42',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],
