@@ -13,6 +13,7 @@ use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::projects::InMemoryProjectsRepository;
+use crate::modules::search::{ISearchRepository, InMemorySearchRepository};
 use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
@@ -35,6 +36,7 @@ use uuid::Uuid;
 
 mod build_tests;
 mod platform_tests;
+mod search_tests;
 mod secret_tests;
 mod source_lifecycle_tests;
 mod source_private_tests;
@@ -470,6 +472,27 @@ fn build_test_application(
     )
 }
 
+fn build_test_application_with_search(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    search: Arc<InMemorySearchRepository>,
+) -> Result<BootApplication> {
+    let search: Arc<dyn ISearchRepository> = search;
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        search,
+    )
+}
+
 fn build_test_application_with_secrets(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -651,6 +674,35 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds(
     github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
     builds: Arc<dyn IBuildRunRepository>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        github_connections,
+        github_authorization,
+        github_installation_tokens,
+        builds,
+        Arc::new(InMemorySearchRepository::new()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_search(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    builds: Arc<dyn IBuildRunRepository>,
+    search: Arc<dyn ISearchRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -678,6 +730,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds(
             api_tokens: identity,
             projects: projects.clone(),
             environments: projects,
+            search,
             workloads: workload_port,
             builds,
             routes,

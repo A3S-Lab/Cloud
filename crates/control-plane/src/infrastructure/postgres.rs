@@ -455,6 +455,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/049_gateway_certificate_convergence_unavailable.sql"
             )),
         ),
+        Migration::new(
+            "050",
+            "tenant-authorized search projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/050_authorized_search_projections.sql"
+            )),
+        ),
     ]
 }
 

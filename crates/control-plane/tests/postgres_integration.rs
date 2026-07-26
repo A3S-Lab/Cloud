@@ -253,7 +253,16 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 49);
+    assert_eq!(applied, 50);
+    let search_projection = database
+        .fetch_one_as(sql_query::<Option<String>>(
+            "select to_regclass('public.authorized_search_projections')::text",
+        ))
+        .await?;
+    assert_eq!(
+        search_projection.as_deref(),
+        Some("authorized_search_projections")
+    );
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
@@ -743,6 +752,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "050",
+                "tenant-authorized search projections",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/050_authorized_search_projections.sql"
+                )),
+            ),
+            Migration::new(
+                "051",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
