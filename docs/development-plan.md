@@ -132,7 +132,7 @@ Status as of 2026-07-27:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence and the remaining production fault-injection gate still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. The manual private-GitHub and external Registry/Vault gate now includes PostgreSQL 17, rootless BuildKit, and real process death after publication and evidence persistence. A local real-provider rehearsal passes, but no operator-owned run is recorded because the repository has no G0 provider secrets; external certification still blocks G0 verification |
 | C0 | In progress | One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, and public administrative diagnostics pass client, CLI, API, and Web tests. C0.1 still requires remaining edge, source, Secret, and identity mutation parity, node bootstrap, authorized search, compatibility policy, and cross-surface evidence |
 | H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
 | H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
@@ -930,26 +930,33 @@ as Workload logs while keeping node and internal Runtime identities out of the
 public response. The web console provides BuildRun selection, cancellation and
 retry controls, signed-evidence summary/view/download, stream filtering,
 bounded deduplication, and last-event-ID recovery. External private-provider
-certification, the signed-evidence production fault-injection run, and the
-remaining product surfaces are still required. Content-addressed cache trust is
-implemented and covered by unit, Flow, isolated PostgreSQL migration, and real
+certification is still required. The manual workflow and production
+fault-injection harness are implemented: a local real-provider rehearsal uses
+an HTTPS Registry, Vault Transit Ed25519, PostgreSQL 17, rootless BuildKit, and
+two real `SIGKILL` boundaries. It proves publication and evidence adoption,
+single apply/remove acknowledgement, and credential-free durable evidence.
+This local rehearsal is not operator certification. Content-addressed cache
+trust remains covered by unit, Flow, isolated PostgreSQL migration, and real
 Runtime/BuildKit/Registry evidence.
 
 ### Work
 
-- Provision an operator-controlled GitHub App/private repository and run the
-  implemented installation-token resolution/checkout gate. Do not promote the
-  local fixture evidence to external-provider certification until that pass is
-  recorded; never persist token or private-key material in source state.
+- Configure an operator-controlled GitHub App/private repository and run the
+  implemented installation-token resolution/checkout workflow. Do not promote
+  local fixture or rehearsal evidence to external-provider certification until
+  that run is recorded; never persist token or private-key material in source
+  state.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Keep source and registry credentials as secret references. They may be
   materialized only inside the bounded build attempt and must not enter source
   revisions, Flow history, logs, cache keys, or provenance documents.
-- Run the production signed-evidence gate against an operator-controlled Vault
-  Transit key and registry. Inject process death after the remote push and
-  after evidence persistence, then prove replay preserves one publication,
-  one verified evidence document, and authoritative cleanup.
+- Configure the implemented production signed-evidence workflow with an
+  operator-controlled Vault Transit key and HTTPS Registry, run it from the
+  exact release candidate, and retain the revision-bound evidence. The harness
+  already injects process death after remote push and after evidence
+  persistence; the external run must prove one publication, one verified
+  evidence document, and authoritative cleanup.
 - Add the remaining build surfaces without weakening the implemented
   source/build/attempt/evidence lineage in BuildRun, Workload, and Operation
   API/web projections.
@@ -1639,7 +1646,7 @@ Later gates extend the same fault-injection discipline:
 | # | Durable boundary | Owning gate | Required outcome |
 | ---: | --- | --- | --- |
 | 10 | Source revision commit before build run creation | `G0` | The durable repository/reconciler gate reserves one deterministic build and repairs the operation enqueue gap; the registered Build Flow persists dispatch identity and restart tests prove apply/remove replay, while promotion to current evidence still requires the operator Runtime gate and OS process-death run |
-| 11 | OCI push before artifact and provenance projection | `G0` | Artifact adoption and signed-evidence projection are implemented: deterministic Flow event-loss, transient-response, cancellation/CAS, and attestation replay tests adopt the exact pushed graph and freeze one locally verified evidence document. An OS process-death run against the production registry/Vault boundary remains before this row becomes release evidence |
+| 11 | OCI push before artifact and provenance projection | `G0` | Artifact adoption and signed-evidence projection are implemented. The production harness now sends real `SIGKILL` after remote publication and after evidence persistence, reconstructs Flow twice, and proves one remote graph, one verified evidence document, one publish/attest completion, and authoritative cleanup. A local real-provider rehearsal passes; an operator-owned Registry/Vault workflow run remains before this row becomes release evidence |
 | 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
 | 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
 | 14 | Remote exec start before session acknowledgement | `C0` | Reconnect adopts or terminates the exact bounded process and expires its grant |

@@ -141,9 +141,14 @@ trusted content-addressed retry caches, complete OCI graph validation,
 digest-only registry publication, deterministic SPDX/SLSA generation,
 locally verified Ed25519 DSSE signing through persistent local or Vault Transit
 providers, durable evidence restoration, evidence API/web download, replay
-adoption, cleanup, and explicit deployment handoff. It remains in progress
-until external private-provider certification and the production
-signed-evidence process-death gate pass.
+adoption, cleanup, and explicit deployment handoff. The manual external-provider
+gate is implemented for an operator-owned private GitHub repository, HTTPS OCI
+Registry, Vault Transit Ed25519 key, PostgreSQL 17, and rootless BuildKit. It
+also terminates real child processes with `SIGKILL` after remote publication
+and after evidence persistence, then proves exact replay and cleanup. A local
+real-provider rehearsal passes, but no operator-owned run is recorded because
+the repository has no G0 provider secrets. `G0` therefore remains in progress
+until that external certification produces retained evidence.
 
 The current `H0.1` foundation maps every existing single-instance Workload to
 one stable replica and member. Replica identity survives immutable revision
@@ -583,6 +588,14 @@ source revision and lineage. Retry cache reuse cannot bypass OCI validation,
 publication, evidence generation, signing, or local verification. Node-local
 Artifact locations, signing private keys, and provider credentials are not part
 of the public BuildRun state.
+
+The `G0 external provider conformance` workflow binds its evidence to the exact
+Cloud revision. Its private-source job proves credential-free replay and
+checkout removal. Its signed-build job proves one remote OCI publication, one
+locally verified Vault signature, one persisted evidence document, one
+Runtime apply and cleanup, and recovery from both process-death boundaries.
+The workflow is implemented but is not external certification until an
+operator configures its private providers and the retained run passes.
 
 The detailed request contracts, failure boundaries, and acceptance evidence
 remain in the [Development Plan](docs/development-plan.md).
