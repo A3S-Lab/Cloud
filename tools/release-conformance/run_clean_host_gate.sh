@@ -802,7 +802,7 @@ management {
   address = "127.0.0.1:$gateway_management_port"
   path_prefix = "/api/gateway"
   auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
-  allowed_ips = ["127.0.0.1"]
+  allowed_ips = ["127.0.0.1", "::1"]
 }
 ACL
 

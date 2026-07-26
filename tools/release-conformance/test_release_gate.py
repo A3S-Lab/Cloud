@@ -123,6 +123,17 @@ class ReleaseGateContractTests(unittest.TestCase):
             node_config,
         )
 
+    def test_gateway_bootstrap_matches_managed_snapshot_listener(self) -> None:
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        gateway_config = runner.split(
+            'cat >"$config_dir/gateway.acl" <<ACL\n', maxsplit=1
+        )[1].split("\nACL\n", maxsplit=1)[0]
+
+        self.assertIn(
+            'allowed_ips = ["127.0.0.1", "::1"]',
+            gateway_config,
+        )
+
     def test_service_template_binds_the_exact_digest_and_release_marker(self) -> None:
         digest = f"sha256:{'a' * 64}"
         template = MODULE.service_template(
