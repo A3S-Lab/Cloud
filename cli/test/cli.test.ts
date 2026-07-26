@@ -12,6 +12,9 @@ const ROUTE_ID = '019c0000-0000-7000-8000-000000000006';
 const DEPLOYMENT_ID = '019c0000-0000-7000-8000-000000000007';
 const BUILD_RUN_ID = '019c0000-0000-7000-8000-000000000008';
 const NODE_ID = '019c0000-0000-7000-8000-000000000009';
+const DOMAIN_CLAIM_ID = '019c0000-0000-7000-8000-000000000011';
+const GATEWAY_SCOPE_ID = '019c0000-0000-7000-8000-000000000012';
+const GATEWAY_NODE_ID = '019c0000-0000-7000-8000-000000000013';
 
 function envelope(data: unknown, status = 200): Response {
   return new Response(
@@ -302,6 +305,162 @@ describe('a3s-cloud CLI', () => {
     expect(exitCode).toBe(0);
     expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
     expect(output.stderr()).toBe('');
+  });
+
+  it.each([
+    [
+      ['domain-claims', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/domain-claims`,
+      [],
+    ],
+    [
+      ['domain-claims', 'get', DOMAIN_CLAIM_ID],
+      `/organizations/${ORGANIZATION_ID}/domain-claims/${DOMAIN_CLAIM_ID}`,
+      edgeResource('domain-claim'),
+    ],
+    [
+      ['gateway-scopes', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/gateway-scopes`,
+      [],
+    ],
+  ] as const)('queries an Edge resource through the typed client %#', async (command, path, response) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(response);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...command, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(output.stderr()).toBe('');
+  });
+
+  it.each([
+    {
+      command: ['domain-claims', 'create', '*.example.test'],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/domain-claims`,
+      body: { pattern: '*.example.test' },
+      response: { ...edgeResource('domain-claim'), replayed: false },
+    },
+    {
+      command: ['domain-claims', 'verify', DOMAIN_CLAIM_ID, 'a3s-cloud-verification=proof'],
+      path: `/organizations/${ORGANIZATION_ID}/domain-claims/${DOMAIN_CLAIM_ID}/verify`,
+      body: { proof: 'a3s-cloud-verification=proof' },
+      response: { ...edgeResource('domain-claim'), replayed: false },
+    },
+    {
+      command: ['domain-claims', 'revoke', DOMAIN_CLAIM_ID, 'customer request'],
+      path: `/organizations/${ORGANIZATION_ID}/domain-claims/${DOMAIN_CLAIM_ID}/revoke`,
+      body: { reason: 'customer request' },
+      response: { ...edgeResource('domain-claim'), state: 'revoked', replayed: false },
+    },
+    {
+      command: ['gateway-scopes', 'create', NODE_ID, GATEWAY_NODE_ID, '--min-ready=1', '--max-unavailable=1'],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/gateway-scopes`,
+      body: { nodeIds: [NODE_ID, GATEWAY_NODE_ID], minReady: 1, maxUnavailable: 1 },
+      response: { ...edgeResource('gateway-scope'), replayed: false },
+    },
+    {
+      command: [
+        'routes',
+        'publish',
+        GATEWAY_SCOPE_ID,
+        REVISION_ID,
+        DOMAIN_CLAIM_ID,
+        'api.example.test',
+        '/v1',
+        'http',
+      ],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` + `/environments/${ENVIRONMENT_ID}/routes`,
+      body: {
+        gatewayScopeId: GATEWAY_SCOPE_ID,
+        workloadRevisionId: REVISION_ID,
+        domainClaimId: DOMAIN_CLAIM_ID,
+        hostname: 'api.example.test',
+        pathPrefix: '/v1',
+        portName: 'http',
+      },
+      response: {
+        route: operationalResource('routes'),
+        certificate: { id: ROUTE_ID, state: 'provisioning' },
+        replayed: false,
+        commandReplayed: false,
+      },
+    },
+  ] as const)('executes an idempotent Edge mutation %#', async (testCase) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(testCase.response, 201);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...testCase.command, '--idempotency-key=cli:edge-1', '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${testCase.path}`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:edge-1' }),
+        body: JSON.stringify(testCase.body),
+      })
+    );
+    expect(output.stdout()).toContain('"replayed": false');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects unsafe Gateway rollout input before the network', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return envelope({});
+    };
+    const duplicate = capture();
+    const threshold = capture();
+    const misplaced = capture();
+
+    expect(
+      await runCli(['gateway-scopes', 'create', NODE_ID, NODE_ID, '--idempotency-key=cli:scope-duplicate'], {
+        ...duplicate.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(
+      await runCli(
+        ['gateway-scopes', 'create', NODE_ID, '--min-ready=2', '--idempotency-key=cli:scope-threshold'],
+        { ...threshold.runtime, environment: completeEnvironment(), fetch: fetcher }
+      )
+    ).toBe(2);
+    expect(
+      await runCli(['routes', 'list', '--min-ready=1'], {
+        ...misplaced.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+
+    expect(called).toBe(false);
+    expect(duplicate.stderr()).toContain('must be unique');
+    expect(threshold.stderr()).toContain('no greater than the member count');
+    expect(misplaced.stderr()).toContain('valid only for gateway-scopes create');
   });
 
   it('reads workload logs with bounded query options and exposes the next cursor', async () => {
@@ -788,6 +947,41 @@ function operationalResource(kind: string): Record<string, unknown> {
     commitSha: 'a'.repeat(40),
     verificationState: 'verified',
     artifact: { digest: `sha256:${'b'.repeat(64)}` },
+  };
+}
+
+function edgeResource(kind: 'domain-claim' | 'gateway-scope'): Record<string, unknown> {
+  if (kind === 'gateway-scope') {
+    return {
+      id: GATEWAY_SCOPE_ID,
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      environmentId: ENVIRONMENT_ID,
+      nodeId: NODE_ID,
+      memberNodeIds: [NODE_ID, GATEWAY_NODE_ID],
+      membershipGeneration: 1,
+      minReady: 1,
+      maxUnavailable: 1,
+      aggregateVersion: 1,
+      createdAt: '2026-07-27T00:00:00.000Z',
+      updatedAt: '2026-07-27T00:00:00.000Z',
+    };
+  }
+  return {
+    id: DOMAIN_CLAIM_ID,
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    environmentId: ENVIRONMENT_ID,
+    pattern: '*.example.test',
+    challengeDnsName: '_a3s-cloud-challenge.example.test',
+    challengeValue: 'a3s-cloud-verification=proof',
+    state: 'pending',
+    failure: null,
+    aggregateVersion: 1,
+    createdAt: '2026-07-27T00:00:00.000Z',
+    updatedAt: '2026-07-27T00:00:00.000Z',
+    verifiedAt: null,
+    revokedAt: null,
   };
 }
 

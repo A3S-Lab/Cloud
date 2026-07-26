@@ -6,6 +6,6 @@ pub use request::{
     RevokeDomainClaimRequest, VerifyDomainClaimRequest,
 };
 pub use response::{
-    DomainClaimResponse, GatewayCertificateResponse, GatewayScopeResponse,
-    RoutePublicationResponse, RouteResponse,
+    DomainClaimMutationResponse, DomainClaimResponse, GatewayCertificateResponse,
+    GatewayScopeMutationResponse, GatewayScopeResponse, RoutePublicationResponse, RouteResponse,
 };

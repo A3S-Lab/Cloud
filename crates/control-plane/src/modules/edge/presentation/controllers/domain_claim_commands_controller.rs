@@ -1,6 +1,6 @@
 use crate::modules::edge::application::{CreateDomainClaim, RevokeDomainClaim, VerifyDomainClaim};
 use crate::modules::edge::presentation::dto::{
-    CreateDomainClaimRequest, DomainClaimResponse, RevokeDomainClaimRequest,
+    CreateDomainClaimRequest, DomainClaimMutationResponse, RevokeDomainClaimRequest,
     VerifyDomainClaimRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -50,7 +50,7 @@ pub fn domain_claim_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                     {
                         Ok(result) => BootResponse::json_with_status(
                             if result.replayed { 200 } else { 201 },
-                            &DomainClaimResponse::from(result.claim),
+                            &DomainClaimMutationResponse::new(result.claim, result.replayed),
                         ),
                         Err(error) => application_error_response(error, request_id),
                     }
@@ -81,7 +81,7 @@ pub fn domain_claim_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                     {
                         Ok(result) => BootResponse::json_with_status(
                             if result.replayed { 200 } else { 202 },
-                            &DomainClaimResponse::from(result.claim),
+                            &DomainClaimMutationResponse::new(result.claim, result.replayed),
                         ),
                         Err(error) => application_error_response(error, request_id),
                     }
@@ -111,8 +111,8 @@ pub fn domain_claim_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                         .await?
                     {
                         Ok(result) => BootResponse::json_with_status(
-                            202,
-                            &DomainClaimResponse::from(result.claim),
+                            if result.replayed { 200 } else { 202 },
+                            &DomainClaimMutationResponse::new(result.claim, result.replayed),
                         ),
                         Err(error) => application_error_response(error, request_id),
                     }

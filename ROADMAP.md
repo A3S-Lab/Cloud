@@ -153,12 +153,17 @@ production signed-evidence process-death gate pass.
 - public administrative diagnostics read platform, liveness, and readiness
   through the shared client without sending a bearer token. A health endpoint's
   wrapped `503` down report remains diagnostic data, while an error envelope
-  remains a failure; the CLI preserves the report and returns exit code `8`.
+  remains a failure; the CLI preserves the report and returns exit code `8`;
+  and
+- Edge automation lists and mutates DomainClaims, lists and creates logical
+  Gateway scopes with one through 100 unique members and explicit rollout
+  thresholds, and publishes routes through the existing tenant-guarded
+  commands. DomainClaim and Gateway-scope mutations expose durable replay
+  state, while route publication preserves request and Gateway-command replay.
 
-`C0.1` remains in progress. Remaining edge, source, Secret, and identity
-resource mutation parity, node bootstrap, authorized global search, contract
-compatibility policy, and real cross-surface automation evidence remain
-required.
+`C0.1` remains in progress. Remaining source, Secret, and identity resource
+parity, node bootstrap, authorized global search, contract compatibility
+policy, and real cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -273,9 +278,11 @@ retry commands, while the desired-state slice adds Cloud-admitted A3S ACL for
 Workload create/update and SourceRevision deployment. The core-resource slice
 adds Organization, Project, and Environment creation plus version-checked node
 lifecycle transitions. The diagnostics slice adds tokenless platform and
-health inspection with a stable unhealthy exit contract. Remaining mutation,
-bootstrap, compatibility, and authorized-search work above must land against
-the same client and application commands or queries.
+health inspection with a stable unhealthy exit contract. The Edge slice adds
+DomainClaim query/create/verify/revoke, logical Gateway-scope query/create, and
+route publication with explicit idempotency and replay projections. Remaining
+source, Secret, identity, bootstrap, compatibility, and authorized-search work
+above must land against the same client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

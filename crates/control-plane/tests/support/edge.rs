@@ -70,7 +70,7 @@ pub async fn exercise_edge_api(
         "/api/v1/organizations/{}/projects/{}/environments/{}/domain-claims",
         fixture.organization_id, fixture.project_id, fixture.environment_id
     );
-    let created_claim = app
+    let created_claim_response = app
         .call(post_json(
             &domain_collection_path,
             "edge-api-domain-claim",
@@ -78,8 +78,21 @@ pub async fn exercise_edge_api(
             fixture.token,
         ))
         .await?;
-    assert_eq!(created_claim.status(), 201);
-    let created_claim = response_json(&created_claim)?;
+    let replayed_claim_response = app
+        .call(post_json(
+            &domain_collection_path,
+            "edge-api-domain-claim",
+            json!({"pattern": "api.integration.example"}),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(created_claim_response.status(), 201);
+    assert_eq!(replayed_claim_response.status(), 200);
+    let created_claim = response_json(&created_claim_response)?;
+    let replayed_claim = response_json(&replayed_claim_response)?;
+    assert_eq!(created_claim["data"]["replayed"], false);
+    assert_eq!(replayed_claim["data"]["replayed"], true);
+    assert_eq!(created_claim["data"]["id"], replayed_claim["data"]["id"]);
     let domain_claim_id = field_str(&created_claim["data"], "id")?.to_owned();
     let proof = field_str(&created_claim["data"], "challengeValue")?.to_owned();
     let verify_path = format!(
@@ -90,12 +103,25 @@ pub async fn exercise_edge_api(
         .call(post_json(
             &verify_path,
             "edge-api-domain-verification",
+            json!({"proof": proof.clone()}),
+            fixture.token,
+        ))
+        .await?;
+    let replayed_verification = app
+        .call(post_json(
+            &verify_path,
+            "edge-api-domain-verification",
             json!({"proof": proof}),
             fixture.token,
         ))
         .await?;
     assert_eq!(verified_claim.status(), 202);
-    assert_eq!(response_json(&verified_claim)?["data"]["state"], "verified");
+    assert_eq!(replayed_verification.status(), 200);
+    let verified_claim = response_json(&verified_claim)?;
+    let replayed_verification = response_json(&replayed_verification)?;
+    assert_eq!(verified_claim["data"]["state"], "verified");
+    assert_eq!(verified_claim["data"]["replayed"], false);
+    assert_eq!(replayed_verification["data"]["replayed"], true);
 
     let gateway_scope_collection_path = format!(
         "/api/v1/organizations/{}/projects/{}/environments/{}/gateway-scopes",
@@ -124,11 +150,12 @@ pub async fn exercise_edge_api(
         .await?;
     assert_eq!(created_scope.status(), 201);
     assert_eq!(replayed_scope.status(), 200);
-    let gateway_scope_id = field_str(&response_json(&created_scope)?["data"], "id")?.to_owned();
-    assert_eq!(
-        response_json(&replayed_scope)?["data"]["id"],
-        gateway_scope_id
-    );
+    let created_scope = response_json(&created_scope)?;
+    let replayed_scope = response_json(&replayed_scope)?;
+    assert_eq!(created_scope["data"]["replayed"], false);
+    assert_eq!(replayed_scope["data"]["replayed"], true);
+    let gateway_scope_id = field_str(&created_scope["data"], "id")?.to_owned();
+    assert_eq!(replayed_scope["data"]["id"], gateway_scope_id);
     let listed_scopes = app
         .call(get_json(&gateway_scope_collection_path, fixture.token))
         .await?;
@@ -367,15 +394,13 @@ pub async fn exercise_edge_api(
         ))
         .await?;
     assert_eq!(removable_revoked.status(), 202);
-    assert_eq!(removable_replay.status(), 202);
-    assert_eq!(
-        response_json(&removable_revoked)?["data"]["state"],
-        "revoked"
-    );
-    assert_eq!(
-        response_json(&removable_replay)?["data"]["state"],
-        "revoked"
-    );
+    assert_eq!(removable_replay.status(), 200);
+    let removable_revoked = response_json(&removable_revoked)?;
+    let removable_replay = response_json(&removable_replay)?;
+    assert_eq!(removable_revoked["data"]["state"], "revoked");
+    assert_eq!(removable_revoked["data"]["replayed"], false);
+    assert_eq!(removable_replay["data"]["state"], "revoked");
+    assert_eq!(removable_replay["data"]["replayed"], true);
     Ok(())
 }
 

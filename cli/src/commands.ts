@@ -1,21 +1,28 @@
-import {
-  CloudApi,
-  type CloudFetch,
-  type CloudLogQuery,
-  isValidIdempotencyKey,
-  MAX_WORKLOAD_ACL_BYTES,
-} from '@a3s/cloud-client';
+import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
+import {
+  positionalUuid,
+  rejectExpectedVersionOption,
+  rejectFileOption,
+  rejectGatewayRolloutOptions,
+  rejectIdempotencyOption,
+  rejectLogOptions,
+  requireArity,
+  requireIdempotencyKey,
+  requireListCommand,
+  requireMutationCommand,
+  requireReadCommand,
+} from './command-options';
 import type { CloudContext } from './context';
 import {
   hasUnsafeControl,
-  parseUuid,
   publicContext,
   requireEnvironment,
   requireOrganization,
   requireProject,
   requireToken,
 } from './context';
+import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
 import {
   buildEvidenceResult,
@@ -68,6 +75,7 @@ export async function executeCommand(
     rejectIdempotencyOption(arguments_);
     rejectFileOption(arguments_);
     rejectExpectedVersionOption(arguments_);
+    rejectGatewayRolloutOptions(arguments_);
     return contextResult(publicContext(context));
   }
   if (command === 'diagnostics status') {
@@ -76,6 +84,7 @@ export async function executeCommand(
     rejectIdempotencyOption(arguments_);
     rejectFileOption(arguments_);
     rejectExpectedVersionOption(arguments_);
+    rejectGatewayRolloutOptions(arguments_);
     const api = new CloudApi(undefined, context.baseUrl, {
       fetch: dependencies.fetch,
       requestTimeoutMs: context.timeoutMs,
@@ -91,6 +100,10 @@ export async function executeCommand(
     });
     return api;
   };
+  const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi);
+  if (edgeResult !== undefined) {
+    return edgeResult;
+  }
   switch (command) {
     case 'organizations list':
       requireListCommand(arguments_);
@@ -169,6 +182,7 @@ export async function executeCommand(
       rejectIdempotencyOption(arguments_);
       rejectFileOption(arguments_);
       rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
       return workloadLogsResult(
         await cloudApi().getWorkloadLogs(
           requireOrganization(context),
@@ -306,6 +320,7 @@ export async function executeCommand(
       rejectIdempotencyOption(arguments_);
       rejectFileOption(arguments_);
       rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
       return buildRunLogsResult(
         await cloudApi().getBuildRunLogs(
           requireOrganization(context),
@@ -332,31 +347,6 @@ export async function executeCommand(
   }
 }
 
-function requireListCommand(arguments_: ParsedArguments): void {
-  requireArity(arguments_.positionals, 2, `${arguments_.positionals[0]} list`);
-  rejectLogOptions(arguments_);
-  rejectIdempotencyOption(arguments_);
-  rejectFileOption(arguments_);
-  rejectExpectedVersionOption(arguments_);
-}
-
-function requireReadCommand(arguments_: ParsedArguments, usage: string): void {
-  requireArity(arguments_.positionals, 3, usage);
-  rejectLogOptions(arguments_);
-  rejectIdempotencyOption(arguments_);
-  rejectFileOption(arguments_);
-  rejectExpectedVersionOption(arguments_);
-}
-
-function requireMutationCommand(arguments_: ParsedArguments, arity: number, usage: string): string {
-  requireArity(arguments_.positionals, arity, usage);
-  rejectLogOptions(arguments_);
-  const key = requireIdempotencyKey(arguments_);
-  rejectFileOption(arguments_);
-  rejectExpectedVersionOption(arguments_);
-  return key;
-}
-
 function requireNamedMutationCommand(
   arguments_: ParsedArguments,
   usage: string
@@ -377,6 +367,7 @@ function requireNodeMutationCommand(
   requireArity(arguments_.positionals, 3, usage);
   rejectLogOptions(arguments_);
   rejectFileOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
   const idempotencyKey = requireIdempotencyKey(arguments_);
   const rawVersion = arguments_.expectedVersion;
   if (rawVersion === undefined) {
@@ -392,17 +383,6 @@ function requireNodeMutationCommand(
   return { expectedVersion, idempotencyKey };
 }
 
-function requireIdempotencyKey(arguments_: ParsedArguments): string {
-  const key = arguments_.idempotencyKey;
-  if (key === undefined) {
-    throw usageError('--idempotency-key is required for mutation commands');
-  }
-  if (!isValidIdempotencyKey(key)) {
-    throw usageError('idempotency key is invalid');
-  }
-  return key;
-}
-
 function requireAclMutationCommand(
   arguments_: ParsedArguments,
   arity: number,
@@ -412,6 +392,7 @@ function requireAclMutationCommand(
   rejectLogOptions(arguments_);
   const idempotencyKey = requireIdempotencyKey(arguments_);
   rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
   const file = arguments_.file;
   if (file === undefined) {
     throw usageError('--file is required for ACL desired-state mutations');
@@ -420,44 +401,6 @@ function requireAclMutationCommand(
     throw usageError('ACL file path is invalid');
   }
   return { idempotencyKey, file };
-}
-
-function requireArity(positionals: readonly string[], expected: number, usage: string): void {
-  if (positionals.length !== expected) {
-    throw usageError(`usage: a3s-cloud ${usage}`);
-  }
-}
-
-function positionalUuid(positionals: readonly string[], index: number, label: string): string {
-  const value = positionals[index];
-  if (!value) {
-    throw usageError(`${label} is required`);
-  }
-  return parseUuid(value, label);
-}
-
-function rejectLogOptions(arguments_: ParsedArguments): void {
-  if (arguments_.cursor !== undefined || arguments_.limit !== undefined || arguments_.stream !== undefined) {
-    throw usageError('cursor, limit, and stream options are valid only for log commands');
-  }
-}
-
-function rejectIdempotencyOption(arguments_: ParsedArguments): void {
-  if (arguments_.idempotencyKey !== undefined) {
-    throw usageError('--idempotency-key is valid only for mutation commands');
-  }
-}
-
-function rejectFileOption(arguments_: ParsedArguments): void {
-  if (arguments_.file !== undefined) {
-    throw usageError('--file is valid only for ACL desired-state mutations');
-  }
-}
-
-function rejectExpectedVersionOption(arguments_: ParsedArguments): void {
-  if (arguments_.expectedVersion !== undefined) {
-    throw usageError('--expected-version is valid only for node lifecycle mutations');
-  }
 }
 
 async function readAclManifest(
