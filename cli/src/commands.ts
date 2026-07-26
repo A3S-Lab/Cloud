@@ -26,10 +26,14 @@ import {
   cancelDeploymentResult,
   contextResult,
   deploymentResult,
+  environmentMutationResult,
   environmentsResult,
+  nodeMutationResult,
   nodesResult,
   operationsResult,
+  organizationMutationResult,
   organizationsResult,
+  projectMutationResult,
   projectsResult,
   retryBuildRunResult,
   routeResult,
@@ -62,6 +66,7 @@ export async function executeCommand(
     rejectLogOptions(arguments_);
     rejectIdempotencyOption(arguments_);
     rejectFileOption(arguments_);
+    rejectExpectedVersionOption(arguments_);
     return contextResult(publicContext(context));
   }
 
@@ -77,17 +82,55 @@ export async function executeCommand(
     case 'organizations list':
       requireListCommand(arguments_);
       return organizationsResult(await cloudApi().listOrganizations());
+    case 'organizations create': {
+      const mutation = requireNamedMutationCommand(arguments_, 'organizations create <name>');
+      return organizationMutationResult(
+        await cloudApi().createOrganization(mutation.name, mutation.idempotencyKey)
+      );
+    }
     case 'projects list':
       requireListCommand(arguments_);
       return projectsResult(await cloudApi().listProjects(requireOrganization(context)));
+    case 'projects create': {
+      const mutation = requireNamedMutationCommand(arguments_, 'projects create <name>');
+      return projectMutationResult(
+        await cloudApi().createProject(requireOrganization(context), mutation.name, mutation.idempotencyKey)
+      );
+    }
     case 'environments list':
       requireListCommand(arguments_);
       return environmentsResult(
         await cloudApi().listEnvironments(requireOrganization(context), requireProject(context))
       );
+    case 'environments create': {
+      const mutation = requireNamedMutationCommand(arguments_, 'environments create <name>');
+      return environmentMutationResult(
+        await cloudApi().createEnvironment(
+          requireOrganization(context),
+          requireProject(context),
+          mutation.name,
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'nodes list':
       requireListCommand(arguments_);
       return nodesResult(await cloudApi().listNodes(requireOrganization(context)));
+    case 'nodes ready':
+    case 'nodes drain':
+    case 'nodes revoke': {
+      const mutation = requireNodeMutationCommand(arguments_, `nodes ${positionals[1]} <node-id>`);
+      const organizationId = requireOrganization(context);
+      const nodeId = positionalUuid(positionals, 2, 'node ID');
+      const api = cloudApi();
+      const node =
+        command === 'nodes ready'
+          ? await api.markNodeReady(organizationId, nodeId, mutation.expectedVersion, mutation.idempotencyKey)
+          : command === 'nodes drain'
+            ? await api.drainNode(organizationId, nodeId, mutation.expectedVersion, mutation.idempotencyKey)
+            : await api.revokeNode(organizationId, nodeId, mutation.expectedVersion, mutation.idempotencyKey);
+      return nodeMutationResult(node);
+    }
     case 'operations list':
       requireListCommand(arguments_);
       return operationsResult(await cloudApi().listOperations(requireOrganization(context)));
@@ -112,6 +155,7 @@ export async function executeCommand(
       requireArity(positionals, 4, 'workloads logs <workload-id> <revision-id>');
       rejectIdempotencyOption(arguments_);
       rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
       return workloadLogsResult(
         await cloudApi().getWorkloadLogs(
           requireOrganization(context),
@@ -248,6 +292,7 @@ export async function executeCommand(
       requireArity(positionals, 3, 'build-runs logs <build-run-id>');
       rejectIdempotencyOption(arguments_);
       rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
       return buildRunLogsResult(
         await cloudApi().getBuildRunLogs(
           requireOrganization(context),
@@ -279,6 +324,7 @@ function requireListCommand(arguments_: ParsedArguments): void {
   rejectLogOptions(arguments_);
   rejectIdempotencyOption(arguments_);
   rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
 }
 
 function requireReadCommand(arguments_: ParsedArguments, usage: string): void {
@@ -286,11 +332,54 @@ function requireReadCommand(arguments_: ParsedArguments, usage: string): void {
   rejectLogOptions(arguments_);
   rejectIdempotencyOption(arguments_);
   rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
 }
 
 function requireMutationCommand(arguments_: ParsedArguments, arity: number, usage: string): string {
   requireArity(arguments_.positionals, arity, usage);
   rejectLogOptions(arguments_);
+  const key = requireIdempotencyKey(arguments_);
+  rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  return key;
+}
+
+function requireNamedMutationCommand(
+  arguments_: ParsedArguments,
+  usage: string
+): { idempotencyKey: string; name: string } {
+  const idempotencyKey = requireMutationCommand(arguments_, 3, usage);
+  const value = arguments_.positionals[2];
+  const name = value?.trim();
+  if (!name || [...name].length > 63 || /[\0\r\n]/.test(name)) {
+    throw usageError('resource name must contain 1 to 63 visible characters');
+  }
+  return { idempotencyKey, name };
+}
+
+function requireNodeMutationCommand(
+  arguments_: ParsedArguments,
+  usage: string
+): { expectedVersion: number; idempotencyKey: string } {
+  requireArity(arguments_.positionals, 3, usage);
+  rejectLogOptions(arguments_);
+  rejectFileOption(arguments_);
+  const idempotencyKey = requireIdempotencyKey(arguments_);
+  const rawVersion = arguments_.expectedVersion;
+  if (rawVersion === undefined) {
+    throw usageError('--expected-version is required for node lifecycle mutations');
+  }
+  if (!/^[0-9]+$/.test(rawVersion)) {
+    throw usageError('expected node version must be a positive safe integer');
+  }
+  const expectedVersion = Number(rawVersion);
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw usageError('expected node version must be a positive safe integer');
+  }
+  return { expectedVersion, idempotencyKey };
+}
+
+function requireIdempotencyKey(arguments_: ParsedArguments): string {
   const key = arguments_.idempotencyKey;
   if (key === undefined) {
     throw usageError('--idempotency-key is required for mutation commands');
@@ -298,7 +387,6 @@ function requireMutationCommand(arguments_: ParsedArguments, arity: number, usag
   if (!isValidIdempotencyKey(key)) {
     throw usageError('idempotency key is invalid');
   }
-  rejectFileOption(arguments_);
   return key;
 }
 
@@ -309,13 +397,8 @@ function requireAclMutationCommand(
 ): { idempotencyKey: string; file: string } {
   requireArity(arguments_.positionals, arity, usage);
   rejectLogOptions(arguments_);
-  const idempotencyKey = arguments_.idempotencyKey;
-  if (idempotencyKey === undefined) {
-    throw usageError('--idempotency-key is required for mutation commands');
-  }
-  if (!isValidIdempotencyKey(idempotencyKey)) {
-    throw usageError('idempotency key is invalid');
-  }
+  const idempotencyKey = requireIdempotencyKey(arguments_);
+  rejectExpectedVersionOption(arguments_);
   const file = arguments_.file;
   if (file === undefined) {
     throw usageError('--file is required for ACL desired-state mutations');
@@ -355,6 +438,12 @@ function rejectIdempotencyOption(arguments_: ParsedArguments): void {
 function rejectFileOption(arguments_: ParsedArguments): void {
   if (arguments_.file !== undefined) {
     throw usageError('--file is valid only for ACL desired-state mutations');
+  }
+}
+
+function rejectExpectedVersionOption(arguments_: ParsedArguments): void {
+  if (arguments_.expectedVersion !== undefined) {
+    throw usageError('--expected-version is valid only for node lifecycle mutations');
   }
 }
 

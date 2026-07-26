@@ -22,12 +22,20 @@ export interface Organization {
   createdAt: string;
 }
 
+export interface OrganizationMutationResult extends Organization {
+  replayed: boolean;
+}
+
 export interface Project {
   organizationId: string;
   id: string;
   name: string;
   aggregateVersion: number;
   createdAt: string;
+}
+
+export interface ProjectMutationResult extends Project {
+  replayed: boolean;
 }
 
 export interface Environment {
@@ -37,6 +45,10 @@ export interface Environment {
   name: string;
   aggregateVersion: number;
   createdAt: string;
+}
+
+export interface EnvironmentMutationResult extends Environment {
+  replayed: boolean;
 }
 
 export type { Node, NodeAvailability, NodeState } from './node';

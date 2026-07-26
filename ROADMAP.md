@@ -145,11 +145,16 @@ production signed-evidence process-death gate pass.
 - Workload create/update and SourceRevision deployment accept bounded A3S ACL
   through the same public REST paths. Cloud parses the exact document with
   `a3s-acl`, rejects unknown version-1 fields, and preserves JSON-client
-  idempotency semantics.
+  idempotency semantics; and
+- Organization, Project, and Environment creation plus node ready/drain/revoke
+  use the existing scoped REST and application commands. Every call has a
+  caller-owned idempotency key, and node transitions also require the current
+  aggregate version.
 
-`C0.1` remains in progress. Remaining resource mutation parity, administrative
-diagnostics, node bootstrap, authorized global search, contract compatibility
-policy, and real cross-surface automation evidence remain required.
+`C0.1` remains in progress. Remaining edge, source, Secret, and identity
+resource mutation parity, administrative diagnostics, node bootstrap,
+authorized global search, contract compatibility policy, and real
+cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -261,9 +266,11 @@ read-only tenant commands, then adds workload, deployment, route, BuildRun,
 signed-evidence, and bounded paged-log queries. It does not close `C0.1`; the
 operational mutation slice adds explicit idempotent stop, rollback, cancel, and
 retry commands, while the desired-state slice adds Cloud-admitted A3S ACL for
-Workload create/update and SourceRevision deployment. Remaining resource
-mutation, diagnostics, bootstrap, compatibility, and authorized-search work
-above must land against the same client and application commands or queries.
+Workload create/update and SourceRevision deployment. The core-resource slice
+adds Organization, Project, and Environment creation plus version-checked node
+lifecycle transitions. Remaining mutation, diagnostics, bootstrap,
+compatibility, and authorized-search work above must land against the same
+client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

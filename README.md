@@ -107,7 +107,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   file, inspect tenant and operational resources, BuildRun evidence, and paged
   workload or build logs as bounded tables or stable JSON, and request
   stop/rollback/cancel/retry operations with caller-owned idempotency keys;
-  create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud
+  create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud;
+  create core tenant resources and transition nodes with explicit optimistic
+  concurrency
 
 ### Delivery capability matrix
 
@@ -426,9 +428,18 @@ export A3S_CLOUD_ENVIRONMENT_ID="<environment-uuid>"
 
 bun run --cwd cli src/main.ts context show
 bun run --cwd cli src/main.ts organizations list --output=json
+bun run --cwd cli src/main.ts organizations create "Operations" \
+  --idempotency-key="tenant:organization:<request-id>"
 bun run --cwd cli src/main.ts projects list
+bun run --cwd cli src/main.ts projects create "Cloud" \
+  --idempotency-key="tenant:project:<request-id>"
 bun run --cwd cli src/main.ts environments list
+bun run --cwd cli src/main.ts environments create "Production" \
+  --idempotency-key="tenant:environment:<request-id>"
 bun run --cwd cli src/main.ts nodes list
+bun run --cwd cli src/main.ts nodes drain "<node-uuid>" \
+  --expected-version="<current-aggregate-version>" \
+  --idempotency-key="fleet:drain:<request-id>"
 bun run --cwd cli src/main.ts operations list
 bun run --cwd cli src/main.ts workloads list
 bun run --cwd cli src/main.ts workloads get "<workload-uuid>"
@@ -462,13 +473,16 @@ binary. Remote endpoints must use HTTPS and end in `/api/v1`; plain HTTP is
 accepted only for literal localhost or loopback addresses. See the
 [CLI reference](cli/README.md) for context variables, output contracts, and
 exit codes. Operational resource and paged-log reads are implemented;
-all mutations require an explicit stable idempotency key. Workload create,
-update, and SourceRevision deployment accept only a bounded UTF-8 A3S ACL file.
-Cloud parses it with `a3s-acl`, enforces the closed version-1 schema, and then
-dispatches the same application commands used by JSON clients. Remaining
-resource mutation parity, administrative diagnostics, node bootstrap,
-authorized search, and the compatibility/deprecation gate remain subsequent
-`C0.1` slices.
+all mutations require an explicit stable idempotency key. Organization,
+Project, and Environment creation call the existing resource commands. Node
+ready/drain/revoke additionally require the current aggregate version and use
+the existing optimistic-concurrency command. Workload create, update, and
+SourceRevision deployment accept only a bounded UTF-8 A3S ACL file. Cloud
+parses it with `a3s-acl`, enforces the closed version-1 schema, and then
+dispatches the same application commands used by JSON clients. Remaining edge,
+source, Secret, and identity mutation parity, administrative diagnostics, node
+bootstrap, authorized search, and the compatibility/deprecation gate remain
+subsequent `C0.1` slices.
 
 ## Platform Model
 
