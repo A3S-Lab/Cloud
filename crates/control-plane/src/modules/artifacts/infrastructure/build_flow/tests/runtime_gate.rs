@@ -5,7 +5,8 @@ use super::super::task_spec::{
 use super::super::{BuildFlowConfig, BuildFlowConfigOptions};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildRunStatus, IBuildArtifactPublisher, IBuildEvidenceGenerator,
-    IBuildOutputValidator, INodeArtifactStore, NodeArtifactDescriptor, OciPublicationRequest,
+    IBuildEvidenceSigner, IBuildOutputValidator, INodeArtifactStore, NodeArtifactDescriptor,
+    OciPublicationRequest,
 };
 use crate::modules::artifacts::{
     LocalBuildEvidenceSigner, LocalNodeArtifactStore, OciRegistryArtifactPublisher,
@@ -50,10 +51,13 @@ use uuid::Uuid;
 mod artifact_transport;
 mod buildkit_fixture;
 mod busybox_rootfs;
+mod operator_gate;
+mod process_death;
 
 use artifact_transport::LocalArtifactTransport;
 use buildkit_fixture::prune_buildkit_worker;
 use busybox_rootfs::validate_busybox_rootfs;
+use operator_gate::{OperatorGate, OperatorGateResult};
 
 const GATE_ENV: &str = "A3S_CLOUD_TEST_RUNTIME_BUILDKIT";
 const BUILDKIT_CONTAINER_ENV: &str = "A3S_CLOUD_TEST_BUILDKIT_CONTAINER";
@@ -84,6 +88,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
     if std::env::var(GATE_ENV).as_deref() != Ok("1") {
         return Ok(());
     }
+    let operator_gate = OperatorGate::from_environment()?;
 
     let root = tempfile::tempdir()?;
     let namespace = std::env::var("A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE")
@@ -560,7 +565,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
             retry.updated_at + Duration::milliseconds(1),
         )?;
 
-        let registry = RegistryGate::from_environment()?;
+        let registry = RegistryGate::from_environment(operator_gate.is_some())?;
         let publisher = OciRegistryArtifactPublisher::new(
             Arc::clone(&validator),
             StdDuration::from_secs(30),
@@ -595,16 +600,20 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
             "Runtime BuildKit retry publication replay changed its result",
         )?;
         retry.record_published_artifact(
-            published,
+            published.clone(),
             retry.updated_at + Duration::milliseconds(1),
         )?;
         retry.begin_attestation(retry.updated_at + Duration::milliseconds(1))?;
-        let signer = Arc::new(
-            LocalBuildEvidenceSigner::load_or_create(
-                root.path().join("build-evidence/signing-key.pk8"),
+        let signer: Arc<dyn IBuildEvidenceSigner> = if let Some(operator) = &operator_gate {
+            Arc::new(operator.signer()?)
+        } else {
+            Arc::new(
+                LocalBuildEvidenceSigner::load_or_create(
+                    root.path().join("build-evidence/signing-key.pk8"),
+                )
+                .await?,
             )
-            .await?,
-        );
+        };
         let evidence_generator = RuntimeBuildEvidenceGenerator::new(
             Arc::clone(&validator),
             signer,
@@ -617,8 +626,15 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
                 retry.updated_at + Duration::milliseconds(1),
             )
             .await?;
-        retry.record_evidence(evidence, retry.updated_at + Duration::milliseconds(1))?;
-        Ok::<(), Box<dyn Error>>(())
+        retry.record_evidence(
+            evidence.clone(),
+            retry.updated_at + Duration::milliseconds(1),
+        )?;
+        Ok::<OperatorGateResult, Box<dyn Error>>(OperatorGateResult {
+            registry_authority: registry.authority.clone(),
+            published,
+            evidence,
+        })
     }
     .await;
     let retry_credential_cleanup = require(
@@ -648,7 +664,7 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         Ok(())
     };
     let retry_removal_result = executor.execute(retry_remove_command).await;
-    retry_verification?;
+    let operator_result = retry_verification?;
     retry_credential_cleanup?;
     retry_cleanup?;
     let retry_removal_ack = retry_removal_result?;
@@ -691,6 +707,23 @@ async fn real_runtime_task_builds_publishes_and_rejects_network_access(
         retry.status == BuildRunStatus::Succeeded,
         "cache-importing retry did not complete publication and evidence",
     )?;
+    if let Some(operator) = &operator_gate {
+        let process_death = process_death::certify(
+            root.path(),
+            revision.clone(),
+            retry
+                .input_artifact
+                .clone()
+                .ok_or_else(|| std::io::Error::other("G0 crash gate omitted its build input"))?,
+            retry.runtime_output_artifact.clone().ok_or_else(|| {
+                std::io::Error::other("G0 crash gate omitted its Runtime output Artifact")
+            })?,
+        )
+        .await?;
+        operator
+            .write_evidence(&operator_result, &retry, &process_death)
+            .await?;
+    }
     Ok(())
 }
 
@@ -739,7 +772,7 @@ struct RegistryGate {
 }
 
 impl RegistryGate {
-    fn from_environment() -> Result<Self, Box<dyn Error>> {
+    fn from_environment(require_https: bool) -> Result<Self, Box<dyn Error>> {
         let url = Url::parse(&required_environment(REGISTRY_URL_ENV)?)?;
         require(
             matches!(url.scheme(), "http" | "https")
@@ -749,6 +782,10 @@ impl RegistryGate {
                 && url.query().is_none()
                 && url.fragment().is_none(),
             "Runtime BuildKit registry URL must be an HTTP(S) origin",
+        )?;
+        require(
+            !require_https || url.scheme() == "https",
+            "G0 operator Registry must use an HTTPS origin",
         )?;
         let host = url.host_str().ok_or_else(|| {
             std::io::Error::other("Runtime BuildKit registry URL omitted its host")
