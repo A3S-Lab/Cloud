@@ -137,12 +137,31 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses explicit standard-input Secret material without accepting a value', () => {
+    expect(
+      parseArguments([
+        'secrets',
+        'create',
+        'Database URL',
+        '--value-stdin',
+        '--idempotency-key=secret:create-42',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        valueStdin: true,
+        idempotencyKey: 'secret:create-42',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--unknown', 'value'], 'unknown option'],
     [['--output'], 'requires a value'],
     [['--output', 'json', '--output', 'table'], 'may be specified only once'],
+    [['secrets', 'create', 'Database URL', '--value-stdin', '--value-stdin'], 'may be specified only once'],
+    [['secrets', 'create', 'Database URL', '--value-stdin=plaintext'], 'does not accept a value'],
   ])('rejects unsafe or ambiguous arguments %#', (argv, message) => {
     expect(() => parseArguments(argv)).toThrow(message);
     try {

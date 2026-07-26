@@ -20,11 +20,12 @@ export interface ParsedArguments {
   dockerfilePath?: string;
   target?: string;
   platforms?: string;
+  valueStdin: boolean;
   help: boolean;
   version: boolean;
 }
 
-type ValueOption = Exclude<keyof ParsedArguments, 'help' | 'positionals' | 'version'>;
+type ValueOption = Exclude<keyof ParsedArguments, 'help' | 'positionals' | 'valueStdin' | 'version'>;
 
 const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--url': 'url',
@@ -50,6 +51,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
 export function parseArguments(argv: readonly string[]): ParsedArguments {
   const parsed: ParsedArguments = {
     positionals: [],
+    valueStdin: false,
     help: false,
     version: false,
   };
@@ -63,6 +65,16 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     if (argument === '--version' || argument === '-V') {
       parsed.version = true;
       continue;
+    }
+    if (argument === '--value-stdin') {
+      if (parsed.valueStdin) {
+        throw usageError('option --value-stdin may be specified only once');
+      }
+      parsed.valueStdin = true;
+      continue;
+    }
+    if (argument.startsWith('--value-stdin=')) {
+      throw usageError('option --value-stdin does not accept a value');
     }
     if (argument === '--token' || argument.startsWith('--token=')) {
       throw usageError('API tokens are accepted only through A3S_CLOUD_TOKEN');

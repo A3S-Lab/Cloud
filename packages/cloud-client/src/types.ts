@@ -503,6 +503,15 @@ export type {
   SourceRevisionMutationResult,
 } from './source';
 
+export type {
+  Secret,
+  SecretDetails,
+  SecretMutationResult,
+  SecretState,
+  SecretVersion,
+  SecretVersionState,
+} from './secret';
+
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
 export type WorkloadLogRecordKind = 'data' | 'gap';
 export type WorkloadLogGapReason =

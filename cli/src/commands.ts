@@ -54,10 +54,12 @@ import {
   workloadsResult,
 } from './results';
 import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
+import { executeSecretCommand, rejectMisplacedSecretValueOption, type ReadStdin } from './secret-commands';
 
 export interface CommandDependencies {
   fetch?: CloudFetch;
   readFile?: (path: string) => Promise<Uint8Array>;
+  readStdin?: ReadStdin;
 }
 
 export async function executeCommand(
@@ -71,6 +73,7 @@ export async function executeCommand(
   }
   const command = `${positionals[0]} ${positionals[1]}`;
   rejectMisplacedSourceRecipeOptions(command, arguments_);
+  rejectMisplacedSecretValueOption(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -109,6 +112,12 @@ export async function executeCommand(
   const sourceResult = await executeSourceCommand(command, arguments_, context, cloudApi);
   if (sourceResult !== undefined) {
     return sourceResult;
+  }
+  const secretResult = await executeSecretCommand(command, arguments_, context, cloudApi, {
+    readStdin: dependencies.readStdin,
+  });
+  if (secretResult !== undefined) {
+    return secretResult;
   }
   switch (command) {
     case 'organizations list':

@@ -42,6 +42,11 @@ Commands:
   source-subscriptions list List GitHub repository subscriptions
   source-subscriptions create URL BRANCH Create a GitHub subscription idempotently
   source-subscriptions deactivate ID Deactivate a GitHub subscription idempotently
+  secrets list          List Secret metadata in the selected environment
+  secrets get ID        Get Secret metadata and version states
+  secrets create NAME   Create a Secret from standard input idempotently
+  secrets add-version ID Add a Secret version from standard input idempotently
+  secrets revoke-version ID VERSION Revoke one Secret version idempotently
   deployments get ID    Get one deployment
   deployments cancel ID Request deployment cancellation idempotently
   domain-claims list     List domain ownership claims in the selected environment
@@ -80,6 +85,7 @@ Global options:
   --dockerfile-path <path>   Dockerfile path for a Source build recipe
   --target <stage>           Optional Dockerfile target stage
   --platforms <csv>          linux/amd64 and/or linux/arm64
+  --value-stdin              Read Secret material exactly from standard input
   -h, --help              Show help
   -V, --version           Show version
 
@@ -97,6 +103,7 @@ export interface CliRuntime {
   environment?: ProcessEnvironment;
   fetch?: CloudFetch;
   readFile?: (path: string) => Promise<Uint8Array>;
+  readStdin?: (limitBytes: number) => Promise<Uint8Array>;
   writeStdout?: (value: string) => void;
   writeStderr?: (value: string) => void;
 }
@@ -119,6 +126,7 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime = {}):
     const result = await executeCommand(arguments_, context, {
       fetch: runtime.fetch,
       readFile: runtime.readFile,
+      readStdin: runtime.readStdin,
     });
     writeStdout(
       redactToken(context.output === 'json' ? renderJson(result.json) : result.table, context.token)
