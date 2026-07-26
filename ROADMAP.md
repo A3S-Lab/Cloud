@@ -189,9 +189,17 @@ repository currently has no configured G0 provider secrets.
   HTTPS release only after an exact SHA-256 check. The target prompts for the
   credential and keeps it out of argv and the pre-provisioned A3S ACL config;
   Cloud persists only its digest through the Fleet A3S ORM repository.
+- Organization-scoped authorized search registers credential-free Project,
+  Environment, Node, Workload, Deployment, Route, DomainClaim, Gateway-scope,
+  BuildRun, SourceRevision, Secret-metadata, and Operation projections. The API
+  applies the tenant guard before a bounded A3S ORM query, while the shared
+  client, CLI, and Web console use the same endpoint without broad local reads.
+  Web adds debounced keyboard search and validated contextual navigation.
 
-`C0.1` remains in progress. Authorized global search, contract compatibility
-policy, and real cross-surface automation evidence remain required.
+`C0.1` remains in progress. Contract compatibility/deprecation policy and real
+cross-surface automation evidence remain required. Grant-derived search is a
+separate `C0.3` authorization outcome; the current search boundary is the
+organization tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -317,9 +325,12 @@ API-token metadata list/get and idempotent stdin-only create/revoke without
 exposing credentials or bypassing digest-only A3S ORM persistence. The node
 bootstrap slice adds stdin-only one-time enrollment issuance plus a
 checksum-verified Agent installation invocation without adding an SSH path or
-bypassing Fleet A3S ORM persistence. Remaining compatibility,
-authorized-search, and cross-surface evidence work above must land against the
-same client and application commands or queries.
+bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
+organization-scoped API query over registered credential-free projections,
+bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
+debounced Web navigation without broad local reads. Remaining compatibility
+and cross-surface evidence work above must land against the same client and
+application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

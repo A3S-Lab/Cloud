@@ -44,6 +44,13 @@ the existing Fleet controller and returns one credential-free enrollment-token
 projection. It is internal and versioned with Cloud until public package
 compatibility and deprecation policy are completed.
 
+`searchResources` validates a 1-to-128-character safe query and a result limit
+from 1 through 50 before transport, then calls the organization-scoped public
+search endpoint. It returns contextual, credential-free projections only.
+Authorization, ranking, and resource registration remain Cloud
+responsibilities; callers must not emulate search by loading broad resource
+lists.
+
 Replayable mutating methods require a caller-owned idempotency key. The client
 accepts a portable visible-ASCII subset up to the server's 255-byte limit,
 rejects an invalid key before transport, and sends the value only in

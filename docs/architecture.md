@@ -1542,6 +1542,33 @@ metadata; the checksum check prevents byte substitution but does not establish
 the trustworthiness of caller-supplied metadata. Cloud never accepts an SSH
 password or private key through this path.
 
+Organization-scoped cross-resource search is one query surface:
+
+- `GET /organizations/{organization}/search?q=<query>&limit=<1..50>`
+
+The controller applies `OrganizationTenantGuard` before dispatch, normalizes a
+query of 1 through 128 safe characters, and defaults the limit to 20. Migration
+050 registers credential-free metadata for Project, Environment, Node,
+Workload, Deployment, Route, DomainClaim, logical Gateway scope, BuildRun,
+SourceRevision, Secret, and Operation in one PostgreSQL view. Secret values and
+all credentials are absent. `PostgresSearchRepository` uses typed A3S ORM
+expressions and bound values to rank exact title or ID matches, then title
+prefixes, then contained projection text; it deduplicates resource kind and ID
+before enforcing the caller's limit. The view is derived from authoritative
+tables and never becomes a command, lock, queue, or state authority. No Redis,
+external search engine, or presentation-side broad resource read is required.
+
+The TypeScript client and CLI validate the same query and limit bounds and call
+only this public endpoint. The React console waits 250 milliseconds after
+input, cancels superseded requests, supports pointer and keyboard selection,
+and checks each returned contextual hash against its organization, project,
+environment, kind, and ID before updating browser history. Route and Deployment
+results select their related Workload, BuildRun results select the build panel,
+and Operation results open the operation drawer. This `C0.1` boundary is
+organization authorization only. Grant-derived filtering and role-focused
+search remain `C0.3` work and must be enforced by Cloud queries rather than
+hidden navigation.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize
@@ -1608,9 +1635,11 @@ most 500 records in memory.
 The React application is organized by the same bounded contexts. It never
 derives success from an emitted event or an optimistic spinner. Deployment,
 health, route, operation, log data, and explicit log gaps remain visually
-distinct. Workload list and detail polling supply complete immutable requested
-templates and exact route projections; organization polling supplies managed
-certificate projections; operation SSE remains the live progress path. Update
+distinct. Authorized search calls the bounded server query and never filters a
+broad local resource cache. Workload list and detail polling supply complete
+immutable requested templates and exact route projections; organization
+polling supplies managed certificate projections; operation SSE remains the
+live progress path. Update
 dialogs retain one idempotency key for their lifetime, validate and compare the
 complete JSON template, and refresh all authoritative projections only after
 the command commits. Rollback choices are older `active` deployments with a
