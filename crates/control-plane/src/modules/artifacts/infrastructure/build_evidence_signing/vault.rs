@@ -7,17 +7,12 @@ use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use ring::signature::{UnparsedPublicKey, ED25519};
-use rustls_pemfile::Item;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::BufReader;
 use std::sync::Arc;
 use std::time::Duration;
 
 const MAX_PAE_BYTES: usize = 64 * 1024 * 1024 + 1024;
-const ED25519_SPKI_PREFIX: [u8; 12] = [
-    0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-];
 
 pub struct VaultBuildEvidenceSigner {
     client: Arc<dyn VaultTransitSigningClient>,
@@ -220,42 +215,25 @@ fn parse_vault_signature(value: &str) -> Result<(u32, Vec<u8>), BuildEvidenceSig
     Ok((version, signature))
 }
 
-fn parse_ed25519_public_key(pem: &str) -> Result<[u8; 32], BuildEvidenceSigningError> {
-    if pem.len() > 16 * 1024 || pem.contains('\0') {
+fn parse_ed25519_public_key(encoded: &str) -> Result<[u8; 32], BuildEvidenceSigningError> {
+    if encoded.is_empty() || encoded.len() > 1024 || encoded.contains(['\0', '\r', '\n']) {
         return Err(BuildEvidenceSigningError::Rejected(
-            "Vault Ed25519 public key exceeds its protocol bound".into(),
+            "Vault returned invalid Ed25519 public key material".into(),
         ));
     }
-    let mut public_key = None;
-    for item in rustls_pemfile::read_all(&mut BufReader::new(pem.as_bytes())) {
-        let Item::SubjectPublicKeyInfo(value) = item.map_err(|_| {
-            BuildEvidenceSigningError::Rejected(
-                "Vault returned an invalid Ed25519 public key PEM".into(),
-            )
-        })?
-        else {
-            return Err(BuildEvidenceSigningError::Rejected(
-                "Vault returned a non-public-key PEM block".into(),
-            ));
-        };
-        if public_key.is_some() {
-            return Err(BuildEvidenceSigningError::Rejected(
-                "Vault returned multiple Ed25519 public keys".into(),
-            ));
-        }
-        let der = value.as_ref();
-        if der.len() != ED25519_SPKI_PREFIX.len() + 32 || !der.starts_with(&ED25519_SPKI_PREFIX) {
-            return Err(BuildEvidenceSigningError::Rejected(
-                "Vault returned a public key that is not Ed25519 SPKI".into(),
-            ));
-        }
-        let mut raw = [0_u8; 32];
-        raw.copy_from_slice(&der[ED25519_SPKI_PREFIX.len()..]);
-        public_key = Some(raw);
+    let decoded = STANDARD.decode(encoded).map_err(|_| {
+        BuildEvidenceSigningError::Rejected(
+            "Vault returned invalid Ed25519 public key base64".into(),
+        )
+    })?;
+    if decoded.len() != 32 || STANDARD.encode(&decoded) != encoded {
+        return Err(BuildEvidenceSigningError::Rejected(
+            "Vault returned invalid Ed25519 public key length or encoding".into(),
+        ));
     }
-    public_key.ok_or_else(|| {
-        BuildEvidenceSigningError::Rejected("Vault omitted its Ed25519 public key".into())
-    })
+    let mut public_key = [0_u8; 32];
+    public_key.copy_from_slice(&decoded);
+    Ok(public_key)
 }
 
 fn validate_segment(label: &str, value: String) -> Result<String, BuildEvidenceSigningError> {
@@ -326,19 +304,19 @@ mod tests {
                     (
                         "1".into(),
                         TransitKeyVersion {
-                            public_key: public_key_pem(self.other_key.public_key().as_ref()),
+                            public_key: public_key_material(self.other_key.public_key().as_ref()),
                         },
                     ),
                     (
                         self.version.to_string(),
                         TransitKeyVersion {
-                            public_key: public_key_pem(self.signing_key.public_key().as_ref()),
+                            public_key: public_key_material(self.signing_key.public_key().as_ref()),
                         },
                     ),
                     (
                         (self.version + 1).to_string(),
                         TransitKeyVersion {
-                            public_key: public_key_pem(self.other_key.public_key().as_ref()),
+                            public_key: public_key_material(self.other_key.public_key().as_ref()),
                         },
                     ),
                 ]),
@@ -405,7 +383,7 @@ mod tests {
                     keys: BTreeMap::from([(
                         "7".into(),
                         TransitKeyVersion {
-                            public_key: public_key_pem(self.advertised.public_key().as_ref()),
+                            public_key: public_key_material(self.advertised.public_key().as_ref()),
                         },
                     )]),
                 })
@@ -428,15 +406,26 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn vault_public_key_parser_requires_canonical_raw_ed25519_material() {
+        let key = [7_u8; 32];
+        assert_eq!(
+            parse_ed25519_public_key(&STANDARD.encode(key)).expect("Vault public key"),
+            key
+        );
+        assert!(parse_ed25519_public_key(&STANDARD.encode([7_u8; 31])).is_err());
+        assert!(parse_ed25519_public_key(
+            "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA\n-----END PUBLIC KEY-----"
+        )
+        .is_err());
+    }
+
     fn key_pair() -> Ed25519KeyPair {
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).expect("Ed25519 PKCS#8");
         Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).expect("Ed25519 key")
     }
 
-    fn public_key_pem(raw: &[u8]) -> String {
-        let mut der = ED25519_SPKI_PREFIX.to_vec();
-        der.extend_from_slice(raw);
-        let encoded = STANDARD.encode(der);
-        format!("-----BEGIN PUBLIC KEY-----\n{encoded}\n-----END PUBLIC KEY-----\n")
+    fn public_key_material(raw: &[u8]) -> String {
+        STANDARD.encode(raw)
     }
 }
