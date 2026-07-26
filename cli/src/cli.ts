@@ -32,6 +32,7 @@ Commands:
   nodes drain ID        Drain one current node
   nodes revoke ID       Revoke one current node
   operations list       List recent operations in the selected organization
+  search resources QUERY Search authorized resources in the selected organization
   workloads list        List workloads in the selected environment
   workloads get ID      Get one workload
   workloads logs ID REV Read one page of workload revision logs
@@ -79,7 +80,7 @@ Global options:
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
   --cursor <cursor>       Opaque cursor for a log command
-  --limit <1..256>        Record limit for a log command
+  --limit <n>             Search limit (1..50) or log record limit (1..256)
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation

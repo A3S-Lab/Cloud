@@ -38,6 +38,12 @@ Log commands additionally accept an opaque `--cursor`, a `--limit` from 1
 through 256, and an optional `--stream=stdout|stderr` filter. These options are
 rejected for commands that do not read logs.
 
+`search resources <query>` requires organization context and accepts a
+`--limit` from 1 through 50, defaulting to 20. The query must contain 1 through
+128 safe characters. Validation happens before transport, and Cloud performs
+the tenant-authorized search through its public API; the CLI never loads broad
+resource lists and filters them locally.
+
 Replayable mutation commands require `--idempotency-key=<key>`. The key must
 contain only visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`,
 and must be at most 255 characters. The CLI never generates a key: retry the
@@ -140,6 +146,7 @@ nodes ready <node-id> --expected-version=<version>
 nodes drain <node-id> --expected-version=<version>
 nodes revoke <node-id> --expected-version=<version>
 operations list
+search resources <query> [--limit=<1..50>]
 workloads list
 workloads get <workload-id>
 workloads logs <workload-id> <revision-id>
@@ -251,5 +258,6 @@ Identity API-token metadata and lifecycle parity is implemented with
 standard-input-only credential creation and digest-only persistence. Node
 bootstrap is implemented with standard-input-only credential issuance,
 digest-only Fleet persistence, and a checksum-verified installation invocation.
-Authorized search, the compatibility/deprecation gate, and real cross-surface
-automation evidence remain planned.
+Organization-scoped authorized search parity is implemented through the same
+typed client. Web search, the compatibility/deprecation gate, and real
+cross-surface automation evidence remain planned.

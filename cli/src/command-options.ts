@@ -65,8 +65,11 @@ export function positionalResourceName(positionals: readonly string[], index: nu
 }
 
 export function rejectLogOptions(arguments_: ParsedArguments): void {
-  if (arguments_.cursor !== undefined || arguments_.limit !== undefined || arguments_.stream !== undefined) {
-    throw usageError('cursor, limit, and stream options are valid only for log commands');
+  if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+    throw usageError('cursor and stream options are valid only for log commands');
+  }
+  if (arguments_.limit !== undefined) {
+    throw usageError('--limit is valid only for search and log commands');
   }
 }
 
