@@ -15,6 +15,8 @@ pub use application::commands::create_organization::{
 pub use application::commands::revoke_api_token::{
     RevokeApiToken, RevokeApiTokenHandler, RevokeApiTokenResult,
 };
+pub use application::queries::get_api_token::{GetApiToken, GetApiTokenHandler};
+pub use application::queries::list_api_tokens::{ListApiTokens, ListApiTokensHandler};
 pub use application::queries::list_organizations::{ListOrganizations, ListOrganizationsHandler};
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
 pub use presentation::IdentityModule;

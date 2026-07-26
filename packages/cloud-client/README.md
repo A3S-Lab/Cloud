@@ -38,8 +38,10 @@ plus route publication, use the same tenant-guarded REST resources. Source
 revision, GitHub connection, and repository-subscription methods use the
 existing Source controllers. Secret list/get/create/add-version/revoke-version
 methods use the existing Secret controllers and expose metadata and version
-state only. It is internal and versioned with Cloud until public package
-compatibility and deprecation policy are completed.
+state only. API-token list/get/create/revoke methods use the existing Identity
+controllers and return credential-free metadata. It is internal and versioned
+with Cloud until public package compatibility and deprecation policy are
+completed.
 
 Replayable mutating methods require a caller-owned idempotency key. The client
 accepts a portable visible-ASCII subset up to the server's 255-byte limit,
@@ -52,6 +54,16 @@ installation URL.
 resource commands. `markNodeReady`, `drainNode`, and `revokeNode` additionally
 require a positive safe-integer aggregate version and preserve the server's
 optimistic-concurrency contract.
+
+`listApiTokens` and `getApiToken` expose tenant-scoped metadata only.
+`createApiToken` validates the fixed `a3s_` plus 64-lowercase-hex credential
+format, one or more unique bounded scopes, and an optional RFC 3339 expiry
+before transport. `createApiToken` and `revokeApiToken` require caller-owned
+idempotency keys and return metadata plus the durable `replayed` flag. Cloud
+remains authoritative for scope delegation, tenant guards, digest-only storage,
+and A3S ORM persistence. CLI callers supply a new credential only through the
+bounded `--token-stdin` path; it is never a command argument, configuration
+value, result field, or echoed error.
 
 `createDomainClaim`, `verifyDomainClaim`, and `revokeDomainClaim` return the
 complete DomainClaim projection with its durable `replayed` flag.

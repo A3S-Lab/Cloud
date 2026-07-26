@@ -231,6 +231,27 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
             .cloned())
     }
 
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<ApiToken>, RepositoryError> {
+        let mut tokens = self
+            .state
+            .read()
+            .await
+            .tokens
+            .values()
+            .filter(|token| token.organization_id == organization_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        tokens.sort_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then_with(|| left.id.as_uuid().cmp(&right.id.as_uuid()))
+        });
+        Ok(tokens)
+    }
+
     async fn authenticate(
         &self,
         digest: &ApiTokenDigest,

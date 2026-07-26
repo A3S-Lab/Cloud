@@ -370,6 +370,26 @@ impl IApiTokenRepository for PostgresIdentityRepository {
             .transpose()
     }
 
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<ApiToken>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_all_as(
+                sql_query::<ApiTokenRow>(
+                    "select id, organization_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" order by created_at asc, id asc"),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .rows
+            .into_iter()
+            .map(decode_token)
+            .collect()
+    }
+
     async fn authenticate(
         &self,
         digest: &ApiTokenDigest,

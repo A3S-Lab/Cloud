@@ -1,10 +1,13 @@
 import type {
+  ApiToken,
+  ApiTokenMutationResult,
   BuildEvidence,
   BuildRun,
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
   CreateGithubRepositorySubscriptionInput,
+  CreateApiTokenInput,
   CreateGatewayScopeInput,
   Deployment,
   DomainClaim,
@@ -71,6 +74,59 @@ export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
 }
 
+function validateApiTokenInput(input: CreateApiTokenInput): void {
+  if (!/^a3s_[0-9a-f]{64}$/.test(input.token)) {
+    throw new TypeError('API token must use the a3s_ prefix followed by 64 lowercase hex digits');
+  }
+  if (!Array.isArray(input.scopes) || input.scopes.length === 0) {
+    throw new TypeError('API token must grant at least one scope');
+  }
+  const uniqueScopes = new Set<string>();
+  for (const scope of input.scopes) {
+    if (typeof scope !== 'string' || scope.length > 63 || !/^[a-z-]+:[a-z-]+$/.test(scope)) {
+      throw new TypeError('API token scope must use bounded lowercase domain:action syntax');
+    }
+    if (uniqueScopes.has(scope)) {
+      throw new TypeError('API token scopes must be unique');
+    }
+    uniqueScopes.add(scope);
+  }
+  if (input.expiresAt !== undefined && input.expiresAt !== null) {
+    if (!isRfc3339Timestamp(input.expiresAt)) {
+      throw new TypeError('API token expiry must be an RFC 3339 timestamp');
+    }
+  }
+}
+
+function isRfc3339Timestamp(value: string): boolean {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!match || !Number.isFinite(Date.parse(value))) {
+    return false;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[7] === undefined ? 0 : Number(match[7]);
+  const offsetMinute = match[8] === undefined ? 0 : Number(match[8]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= (days[month - 1] ?? 0) &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59
+  );
+}
+
 export class CloudApi {
   readonly baseUrl: string;
   private readonly token: string | undefined;
@@ -127,6 +183,45 @@ export class CloudApi {
     signal?: AbortSignal
   ): Promise<OrganizationMutationResult> {
     return this.postJson('/organizations', idempotencyKey, { name }, signal);
+  }
+
+  listApiTokens(organizationId: string, signal?: AbortSignal): Promise<ApiToken[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/api-tokens`, signal);
+  }
+
+  getApiToken(organizationId: string, tokenId: string, signal?: AbortSignal): Promise<ApiToken> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/api-tokens/${encodeURIComponent(tokenId)}`,
+      signal
+    );
+  }
+
+  createApiToken(
+    organizationId: string,
+    input: CreateApiTokenInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApiTokenMutationResult> {
+    validateApiTokenInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/api-tokens`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokeApiToken(
+    organizationId: string,
+    tokenId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApiTokenMutationResult> {
+    return this.delete(
+      `/organizations/${encodeURIComponent(organizationId)}/api-tokens/${encodeURIComponent(tokenId)}`,
+      idempotencyKey,
+      signal
+    );
   }
 
   listProjects(organizationId: string, signal?: AbortSignal): Promise<Project[]> {

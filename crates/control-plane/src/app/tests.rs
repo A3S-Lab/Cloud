@@ -47,6 +47,8 @@ const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const PROJECT_TOKEN: &str = "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const SOURCE_TOKEN: &str = "a3s_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const TOKEN_MANAGER_TOKEN: &str =
+    "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const GITHUB_WEBHOOK_SECRET: &str = "github-webhook-test-secret-0123456789abcdef";
 
 struct TestCertificateAuthority;
@@ -1138,6 +1140,87 @@ async fn revoked_and_expired_tokens_stop_authenticating_immediately() -> Result<
         ))
         .await?;
     assert_eq!(expired_use.status(), 401);
+    Ok(())
+}
+
+#[tokio::test]
+async fn api_token_queries_are_tenant_scoped_and_never_expose_credentials() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "bootstrap-token-query", "Acme").await?;
+    let other_organization = create_organization(&app, "token-query-other", "Other").await?;
+    create_api_token(
+        &app,
+        &organization,
+        "token-manager",
+        "token-manager",
+        TOKEN_MANAGER_TOKEN,
+        &[ApiTokenScope::TOKEN_WRITE],
+        None,
+    )
+    .await?;
+    let project_token_id = create_api_token(
+        &app,
+        &organization,
+        "token-query-project",
+        "project-automation",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::PROJECT_WRITE],
+        None,
+    )
+    .await?;
+    let collection_path = format!("/api/v1/organizations/{organization}/api-tokens");
+
+    let listed = app
+        .call(get_as(&collection_path, TOKEN_MANAGER_TOKEN))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    let listed_body = String::from_utf8_lossy(listed.body());
+    assert!(!listed_body.contains(ADMIN_TOKEN));
+    assert!(!listed_body.contains(TOKEN_MANAGER_TOKEN));
+    assert!(!listed_body.contains(PROJECT_TOKEN));
+    let listed_json = response_json(&listed)?;
+    let tokens = listed_json["data"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("API token list response is not an array".into()))?;
+    assert_eq!(tokens.len(), 3);
+    assert!(tokens.iter().any(|token| token["id"] == project_token_id));
+    assert!(tokens.iter().all(|token| token.get("replayed").is_none()));
+
+    let detail = app
+        .call(get_as(
+            format!("{collection_path}/{project_token_id}"),
+            TOKEN_MANAGER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(detail.status(), 200);
+    assert_eq!(response_json(&detail)?["data"]["id"], project_token_id);
+    assert!(!String::from_utf8_lossy(detail.body()).contains(PROJECT_TOKEN));
+
+    let unknown = app
+        .call(get_as(
+            format!("{collection_path}/{}", Uuid::now_v7()),
+            TOKEN_MANAGER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(unknown.status(), 404);
+
+    let insufficient_scope = app.call(get_as(&collection_path, PROJECT_TOKEN)).await?;
+    assert_eq!(insufficient_scope.status(), 403);
+
+    let cross_tenant = app
+        .call(get_as(
+            format!("/api/v1/organizations/{other_organization}/api-tokens"),
+            TOKEN_MANAGER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(cross_tenant.status(), 403);
+
+    let unauthenticated = app
+        .call(BootRequest::new(HttpMethod::Get, collection_path))
+        .await?;
+    assert_eq!(unauthenticated.status(), 401);
     Ok(())
 }
 

@@ -21,7 +21,8 @@ point with `bun run --cwd cli src/main.ts`.
 
 The API token is read only from `A3S_CLOUD_TOKEN`. A `--token` argument is
 rejected so process listings and shell history do not receive credentials. The
-CLI does not create a context or credential file.
+CLI does not create a context or credential file. This is the caller credential;
+`api-tokens create` accepts a distinct new credential only from standard input.
 
 | Variable | Flag | Purpose |
 | --- | --- | --- |
@@ -76,6 +77,16 @@ render the submitted value. Pipe the exact bytes from an interactive or
 password-manager source, and remember that line-oriented producers may append
 a newline that becomes part of the Secret.
 
+API-token creation requires `--token-stdin` and a comma-separated `--scopes`
+value. The optional `--expires-at` value must be an RFC 3339 timestamp. The CLI
+reads at most 69 bytes to detect overflow, accepts exactly the 68 ASCII bytes
+formed by `a3s_` plus 64 lowercase hexadecimal digits, does not trim input, and
+clears the byte buffer after fatal UTF-8 decoding. The new credential has no
+argument, environment variable, configuration field, output field, or echoed
+error. API-token list/get and create/revoke results are projected onto safe
+metadata; Cloud stores only the credential digest through its A3S ORM-backed
+Identity repository.
+
 Desired-state commands additionally require `--file=<path>` and accept only a
 nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
 bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
@@ -93,6 +104,10 @@ context show
 diagnostics status
 organizations list
 organizations create <name>
+api-tokens list
+api-tokens get <api-token-id>
+api-tokens create <name> --token-stdin --scopes=<csv> [--expires-at=<timestamp>]
+api-tokens revoke <api-token-id>
 projects list
 projects create <name>
 environments list
@@ -191,6 +206,9 @@ Secret create, add-version, and revoke-version output includes only the safe
 metadata projection, changed version state, and authoritative `replayed`
 value. Plaintext is excluded even if an invalid upstream response attempts to
 add a value field or echo it in an error.
+API-token list/get output contains metadata only. Create/revoke output adds the
+authoritative `replayed` value; an unexpected response field or upstream error
+cannot make the submitted credential visible in table, JSON, or error output.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
@@ -202,5 +220,7 @@ publication parity is implemented through the same typed client. Source
 revision, GitHub connection, and repository-subscription parity is also
 implemented without bypassing the public API. Secret metadata and version
 lifecycle parity is implemented with standard-input-only material handling.
-Remaining identity resource parity, node bootstrap, authorized search, and the
-compatibility/deprecation gate remain planned.
+Identity API-token metadata and lifecycle parity is implemented with
+standard-input-only credential creation and digest-only persistence. Node
+bootstrap, authorized search, the compatibility/deprecation gate, and real
+cross-surface automation evidence remain planned.

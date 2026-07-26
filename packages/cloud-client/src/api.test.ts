@@ -739,6 +739,97 @@ describe('CloudApi', () => {
     expect(api.operationStreamUrl('organization')).not.toContain('a3s_secret');
   });
 
+  it('exposes tenant-scoped API token metadata and idempotent mutations', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const credential = `a3s_${'a'.repeat(64)}`;
+
+    await api.listApiTokens('organization / one');
+    await api.getApiToken('organization / one', 'token / one');
+    await api.createApiToken(
+      'organization / one',
+      {
+        name: 'automation',
+        token: credential,
+        scopes: ['project:write', 'build:write'],
+        expiresAt: '2027-01-02T03:04:05.000Z',
+      },
+      'client:token-create'
+    );
+    await api.revokeApiToken('organization / one', 'token / one', 'client:token-revoke');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/api-tokens',
+      '/api/v1/organizations/organization%20%2F%20one/api-tokens/token%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/api-tokens',
+      '/api/v1/organizations/organization%20%2F%20one/api-tokens/token%20%2F%20one',
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:token-create' }),
+        body: JSON.stringify({
+          name: 'automation',
+          token: credential,
+          scopes: ['project:write', 'build:write'],
+          expiresAt: '2027-01-02T03:04:05.000Z',
+        }),
+      })
+    );
+    expect(calls[3]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:token-revoke' }),
+      })
+    );
+    expect(calls.every(([input]) => !String(input).includes(credential))).toBe(true);
+  });
+
+  it('rejects invalid API token creation input before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    const valid = {
+      name: 'automation',
+      token: `a3s_${'a'.repeat(64)}`,
+      scopes: ['project:write'],
+      expiresAt: null,
+    };
+
+    expect(() =>
+      api.createApiToken('organization', { ...valid, token: 'not-a-token' }, 'client:token-invalid')
+    ).toThrow('API token must use the a3s_ prefix followed by 64 lowercase hex digits');
+    expect(() => api.createApiToken('organization', { ...valid, scopes: [] }, 'client:token-scopes')).toThrow(
+      'API token must grant at least one scope'
+    );
+    expect(() =>
+      api.createApiToken(
+        'organization',
+        { ...valid, scopes: ['Project:write'] },
+        'client:token-invalid-scope'
+      )
+    ).toThrow('API token scope must use bounded lowercase domain:action syntax');
+    expect(() =>
+      api.createApiToken('organization', { ...valid, expiresAt: 'tomorrow' }, 'client:token-invalid-expiry')
+    ).toThrow('API token expiry must be an RFC 3339 timestamp');
+    expect(() =>
+      api.createApiToken(
+        'organization',
+        { ...valid, expiresAt: '2027-02-30T03:04:05Z' },
+        'client:token-invalid-calendar-expiry'
+      )
+    ).toThrow('API token expiry must be an RFC 3339 timestamp');
+    expect(called).toBe(false);
+  });
+
   it('preserves only the validated API error contract', async () => {
     const fetcher: CloudFetch = async () =>
       new Response(

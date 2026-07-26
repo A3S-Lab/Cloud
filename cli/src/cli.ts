@@ -18,6 +18,10 @@ Commands:
   diagnostics status    Show public platform and health diagnostics
   organizations list   List authorized organizations
   organizations create NAME Create an organization idempotently
+  api-tokens list       List API token metadata in the selected organization
+  api-tokens get ID     Get one API token metadata record
+  api-tokens create NAME Create an API token from standard input idempotently
+  api-tokens revoke ID  Revoke one API token idempotently
   projects list        List projects in the selected organization
   projects create NAME Create a project idempotently
   environments list    List environments in the selected project
@@ -86,6 +90,9 @@ Global options:
   --target <stage>           Optional Dockerfile target stage
   --platforms <csv>          linux/amd64 and/or linux/arm64
   --value-stdin              Read Secret material exactly from standard input
+  --token-stdin              Read a new API token credential from standard input
+  --scopes <csv>             API token scopes for api-tokens create
+  --expires-at <timestamp>   Optional RFC 3339 API token expiry
   -h, --help              Show help
   -V, --version           Show version
 
