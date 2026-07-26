@@ -3,6 +3,13 @@ import type { CloudFetch } from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
+const PROJECT_ID = '019c0000-0000-7000-8000-000000000002';
+const ENVIRONMENT_ID = '019c0000-0000-7000-8000-000000000003';
+const WORKLOAD_ID = '019c0000-0000-7000-8000-000000000004';
+const REVISION_ID = '019c0000-0000-7000-8000-000000000005';
+const ROUTE_ID = '019c0000-0000-7000-8000-000000000006';
+const DEPLOYMENT_ID = '019c0000-0000-7000-8000-000000000007';
+const BUILD_RUN_ID = '019c0000-0000-7000-8000-000000000008';
 
 function envelope(data: unknown, status = 200): Response {
   return new Response(
@@ -97,6 +104,119 @@ describe('a3s-cloud CLI', () => {
     expect(output.stdout()).toBe('[]\n');
   });
 
+  it.each([
+    [
+      ['workloads', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/workloads`,
+    ],
+    [['workloads', 'get', WORKLOAD_ID], `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}`],
+    [['deployments', 'get', DEPLOYMENT_ID], `/organizations/${ORGANIZATION_ID}/deployments/${DEPLOYMENT_ID}`],
+    [
+      ['routes', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/routes`,
+    ],
+    [['routes', 'get', ROUTE_ID], `/organizations/${ORGANIZATION_ID}/routes/${ROUTE_ID}`],
+    [
+      ['build-runs', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/build-runs?limit=100`,
+    ],
+    [['build-runs', 'get', BUILD_RUN_ID], `/organizations/${ORGANIZATION_ID}/build-runs/${BUILD_RUN_ID}`],
+    [
+      ['build-runs', 'evidence', BUILD_RUN_ID],
+      `/organizations/${ORGANIZATION_ID}/build-runs/${BUILD_RUN_ID}/evidence`,
+    ],
+  ] as const)('queries an operational resource through the typed client %#', async (command, path) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(
+        command[1] === 'list' ? [] : operationalResource(command[1] === 'evidence' ? 'evidence' : command[0])
+      );
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...command, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(output.stderr()).toBe('');
+  });
+
+  it('reads workload logs with bounded query options and exposes the next cursor', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(logPage());
+    };
+    const output = capture();
+
+    const exitCode = await runCli(
+      ['workloads', 'logs', WORKLOAD_ID, REVISION_ID, '--cursor=v1:8', '--limit=25', '--stream=stderr'],
+      { ...output.runtime, environment: completeEnvironment(), fetch: fetcher }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}` +
+        `/revisions/${REVISION_ID}/logs?cursor=v1%3A8&limit=25&stream=stderr`
+    );
+    expect(output.stdout()).toContain('worker ready');
+    expect(output.stdout()).toContain('Next cursor: v1:9');
+  });
+
+  it('reads BuildRun logs as stable JSON', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope({ ...logPage(), buildRunId: BUILD_RUN_ID, operationId: BUILD_RUN_ID });
+    };
+    const output = capture();
+
+    const exitCode = await runCli(['build-runs', 'logs', BUILD_RUN_ID, '--limit=10', '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/build-runs/${BUILD_RUN_ID}/logs?limit=10`
+    );
+    expect(output.stdout()).toContain(`"buildRunId": "${BUILD_RUN_ID}"`);
+  });
+
+  it('rejects invalid resource IDs and log options before the network', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return envelope({});
+    };
+    const invalidId = capture();
+    const invalidLimit = capture();
+
+    expect(
+      await runCli(['routes', 'get', 'not-a-uuid'], {
+        ...invalidId.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['build-runs', 'logs', BUILD_RUN_ID, '--limit=257'], {
+        ...invalidLimit.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(called).toBe(false);
+    expect(invalidId.stderr()).toContain('route ID must be a UUID');
+    expect(invalidLimit.stderr()).toContain('log limit must be between 1 and 256');
+  });
+
   it('fails before the network when required context is absent', async () => {
     let called = false;
     const fetcher: CloudFetch = async () => {
@@ -115,6 +235,16 @@ describe('a3s-cloud CLI', () => {
     expect(called).toBe(false);
     expect(output.stderr()).toContain('organization ID is required');
     expect(output.stderr()).not.toContain('"error"');
+  });
+
+  it('reports an unsupported command without requiring an API token', async () => {
+    const output = capture();
+
+    const exitCode = await runCli(['unknown', 'list'], output.runtime);
+
+    expect(exitCode).toBe(2);
+    expect(output.stderr()).toContain('unsupported command');
+    expect(output.stderr()).not.toContain('A3S_CLOUD_TOKEN is required');
   });
 
   it('maps authentication failures to a redacted JSON error and stable exit code', async () => {
@@ -171,3 +301,60 @@ describe('a3s-cloud CLI', () => {
     expect(output.stderr()).not.toContain('a3s_secret');
   });
 });
+
+function completeEnvironment() {
+  return {
+    A3S_CLOUD_TOKEN: 'token',
+    A3S_CLOUD_ORGANIZATION_ID: ORGANIZATION_ID,
+    A3S_CLOUD_PROJECT_ID: PROJECT_ID,
+    A3S_CLOUD_ENVIRONMENT_ID: ENVIRONMENT_ID,
+  };
+}
+
+function operationalResource(kind: string): Record<string, unknown> {
+  if (kind === 'workloads') {
+    return { id: WORKLOAD_ID, name: 'worker', desiredState: 'running', deployments: [] };
+  }
+  if (kind === 'deployments') {
+    return { id: DEPLOYMENT_ID, workloadId: WORKLOAD_ID, status: 'active', revision: { generation: 1 } };
+  }
+  if (kind === 'routes') {
+    return { id: ROUTE_ID, hostname: 'worker.example.test', pathPrefix: '/', state: 'active' };
+  }
+  if (kind === 'build-runs') {
+    return { id: BUILD_RUN_ID, status: 'succeeded', attempt: 1, sourceRevisionId: REVISION_ID };
+  }
+  return {
+    schema: 'a3s.build-evidence.v1',
+    buildRunId: BUILD_RUN_ID,
+    repository: 'A3S-Lab/Cloud',
+    commitSha: 'a'.repeat(40),
+    verificationState: 'verified',
+    artifact: { digest: `sha256:${'b'.repeat(64)}` },
+  };
+}
+
+function logPage(): Record<string, unknown> {
+  return {
+    workloadId: WORKLOAD_ID,
+    revisionId: REVISION_ID,
+    nodeId: ORGANIZATION_ID,
+    unitId: 'runtime-unit',
+    generation: 1,
+    records: [
+      {
+        kind: 'data',
+        sourceCursor: 'provider:9',
+        sequence: 9,
+        observedAtMs: 1_774_723_200_000,
+        stream: 'stderr',
+        data: 'worker ready',
+        gapReason: null,
+        fromSequence: null,
+        throughSequence: null,
+        compactedChunks: null,
+      },
+    ],
+    nextCursor: 'v1:9',
+  };
+}

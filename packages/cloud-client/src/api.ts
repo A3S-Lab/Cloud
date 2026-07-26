@@ -1,8 +1,10 @@
 import type {
   BuildEvidence,
   BuildRun,
+  BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
+  Deployment,
   Environment,
   GatewayCertificate,
   Node,
@@ -16,6 +18,7 @@ import type {
   StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
+  WorkloadLogsPage,
   WorkloadLogStreamFilter,
 } from './types';
 import { CloudApiError } from './error';
@@ -28,6 +31,12 @@ export type CloudFetch = (input: RequestInfo | URL, init?: RequestInit) => Promi
 export interface CloudApiClientOptions {
   fetch?: CloudFetch;
   requestTimeoutMs?: number;
+}
+
+export interface CloudLogQuery {
+  cursor?: string;
+  limit?: number;
+  stream?: WorkloadLogStreamFilter;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -102,6 +111,19 @@ export class CloudApi {
     );
   }
 
+  getBuildRunLogs(
+    organizationId: string,
+    buildRunId: string,
+    query: CloudLogQuery = {},
+    signal?: AbortSignal
+  ): Promise<BuildRunLogsPage> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/build-runs/${encodeURIComponent(buildRunId)}/logs${encodeLogQuery(query)}`,
+      signal
+    );
+  }
+
   getBuildEvidence(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildEvidence> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}/evidence`,
@@ -121,6 +143,35 @@ export class CloudApi {
     );
   }
 
+  getWorkload(organizationId: string, workloadId: string, signal?: AbortSignal): Promise<Workload> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}`,
+      signal
+    );
+  }
+
+  getDeployment(organizationId: string, deploymentId: string, signal?: AbortSignal): Promise<Deployment> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/deployments/${encodeURIComponent(deploymentId)}`,
+      signal
+    );
+  }
+
+  getWorkloadLogs(
+    organizationId: string,
+    workloadId: string,
+    revisionId: string,
+    query: CloudLogQuery = {},
+    signal?: AbortSignal
+  ): Promise<WorkloadLogsPage> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workloads/${encodeURIComponent(workloadId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}/logs${encodeLogQuery(query)}`,
+      signal
+    );
+  }
+
   listRoutes(
     organizationId: string,
     projectId: string,
@@ -129,6 +180,13 @@ export class CloudApi {
   ): Promise<Route[]> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/routes`,
+      signal
+    );
+  }
+
+  getRoute(organizationId: string, routeId: string, signal?: AbortSignal): Promise<Route> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/routes/${encodeURIComponent(routeId)}`,
       signal
     );
   }
@@ -354,4 +412,38 @@ export class CloudApi {
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
   }
+}
+
+function encodeLogQuery(query: CloudLogQuery): string {
+  const parameters = new URLSearchParams();
+  if (query.cursor !== undefined) {
+    if (query.cursor.length === 0 || query.cursor.length > 1_024 || hasUnsafeControl(query.cursor)) {
+      throw new TypeError('log cursor is invalid');
+    }
+    parameters.set('cursor', query.cursor);
+  }
+  if (query.limit !== undefined) {
+    if (!Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 256) {
+      throw new RangeError('log limit must be between 1 and 256');
+    }
+    parameters.set('limit', String(query.limit));
+  }
+  if (query.stream !== undefined) {
+    if (query.stream !== 'stdout' && query.stream !== 'stderr') {
+      throw new TypeError('log stream must be stdout or stderr');
+    }
+    parameters.set('stream', query.stream);
+  }
+  const encoded = parameters.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+function hasUnsafeControl(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) {
+      return true;
+    }
+  }
+  return false;
 }

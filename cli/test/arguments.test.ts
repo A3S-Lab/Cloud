@@ -21,6 +21,27 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses bounded log query options without interpreting the cursor', () => {
+    expect(
+      parseArguments([
+        'build-runs',
+        'logs',
+        '019c0000-0000-7000-8000-000000000005',
+        '--cursor=v1:41',
+        '--limit',
+        '25',
+        '--stream=stderr',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        positionals: ['build-runs', 'logs', '019c0000-0000-7000-8000-000000000005'],
+        cursor: 'v1:41',
+        limit: '25',
+        stream: 'stderr',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],

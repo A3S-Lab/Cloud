@@ -1,4 +1,4 @@
-import type { Operation, ServiceTemplate, Workload, WorkloadRevision } from '../../types/api';
+import type { Operation, Route, ServiceTemplate, Workload, WorkloadRevision } from '../../types/api';
 
 export interface TemplateChange {
   path: string;
@@ -9,6 +9,12 @@ export interface TemplateChange {
 export interface ParsedServiceTemplateDraft {
   template: ServiceTemplate | null;
   error: string | null;
+}
+
+export interface RouteStage {
+  name: string;
+  label: string;
+  state: 'pending' | 'current' | 'complete' | 'failed';
 }
 
 export function diffTemplates(before: ServiceTemplate, after: ServiceTemplate): TemplateChange[] {
@@ -78,6 +84,33 @@ export function isTerminalOperation(operation: Operation): boolean {
 
 export function visibleOperations(operations: Operation[], dismissed: ReadonlySet<string>): Operation[] {
   return operations.filter((operation) => !dismissed.has(operation.id) || !isTerminalOperation(operation));
+}
+
+export function routeStage(revisionId: string | undefined, routes: Route[]): RouteStage {
+  const revisionRoutes = revisionId ? routes.filter((route) => route.workloadRevisionId === revisionId) : [];
+  if (revisionRoutes.some((route) => route.state === 'rejected')) {
+    return { name: 'Route active', label: 'Rejected', state: 'failed' };
+  }
+  if (revisionRoutes.some((route) => route.state === 'unavailable')) {
+    return { name: 'Route active', label: 'Unavailable', state: 'failed' };
+  }
+  if (revisionRoutes.length > 0 && revisionRoutes.every((route) => route.state === 'active')) {
+    return {
+      name: 'Route active',
+      label: `${revisionRoutes.length} acknowledged`,
+      state: 'complete',
+    };
+  }
+  if (revisionRoutes.some((route) => route.state === 'publishing')) {
+    return { name: 'Route active', label: 'Publishing', state: 'current' };
+  }
+  if (revisionRoutes.some((route) => route.state === 'pending')) {
+    return { name: 'Route active', label: 'Pending', state: 'current' };
+  }
+  if (routes.some((route) => route.state === 'active')) {
+    return { name: 'Route active', label: 'Prior revision active', state: 'pending' };
+  }
+  return { name: 'Route active', label: 'No route projection', state: 'pending' };
 }
 
 function visitDifference(before: unknown, after: unknown, path: string, changes: TemplateChange[]): void {

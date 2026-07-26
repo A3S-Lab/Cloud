@@ -124,7 +124,7 @@ reconciliation engine.
 `G0` remains in progress until external private-provider certification and the
 production signed-evidence process-death gate pass.
 
-`C0` now includes the first `C0.1` automation slice:
+`C0` now includes the initial `C0.1` automation slices:
 
 - one maintained TypeScript client is shared by the web console and CLI;
 - the client validates success and error envelopes, preserves bounded error
@@ -132,13 +132,16 @@ production signed-evidence process-death gate pass.
   stable non-secret errors;
 - the CLI accepts authentication only through `A3S_CLOUD_TOKEN`, resolves URL
   and tenant context from flags or environment without a credential file, and
-  emits bounded table or stable JSON output; and
+  emits bounded table or stable JSON output;
 - organization, project, environment, node, and operation queries use the same
-  public REST paths and tenant guards as the web console.
+  public REST paths and tenant guards as the web console; and
+- workload, deployment, route, BuildRun, signed-evidence, and bounded paged-log
+  queries extend that same transport without reading PostgreSQL or contacting a
+  node directly.
 
-`C0.1` remains in progress. Full deployment, route, log, diagnostics and
-mutation parity, node bootstrap, authorized global search, contract
-compatibility policy, and cross-surface automation evidence remain required.
+`C0.1` remains in progress. Mutation parity, administrative diagnostics, node
+bootstrap, authorized global search, contract compatibility policy, and real
+cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -244,11 +247,13 @@ format never becomes a second mutable source of truth.
 No presentation surface owns business rules or bypasses tenant guards,
 idempotency, operations, or audit.
 
-The implemented first `C0.1` slice establishes the shared typed transport,
+The implemented `C0.1` slices establish the shared typed transport,
 non-persistent environment/flag context, safe output and exit-code contracts,
-and read-only organization, project, environment, node, and operation commands.
-It does not close `C0.1`; the remaining parity and authorized-search work above
-must land against the same client and application commands or queries.
+read-only tenant commands, then adds workload, deployment, route, BuildRun,
+signed-evidence, and bounded paged-log queries. It does not close `C0.1`; the
+remaining mutation, diagnostics, bootstrap, compatibility, and
+authorized-search work above must land against the same client and application
+commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

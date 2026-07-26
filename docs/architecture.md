@@ -1414,8 +1414,12 @@ URL or error. The first `C0.1` CLI slice is presentation-only: it resolves
 non-secret context from flags or environment, reads the token only from
 `A3S_CLOUD_TOKEN`, and invokes public tenant-guarded queries. It does not persist
 context, read PostgreSQL, contact nodes, or infer authorization from hidden
-output. Later CLI and MCP surfaces must continue through this API and the same
-application commands and queries.
+output. The operational read slice adds workload, deployment, route, BuildRun,
+signed-evidence, and cursor-paginated workload/build logs through the exact
+existing REST queries. Resource identifiers are validated before transport;
+log cursors remain opaque and limits stay bounded. Later mutation and MCP
+surfaces must continue through this API and the same application commands and
+queries.
 
 Secret mutations require the `secret:write` scope. The initial resource API is:
 

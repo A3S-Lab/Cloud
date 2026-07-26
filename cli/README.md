@@ -33,6 +33,10 @@ CLI does not create a context or credential file.
 | `A3S_CLOUD_OUTPUT` | `--output` | `table` or `json` |
 | `A3S_CLOUD_TIMEOUT_MS` | `--timeout` | Request timeout from 1 through 300000 ms |
 
+Log commands additionally accept an opaque `--cursor`, a `--limit` from 1
+through 256, and an optional `--stream=stdout|stderr` filter. These options are
+rejected for commands that do not read logs.
+
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 
@@ -45,6 +49,16 @@ projects list
 environments list
 nodes list
 operations list
+workloads list
+workloads get <workload-id>
+workloads logs <workload-id> <revision-id>
+deployments get <deployment-id>
+routes list
+routes get <route-id>
+build-runs list
+build-runs get <build-run-id>
+build-runs evidence <build-run-id>
+build-runs logs <build-run-id>
 ```
 
 `context show` reports only whether a token is configured; it never prints the
@@ -68,5 +82,6 @@ array, while failure JSON is written to stderr under an `error` object.
 Table cells and error metadata are bounded and control characters are
 neutralized. Sensitive error-detail keys are redacted before JSON output.
 
-This is the first `C0.1` slice. Deployment, route, log, diagnostics, mutation,
-node-bootstrap, and authorized-search commands remain planned.
+This is an in-progress `C0.1` surface. Tenant and operational reads are
+implemented. Mutations, administrative diagnostics, node bootstrap, authorized
+search, and the compatibility/deprecation gate remain planned.

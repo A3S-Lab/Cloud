@@ -62,6 +62,8 @@ function workload(): Workload {
     environmentId: 'environment-1',
     name: 'api',
     desiredState: 'running',
+    control: workloadControl(current.createdAt),
+    replicas: [],
     desiredRevision: current,
     activeRevision: current,
     deployments: [deployment(current)],
@@ -92,9 +94,15 @@ function deployment(workloadRevision: WorkloadRevision): Deployment {
   return {
     id: 'deployment-1',
     workloadId: 'workload-1',
+    replicaId: 'replica-1',
+    replicaGeneration: 1,
+    memberId: 'member-1',
+    placementGeneration: 1,
     revision: workloadRevision,
     operationId: 'operation-1',
     nodeId: 'node-1',
+    runtimeUnitId: 'runtime-unit-1',
+    runtimeGeneration: 1,
     commandId: 'command-1',
     cleanupCommandId: null,
     retirementCommandId: null,
@@ -108,6 +116,23 @@ function deployment(workloadRevision: WorkloadRevision): Deployment {
     activatedAt: workloadRevision.createdAt,
     cancellationRequestedAt: null,
     cancelledAt: null,
+  };
+}
+
+function workloadControl(timestamp: string): Workload['control'] {
+  return {
+    managedOwner: null,
+    placementPolicy: {
+      schema: 'a3s.workload-placement.v1',
+      generation: 1,
+      desiredReplicas: 1,
+      membersPerReplica: 1,
+      topology: 'single_node',
+      digest: 'sha256:placement',
+    },
+    aggregateVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
   };
 }
 

@@ -20,6 +20,16 @@ Commands:
   environments list    List environments in the selected project
   nodes list            List nodes in the selected organization
   operations list       List recent operations in the selected organization
+  workloads list        List workloads in the selected environment
+  workloads get ID      Get one workload
+  workloads logs ID REV Read one page of workload revision logs
+  deployments get ID    Get one deployment
+  routes list           List routes in the selected environment
+  routes get ID         Get one route
+  build-runs list       List recent BuildRuns in the selected environment
+  build-runs get ID     Get one BuildRun
+  build-runs evidence ID Get verified BuildRun evidence
+  build-runs logs ID    Read one page of BuildRun logs
 
 Global options:
   --url <url>             Cloud API URL ending in /api/v1
@@ -28,6 +38,9 @@ Global options:
   --environment <uuid>    Environment context
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
+  --cursor <cursor>       Opaque cursor for a log command
+  --limit <1..256>        Record limit for a log command
+  --stream <stdout|stderr> Filter a log command by stream
   -h, --help              Show help
   -V, --version           Show version
 
@@ -63,7 +76,7 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime = {}):
       return ExitCode.Success;
     }
     const context = resolveContext(arguments_, environment);
-    const result = await executeCommand(arguments_.positionals, context, runtime.fetch);
+    const result = await executeCommand(arguments_, context, runtime.fetch);
     writeStdout(
       redactToken(context.output === 'json' ? renderJson(result.json) : result.table, context.token)
     );

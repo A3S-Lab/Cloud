@@ -87,6 +87,7 @@
 }
 
 .state-badge.rejected,
+.state-badge.unavailable,
 .state-badge.revoked {
   border-color: rgba(240, 123, 115, 0.28);
   color: var(--danger);
