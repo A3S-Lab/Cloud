@@ -21,6 +21,8 @@ import type {
   GithubConnectionInstall,
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
+  EnrollmentToken,
+  IssueEnrollmentTokenInput,
   Node,
   Operation,
   Organization,
@@ -47,7 +49,15 @@ import type {
 } from './types';
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
+import { encodeLogQuery, type CloudLogQuery } from './log-query';
 import { readHealthResponse, readResponse } from './response';
+import {
+  validateApiTokenInput,
+  validateEnrollmentTokenInput,
+  validateExpectedNodeVersion,
+  validateSecretValue,
+  validateWorkloadAcl,
+} from './validation';
 
 export { CloudApiError } from './error';
 
@@ -58,73 +68,14 @@ export interface CloudApiClientOptions {
   requestTimeoutMs?: number;
 }
 
-export interface CloudLogQuery {
-  cursor?: string;
-  limit?: number;
-  stream?: WorkloadLogStreamFilter;
-}
-
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
-export const MAX_WORKLOAD_ACL_BYTES = 64 * 1024;
-export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
+export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
+export type { CloudLogQuery } from './log-query';
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
-}
-
-function validateApiTokenInput(input: CreateApiTokenInput): void {
-  if (!/^a3s_[0-9a-f]{64}$/.test(input.token)) {
-    throw new TypeError('API token must use the a3s_ prefix followed by 64 lowercase hex digits');
-  }
-  if (!Array.isArray(input.scopes) || input.scopes.length === 0) {
-    throw new TypeError('API token must grant at least one scope');
-  }
-  const uniqueScopes = new Set<string>();
-  for (const scope of input.scopes) {
-    if (typeof scope !== 'string' || scope.length > 63 || !/^[a-z-]+:[a-z-]+$/.test(scope)) {
-      throw new TypeError('API token scope must use bounded lowercase domain:action syntax');
-    }
-    if (uniqueScopes.has(scope)) {
-      throw new TypeError('API token scopes must be unique');
-    }
-    uniqueScopes.add(scope);
-  }
-  if (input.expiresAt !== undefined && input.expiresAt !== null) {
-    if (!isRfc3339Timestamp(input.expiresAt)) {
-      throw new TypeError('API token expiry must be an RFC 3339 timestamp');
-    }
-  }
-}
-
-function isRfc3339Timestamp(value: string): boolean {
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
-  if (!match || !Number.isFinite(Date.parse(value))) {
-    return false;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6]);
-  const offsetHour = match[7] === undefined ? 0 : Number(match[7]);
-  const offsetMinute = match[8] === undefined ? 0 : Number(match[8]);
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const days = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return (
-    month >= 1 &&
-    month <= 12 &&
-    day >= 1 &&
-    day <= (days[month - 1] ?? 0) &&
-    hour <= 23 &&
-    minute <= 59 &&
-    second <= 59 &&
-    offsetHour <= 23 &&
-    offsetMinute <= 59
-  );
 }
 
 export class CloudApi {
@@ -267,6 +218,21 @@ export class CloudApi {
 
   listNodes(organizationId: string, signal?: AbortSignal): Promise<Node[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/nodes`, signal);
+  }
+
+  issueEnrollmentToken(
+    organizationId: string,
+    input: IssueEnrollmentTokenInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<EnrollmentToken> {
+    validateEnrollmentTokenInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/enrollment-tokens`,
+      idempotencyKey,
+      input,
+      signal
+    );
   }
 
   markNodeReady(
@@ -1019,58 +985,4 @@ export class CloudApi {
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
   }
-}
-
-function validateWorkloadAcl(manifest: string): void {
-  const bytes = new TextEncoder().encode(manifest).byteLength;
-  if (bytes < 1 || bytes > MAX_WORKLOAD_ACL_BYTES) {
-    throw new RangeError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
-  }
-}
-
-function validateSecretValue(value: string): void {
-  const bytes = typeof value === 'string' ? new TextEncoder().encode(value).byteLength : 0;
-  if (bytes < 1 || bytes > MAX_SECRET_VALUE_BYTES) {
-    throw new RangeError('Secret value must contain between 1 byte and 1 MiB');
-  }
-}
-
-function validateExpectedNodeVersion(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new RangeError('expected node version must be a positive safe integer');
-  }
-}
-
-function encodeLogQuery(query: CloudLogQuery): string {
-  const parameters = new URLSearchParams();
-  if (query.cursor !== undefined) {
-    if (query.cursor.length === 0 || query.cursor.length > 1_024 || hasUnsafeControl(query.cursor)) {
-      throw new TypeError('log cursor is invalid');
-    }
-    parameters.set('cursor', query.cursor);
-  }
-  if (query.limit !== undefined) {
-    if (!Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 256) {
-      throw new RangeError('log limit must be between 1 and 256');
-    }
-    parameters.set('limit', String(query.limit));
-  }
-  if (query.stream !== undefined) {
-    if (query.stream !== 'stdout' && query.stream !== 'stderr') {
-      throw new TypeError('log stream must be stdout or stderr');
-    }
-    parameters.set('stream', query.stream);
-  }
-  const encoded = parameters.toString();
-  return encoded ? `?${encoded}` : '';
-}
-
-function hasUnsafeControl(value: string): boolean {
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 0;
-    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) {
-      return true;
-    }
-  }
-  return false;
 }

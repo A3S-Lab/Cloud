@@ -26,6 +26,7 @@ import {
 import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
+import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
 import {
   buildEvidenceResult,
   buildRunLogsResult,
@@ -38,8 +39,6 @@ import {
   diagnosticsResult,
   environmentMutationResult,
   environmentsResult,
-  nodeMutationResult,
-  nodesResult,
   operationsResult,
   organizationMutationResult,
   organizationsResult,
@@ -78,6 +77,7 @@ export async function executeCommand(
   rejectMisplacedSourceRecipeOptions(command, arguments_);
   rejectMisplacedSecretValueOption(command, arguments_);
   rejectMisplacedIdentityOptions(command, arguments_);
+  rejectMisplacedNodeOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -129,6 +129,12 @@ export async function executeCommand(
   if (secretResult !== undefined) {
     return secretResult;
   }
+  const nodeResult = await executeNodeCommand(command, arguments_, context, cloudApi, {
+    readStdin: dependencies.readStdin,
+  });
+  if (nodeResult !== undefined) {
+    return nodeResult;
+  }
   switch (command) {
     case 'organizations list':
       requireListCommand(arguments_);
@@ -163,24 +169,6 @@ export async function executeCommand(
           mutation.idempotencyKey
         )
       );
-    }
-    case 'nodes list':
-      requireListCommand(arguments_);
-      return nodesResult(await cloudApi().listNodes(requireOrganization(context)));
-    case 'nodes ready':
-    case 'nodes drain':
-    case 'nodes revoke': {
-      const mutation = requireNodeMutationCommand(arguments_, `nodes ${positionals[1]} <node-id>`);
-      const organizationId = requireOrganization(context);
-      const nodeId = positionalUuid(positionals, 2, 'node ID');
-      const api = cloudApi();
-      const node =
-        command === 'nodes ready'
-          ? await api.markNodeReady(organizationId, nodeId, mutation.expectedVersion, mutation.idempotencyKey)
-          : command === 'nodes drain'
-            ? await api.drainNode(organizationId, nodeId, mutation.expectedVersion, mutation.idempotencyKey)
-            : await api.revokeNode(organizationId, nodeId, mutation.expectedVersion, mutation.idempotencyKey);
-      return nodeMutationResult(node);
     }
     case 'operations list':
       requireListCommand(arguments_);
@@ -379,29 +367,6 @@ function requireNamedMutationCommand(
   const idempotencyKey = requireMutationCommand(arguments_, 3, usage);
   const name = positionalResourceName(arguments_.positionals, 2);
   return { idempotencyKey, name };
-}
-
-function requireNodeMutationCommand(
-  arguments_: ParsedArguments,
-  usage: string
-): { expectedVersion: number; idempotencyKey: string } {
-  requireArity(arguments_.positionals, 3, usage);
-  rejectLogOptions(arguments_);
-  rejectFileOption(arguments_);
-  rejectGatewayRolloutOptions(arguments_);
-  const idempotencyKey = requireIdempotencyKey(arguments_);
-  const rawVersion = arguments_.expectedVersion;
-  if (rawVersion === undefined) {
-    throw usageError('--expected-version is required for node lifecycle mutations');
-  }
-  if (!/^[0-9]+$/.test(rawVersion)) {
-    throw usageError('expected node version must be a positive safe integer');
-  }
-  const expectedVersion = Number(rawVersion);
-  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
-    throw usageError('expected node version must be a positive safe integer');
-  }
-  return { expectedVersion, idempotencyKey };
 }
 
 function requireAclMutationCommand(

@@ -22,15 +22,19 @@ export interface ParsedArguments {
   platforms?: string;
   scopes?: string;
   expiresAt?: string;
+  agentReleaseUrl?: string;
+  agentReleaseSha256?: string;
+  nodeConfig?: string;
   valueStdin: boolean;
   tokenStdin: boolean;
+  enrollmentTokenStdin: boolean;
   help: boolean;
   version: boolean;
 }
 
 type ValueOption = Exclude<
   keyof ParsedArguments,
-  'help' | 'positionals' | 'tokenStdin' | 'valueStdin' | 'version'
+  'enrollmentTokenStdin' | 'help' | 'positionals' | 'tokenStdin' | 'valueStdin' | 'version'
 >;
 
 const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
@@ -54,6 +58,9 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--platforms': 'platforms',
   '--scopes': 'scopes',
   '--expires-at': 'expiresAt',
+  '--agent-release-url': 'agentReleaseUrl',
+  '--agent-release-sha256': 'agentReleaseSha256',
+  '--node-config': 'nodeConfig',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {
@@ -61,6 +68,7 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     positionals: [],
     valueStdin: false,
     tokenStdin: false,
+    enrollmentTokenStdin: false,
     help: false,
     version: false,
   };
@@ -91,6 +99,16 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
       }
       parsed.tokenStdin = true;
       continue;
+    }
+    if (argument === '--enrollment-token-stdin') {
+      if (parsed.enrollmentTokenStdin) {
+        throw usageError('option --enrollment-token-stdin may be specified only once');
+      }
+      parsed.enrollmentTokenStdin = true;
+      continue;
+    }
+    if (argument.startsWith('--enrollment-token-stdin=')) {
+      throw usageError('option --enrollment-token-stdin does not accept a value');
     }
     if (argument.startsWith('--token-stdin=')) {
       throw usageError('option --token-stdin does not accept a value');

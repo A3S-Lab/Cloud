@@ -90,6 +90,30 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses explicit node bootstrap credential and release options', () => {
+    expect(
+      parseArguments([
+        'nodes',
+        'bootstrap',
+        'worker-1',
+        '--enrollment-token-stdin',
+        '--expires-at=2026-07-27T01:15:00Z',
+        '--agent-release-url=https://releases.example.test/node-agent',
+        `--agent-release-sha256=${'a'.repeat(64)}`,
+        '--node-config=/etc/a3s-cloud/node.acl',
+        '--idempotency-key=fleet:bootstrap:worker-1',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        enrollmentTokenStdin: true,
+        expiresAt: '2026-07-27T01:15:00Z',
+        agentReleaseUrl: 'https://releases.example.test/node-agent',
+        agentReleaseSha256: 'a'.repeat(64),
+        nodeConfig: '/etc/a3s-cloud/node.acl',
+      })
+    );
+  });
+
   it('parses explicit Gateway rollout thresholds', () => {
     expect(
       parseArguments([
@@ -162,6 +186,11 @@ describe('parseArguments', () => {
     [['--output', 'json', '--output', 'table'], 'may be specified only once'],
     [['secrets', 'create', 'Database URL', '--value-stdin', '--value-stdin'], 'may be specified only once'],
     [['secrets', 'create', 'Database URL', '--value-stdin=plaintext'], 'does not accept a value'],
+    [
+      ['nodes', 'bootstrap', 'worker-1', '--enrollment-token-stdin', '--enrollment-token-stdin'],
+      'may be specified only once',
+    ],
+    [['nodes', 'bootstrap', 'worker-1', '--enrollment-token-stdin=value'], 'does not accept a value'],
   ])('rejects unsafe or ambiguous arguments %#', (argv, message) => {
     expect(() => parseArguments(argv)).toThrow(message);
     try {
