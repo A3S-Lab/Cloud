@@ -41,6 +41,8 @@ export interface CloudLogQuery {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
+export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
+export const MAX_WORKLOAD_ACL_BYTES = 64 * 1024;
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
@@ -199,6 +201,59 @@ export class CloudApi {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/gateway-certificates`, signal);
   }
 
+  createWorkloadFromAcl(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    manifest: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/workloads`,
+      idempotencyKey,
+      manifest,
+      signal
+    );
+  }
+
+  updateWorkloadFromAcl(
+    organizationId: string,
+    workloadId: string,
+    manifest: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/deployments`,
+      idempotencyKey,
+      manifest,
+      signal
+    );
+  }
+
+  deploySourceRevisionFromAcl(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    sourceRevisionId: string,
+    manifest: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/source-revisions/${encodeURIComponent(sourceRevisionId)}/workloads`,
+      idempotencyKey,
+      manifest,
+      signal
+    );
+  }
+
   updateWorkload(
     organizationId: string,
     workloadId: string,
@@ -355,20 +410,44 @@ export class CloudApi {
   }
 
   private postJson<T>(path: string, idempotencyKey: string, body: unknown, signal?: AbortSignal): Promise<T> {
-    return this.request('POST', path, { body, idempotencyKey, signal });
+    return this.request('POST', path, {
+      body: JSON.stringify(body),
+      contentType: 'application/json',
+      idempotencyKey,
+      signal,
+    });
+  }
+
+  private postAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    manifest: string,
+    signal?: AbortSignal
+  ): Promise<T> {
+    validateWorkloadAcl(manifest);
+    return this.request('POST', path, {
+      body: manifest,
+      contentType: A3S_ACL_MEDIA_TYPE,
+      idempotencyKey,
+      signal,
+    });
   }
 
   private async request<T>(
     method: 'DELETE' | 'GET' | 'POST',
     path: string,
     options: {
-      body?: unknown;
+      body?: string;
+      contentType?: string;
       idempotencyKey?: string;
       signal?: AbortSignal;
     }
   ): Promise<T> {
     if (options.idempotencyKey !== undefined && !isValidIdempotencyKey(options.idempotencyKey)) {
       throw new TypeError('idempotency key is invalid');
+    }
+    if ((options.body === undefined) !== (options.contentType === undefined)) {
+      throw new TypeError('request body and content type must be provided together');
     }
     const controller = new AbortController();
     let timedOut = false;
@@ -389,17 +468,15 @@ export class CloudApi {
     if (options.idempotencyKey !== undefined) {
       headers['Idempotency-Key'] = options.idempotencyKey;
     }
-    let body: string | undefined;
     if (options.body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-      body = JSON.stringify(options.body);
+      headers['Content-Type'] = options.contentType as string;
     }
 
     try {
       const response = await this.fetcher(`${this.baseUrl}${path}`, {
         method,
         headers,
-        body,
+        body: options.body,
         signal: controller.signal,
       });
       return await readResponse<T>(response);
@@ -418,6 +495,13 @@ export class CloudApi {
       clearTimeout(timeout);
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
+  }
+}
+
+function validateWorkloadAcl(manifest: string): void {
+  const bytes = new TextEncoder().encode(manifest).byteLength;
+  if (bytes < 1 || bytes > MAX_WORKLOAD_ACL_BYTES) {
+    throw new RangeError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
   }
 }
 

@@ -1,0 +1,39 @@
+version = 1
+
+workload "api" {
+  artifact {
+    uri = "oci://registry.example.com/acme/api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    expected_digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+
+  process {
+    command = ["/app"]
+    args = ["serve"]
+    working_directory = "/srv"
+
+    environment "RUST_LOG" {
+      value = "info"
+    }
+  }
+
+  resources {
+    cpu_millis = 500
+    memory_bytes = 268435456
+    pids = 128
+    ephemeral_storage_bytes = 1073741824
+  }
+
+  port "http" {
+    container_port = 8080
+  }
+
+  health {
+    port_name = "http"
+    path = "/health"
+    interval_ms = 1000
+    timeout_ms = 500
+    healthy_threshold = 1
+    unhealthy_threshold = 3
+    stabilization_window_ms = 1000
+  }
+}

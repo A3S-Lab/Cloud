@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-26.**
+**Status as of 2026-07-27.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -140,12 +140,16 @@ production signed-evidence process-death gate pass.
   node directly; and
 - workload stop/rollback plus deployment and BuildRun cancel/retry commands
   require a caller-owned validated `Idempotency-Key`, surface replay state, and
-  call the existing application commands without a hidden confirmation path.
+  call the existing application commands without a hidden confirmation path;
+  and
+- Workload create/update and SourceRevision deployment accept bounded A3S ACL
+  through the same public REST paths. Cloud parses the exact document with
+  `a3s-acl`, rejects unknown version-1 fields, and preserves JSON-client
+  idempotency semantics.
 
-`C0.1` remains in progress. ACL-backed desired-state and remaining resource
-mutation parity, administrative diagnostics, node bootstrap, authorized global
-search, contract compatibility policy, and real cross-surface automation
-evidence remain required.
+`C0.1` remains in progress. Remaining resource mutation parity, administrative
+diagnostics, node bootstrap, authorized global search, contract compatibility
+policy, and real cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -256,9 +260,10 @@ non-persistent environment/flag context, safe output and exit-code contracts,
 read-only tenant commands, then adds workload, deployment, route, BuildRun,
 signed-evidence, and bounded paged-log queries. It does not close `C0.1`; the
 operational mutation slice adds explicit idempotent stop, rollback, cancel, and
-retry commands. Remaining ACL-backed mutation, diagnostics, bootstrap,
-compatibility, and authorized-search work above must land against the same
-client and application commands or queries.
+retry commands, while the desired-state slice adds Cloud-admitted A3S ACL for
+Workload create/update and SourceRevision deployment. Remaining resource
+mutation, diagnostics, bootstrap, compatibility, and authorized-search work
+above must land against the same client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

@@ -1,4 +1,10 @@
-import { CloudApi, type CloudFetch, type CloudLogQuery, isValidIdempotencyKey } from '@a3s/cloud-client';
+import {
+  CloudApi,
+  type CloudFetch,
+  type CloudLogQuery,
+  isValidIdempotencyKey,
+  MAX_WORKLOAD_ACL_BYTES,
+} from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import type { CloudContext } from './context';
 import {
@@ -26,20 +32,25 @@ import {
   organizationsResult,
   projectsResult,
   retryBuildRunResult,
-  rollbackWorkloadResult,
   routeResult,
   routesResult,
   stopWorkloadResult,
   type CommandResult,
   workloadLogsResult,
+  workloadDeploymentResult,
   workloadResult,
   workloadsResult,
 } from './results';
 
+export interface CommandDependencies {
+  fetch?: CloudFetch;
+  readFile?: (path: string) => Promise<Uint8Array>;
+}
+
 export async function executeCommand(
   arguments_: ParsedArguments,
   context: CloudContext,
-  fetcher?: CloudFetch
+  dependencies: CommandDependencies = {}
 ): Promise<CommandResult> {
   const { positionals } = arguments_;
   if (positionals.length < 2) {
@@ -50,13 +61,14 @@ export async function executeCommand(
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
     rejectIdempotencyOption(arguments_);
+    rejectFileOption(arguments_);
     return contextResult(publicContext(context));
   }
 
   let api: CloudApi | undefined;
   const cloudApi = (): CloudApi => {
     api ??= new CloudApi(requireToken(context), context.baseUrl, {
-      fetch: fetcher,
+      fetch: dependencies.fetch,
       requestTimeoutMs: context.timeoutMs,
     });
     return api;
@@ -99,6 +111,7 @@ export async function executeCommand(
     case 'workloads logs':
       requireArity(positionals, 4, 'workloads logs <workload-id> <revision-id>');
       rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
       return workloadLogsResult(
         await cloudApi().getWorkloadLogs(
           requireOrganization(context),
@@ -107,6 +120,33 @@ export async function executeCommand(
           parseLogQuery(arguments_)
         )
       );
+    case 'workloads create': {
+      const mutation = requireAclMutationCommand(arguments_, 2, 'workloads create');
+      const organizationId = requireOrganization(context);
+      const projectId = requireProject(context);
+      const environmentId = requireEnvironment(context);
+      const api = cloudApi();
+      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      return workloadDeploymentResult(
+        await api.createWorkloadFromAcl(
+          organizationId,
+          projectId,
+          environmentId,
+          manifest,
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'workloads update': {
+      const mutation = requireAclMutationCommand(arguments_, 3, 'workloads update <workload-id>');
+      const organizationId = requireOrganization(context);
+      const workloadId = positionalUuid(positionals, 2, 'workload ID');
+      const api = cloudApi();
+      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      return workloadDeploymentResult(
+        await api.updateWorkloadFromAcl(organizationId, workloadId, manifest, mutation.idempotencyKey)
+      );
+    }
     case 'workloads stop': {
       const idempotencyKey = requireMutationCommand(arguments_, 3, 'workloads stop <workload-id>');
       const organizationId = requireOrganization(context);
@@ -122,8 +162,31 @@ export async function executeCommand(
       const organizationId = requireOrganization(context);
       const workloadId = positionalUuid(positionals, 2, 'workload ID');
       const revisionId = positionalUuid(positionals, 3, 'revision ID');
-      return rollbackWorkloadResult(
+      return workloadDeploymentResult(
         await cloudApi().rollbackWorkload(organizationId, workloadId, revisionId, idempotencyKey)
+      );
+    }
+    case 'source-revisions deploy': {
+      const mutation = requireAclMutationCommand(
+        arguments_,
+        3,
+        'source-revisions deploy <source-revision-id>'
+      );
+      const organizationId = requireOrganization(context);
+      const projectId = requireProject(context);
+      const environmentId = requireEnvironment(context);
+      const sourceRevisionId = positionalUuid(positionals, 2, 'source revision ID');
+      const api = cloudApi();
+      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      return workloadDeploymentResult(
+        await api.deploySourceRevisionFromAcl(
+          organizationId,
+          projectId,
+          environmentId,
+          sourceRevisionId,
+          manifest,
+          mutation.idempotencyKey
+        )
       );
     }
     case 'deployments get':
@@ -184,6 +247,7 @@ export async function executeCommand(
     case 'build-runs logs':
       requireArity(positionals, 3, 'build-runs logs <build-run-id>');
       rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
       return buildRunLogsResult(
         await cloudApi().getBuildRunLogs(
           requireOrganization(context),
@@ -214,12 +278,14 @@ function requireListCommand(arguments_: ParsedArguments): void {
   requireArity(arguments_.positionals, 2, `${arguments_.positionals[0]} list`);
   rejectLogOptions(arguments_);
   rejectIdempotencyOption(arguments_);
+  rejectFileOption(arguments_);
 }
 
 function requireReadCommand(arguments_: ParsedArguments, usage: string): void {
   requireArity(arguments_.positionals, 3, usage);
   rejectLogOptions(arguments_);
   rejectIdempotencyOption(arguments_);
+  rejectFileOption(arguments_);
 }
 
 function requireMutationCommand(arguments_: ParsedArguments, arity: number, usage: string): string {
@@ -232,7 +298,32 @@ function requireMutationCommand(arguments_: ParsedArguments, arity: number, usag
   if (!isValidIdempotencyKey(key)) {
     throw usageError('idempotency key is invalid');
   }
+  rejectFileOption(arguments_);
   return key;
+}
+
+function requireAclMutationCommand(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string
+): { idempotencyKey: string; file: string } {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectLogOptions(arguments_);
+  const idempotencyKey = arguments_.idempotencyKey;
+  if (idempotencyKey === undefined) {
+    throw usageError('--idempotency-key is required for mutation commands');
+  }
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    throw usageError('idempotency key is invalid');
+  }
+  const file = arguments_.file;
+  if (file === undefined) {
+    throw usageError('--file is required for ACL desired-state mutations');
+  }
+  if (file.length > 4_096 || /[\0\r\n]/.test(file)) {
+    throw usageError('ACL file path is invalid');
+  }
+  return { idempotencyKey, file };
 }
 
 function requireArity(positionals: readonly string[], expected: number, usage: string): void {
@@ -259,6 +350,36 @@ function rejectIdempotencyOption(arguments_: ParsedArguments): void {
   if (arguments_.idempotencyKey !== undefined) {
     throw usageError('--idempotency-key is valid only for mutation commands');
   }
+}
+
+function rejectFileOption(arguments_: ParsedArguments): void {
+  if (arguments_.file !== undefined) {
+    throw usageError('--file is valid only for ACL desired-state mutations');
+  }
+}
+
+async function readAclManifest(
+  path: string,
+  readFile: (path: string) => Promise<Uint8Array> = readLocalFile
+): Promise<string> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await readFile(path);
+  } catch {
+    throw usageError('unable to read the A3S ACL file');
+  }
+  if (bytes.byteLength < 1 || bytes.byteLength > MAX_WORKLOAD_ACL_BYTES) {
+    throw usageError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw usageError('workload ACL must be valid UTF-8');
+  }
+}
+
+async function readLocalFile(path: string): Promise<Uint8Array> {
+  return Bun.file(path).bytes();
 }
 
 function parseLogQuery(arguments_: ParsedArguments): CloudLogQuery {

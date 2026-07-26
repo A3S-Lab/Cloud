@@ -5,7 +5,8 @@ use crate::modules::operations::domain::value_objects::{OperationSubject, Workfl
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
+    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -62,6 +63,17 @@ impl CommandHandler<UpdateWorkloadDeployment> for UpdateWorkloadDeploymentHandle
                 return Ok(Err(ApplicationError::Conflict(
                     "only an active running workload can be updated".into(),
                 )));
+            }
+            if let Some(expected_name) = command.expected_name.as_deref() {
+                let expected_name = match ResourceName::parse(expected_name) {
+                    Ok(name) => name,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
+                if expected_name.key() != workload.name.key() {
+                    return Ok(Err(ApplicationError::Conflict(
+                        "workload ACL name does not match the target workload".into(),
+                    )));
+                }
             }
             if let Err(error) = command.template.validate_request() {
                 return Ok(Err(ApplicationError::Invalid(error)));

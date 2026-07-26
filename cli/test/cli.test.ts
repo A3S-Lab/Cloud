@@ -294,6 +294,125 @@ describe('a3s-cloud CLI', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it.each([
+    {
+      command: ['workloads', 'create'],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/workloads`,
+    },
+    {
+      command: ['workloads', 'update', WORKLOAD_ID],
+      path: `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}/deployments`,
+    },
+    {
+      command: ['source-revisions', 'deploy', REVISION_ID],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/source-revisions/${REVISION_ID}/workloads`,
+    },
+  ] as const)('submits one unchanged ACL desired-state mutation %#', async (testCase) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const readPaths: string[] = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(workloadDeploymentResponse(), 202);
+    };
+    const manifest = 'version = 1\nworkload "api" {}\n';
+    const output = capture();
+
+    const exitCode = await runCli(
+      [...testCase.command, '--file=deploy/workload.acl', '--idempotency-key=cli:acl-1', '--output=json'],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+        readFile: async (path) => {
+          readPaths.push(path);
+          return new TextEncoder().encode(manifest);
+        },
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(readPaths).toEqual(['deploy/workload.acl']);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${testCase.path}`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'cli:acl-1',
+        }),
+        body: manifest,
+      })
+    );
+    expect(output.stdout()).toContain('"replayed": false');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects missing, unreadable, invalid, oversized, and misplaced ACL files before the network', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return envelope({});
+    };
+    const missing = capture();
+    const unreadable = capture();
+    const invalidUtf8 = capture();
+    const oversized = capture();
+    const readOnly = capture();
+
+    expect(
+      await runCli(['workloads', 'create', '--idempotency-key=cli:acl-missing'], {
+        ...missing.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['workloads', 'create', '--file=missing.acl', '--idempotency-key=cli:acl-read'], {
+        ...unreadable.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+        readFile: async () => {
+          throw new Error('private filesystem detail');
+        },
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['workloads', 'update', WORKLOAD_ID, '--file=bad.acl', '--idempotency-key=cli:acl-utf8'], {
+        ...invalidUtf8.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+        readFile: async () => Uint8Array.from([0xff]),
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['workloads', 'create', '--file=large.acl', '--idempotency-key=cli:acl-large'], {
+        ...oversized.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+        readFile: async () => new Uint8Array(65_537),
+      })
+    ).toBe(2);
+    expect(
+      await runCli(['routes', 'get', ROUTE_ID, '--file=read-only.acl'], {
+        ...readOnly.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+      })
+    ).toBe(2);
+
+    expect(called).toBe(false);
+    expect(missing.stderr()).toContain('--file is required');
+    expect(unreadable.stderr()).toContain('unable to read');
+    expect(unreadable.stderr()).not.toContain('private filesystem detail');
+    expect(invalidUtf8.stderr()).toContain('valid UTF-8');
+    expect(oversized.stderr()).toContain('between 1 and 65536');
+    expect(readOnly.stderr()).toContain('valid only for ACL desired-state mutations');
+  });
+
   it('rejects missing, unsafe, and read-only idempotency options before the network', async () => {
     let called = false;
     const fetcher: CloudFetch = async () => {
@@ -499,5 +618,26 @@ function logPage(): Record<string, unknown> {
       },
     ],
     nextCursor: 'v1:9',
+  };
+}
+
+function workloadDeploymentResponse(): Record<string, unknown> {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    environmentId: ENVIRONMENT_ID,
+    workloadId: WORKLOAD_ID,
+    revisionId: REVISION_ID,
+    deploymentId: DEPLOYMENT_ID,
+    operationId: DEPLOYMENT_ID,
+    generation: 1,
+    status: 'queued',
+    artifactSourceUri: 'oci://registry.example.test/api@sha256:abc',
+    expectedArtifactDigest: null,
+    requestDigest: 'sha256:request',
+    artifactDigest: 'sha256:artifact',
+    templateDigest: 'sha256:template',
+    requestedAt: '2026-07-27T00:00:00.000Z',
+    replayed: false,
   };
 }

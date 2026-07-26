@@ -1426,10 +1426,20 @@ cancel, and BuildRun cancel and retry. Every invocation requires a caller-owned
 visible-ASCII idempotency key of at most 255 bytes; the shared client validates
 it before transport and sends it only as `Idempotency-Key`. Replaying the same
 command with the same key returns the API's durable `replayed` result. The CLI
-does not synthesize a key or add a confirmation side channel. Desired-state
-templates are not accepted as JSON or TOML CLI configuration; their later CLI
-surface must parse validated A3S ACL before invoking the existing JSON REST
-transport.
+does not synthesize a key or add a confirmation side channel.
+
+Workload create/update and SourceRevision deployment use a versioned A3S ACL
+admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
+the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize
+the document. The Cloud workload controller uses `a3s-acl 0.3.0` with explicit
+document, nesting, collection, token, and diagnostic limits, then applies a
+closed version-1 schema before constructing the existing request DTO. Direct
+create/update requires an `artifact`; source deployment forbids it and derives
+the artifact through the proven BuildRun. An ACL update also binds the named
+Workload to the targeted Workload ID, preventing a valid manifest from being
+sent to the wrong aggregate. JSON Web requests remain compatible and converge
+on the same application command and canonical idempotency input. JSON and TOML
+files are not Cloud CLI configuration formats.
 
 Secret mutations require the `secret:write` scope. The initial resource API is:
 
