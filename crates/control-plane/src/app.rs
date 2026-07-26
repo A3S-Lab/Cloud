@@ -61,6 +61,9 @@ use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, ListEnvironmentsHandler, ListProjectsHandler,
     PostgresProjectsRepository, ProjectsModule,
 };
+use crate::modules::search::{
+    ISearchRepository, PostgresSearchRepository, SearchModule, SearchResourcesHandler,
+};
 use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::secrets::{
     CreateSecretHandler, GetSecretHandler, ListSecretsHandler, PostgresSecretRepository,
@@ -194,6 +197,8 @@ pub async fn build_application_with_source_resolver(
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let search: Arc<dyn ISearchRepository> =
+        Arc::new(PostgresSearchRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
@@ -588,6 +593,7 @@ pub async fn build_application_with_source_resolver(
             api_tokens,
             projects: projects.clone(),
             environments: projects,
+            search,
             workloads,
             builds,
             routes,
@@ -647,6 +653,7 @@ struct ApplicationDependencies {
     api_tokens: Arc<dyn IApiTokenRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
+    search: Arc<dyn ISearchRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     routes: Arc<dyn IEdgeRepository>,
@@ -682,6 +689,7 @@ fn build_application_with_health(
         api_tokens,
         projects,
         environments,
+        search,
         workloads,
         builds,
         routes,
@@ -1056,6 +1064,9 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::projects::ListEnvironments, _>(
                     ListEnvironmentsHandler::new(query_environments),
                 )
+                .query_handler::<crate::modules::search::SearchResources, _>(
+                    SearchResourcesHandler::new(search),
+                )
                 .query_handler::<crate::modules::secrets::ListSecrets, _>(ListSecretsHandler::new(
                     list_secrets,
                 ))
@@ -1150,6 +1161,7 @@ fn build_application_with_health(
         )
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
+        .import(SearchModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
         .import(ArtifactsModule)

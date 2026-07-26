@@ -1,0 +1,149 @@
+use crate::modules::search::domain::{ISearchRepository, SearchQuery, SearchResult};
+use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
+use async_trait::async_trait;
+use std::cmp::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+use tokio::sync::RwLock;
+
+#[derive(Default)]
+pub struct InMemorySearchRepository {
+    projections: RwLock<Vec<SearchResult>>,
+    query_count: AtomicUsize,
+}
+
+impl InMemorySearchRepository {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn register(&self, projection: SearchResult) -> Result<(), RepositoryError> {
+        projection.validate().map_err(RepositoryError::Storage)?;
+        self.projections.write().await.push(projection);
+        Ok(())
+    }
+
+    pub fn query_count(&self) -> usize {
+        self.query_count.load(AtomicOrdering::Relaxed)
+    }
+}
+
+#[async_trait]
+impl ISearchRepository for InMemorySearchRepository {
+    async fn search(
+        &self,
+        organization_id: OrganizationId,
+        query: &SearchQuery,
+        limit: u16,
+    ) -> Result<Vec<SearchResult>, RepositoryError> {
+        self.query_count.fetch_add(1, AtomicOrdering::Relaxed);
+        let query = query.as_str();
+        let mut matches = self
+            .projections
+            .read()
+            .await
+            .iter()
+            .filter(|projection| projection.organization_id == organization_id)
+            .filter_map(|projection| {
+                let title = projection.title.to_lowercase();
+                let id = projection.id.to_string();
+                let searchable = format!(
+                    "{} {} {} {} {}",
+                    projection.kind.as_str(),
+                    title,
+                    projection.description.to_lowercase(),
+                    projection
+                        .state
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase(),
+                    id
+                );
+                searchable
+                    .contains(query)
+                    .then_some((rank(&title, &id, query), projection.clone()))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(compare_matches);
+        matches.truncate(usize::from(limit));
+        Ok(matches
+            .into_iter()
+            .map(|(_, projection)| projection)
+            .collect())
+    }
+}
+
+fn rank(title: &str, id: &str, query: &str) -> u8 {
+    if title == query || id == query {
+        0
+    } else if title.starts_with(query) {
+        1
+    } else if title.contains(query) {
+        2
+    } else {
+        3
+    }
+}
+
+fn compare_matches(
+    (left_rank, left): &(u8, SearchResult),
+    (right_rank, right): &(u8, SearchResult),
+) -> Ordering {
+    left_rank
+        .cmp(right_rank)
+        .then_with(|| left.kind.cmp(&right.kind))
+        .then_with(|| left.title.to_lowercase().cmp(&right.title.to_lowercase()))
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::search::domain::SearchResourceKind;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn ranks_exact_prefix_title_and_metadata_matches_deterministically() {
+        let repository = InMemorySearchRepository::new();
+        let organization_id = OrganizationId::new();
+        for (kind, title, description) in [
+            (SearchResourceKind::Node, "Cloud", "Node"),
+            (SearchResourceKind::Node, "Cloud worker", "Node"),
+            (SearchResourceKind::Node, "Worker cloud", "Node"),
+            (SearchResourceKind::Operation, "Deploy", "cloud workflow"),
+        ] {
+            repository
+                .register(SearchResult {
+                    organization_id,
+                    project_id: None,
+                    environment_id: None,
+                    workload_id: None,
+                    kind,
+                    id: Uuid::new_v4(),
+                    title: title.into(),
+                    description: description.into(),
+                    state: None,
+                    updated_at: Utc::now(),
+                })
+                .await
+                .expect("projection");
+        }
+
+        let results = repository
+            .search(
+                organization_id,
+                &SearchQuery::parse("cloud").expect("query"),
+                4,
+            )
+            .await
+            .expect("search");
+
+        assert_eq!(
+            results
+                .iter()
+                .map(|result| result.title.as_str())
+                .collect::<Vec<_>>(),
+            ["Cloud", "Cloud worker", "Worker cloud", "Deploy"]
+        );
+    }
+}

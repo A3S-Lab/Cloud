@@ -61,6 +61,8 @@ export type {
   NodeState,
 } from './node';
 
+export type { SearchResourceKind, SearchResult } from './search';
+
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Operation {

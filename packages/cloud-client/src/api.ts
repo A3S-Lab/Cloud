@@ -34,6 +34,7 @@ import type {
   RetryBuildRunResult,
   Route,
   RoutePublicationResult,
+  SearchResult,
   Secret,
   SecretDetails,
   SecretMutationResult,
@@ -51,6 +52,7 @@ import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './d
 import { CloudApiError } from './error';
 import { encodeLogQuery, type CloudLogQuery } from './log-query';
 import { readHealthResponse, readResponse } from './response';
+import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
@@ -218,6 +220,22 @@ export class CloudApi {
 
   listNodes(organizationId: string, signal?: AbortSignal): Promise<Node[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/nodes`, signal);
+  }
+
+  searchResources(
+    organizationId: string,
+    query: string,
+    limit = DEFAULT_SEARCH_LIMIT,
+    signal?: AbortSignal
+  ): Promise<SearchResult[]> {
+    const parameters = new URLSearchParams({
+      q: validateSearchRequest(query, limit),
+      limit: String(limit),
+    });
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/search?${parameters.toString()}`,
+      signal
+    );
   }
 
   issueEnrollmentToken(

@@ -6,6 +6,7 @@ pub mod integration_events;
 pub mod operations;
 mod platform;
 pub mod projects;
+pub mod search;
 pub mod secrets;
 pub mod shared_kernel;
 pub mod sources;

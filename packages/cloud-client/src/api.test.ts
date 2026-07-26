@@ -112,6 +112,45 @@ describe('CloudApi', () => {
     expect(calls[0]?.[0]).toBe('/api/v1/organizations/organization/nodes');
   });
 
+  it('searches only through the bounded tenant-scoped projection endpoint', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse([]);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.searchResources('organization / one', '  Cloud worker  ', 25);
+
+    expect(calls[0]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/search?q=Cloud+worker&limit=25'
+    );
+  });
+
+  it('rejects unbounded search inputs before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse([]);
+      },
+    });
+
+    expect(() => api.searchResources('organization', '')).toThrow(
+      'search query must contain 1 to 128 safe characters'
+    );
+    expect(() => api.searchResources('organization', 'a'.repeat(129))).toThrow(
+      'search query must contain 1 to 128 safe characters'
+    );
+    expect(() => api.searchResources('organization', 'cloud', 0)).toThrow(
+      'search result limit must be between 1 and 50'
+    );
+    expect(() => api.searchResources('organization', 'cloud', 51)).toThrow(
+      'search result limit must be between 1 and 50'
+    );
+    expect(called).toBe(false);
+  });
+
   it('creates core tenant resources through their existing idempotent REST paths', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

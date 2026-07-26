@@ -10,4 +10,5 @@ export {
   type CloudLogQuery,
 } from './api';
 export * from './diagnostics';
+export * from './search';
 export * from './types';
