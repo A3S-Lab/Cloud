@@ -2,7 +2,7 @@ use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertifi
 use crate::modules::fleet::domain::repositories::{
     INodeRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
-    NodeHeartbeatUpdate, NodeLogCompactionRange, NodeStateChange,
+    NodeHeartbeatUpdate, NodeLogCompactionRange, NodeResourceInventoryRecord, NodeStateChange,
 };
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::shared_kernel::domain::{
@@ -32,6 +32,8 @@ pub(super) struct State {
     state_idempotency: BTreeMap<(String, String), (String, Node)>,
     pub(super) commands: BTreeMap<NodeCommandId, super::in_memory_control::StoredNodeCommand>,
     pub(super) observations: BTreeMap<Uuid, super::in_memory_control::StoredObservation>,
+    pub(super) resource_inventories: BTreeMap<(NodeId, u64), NodeResourceInventoryRecord>,
+    pub(super) inventory_heads: BTreeMap<NodeId, u64>,
     pub(super) gateway_acknowledgements:
         BTreeMap<Uuid, super::in_memory_control::StoredGatewayAcknowledgement>,
     pub(super) log_batches: BTreeMap<Uuid, super::in_memory_control::StoredLogBatch>,

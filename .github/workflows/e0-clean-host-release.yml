@@ -15,6 +15,7 @@ on:
       - deploy/web/**
       - justfile
       - tools/release-conformance/**
+      - tools/gateway-conformance/gateway-revision
       - tools/runtime-conformance/runtime-revision
       - tools/dev/**
       - tools/web/**
@@ -31,6 +32,7 @@ on:
       - deploy/web/**
       - justfile
       - tools/release-conformance/**
+      - tools/gateway-conformance/gateway-revision
       - tools/runtime-conformance/runtime-revision
       - tools/dev/**
       - tools/web/**
@@ -66,6 +68,14 @@ jobs:
           [[ $revision =~ ^[0-9a-f]{40}$ ]]
           echo "revision=$revision" >>"$GITHUB_OUTPUT"
 
+      - name: Read pinned Gateway revision
+        id: gateway_revision
+        working-directory: apps/cloud
+        run: |
+          revision=$(<tools/gateway-conformance/gateway-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
       - name: Checkout Runtime
         uses: actions/checkout@v4
         with:
@@ -73,14 +83,24 @@ jobs:
           ref: ${{ steps.runtime_revision.outputs.revision }}
           path: crates/runtime
 
+      - name: Checkout Gateway
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Gateway
+          ref: ${{ steps.gateway_revision.outputs.revision }}
+          path: crates/gateway
+
       - name: Install stable Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
           cache: false
 
-      - name: Install A3S Gateway 1.0.12
-        run: cargo install a3s-gateway --version 1.0.12 --locked
+      - name: Build pinned A3S Gateway
+        run: |
+          cargo build --manifest-path crates/gateway/Cargo.toml \
+            --release --locked --bin a3s-gateway
+          echo "$GITHUB_WORKSPACE/crates/gateway/target/release" >>"$GITHUB_PATH"
 
       - name: Validate Cloud Web Gateway profile
         working-directory: apps/cloud
@@ -110,8 +130,6 @@ jobs:
             rustc --version
             cargo --version
           } >"$EVIDENCE_DIR/host-preflight.txt" 2>&1 || true
-          CARGO_TERM_COLOR=never cargo install --list \
-            >"$EVIDENCE_DIR/cargo-installed-packages.txt" 2>&1 || true
           docker version >"$EVIDENCE_DIR/docker-version.txt" 2>&1 || true
           docker info >"$EVIDENCE_DIR/docker-info.txt" 2>&1 || true
           docker ps --all --no-trunc \
@@ -125,9 +143,14 @@ jobs:
             command -v "$command" >/dev/null
           done
 
-          grep -E '^a3s-gateway v1\.0\.12:' \
-            "$EVIDENCE_DIR/cargo-installed-packages.txt" \
-            >"$EVIDENCE_DIR/gateway-install-record.txt"
+          git -C crates/gateway rev-parse HEAD \
+            >"$EVIDENCE_DIR/gateway.sha"
+          grep --fixed-strings \
+            "${{ steps.gateway_revision.outputs.revision }}" \
+            "$EVIDENCE_DIR/gateway.sha"
+          sha256sum "$(command -v a3s-gateway)" \
+            >"$EVIDENCE_DIR/gateway-binary.sha256"
+          a3s-gateway --version >"$EVIDENCE_DIR/gateway-version-command.txt"
           docker info >/dev/null
 
       - name: Run clean-host E0 release gate

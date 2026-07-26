@@ -4,7 +4,8 @@ use super::types::{
     CompleteCancellationStepOutput, CompleteRetirementStepInput, DeploymentFlowInput,
     DispatchStepInput, DispatchStepOutput, DispatchedCleanup, DispatchedRetirement,
     DispatchedRuntime, FailStepInput, FailStepOutput, ObserveGatewayStepInput,
-    ObserveGatewayStepOutput, ObserveStepInput, ObserveStepOutput, ResolveStepOutput,
+    ObserveGatewayStepOutput, ObserveStepInput, ObserveStepOutput, PrepareClaimStepInput,
+    PrepareClaimStepOutput, ReleaseClaimStepInput, ReleaseClaimStepOutput, ResolveStepOutput,
     ResolveStepResult, RetirementDispatchStepInput, RetirementDispatchStepOutput,
     RetirementObserveStepInput, RetirementObserveStepOutput, RouteGate, ScheduleStepInput,
     ScheduleStepOutput, StageGatewayStepInput, StageGatewayStepOutput, VerifyStepInput,
@@ -24,6 +25,21 @@ const COMPLETE_CANCELLATION_STEP_ID: &str = "complete-cancellation";
 pub(super) fn replay(
     config: &DeploymentFlowConfig,
     invocation: WorkflowInvocation,
+) -> a3s_flow::Result<RuntimeCommand> {
+    replay_version(config, invocation, true)
+}
+
+pub(super) fn replay_previous(
+    config: &DeploymentFlowConfig,
+    invocation: WorkflowInvocation,
+) -> a3s_flow::Result<RuntimeCommand> {
+    replay_version(config, invocation, false)
+}
+
+fn replay_version(
+    config: &DeploymentFlowConfig,
+    invocation: WorkflowInvocation,
+    resource_claim_protocol: bool,
 ) -> a3s_flow::Result<RuntimeCommand> {
     let context = invocation.context();
     let input = context.input_as::<DeploymentFlowInput>()?;
@@ -49,18 +65,40 @@ pub(super) fn replay(
         }
     };
 
-    let node_id = match schedule_node(config, &context, &input, &resolved)? {
+    let node_id = match schedule_node(config, &context, &input, &resolved, resource_claim_protocol)?
+    {
         Progress::Ready(node_id) => node_id,
-        Progress::Cancellation => return cancel_deployment(config, &context, &input, &resolved),
+        Progress::Cancellation => {
+            return cancel_deployment(config, &context, &input, &resolved, resource_claim_protocol)
+        }
         Progress::Command(command) => return Ok(command),
     };
+    if resource_claim_protocol {
+        match prepare_claim(config, &context, &input, &resolved, node_id)? {
+            Progress::Ready(()) => {}
+            Progress::Cancellation => {
+                return cancel_deployment(
+                    config,
+                    &context,
+                    &input,
+                    &resolved,
+                    resource_claim_protocol,
+                )
+            }
+            Progress::Command(command) => return Ok(command),
+        }
+    }
     let dispatched = match context.step_output_as::<DispatchStepOutput>(DISPATCH_STEP_ID)? {
         Some(DispatchStepOutput::Ready { dispatched }) => dispatched,
         Some(DispatchStepOutput::Failed { reason }) => {
-            return failure_command(config, &context, &input, reason)
+            return if resource_claim_protocol {
+                fail_candidate(config, &context, &input, &resolved, reason)
+            } else {
+                failure_command(config, &context, &input, reason)
+            }
         }
         Some(DispatchStepOutput::CancellationRequested) => {
-            return cancel_deployment(config, &context, &input, &resolved)
+            return cancel_deployment(config, &context, &input, &resolved, resource_claim_protocol)
         }
         None => {
             return stage_or_failure(
@@ -68,7 +106,11 @@ pub(super) fn replay(
                 &context,
                 &input,
                 DISPATCH_STEP_ID,
-                "dispatch_runtime_apply",
+                if resource_claim_protocol {
+                    "dispatch_resource_bound_runtime_apply"
+                } else {
+                    "dispatch_runtime_apply"
+                },
                 &DispatchStepInput {
                     resolved: resolved.clone(),
                     node_id,
@@ -82,14 +124,23 @@ pub(super) fn replay(
         ));
     }
 
-    let observation = match observe_runtime(config, &context, &input, &resolved, &dispatched)? {
+    let observation = match observe_runtime(
+        config,
+        &context,
+        &input,
+        &resolved,
+        &dispatched,
+        resource_claim_protocol,
+    )? {
         Progress::Ready(observation) => observation,
-        Progress::Cancellation => return cancel_deployment(config, &context, &input, &resolved),
+        Progress::Cancellation => {
+            return cancel_deployment(config, &context, &input, &resolved, resource_claim_protocol)
+        }
         Progress::Command(command) => return Ok(command),
     };
     let verification = match context.step_output_as::<VerifyStepOutput>(VERIFY_STEP_ID)? {
         Some(VerifyStepOutput::CancellationRequested) => {
-            return cancel_deployment(config, &context, &input, &resolved)
+            return cancel_deployment(config, &context, &input, &resolved, resource_claim_protocol)
         }
         Some(output @ VerifyStepOutput::Verified { .. }) => output,
         None => {
@@ -113,14 +164,17 @@ pub(super) fn replay(
         &resolved,
         &dispatched,
         &verification,
+        resource_claim_protocol,
     )? {
         Progress::Ready(routing) => routing,
-        Progress::Cancellation => return cancel_deployment(config, &context, &input, &resolved),
+        Progress::Cancellation => {
+            return cancel_deployment(config, &context, &input, &resolved, resource_claim_protocol)
+        }
         Progress::Command(command) => return Ok(command),
     };
     let activation = match context.step_output_as::<ActivateStepOutput>(ACTIVATE_STEP_ID)? {
         Some(ActivateStepOutput::CancellationRequested) => {
-            return cancel_deployment(config, &context, &input, &resolved)
+            return cancel_deployment(config, &context, &input, &resolved, resource_claim_protocol)
         }
         Some(output @ ActivateStepOutput::Active { .. }) => output,
         None => {
@@ -142,10 +196,36 @@ pub(super) fn replay(
     if resolved.previous_runtime.is_none() {
         return Ok(context.complete(serde_json::to_value(activation)?));
     }
-    let retired_at = match retire_previous(config, &context, &input, &resolved, &activation)? {
+    let mut retired_at = match retire_previous(config, &context, &input, &resolved, &activation)? {
         RetirementProgress::Ready(retired_at) => retired_at,
         RetirementProgress::Command(command) => return Ok(command),
     };
+    if resource_claim_protocol {
+        if let Some(previous_deployment_id) = resolved
+            .previous_runtime
+            .as_ref()
+            .and_then(|previous| previous.deployment_id)
+        {
+            let deadline_at = retired_at
+                .checked_add_signed(config.cleanup_timeout)
+                .ok_or_else(|| {
+                    FlowError::Runtime("previous resource release deadline overflowed".into())
+                })?;
+            match release_claim(
+                config,
+                &context,
+                &input,
+                "retirement-claim-release",
+                previous_deployment_id,
+                retired_at,
+                deadline_at,
+            )? {
+                Progress::Ready(released_at) => retired_at = retired_at.max(released_at),
+                Progress::Command(command) => return Ok(command),
+                Progress::Cancellation => unreachable!("resource release cannot cancel"),
+            }
+        }
+    }
     match context.step_output_as::<ActivateStepOutput>(COMPLETE_RETIREMENT_STEP_ID)? {
         Some(output) => Ok(context.complete(serde_json::to_value(output)?)),
         None => stage_or_failure(
@@ -163,11 +243,73 @@ pub(super) fn replay(
     }
 }
 
+fn prepare_claim(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    resolved: &ResolveStepOutput,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+) -> a3s_flow::Result<Progress<()>> {
+    let mut attempt = 1_u32;
+    loop {
+        let step_id = format!("prepare-claim-{attempt}");
+        match context.step_output_as::<PrepareClaimStepOutput>(&step_id)? {
+            Some(PrepareClaimStepOutput::Ready {
+                node_id: prepared_node,
+                ..
+            }) if prepared_node == node_id => return Ok(Progress::Ready(())),
+            Some(PrepareClaimStepOutput::Ready { .. }) => {
+                return Err(FlowError::Runtime(
+                    "resource preparation changed its scheduled node".into(),
+                ))
+            }
+            Some(PrepareClaimStepOutput::Failed { reason }) => {
+                return fail_candidate(config, context, flow_input, resolved, reason)
+                    .map(Progress::Command)
+            }
+            Some(PrepareClaimStepOutput::CancellationRequested) => {
+                return Ok(Progress::Cancellation)
+            }
+            Some(PrepareClaimStepOutput::Pending {
+                next_poll_at,
+                deadline_at,
+                ..
+            }) => {
+                validate_poll(
+                    next_poll_at,
+                    deadline_at,
+                    "resource preparation poll exceeds its command deadline",
+                )?;
+                let wait_id = format!("prepare-claim-wait-{attempt}");
+                if !context.wait_completed(&wait_id) {
+                    return Ok(Progress::Command(context.wait_until(wait_id, next_poll_at)));
+                }
+                attempt = next_attempt(attempt, "resource preparation attempt overflowed")?;
+            }
+            None => {
+                return stage_or_failure(
+                    config,
+                    context,
+                    flow_input,
+                    &step_id,
+                    "prepare_resource_claim",
+                    &PrepareClaimStepInput {
+                        resolved: resolved.clone(),
+                        node_id,
+                    },
+                )
+                .map(Progress::Command)
+            }
+        }
+    }
+}
+
 fn schedule_node(
     config: &DeploymentFlowConfig,
     context: &WorkflowContext<'_>,
     flow_input: &DeploymentFlowInput,
     resolved: &ResolveStepOutput,
+    resource_claim_protocol: bool,
 ) -> a3s_flow::Result<Progress<crate::modules::shared_kernel::domain::NodeId>> {
     let mut attempt = 1_u32;
     loop {
@@ -175,7 +317,12 @@ fn schedule_node(
         match context.step_output_as::<ScheduleStepOutput>(&step_id)? {
             Some(ScheduleStepOutput::Ready { node_id }) => return Ok(Progress::Ready(node_id)),
             Some(ScheduleStepOutput::Failed { reason }) => {
-                return failure_command(config, context, flow_input, reason).map(Progress::Command)
+                return (if resource_claim_protocol {
+                    fail_candidate(config, context, flow_input, resolved, reason)
+                } else {
+                    failure_command(config, context, flow_input, reason)
+                })
+                .map(Progress::Command)
             }
             Some(ScheduleStepOutput::CancellationRequested) => return Ok(Progress::Cancellation),
             Some(ScheduleStepOutput::Pending {
@@ -217,6 +364,7 @@ fn observe_runtime(
     flow_input: &DeploymentFlowInput,
     resolved: &ResolveStepOutput,
     dispatched: &DispatchedRuntime,
+    resource_claim_protocol: bool,
 ) -> a3s_flow::Result<Progress<ObserveStepOutput>> {
     let mut attempt = 1_u32;
     loop {
@@ -224,7 +372,12 @@ fn observe_runtime(
         match context.step_output_as::<ObserveStepOutput>(&step_id)? {
             Some(ready @ ObserveStepOutput::Ready { .. }) => return Ok(Progress::Ready(ready)),
             Some(ObserveStepOutput::Failed { reason }) => {
-                return failure_command(config, context, flow_input, reason).map(Progress::Command)
+                return (if resource_claim_protocol {
+                    fail_candidate(config, context, flow_input, resolved, reason)
+                } else {
+                    failure_command(config, context, flow_input, reason)
+                })
+                .map(Progress::Command)
             }
             Some(ObserveStepOutput::CancellationRequested) => return Ok(Progress::Cancellation),
             Some(ObserveStepOutput::Pending {
@@ -249,7 +402,11 @@ fn observe_runtime(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_runtime_apply",
+                    if resource_claim_protocol {
+                        "observe_resource_bound_runtime_apply"
+                    } else {
+                        "observe_runtime_apply"
+                    },
                     &ObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -268,6 +425,7 @@ fn gate_gateway(
     resolved: &ResolveStepOutput,
     dispatched: &DispatchedRuntime,
     verification: &VerifyStepOutput,
+    resource_claim_protocol: bool,
 ) -> a3s_flow::Result<Progress<RouteGate>> {
     let mut attempt = 1_u32;
     loop {
@@ -277,10 +435,22 @@ fn gate_gateway(
                 return Ok(Progress::Ready(RouteGate::NotRequired { gated_at }))
             }
             Some(StageGatewayStepOutput::Ready { publication }) => {
-                return observe_gateway(config, context, flow_input, resolved, &publication)
+                return observe_gateway(
+                    config,
+                    context,
+                    flow_input,
+                    resolved,
+                    &publication,
+                    resource_claim_protocol,
+                )
             }
             Some(StageGatewayStepOutput::Failed { reason }) => {
-                return failure_command(config, context, flow_input, reason).map(Progress::Command)
+                return (if resource_claim_protocol {
+                    fail_candidate(config, context, flow_input, resolved, reason)
+                } else {
+                    failure_command(config, context, flow_input, reason)
+                })
+                .map(Progress::Command)
             }
             Some(StageGatewayStepOutput::CancellationRequested) => {
                 return Ok(Progress::Cancellation)
@@ -326,6 +496,7 @@ fn observe_gateway(
     flow_input: &DeploymentFlowInput,
     resolved: &ResolveStepOutput,
     publication: &crate::modules::workloads::domain::services::DeploymentGatewayPublication,
+    resource_claim_protocol: bool,
 ) -> a3s_flow::Result<Progress<RouteGate>> {
     let mut attempt = 1_u32;
     loop {
@@ -338,7 +509,12 @@ fn observe_gateway(
                 }))
             }
             Some(ObserveGatewayStepOutput::Failed { reason }) => {
-                return failure_command(config, context, flow_input, reason).map(Progress::Command)
+                return (if resource_claim_protocol {
+                    fail_candidate(config, context, flow_input, resolved, reason)
+                } else {
+                    failure_command(config, context, flow_input, reason)
+                })
+                .map(Progress::Command)
             }
             Some(ObserveGatewayStepOutput::CancellationRequested) => {
                 return Ok(Progress::Cancellation)
@@ -521,11 +697,198 @@ fn observe_retirement(
     }
 }
 
+fn fail_candidate(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    resolved: &ResolveStepOutput,
+    reason: String,
+) -> a3s_flow::Result<RuntimeCommand> {
+    let cleaned_at = match cleanup_failed_candidate(config, context, flow_input, resolved)? {
+        FailedCleanupProgress::Ready(cleaned_at) => cleaned_at,
+        FailedCleanupProgress::Unsafe(cleanup_reason) => {
+            return failure_command(
+                config,
+                context,
+                flow_input,
+                format!("{reason}; failed Runtime remains fenced by its Claim: {cleanup_reason}"),
+            )
+        }
+        FailedCleanupProgress::Command(command) => return Ok(command),
+    };
+    let deadline_at = cleaned_at
+        .checked_add_signed(config.cleanup_timeout)
+        .ok_or_else(|| FlowError::Runtime("failed resource release deadline overflowed".into()))?;
+    match release_claim(
+        config,
+        context,
+        flow_input,
+        "failure-claim-release",
+        flow_input.deployment_id,
+        cleaned_at,
+        deadline_at,
+    )? {
+        Progress::Ready(_) => failure_command(config, context, flow_input, reason),
+        Progress::Command(command) => Ok(command),
+        Progress::Cancellation => unreachable!("resource release cannot cancel"),
+    }
+}
+
+fn cleanup_failed_candidate(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    resolved: &ResolveStepOutput,
+) -> a3s_flow::Result<FailedCleanupProgress> {
+    let mut attempt = 1_u32;
+    let mut issued_at = None;
+    loop {
+        let dispatch_step_id = format!("failure-cleanup-dispatch-{attempt}");
+        let dispatched =
+            match context.step_output_as::<CleanupDispatchStepOutput>(&dispatch_step_id)? {
+                Some(CleanupDispatchStepOutput::NotRequired { cleaned_at }) => {
+                    return Ok(FailedCleanupProgress::Ready(cleaned_at))
+                }
+                Some(CleanupDispatchStepOutput::Ready { dispatched }) => dispatched,
+                Some(CleanupDispatchStepOutput::Retry {
+                    next_attempt_at,
+                    deadline_at,
+                    ..
+                }) => {
+                    validate_cleanup_retry(next_attempt_at, deadline_at)?;
+                    let wait_id = format!("failure-cleanup-dispatch-wait-{attempt}");
+                    if !context.wait_completed(&wait_id) {
+                        return Ok(FailedCleanupProgress::Command(
+                            context.wait_until(wait_id, next_attempt_at),
+                        ));
+                    }
+                    attempt = next_cleanup_attempt(attempt)?;
+                    issued_at = Some(next_attempt_at);
+                    continue;
+                }
+                Some(CleanupDispatchStepOutput::Failed { reason }) => {
+                    return Ok(FailedCleanupProgress::Unsafe(reason))
+                }
+                None => {
+                    return stage_or_failure(
+                        config,
+                        context,
+                        flow_input,
+                        &dispatch_step_id,
+                        "dispatch_failed_runtime_cleanup",
+                        &CleanupDispatchStepInput {
+                            resolved: resolved.clone(),
+                            attempt,
+                            issued_at,
+                        },
+                    )
+                    .map(FailedCleanupProgress::Command)
+                }
+            };
+        if dispatched.attempt != attempt {
+            return Err(FlowError::Runtime(
+                "failed Runtime cleanup changed its attempt".into(),
+            ));
+        }
+        match observe_failed_cleanup(config, context, flow_input, resolved, &dispatched)? {
+            CleanupProgress::Ready(cleaned_at) => {
+                return Ok(FailedCleanupProgress::Ready(cleaned_at))
+            }
+            CleanupProgress::Retry {
+                next_attempt_at,
+                deadline_at,
+            } => {
+                validate_cleanup_retry(next_attempt_at, deadline_at)?;
+                let wait_id = format!("failure-cleanup-observe-retry-wait-{attempt}");
+                if !context.wait_completed(&wait_id) {
+                    return Ok(FailedCleanupProgress::Command(
+                        context.wait_until(wait_id, next_attempt_at),
+                    ));
+                }
+                attempt = next_cleanup_attempt(attempt)?;
+                issued_at = Some(next_attempt_at);
+            }
+            CleanupProgress::Command(command) => {
+                return Ok(FailedCleanupProgress::Command(command))
+            }
+        }
+    }
+}
+
+fn observe_failed_cleanup(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    resolved: &ResolveStepOutput,
+    dispatched: &DispatchedCleanup,
+) -> a3s_flow::Result<CleanupProgress> {
+    let mut poll = 1_u32;
+    loop {
+        let step_id = format!("failure-cleanup-observe-{}-{poll}", dispatched.attempt);
+        match context.step_output_as::<CleanupObserveStepOutput>(&step_id)? {
+            Some(CleanupObserveStepOutput::Ready { cleaned_at }) => {
+                return Ok(CleanupProgress::Ready(cleaned_at))
+            }
+            Some(CleanupObserveStepOutput::Retry {
+                next_attempt_at,
+                deadline_at,
+                ..
+            }) => {
+                return Ok(CleanupProgress::Retry {
+                    next_attempt_at,
+                    deadline_at,
+                })
+            }
+            Some(CleanupObserveStepOutput::Failed { reason }) => {
+                return Ok(CleanupProgress::Command(failure_command(
+                    config,
+                    context,
+                    flow_input,
+                    format!("failed Runtime remains fenced by its Claim: {reason}"),
+                )?))
+            }
+            Some(CleanupObserveStepOutput::Pending {
+                next_poll_at,
+                deadline_at,
+                ..
+            }) => {
+                validate_poll(
+                    next_poll_at,
+                    deadline_at,
+                    "failed cleanup observation poll exceeds its attempt deadline",
+                )?;
+                let wait_id = format!("failure-cleanup-observe-wait-{}-{poll}", dispatched.attempt);
+                if !context.wait_completed(&wait_id) {
+                    return Ok(CleanupProgress::Command(
+                        context.wait_until(wait_id, next_poll_at),
+                    ));
+                }
+                poll = next_attempt(poll, "failed cleanup poll overflowed")?;
+            }
+            None => {
+                return stage_or_failure(
+                    config,
+                    context,
+                    flow_input,
+                    &step_id,
+                    "observe_failed_runtime_cleanup",
+                    &CleanupObserveStepInput {
+                        resolved: resolved.clone(),
+                        dispatched: dispatched.clone(),
+                    },
+                )
+                .map(CleanupProgress::Command)
+            }
+        }
+    }
+}
+
 fn cancel_deployment(
     config: &DeploymentFlowConfig,
     context: &WorkflowContext<'_>,
     flow_input: &DeploymentFlowInput,
     resolved: &ResolveStepOutput,
+    resource_claim_protocol: bool,
 ) -> a3s_flow::Result<RuntimeCommand> {
     let mut attempt = 1_u32;
     let mut issued_at = None;
@@ -534,7 +897,13 @@ fn cancel_deployment(
         let dispatched =
             match context.step_output_as::<CleanupDispatchStepOutput>(&dispatch_step_id)? {
                 Some(CleanupDispatchStepOutput::NotRequired { cleaned_at }) => {
-                    return complete_cancellation_command(config, context, flow_input, cleaned_at)
+                    return complete_cancellation_after_release(
+                        config,
+                        context,
+                        flow_input,
+                        cleaned_at,
+                        resource_claim_protocol,
+                    )
                 }
                 Some(CleanupDispatchStepOutput::Ready { dispatched }) => dispatched,
                 Some(CleanupDispatchStepOutput::Retry {
@@ -576,7 +945,13 @@ fn cancel_deployment(
         }
         match observe_cleanup(config, context, flow_input, resolved, &dispatched)? {
             CleanupProgress::Ready(cleaned_at) => {
-                return complete_cancellation_command(config, context, flow_input, cleaned_at)
+                return complete_cancellation_after_release(
+                    config,
+                    context,
+                    flow_input,
+                    cleaned_at,
+                    resource_claim_protocol,
+                )
             }
             CleanupProgress::Retry {
                 next_attempt_at,
@@ -591,6 +966,99 @@ fn cancel_deployment(
                 issued_at = Some(next_attempt_at);
             }
             CleanupProgress::Command(command) => return Ok(command),
+        }
+    }
+}
+
+fn complete_cancellation_after_release(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    mut cleaned_at: chrono::DateTime<chrono::Utc>,
+    resource_claim_protocol: bool,
+) -> a3s_flow::Result<RuntimeCommand> {
+    if resource_claim_protocol {
+        let deadline_at = cleaned_at
+            .checked_add_signed(config.cleanup_timeout)
+            .ok_or_else(|| FlowError::Runtime("resource release deadline overflowed".into()))?;
+        match release_claim(
+            config,
+            context,
+            flow_input,
+            "cancellation-claim-release",
+            flow_input.deployment_id,
+            cleaned_at,
+            deadline_at,
+        )? {
+            Progress::Ready(released_at) => cleaned_at = cleaned_at.max(released_at),
+            Progress::Command(command) => return Ok(command),
+            Progress::Cancellation => unreachable!("resource release cannot cancel"),
+        }
+    }
+    complete_cancellation_command(config, context, flow_input, cleaned_at)
+}
+
+fn release_claim(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    step_prefix: &str,
+    deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+    released_after: chrono::DateTime<chrono::Utc>,
+    deadline_at: chrono::DateTime<chrono::Utc>,
+) -> a3s_flow::Result<Progress<chrono::DateTime<chrono::Utc>>> {
+    let mut attempt = 1_u32;
+    loop {
+        let step_id = format!("{step_prefix}-{attempt}");
+        match context.step_output_as::<ReleaseClaimStepOutput>(&step_id)? {
+            Some(ReleaseClaimStepOutput::Ready { released_at }) => {
+                if released_at < released_after {
+                    return Err(FlowError::Runtime(
+                        "resource release predates Runtime fencing evidence".into(),
+                    ));
+                }
+                return Ok(Progress::Ready(released_at));
+            }
+            Some(ReleaseClaimStepOutput::Failed { reason }) => {
+                return failure_command(config, context, flow_input, reason).map(Progress::Command)
+            }
+            Some(ReleaseClaimStepOutput::Pending {
+                next_poll_at,
+                deadline_at: persisted_deadline,
+                ..
+            }) => {
+                if persisted_deadline != deadline_at {
+                    return Err(FlowError::Runtime(
+                        "resource release changed its independent deadline".into(),
+                    ));
+                }
+                validate_poll(
+                    next_poll_at,
+                    deadline_at,
+                    "resource release poll exceeds its independent deadline",
+                )?;
+                let wait_id = format!("{step_prefix}-wait-{attempt}");
+                if !context.wait_completed(&wait_id) {
+                    return Ok(Progress::Command(context.wait_until(wait_id, next_poll_at)));
+                }
+                attempt = next_attempt(attempt, "resource release attempt overflowed")?;
+            }
+            None => {
+                return stage_or_failure(
+                    config,
+                    context,
+                    flow_input,
+                    &step_id,
+                    "release_resource_claim",
+                    &ReleaseClaimStepInput {
+                        organization_id: flow_input.organization_id,
+                        deployment_id,
+                        released_after,
+                        deadline_at,
+                    },
+                )
+                .map(Progress::Command)
+            }
         }
     }
 }
@@ -778,5 +1246,11 @@ enum CleanupProgress {
         next_attempt_at: chrono::DateTime<chrono::Utc>,
         deadline_at: chrono::DateTime<chrono::Utc>,
     },
+    Command(RuntimeCommand),
+}
+
+enum FailedCleanupProgress {
+    Ready(chrono::DateTime<chrono::Utc>),
+    Unsafe(String),
     Command(RuntimeCommand),
 }

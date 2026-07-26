@@ -43,6 +43,22 @@ def exercise(args: Any) -> None:
     organization_id = context["organizationId"]
     client = ApiClient(args.api_origin, token, args.evidence)
     node = wait_for_node(client, organization_id, args.timeout)
+    node_id = uuid_field(node, "id")
+
+    gateway_scope = client.request(
+        "POST",
+        (
+            f"/organizations/{organization_id}/projects/{context['projectId']}"
+            f"/environments/{context['environmentId']}/gateway-scopes"
+        ),
+        {201},
+        "gateway-scope.json",
+        body={"nodeId": node_id},
+        idempotency_key="e0-clean-host-gateway-scope",
+    )
+    if not isinstance(gateway_scope, dict):
+        raise GateError("Gateway scope response is not an object")
+    gateway_scope_id = uuid_field(gateway_scope, "id")
 
     try:
         https_get(
@@ -107,6 +123,7 @@ def exercise(args: Any) -> None:
         {202},
         "route-publication.json",
         body={
+            "gatewayScopeId": gateway_scope_id,
             "workloadRevisionId": revision_a,
             "domainClaimId": claim_id,
             "hostname": args.hostname,

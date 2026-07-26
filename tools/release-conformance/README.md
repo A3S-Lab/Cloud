@@ -2,8 +2,8 @@
 
 `run_clean_host_gate.sh` is the final process-level acceptance gate for the
 single-node E0 release. It starts from exact clean Cloud and Runtime Git
-worktrees and exercises released processes rather than an in-process test
-fixture.
+worktrees, uses the Gateway revision pinned by Cloud, and exercises released
+processes rather than an in-process test fixture.
 
 The scenario performs this sequence:
 
@@ -12,11 +12,12 @@ The scenario performs this sequence:
 2. start digest-pinned PostgreSQL and OCI registry fixtures;
 3. copy a digest-pinned BusyBox platform image into the local registry and
    remove the host-side image before deployment;
-4. start A3S Gateway 1.0.12 with a management-only ACL snapshot;
-5. start the control plane with an isolated development ACL configuration;
-6. bootstrap one organization, project, environment, and one-time enrollment
+4. start the control plane with an isolated development ACL configuration;
+5. bootstrap one organization, project, environment, and one-time enrollment
    token through the public REST API;
-7. start one real outbound node agent against the host Docker provider;
+6. start one real outbound node agent against the host Docker provider;
+7. bind the enrolled node identity to a `cloud-managed` A3S Gateway and its
+   native durable snapshot journal;
 8. deploy and health-check release A, prove exactly one live provider resource,
    and confirm the Gateway TLS listener is still absent;
 9. verify a domain claim, publish the route, wait for the exact Gateway
@@ -43,7 +44,8 @@ The host requires:
 
 - Docker with access to `/var/run/docker.sock`;
 - Rust and Cargo capable of building the pinned Cloud and Runtime revisions;
-- A3S Gateway 1.0.12;
+- the A3S Gateway revision recorded in
+  `tools/gateway-conformance/gateway-revision`;
 - Bash, Curl, Git, GNU `grep`, Python 3, `sha256sum`, and GNU `timeout`; and
 - outbound access to fetch the pinned container images and Rust dependencies.
 
@@ -55,10 +57,15 @@ mkdir -p "$root/apps" "$root/crates"
 
 git clone git@github.com:A3S-Lab/Cloud.git "$root/apps/cloud"
 git clone git@github.com:A3S-Lab/Runtime.git "$root/crates/runtime"
+git clone git@github.com:A3S-Lab/Gateway.git "$root/crates/gateway"
 
 git -C "$root/apps/cloud" checkout --detach "$CLOUD_SHA"
 runtime_revision=$(<"$root/apps/cloud/tools/runtime-conformance/runtime-revision")
+gateway_revision=$(<"$root/apps/cloud/tools/gateway-conformance/gateway-revision")
 git -C "$root/crates/runtime" checkout --detach "$runtime_revision"
+git -C "$root/crates/gateway" checkout --detach "$gateway_revision"
+cargo build --manifest-path "$root/crates/gateway/Cargo.toml" \
+  --release --locked --bin a3s-gateway
 ```
 
 Both worktrees must be clean. Run the gate as the dedicated user that owns
@@ -69,7 +76,7 @@ Docker access:
   --source-root "$root" \
   --cloud-sha "$CLOUD_SHA" \
   --runtime-sha "$runtime_revision" \
-  --gateway "$(command -v a3s-gateway)"
+  --gateway "$root/crates/gateway/target/release/a3s-gateway"
 ```
 
 The four loopback ports can be overridden when a dedicated host reserves the
@@ -79,7 +86,7 @@ defaults:
 "$root/apps/cloud/tools/release-conformance/run_clean_host_gate.sh" \
   --source-root "$root" \
   --cloud-sha "$CLOUD_SHA" \
-  --gateway "$(command -v a3s-gateway)" \
+  --gateway "$root/crates/gateway/target/release/a3s-gateway" \
   --api-port 28080 \
   --node-control-port 28443 \
   --gateway-port 29443 \
@@ -96,8 +103,8 @@ The default evidence directory is
 
 - `result.txt` with `A3S_CLOUD_CLEAN_HOST_E0_PASS`;
 - `exit-status.txt` with `0`;
-- exact Cloud and Runtime SHAs, pinned fixture identities, the resolved local
-  workload digest, Gateway version, and release-binary hashes;
+- exact Cloud, Runtime, and Gateway SHAs, pinned fixture identities, the
+  resolved local workload digest, Gateway version, and release-binary hashes;
 - public API responses for bootstrap, enrollment, deployments, route
   acknowledgements, logs, Operations, rollback lineage, and workload stop;
 - verified TLS bodies for A, B, and the cloned rollback revision;

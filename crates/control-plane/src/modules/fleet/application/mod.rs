@@ -15,7 +15,8 @@ pub use commands::{
     IssueEnrollmentTokenResult, LeaseNodeCommands, LeaseNodeCommandsHandler,
     RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler, RecordNodeLogChunks,
     RecordNodeLogChunksHandler, RecordNodeObservations, RecordNodeObservationsHandler,
-    RotateNodeCertificate, RotateNodeCertificateHandler, RotateNodeCertificateResult,
+    RecordNodeResourceInventory, RecordNodeResourceInventoryHandler, RotateNodeCertificate,
+    RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };
 pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
 pub use log_compaction::LogCompactionWorker;

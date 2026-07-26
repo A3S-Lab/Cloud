@@ -12,12 +12,15 @@ use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeAvailability, NodeCapabilities, NodeName, NodeState,
 };
 use crate::modules::shared_kernel::domain::{
-    EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
+    canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId,
+    NodeId, OrganizationId,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCommandAck, NodeCommandFailure,
     NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
-    NodeGatewayAck, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    NodeGatewayAck, NodeHeartbeat, NodeHeartbeatV2, NodeObservationBatch, NodeObservationBatchV2,
+    NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit,
+    RuntimeObservationReport,
 };
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
@@ -30,6 +33,133 @@ use uuid::Uuid;
 mod support;
 
 use support::*;
+
+#[tokio::test]
+async fn resource_inventory_is_monotonic_replay_safe_and_required_by_v2_heartbeats() {
+    let repository = InMemoryNodeRepository::new();
+    let now = canonical_timestamp(Utc::now());
+    let (node_id, agent_instance_id) = command_node(&repository, now).await;
+    let first = resource_inventory(node_id, agent_instance_id, 1, 2_000, now);
+    let receipt = repository
+        .record_resource_inventory(first.clone(), now)
+        .await
+        .expect("record first inventory");
+    assert!(!receipt.replayed);
+    assert!(
+        repository
+            .record_resource_inventory(first.clone(), now + Duration::milliseconds(1))
+            .await
+            .expect("replay first inventory")
+            .replayed
+    );
+    assert_eq!(
+        repository
+            .current_resource_inventory(node_id)
+            .await
+            .expect("query inventory")
+            .expect("current inventory")
+            .inventory,
+        first
+    );
+
+    let conflicting = resource_inventory(node_id, agent_instance_id, 1, 3_000, now);
+    assert!(repository
+        .record_resource_inventory(conflicting, now + Duration::milliseconds(2))
+        .await
+        .is_err());
+    let skipped = resource_inventory(
+        node_id,
+        agent_instance_id,
+        3,
+        3_000,
+        now + Duration::seconds(1),
+    );
+    assert!(repository
+        .record_resource_inventory(skipped, now + Duration::seconds(1))
+        .await
+        .is_err());
+
+    let second = resource_inventory(
+        node_id,
+        agent_instance_id,
+        2,
+        3_000,
+        now + Duration::seconds(1),
+    );
+    repository
+        .record_resource_inventory(second.clone(), now + Duration::seconds(1))
+        .await
+        .expect("advance inventory");
+    assert!(
+        repository
+            .record_resource_inventory(first.clone(), now + Duration::seconds(2))
+            .await
+            .expect("replay historical inventory")
+            .replayed
+    );
+    assert_eq!(
+        repository
+            .current_resource_inventory(node_id)
+            .await
+            .expect("query advanced inventory")
+            .expect("advanced inventory")
+            .inventory,
+        second
+    );
+
+    let heartbeat_at = now + Duration::seconds(2);
+    let heartbeat = NodeObservationBatchV2 {
+        schema: NodeObservationBatchV2::SCHEMA.into(),
+        node_id: node_id.as_uuid(),
+        agent_instance_id,
+        sent_at: heartbeat_at,
+        heartbeat: NodeHeartbeatV2 {
+            schema: NodeHeartbeatV2::SCHEMA.into(),
+            node_id: node_id.as_uuid(),
+            agent_instance_id,
+            observed_at: heartbeat_at,
+            agent_version: "0.1.0".into(),
+            runtime_capabilities: runtime_capabilities(),
+            inventory: second.reference(),
+        },
+        observations: Vec::new(),
+    };
+    repository
+        .record_observations(heartbeat.clone().into(), heartbeat_at)
+        .await
+        .expect("v2 heartbeat");
+    let mut stale = heartbeat;
+    stale.heartbeat.inventory = first.reference();
+    assert!(repository
+        .record_observations(stale.into(), heartbeat_at)
+        .await
+        .is_err());
+}
+
+fn resource_inventory(
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+    generation: u64,
+    milli_cpu: u64,
+    observed_at: chrono::DateTime<Utc>,
+) -> NodeResourceInventory {
+    NodeResourceInventory::new(
+        node_id.as_uuid(),
+        agent_instance_id,
+        generation,
+        observed_at,
+        vec![NodeResourceSlot::new(
+            ResourceKind::Cpu,
+            "cpu/shared",
+            ResourceAllocation::Scalar {
+                amount: milli_cpu,
+                unit: ResourceUnit::MilliCpu,
+            },
+        )
+        .expect("CPU resource slot")],
+    )
+    .expect("resource inventory")
+}
 
 #[tokio::test]
 async fn command_queue_is_sequenced_leased_redelivered_and_acknowledged_exactly() {
@@ -307,7 +437,7 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         }],
     };
     let accepted = repository
-        .record_observations(batch.clone(), observed_at)
+        .record_observations(batch.clone().into(), observed_at)
         .await
         .expect("record observation");
     assert_eq!(accepted.accepted_reports, 1);
@@ -320,7 +450,7 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
     replay_batch.heartbeat.observed_at = replayed_at;
     replay_batch.observations[0].observed_at = replayed_at;
     let replayed = repository
-        .record_observations(replay_batch, observed_at + Duration::milliseconds(1))
+        .record_observations(replay_batch.into(), observed_at + Duration::milliseconds(1))
         .await
         .expect("replay observation");
     assert_eq!(replayed.accepted_reports, 0);
@@ -329,12 +459,20 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
     let mut conflict = batch;
     conflict.observations[0].observation.unit_id = "different-service".into();
     assert!(repository
-        .record_observations(conflict, observed_at + Duration::milliseconds(2))
+        .record_observations(conflict.into(), observed_at + Duration::milliseconds(2))
         .await
         .is_err());
 
-    let snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("Gateway snapshot");
+    let gateway_not_after = observed_at + Duration::minutes(1);
+    let snapshot = GatewaySnapshot::new(
+        node_id.as_uuid(),
+        1,
+        None,
+        observed_at,
+        gateway_not_after,
+        "management { enabled = true }\n",
+    )
+    .expect("Gateway snapshot");
     let gateway_command = repository
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: NodeCommandId::new(),
@@ -344,7 +482,7 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
                 snapshot: Box::new(snapshot.clone()),
             },
             issued_at: observed_at,
-            not_after: observed_at + Duration::minutes(1),
+            not_after: gateway_not_after,
             correlation_id: Uuid::now_v7(),
         })
         .await
@@ -356,11 +494,15 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         acknowledgement_id: Uuid::now_v7(),
         command_id: gateway_command.id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: observed_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(
         !repository

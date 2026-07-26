@@ -1,6 +1,7 @@
 use crate::modules::edge::domain::{Route, RouteState};
 use crate::modules::shared_kernel::domain::{GatewayCertificateId, NodeId};
 use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot};
+use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::{Component, Path};
@@ -13,6 +14,34 @@ pub struct GatewaySnapshotCompilerConfig {
     pub management_auth_token_env: String,
     pub upstream_request_timeout_ms: u64,
     pub certificate_directory: String,
+    pub managed_state_file: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GatewaySnapshotMetadata {
+    pub node_id: NodeId,
+    pub revision: u64,
+    pub expected_revision: Option<u64>,
+    pub issued_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl GatewaySnapshotMetadata {
+    pub const fn new(
+        node_id: NodeId,
+        revision: u64,
+        expected_revision: Option<u64>,
+        issued_at: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            node_id,
+            revision,
+            expected_revision,
+            issued_at,
+            expires_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +67,7 @@ impl GatewaySnapshotCompiler {
             || config.upstream_request_timeout_ms == 0
             || config.upstream_request_timeout_ms > 3_600_000
             || !valid_certificate_directory(&config.certificate_directory)
+            || !valid_absolute_file(&config.managed_state_file)
         {
             return Err("Gateway snapshot compiler configuration is invalid".into());
         }
@@ -46,27 +76,16 @@ impl GatewaySnapshotCompiler {
 
     pub fn compile(
         &self,
-        node_id: NodeId,
-        revision: u64,
-        expected_revision: Option<u64>,
+        metadata: GatewaySnapshotMetadata,
         certificate_id: GatewayCertificateId,
         routes: &[Route],
     ) -> Result<GatewaySnapshot, String> {
-        self.compile_snapshot(
-            node_id,
-            revision,
-            expected_revision,
-            Some(certificate_id),
-            routes,
-            true,
-        )
+        self.compile_snapshot(metadata, Some(certificate_id), routes, true, None)
     }
 
     pub fn compile_certificate_convergence(
         &self,
-        node_id: NodeId,
-        revision: u64,
-        expected_revision: Option<u64>,
+        metadata: GatewaySnapshotMetadata,
         certificate_id: Option<GatewayCertificateId>,
         routes: &[Route],
     ) -> Result<GatewaySnapshot, String> {
@@ -76,25 +95,48 @@ impl GatewaySnapshotCompiler {
                     .into(),
             );
         }
+        self.compile_snapshot(metadata, certificate_id, routes, false, None)
+    }
+
+    pub fn compile_certificate_reuse(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        certificate_request: GatewayCertificateRequest,
+        routes: &[Route],
+    ) -> Result<GatewaySnapshot, String> {
+        let certificate_id = GatewayCertificateId::from_uuid(certificate_request.certificate_id);
         self.compile_snapshot(
-            node_id,
-            revision,
-            expected_revision,
-            certificate_id,
+            metadata,
+            Some(certificate_id),
             routes,
             false,
+            Some(certificate_request),
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
+    pub fn compile_validity_renewal(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        current_acl: &str,
+    ) -> Result<GatewaySnapshot, String> {
+        GatewaySnapshot::new_with_certificate(
+            metadata.node_id.as_uuid(),
+            metadata.revision,
+            metadata.expected_revision,
+            metadata.issued_at,
+            metadata.expires_at,
+            current_acl.to_owned(),
+            None,
+        )
+    }
+
     fn compile_snapshot(
         &self,
-        node_id: NodeId,
-        revision: u64,
-        expected_revision: Option<u64>,
+        metadata: GatewaySnapshotMetadata,
         certificate_id: Option<GatewayCertificateId>,
         routes: &[Route],
         require_pending_route: bool,
+        certificate_request_override: Option<GatewayCertificateRequest>,
     ) -> Result<GatewaySnapshot, String> {
         let mut routes = routes.iter().collect::<Vec<_>>();
         routes.sort_by(|left, right| {
@@ -108,7 +150,8 @@ impl GatewaySnapshotCompiler {
         let mut dns_names = BTreeSet::new();
         let mut pending_routes = 0_usize;
         for route in &routes {
-            if route.gateway_node_id != node_id {
+            route.validate_target_binding()?;
+            if route.gateway_node_id != metadata.node_id {
                 return Err("complete Gateway snapshot contains a route from another scope".into());
             }
             let state_is_eligible = if require_pending_route {
@@ -147,27 +190,50 @@ impl GatewaySnapshotCompiler {
             return Err("complete Gateway publication must contain a pending route".into());
         }
 
-        let certificate_request = certificate_id
-            .map(|certificate_id| {
-                let certificate_root =
-                    Path::new(&self.config.certificate_directory).join(certificate_id.to_string());
-                let certificate_file = certificate_root
-                    .join("certificate.pem")
-                    .to_string_lossy()
-                    .into_owned();
-                let private_key_file = certificate_root
-                    .join("private-key.pem")
-                    .to_string_lossy()
-                    .into_owned();
-                GatewayCertificateRequest::new(
-                    certificate_id.as_uuid(),
-                    dns_names.into_iter().collect(),
-                    certificate_file,
-                    private_key_file,
+        let certificate_request = match (certificate_id, certificate_request_override) {
+            (Some(certificate_id), Some(request)) => {
+                request.validate()?;
+                let expected = managed_certificate_request(
+                    &self.config.certificate_directory,
+                    certificate_id,
+                    request.dns_names.clone(),
+                )?;
+                let request_names = request
+                    .dns_names
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
+                if request != expected
+                    || dns_names
+                        .iter()
+                        .any(|dns_name| !request_names.contains(dns_name.as_str()))
+                {
+                    return Err(
+                        "reused Gateway certificate does not cover the complete snapshot".into(),
+                    );
+                }
+                Some(request)
+            }
+            (Some(certificate_id), None) => Some(managed_certificate_request(
+                &self.config.certificate_directory,
+                certificate_id,
+                dns_names.into_iter().collect(),
+            )?),
+            (None, None) => None,
+            (None, Some(_)) => {
+                return Err(
+                    "Gateway certificate reuse requires an exact certificate identity".into(),
                 )
-            })
-            .transpose()?;
-        let mut acl = format!("# a3s-cloud complete Gateway snapshot {revision}\n");
+            }
+        };
+        let mut acl = format!(
+            "# a3s-cloud complete Gateway snapshot {revision}\n\
+             mode {{ kind = \"cloud-managed\" }}\n\n\
+             managed {{\n  gateway_id = {}\n  state_file = {}\n}}\n\n",
+            acl_string(&metadata.node_id.to_string()),
+            acl_string(&self.config.managed_state_file),
+            revision = metadata.revision,
+        );
         if let Some(certificate_request) = &certificate_request {
             acl.push_str(&format!(
                 "entrypoints \"a3s-cloud-https\" {{\n  address = {}\n  tls {{\n    cert_file = {}\n    key_file = {}\n    min_version = \"1.2\"\n  }}\n}}\n\n",
@@ -179,14 +245,17 @@ impl GatewaySnapshotCompiler {
         for route in &routes {
             let name = format!("route-{}", route.id.as_uuid().simple());
             acl.push_str(&format!(
-                "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
+                "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\n# target revision={} unit={} generation={}\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
                 acl_string(&format!(
                     "Host(`{}`) && PathPrefix(`{}`)",
                     route.hostname.as_str(),
                     route.path_prefix.as_str()
                 )),
+                route.target.workload_revision_id,
+                route.target.runtime_unit_id,
+                route.target.runtime_generation,
                 acl_string(&duration(self.config.upstream_request_timeout_ms)),
-                acl_string(route.upstream.as_str()),
+                acl_string(route.target.upstream.as_str()),
             ));
         }
         acl.push_str(&format!(
@@ -195,8 +264,38 @@ impl GatewaySnapshotCompiler {
             acl_string(&self.config.management_path_prefix),
             acl_string(&self.config.management_auth_token_env),
         ));
-        GatewaySnapshot::new_with_certificate(revision, expected_revision, acl, certificate_request)
+        GatewaySnapshot::new_with_certificate(
+            metadata.node_id.as_uuid(),
+            metadata.revision,
+            metadata.expected_revision,
+            metadata.issued_at,
+            metadata.expires_at,
+            acl,
+            certificate_request,
+        )
     }
+}
+
+fn managed_certificate_request(
+    certificate_directory: &str,
+    certificate_id: GatewayCertificateId,
+    dns_names: Vec<String>,
+) -> Result<GatewayCertificateRequest, String> {
+    let certificate_root = Path::new(certificate_directory).join(certificate_id.to_string());
+    let certificate_file = certificate_root
+        .join("certificate.pem")
+        .to_string_lossy()
+        .into_owned();
+    let private_key_file = certificate_root
+        .join("private-key.pem")
+        .to_string_lossy()
+        .into_owned();
+    GatewayCertificateRequest::new(
+        certificate_id.as_uuid(),
+        dns_names,
+        certificate_file,
+        private_key_file,
+    )
 }
 
 fn acl_string(value: &str) -> String {
@@ -239,17 +338,29 @@ fn valid_certificate_directory(value: &str) -> bool {
             .all(|component| !matches!(component, Component::ParentDir))
 }
 
+fn valid_absolute_file(value: &str) -> bool {
+    let path = Path::new(value);
+    !value.is_empty()
+        && value.len() <= 4096
+        && !value.contains(['\0', '\r', '\n'])
+        && path.is_absolute()
+        && path.file_name().is_some()
+        && path
+            .components()
+            .all(|component| !matches!(component, Component::ParentDir))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::edge::domain::{
-        DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
+        DomainNamePattern, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
     use crate::modules::shared_kernel::domain::{
-        DomainClaimId, EnvironmentId, GatewayCertificateId, OrganizationId, ProjectId, RouteId,
-        WorkloadId, WorkloadRevisionId,
+        DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, OrganizationId,
+        ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
     };
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
 
     fn compiler() -> GatewaySnapshotCompiler {
         GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
@@ -259,27 +370,39 @@ mod tests {
             management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
             upstream_request_timeout_ms: 30_000,
             certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+            managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
         })
         .expect("compiler")
     }
 
     fn route(node_id: NodeId, hostname: &str, path: &str, port: u16) -> Route {
+        let workload_id = WorkloadId::new();
+        let workload_revision_id = WorkloadRevisionId::new();
+        let now = Utc::now();
         Route::create(
             RouteId::new(),
             OrganizationId::new(),
             ProjectId::new(),
             EnvironmentId::new(),
+            GatewayScopeId::new(),
             node_id,
             RouteHostname::parse(hostname).expect("hostname"),
             RoutePath::parse(path).expect("path"),
             DomainClaimId::new(),
             DomainNamePattern::parse(hostname).expect("domain pattern"),
             GatewayCertificateId::new(),
-            WorkloadId::new(),
-            WorkloadRevisionId::new(),
-            RoutePortName::parse("http").expect("port"),
-            UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}")).expect("upstream"),
-            Utc::now(),
+            workload_id,
+            RouteTarget::new(
+                workload_id,
+                workload_revision_id,
+                format!("workload:{workload_id}:revision:{workload_revision_id}"),
+                1,
+                RoutePortName::parse("http").expect("port"),
+                UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}")).expect("upstream"),
+                now,
+            )
+            .expect("target"),
+            now,
         )
         .expect("route")
     }
@@ -292,17 +415,21 @@ mod tests {
         first.state = RouteState::Active;
         let mut second = route(node_id, "api.example.com", "/v1", 49153);
         second.gateway_certificate_id = Some(certificate_id);
+        let issued_at = Utc::now();
+        let expires_at = issued_at + Duration::minutes(10);
         let forward = compiler()
             .compile(
-                node_id,
-                2,
-                Some(1),
+                GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
                 certificate_id,
                 &[first.clone(), second.clone()],
             )
             .expect("snapshot");
         let reverse = compiler()
-            .compile(node_id, 2, Some(1), certificate_id, &[second, first])
+            .compile(
+                GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+                certificate_id,
+                &[second, first],
+            )
             .expect("snapshot");
         assert_eq!(forward, reverse);
         assert_eq!(forward.acl.matches("routers \"").count(), 2);
@@ -311,6 +438,8 @@ mod tests {
             .acl
             .contains("Host(`api.example.com`) && PathPrefix(`/v1`)"));
         assert!(forward.acl.contains("http://127.0.0.1:49152/"));
+        assert!(forward.acl.contains("mode { kind = \"cloud-managed\" }"));
+        assert!(forward.acl.contains(&node_id.to_string()));
     }
 
     #[test]
@@ -320,12 +449,17 @@ mod tests {
         let mut active = route(node_id, "api.example.com", "/", 49152);
         let previous_certificate_id = active.gateway_certificate_id.expect("previous certificate");
         active.state = RouteState::Active;
+        let issued_at = Utc::now();
 
         let snapshot = compiler()
             .compile_certificate_convergence(
-                node_id,
-                2,
-                Some(1),
+                GatewaySnapshotMetadata::new(
+                    node_id,
+                    2,
+                    Some(1),
+                    issued_at,
+                    issued_at + Duration::minutes(10),
+                ),
                 Some(certificate_id),
                 std::slice::from_ref(&active),
             )
@@ -349,8 +483,19 @@ mod tests {
     #[test]
     fn compiles_route_less_revocation_snapshot_without_a_certificate() {
         let node_id = NodeId::new();
+        let issued_at = Utc::now();
         let snapshot = compiler()
-            .compile_certificate_convergence(node_id, 2, Some(1), None, &[])
+            .compile_certificate_convergence(
+                GatewaySnapshotMetadata::new(
+                    node_id,
+                    2,
+                    Some(1),
+                    issued_at,
+                    issued_at + Duration::minutes(10),
+                ),
+                None,
+                &[],
+            )
             .expect("route-less revocation snapshot");
 
         assert!(snapshot.certificate_request.is_none());
@@ -363,18 +508,22 @@ mod tests {
         let node_id = NodeId::new();
         let first = route(node_id, "api.example.com", "/v1", 49152);
         let duplicate = route(node_id, "api.example.com", "/v1", 49153);
+        let issued_at = Utc::now();
+        let expires_at = issued_at + Duration::minutes(10);
         assert!(compiler()
             .compile(
-                node_id,
-                1,
-                None,
+                GatewaySnapshotMetadata::new(node_id, 1, None, issued_at, expires_at),
                 GatewayCertificateId::new(),
                 &[first, duplicate],
             )
             .is_err());
         let foreign = route(NodeId::new(), "other.example.com", "/", 49154);
         assert!(compiler()
-            .compile(node_id, 1, None, GatewayCertificateId::new(), &[foreign],)
+            .compile(
+                GatewaySnapshotMetadata::new(node_id, 1, None, issued_at, expires_at),
+                GatewayCertificateId::new(),
+                &[foreign],
+            )
             .is_err());
     }
 
@@ -387,8 +536,19 @@ mod tests {
         let certificate_id = GatewayCertificateId::new();
         let mut route = route(node_id, "api.example.com", "/v1", 49152);
         route.gateway_certificate_id = Some(certificate_id);
+        let issued_at = Utc::now();
         let snapshot = compiler()
-            .compile(node_id, 1, None, certificate_id, &[route])
+            .compile(
+                GatewaySnapshotMetadata::new(
+                    node_id,
+                    1,
+                    None,
+                    issued_at,
+                    issued_at + Duration::minutes(10),
+                ),
+                certificate_id,
+                &[route],
+            )
             .expect("snapshot");
         let directory = tempfile::tempdir().expect("Gateway validation directory");
         let path = directory.path().join("gateway.acl");

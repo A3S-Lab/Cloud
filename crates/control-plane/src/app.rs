@@ -11,17 +11,19 @@ use crate::modules::artifacts::{
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
-    IRouteTargetReader,
+    IGatewayObservationQueue, IRouteTargetReader,
 };
 use crate::modules::edge::{
-    CreateDomainClaimHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
-    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
-    GatewayCertificateReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    CreateDomainClaimHandler, CreateGatewayScopeHandler, DnsDomainOwnershipVerifier,
+    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, EdgeModule,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
+    GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
+    GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, PostgresEdgeRepository, PublishRouteHandler,
-    RevokeDomainClaimHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
-    WorkloadRouteTargetReader,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
@@ -80,17 +82,19 @@ use crate::modules::sources::{
     PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
+use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
     CancelDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
-    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowRuntime,
-    GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadRuntimeControl,
-    ListWorkloadsHandler, OciRegistryArtifactResolver, PostgresWorkloadRepository,
-    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
-    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
+    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
+    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler,
+    SecretRotationRestartReconciler, StopWorkloadHandler, UpdateWorkloadDeploymentHandler,
+    WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
@@ -200,6 +204,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
+    let resource_claims: Arc<dyn IResourceClaimRepository> =
+        Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository.clone();
     let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> = workload_repository;
@@ -346,6 +352,8 @@ pub async fn build_application_with_source_resolver(
     );
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
+    let gateway_observations: Arc<dyn IGatewayObservationQueue> =
+        Arc::new(FleetGatewayObservationQueue::new(Arc::clone(&node_control)));
     let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -353,6 +361,7 @@ pub async fn build_application_with_source_resolver(
         management_auth_token_env: config.edge.management_auth_token_env.clone(),
         upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
         certificate_directory: config.edge.certificate_directory.clone(),
+        managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let gateway_certificate_reconciler = GatewayCertificateReconciler::new(
@@ -362,7 +371,35 @@ pub async fn build_application_with_source_resolver(
         deployment_route_compiler.clone(),
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
         chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
+    let gateway_rollout_reconciler = GatewayRolloutReconciler::new(
+        Arc::clone(&routes),
+        Arc::clone(&route_commands),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
+    let gateway_replica_recovery_reconciler = GatewayReplicaRecoveryReconciler::new(
+        Arc::clone(&routes),
+        gateway_observations,
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
+    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new(
+        Arc::clone(&routes),
+        GatewayRolloutRollbackCompiler::new(
+            deployment_route_compiler.clone(),
+            chrono_duration(config.edge.command_ttl_ms)?,
+            chrono::Duration::hours(24),
+        )
+        .map_err(ControlPlaneStartupError::Edge)?,
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
@@ -396,11 +433,14 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let deployment_runtime = DeploymentFlowRuntime::new(
-        Arc::clone(&workloads),
-        artifacts,
-        Arc::clone(&nodes),
-        Arc::clone(&node_control),
-        deployment_route_updates,
+        DeploymentFlowDependencies::new(
+            Arc::clone(&workloads),
+            Arc::clone(&resource_claims),
+            artifacts,
+            Arc::clone(&nodes),
+            Arc::clone(&node_control),
+            deployment_route_updates,
+        ),
         chrono_duration(config.fleet.heartbeat_timeout_ms)
             .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         deployment_flow_config,
@@ -526,6 +566,7 @@ pub async fn build_application_with_source_resolver(
     let workload_reconciler = WorkloadRuntimeReconciler::new(
         workload_targets,
         workload_runtime_control,
+        resource_claims,
         Duration::from_millis(config.deployments.reconcile_interval_ms),
         Duration::from_millis(config.deployments.command_ttl_ms),
         Duration::from_millis(config.deployments.runtime_apply_timeout_ms),
@@ -587,6 +628,9 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
+            run_operations.then_some(gateway_rollout_reconciler),
+            run_operations.then_some(gateway_replica_recovery_reconciler),
+            run_operations.then_some(gateway_rollout_rollback_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
             run_operations.then_some(workload_reconciler),
             run_operations.then_some(log_retention_worker),
@@ -667,6 +711,7 @@ fn build_application_with_health(
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
+    let gateway_scope_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
@@ -698,6 +743,7 @@ fn build_application_with_health(
     let rotation_nodes = Arc::clone(&nodes);
     let state_nodes = Arc::clone(&nodes);
     let get_nodes = Arc::clone(&nodes);
+    let gateway_scope_nodes = Arc::clone(&nodes);
     let enqueue_commands = Arc::clone(&node_control);
     let lease_commands = Arc::clone(&node_control);
     let acknowledge_commands = Arc::clone(&node_control);
@@ -712,10 +758,12 @@ fn build_application_with_health(
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
     let revoke_domain_claims = Arc::clone(&routes);
+    let create_gateway_scopes = Arc::clone(&routes);
     let publish_routes = Arc::clone(&routes);
     let list_domain_claims = Arc::clone(&routes);
     let get_domain_claims = Arc::clone(&routes);
     let list_gateway_certificates = Arc::clone(&routes);
+    let list_gateway_scopes = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
     let create_secrets = Arc::clone(&secrets);
@@ -789,6 +837,7 @@ fn build_application_with_health(
         management_auth_token_env: config.edge.management_auth_token_env.clone(),
         upstream_request_timeout_ms: config.edge.upstream_request_timeout_ms,
         certificate_directory: config.edge.certificate_directory.clone(),
+        managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(BootError::Internal)?;
     let publish_route_handler = PublishRouteHandler::new(
@@ -944,6 +993,13 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::edge::RevokeDomainClaim, _>(
                     RevokeDomainClaimHandler::new(revoke_domain_claims),
                 )
+                .command_handler::<crate::modules::edge::CreateGatewayScope, _>(
+                    CreateGatewayScopeHandler::new(
+                        gateway_scope_environments,
+                        gateway_scope_nodes,
+                        create_gateway_scopes,
+                    ),
+                )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
                     IssueEnrollmentTokenHandler::new(
@@ -1074,6 +1130,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::edge::ListGatewayCertificates, _>(
                     ListGatewayCertificatesHandler::new(list_gateway_certificates),
+                )
+                .query_handler::<crate::modules::edge::ListGatewayScopes, _>(
+                    ListGatewayScopesHandler::new(list_gateway_scopes),
                 )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,

@@ -2,20 +2,15 @@ use super::*;
 
 pub(in super::super) async fn record_observations(
     executor: &PostgresExecutor,
-    mut batch: NodeObservationBatch,
+    batch: NodeObservationBatchEnvelope,
     received_at: DateTime<Utc>,
 ) -> Result<NodeObservationReceipt, RepositoryError> {
-    batch.sent_at = canonical_timestamp(batch.sent_at);
-    batch.heartbeat.observed_at = canonical_timestamp(batch.heartbeat.observed_at);
-    for report in &mut batch.observations {
-        report.observed_at = canonical_timestamp(report.observed_at);
-    }
+    let batch = NodeObservationSubmission::try_from(batch).map_err(RepositoryError::Conflict)?;
     let received_at = canonical_timestamp(received_at);
-    batch.validate().map_err(RepositoryError::Conflict)?;
     let capabilities = NodeCapabilities::new(
-        batch.heartbeat.runtime_capabilities.provider_id.to_string(),
-        batch.heartbeat.runtime_capabilities.provider_build.clone(),
-        serde_json::to_value(&batch.heartbeat.runtime_capabilities)
+        batch.runtime_capabilities.provider_id.to_string(),
+        batch.runtime_capabilities.provider_build.clone(),
+        serde_json::to_value(&batch.runtime_capabilities)
             .map_err(|error| RepositoryError::Storage(error.to_string()))?,
     )
     .map_err(RepositoryError::Conflict)?;
@@ -27,12 +22,21 @@ pub(in super::super) async fn record_observations(
                     NodeHeartbeatUpdate {
                         node_id: NodeId::from_uuid(batch.node_id),
                         agent_instance_id: batch.agent_instance_id,
-                        agent_version: batch.heartbeat.agent_version.clone(),
+                        agent_version: batch.agent_version.clone(),
                         capabilities,
-                        observed_at: batch.heartbeat.observed_at,
+                        observed_at: batch.heartbeat_observed_at,
                     },
                 )
                 .await?;
+                if let Some(reference) = &batch.inventory {
+                    inventory::require_current_reference(
+                        transaction,
+                        batch.node_id,
+                        batch.agent_instance_id,
+                        reference,
+                    )
+                    .await?;
+                }
 
                 let mut accepted_reports = 0_u16;
                 let mut replayed_reports = 0_u16;
@@ -129,7 +133,7 @@ pub(in super::super) async fn record_observations(
                 let receipt = NodeObservationReceipt {
                     schema: NodeObservationReceipt::SCHEMA.into(),
                     node_id: batch.node_id,
-                    heartbeat_observed_at: batch.heartbeat.observed_at,
+                    heartbeat_observed_at: batch.heartbeat_observed_at,
                     accepted_reports,
                     replayed_reports,
                 };

@@ -123,7 +123,7 @@ for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-23:
+Status as of 2026-07-26:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -132,7 +132,9 @@ Status as of 2026-07-23:
 | N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
-| G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@2`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence and the remaining production fault-injection gate still block G0 verification |
+| G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. External private-provider evidence and the remaining production fault-injection gate still block G0 verification |
+| H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
+| H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
 
 E0 closes the first usable-service MVP. D0 verification alone did not imply
 public reachability, durable log retention, immutable update, or rollback; the
@@ -345,19 +347,22 @@ Complete the first user-visible release loop.
 
 - Implemented: Edge route and Gateway publication records, hostname/path
   ownership, versioned complete snapshot generation, and closed route APIs.
-- Implemented: healthy immutable target resolution from typed Runtime endpoint
-  evidence, Fleet command dispatch, stable correlation across retries, and
+- Implemented: healthy immutable target resolution from the exact deployment
+  command's typed Runtime endpoint evidence, durable revision/unit/generation
+  binding, Fleet command dispatch, stable correlation across retries, and
   exact-revision acknowledgement projection.
-- Implemented: node-local A3S Gateway validation, atomic compare-and-swap
-  install, reload, durable acknowledgement ordering, and the real route-bearing
-  router/service ACL gate against A3S Gateway 1.0.12.
+- Implemented: node-local A3S Gateway native snapshot application,
+  identity/revision/digest/expiry/readiness verification, durable
+  acknowledgement ordering, and the real route-bearing router/service ACL gate
+  against the repository-pinned Gateway revision.
 - Implemented: tenant-scoped exact and one-label wildcard claims, deterministic
   development proof verification, closed certificate policy, TLS 1.2 snapshot
   compilation, public certificate persistence, sanitized failure projection,
   and a separate local Gateway CA.
 - Implemented: authenticated CSR signing, replay binding, node-local `0600`
   private keys, full chain/identity/key verification, atomic chain storage
-  before Gateway reload, and a dedicated real HTTPS fixture for Gateway 1.0.12.
+  before native Gateway apply, and a dedicated real HTTPS fixture for the
+  repository-pinned Gateway revision.
 - Implemented: the production security profile performs bounded TXT ownership
   verification through the host's asynchronous system DNS resolver, fails
   startup closed without resolver configuration, sanitizes provider failures,
@@ -480,15 +485,18 @@ Complete the first user-visible release loop.
 - Implemented: `POST
   /organizations/{organization_id}/workloads/{workload_id}/deployments`
   commits a complete immutable replacement template and a
-  `cloud.deployment@2` operation. Version 1 remains executable only for
+  `cloud.deployment@3` operation. Versions 1 and 2 remain executable only for
   persisted-run replay. A workload permits one nonterminal deployment, the
   candidate stays on the previous Runtime node, cancellation closes at
   `verifying`, and health must converge before any routed cutover is staged.
 - Implemented: routed updates preserve the old route rows and active revision
   through unhealthy candidates, mismatched acknowledgements, and rejected
-  reloads. Only the exact node, command, Gateway revision, and snapshot digest
-  acknowledgement atomically replaces route targets. The candidate then enters
-  `retiring`; a deterministic stop command targets the previous Runtime
+  reloads. A candidate must use a different immutable revision, a strictly
+  newer Runtime generation, its deterministic Runtime unit, the unchanged
+  declared port, and the exact deployment command's healthy observation. Only
+  the exact node, command, Gateway revision, and snapshot digest
+  acknowledgement atomically replaces every target field. The candidate then
+  enters `retiring`; a deterministic stop command targets the previous Runtime
   revision, and durable stopped-or-absent evidence completes the operation.
   Reconciliation adopts staged cutovers and retirement commands after
   coordinator recovery.
@@ -504,7 +512,7 @@ Complete the first user-visible release loop.
   accepts only an older, successfully activated revision of the same active
   running workload. It clones the exact resolved template into the next
   generation, revalidates Secret bindings, records
-  `rollbackSourceRevisionId`, and uses the same `cloud.deployment@2` health,
+  `rollbackSourceRevisionId`, and uses the same `cloud.deployment@3` health,
   Gateway cutover, activation, and retirement path without reactivating the
   source revision ID.
 - Implemented: the PostgreSQL API gate verifies the persisted clone, operation
@@ -521,11 +529,12 @@ Complete the first user-visible release loop.
 - Implemented post-E0: the production SPA build is served from a private,
   fail-fast Rust service with history fallback, bounded content types, cache
   policy, path containment, security headers, and a product favicon. A3S
-  Gateway 1.0.12 validates the same-origin profile that routes exact `/api`
-  paths to the control plane and everything else to the SPA. CI exercises the
-  real built assets, deep-link fallback, headers, API isolation, process
-  cleanup, and Gateway ACL validation; `just cloud` supervises the local API
-  and hot-reloading web process from the monorepo root.
+  repository-pinned Gateway revision validates the same-origin profile that
+  routes exact `/api` paths to the control plane and everything else to the
+  SPA. CI exercises the real built assets, deep-link fallback, headers, API
+  isolation, process cleanup, and Gateway ACL validation; `just cloud`
+  supervises the local API and hot-reloading web process from the monorepo
+  root.
 
 ### Exit gate
 
@@ -539,7 +548,8 @@ Complete the first user-visible release loop.
   provider and agent death during the rotated apply reattach one exact resource
   and receipt, and plaintext scans of database rows, events, Flow history, logs,
   and API payloads find no secret value.
-- A failed Gateway reload cannot mark the route or deployment active.
+- A rejected, expired, mismatched, or not-ready Gateway apply cannot mark the
+  route or deployment active.
 - Losing the Gateway acknowledgement and restarting either process converges
   without duplicating or partially applying routes.
 - Log reconnect resumes from the last cursor or, after an acknowledged typed
@@ -826,7 +836,9 @@ The current independently testable G0 slices are implemented:
   remote verification, idempotent replay, removal, and terminal BuildRun
   completion.
 - `cloud.build@1/@2/@3` are registered in the production Flow router alongside
-  `cloud.deployment@1/@2` and `cloud.workload.stop@1`. New work uses v3; v2
+  `cloud.deployment@1/@2/@3` and `cloud.workload.stop@1`. New deployment work
+  uses deployment v3; deployment v1/v2 replay their persisted histories. New
+  build work uses build v3; build v2
   replays publication-era runs without evidence, while v1 drains
   upgrade-invalidated pre-publication runs without rewriting persisted history.
   The worker-role BuildRun reconciler reserves revisions and enqueues their
@@ -1229,36 +1241,211 @@ reconciliation, process death, and provider recovery.
 
 ### Delivery sub-gates
 
-| Gate | Owned foundation | Exit evidence before a consumer advances |
-| --- | --- | --- |
-| `H0.1` | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
-| `H0.2` | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
-| `H0.3` | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
-| `H0.5` | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
+| Gate | State | Owned foundation | Exit evidence before a consumer advances |
+| --- | --- | --- | --- |
+| `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
+| `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
+| `H0.3` | Planned | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
+| `H0.4` | Planned | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
+| `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
+
+The implemented `H0.1` foundation introduces `WorkloadControl`,
+`WorkloadReplica`, `WorkloadReplicaMember`, and
+`DeploymentReplicaBinding`. Existing single-instance deployments map to
+canonical ordinal zero without changing their revision-derived Runtime unit
+identity. Replica identity remains stable as immutable revisions advance;
+deployment resolution, reconciliation, route targeting, logs, and query
+responses validate the exact replica, member, placement, Runtime unit, and
+generation projection. Migration 040 backfills these records and managed
+Workloads reject direct mutation outside their exact owner and effective
+placement policy.
+
+The same slice defines generic CPU, memory, ephemeral-storage, host-port,
+accelerator, and volume slot allocations plus a complete `ResourceClaim`
+aggregate. Each claim binds tenant, deployment, replica/member, placement,
+node inventory, topology, Runtime identity, canonical slot set, claim digest,
+slot generation, and fence token. Migration 041 persists claims, immutable
+claim-slot evidence, and the current slot ledger. Migration 043 makes CPU,
+memory, and ephemeral storage shared scalar capacities while preserving
+exclusive accelerator, host-port, and volume ownership. A PostgreSQL
+reservation takes a transaction-scoped advisory lock for each stable slot,
+totals active shared allocations in Rust from typed query results, rejects
+over-capacity requests, and advances the slot generation and fence token.
+Migration 044 admits exact `resource_claim_prepare` and
+`resource_claim_release` payloads to the durable Fleet command queue.
+
+Its PostgreSQL persistence and all pre-existing Workloads persistence use A3S
+ORM typed tables and builders for ordinary reads, JOINs, ordering, counts,
+inserts, and optimistic updates. Shared idempotency and outbox operations on
+this path are typed as well. PostgreSQL advisory and row locks, `SKIP LOCKED`,
+and parameterized JSONPath Secret-binding predicates are represented by the
+same typed AST. Source architecture tests prohibit raw SQL or direct database
+drivers throughout Workloads production persistence. In-memory and isolated
+PostgreSQL 17 tests cover exact replay, competing exclusive and shared claims,
+over-capacity rejection, orphan retention, trusted fencing, safe release, and
+generation/token rotation.
+
+The implemented inventory slice moves the generic resource types into the
+shared Cloud contract crate and adds strict `NodeResourceInventory`, receipt,
+reference, heartbeat-v2, and observation-batch-v2 contracts while retaining
+legacy v1 reads. The node agent detects CPU and state-filesystem capacity, adds
+Linux `MemTotal` when available, and never invents accelerator, port, volume,
+unsupported memory, or network capacity. It persists one canonical inventory
+locally, reuses its generation and digest across restart while content is
+unchanged, advances exactly once when canonical slots change, and reports the
+inventory before sending a v2 heartbeat.
+
+Fleet accepts authenticated inventories at
+`POST /v1/node-control/inventories`. Migration 042 persists immutable
+snapshots, normalized slots, and a current head. In-memory and PostgreSQL
+repositories require generation one for the first snapshot, exact increments
+for changed content, exact replay for a reused generation, and current
+generation/digest identity for every v2 heartbeat. Historical exact replay
+cannot move the head backward. The PostgreSQL inventory adapter uses only A3S
+ORM typed tables, query builders, transactions, joins, row and advisory locks,
+bulk inserts, and optimistic updates; a source test forbids untyped access in
+that adapter. Contract, Agent, mTLS API, in-memory, and isolated PostgreSQL 17
+tests cover canonical digesting, restart reuse, concurrent replay, recovery,
+head monotonicity, and stale-heartbeat rejection.
+
+The implemented scheduler slice compiles CPU, memory, and optional
+ephemeral-storage requirements into canonical slot requests and one topology
+digest from the current Fleet inventory. PID limits remain Runtime-local
+because the inventory contract has no PID resource kind. The PostgreSQL claim
+transaction locks and verifies the exact current inventory head, including
+tenant, node, Agent, generation, and digest, before reserving slots.
+
+Deployment Flow reserves the deterministic Deployment-ID claim before
+persisting node assignment. Replay recovers the exact node after a crash in
+that gap, and a typed capacity conflict falls through to another eligible node.
+The v3 workflow then dispatches deterministic Claim preparation before Runtime
+apply. The Agent revalidates the exact current inventory, journals the prepared
+binding before acknowledgement, rejects bound apply without that exact
+binding, and stamps the Claim ID and binding digest into Runtime apply and
+inspection evidence. Cloud validates and persists that evidence before
+advancing `bound_to_runtime_unit`.
+
+Cancellation, failed-candidate cleanup, prior-runtime retirement, and Workload
+stop cancel a database-only reservation only while it remains
+`reserved_in_db`. Prepared and bound Claims require an exact
+higher-generation/higher-digest Agent release acknowledgement. The Agent
+journal rejects release of a bound Claim until the same Runtime
+unit/generation has successful stopped-or-absent evidence. A rejected
+`not_found` or `stale_generation` stop never counts as fencing. Failed release
+is retried with the new durable Claim identity; ambiguous outcomes retain an
+operator-visible active or orphaned allocation.
+
+The implementation gates cover command replay, Agent restart after prepare,
+apply, stop, and release, exact bound-Claim adoption, healthy update
+stop-before-release ordering, release retry, Secret-rotation derivation through
+`cloud.deployment@3`, reservation-before-placement recovery, and
+activation-before-retirement process death on PostgreSQL 17. Deployment v1 and
+v2 remain registered only for persisted histories. `H0.1` is complete at Cloud
+commit
+`5cd7c4eebc21905cb2758856d0e96b31a111116c`. The exact
+[Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417)
+passed both `Real Docker provider` and `Cloud consumer recovery`, including the
+combined isolated process-death, Claim fencing, provider cleanup, and consumer
+restart gates.
+
+The verified `H0.2` slice implements Cloud-owned logical Gateway scopes and
+private target projection. A scope belongs to one organization, project, and
+environment and persists ordered desired physical membership, a membership
+generation, and explicit readiness policy. Environment-scoped create/list APIs
+persist it idempotently and retain the legacy single-member request. A
+Cloud-owned planner resolves every desired member through the exact active or
+retiring Deployment, replica binding, Runtime command, generation, and fresh
+healthy node-local endpoint. It rejects partial, ambiguous, mixed-revision, and
+mixed-port sets, then compiles an independent complete snapshot, certificate,
+command, and staged Route projection for every member.
+
+Single-member publication continues through the established path. Replicated
+publication commits the logical Route, every physical Route projection,
+rollout, publication, certificate, physical ownership row, idempotency result,
+and outbox fact in one PostgreSQL transaction. Any ownership, version, or
+idempotency conflict rolls back the entire bundle. A logical Route remains
+publishing until exact applied member acknowledgements meet `min_ready`; only
+those exact physical projections become active. A later rejection can produce
+an explicitly degraded rollout without withdrawing the threshold-ready Route,
+while a terminal rollout below threshold rejects or marks the candidate
+unavailable and preserves the prior active Route.
+
+Each Route persists its immutable revision, deterministic Runtime unit,
+positive generation, port, canonical node-local origin, and command-bound
+observation time. The complete snapshot digest binds revision, unit, and
+generation. Migration 035 backfills target projections; migration 036 creates
+one scope per legacy environment/node binding and enforces composite tenancy;
+migration 037 stores exact protocol-selection evidence; and migrations 038 and
+039 add backward-compatible scope membership and the per-member rollout
+aggregate. Mixed-version delivery selects the advertised Gateway management
+protocol and request/status tuple before mutation, accepts only the closed
+legacy-v1 response as fallback, and rejects unknown or inconsistent tuples.
+
+Migration 045 adds atomic logical-to-physical Route projections and retained
+Route rebinding. Migration 046 adds exact read-only Gateway observation
+commands, migration 047 persists per-member physical recovery, migration 048
+adds deterministic rollout rollback, and migration 049 makes an expired
+certificate convergence explicitly unavailable without changing the prior
+applied certificate. An unavailable member is observed through the Agent's
+durable command journal before Cloud decides whether the candidate, prior, or
+an unknown revision is physically present. A terminal below-threshold rollout
+stages one higher-revision compensation from that exact evidence. The rollback
+reuses only valid Ready certificates, requires exact acknowledgement from every
+member, and remains visibly blocking after rejected or unavailable
+compensation. DomainClaim revocation and certificate replacement release
+physical ownership one member at a time only after its exact convergence
+acknowledgement.
+
+The complete Edge production persistence path uses A3S ORM typed tables,
+queries, expressions, transactions, CTEs, joins, correlated `EXISTS`, scalar
+aggregate subqueries, `COALESCE`/`LEAST` deadline ordering, optimistic updates,
+row locks, and the DomainClaim table lock. Source architecture tests reject raw
+SQL and direct database drivers throughout Edge production persistence. The
+recreated PostgreSQL 17 gate covers migration rollback, atomic staging,
+idempotent replay, threshold activation, partial failure, retained Route
+rebinding, recovery observation, exact rollback, certificate renewal,
+revocation, rejection, unavailability, restart-safe Fleet redispatch, and stale
+writer rejection.
+
+The cross-repository tests build Gateway commit
+`7a146b6d53635861e5db4870fb4603a5c59c87ee`. Two real Gateway processes receive
+independent identities, snapshots, certificates, Agent journals, and native
+journals. Both serve the same healthy target; cross-CA trust fails; either
+member keeps serving after peer loss; the returning member restores the exact
+snapshot from its native journal; and Agent replay does not repeat certificate
+issuance, apply, or acknowledgement. A separate process-death gate kills the
+Agent after native apply but before Cloud acknowledgement and proves exact
+redelivery advances one durable cursor without another apply. These provider,
+failure, recovery, and PostgreSQL gates close `H0.2`. Independently placed
+multi-node Gateways remain `H0.3`, and production control-plane/Gateway HA
+remains `H0.4`.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
-job. PostgreSQL, NATS JetStream, S3-compatible storage, optional Redis and the
-OpenTelemetry Collector remain replaceable dependencies with explicit health
-and recovery contracts. Kubernetes/Helm may be one installation profile, but it
+job. PostgreSQL, NATS JetStream, S3-compatible storage, profile-conditional
+Redis, and the OpenTelemetry Collector remain replaceable dependencies with
+explicit health and recovery contracts. Redis is required only when replicated
+Gateways advertise the `I0.2b` globally exact limit contract; otherwise limits
+remain explicitly per-Gateway approximations. Kubernetes/Helm may be one
+installation profile, but it
 does not become a second workload scheduler, and Cloud product configuration
 remains ACL.
 
 ### Work
 
-- Add desired replica count, durable replica identity, per-replica generation,
-  placement constraints, capacity accounting, anti-affinity, drain and
+- Extend the verified single-replica identity and capacity model to desired
+  replica counts, per-member placement generations, anti-affinity, drain and
   evacuation, maintenance windows, and node pools.
-- Add inference-neutral managed-owner references, multi-member execution plans,
-  atomic placement groups, exact resource claims, and fencing epochs. These
-  primitives support I0 gang scheduling but contain no model, backend, rank
-  launcher, or tensor-parallel policy.
+- Extend the verified inference-neutral Claim and fencing model to multi-member
+  execution plans, atomic placement groups, and gang claims. These primitives
+  support I0 without containing model, backend, rank-launcher, or
+  tensor-parallel policy.
 - Extend rolling update policy with explicit surge and unavailable bounds.
   Route projection contains only healthy replicas from the explicitly allowed
   prior/candidate revisions of one rollout generation. Prior replicas remain
   eligible until replacement health and Gateway acknowledgement are proven.
-- Support dedicated or replicated Gateway placement through the same snapshot
-  protocol, complete target-set publication, and exact acknowledgement model.
+- Place the verified logical Gateway members independently across real nodes
+  through the same snapshot, complete target-set, observation, and exact
+  acknowledgement model.
 - Add measured autoscaling policy with min/max replicas, stabilization,
   cooldown, and scale-rate bounds. The autoscaler changes desired replica count
   through the same idempotent command path; it never creates provider resources
@@ -1268,10 +1455,6 @@ remains ACL.
   isolation, partition, and recovery evidence across real nodes.
 - Add highly available control-plane roles, leader/lease contention tests,
   backup/restore for control-plane PostgreSQL, and disaster runbooks.
-- Define per-Gateway rollout readiness with explicit `min_ready` and
-  `max_unavailable`. Success requires every desired Gateway replica to
-  acknowledge the exact revision or the rollout to terminate as explicitly
-  degraded; no global atomic reload is assumed.
 - Add versioned control-plane export/import manifests for tenant-owned desired
   state, provenance, audit metadata, and referenced artifacts. Secret values are
   re-encrypted for the destination through an explicit migration ceremony;
@@ -1341,7 +1524,7 @@ not subtractions from one model-call-style global timer.
 | Runtime apply | start and convergence deadlines | inspect, then stop only by policy |
 | Image pull/build | attempt and total deadlines | cancel Task; preserve diagnostics |
 | Health check | per-probe timeout and stabilization window | keep prior revision active |
-| Gateway publish | validation/reload deadline | retain prior config revision |
+| Gateway publish | native apply/readiness deadline | retain prior config revision |
 | Log stream | idle and retention policies | reconnect or truncate with an explicit gap |
 | Cleanup | bounded synchronous wait plus reconcile deadline | expose pending cleanup |
 
@@ -1384,7 +1567,7 @@ eventual convergence:
 4. provider create before agent journal update;
 5. node result persistence before server acknowledgement;
 6. health success before deployment projection update;
-7. Gateway reload before acknowledgement;
+7. Gateway native apply before acknowledgement;
 8. activation before old-revision cleanup;
 9. Secret version commit before workload restart command.
 
@@ -1402,7 +1585,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container; the Secret-rotation consumer gate additionally restarts the isolated provider and kills the applying child while the exact Runtime receipt is pending, then reconstructs and reattaches the same container without duplicate material |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
-| 7 | Gateway reload before acknowledgement | Verified | `installed_a3s_gateway_recovers_reload_after_agent_process_death` durably begins the node command, reloads A3S Gateway 1.0.12, proves the new listener is live with no installed-state or acknowledgement projection, sends `SIGKILL`, reconstructs the executor, redelivers the same command under a new lease, persists one exact applied acknowledgement, and proves a second restart performs no third reload |
+| 7 | Gateway apply before acknowledgement | Verified H0.2 | `installed_a3s_gateway_recovers_native_apply_after_agent_process_death` durably begins the node command, applies the exact snapshot through pinned Gateway `7a146b6`, proves Gateway readiness while Cloud has no acknowledgement projection, sends `SIGKILL`, redelivers the same command under a new lease, persists one exact applied acknowledgement, and restarts Gateway from its sole durable managed-state journal without another apply. The two-member gate separately proves independent journals, continued service through peer loss, and exact recovery when the lost member returns |
 | 8 | Activation before old-revision cleanup | Verified | `activation_before_retirement_crash_probe` runs inside the PostgreSQL/Linux and isolated Cloud consumer gates: the parent prevents retirement command access, a child durably selects the candidate as `retiring`, the parent proves no cleanup command exists and sends `SIGKILL`, and a reconstructed coordinator emits one deterministic stop and requires stopped-or-absent evidence before terminal `active` |
 | 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 
@@ -1473,18 +1656,22 @@ record is:
    server identity and provider-owned certificate metadata before persistence,
    revokes by the real serial, sanitizes provider failures, and keeps temporary
    provider outages retryable.
-6. Implemented on 2026-07-20: certificate renewal/revocation convergence uses
-   deterministic node/revision identities, durable pending redispatch,
-   verified-claim filtering, exact acknowledgement projection, route-less
-   snapshots, and retryable sanitized provider revocation. Unit coverage and
-   the isolated PostgreSQL acceptance scenario cover rejected and applied
-   renewal, pre-ack route preservation, revoked-claim removal, and obsolete
-   serial retry.
-7. Implemented on 2026-07-20: the dedicated A3S Gateway 1.0.12 job durably
-   begins a snapshot command, pauses after the real reload but before local
-   installed-state or acknowledgement completion, sends `SIGKILL`, and proves
-   reconstructed redelivery produces one exact applied acknowledgement. A
-   second reconstruction replays the outcome without another reload.
+6. Updated on 2026-07-24: Gateway projection convergence uses independent
+   certificate and snapshot-renewal windows with deterministic node/revision
+   identities and durable pending redispatch. Snapshot validity renewal reuses
+   the exact installed ACL digest and certificate without issuing another CSR;
+   only an exact ready acknowledgement advances route and scope bindings, while
+   rejection preserves the prior revision. Certificate renewal/revocation
+   continues to use verified-claim filtering, route-less snapshots, and
+   retryable sanitized provider revocation. Unit and isolated PostgreSQL
+   acceptance cover both renewal types, pre-ack preservation, revoked-claim
+   removal, and obsolete-serial retry.
+7. Updated on 2026-07-24: the dedicated pinned-Gateway job durably begins a
+   snapshot command, pauses after native apply and exact readiness but before
+   Cloud acknowledgement completion, sends `SIGKILL`, and proves reconstructed
+   redelivery produces one exact applied acknowledgement. Gateway's native
+   journal is the sole applied-state authority, and Gateway restart restores
+   the same readiness without another apply.
 8. Implemented on 2026-07-20: the isolated Cloud consumer gate pauses after a
    healthy rotated Docker resource is created with a pending Runtime receipt,
    restarts the labeled provider, kills the child agent, and proves
@@ -1495,13 +1682,27 @@ record is:
    revision as `retiring`, prove no cleanup command committed, send `SIGKILL`,
    and require reconstructed Flow to emit one deterministic stop and finish only
    from stopped-or-absent evidence.
-10. Implemented on 2026-07-20: the clean-host Linux gate builds release
-    binaries from exact clean Cloud and pinned Runtime revisions, starts pinned
-    PostgreSQL and registry fixtures, A3S Gateway 1.0.12, the control plane, and
-    one outbound Docker node, then proves enrollment, digest-pinned A,
-    acknowledged TLS, ordered and resumable logs, B, cloned-A rollback, durable
-    stop, source cleanliness, exact host-inventory restoration, and an empty
-    generated-credential scan.
+10. Updated on 2026-07-24: the clean-host Linux gate builds release binaries
+    from exact clean Cloud, Runtime, and Gateway revisions, starts pinned
+    PostgreSQL and registry fixtures, the control plane, and one outbound
+    Docker node, binds the enrolled node identity to a managed Gateway, then
+    proves digest-pinned A, acknowledged TLS, ordered and resumable logs, B,
+    cloned-A rollback, durable stop, source cleanliness, exact host-inventory
+    restoration, and an empty generated-credential scan.
+11. Updated on 2026-07-24: Edge routes and cutovers persist the exact immutable
+    workload revision, deterministic Runtime unit, positive generation,
+    declared port, node-local origin, and command-bound observation. Snapshot
+    digests bind the revision/unit/generation tuple even when the origin is
+    reused. Equal or stale generations and observations from another Runtime
+    command fail closed; rejected acknowledgement preserves the previous
+    target, while exact applied acknowledgement replaces every target field in
+    one transaction. Migration 035 backfills legacy route and cutover
+    projections and adds PostgreSQL identity, generation-order, observation,
+    and composite revision-generation constraints. Recreated repositories
+    retain the exact target, and the pinned real-Gateway fixture rotates
+    independently signed certificates and target origins, rejects the
+    superseded CA and selector, removes old certificate material, and recovers
+    only the replacement after restart.
 
 E0 is verified. Post-E0 product surfaces may now land only through their owning
 milestone gates; they cannot create tables, routes, providers, or user-visible

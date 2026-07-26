@@ -1,33 +1,49 @@
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
-    GatewayCertificateConvergenceTarget, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayCertificateConvergence, StageGatewayRouteCutover, StageRoutePublication,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget, GatewayRolloutResult,
+    GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
+    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRolloutRollback,
+    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceState, GatewayPublication, GatewayPublicationState,
-    GatewayRouteCutover, GatewayRouteCutoverState, GatewayScopeState, Route, RouteState,
+    GatewayPublication, GatewayPublicationState, GatewayRollout, GatewayRolloutRollback,
+    GatewayRouteCutover, GatewayScope, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
-    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
+    GatewayScopeId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, RepositoryError, RouteId,
 };
-use a3s_cloud_contracts::{DomainEventEnvelope, GatewayAckState, NodeGatewayAck};
+use a3s_cloud_contracts::{DomainEventEnvelope, NodeGatewayAck, NodeGatewaySnapshotObservation};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::RwLock;
 
+mod acknowledgements;
 mod certificate_convergence;
+mod certificates;
+mod gateway_scopes;
+mod rollouts;
+mod validation;
+
+use validation::{
+    validate_applied_cutover_routes, validate_domain_event, validate_pending_cutover_routes,
+};
 
 #[derive(Default)]
 pub struct InMemoryEdgeRepository {
     state: RwLock<State>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct State {
+    gateway_scopes: BTreeMap<GatewayScopeId, GatewayScope>,
+    gateway_scope_bindings:
+        BTreeMap<(OrganizationId, ProjectId, EnvironmentId, NodeId), GatewayScopeId>,
+    gateway_scope_idempotency: BTreeMap<(String, String), (String, GatewayScope)>,
     domain_claims: BTreeMap<DomainClaimId, DomainClaim>,
     domain_idempotency: BTreeMap<(String, String), (String, DomainClaim)>,
     scopes: BTreeMap<NodeId, GatewayScopeState>,
@@ -40,6 +56,11 @@ struct State {
     commands: BTreeMap<(NodeId, NodeCommandId), u64>,
     idempotency: BTreeMap<(String, String), (String, EdgeRoutePublicationResult)>,
     cutover_idempotency: BTreeMap<(String, String), (String, GatewayRouteCutoverResult)>,
+    rollouts: BTreeMap<GatewayRolloutId, GatewayRollout>,
+    rollout_rollbacks: BTreeMap<GatewayRolloutId, GatewayRolloutRollback>,
+    rollout_publications: BTreeMap<(NodeId, u64), GatewayRolloutId>,
+    rollout_route_projections: BTreeMap<(GatewayRolloutId, NodeId), Route>,
+    rollout_idempotency: BTreeMap<(String, String), (String, GatewayRolloutResult)>,
     outbox: Vec<DomainEventEnvelope>,
 }
 
@@ -51,10 +72,85 @@ impl InMemoryEdgeRepository {
     pub async fn outbox_events(&self) -> Vec<DomainEventEnvelope> {
         self.state.read().await.outbox.clone()
     }
+
+    #[cfg(test)]
+    pub(super) async fn gateway_publication(
+        &self,
+        node_id: NodeId,
+        revision: u64,
+    ) -> Option<GatewayPublication> {
+        self.state
+            .read()
+            .await
+            .publications
+            .get(&(node_id, revision))
+            .cloned()
+    }
+
+    #[cfg(test)]
+    pub(super) async fn gateway_route_projection(
+        &self,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+    ) -> Option<Route> {
+        self.state
+            .read()
+            .await
+            .rollout_route_projections
+            .get(&(rollout_id, node_id))
+            .cloned()
+    }
+
+    #[cfg(test)]
+    pub(super) async fn gateway_route_owner(
+        &self,
+        node_id: NodeId,
+        hostname: &str,
+        path_prefix: &str,
+    ) -> Option<RouteId> {
+        self.state
+            .read()
+            .await
+            .ownership
+            .get(&(node_id, hostname.into(), path_prefix.into()))
+            .copied()
+    }
 }
 
 #[async_trait]
 impl IEdgeRepository for InMemoryEdgeRepository {
+    async fn create_gateway_scope(
+        &self,
+        bundle: CreateGatewayScopeWrite,
+    ) -> Result<IdempotentWrite<GatewayScope>, RepositoryError> {
+        let mut state = self.state.write().await;
+        gateway_scopes::create(&mut state, bundle)
+    }
+
+    async fn find_gateway_scope(
+        &self,
+        organization_id: OrganizationId,
+        scope_id: GatewayScopeId,
+    ) -> Result<GatewayScope, RepositoryError> {
+        let state = self.state.read().await;
+        gateway_scopes::find(&state, organization_id, scope_id)
+    }
+
+    async fn list_gateway_scopes(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<GatewayScope>, RepositoryError> {
+        let state = self.state.read().await;
+        Ok(gateway_scopes::list(
+            &state,
+            organization_id,
+            project_id,
+            environment_id,
+        ))
+    }
+
     async fn replay_domain_claim_write(
         &self,
         idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
@@ -239,15 +335,44 @@ impl IEdgeRepository for InMemoryEdgeRepository {
     }
 
     async fn active_routes(&self, node_id: NodeId) -> Result<Vec<Route>, RepositoryError> {
-        Ok(self
-            .state
-            .read()
-            .await
+        let state = self.state.read().await;
+        let rollout_route_ids = state
+            .rollout_route_projections
+            .values()
+            .map(|route| route.id)
+            .collect::<BTreeSet<_>>();
+        let mut routes = state
             .routes
             .values()
-            .filter(|route| route.gateway_node_id == node_id && route.state == RouteState::Active)
+            .filter(|route| {
+                route.gateway_node_id == node_id
+                    && route.state == RouteState::Active
+                    && !rollout_route_ids.contains(&route.id)
+            })
             .cloned()
-            .collect())
+            .collect::<Vec<_>>();
+        routes.extend(
+            state
+                .rollout_route_projections
+                .values()
+                .filter(|projection| {
+                    projection.gateway_node_id == node_id
+                        && projection.state == RouteState::Active
+                        && state
+                            .routes
+                            .get(&projection.id)
+                            .is_some_and(|logical| logical.state == RouteState::Active)
+                })
+                .cloned(),
+        );
+        routes.sort_by(|left, right| {
+            (left.hostname.as_str(), left.path_prefix.as_str(), left.id).cmp(&(
+                right.hostname.as_str(),
+                right.path_prefix.as_str(),
+                right.id,
+            ))
+        });
+        Ok(routes)
     }
 
     async fn stage_route_publication(
@@ -268,6 +393,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             replay.replayed = true;
             return Ok(replay);
         }
+        gateway_scopes::validate_route_binding(&state, &bundle.gateway_scope, &bundle.route)?;
         let current = state
             .scopes
             .get(&bundle.publication.node_id)
@@ -415,6 +541,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
                 "Gateway route cutover identity already exists".into(),
             ));
         }
+        gateway_scopes::validate_cutover_bindings(&state, &bundle.cutover.routes)?;
         validate_pending_cutover_routes(&state.routes, &bundle.cutover)?;
 
         let result = GatewayRouteCutoverResult {
@@ -454,13 +581,185 @@ impl IEdgeRepository for InMemoryEdgeRepository {
         Ok(result)
     }
 
+    async fn stage_gateway_rollout(
+        &self,
+        bundle: StageGatewayRollout,
+    ) -> Result<GatewayRolloutResult, RepositoryError> {
+        let mut state = self.state.write().await;
+        rollouts::stage(&mut state, bundle)
+    }
+
+    async fn stage_gateway_rollout_rollback(
+        &self,
+        bundle: StageGatewayRolloutRollback,
+    ) -> Result<GatewayRolloutRollbackResult, RepositoryError> {
+        let mut state = self.state.write().await;
+        rollouts::stage_rollback(&mut state, bundle)
+    }
+
+    async fn replay_gateway_rollout(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<GatewayRolloutResult>, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::replay(&state, idempotency)
+    }
+
+    async fn next_gateway_rollout_generation(
+        &self,
+        organization_id: OrganizationId,
+        gateway_scope_id: GatewayScopeId,
+    ) -> Result<u64, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::next_generation(&state, organization_id, gateway_scope_id)
+    }
+
+    async fn pending_gateway_rollout_dispatches(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayRolloutDispatchTarget>, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::pending_dispatches(&state, limit)
+    }
+
+    async fn find_gateway_rollout(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::find(&state, organization_id, rollout_id)
+    }
+
+    async fn find_gateway_rollout_rollback(
+        &self,
+        organization_id: OrganizationId,
+        failed_rollout_id: GatewayRolloutId,
+    ) -> Result<GatewayRolloutRollback, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::find_rollback(&state, organization_id, failed_rollout_id)
+    }
+
+    async fn pending_gateway_rollout_rollbacks(
+        &self,
+        limit: usize,
+    ) -> Result<
+        Vec<crate::modules::edge::domain::repositories::GatewayRolloutRollbackTarget>,
+        RepositoryError,
+    > {
+        let state = self.state.read().await;
+        rollouts::pending_rollbacks(&state, limit)
+    }
+
+    async fn mark_gateway_rollout_replica_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        let mut state = self.state.write().await;
+        rollouts::mark_unavailable(
+            &mut state,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            failure,
+            observed_at,
+        )
+    }
+
+    async fn pending_gateway_replica_recoveries(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<GatewayReplicaRecoveryTarget>, RepositoryError> {
+        let state = self.state.read().await;
+        rollouts::pending_recoveries(&state, limit)
+    }
+
+    async fn stage_gateway_replica_recovery_observation(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        issued_at: DateTime<Utc>,
+        not_after: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        let mut state = self.state.write().await;
+        rollouts::stage_recovery_observation(
+            &mut state,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            command_id,
+            issued_at,
+            not_after,
+        )
+    }
+
+    async fn record_gateway_replica_recovery_observation(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        observation: NodeGatewaySnapshotObservation,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        let mut state = self.state.write().await;
+        rollouts::record_recovery_observation(
+            &mut state,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            observation,
+        )
+    }
+
+    async fn record_gateway_replica_recovery_failure(
+        &self,
+        organization_id: OrganizationId,
+        rollout_id: GatewayRolloutId,
+        node_id: NodeId,
+        expected_version: u64,
+        command_id: NodeCommandId,
+        failure: &str,
+        retryable: bool,
+        failed_at: DateTime<Utc>,
+    ) -> Result<GatewayRollout, RepositoryError> {
+        let mut state = self.state.write().await;
+        rollouts::record_recovery_failure(
+            &mut state,
+            organization_id,
+            rollout_id,
+            node_id,
+            expected_version,
+            command_id,
+            failure,
+            retryable,
+            failed_at,
+        )
+    }
+
     async fn gateway_certificate_convergence_targets(
         &self,
-        renew_before: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError> {
         let state = self.state.read().await;
-        certificate_convergence::targets(&state, renew_before, limit)
+        certificate_convergence::targets(
+            &state,
+            certificate_renew_before,
+            snapshot_renew_before,
+            limit,
+        )
     }
 
     async fn pending_gateway_certificate_convergences(
@@ -477,6 +776,27 @@ impl IEdgeRepository for InMemoryEdgeRepository {
     ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
         let mut state = self.state.write().await;
         certificate_convergence::stage(&mut state, bundle)
+    }
+
+    async fn mark_gateway_certificate_convergence_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+        gateway_revision: u64,
+        gateway_command_id: NodeCommandId,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+        let mut state = self.state.write().await;
+        certificate_convergence::mark_unavailable(
+            &mut state,
+            organization_id,
+            node_id,
+            gateway_revision,
+            gateway_command_id,
+            failure,
+            observed_at,
+        )
     }
 
     async fn find_gateway_certificate_convergence(
@@ -591,7 +911,7 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             .certificates
             .get(&certificate.id)
             .ok_or(RepositoryError::NotFound)?;
-        validate_gateway_certificate_transition(existing, &certificate, expected_version)?;
+        certificates::validate_transition(existing, &certificate, expected_version)?;
         state
             .certificates
             .insert(certificate.id, certificate.clone());
@@ -603,346 +923,6 @@ impl IEdgeRepository for InMemoryEdgeRepository {
         acknowledgement: &NodeGatewayAck,
         received_at: DateTime<Utc>,
     ) -> Result<bool, RepositoryError> {
-        let mut acknowledgement = acknowledgement.clone();
-        acknowledgement.acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
-        let received_at = canonical_timestamp(received_at);
-        acknowledgement
-            .validate()
-            .map_err(RepositoryError::Conflict)?;
-        if received_at < acknowledgement.acknowledged_at {
-            return Err(RepositoryError::Conflict(
-                "Gateway acknowledgement receipt predates its node timestamp".into(),
-            ));
-        }
-        let node_id = NodeId::from_uuid(acknowledgement.node_id);
-        let command_id = NodeCommandId::from_uuid(acknowledgement.command_id);
-        let mut state = self.state.write().await;
-        let Some(revision) = state.commands.get(&(node_id, command_id)).copied() else {
-            return Ok(false);
-        };
-        let mut publication = state
-            .publications
-            .get(&(node_id, revision))
-            .cloned()
-            .ok_or_else(|| {
-                RepositoryError::Storage(
-                    "Gateway publication command references missing desired state".into(),
-                )
-            })?;
-        let was_pending = publication.state == GatewayPublicationState::Pending;
-        publication
-            .acknowledge(&acknowledgement)
-            .map_err(RepositoryError::Conflict)?;
-        if !was_pending {
-            return Ok(true);
-        }
-        let certificate_ids = state
-            .certificates
-            .values()
-            .filter(|certificate| {
-                certificate.node_id == node_id
-                    && certificate.gateway_revision == revision
-                    && certificate.gateway_command_id == command_id
-            })
-            .map(|certificate| certificate.id)
-            .collect::<Vec<_>>();
-        let convergence_key = (node_id, revision);
-        let mut convergence = state
-            .certificate_convergences
-            .get(&convergence_key)
-            .cloned();
-        let expected_certificate_id = match &convergence {
-            Some(convergence) => convergence.replacement_certificate_id,
-            None if certificate_ids.len() == 1 => Some(certificate_ids[0]),
-            None => {
-                return Err(RepositoryError::Storage(
-                    "Gateway publication must have exactly one staged certificate".into(),
-                ))
-            }
-        };
-        if certificate_ids.len() != usize::from(expected_certificate_id.is_some())
-            || certificate_ids.first().copied() != expected_certificate_id
-        {
-            return Err(RepositoryError::Storage(
-                "Gateway publication has inconsistent staged certificate material".into(),
-            ));
-        }
-        let mut certificate = expected_certificate_id
-            .map(|certificate_id| {
-                state
-                    .certificates
-                    .get(&certificate_id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        RepositoryError::Storage("staged certificate disappeared".into())
-                    })
-            })
-            .transpose()?;
-        if let Some(certificate) = &mut certificate {
-            certificate
-                .apply_gateway_acknowledgement(&acknowledgement)
-                .map_err(RepositoryError::Conflict)?;
-        }
-        let route_ids = state
-            .routes
-            .values()
-            .filter(|route| {
-                route.gateway_node_id == node_id
-                    && route.gateway_revision == Some(revision)
-                    && route.gateway_command_id == Some(command_id)
-            })
-            .map(|route| route.id)
-            .collect::<Vec<_>>();
-        let cutover_id = state
-            .cutovers
-            .values()
-            .find(|cutover| {
-                cutover.node_id == node_id
-                    && cutover.gateway_revision == revision
-                    && cutover.gateway_command_id == command_id
-            })
-            .map(|cutover| cutover.deployment_id);
-        let publication_kinds = usize::from(!route_ids.is_empty())
-            + usize::from(cutover_id.is_some())
-            + usize::from(convergence.is_some());
-        if publication_kinds != 1 {
-            return Err(RepositoryError::Storage(
-                "Gateway publication must select one route publication kind".into(),
-            ));
-        }
-        if let Some(convergence) = &mut convergence {
-            convergence
-                .acknowledge(&acknowledgement)
-                .map_err(RepositoryError::Conflict)?;
-            if convergence.state == GatewayCertificateConvergenceState::Applied {
-                certificate_convergence::apply(&mut state, convergence, &acknowledgement)?;
-            }
-            state
-                .certificate_convergences
-                .insert(convergence_key, convergence.clone());
-        } else if let Some(cutover_id) = cutover_id {
-            let mut cutover = state
-                .cutovers
-                .get(&cutover_id)
-                .cloned()
-                .ok_or_else(|| RepositoryError::Storage("route cutover disappeared".into()))?;
-            cutover
-                .acknowledge(&acknowledgement)
-                .map_err(RepositoryError::Conflict)?;
-            if cutover.state == GatewayRouteCutoverState::Applied {
-                validate_applied_cutover_routes(&state.routes, &cutover)?;
-                for route in &cutover.routes {
-                    state.routes.insert(route.id, route.clone());
-                }
-            }
-            state.cutovers.insert(cutover_id, cutover);
-        } else {
-            for route_id in route_ids {
-                let ownership = {
-                    let route = state.routes.get_mut(&route_id).ok_or_else(|| {
-                        RepositoryError::Storage("staged route disappeared".into())
-                    })?;
-                    route
-                        .apply_gateway_acknowledgement(&acknowledgement)
-                        .map_err(RepositoryError::Conflict)?;
-                    (route.state == RouteState::Rejected).then(|| {
-                        (
-                            route.gateway_node_id,
-                            route.hostname.as_str().to_owned(),
-                            route.path_prefix.as_str().to_owned(),
-                        )
-                    })
-                };
-                if let Some(ownership) = ownership {
-                    state.ownership.remove(&ownership);
-                }
-            }
-        }
-        if let Some(certificate) = certificate {
-            state.certificates.insert(certificate.id, certificate);
-        }
-        state.publications.insert((node_id, revision), publication);
-        if acknowledgement.state == GatewayAckState::Applied {
-            if let Some(certificate_id) = expected_certificate_id {
-                certificate_convergence::bind_active_routes(
-                    &mut state,
-                    node_id,
-                    revision,
-                    command_id,
-                    &acknowledgement.snapshot_digest,
-                    certificate_id,
-                    acknowledgement.acknowledged_at,
-                )?;
-            } else if state
-                .routes
-                .values()
-                .any(|route| route.gateway_node_id == node_id && route.state == RouteState::Active)
-            {
-                return Err(RepositoryError::Storage(
-                    "certificate-free Gateway snapshot retained active routes".into(),
-                ));
-            }
-            let scope = state.scopes.get_mut(&node_id).ok_or_else(|| {
-                RepositoryError::Storage("Gateway scope disappeared during acknowledgement".into())
-            })?;
-            scope.installed_revision = Some(revision);
-            scope.aggregate_version += 1;
-        }
-        Ok(true)
+        acknowledgements::project(&self.state, acknowledgement, received_at).await
     }
-}
-
-fn validate_pending_cutover_routes(
-    routes: &BTreeMap<RouteId, Route>,
-    cutover: &GatewayRouteCutover,
-) -> Result<(), RepositoryError> {
-    let active_ids = routes
-        .values()
-        .filter(|route| {
-            route.state == RouteState::Active
-                && route.organization_id == cutover.organization_id
-                && route.workload_id == cutover.workload_id
-                && route.workload_revision_id == cutover.previous_revision_id
-        })
-        .map(|route| route.id)
-        .collect::<BTreeSet<_>>();
-    let candidate_ids = cutover
-        .routes
-        .iter()
-        .map(|route| route.id)
-        .collect::<BTreeSet<_>>();
-    if active_ids.is_empty() || active_ids != candidate_ids {
-        return Err(RepositoryError::Conflict(
-            "Gateway route cutover must replace every active route for the previous revision"
-                .into(),
-        ));
-    }
-    for candidate in &cutover.routes {
-        let current = routes.get(&candidate.id).ok_or(RepositoryError::NotFound)?;
-        if !same_route_ownership(current, candidate)
-            || current.state != RouteState::Active
-            || current.workload_revision_id != cutover.previous_revision_id
-            || current.gateway_node_id != cutover.node_id
-            || candidate.state != RouteState::Publishing
-            || candidate.workload_revision_id != cutover.candidate_revision_id
-            || candidate.gateway_certificate_id == current.gateway_certificate_id
-            || candidate.aggregate_version != current.aggregate_version.saturating_add(1)
-            || candidate.updated_at < current.updated_at
-        {
-            return Err(RepositoryError::Conflict(
-                "active route changed while staging its Gateway cutover".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_applied_cutover_routes(
-    routes: &BTreeMap<RouteId, Route>,
-    cutover: &GatewayRouteCutover,
-) -> Result<(), RepositoryError> {
-    for candidate in &cutover.routes {
-        let current = routes
-            .get(&candidate.id)
-            .ok_or_else(|| RepositoryError::Storage("cutover route disappeared".into()))?;
-        if !same_route_ownership(current, candidate)
-            || current.state != RouteState::Active
-            || current.workload_revision_id != cutover.previous_revision_id
-            || candidate.state != RouteState::Active
-            || candidate.workload_revision_id != cutover.candidate_revision_id
-            || candidate.aggregate_version != current.aggregate_version.saturating_add(2)
-            || candidate.updated_at < current.updated_at
-        {
-            return Err(RepositoryError::Conflict(
-                "active route changed before applying its Gateway cutover".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn same_route_ownership(current: &Route, candidate: &Route) -> bool {
-    current.id == candidate.id
-        && current.organization_id == candidate.organization_id
-        && current.project_id == candidate.project_id
-        && current.environment_id == candidate.environment_id
-        && current.gateway_node_id == candidate.gateway_node_id
-        && current.hostname == candidate.hostname
-        && current.path_prefix == candidate.path_prefix
-        && current.domain_claim_id == candidate.domain_claim_id
-        && current.domain_pattern == candidate.domain_pattern
-        && current.workload_id == candidate.workload_id
-        && current.port_name == candidate.port_name
-        && current.created_at == candidate.created_at
-}
-
-fn validate_gateway_certificate_transition(
-    existing: &GatewayCertificate,
-    next: &GatewayCertificate,
-    expected_version: u64,
-) -> Result<(), RepositoryError> {
-    use crate::modules::edge::domain::GatewayCertificateState;
-
-    let transition_is_valid = match (existing.state, next.state) {
-        (GatewayCertificateState::Provisioning, GatewayCertificateState::Issued) => {
-            next.csr_digest.is_some()
-                && next.material.is_some()
-                && next.failure.is_none()
-                && next.ready_at.is_none()
-                && next.revoked_at.is_none()
-        }
-        (GatewayCertificateState::Provisioning, GatewayCertificateState::Failed) => {
-            next.csr_digest.is_some()
-                && next.material.is_none()
-                && next.failure.is_some()
-                && next.ready_at.is_none()
-                && next.revoked_at.is_none()
-        }
-        (GatewayCertificateState::Ready, GatewayCertificateState::Revoked) => {
-            next.csr_digest == existing.csr_digest
-                && next.material == existing.material
-                && next.failure.is_some()
-                && next.ready_at == existing.ready_at
-                && next.revoked_at.is_some()
-        }
-        _ => false,
-    };
-    if existing.aggregate_version != expected_version
-        || next.aggregate_version != expected_version.saturating_add(1)
-        || !transition_is_valid
-        || existing.id != next.id
-        || existing.organization_id != next.organization_id
-        || existing.node_id != next.node_id
-        || existing.domain_claim_ids != next.domain_claim_ids
-        || existing.gateway_revision != next.gateway_revision
-        || existing.gateway_command_id != next.gateway_command_id
-        || existing.snapshot_digest != next.snapshot_digest
-        || existing.request != next.request
-        || existing.created_at != next.created_at
-        || next.updated_at < existing.updated_at
-    {
-        return Err(RepositoryError::Conflict(
-            "Gateway certificate changed while applying its transition".into(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_domain_event(
-    claim: &DomainClaim,
-    event: &DomainEventEnvelope,
-) -> Result<(), RepositoryError> {
-    if event.organization_id != claim.organization_id.as_uuid()
-        || event.aggregate_id != claim.id.as_uuid()
-        || event.aggregate_version != claim.aggregate_version
-        || event.correlation_id.is_nil()
-        || event.event_id.is_nil()
-        || event.schema_version == 0
-        || event.event_key.trim().is_empty()
-    {
-        return Err(RepositoryError::Conflict(
-            "domain claim event does not match its aggregate".into(),
-        ));
-    }
-    Ok(())
 }

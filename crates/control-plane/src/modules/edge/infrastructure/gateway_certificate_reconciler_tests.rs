@@ -1,10 +1,13 @@
 use super::gateway_certificate_reconciler::{
     deterministic_certificate_id, deterministic_command_id, GatewayCertificateReconciler,
 };
-use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig};
-use crate::modules::edge::domain::events::{DomainClaimChanged, RoutePublicationStaged};
+use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata};
+use crate::modules::edge::domain::events::{
+    DomainClaimChanged, GatewayScopeCreated, RoutePublicationStaged,
+};
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, StageRoutePublication, TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::services::{
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayCommandDispatch,
@@ -12,13 +15,14 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
-    GatewayCertificateState, GatewayPublication, GatewayPublicationState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    GatewayCertificateState, GatewayPublication, GatewayPublicationState, GatewayScope, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, IdempotencyRequest,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use async_trait::async_trait;
@@ -27,6 +31,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+#[path = "gateway_certificate_reconciler_tests/expiration_tests.rs"]
+mod expiration_tests;
 
 #[derive(Default)]
 struct RecordingGatewayQueue {
@@ -102,6 +109,7 @@ struct Fixture {
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    gateway_scope_id: GatewayScopeId,
     node_id: NodeId,
     workload_id: WorkloadId,
     workload_revision_id: WorkloadRevisionId,
@@ -115,6 +123,7 @@ impl Fixture {
             organization_id: OrganizationId::new(),
             project_id: ProjectId::new(),
             environment_id: EnvironmentId::new(),
+            gateway_scope_id: GatewayScopeId::new(),
             node_id: NodeId::new(),
             workload_id: WorkloadId::new(),
             workload_revision_id: WorkloadRevisionId::new(),
@@ -202,11 +211,37 @@ impl Fixture {
         expires_at: chrono::DateTime<Utc>,
     ) -> (Route, GatewayCertificate) {
         let certificate_id = GatewayCertificateId::new();
+        let logical_scope = GatewayScope::create(
+            self.gateway_scope_id,
+            self.organization_id,
+            self.project_id,
+            self.environment_id,
+            self.node_id,
+            now,
+        )
+        .expect("logical Gateway scope");
+        let logical_scope = self
+            .repository
+            .create_gateway_scope(CreateGatewayScopeWrite {
+                scope: logical_scope.clone(),
+                idempotency: IdempotencyRequest::new(
+                    "test-gateway-scopes",
+                    self.gateway_scope_id.to_string(),
+                    self.node_id.to_string().as_bytes(),
+                )
+                .expect("scope idempotency"),
+                event: GatewayScopeCreated::envelope(&logical_scope, Uuid::now_v7())
+                    .expect("scope event"),
+            })
+            .await
+            .expect("create logical scope")
+            .value;
         let mut route = Route::create(
             RouteId::new(),
             self.organization_id,
             self.project_id,
             self.environment_id,
+            logical_scope.id,
             self.node_id,
             RouteHostname::parse(hostname).expect("hostname"),
             RoutePath::parse("/").expect("path"),
@@ -214,9 +249,19 @@ impl Fixture {
             claim.pattern.clone(),
             certificate_id,
             self.workload_id,
-            self.workload_revision_id,
-            RoutePortName::parse("http").expect("port"),
-            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            RouteTarget::new(
+                self.workload_id,
+                self.workload_revision_id,
+                format!(
+                    "workload:{}:revision:{}",
+                    self.workload_id, self.workload_revision_id
+                ),
+                1,
+                RoutePortName::parse("http").expect("port"),
+                UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+                now,
+            )
+            .expect("target"),
             now,
         )
         .expect("route");
@@ -235,9 +280,13 @@ impl Fixture {
         let snapshot = self
             .compiler
             .compile(
-                self.node_id,
-                revision,
-                scope.installed_revision,
+                GatewaySnapshotMetadata::new(
+                    self.node_id,
+                    revision,
+                    scope.installed_revision,
+                    now,
+                    now + Duration::hours(24),
+                ),
                 certificate_id,
                 &complete_routes,
             )
@@ -282,6 +331,7 @@ impl Fixture {
             .repository
             .stage_route_publication(StageRoutePublication {
                 route,
+                gateway_scope: logical_scope,
                 certificate,
                 publication,
                 expected_scope_version: scope.aggregate_version,
@@ -307,11 +357,17 @@ impl Fixture {
             acknowledgement_id: Uuid::now_v7(),
             command_id: staged.publication.command_id.as_uuid(),
             node_id: self.node_id.as_uuid(),
+            gateway_id: self.node_id.as_uuid(),
             revision,
             snapshot_digest: staged.publication.snapshot_digest,
+            expires_at: staged.publication.snapshot_expires_at,
             state: GatewayAckState::Applied,
+            ready: true,
             message: None,
             acknowledged_at: now + Duration::milliseconds(2),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         };
         self.repository
             .project_gateway_acknowledgement(
@@ -341,6 +397,7 @@ fn compiler() -> GatewaySnapshotCompiler {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
     .expect("compiler")
 }
@@ -358,6 +415,7 @@ fn reconciler(
         fixture.compiler.clone(),
         std::time::Duration::from_secs(60),
         Duration::days(7),
+        Duration::hours(6),
         Duration::minutes(3),
         100,
     )
@@ -404,11 +462,15 @@ async fn apply_convergence(
         acknowledgement_id: Uuid::now_v7(),
         command_id: publication.command_id.as_uuid(),
         node_id: publication.node_id.as_uuid(),
+        gateway_id: publication.node_id.as_uuid(),
         revision: publication.revision,
         snapshot_digest: publication.snapshot_digest.clone(),
+        expires_at: publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     repository
         .project_gateway_acknowledgement(
@@ -471,6 +533,169 @@ async fn durable_convergence_is_redispatched_after_command_queue_failure() {
     assert_eq!(second.dispatched_commands, 1);
     assert!(second.failures.is_empty());
     assert_eq!(queue.publications.lock().await.len(), 1);
+}
+
+#[tokio::test]
+async fn applied_snapshot_is_renewed_before_expiry_without_reissuing_its_certificate() {
+    let fixture = Fixture::new();
+    let base = Utc::now();
+    let claim = fixture.verified_claim("snapshot.example.com", base).await;
+    let (route, certificate) = fixture
+        .activate_route(
+            &claim,
+            "snapshot.example.com",
+            base + Duration::seconds(1),
+            base + Duration::days(30),
+        )
+        .await;
+    let initial_revision = route.gateway_revision.expect("installed revision");
+    let initial_digest = route.snapshot_digest.clone().expect("installed digest");
+    let initial_certificate_version = certificate.aggregate_version;
+    let queue = Arc::new(RecordingGatewayQueue::default());
+    let authority = Arc::new(RecordingGatewayCertificateAuthority::default());
+    let reconciler = reconciler(&fixture, queue.clone(), authority);
+    let run_at = base + Duration::hours(18) + Duration::seconds(2);
+
+    let report = reconciler.run_once(run_at).await.expect("renew snapshot");
+    assert_eq!(report.staged_convergences, 1);
+    assert_eq!(report.dispatched_commands, 1);
+    assert_eq!(report.obsolete_certificates, 0);
+    assert!(report.failures.is_empty());
+    let pending = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending snapshot renewal")
+        .pop()
+        .expect("snapshot renewal");
+    assert_eq!(
+        pending.convergence.reason,
+        crate::modules::edge::domain::GatewayCertificateConvergenceReason::SnapshotRenewal
+    );
+    assert_eq!(pending.convergence.previous_certificate_id, certificate.id);
+    assert!(pending.convergence.replacement_certificate_id.is_none());
+    assert!(pending.certificate.is_none());
+    assert!(pending.publication.certificate_request.is_none());
+    assert_eq!(
+        pending.publication.expected_revision,
+        Some(initial_revision)
+    );
+    assert_eq!(pending.publication.snapshot_digest, initial_digest);
+    assert_eq!(
+        queue.publications.lock().await[0].acl,
+        pending.publication.acl
+    );
+    assert_eq!(
+        fixture
+            .repository
+            .find_route(fixture.organization_id, route.id)
+            .await
+            .expect("route before renewal acknowledgement")
+            .gateway_revision,
+        Some(initial_revision)
+    );
+
+    let rejected_at = run_at + Duration::milliseconds(1);
+    let rejected = NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: pending.publication.command_id.as_uuid(),
+        node_id: pending.publication.node_id.as_uuid(),
+        gateway_id: pending.publication.node_id.as_uuid(),
+        revision: pending.publication.revision,
+        snapshot_digest: pending.publication.snapshot_digest.clone(),
+        expires_at: pending.publication.snapshot_expires_at,
+        state: GatewayAckState::Rejected,
+        ready: false,
+        message: Some("renewal rejected".into()),
+        acknowledged_at: rejected_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
+    };
+    fixture
+        .repository
+        .project_gateway_acknowledgement(&rejected, rejected_at + Duration::milliseconds(1))
+        .await
+        .expect("reject renewal");
+    assert_eq!(
+        fixture
+            .repository
+            .find_route(fixture.organization_id, route.id)
+            .await
+            .expect("route after rejected renewal")
+            .gateway_revision,
+        Some(initial_revision)
+    );
+    assert_eq!(
+        fixture
+            .repository
+            .gateway_scope(fixture.node_id)
+            .await
+            .expect("scope after rejected renewal")
+            .installed_revision,
+        Some(initial_revision)
+    );
+
+    let retry_at = run_at + Duration::seconds(1);
+    let retry = reconciler
+        .run_once(retry_at)
+        .await
+        .expect("retry snapshot renewal");
+    assert_eq!(retry.staged_convergences, 1);
+    let renewal = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending retry")
+        .pop()
+        .expect("snapshot renewal retry");
+    assert_eq!(
+        renewal.convergence.reason,
+        crate::modules::edge::domain::GatewayCertificateConvergenceReason::SnapshotRenewal
+    );
+    assert_eq!(renewal.publication.snapshot_digest, initial_digest);
+    assert!(renewal.publication.revision > pending.publication.revision);
+    apply_convergence(
+        fixture.repository.as_ref(),
+        &renewal.publication,
+        retry_at + Duration::milliseconds(1),
+    )
+    .await;
+    let renewed_route = fixture
+        .repository
+        .find_route(fixture.organization_id, route.id)
+        .await
+        .expect("renewed route");
+    assert_eq!(
+        renewed_route.gateway_revision,
+        Some(renewal.publication.revision)
+    );
+    assert_eq!(
+        renewed_route.gateway_command_id,
+        Some(renewal.publication.command_id)
+    );
+    assert_eq!(
+        renewed_route.snapshot_digest.as_deref(),
+        Some(initial_digest.as_str())
+    );
+    assert_eq!(renewed_route.gateway_certificate_id, Some(certificate.id));
+    let retained_certificate = fixture
+        .repository
+        .find_gateway_certificate(fixture.node_id, certificate.id)
+        .await
+        .expect("retained certificate");
+    assert_eq!(
+        retained_certificate.aggregate_version,
+        initial_certificate_version
+    );
+    assert_eq!(retained_certificate.state, GatewayCertificateState::Ready);
+
+    let settled = reconciler
+        .run_once(retry_at + Duration::seconds(1))
+        .await
+        .expect("settled snapshot");
+    assert_eq!(settled.convergence_targets, 0);
+    assert_eq!(settled.obsolete_certificates, 0);
+    assert!(settled.failures.is_empty());
 }
 
 #[tokio::test]
@@ -687,6 +912,7 @@ fn reconciler_configuration_is_closed() {
         fixture.compiler,
         std::time::Duration::ZERO,
         Duration::days(7),
+        Duration::hours(6),
         Duration::minutes(3),
         100,
     )

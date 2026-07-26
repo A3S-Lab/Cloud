@@ -91,7 +91,7 @@ pub async fn accept_and_cancel(
         )
         .await?;
     assert_eq!(rollback_operation.0, "cloud.deployment");
-    assert_eq!(rollback_operation.1, "2");
+    assert_eq!(rollback_operation.1, "3");
     assert_eq!(
         rollback_operation.2["rollbackSourceRevisionId"],
         source_revision_id

@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot};
+use super::{
+    validate_sha256, validate_single_line, validate_uuid, GatewayManagementProtocol,
+    GatewaySnapshot, NodeInventoryReference,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,6 +36,36 @@ impl NodeHeartbeat {
         validate_uuid("agent_instance_id", self.agent_instance_id)?;
         validate_single_line("agent version", &self.agent_version, 255)?;
         self.runtime_capabilities.validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeHeartbeatV2 {
+    pub schema: String,
+    pub node_id: Uuid,
+    pub agent_instance_id: Uuid,
+    pub observed_at: DateTime<Utc>,
+    pub agent_version: String,
+    pub runtime_capabilities: RuntimeCapabilities,
+    pub inventory: NodeInventoryReference,
+}
+
+impl NodeHeartbeatV2 {
+    pub const SCHEMA: &'static str = "a3s.cloud.node-heartbeat.v2";
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported node heartbeat schema {:?}",
+                self.schema
+            ));
+        }
+        validate_uuid("node_id", self.node_id)?;
+        validate_uuid("agent_instance_id", self.agent_instance_id)?;
+        validate_single_line("agent version", &self.agent_version, 255)?;
+        self.runtime_capabilities.validate()?;
+        self.inventory.validate()
     }
 }
 
@@ -112,17 +145,92 @@ impl NodeObservationBatch {
         {
             return Err("node observation batch identity does not match its heartbeat".into());
         }
-        if self.observations.len() > 256 {
-            return Err("node observation batch exceeds 256 entries".into());
-        }
-        for observation in &self.observations {
-            observation.validate()?;
-            if observation.observed_at > self.sent_at {
-                return Err("Runtime observation is newer than its enclosing batch".into());
-            }
-        }
-        Ok(())
+        validate_observations(&self.observations, self.sent_at)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeObservationBatchV2 {
+    pub schema: String,
+    pub node_id: Uuid,
+    pub agent_instance_id: Uuid,
+    pub sent_at: DateTime<Utc>,
+    pub heartbeat: NodeHeartbeatV2,
+    pub observations: Vec<RuntimeObservationReport>,
+}
+
+impl NodeObservationBatchV2 {
+    pub const SCHEMA: &'static str = "a3s.cloud.node-observation-batch.v2";
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported node observation batch schema {:?}",
+                self.schema
+            ));
+        }
+        validate_uuid("node_id", self.node_id)?;
+        validate_uuid("agent_instance_id", self.agent_instance_id)?;
+        self.heartbeat.validate()?;
+        if self.heartbeat.node_id != self.node_id
+            || self.heartbeat.agent_instance_id != self.agent_instance_id
+        {
+            return Err("node observation batch identity does not match its heartbeat".into());
+        }
+        validate_observations(&self.observations, self.sent_at)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum NodeObservationBatchEnvelope {
+    V2(NodeObservationBatchV2),
+    V1(NodeObservationBatch),
+}
+
+impl NodeObservationBatchEnvelope {
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::V1(batch) => batch.validate(),
+            Self::V2(batch) => batch.validate(),
+        }
+    }
+
+    pub const fn node_id(&self) -> Uuid {
+        match self {
+            Self::V1(batch) => batch.node_id,
+            Self::V2(batch) => batch.node_id,
+        }
+    }
+}
+
+impl From<NodeObservationBatch> for NodeObservationBatchEnvelope {
+    fn from(value: NodeObservationBatch) -> Self {
+        Self::V1(value)
+    }
+}
+
+impl From<NodeObservationBatchV2> for NodeObservationBatchEnvelope {
+    fn from(value: NodeObservationBatchV2) -> Self {
+        Self::V2(value)
+    }
+}
+
+fn validate_observations(
+    observations: &[RuntimeObservationReport],
+    sent_at: DateTime<Utc>,
+) -> Result<(), String> {
+    if observations.len() > 256 {
+        return Err("node observation batch exceeds 256 entries".into());
+    }
+    for observation in observations {
+        observation.validate()?;
+        if observation.observed_at > sent_at {
+            return Err("Runtime observation is newer than its enclosing batch".into());
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -334,37 +442,76 @@ pub struct NodeGatewayAck {
     pub acknowledgement_id: Uuid,
     pub command_id: Uuid,
     pub node_id: Uuid,
+    pub gateway_id: Uuid,
     pub revision: u64,
     pub snapshot_digest: String,
+    pub expires_at: DateTime<Utc>,
     pub state: GatewayAckState,
+    pub ready: bool,
     pub message: Option<String>,
     pub acknowledged_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_protocol: Option<GatewayManagementProtocol>,
 }
 
 impl NodeGatewayAck {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v2";
+    pub const SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v4";
+    pub const LEGACY_SCHEMA: &'static str = "a3s.cloud.node-gateway-ack.v3";
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != Self::SCHEMA {
-            return Err(format!("unsupported Gateway ack schema {:?}", self.schema));
+        match self.schema.as_str() {
+            Self::SCHEMA => {
+                if self.state == GatewayAckState::Applied && self.management_protocol.is_none() {
+                    return Err(
+                        "applied Gateway acknowledgement must identify its management protocol"
+                            .into(),
+                    );
+                }
+                if let Some(protocol) = &self.management_protocol {
+                    protocol.validate()?;
+                }
+            }
+            Self::LEGACY_SCHEMA => {
+                if self.management_protocol.is_some() {
+                    return Err(
+                        "legacy Gateway acknowledgement must omit management protocol evidence"
+                            .into(),
+                    );
+                }
+            }
+            _ => {
+                return Err(format!("unsupported Gateway ack schema {:?}", self.schema));
+            }
         }
         validate_uuid("acknowledgement_id", self.acknowledgement_id)?;
         validate_uuid("command_id", self.command_id)?;
         validate_uuid("node_id", self.node_id)?;
+        validate_uuid("gateway_id", self.gateway_id)?;
         if self.revision == 0 {
             return Err("Gateway acknowledgement revision must be positive".into());
         }
         validate_sha256("Gateway snapshot digest", &self.snapshot_digest)?;
-        match (self.state, self.message.as_deref()) {
-            (GatewayAckState::Applied, None) => {}
-            (GatewayAckState::Rejected, Some(message)) => {
+        match (self.state, self.ready, self.message.as_deref()) {
+            (GatewayAckState::Applied, true, None) => {
+                if self.acknowledged_at >= self.expires_at {
+                    return Err(
+                        "applied Gateway acknowledgement must precede snapshot expiry".into(),
+                    );
+                }
+            }
+            (GatewayAckState::Rejected, false, Some(message)) => {
                 validate_single_line("Gateway acknowledgement message", message, 16 * 1024)?;
             }
-            (GatewayAckState::Applied, Some(_)) => {
-                return Err("applied Gateway acknowledgement cannot contain a message".into())
+            (GatewayAckState::Applied, _, _) => {
+                return Err(
+                    "applied Gateway acknowledgement must be ready and omit a message".into(),
+                )
             }
-            (GatewayAckState::Rejected, None) => {
-                return Err("rejected Gateway acknowledgement must contain a message".into())
+            (GatewayAckState::Rejected, _, _) => {
+                return Err(
+                    "rejected Gateway acknowledgement must not be ready and must contain a message"
+                        .into(),
+                )
             }
         }
         Ok(())
@@ -380,11 +527,13 @@ impl NodeGatewayAck {
         snapshot.validate()?;
         if self.command_id != command_id
             || self.node_id != node_id
+            || self.gateway_id != snapshot.gateway_id
             || self.revision != snapshot.revision
             || self.snapshot_digest != snapshot.snapshot_digest
+            || self.expires_at != snapshot.expires_at
         {
             return Err(
-                "Gateway acknowledgement does not match its command and exact snapshot revision"
+                "Gateway acknowledgement does not match its command and exact snapshot identity"
                     .into(),
             );
         }

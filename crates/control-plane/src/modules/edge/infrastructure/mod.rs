@@ -3,6 +3,13 @@ mod domain_ownership_verifier;
 mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
+mod gateway_observation_queue;
+mod gateway_replica_recovery_reconciler;
+mod gateway_rollout_reconciler;
+mod gateway_rollout_rollback_compiler;
+mod gateway_rollout_rollback_reconciler;
+mod gateway_route_rollout_compiler;
+mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 pub mod persistence;
@@ -11,6 +18,16 @@ mod vault_gateway_certificate_authority;
 
 #[cfg(test)]
 mod gateway_certificate_reconciler_tests;
+#[cfg(test)]
+mod gateway_replica_recovery_reconciler_tests;
+#[cfg(test)]
+mod gateway_rollout_reconciler_tests;
+#[cfg(test)]
+mod gateway_rollout_rollback_compiler_tests;
+#[cfg(test)]
+mod gateway_route_rollout_compiler_tests;
+#[cfg(test)]
+mod gateway_snapshot_compiler_tests;
 
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
@@ -20,7 +37,31 @@ pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciliationReport,
 };
 pub use gateway_command_queue::FleetGatewayCommandQueue;
-pub use gateway_snapshot_compiler::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig};
+pub use gateway_observation_queue::FleetGatewayObservationQueue;
+pub use gateway_replica_recovery_reconciler::{
+    GatewayReplicaRecoveryReconciler, GatewayReplicaRecoveryReconciliationFailure,
+    GatewayReplicaRecoveryReconciliationReport,
+};
+pub use gateway_rollout_reconciler::{
+    GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
+    GatewayRolloutReconciliationReport,
+};
+pub use gateway_rollout_rollback_compiler::{
+    CompileGatewayRolloutRollback, CompiledGatewayRolloutRollback,
+    GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler,
+};
+pub use gateway_rollout_rollback_reconciler::{
+    GatewayRolloutRollbackReconciler, GatewayRolloutRollbackReconciliationFailure,
+    GatewayRolloutRollbackReconciliationReport,
+};
+pub use gateway_route_rollout_compiler::{
+    CompileGatewayRouteRollout, CompiledGatewayRouteRollout, GatewayMemberSnapshotContext,
+    GatewayRouteRolloutCompiler,
+};
+pub use gateway_route_rollout_planner::{GatewayRouteRolloutPlanner, PlanGatewayRouteRollout};
+pub use gateway_snapshot_compiler::{
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+};
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use route_target_reader::WorkloadRouteTargetReader;
 pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;

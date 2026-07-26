@@ -226,8 +226,10 @@ pub struct EdgeConfig {
     pub management_auth_token_env: String,
     pub domain_verification_timeout_ms: u64,
     pub certificate_directory: String,
+    pub managed_state_file: String,
     pub certificate_ttl_ms: u64,
     pub certificate_renewal_window_ms: u64,
+    pub snapshot_renewal_window_ms: u64,
     pub certificate_reconciliation_interval_ms: u64,
     pub upstream_request_timeout_ms: u64,
     pub command_ttl_ms: u64,
@@ -493,8 +495,10 @@ impl CloudConfig {
                 "management_auth_token_env",
                 "domain_verification_timeout_ms",
                 "certificate_directory",
+                "managed_state_file",
                 "certificate_ttl_ms",
                 "certificate_renewal_window_ms",
+                "snapshot_renewal_window_ms",
                 "certificate_reconciliation_interval_ms",
                 "upstream_request_timeout_ms",
                 "command_ttl_ms",
@@ -686,8 +690,10 @@ impl CloudConfig {
                 management_auth_token_env: string(edge, "management_auth_token_env")?,
                 domain_verification_timeout_ms: integer(edge, "domain_verification_timeout_ms")?,
                 certificate_directory: string(edge, "certificate_directory")?,
+                managed_state_file: string(edge, "managed_state_file")?,
                 certificate_ttl_ms: integer(edge, "certificate_ttl_ms")?,
                 certificate_renewal_window_ms: integer(edge, "certificate_renewal_window_ms")?,
+                snapshot_renewal_window_ms: integer(edge, "snapshot_renewal_window_ms")?,
                 certificate_reconciliation_interval_ms: integer(
                     edge,
                     "certificate_reconciliation_interval_ms",
@@ -1101,6 +1107,7 @@ impl CloudConfig {
                 ConfigError::Invalid(format!("edge.management_address is invalid: {error}"))
             })?;
         let certificate_directory = std::path::Path::new(&self.edge.certificate_directory);
+        let managed_state_file = std::path::Path::new(&self.edge.managed_state_file);
         if entrypoint.port() == 0
             || management.port() == 0
             || !management.ip().is_loopback()
@@ -1119,19 +1126,31 @@ impl CloudConfig {
             || certificate_directory
                 .components()
                 .any(|component| matches!(component, std::path::Component::ParentDir))
+            || self.edge.managed_state_file.len() > 4096
+            || self.edge.managed_state_file.contains(['\0', '\r', '\n'])
+            || !managed_state_file.is_absolute()
+            || managed_state_file.file_name().is_none()
+            || managed_state_file
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
             || !(3_600_000..=34_300_800_000).contains(&self.edge.certificate_ttl_ms)
             || self.edge.certificate_renewal_window_ms == 0
             || self.edge.certificate_renewal_window_ms >= self.edge.certificate_ttl_ms
+            || self.edge.snapshot_renewal_window_ms == 0
+            || self.edge.snapshot_renewal_window_ms >= 86_400_000
             || self.edge.certificate_reconciliation_interval_ms == 0
             || self.edge.certificate_reconciliation_interval_ms
                 > self.edge.certificate_renewal_window_ms
+            || self.edge.certificate_reconciliation_interval_ms
+                > self.edge.snapshot_renewal_window_ms
             || self.edge.upstream_request_timeout_ms == 0
             || self.edge.upstream_request_timeout_ms > 3_600_000
             || self.edge.command_ttl_ms == 0
             || self.edge.command_ttl_ms > 86_400_000
+            || self.edge.command_ttl_ms >= self.edge.snapshot_renewal_window_ms
         {
             return Err(ConfigError::Invalid(
-                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, bounded DNS verification, a normalized certificate directory with bounded lifecycle windows, and independent bounded upstream and command timeouts"
+                "edge requires valid traffic and loopback management addresses, a safe management path/token environment, bounded DNS verification, normalized certificate and managed-state paths with bounded lifecycle windows, and independent bounded upstream and command timeouts"
                     .into(),
             ));
         }
@@ -1768,8 +1787,10 @@ edge {
   management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
   domain_verification_timeout_ms = 5000
   certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
+  managed_state_file = "/var/lib/a3s-gateway/managed-snapshot.json"
   certificate_ttl_ms = 2592000000
   certificate_renewal_window_ms = 604800000
+  snapshot_renewal_window_ms = 21600000
   certificate_reconciliation_interval_ms = 60000
   upstream_request_timeout_ms = 30000
   command_ttl_ms = 180000
@@ -1929,6 +1950,16 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "certificate_reconciliation_interval_ms = 60000",
             "certificate_reconciliation_interval_ms = 604800001"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "snapshot_renewal_window_ms = 21600000",
+            "snapshot_renewal_window_ms = 86400000"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "snapshot_renewal_window_ms = 21600000",
+            "snapshot_renewal_window_ms = 180000"
         ))
         .is_err());
         assert!(CloudConfig::parse(

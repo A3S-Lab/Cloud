@@ -464,6 +464,7 @@ fn command(node_id: Uuid, spec: RuntimeUnitSpec) -> NodeCommandEnvelope {
                 deadline_at_ms: None,
                 spec,
             }),
+            resource_claim: None,
         },
     )
     .expect("artifact command")

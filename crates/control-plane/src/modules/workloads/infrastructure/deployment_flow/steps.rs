@@ -1,8 +1,8 @@
 mod cleanup;
 mod gateway;
+mod resource_claims;
 mod retirement;
 
-use super::flow_error;
 use super::types::{
     ActivateStepInput, ActivateStepOutput, DeploymentFlowInput, DispatchStepInput,
     DispatchStepOutput, DispatchedRuntime, FailStepInput, FailStepOutput, ObserveStepInput,
@@ -11,14 +11,18 @@ use super::types::{
     VerifyStepOutput,
 };
 use super::DeploymentFlowRuntime;
+use super::{flow_error, resource_claim_id};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
-use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId};
+use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId, RepositoryError};
 use crate::modules::workloads::domain::entities::{
-    DeploymentStatus, SecretBindingTarget, WorkloadRevision,
+    CompiledResourceRequirements, DeploymentReplicaBinding, DeploymentStatus,
+    ResourceClaimBindingEvidence, ResourceClaimReservation, ResourceClaimState,
+    SecretBindingTarget, ServiceResources, WorkloadRevision,
 };
+use crate::modules::workloads::domain::repositories::is_capacity_unavailable;
 use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
 use crate::modules::workloads::infrastructure::project_runtime_spec;
-use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload};
+use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeResourceClaimBinding};
 use a3s_flow::{FlowError, StepInvocation};
 use a3s_runtime::contract::{
     RuntimeApplyRequest, RuntimeCapabilities, RuntimeHealthState, RuntimeUnitState,
@@ -36,8 +40,17 @@ pub(super) async fn execute(
             encode(resolve(runtime, &invocation.run_id, invocation.input_as()?).await?)
         }
         "schedule_deployment" => encode(schedule(runtime, invocation.input_as()?).await?),
+        "prepare_resource_claim" => {
+            encode(resource_claims::prepare(runtime, invocation.input_as()?).await?)
+        }
         "dispatch_runtime_apply" => encode(dispatch(runtime, invocation.input_as()?).await?),
+        "dispatch_resource_bound_runtime_apply" => {
+            encode(dispatch_bound(runtime, invocation.input_as()?).await?)
+        }
         "observe_runtime_apply" => encode(observe(runtime, invocation.input_as()?).await?),
+        "observe_resource_bound_runtime_apply" => {
+            encode(observe_bound(runtime, invocation.input_as()?).await?)
+        }
         "verify_runtime_health" => encode(verify(runtime, invocation.input_as()?).await?),
         "stage_deployment_gateway" => {
             encode(gateway::stage(runtime, invocation.input_as()?).await?)
@@ -60,6 +73,15 @@ pub(super) async fn execute(
         }
         "observe_runtime_cleanup" => {
             encode(cleanup::observe_cleanup(runtime, invocation.input_as()?).await?)
+        }
+        "dispatch_failed_runtime_cleanup" => {
+            encode(cleanup::dispatch_failed(runtime, invocation.input_as()?).await?)
+        }
+        "observe_failed_runtime_cleanup" => {
+            encode(cleanup::observe_failed(runtime, invocation.input_as()?).await?)
+        }
+        "release_resource_claim" => {
+            encode(resource_claims::release(runtime, invocation.input_as()?).await?)
         }
         "complete_deployment_cancellation" => {
             encode(cleanup::complete_cancellation(runtime, invocation.input_as()?).await?)
@@ -151,6 +173,12 @@ async fn resolve(
     validate_rollback_source(runtime, &input, &revision).await?;
     let spec = project_runtime_spec(&revision)
         .map_err(|error| flow_error("could not project Runtime specification", error))?;
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(input.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load deployment replica binding", error))?;
+    validate_replica_binding(&replica_binding, &deployment, &revision, &spec)?;
     let previous_runtime = previous_runtime(runtime, &input, &revision).await?;
 
     let convergence_deadline = deployment
@@ -266,11 +294,45 @@ async fn previous_runtime(
         .ok_or_else(|| FlowError::Runtime("active deployment omitted its node".into()))?;
     let spec = project_runtime_spec(&previous_revision)
         .map_err(|error| flow_error("could not project previous Runtime specification", error))?;
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(input.organization_id, previous_deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load previous deployment replica binding", error))?;
+    validate_replica_binding(
+        &replica_binding,
+        &previous_deployment,
+        &previous_revision,
+        &spec,
+    )?;
     Ok(Some(PreviousRuntime {
+        deployment_id: Some(previous_deployment.id),
         revision_id: previous_revision.id,
         node_id,
         spec,
     }))
+}
+
+fn validate_replica_binding(
+    binding: &DeploymentReplicaBinding,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
+    revision: &WorkloadRevision,
+    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+) -> a3s_flow::Result<()> {
+    if binding.deployment_id != deployment.id
+        || binding.organization_id != deployment.organization_id
+        || binding.workload_id != deployment.workload_id
+        || binding.revision_id != revision.id
+        || binding.replica_generation != revision.generation
+        || binding.runtime_unit_id != spec.unit_id
+        || binding.runtime_generation != spec.generation
+        || binding.node_id != deployment.node_id
+    {
+        return Err(FlowError::Runtime(
+            "deployment replica binding does not match its Runtime projection".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn registry_credential_reference(
@@ -351,6 +413,13 @@ async fn schedule(
                     "one-node update changed the previous Runtime node".into(),
                 ));
             }
+            if let Some(claim) = scheduling_claim(runtime, &deployment, &input.resolved).await? {
+                if claim.node_id != node_id {
+                    return Err(FlowError::Runtime(
+                        "scheduled deployment changed its reserved resource node".into(),
+                    ));
+                }
+            }
             return Ok(ScheduleStepOutput::Ready { node_id });
         }
     }
@@ -372,6 +441,43 @@ async fn schedule(
     }
 
     let now = Utc::now().max(deployment.updated_at);
+    if let Some(claim) = scheduling_claim(runtime, &deployment, &input.resolved).await? {
+        let scheduled = runtime
+            .workloads
+            .assign_node(
+                deployment.id,
+                deployment.aggregate_version,
+                claim.node_id,
+                now.max(claim.created_at),
+            )
+            .await
+            .map_err(|error| {
+                flow_error(
+                    "could not recover deployment placement from its resource claim",
+                    error,
+                )
+            })?;
+        return Ok(ScheduleStepOutput::Ready {
+            node_id: scheduled.node_id.ok_or_else(|| {
+                FlowError::Runtime("recovered deployment placement omitted its node".into())
+            })?,
+        });
+    }
+    let binding = runtime
+        .workloads
+        .find_deployment_replica_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| {
+            flow_error(
+                "could not load deployment replica binding for resource reservation",
+                error,
+            )
+        })?;
+    if binding.node_id.is_some() {
+        return Err(FlowError::Runtime(
+            "resolving deployment has an inconsistent placed replica binding".into(),
+        ));
+    }
     let mut nodes = runtime
         .nodes
         .list(deployment.organization_id)
@@ -405,9 +511,74 @@ async fn schedule(
         if !missing.is_empty() {
             continue;
         }
+        let Some(inventory) = runtime
+            .node_control
+            .current_resource_inventory(node.id)
+            .await
+            .map_err(|error| flow_error("could not load current node resource inventory", error))?
+        else {
+            continue;
+        };
+        inventory
+            .validate()
+            .map_err(|error| flow_error("current node resource inventory is invalid", error))?;
+        let resources = ServiceResources {
+            cpu_millis: input.resolved.spec.resources.cpu_millis,
+            memory_bytes: input.resolved.spec.resources.memory_bytes,
+            pids: input.resolved.spec.resources.pids,
+            ephemeral_storage_bytes: input.resolved.spec.resources.ephemeral_storage_bytes,
+        };
+        let requirements =
+            match CompiledResourceRequirements::compile(&resources, &inventory.inventory) {
+                Ok(requirements) => requirements,
+                Err(_) => continue,
+            };
+        let candidate_binding = binding
+            .propose_assignment(node.id, now)
+            .map_err(|error| flow_error("could not propose replica placement", error))?;
+        let reservation = ResourceClaimReservation {
+            id: resource_claim_id(deployment.id),
+            binding: candidate_binding,
+            node_id: node.id,
+            inventory: inventory.inventory,
+            topology_digest: requirements.topology_digest,
+            slots: requirements.slots,
+            reserved_at: now,
+        };
+        let claim = match runtime.resource_claims.reserve(reservation).await {
+            Ok(result) => result.value,
+            Err(error) if is_capacity_unavailable(&error) => continue,
+            Err(RepositoryError::IdempotencyConflict) => {
+                let claim = scheduling_claim(runtime, &deployment, &input.resolved)
+                    .await?
+                    .ok_or_else(|| {
+                        FlowError::Runtime(
+                            "resource claim conflicted without a durable winner".into(),
+                        )
+                    })?;
+                if claim.node_id != node.id {
+                    return Err(FlowError::Runtime(
+                        "concurrent scheduling selected a different reserved node".into(),
+                    ));
+                }
+                claim
+            }
+            Err(error) => {
+                return Err(flow_error(
+                    "could not reserve deployment resource capacity",
+                    error,
+                ))
+            }
+        };
+        validate_scheduling_claim(&claim, &deployment, &input.resolved)?;
         let scheduled = runtime
             .workloads
-            .assign_node(deployment.id, deployment.aggregate_version, node.id, now)
+            .assign_node(
+                deployment.id,
+                deployment.aggregate_version,
+                claim.node_id,
+                now,
+            )
             .await
             .map_err(|error| flow_error("could not assign deployment node", error))?;
         return Ok(ScheduleStepOutput::Ready {
@@ -437,9 +608,67 @@ async fn schedule(
     })
 }
 
+async fn scheduling_claim(
+    runtime: &DeploymentFlowRuntime,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
+    resolved: &ResolveStepOutput,
+) -> a3s_flow::Result<Option<crate::modules::workloads::domain::entities::ResourceClaim>> {
+    match runtime
+        .resource_claims
+        .find(deployment.organization_id, resource_claim_id(deployment.id))
+        .await
+    {
+        Ok(claim) => {
+            validate_scheduling_claim(&claim, deployment, resolved)?;
+            Ok(Some(claim))
+        }
+        Err(RepositoryError::NotFound) => Ok(None),
+        Err(error) => Err(flow_error(
+            "could not load deployment resource claim",
+            error,
+        )),
+    }
+}
+
+fn validate_scheduling_claim(
+    claim: &crate::modules::workloads::domain::entities::ResourceClaim,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
+    resolved: &ResolveStepOutput,
+) -> a3s_flow::Result<()> {
+    if claim.organization_id != deployment.organization_id
+        || claim.workload_id != deployment.workload_id
+        || claim.deployment_id != deployment.id
+        || claim.runtime_unit_id != resolved.spec.unit_id
+        || claim.runtime_generation != resolved.spec.generation
+        || claim.state == ResourceClaimState::Released
+    {
+        return Err(FlowError::Runtime(
+            "deployment resource claim does not match its exact Runtime placement".into(),
+        ));
+    }
+    claim
+        .validate()
+        .map_err(|error| flow_error("deployment resource claim is invalid", error))
+}
+
 async fn dispatch(
     runtime: &DeploymentFlowRuntime,
     input: DispatchStepInput,
+) -> a3s_flow::Result<DispatchStepOutput> {
+    dispatch_with_claim(runtime, input, false).await
+}
+
+async fn dispatch_bound(
+    runtime: &DeploymentFlowRuntime,
+    input: DispatchStepInput,
+) -> a3s_flow::Result<DispatchStepOutput> {
+    dispatch_with_claim(runtime, input, true).await
+}
+
+async fn dispatch_with_claim(
+    runtime: &DeploymentFlowRuntime,
+    input: DispatchStepInput,
+    require_resource_claim: bool,
 ) -> a3s_flow::Result<DispatchStepOutput> {
     let mut deployment = runtime
         .workloads
@@ -460,6 +689,13 @@ async fn dispatch(
             "deployment dispatch does not match its scheduled node".into(),
         ));
     }
+    let resource_claim = if require_resource_claim {
+        Some(Box::new(
+            prepared_binding_for_dispatch(runtime, &input).await?,
+        ))
+    } else {
+        None
+    };
     if let Some(command_id) = deployment.command_id {
         if matches!(
             deployment.status,
@@ -476,7 +712,8 @@ async fn dispatch(
                 .ok_or_else(|| {
                     FlowError::Runtime("dispatched Runtime apply command is missing".into())
                 })?;
-            let result_deadline = apply_result_deadline(&command, &input.resolved.spec)?;
+            let result_deadline =
+                apply_result_deadline(&command, &input.resolved.spec, resource_claim.as_deref())?;
             return Ok(DispatchStepOutput::Ready {
                 dispatched: DispatchedRuntime {
                     node_id: input.node_id,
@@ -516,6 +753,7 @@ async fn dispatch(
             deadline_at_ms: Some(timestamp_millis(runtime_deadline)?),
             spec: input.resolved.spec.clone(),
         }),
+        resource_claim,
     };
     let command = runtime
         .node_control
@@ -536,7 +774,11 @@ async fn dispatch(
             "node command repository changed the deployment command identity".into(),
         ));
     }
-    let result_deadline = apply_result_deadline(&command, &input.resolved.spec)?;
+    let expected_binding = match &command.payload {
+        NodeCommandPayload::RuntimeApply { resource_claim, .. } => resource_claim.as_deref(),
+        _ => None,
+    };
+    let result_deadline = apply_result_deadline(&command, &input.resolved.spec, expected_binding)?;
     deployment = runtime
         .workloads
         .mark_dispatched(
@@ -564,6 +806,21 @@ async fn observe(
     runtime: &DeploymentFlowRuntime,
     input: ObserveStepInput,
 ) -> a3s_flow::Result<ObserveStepOutput> {
+    observe_with_claim(runtime, input, false).await
+}
+
+async fn observe_bound(
+    runtime: &DeploymentFlowRuntime,
+    input: ObserveStepInput,
+) -> a3s_flow::Result<ObserveStepOutput> {
+    observe_with_claim(runtime, input, true).await
+}
+
+async fn observe_with_claim(
+    runtime: &DeploymentFlowRuntime,
+    input: ObserveStepInput,
+    require_resource_claim: bool,
+) -> a3s_flow::Result<ObserveStepOutput> {
     let deployment = runtime
         .workloads
         .find_deployment(input.resolved.organization_id, input.resolved.deployment_id)
@@ -585,6 +842,19 @@ async fn observe(
             "deployment observation identity does not match dispatch".into(),
         ));
     }
+    let resource_binding = if require_resource_claim {
+        Some(
+            dispatched_resource_binding(runtime, &input)
+                .await?
+                .ok_or_else(|| {
+                    FlowError::Runtime(
+                        "resource-bound Runtime apply omitted its prepared claim".into(),
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
 
     let record = runtime
         .node_control
@@ -605,6 +875,17 @@ async fn observe(
             .observation
             .validate_against(&input.resolved.spec)
             .map_err(|error| flow_error("Runtime observation is inconsistent", error))?;
+        if let Some(binding) = &resource_binding {
+            binding
+                .validate_runtime_observation(&record.observation)
+                .map_err(|error| {
+                    flow_error(
+                        "Runtime observation omitted its exact resource allocation binding",
+                        error,
+                    )
+                })?;
+            persist_runtime_binding(runtime, &input, &record, binding).await?;
+        }
         if record.observation.converges(&input.resolved.spec) {
             return Ok(ObserveStepOutput::Ready {
                 observed_at: record.observed_at,
@@ -881,15 +1162,20 @@ fn timestamp_millis(value: DateTime<Utc>) -> a3s_flow::Result<u64> {
 fn apply_result_deadline(
     command: &crate::modules::fleet::domain::entities::NodeCommand,
     expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
+    expected_binding: Option<&NodeResourceClaimBinding>,
 ) -> a3s_flow::Result<DateTime<Utc>> {
-    let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+    let NodeCommandPayload::RuntimeApply {
+        request,
+        resource_claim,
+    } = &command.payload
+    else {
         return Err(FlowError::Runtime(
             "deployment command is not a Runtime apply request".into(),
         ));
     };
-    if request.spec != *expected_spec {
+    if request.spec != *expected_spec || resource_claim.as_deref() != expected_binding {
         return Err(FlowError::Runtime(
-            "deployment command changed its Runtime specification".into(),
+            "deployment command changed its Runtime specification or resource binding".into(),
         ));
     }
     let deadline_ms = request
@@ -900,6 +1186,151 @@ fn apply_result_deadline(
     DateTime::from_timestamp_millis(deadline_ms)
         .map(|deadline| deadline.min(command.not_after))
         .ok_or_else(|| FlowError::Runtime("Runtime apply deadline is invalid".into()))
+}
+
+async fn prepared_binding_for_dispatch(
+    runtime: &DeploymentFlowRuntime,
+    input: &DispatchStepInput,
+) -> a3s_flow::Result<NodeResourceClaimBinding> {
+    let claim = runtime
+        .resource_claims
+        .find(
+            input.resolved.organization_id,
+            resource_claim_id(input.resolved.deployment_id),
+        )
+        .await
+        .map_err(|error| {
+            flow_error(
+                "could not load prepared resource claim for Runtime dispatch",
+                error,
+            )
+        })?;
+    if !matches!(
+        claim.state,
+        ResourceClaimState::PreparedOnAgent | ResourceClaimState::BoundToRuntimeUnit
+    ) || claim.node_id != input.node_id
+        || claim.deployment_id != input.resolved.deployment_id
+        || claim.workload_id != input.resolved.workload_id
+        || claim.runtime_unit_id != input.resolved.spec.unit_id
+        || claim.runtime_generation != input.resolved.spec.generation
+    {
+        return Err(FlowError::Runtime(
+            "Runtime dispatch has no matching prepared resource claim".into(),
+        ));
+    }
+    let binding = resource_claims::load_prepared_binding(runtime, &claim).await?;
+    binding
+        .validate_runtime_spec(&input.resolved.spec)
+        .map_err(|error| flow_error("prepared resource claim cannot bind Runtime apply", error))?;
+    let digest = binding
+        .digest()
+        .map_err(|error| flow_error("could not digest prepared Runtime resource binding", error))?;
+    if claim.prepared_binding_digest.as_ref() != Some(&digest) {
+        return Err(FlowError::Runtime(
+            "prepared resource claim digest changed before Runtime dispatch".into(),
+        ));
+    }
+    Ok(binding)
+}
+
+async fn dispatched_resource_binding(
+    runtime: &DeploymentFlowRuntime,
+    input: &ObserveStepInput,
+) -> a3s_flow::Result<Option<NodeResourceClaimBinding>> {
+    let command = runtime
+        .node_control
+        .find_command(input.dispatched.node_id, input.dispatched.command_id)
+        .await
+        .map_err(|error| flow_error("could not reload resource-bound Runtime apply", error))?
+        .ok_or_else(|| FlowError::Runtime("resource-bound Runtime apply is missing".into()))?;
+    if command.id != input.dispatched.command_id
+        || command.node_id != input.dispatched.node_id
+        || command.aggregate_id != input.resolved.workload_id.as_uuid()
+    {
+        return Err(FlowError::Runtime(
+            "resource-bound Runtime apply identity changed".into(),
+        ));
+    }
+    let NodeCommandPayload::RuntimeApply {
+        request,
+        resource_claim,
+    } = command.payload
+    else {
+        return Err(FlowError::Runtime(
+            "resource-bound deployment command is not a Runtime apply".into(),
+        ));
+    };
+    if request.spec != input.resolved.spec {
+        return Err(FlowError::Runtime(
+            "resource-bound Runtime apply changed its specification".into(),
+        ));
+    }
+    Ok(resource_claim.map(|binding| *binding))
+}
+
+async fn persist_runtime_binding(
+    runtime: &DeploymentFlowRuntime,
+    input: &ObserveStepInput,
+    record: &crate::modules::fleet::domain::repositories::RuntimeObservationRecord,
+    binding: &NodeResourceClaimBinding,
+) -> a3s_flow::Result<()> {
+    let claim = runtime
+        .resource_claims
+        .find(
+            input.resolved.organization_id,
+            resource_claim_id(input.resolved.deployment_id),
+        )
+        .await
+        .map_err(|error| {
+            flow_error(
+                "could not load prepared resource claim for Runtime binding",
+                error,
+            )
+        })?;
+    if claim.state == ResourceClaimState::BoundToRuntimeUnit {
+        if claim.bound_at.is_none()
+            || claim.prepared_binding_digest.as_ref()
+                != Some(
+                    &binding.digest().map_err(|error| {
+                        flow_error("could not verify bound resource digest", error)
+                    })?,
+                )
+        {
+            return Err(FlowError::Runtime(
+                "bound resource claim has inconsistent durable evidence".into(),
+            ));
+        }
+        return Ok(());
+    }
+    if claim.state != ResourceClaimState::PreparedOnAgent
+        || claim.id.as_uuid() != binding.claim_id
+        || claim.node_id != input.dispatched.node_id
+    {
+        return Err(FlowError::Runtime(
+            "Runtime allocation evidence does not own a prepared resource claim".into(),
+        ));
+    }
+    let evidence = ResourceClaimBindingEvidence {
+        runtime_unit_id: binding.runtime_unit_id.clone(),
+        runtime_generation: binding.runtime_generation,
+        binding_digest: binding
+            .digest()
+            .map_err(|error| flow_error("could not digest Runtime resource binding", error))?,
+        slots: claim.slot_evidence(),
+        observed_at: record.observed_at,
+    };
+    runtime
+        .resource_claims
+        .bind(
+            claim.organization_id,
+            claim.id,
+            claim.aggregate_version,
+            evidence,
+            record.received_at.max(claim.updated_at),
+        )
+        .await
+        .map_err(|error| flow_error("could not persist Runtime allocation binding", error))?;
+    Ok(())
 }
 
 fn bounded_reason(value: String) -> String {

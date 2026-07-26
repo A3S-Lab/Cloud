@@ -1,4 +1,5 @@
-use super::queries;
+use super::schema::{Deployments, WorkloadRevisions, Workloads};
+use super::{queries, replicas};
 use crate::infrastructure::{
     execute, idempotency_replay, require_one_row, store_idempotency, store_outbox,
     transaction_error, PostgresPersistenceError,
@@ -11,7 +12,7 @@ use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, OciArtifact, Workload, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::RequestDeploymentCancellationBundle;
-use a3s_orm::{sql_query, PostgresExecutor, PostgresTransaction};
+use a3s_orm::{update_table, PostgresExecutor, PostgresTransaction};
 use chrono::{DateTime, Utc};
 
 pub(super) enum DeploymentMutation {
@@ -170,12 +171,16 @@ pub(super) async fn mutate(
                 }
                 require_expected_version(&deployment, expected_version)?;
                 let previous_version = deployment.aggregate_version;
+                let updates_placement = matches!(&mutation, DeploymentMutation::Schedule { .. });
                 mutation.apply(&mut deployment).map_err(|error| {
                     RepositoryError::Conflict(format!(
                         "deployment transition was rejected: {error}"
                     ))
                 })?;
                 persist_deployment(transaction, &deployment, previous_version).await?;
+                if updates_placement {
+                    replicas::place(transaction, &deployment).await?;
+                }
                 Ok(deployment)
             })
         })
@@ -202,6 +207,12 @@ pub(super) async fn request_cancellation(
                     queries::deployment_in_transaction(transaction, request.deployment.id, true)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
+                replicas::require_direct_mutation(
+                    transaction,
+                    current.organization_id,
+                    current.workload_id,
+                )
+                .await?;
                 if current.aggregate_version != request.expected_version {
                     return Err(RepositoryError::Conflict(format!(
                         "deployment changed from expected version {} to {}",
@@ -309,24 +320,31 @@ pub(super) async fn resolve_revision(
                 })?;
                 let rows = execute(
                     transaction,
-                    sql_query::<()>("update workload_revisions set resolution_state = ")
-                        .bind("resolved")
-                        .append(", artifact_uri = ")
-                        .bind(template.artifact.uri.as_str())
-                        .append(", artifact_digest = ")
-                        .bind(template.artifact.digest.as_str())
-                        .append(", artifact_media_type = ")
-                        .bind(template.artifact.media_type.as_str())
-                        .append(", template = ")
-                        .bind(serde_json::to_value(template)?)
-                        .append(", template_digest = ")
-                        .bind(template_digest)
-                        .append(", resolved_at = ")
-                        .bind(resolved_at)
-                        .append(" where id = ")
-                        .bind(revision.id.as_uuid())
-                        .append(" and resolution_state = ")
-                        .bind("pending"),
+                    update_table::<WorkloadRevisions>()
+                        .set(WorkloadRevisions::resolution_state(), "resolved")
+                        .set(
+                            WorkloadRevisions::artifact_uri(),
+                            template.artifact.uri.clone(),
+                        )
+                        .set(
+                            WorkloadRevisions::artifact_digest(),
+                            template.artifact.digest.clone(),
+                        )
+                        .set(
+                            WorkloadRevisions::artifact_media_type(),
+                            template.artifact.media_type.clone(),
+                        )
+                        .set(
+                            WorkloadRevisions::template(),
+                            serde_json::to_value(template)?,
+                        )
+                        .set(
+                            WorkloadRevisions::template_digest(),
+                            template_digest.to_owned(),
+                        )
+                        .set(WorkloadRevisions::resolved_at(), resolved_at)
+                        .filter(WorkloadRevisions::id().eq(revision.id.as_uuid()))
+                        .filter(WorkloadRevisions::resolution_state().eq("pending")),
                 )
                 .await?;
                 require_one_row("workload revision resolution", rows)?;
@@ -426,32 +444,38 @@ async fn persist_deployment(
 ) -> Result<(), PostgresPersistenceError> {
     let rows = execute(
         transaction,
-        sql_query::<()>("update deployments set node_id = ")
-            .bind(deployment.node_id.map(|id| id.as_uuid()))
-            .append(", command_id = ")
-            .bind(deployment.command_id.map(|id| id.as_uuid()))
-            .append(", cleanup_command_id = ")
-            .bind(deployment.cleanup_command_id.map(|id| id.as_uuid()))
-            .append(", retirement_command_id = ")
-            .bind(deployment.retirement_command_id.map(|id| id.as_uuid()))
-            .append(", status = ")
-            .bind(deployment.status.as_str())
-            .append(", failure = ")
-            .bind(deployment.failure.clone())
-            .append(", aggregate_version = ")
-            .bind(deployment.aggregate_version)
-            .append(", updated_at = ")
-            .bind(deployment.updated_at)
-            .append(", activated_at = ")
-            .bind(deployment.activated_at)
-            .append(", cancellation_requested_at = ")
-            .bind(deployment.cancellation_requested_at)
-            .append(", cancelled_at = ")
-            .bind(deployment.cancelled_at)
-            .append(" where id = ")
-            .bind(deployment.id.as_uuid())
-            .append(" and aggregate_version = ")
-            .bind(previous_version),
+        update_table::<Deployments>()
+            .set(
+                Deployments::node_id(),
+                deployment.node_id.map(|id| id.as_uuid()),
+            )
+            .set(
+                Deployments::command_id(),
+                deployment.command_id.map(|id| id.as_uuid()),
+            )
+            .set(
+                Deployments::cleanup_command_id(),
+                deployment.cleanup_command_id.map(|id| id.as_uuid()),
+            )
+            .set(
+                Deployments::retirement_command_id(),
+                deployment.retirement_command_id.map(|id| id.as_uuid()),
+            )
+            .set(Deployments::status(), deployment.status.as_str())
+            .set(Deployments::failure(), deployment.failure.clone())
+            .set(
+                Deployments::aggregate_version(),
+                deployment.aggregate_version,
+            )
+            .set(Deployments::updated_at(), deployment.updated_at)
+            .set(Deployments::activated_at(), deployment.activated_at)
+            .set(
+                Deployments::cancellation_requested_at(),
+                deployment.cancellation_requested_at,
+            )
+            .set(Deployments::cancelled_at(), deployment.cancelled_at)
+            .filter(Deployments::id().eq(deployment.id.as_uuid()))
+            .filter(Deployments::aggregate_version().eq(previous_version)),
     )
     .await?;
     require_one_row("deployment transition", rows)
@@ -464,20 +488,17 @@ pub(super) async fn persist_workload(
 ) -> Result<(), PostgresPersistenceError> {
     let rows = execute(
         transaction,
-        sql_query::<()>("update workloads set desired_state = ")
-            .bind(workload.desired_state.as_str())
-            .append(", active_revision_id = ")
-            .bind(workload.active_revision_id.map(|id| id.as_uuid()))
-            .append(", aggregate_version = ")
-            .bind(workload.aggregate_version)
-            .append(", updated_at = ")
-            .bind(workload.updated_at)
-            .append(" where organization_id = ")
-            .bind(workload.organization_id.as_uuid())
-            .append(" and id = ")
-            .bind(workload.id.as_uuid())
-            .append(" and aggregate_version = ")
-            .bind(previous_version),
+        update_table::<Workloads>()
+            .set(Workloads::desired_state(), workload.desired_state.as_str())
+            .set(
+                Workloads::active_revision_id(),
+                workload.active_revision_id.map(|id| id.as_uuid()),
+            )
+            .set(Workloads::aggregate_version(), workload.aggregate_version)
+            .set(Workloads::updated_at(), workload.updated_at)
+            .filter(Workloads::organization_id().eq(workload.organization_id.as_uuid()))
+            .filter(Workloads::id().eq(workload.id.as_uuid()))
+            .filter(Workloads::aggregate_version().eq(previous_version)),
     )
     .await?;
     require_one_row("workload activation", rows)

@@ -169,23 +169,29 @@ Primary aggregate:
 ### 3.6 Fleet
 
 Owns enrollment, node identity, capabilities, scheduling eligibility, drain,
-revocation, last accepted observation, and authenticated bounded log ingestion
-and body-retention/compaction metadata. A node agent does not receive direct
+revocation, immutable resource-inventory history and current heads, last
+accepted observation, and authenticated bounded log ingestion and
+body-retention/compaction metadata. A node agent does not receive direct
 database or NATS credentials. Log bodies are immutable object-store payloads
 rather than Fleet table values.
 
-Primary aggregate:
+Primary aggregate and durable projection:
 
 - `Node`
+- `NodeResourceInventory`
 
 ### 3.7 Workloads and deployments
 
 Owns desired service state, immutable workload revisions, placement intent,
-deployments, active revision selection, update, stop, and rollback.
+deployments, active revision selection, update, stop, rollback, stable replica
+identity, and fenced hard-resource claims.
 
 Primary aggregates:
 
 - `Workload`
+- `WorkloadControl`
+- `WorkloadReplica`
+- `ResourceClaim`
 - `Deployment`
 
 `Workload` is the single deployment abstraction. Its source may be a generic
@@ -193,23 +199,39 @@ application image or an Agent/MCP release. This avoids parallel deployment
 engines while preserving the stricter Asset domain. Workloads also owns the
 tenant-authorized query that maps one exact revision and assigned deployment to
 ordered Fleet log metadata; it does not become the owner of log bodies.
+One current single-instance Workload maps to canonical replica/member ordinal
+zero. A deployment binding records the exact replica, placement, and opaque
+Runtime unit generation. Resource claims bind stable slots to that projection;
+CPU, memory, and ephemeral-storage slots are shared scalar capacities, while
+accelerator, host-port, and volume slots are exclusive. A reservation binds
+the exact current Fleet inventory generation and digest, and Deployment Flow
+persists it before node assignment so replay can recover the selected node.
+The assigned Agent must durably prepare that exact binding before Runtime
+apply. A matching Runtime observation binds the Claim; stopped-or-absent
+Runtime evidence and an exact higher-generation Agent acknowledgement release
+it. An orphaned or timed-out claim remains allocated until exact release or
+trusted fencing evidence is durable. Database-only cancellation is valid only
+for a claim that never advanced beyond `reserved_in_db`.
 
 ### 3.8 Edge routing
 
 The implemented slice owns hostname/path rules, exact and one-label wildcard
-domain claims, managed certificate public state, and the desired A3S Gateway
-configuration revision. It resolves a route only from a healthy active workload
-revision covered by verified claims, compiles one HTTPS-only snapshot, and does
-not mark the route or certificate ready until the Gateway acknowledges that
-exact complete snapshot. The node generates and retains the private key; the
-control plane sees only a CSR and public certificate material.
+domain claims, logical Gateway scopes, managed certificate public state, and
+the desired A3S Gateway configuration revision. A logical scope belongs to one
+organization, project, and environment and currently maps to one physical
+Gateway node. Edge resolves a route only from a healthy active workload
+revision covered by verified claims, compiles one HTTPS-only node-addressed
+snapshot, and does not mark the route or certificate ready until the Gateway
+acknowledges that exact complete snapshot. The node generates and retains the
+private key; the control plane sees only a CSR and public certificate material.
 
 Primary domain records:
 
 - `Route`
 - `DomainClaim`
 - `GatewayCertificate`
-- `GatewayScopeState`
+- `GatewayScope` — Cloud-owned logical tenancy and placement identity
+- `GatewayScopeState` — physical node publication revision state
 - `GatewayPublication`
 - `GatewayRouteCutover`
 - `GatewayCertificateConvergence`
@@ -496,8 +518,8 @@ tables directly. Audit records are append-only and separate from event delivery.
 - `deployment_id` is also the idempotent business key for its Flow run.
 - Repeating a deploy command with the same idempotency key returns the same
   deployment; a different request under that key is a conflict.
-- New operations use `cloud.deployment@2`; version 1 is executable only for
-  persisted-run compatibility.
+- New operations use `cloud.deployment@3`; versions 1 and 2 are executable only
+  for persisted-run compatibility.
 - A workload has at most one nonterminal deployment. An update requires an
   active running workload and commits a complete new immutable template.
 - Manual rollback requires an older revision of that same active running
@@ -522,12 +544,40 @@ tables directly. Audit records are append-only and separate from event delivery.
 - Failure never rewrites the previously active healthy deployment.
 - After candidate activation, `retiring` means the new revision is selected
   while deterministic cleanup of the previous Runtime revision is still
-  required. Only durable stopped-or-absent evidence makes it terminal
-  `active`.
+  required. Durable stopped-or-absent evidence must precede exact Claim
+  release; both are required before terminal `active`.
+
+### Resource Claim
+
+- The Claim ID is deterministic from its Deployment ID. A Claim binds one
+  organization, deployment, replica/member, placement generation, node and
+  Agent, current inventory generation/digest, Runtime unit/generation,
+  topology digest, and canonical sorted slot set.
+- CPU, memory, and ephemeral-storage slots are shared scalar capacities.
+  Accelerator, host-port, and volume slots are exclusive.
+- Each slot carries its own monotonic generation and unguessable fence token.
+  The Claim digest covers the complete binding; a changed generation, digest,
+  inventory, Runtime identity, allocation, or token is a conflict.
+- The lifecycle is `reserved_in_db -> preparing_on_agent ->
+  prepared_on_agent -> bound_to_runtime_unit -> releasing -> released`, with
+  `orphaned` retaining allocation ownership.
+- Agent preparation is durable before acknowledgement. Runtime apply must carry
+  the exact prepared binding, and its observation must contain the exact Claim
+  ID and binding digest before Cloud may persist `bound_to_runtime_unit`.
+- The Agent command journal reconstructs prepare, bind, Runtime stop/remove,
+  and release state after restart. It rejects release of a bound Claim until
+  the same Runtime unit/generation has successful stopped-or-absent evidence.
+- Release advances Claim generation and digest and returns exact slot evidence.
+  A rejected `not_found` or `stale_generation` Runtime stop is not fencing
+  evidence. Ambiguous cleanup keeps the Claim active or `orphaned`.
 
 ### Route
 
 - A hostname/path tuple has one owner within a gateway scope.
+- Every Route stores its logical Gateway scope and physical Gateway node.
+- The scope, DomainClaim, Route, and target belong to the same organization,
+  project, and environment; the scope's mapped node equals the healthy target
+  node.
 - Route publication targets an immutable workload revision.
 - The target port must be declared by that revision and resolved from current
   healthy Runtime evidence to a node-local HTTP origin.
@@ -536,6 +586,9 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A gateway scope has at most one pending complete snapshot.
 - Route, publication, Fleet command, and acknowledgement bind the same node,
   command ID, revision, snapshot digest, and original correlation ID.
+- A new applied acknowledgement carries the exact supported Gateway management
+  protocol, request/status schemas, and discovery mode. A readable legacy
+  acknowledgement carries no invented protocol evidence.
 - Every published route references verified, same-tenant claims that cover its
   canonical hostname and one certificate owned by the target node.
 - Only the exact `applied` acknowledgement activates a route; a rejected
@@ -544,8 +597,11 @@ tables directly. Audit records are append-only and separate from event delivery.
 ### Gateway route cutover
 
 - One cutover belongs to one deployment and binds the previous and candidate
-  immutable revisions, workload node, Gateway revision, deterministic command,
-  certificate, snapshot digest, and complete candidate route set.
+  immutable revisions, logical Gateway scope, workload node, Gateway revision,
+  deterministic command, certificate, snapshot digest, and complete candidate
+  route set.
+- A cutover preserves logical scope identity and cannot move a route across
+  project, environment, or physical node boundaries.
 - Staging validates every current active route for the workload and persists
   the candidate projections separately. The active route rows remain
   byte-identical while the cutover is `pending`.
@@ -567,10 +623,13 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 ### Gateway certificate
 
-- A certificate binds one node, a sorted nonempty claim set, the complete
-  Gateway revision and command, its snapshot digest, and one sorted SAN set.
-- Snapshot schema v2 digests the certificate request with the ACL; a legacy
-  snapshot cannot carry certificate intent.
+- A certificate binds one node, a sorted nonempty claim set, the Gateway
+  revision and command that issued it, that snapshot digest, and one sorted SAN
+  set. Later same-policy snapshot renewal may retain the certificate while
+  active routes advance to a newer publication revision.
+- Snapshot schema v3 digests the exact ACL bytes and validates optional
+  certificate intent separately. A same-policy validity renewal omits
+  certificate intent and retains the existing certificate paths.
 - PostgreSQL may store the CSR digest and public certificate chain, but never
   the private key or plaintext key material.
 - `ready` requires valid issued material and the exact applied Gateway
@@ -585,13 +644,18 @@ tables directly. Audit records are append-only and separate from event delivery.
 - A convergence binds one node/revision/command/digest to the previous
   installed certificate, an optional replacement certificate, and
   aggregate-versioned retained and rejected route sets.
-- Reasons are renewal, revoked domain ownership, provider-certificate
-  revocation, or projection repair. Every active route must appear exactly once
-  in the retained or rejected set at staging.
+- Reasons are certificate renewal, snapshot validity renewal, revoked domain
+  ownership, provider-certificate revocation, or projection repair. Every
+  active route must appear exactly once in the retained or rejected set at
+  staging.
 - Staging never changes active route rows. An exact rejected acknowledgement
   leaves the old routes and certificate authoritative. An exact applied
-  acknowledgement atomically binds retained routes to the replacement,
-  rejects revoked-claim routes, and advances the installed revision.
+  acknowledgement atomically binds retained routes to the replacement or
+  retained certificate, rejects revoked-claim routes, and advances the
+  installed revision.
+- Snapshot validity renewal has retained routes, no rejected routes, no
+  replacement certificate, and no certificate request. Its successor reuses
+  the exact installed ACL digest and may change only revision and validity.
 - A convergence whose routes are all rejected has no replacement certificate
   or certificate request; its complete snapshot retains only the Gateway
   management endpoint.
@@ -800,7 +864,7 @@ signature plus every derived digest when restoring durable state. The published
 digest can be handed to
 Workloads only through an artifact-free command that resolves the exact
 tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
-`cloud.deployment@2`. That revision stores an `ExternalBuildReference` binding
+`cloud.deployment@3`. That revision stores an `ExternalBuildReference` binding
 the organization, project, environment, source revision, and BuildRun; derived
 rollback and Secret-rotation revisions preserve the reference, while ordinary
 manual Workload revisions do not invent one. The Artifacts context owns a
@@ -1047,8 +1111,9 @@ Gateway revision.
 | Artifact bytes | OCI registry or S3-compatible object store |
 | Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
 | Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
-| Workload replicas, placement members, accelerator reservations and claims | PostgreSQL Workloads tables |
-| Accelerator inventory and node Artifact-cache observations | Node agent plus PostgreSQL Fleet projection |
+| Workload replicas, placement members, and generic hard-resource claims | PostgreSQL Workloads tables |
+| Generic node resource-inventory history, normalized slots, and current generation/digest head | Node agent detection plus PostgreSQL Fleet tables |
+| Accelerator topology/health and node Artifact-cache observations | Planned node-agent extensions plus PostgreSQL Fleet projection |
 | Raw accelerator and inference time-series metrics | Configured metrics backend |
 | Inference request, attempt and token usage facts, including the request-time project/environment and immutable attribution reference | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
 | Operation history | A3S Flow PostgreSQL event store |
@@ -1105,6 +1170,7 @@ inference.deployment.created
 inference.deployment.revised
 inference.route.changed
 inference.usage.recorded
+edge.gateway-scope.created
 edge.route.publication-staged
 edge.route.cutover-staged
 edge.domain-claim.created

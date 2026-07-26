@@ -3,7 +3,8 @@ use a3s_cloud_control_plane::modules::operations::{
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, RepositoryError, ResourceName, WorkloadId, WorkloadRevisionId,
+    OrganizationId, ProjectId, RepositoryError, ResourceName, WorkloadId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
@@ -18,8 +19,11 @@ use uuid::Uuid;
 
 pub struct WorkloadFixture {
     pub workload_id: WorkloadId,
+    pub deployment_id: DeploymentId,
     pub revision_id: WorkloadRevisionId,
+    pub revision_generation: u64,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub candidate_generation: u64,
     pub candidate_deployment_id: DeploymentId,
     pub node_id: NodeId,
 }
@@ -73,6 +77,33 @@ pub async fn exercise_workloads(
             .await,
         Err(RepositoryError::NotFound)
     ));
+    let replica_id = WorkloadReplicaId::from_uuid(first.workload.id.as_uuid());
+    let member_id = WorkloadReplicaMemberId::from_uuid(first.workload.id.as_uuid());
+    let control = repository
+        .find_workload_control(organization_id, first.workload.id)
+        .await?;
+    assert_eq!(control.spec.managed_owner, None);
+    assert_eq!(control.spec.placement_policy.desired_replicas(), 1);
+    let replica = repository
+        .find_workload_replica(organization_id, first.workload.id, replica_id)
+        .await?;
+    assert_eq!(replica.generation, 1);
+    assert_eq!(replica.revision_id, first_revision_id);
+    let member = repository
+        .find_workload_replica_member(organization_id, replica_id, member_id)
+        .await?;
+    assert_eq!(member.node_id, None);
+    assert_eq!(member.placement_generation, 0);
+    let first_binding = repository
+        .find_deployment_replica_binding(organization_id, first_deployment_id)
+        .await?;
+    assert_eq!(first_binding.replica_id, replica_id);
+    assert_eq!(first_binding.member_id, member_id);
+    assert_eq!(first_binding.replica_generation, 1);
+    assert_eq!(
+        first_binding.runtime_unit_id,
+        first.revision.runtime_unit_id()
+    );
 
     let mut changed_idempotency = first_request.clone();
     changed_idempotency.idempotency = IdempotencyRequest::new(
@@ -185,6 +216,16 @@ pub async fn exercise_workloads(
             now + Duration::seconds(2),
         )
         .await?;
+    let placed_member = repository
+        .find_workload_replica_member(organization_id, replica_id, member_id)
+        .await?;
+    assert_eq!(placed_member.node_id, Some(node_id));
+    assert_eq!(placed_member.placement_generation, 1);
+    let placed_binding = repository
+        .find_deployment_replica_binding(organization_id, first_deployment_id)
+        .await?;
+    assert_eq!(placed_binding.node_id, Some(node_id));
+    assert_eq!(placed_binding.placement_generation, 1);
     assert!(matches!(
         repository
             .assign_node(
@@ -336,16 +377,36 @@ pub async fn exercise_workloads(
     let candidate_revision_id = candidate.revision.id;
     let candidate_deployment_id = candidate.deployment.id;
     repository.create_deployment(candidate).await?;
+    let advanced_replica = repository
+        .find_workload_replica(organization_id, active_workload.id, replica_id)
+        .await?;
+    assert_eq!(advanced_replica.id, replica_id);
+    assert_eq!(advanced_replica.generation, 4);
+    assert_eq!(advanced_replica.revision_id, candidate_revision_id);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from deployment_replica_bindings where replica_id = ",
+                )
+                .bind(replica_id.as_uuid()),
+            )
+            .await?,
+        4
+    );
     Ok(WorkloadFixture {
         workload_id: active_workload.id,
+        deployment_id: first_deployment_id,
         revision_id: first_revision_id,
+        revision_generation: 1,
         candidate_revision_id,
+        candidate_generation: 4,
         candidate_deployment_id,
         node_id,
     })
 }
 
-fn request(
+pub(crate) fn request(
     workload: Workload,
     generation: u64,
     digest_character: char,
@@ -387,6 +448,7 @@ fn request(
     }))?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: a3s_cloud_control_plane::modules::workloads::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,

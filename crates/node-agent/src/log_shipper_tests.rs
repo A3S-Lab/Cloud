@@ -1,7 +1,8 @@
 use super::*;
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseResponse, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeObservationBatch, NodeObservationReceipt,
+    NodeGatewayAckReceipt, NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
+    NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeExecRequest,
@@ -103,10 +104,19 @@ impl NodeControlTransport for LogTransport {
 
     async fn record_observations(
         &self,
-        _batch: &NodeObservationBatch,
+        _batch: &NodeObservationBatchV2,
     ) -> Result<NodeObservationReceipt, NodeControlClientError> {
         Err(NodeControlClientError::Invalid(
             "unexpected observations".into(),
+        ))
+    }
+
+    async fn report_resource_inventory(
+        &self,
+        _inventory: &NodeResourceInventory,
+    ) -> Result<NodeResourceInventoryReceipt, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "unexpected resource inventory".into(),
         ))
     }
 

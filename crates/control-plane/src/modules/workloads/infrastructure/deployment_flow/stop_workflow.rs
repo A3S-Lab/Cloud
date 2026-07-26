@@ -1,7 +1,9 @@
-use super::{flow_error, DeploymentFlowConfig, DeploymentFlowRuntime};
+use super::types::{ReleaseClaimStepInput, ReleaseClaimStepOutput};
+use super::{cancel_database_reservation, flow_error, DeploymentFlowConfig, DeploymentFlowRuntime};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{
-    NodeCommandId, NodeId, OperationId, OrganizationId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId, WorkloadId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{DeploymentStatus, WorkloadDesiredState};
 use crate::modules::workloads::infrastructure::project_runtime_spec;
@@ -16,6 +18,7 @@ use serde::{Deserialize, Serialize};
 const RESOLVE_STEP: &str = "stop-resolve";
 const DISPATCH_STEP: &str = "stop-dispatch";
 const COMPLETE_STEP: &str = "stop-complete";
+const RELEASE_STEP_PREFIX: &str = "stop-claim-release";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -29,6 +32,8 @@ struct StopInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StopChild {
+    #[serde(default)]
+    deployment_id: Option<DeploymentId>,
     revision_id: WorkloadRevisionId,
     node_id: NodeId,
     spec: RuntimeUnitSpec,
@@ -131,7 +136,7 @@ pub(super) fn replay(
             "workload stop resolution changed its identity".into(),
         ));
     }
-    let stopped_at = match context.step_output_as::<DispatchOutput>(DISPATCH_STEP)? {
+    let mut stopped_at = match context.step_output_as::<DispatchOutput>(DISPATCH_STEP)? {
         Some(DispatchOutput::NotRequired { stopped_at }) => stopped_at,
         Some(DispatchOutput::Failed { reason }) => return Ok(context.fail(reason)),
         Some(DispatchOutput::Ready { dispatched }) => {
@@ -151,6 +156,29 @@ pub(super) fn replay(
             )
         }
     };
+    if let Some(deployment_id) = resolved
+        .child
+        .as_ref()
+        .and_then(|child| child.deployment_id)
+    {
+        let deadline_at = stopped_at
+            .checked_add_signed(config.cleanup_timeout)
+            .ok_or_else(|| {
+                FlowError::Runtime("workload resource release deadline overflowed".into())
+            })?;
+        match release_claim(
+            config,
+            &context,
+            input.organization_id,
+            deployment_id,
+            stopped_at,
+            deadline_at,
+        )? {
+            StopProgress::Ready(released_at) => stopped_at = stopped_at.max(released_at),
+            StopProgress::Command(command) => return Ok(command),
+            StopProgress::Failed(reason) => return Ok(context.fail(reason)),
+        }
+    }
     match context.step_output_as::<CompleteOutput>(COMPLETE_STEP)? {
         Some(output) => Ok(context.complete(serde_json::to_value(output)?)),
         None => stage(
@@ -164,6 +192,68 @@ pub(super) fn replay(
                 stopped_at,
             },
         ),
+    }
+}
+
+fn release_claim(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    organization_id: OrganizationId,
+    deployment_id: DeploymentId,
+    released_after: DateTime<Utc>,
+    deadline_at: DateTime<Utc>,
+) -> a3s_flow::Result<StopProgress> {
+    let mut attempt = 1_u32;
+    loop {
+        let step_id = format!("{RELEASE_STEP_PREFIX}-{attempt}");
+        match context.step_output_as::<ReleaseClaimStepOutput>(&step_id)? {
+            Some(ReleaseClaimStepOutput::Ready { released_at }) => {
+                if released_at < released_after {
+                    return Err(FlowError::Runtime(
+                        "workload resource release predates Runtime fencing".into(),
+                    ));
+                }
+                return Ok(StopProgress::Ready(released_at));
+            }
+            Some(ReleaseClaimStepOutput::Failed { reason }) => {
+                return Ok(StopProgress::Failed(reason))
+            }
+            Some(ReleaseClaimStepOutput::Pending {
+                next_poll_at,
+                deadline_at: persisted_deadline,
+                ..
+            }) => {
+                if persisted_deadline != deadline_at || next_poll_at > deadline_at {
+                    return Err(FlowError::Runtime(
+                        "workload resource release changed its deadline".into(),
+                    ));
+                }
+                let wait_id = format!("{RELEASE_STEP_PREFIX}-wait-{attempt}");
+                if !context.wait_completed(&wait_id) {
+                    return Ok(StopProgress::Command(
+                        context.wait_until(wait_id, next_poll_at),
+                    ));
+                }
+                attempt = attempt.checked_add(1).ok_or_else(|| {
+                    FlowError::Runtime("workload resource release attempt overflowed".into())
+                })?;
+            }
+            None => {
+                return stage(
+                    config,
+                    context,
+                    &step_id,
+                    "release_resource_claim",
+                    &ReleaseClaimStepInput {
+                        organization_id,
+                        deployment_id,
+                        released_after,
+                        deadline_at,
+                    },
+                )
+                .map(StopProgress::Command)
+            }
+        }
     }
 }
 
@@ -305,6 +395,7 @@ async fn resolve(
                     FlowError::Runtime("active workload revision has no active deployment".into())
                 })?;
             Some(StopChild {
+                deployment_id: Some(deployment.id),
                 revision_id,
                 node_id: deployment.node_id.ok_or_else(|| {
                     FlowError::Runtime("active deployment omitted its node".into())
@@ -443,13 +534,6 @@ async fn observe_step(
                     })
                 }
             },
-            NodeCommandOutcome::Rejected { failure }
-                if matches!(failure.code.as_str(), "not_found" | "stale_generation") =>
-            {
-                return Ok(ObserveOutput::Ready {
-                    stopped_at: acknowledgement.completed_at,
-                })
-            }
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
                 return Ok(ObserveOutput::Failed {
                     reason: format!("{}: {}", failure.code, failure.message),
@@ -485,6 +569,35 @@ async fn complete(
         .find_workload(input.organization_id, input.workload_id)
         .await
         .map_err(|error| flow_error("could not load workload stop completion", error))?;
+    if let Some(revision_id) = workload.active_revision_id {
+        if let Some(deployment) = runtime
+            .workloads
+            .list_deployments(input.organization_id, workload.id)
+            .await
+            .map_err(|error| {
+                flow_error(
+                    "could not load active deployment resource reservation for stop",
+                    error,
+                )
+            })?
+            .into_iter()
+            .find(|deployment| {
+                deployment.revision_id == revision_id
+                    && matches!(
+                        deployment.status,
+                        DeploymentStatus::Retiring | DeploymentStatus::Active
+                    )
+            })
+        {
+            cancel_database_reservation(
+                runtime,
+                input.organization_id,
+                deployment.id,
+                input.stopped_at,
+            )
+            .await?;
+        }
+    }
     let stopped = runtime
         .workloads
         .complete_workload_stop(

@@ -1,5 +1,6 @@
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
 use crate::log_shipper::LogShipper;
+use crate::resource_inventory::ResourceInventoryManager;
 use crate::state_file::{self, StateLock};
 use crate::{
     CommandExecutionError, CommandExecutor, CommandJournalError, DurableGatewaySnapshotInstaller,
@@ -7,10 +8,11 @@ use crate::{
     GatewaySnapshotInstaller, IdentityStoreError, LogShippingConfig, LogShippingError,
     NodeAgentConfig, NodeArtifactManager, NodeArtifactTransport, NodeControlClient,
     NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
+    ResourceInventoryError,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    NodeGatewayAckReceipt, NodeHeartbeatV2, NodeObservationBatchV2, RuntimeObservationReport,
 };
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
 use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
@@ -134,6 +136,7 @@ pub struct NodeAgentSession {
     identity: EnrolledNodeIdentity,
     capabilities: RuntimeCapabilities,
     agent_version: String,
+    resource_inventory: Arc<ResourceInventoryManager>,
     log_poll_interval: Duration,
     retry_initial: Duration,
     retry_maximum: Duration,
@@ -169,6 +172,12 @@ impl NodeAgentSession {
             ));
         }
         let journal = FileCommandJournal::new(state_dir.clone(), identity.response.node_id)?;
+        let resource_inventory = Arc::new(ResourceInventoryManager::host(
+            identity.response.node_id,
+            identity.agent_instance_id,
+            state_dir.clone(),
+            Arc::clone(&transport),
+        ));
         let log_poll_interval = Duration::from_millis(log_config.poll_interval_ms);
         let log_shipper = LogShipper::new(
             identity.response.node_id,
@@ -179,11 +188,13 @@ impl NodeAgentSession {
         )?;
         Ok(Self {
             transport,
-            executor: CommandExecutor::new(journal, runtime, gateway),
+            executor: CommandExecutor::new(journal, runtime, gateway)
+                .with_resource_inventory(resource_inventory.clone()),
             log_shipper,
             identity,
             capabilities,
             agent_version,
+            resource_inventory,
             log_poll_interval,
             retry_initial,
             retry_maximum,
@@ -210,6 +221,7 @@ impl NodeAgentSession {
     }
 
     pub async fn synchronize_once(&self) -> Result<(), NodeAgentError> {
+        self.resource_inventory.ensure_reported().await?;
         let mut must_redeliver = false;
         for acknowledgement in self.executor.journal().pending_acknowledgements().await? {
             match self.deliver_completion(&acknowledgement).await? {
@@ -257,7 +269,7 @@ impl NodeAgentSession {
     }
 
     pub async fn heartbeat_once(&self) -> Result<(), NodeAgentError> {
-        let batch = self.observation_batch(Vec::new());
+        let batch = self.observation_batch(Vec::new()).await?;
         batch.validate().map_err(NodeAgentError::Invalid)?;
         let receipt = self.transport.record_observations(&batch).await?;
         receipt.validate().map_err(NodeAgentError::Invalid)?;
@@ -338,7 +350,7 @@ impl NodeAgentSession {
         acknowledgement: &NodeCommandAck,
     ) -> Result<Delivery, NodeAgentError> {
         if let Some(report) = completion_observation(acknowledgement) {
-            let batch = self.observation_batch(vec![report]);
+            let batch = self.observation_batch(vec![report]).await?;
             batch.validate().map_err(NodeAgentError::Invalid)?;
             let receipt = self.transport.record_observations(&batch).await?;
             receipt.validate().map_err(NodeAgentError::Invalid)?;
@@ -372,28 +384,30 @@ impl NodeAgentSession {
         Ok(Delivery::Acknowledged)
     }
 
-    fn observation_batch(
+    async fn observation_batch(
         &self,
         observations: Vec<RuntimeObservationReport>,
-    ) -> NodeObservationBatch {
+    ) -> Result<NodeObservationBatchV2, NodeAgentError> {
+        let inventory = self.resource_inventory.ensure_reported().await?;
         let newest_report = observations.iter().map(|report| report.observed_at).max();
         let now = Utc::now();
         let sent_at = newest_report.map_or(now, |observed_at| now.max(observed_at));
-        NodeObservationBatch {
-            schema: NodeObservationBatch::SCHEMA.into(),
+        Ok(NodeObservationBatchV2 {
+            schema: NodeObservationBatchV2::SCHEMA.into(),
             node_id: self.identity.response.node_id,
             agent_instance_id: self.identity.agent_instance_id,
             sent_at,
-            heartbeat: NodeHeartbeat {
-                schema: NodeHeartbeat::SCHEMA.into(),
+            heartbeat: NodeHeartbeatV2 {
+                schema: NodeHeartbeatV2::SCHEMA.into(),
                 node_id: self.identity.response.node_id,
                 agent_instance_id: self.identity.agent_instance_id,
                 observed_at: sent_at,
                 agent_version: self.agent_version.clone(),
                 runtime_capabilities: self.capabilities.clone(),
+                inventory,
             },
             observations,
-        }
+        })
     }
 }
 
@@ -416,7 +430,10 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
-            | NodeCommandResult::GatewaySnapshotInstalled { .. } => return None,
+            | NodeCommandResult::ResourceClaimPrepared { .. }
+            | NodeCommandResult::ResourceClaimReleased { .. }
+            | NodeCommandResult::GatewaySnapshotInstalled { .. }
+            | NodeCommandResult::GatewaySnapshotObserved { .. } => return None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => return None,
     };
@@ -434,10 +451,13 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
                 Some(acknowledgement)
             }
-            NodeCommandResult::RuntimeApplied { .. }
+            NodeCommandResult::ResourceClaimPrepared { .. }
+            | NodeCommandResult::ResourceClaimReleased { .. }
+            | NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
-            | NodeCommandResult::RuntimeRemoved { .. } => None,
+            | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }
@@ -698,6 +718,8 @@ pub enum NodeAgentError {
     #[error(transparent)]
     LogShipping(#[from] LogShippingError),
     #[error(transparent)]
+    ResourceInventory(#[from] ResourceInventoryError),
+    #[error(transparent)]
     Execution(#[from] CommandExecutionError),
     #[error(transparent)]
     ControlPlane(#[from] NodeControlClientError),
@@ -716,6 +738,7 @@ impl NodeAgentError {
             }
             Self::Gateway(error) => error.retryable(),
             Self::LogShipping(error) => error.retryable(),
+            Self::ResourceInventory(error) => error.retryable(),
             Self::Invalid(_)
             | Self::State(_)
             | Self::Config(_)

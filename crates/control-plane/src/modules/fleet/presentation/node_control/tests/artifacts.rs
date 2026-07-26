@@ -333,6 +333,7 @@ async fn enqueue_apply(
                     deadline_at_ms: None,
                     spec,
                 }),
+                resource_claim: None,
             },
             issued_at,
             not_after,

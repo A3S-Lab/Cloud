@@ -1,15 +1,17 @@
+use crate::resource_claim::{self, ResourceClaimExecutionError};
 use crate::{
     CommandJournalError, FileCommandJournal, GatewaySnapshotInstallError,
     GatewaySnapshotInstallOutcome, GatewaySnapshotInstaller, JournalDecision, NodeArtifactError,
-    NodeArtifactManager,
+    NodeArtifactManager, NodeResourceInventoryAuthority,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandEnvelope, NodeCommandFailure, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, NodeGatewayAck,
+    NodeCommandPayload, NodeCommandResult, NodeGatewayAck, NodeGatewaySnapshotObservation,
+    NodeResourceClaimPrepared, NodeResourceClaimReleased,
 };
 use a3s_runtime::contract::RuntimeInspection;
 use a3s_runtime::{RuntimeClient, RuntimeError};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 pub struct CommandExecutor {
@@ -17,6 +19,7 @@ pub struct CommandExecutor {
     runtime: Arc<dyn RuntimeClient>,
     gateway: Arc<dyn GatewaySnapshotInstaller>,
     artifacts: Option<Arc<NodeArtifactManager>>,
+    resource_inventory: Option<Arc<dyn NodeResourceInventoryAuthority>>,
 }
 
 impl CommandExecutor {
@@ -34,11 +37,20 @@ impl CommandExecutor {
             runtime,
             gateway,
             artifacts: None,
+            resource_inventory: None,
         }
     }
 
     pub fn with_artifacts(mut self, artifacts: Arc<NodeArtifactManager>) -> Self {
         self.artifacts = Some(artifacts);
+        self
+    }
+
+    pub fn with_resource_inventory(
+        mut self,
+        resource_inventory: Arc<dyn NodeResourceInventoryAuthority>,
+    ) -> Self {
+        self.resource_inventory = Some(resource_inventory);
         self
     }
 
@@ -68,8 +80,9 @@ impl CommandExecutor {
                 Err(error) => dispatch_failure(error),
             }
         };
+        let completed_at = completion_timestamp(&envelope, &outcome);
         self.journal
-            .complete(envelope.command_id, Utc::now(), outcome)
+            .complete(envelope.command_id, completed_at, outcome)
             .await
             .map_err(Into::into)
     }
@@ -83,7 +96,31 @@ impl CommandExecutor {
         envelope: &NodeCommandEnvelope,
     ) -> Result<NodeCommandResult, DispatchError> {
         match &envelope.payload {
-            NodeCommandPayload::RuntimeApply { request } => {
+            NodeCommandPayload::ResourceClaimPrepare { request } => {
+                let inventory = self.current_resource_inventory().await?;
+                let active = self.journal.active_resource_claim_bindings().await?;
+                resource_claim::validate_prepare(request, &inventory, &active)?;
+                Ok(NodeCommandResult::ResourceClaimPrepared {
+                    prepared: NodeResourceClaimPrepared::new(request, command_timestamp(envelope))
+                        .map_err(ResourceClaimExecutionError::Invalid)?,
+                })
+            }
+            NodeCommandPayload::RuntimeApply {
+                request,
+                resource_claim,
+            } => {
+                self.journal
+                    .validate_runtime_resource_binding(
+                        request.spec.clone(),
+                        resource_claim.as_deref().cloned(),
+                    )
+                    .await?;
+                if let Some(binding) = resource_claim {
+                    let inventory = self.current_resource_inventory().await?;
+                    binding
+                        .validate_inventory(&inventory)
+                        .map_err(ResourceClaimExecutionError::Conflict)?;
+                }
                 if let Some(artifacts) = &self.artifacts {
                     artifacts.prepare_command(envelope).await?;
                 }
@@ -93,6 +130,11 @@ impl CommandExecutor {
                         .publish_command_outputs(envelope, &observation)
                         .await?;
                 }
+                if let Some(binding) = resource_claim {
+                    binding
+                        .bind_runtime_observation(&mut observation)
+                        .map_err(ResourceClaimExecutionError::Conflict)?;
+                }
                 Ok(NodeCommandResult::RuntimeApplied {
                     observation: Box::new(observation),
                 })
@@ -101,8 +143,8 @@ impl CommandExecutor {
                 unit_id,
                 generation,
             } => {
-                let inspection = self.runtime.inspect(unit_id).await?;
-                if let RuntimeInspection::Found { observation, .. } = &inspection {
+                let mut inspection = self.runtime.inspect(unit_id).await?;
+                if let RuntimeInspection::Found { observation, .. } = &mut inspection {
                     if observation.generation != *generation {
                         return Err((if observation.generation > *generation {
                             RuntimeError::StaleGeneration {
@@ -118,6 +160,20 @@ impl CommandExecutor {
                         })
                         .into());
                     }
+                    if let Some(binding) = self
+                        .journal
+                        .active_resource_claim_bindings()
+                        .await?
+                        .into_iter()
+                        .find(|binding| {
+                            binding.runtime_unit_id == *unit_id
+                                && binding.runtime_generation == *generation
+                        })
+                    {
+                        binding
+                            .bind_runtime_observation(observation)
+                            .map_err(ResourceClaimExecutionError::Conflict)?;
+                    }
                 }
                 Ok(NodeCommandResult::RuntimeInspected { inspection })
             }
@@ -129,12 +185,23 @@ impl CommandExecutor {
                 let removal = self.runtime.remove(request).await?;
                 Ok(NodeCommandResult::RuntimeRemoved { removal })
             }
+            NodeCommandPayload::ResourceClaimRelease { request } => {
+                self.journal
+                    .validate_resource_claim_release(request.as_ref().clone())
+                    .await?;
+                Ok(NodeCommandResult::ResourceClaimReleased {
+                    released: NodeResourceClaimReleased::new(request, command_timestamp(envelope))
+                        .map_err(ResourceClaimExecutionError::Invalid)?,
+                })
+            }
             NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
                 let installed = self.gateway.install(snapshot).await?;
-                let (state, message) = match installed {
-                    GatewaySnapshotInstallOutcome::Applied => (GatewayAckState::Applied, None),
-                    GatewaySnapshotInstallOutcome::Rejected { message } => {
-                        (GatewayAckState::Rejected, Some(message))
+                let (state, message, management_protocol) = match installed {
+                    GatewaySnapshotInstallOutcome::Applied { protocol } => {
+                        (GatewayAckState::Applied, None, Some(protocol))
+                    }
+                    GatewaySnapshotInstallOutcome::Rejected { message, protocol } => {
+                        (GatewayAckState::Rejected, Some(message), protocol)
                     }
                 };
                 let acknowledgement = NodeGatewayAck {
@@ -142,11 +209,15 @@ impl CommandExecutor {
                     acknowledgement_id: uuid::Uuid::now_v7(),
                     command_id: envelope.command_id,
                     node_id: envelope.node_id,
+                    gateway_id: snapshot.gateway_id,
                     revision: snapshot.revision,
                     snapshot_digest: snapshot.snapshot_digest.clone(),
+                    expires_at: snapshot.expires_at,
                     state,
+                    ready: state == GatewayAckState::Applied,
                     message,
-                    acknowledged_at: Utc::now(),
+                    acknowledged_at: command_timestamp(envelope),
+                    management_protocol,
                 };
                 acknowledgement
                     .validate_for(envelope.command_id, envelope.node_id, snapshot)
@@ -155,8 +226,73 @@ impl CommandExecutor {
                     })?;
                 Ok(NodeCommandResult::GatewaySnapshotInstalled { acknowledgement })
             }
+            NodeCommandPayload::GatewaySnapshotObserve { request } => {
+                let observed = self.gateway.observe(request).await?;
+                let observation = NodeGatewaySnapshotObservation {
+                    schema: NodeGatewaySnapshotObservation::SCHEMA.into(),
+                    observation_id: uuid::Uuid::now_v7(),
+                    command_id: envelope.command_id,
+                    node_id: envelope.node_id,
+                    gateway_id: request.gateway_id,
+                    revision: request.revision,
+                    snapshot_digest: request.snapshot_digest.clone(),
+                    state: observed.state,
+                    ready: observed.ready,
+                    applied: observed.applied,
+                    observed_at: observed.observed_at.max(envelope.issued_at),
+                    management_protocol: observed.protocol,
+                };
+                observation
+                    .validate_for(envelope.command_id, envelope.node_id, request)
+                    .map_err(|error| {
+                        DispatchError::Gateway(GatewaySnapshotInstallError::Protocol(error))
+                    })?;
+                Ok(NodeCommandResult::GatewaySnapshotObserved { observation })
+            }
         }
     }
+
+    async fn current_resource_inventory(
+        &self,
+    ) -> Result<a3s_cloud_contracts::NodeResourceInventory, ResourceClaimExecutionError> {
+        self.resource_inventory
+            .as_ref()
+            .ok_or(ResourceClaimExecutionError::AuthorityUnavailable)?
+            .current_resource_inventory()
+            .await
+            .map_err(Into::into)
+    }
+}
+
+fn command_timestamp(envelope: &NodeCommandEnvelope) -> DateTime<Utc> {
+    Utc::now().max(envelope.issued_at)
+}
+
+fn completion_timestamp(
+    envelope: &NodeCommandEnvelope,
+    outcome: &NodeCommandOutcome,
+) -> DateTime<Utc> {
+    let evidence_at = match outcome {
+        NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
+            NodeCommandResult::ResourceClaimPrepared { prepared } => Some(prepared.prepared_at),
+            NodeCommandResult::ResourceClaimReleased { released } => Some(released.released_at),
+            NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } => {
+                Some(acknowledgement.acknowledged_at)
+            }
+            NodeCommandResult::GatewaySnapshotObserved { observation } => {
+                Some(observation.observed_at)
+            }
+            NodeCommandResult::RuntimeApplied { .. }
+            | NodeCommandResult::RuntimeInspected { .. }
+            | NodeCommandResult::RuntimeStopped { .. }
+            | NodeCommandResult::RuntimeRemoved { .. } => None,
+        },
+        NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
+    };
+    evidence_at.map_or_else(
+        || command_timestamp(envelope),
+        |evidence_at| command_timestamp(envelope).max(evidence_at),
+    )
 }
 
 struct RuntimeOnlyGatewayInstaller;
@@ -177,6 +313,7 @@ enum DispatchError {
     Runtime(RuntimeError),
     Gateway(GatewaySnapshotInstallError),
     Artifact(NodeArtifactError),
+    ResourceClaim(ResourceClaimExecutionError),
 }
 
 impl From<RuntimeError> for DispatchError {
@@ -194,6 +331,18 @@ impl From<GatewaySnapshotInstallError> for DispatchError {
 impl From<NodeArtifactError> for DispatchError {
     fn from(error: NodeArtifactError) -> Self {
         Self::Artifact(error)
+    }
+}
+
+impl From<ResourceClaimExecutionError> for DispatchError {
+    fn from(error: ResourceClaimExecutionError) -> Self {
+        Self::ResourceClaim(error)
+    }
+}
+
+impl From<CommandJournalError> for DispatchError {
+    fn from(error: CommandJournalError) -> Self {
+        Self::ResourceClaim(error.into())
     }
 }
 
@@ -268,6 +417,18 @@ fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
             }
         }
         DispatchError::Artifact(error) => artifact_failure(error),
+        DispatchError::ResourceClaim(error) => {
+            let failure = NodeCommandFailure {
+                code: error.code().into(),
+                message: sanitize_error(&error.to_string()),
+                retryable: error.retryable(),
+            };
+            if error.retryable() {
+                NodeCommandOutcome::Failed { failure }
+            } else {
+                NodeCommandOutcome::Rejected { failure }
+            }
+        }
     }
 }
 
@@ -311,15 +472,25 @@ fn sanitize_error(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::{GatewaySnapshot, NodeCommandMetadata, NodeCommandPayload};
+    use a3s_cloud_contracts::{
+        AppliedGatewaySnapshot, GatewaySnapshot, GatewaySnapshotObservationRequest,
+        GatewaySnapshotObservationState, NodeCommandMetadata, NodeCommandPayload,
+        NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimRelease,
+        NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind,
+        ResourceSlotBinding, ResourceUnit,
+    };
     use a3s_runtime::contract::{
-        RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeExecRequest,
-        RuntimeExecResult, RuntimeLogChunk, RuntimeLogQuery, RuntimeObservation, RuntimeRemoval,
+        ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
+        RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence,
+        RuntimeExecRequest, RuntimeExecResult, RuntimeLogChunk, RuntimeLogQuery,
+        RuntimeNetworkSpec, RuntimeObservation, RuntimeProcessSpec, RuntimeRemoval,
+        RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState,
     };
     use a3s_runtime::RuntimeResult;
     use async_trait::async_trait;
     use chrono::Duration;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use uuid::Uuid;
 
     struct InspectRuntime {
@@ -329,7 +500,81 @@ mod tests {
 
     struct InspectGateway {
         calls: AtomicUsize,
+        observation_calls: AtomicUsize,
         outcome: GatewaySnapshotInstallOutcome,
+        observation: Option<crate::GatewaySnapshotObservationOutcome>,
+    }
+
+    struct FixedInventoryAuthority {
+        inventory: NodeResourceInventory,
+    }
+
+    #[async_trait]
+    impl NodeResourceInventoryAuthority for FixedInventoryAuthority {
+        async fn current_resource_inventory(
+            &self,
+        ) -> Result<NodeResourceInventory, crate::ResourceInventoryError> {
+            Ok(self.inventory.clone())
+        }
+    }
+
+    struct ClaimRuntime {
+        apply_calls: AtomicUsize,
+        stop_not_found: AtomicBool,
+    }
+
+    #[async_trait]
+    impl RuntimeClient for ClaimRuntime {
+        async fn capabilities(&self) -> RuntimeResult<RuntimeCapabilities> {
+            Err(RuntimeError::Protocol("unused capabilities call".into()))
+        }
+
+        async fn apply(&self, request: &RuntimeApplyRequest) -> RuntimeResult<RuntimeObservation> {
+            self.apply_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(claim_observation(&request.spec, RuntimeUnitState::Running))
+        }
+
+        async fn inspect(&self, unit_id: &str) -> RuntimeResult<RuntimeInspection> {
+            Ok(RuntimeInspection::NotFound {
+                schema: RuntimeInspection::SCHEMA.into(),
+                unit_id: unit_id.into(),
+                last_generation: None,
+            })
+        }
+
+        async fn stop(&self, request: &RuntimeActionRequest) -> RuntimeResult<RuntimeInspection> {
+            if self.stop_not_found.load(Ordering::SeqCst) {
+                return Err(RuntimeError::NotFound {
+                    unit_id: request.unit_id.clone(),
+                });
+            }
+            let mut spec = claim_runtime_spec();
+            spec.unit_id = request.unit_id.clone();
+            spec.generation = request.generation;
+            Ok(RuntimeInspection::Found {
+                schema: RuntimeInspection::SCHEMA.into(),
+                observation: Box::new(claim_observation(&spec, RuntimeUnitState::Stopped)),
+            })
+        }
+
+        async fn remove(&self, request: &RuntimeActionRequest) -> RuntimeResult<RuntimeRemoval> {
+            Ok(RuntimeRemoval {
+                schema: RuntimeRemoval::SCHEMA.into(),
+                request_id: request.request_id.clone(),
+                unit_id: request.unit_id.clone(),
+                generation: request.generation,
+                removed_at_ms: 2_000,
+                already_absent: false,
+            })
+        }
+
+        async fn logs(&self, _query: &RuntimeLogQuery) -> RuntimeResult<Vec<RuntimeLogChunk>> {
+            Ok(Vec::new())
+        }
+
+        async fn exec(&self, _request: &RuntimeExecRequest) -> RuntimeResult<RuntimeExecResult> {
+            Err(RuntimeError::Protocol("unused exec call".into()))
+        }
     }
 
     #[async_trait]
@@ -341,12 +586,30 @@ mod tests {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(self.outcome.clone())
         }
+
+        async fn observe(
+            &self,
+            _request: &GatewaySnapshotObservationRequest,
+        ) -> Result<crate::GatewaySnapshotObservationOutcome, GatewaySnapshotInstallError> {
+            self.observation_calls.fetch_add(1, Ordering::SeqCst);
+            self.observation.clone().ok_or_else(|| {
+                GatewaySnapshotInstallError::Protocol(
+                    "test Gateway observation is unavailable".into(),
+                )
+            })
+        }
     }
 
     fn gateway() -> Arc<InspectGateway> {
         Arc::new(InspectGateway {
             calls: AtomicUsize::new(0),
-            outcome: GatewaySnapshotInstallOutcome::Applied,
+            observation_calls: AtomicUsize::new(0),
+            outcome: GatewaySnapshotInstallOutcome::Applied {
+                protocol: a3s_cloud_contracts::GatewayManagementProtocol::v1(
+                    a3s_cloud_contracts::GatewayManagementProtocolDiscovery::Advertised,
+                ),
+            },
+            observation: None,
         })
     }
 
@@ -416,6 +679,497 @@ mod tests {
             },
         )
         .expect("command")
+    }
+
+    fn claim_command(
+        node_id: Uuid,
+        aggregate_id: Uuid,
+        sequence: u64,
+        generation: u64,
+        payload: NodeCommandPayload,
+    ) -> NodeCommandEnvelope {
+        assert_eq!(payload.generation(), generation);
+        let issued_at = Utc::now();
+        NodeCommandEnvelope::new(
+            NodeCommandMetadata {
+                command_id: Uuid::now_v7(),
+                lease_id: Uuid::now_v7(),
+                node_id,
+                sequence,
+                aggregate_id,
+                issued_at,
+                not_after: issued_at + Duration::minutes(1),
+                correlation_id: Uuid::now_v7(),
+            },
+            payload,
+        )
+        .expect("resource claim command")
+    }
+
+    fn claim_inventory(node_id: Uuid, agent_instance_id: Uuid) -> NodeResourceInventory {
+        NodeResourceInventory::new(
+            node_id,
+            agent_instance_id,
+            1,
+            Utc::now(),
+            vec![
+                NodeResourceSlot::new(
+                    ResourceKind::Cpu,
+                    "cpu/shared",
+                    ResourceAllocation::Scalar {
+                        amount: 1_000,
+                        unit: ResourceUnit::MilliCpu,
+                    },
+                )
+                .expect("CPU inventory"),
+                NodeResourceSlot::new(
+                    ResourceKind::Memory,
+                    "memory/system",
+                    ResourceAllocation::Scalar {
+                        amount: 2 * 1024 * 1024,
+                        unit: ResourceUnit::Byte,
+                    },
+                )
+                .expect("memory inventory"),
+            ],
+        )
+        .expect("resource inventory")
+    }
+
+    fn claim_binding(
+        claim_id: Uuid,
+        inventory: &NodeResourceInventory,
+    ) -> NodeResourceClaimBinding {
+        let spec = claim_runtime_spec();
+        NodeResourceClaimBinding {
+            schema: NodeResourceClaimBinding::SCHEMA.into(),
+            claim_id,
+            node_id: inventory.node_id,
+            agent_instance_id: inventory.agent_instance_id,
+            inventory_generation: inventory.generation,
+            inventory_digest: inventory.digest.clone(),
+            runtime_unit_id: spec.unit_id,
+            runtime_generation: spec.generation,
+            topology_digest: format!("sha256:{}", "b".repeat(64)),
+            slots: vec![
+                ResourceSlotBinding {
+                    kind: ResourceKind::Cpu,
+                    stable_resource_id: "cpu/shared".into(),
+                    allocation: ResourceAllocation::Scalar {
+                        amount: spec.resources.cpu_millis,
+                        unit: ResourceUnit::MilliCpu,
+                    },
+                    slot_generation: 1,
+                    fence_token: Uuid::now_v7(),
+                },
+                ResourceSlotBinding {
+                    kind: ResourceKind::Memory,
+                    stable_resource_id: "memory/system".into(),
+                    allocation: ResourceAllocation::Scalar {
+                        amount: spec.resources.memory_bytes,
+                        unit: ResourceUnit::Byte,
+                    },
+                    slot_generation: 1,
+                    fence_token: Uuid::now_v7(),
+                },
+            ],
+        }
+    }
+
+    fn claim_runtime_spec() -> RuntimeUnitSpec {
+        RuntimeUnitSpec {
+            schema: RuntimeUnitSpec::SCHEMA.into(),
+            unit_id: "service-resource-bound".into(),
+            generation: 1,
+            class: RuntimeUnitClass::Service,
+            artifact: ArtifactRef {
+                uri: format!("oci://registry.example/service@sha256:{}", "a".repeat(64)),
+                digest: format!("sha256:{}", "a".repeat(64)),
+                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            },
+            process: RuntimeProcessSpec {
+                command: vec!["/bin/service".into()],
+                args: Vec::new(),
+                working_directory: None,
+                environment: BTreeMap::new(),
+            },
+            mounts: Vec::new(),
+            secrets: Vec::new(),
+            network: RuntimeNetworkSpec {
+                mode: NetworkMode::None,
+                ports: Vec::new(),
+            },
+            resources: ResourceLimits {
+                cpu_millis: 500,
+                memory_bytes: 1024 * 1024,
+                pids: 32,
+                ephemeral_storage_bytes: None,
+                execution_timeout_ms: None,
+            },
+            isolation: IsolationLevel::Container,
+            health: None,
+            restart: RestartPolicy::Always,
+            outputs: Vec::new(),
+            semantics_profile_digest: None,
+        }
+    }
+
+    fn claim_observation(spec: &RuntimeUnitSpec, state: RuntimeUnitState) -> RuntimeObservation {
+        let spec_digest = spec.digest().expect("spec digest");
+        RuntimeObservation {
+            schema: RuntimeObservation::SCHEMA.into(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            spec_digest: spec_digest.clone(),
+            class: spec.class,
+            state,
+            provider_resource_id: Some("provider-resource".into()),
+            provider_build: Some("provider-build".into()),
+            observed_at_ms: 2_000,
+            started_at_ms: Some(1_000),
+            finished_at_ms: state.is_terminal().then_some(2_000),
+            health: None,
+            outputs: Vec::new(),
+            usage: None,
+            evidence: Some(RuntimeEvidence {
+                provider_build: "provider-build".into(),
+                spec_digest,
+                semantics_profile_digest: None,
+                claims: BTreeMap::new(),
+            }),
+            provider_attestation: None,
+            failure: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn resource_claim_evidence_uses_the_command_time_floor() {
+        let directory = tempfile::tempdir().expect("resource claim journal");
+        let node_id = Uuid::now_v7();
+        let agent_instance_id = Uuid::now_v7();
+        let claim_id = Uuid::now_v7();
+        let inventory = claim_inventory(node_id, agent_instance_id);
+        let binding = claim_binding(claim_id, &inventory);
+        let authority: Arc<dyn NodeResourceInventoryAuthority> =
+            Arc::new(FixedInventoryAuthority { inventory });
+        let executor = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+            Arc::new(ClaimRuntime {
+                apply_calls: AtomicUsize::new(0),
+                stop_not_found: AtomicBool::new(false),
+            }),
+            gateway(),
+        )
+        .with_resource_inventory(authority);
+        let mut command = claim_command(
+            node_id,
+            claim_id,
+            1,
+            1,
+            NodeCommandPayload::ResourceClaimPrepare {
+                request: Box::new(NodeResourceClaimPrepare {
+                    schema: NodeResourceClaimPrepare::SCHEMA.into(),
+                    claim_generation: 1,
+                    claim_digest: format!("sha256:{}", "c".repeat(64)),
+                    binding,
+                }),
+            },
+        );
+        command.issued_at = Utc::now() + Duration::seconds(2);
+        command.not_after = command.issued_at + Duration::minutes(1);
+
+        let acknowledgement = executor.execute(command.clone()).await.expect("prepare");
+        acknowledgement
+            .validate_against(&command)
+            .expect("future-issued acknowledgement");
+        let NodeCommandOutcome::Succeeded { result } = acknowledgement.outcome else {
+            panic!("resource Claim prepare must succeed");
+        };
+        let NodeCommandResult::ResourceClaimPrepared { prepared } = result.as_ref() else {
+            panic!("resource Claim prepare returned the wrong result");
+        };
+        assert_eq!(prepared.prepared_at, command.issued_at);
+        assert_eq!(acknowledgement.completed_at, command.issued_at);
+    }
+
+    #[test]
+    fn completion_time_never_predates_resource_claim_evidence() {
+        let node_id = Uuid::now_v7();
+        let agent_instance_id = Uuid::now_v7();
+        let claim_id = Uuid::now_v7();
+        let inventory = claim_inventory(node_id, agent_instance_id);
+        let mut command = claim_command(
+            node_id,
+            claim_id,
+            1,
+            1,
+            NodeCommandPayload::ResourceClaimPrepare {
+                request: Box::new(NodeResourceClaimPrepare {
+                    schema: NodeResourceClaimPrepare::SCHEMA.into(),
+                    claim_generation: 1,
+                    claim_digest: format!("sha256:{}", "c".repeat(64)),
+                    binding: claim_binding(claim_id, &inventory),
+                }),
+            },
+        );
+        command.issued_at = Utc::now() + Duration::seconds(30);
+        command.not_after = command.issued_at + Duration::minutes(1);
+        let evidence_at = command.issued_at + Duration::seconds(1);
+        let NodeCommandPayload::ResourceClaimPrepare { request } = &command.payload else {
+            panic!("test command must prepare a resource Claim");
+        };
+        let outcome = NodeCommandOutcome::Succeeded {
+            result: Box::new(NodeCommandResult::ResourceClaimPrepared {
+                prepared: NodeResourceClaimPrepared::new(request, evidence_at)
+                    .expect("prepared evidence"),
+            }),
+        };
+
+        assert_eq!(completion_timestamp(&command, &outcome), evidence_at);
+    }
+
+    #[tokio::test]
+    async fn resource_claim_prepare_bind_and_release_are_restart_safe_and_fenced() {
+        let directory = tempfile::tempdir().expect("resource claim journal");
+        let node_id = Uuid::now_v7();
+        let agent_instance_id = Uuid::now_v7();
+        let claim_id = Uuid::now_v7();
+        let workload_id = Uuid::now_v7();
+        let inventory = claim_inventory(node_id, agent_instance_id);
+        let binding = claim_binding(claim_id, &inventory);
+        let runtime = Arc::new(ClaimRuntime {
+            apply_calls: AtomicUsize::new(0),
+            stop_not_found: AtomicBool::new(false),
+        });
+        let authority: Arc<dyn NodeResourceInventoryAuthority> =
+            Arc::new(FixedInventoryAuthority {
+                inventory: inventory.clone(),
+            });
+        let executor = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+            runtime.clone(),
+            gateway(),
+        )
+        .with_resource_inventory(authority.clone());
+
+        let prepare_request = NodeResourceClaimPrepare {
+            schema: NodeResourceClaimPrepare::SCHEMA.into(),
+            claim_generation: 1,
+            claim_digest: format!("sha256:{}", "c".repeat(64)),
+            binding: binding.clone(),
+        };
+        let prepare = claim_command(
+            node_id,
+            claim_id,
+            1,
+            1,
+            NodeCommandPayload::ResourceClaimPrepare {
+                request: Box::new(prepare_request),
+            },
+        );
+        let prepared = executor
+            .execute(prepare.clone())
+            .await
+            .expect("prepare command");
+        assert!(matches!(
+            &prepared.outcome,
+            NodeCommandOutcome::Succeeded {
+                result
+            } if matches!(
+                result.as_ref(),
+                NodeCommandResult::ResourceClaimPrepared { .. }
+            )
+        ));
+
+        let mut replay = prepare;
+        replay.lease_id = Uuid::now_v7();
+        let reopened = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("reopened journal"),
+            runtime.clone(),
+            gateway(),
+        )
+        .with_resource_inventory(authority.clone());
+        assert_eq!(
+            reopened
+                .execute(replay)
+                .await
+                .expect("prepare replay")
+                .outcome,
+            prepared.outcome
+        );
+
+        let spec = claim_runtime_spec();
+        let apply = claim_command(
+            node_id,
+            workload_id,
+            2,
+            spec.generation,
+            NodeCommandPayload::RuntimeApply {
+                request: Box::new(RuntimeApplyRequest {
+                    schema: RuntimeApplyRequest::SCHEMA.into(),
+                    request_id: "claim-bound-apply".into(),
+                    deadline_at_ms: None,
+                    spec: spec.clone(),
+                }),
+                resource_claim: Some(Box::new(binding.clone())),
+            },
+        );
+        let applied = reopened.execute(apply).await.expect("bound Runtime apply");
+        let NodeCommandOutcome::Succeeded { result } = applied.outcome else {
+            panic!("bound apply must succeed");
+        };
+        let NodeCommandResult::RuntimeApplied { observation } = result.as_ref() else {
+            panic!("bound apply returned the wrong result");
+        };
+        binding
+            .validate_runtime_observation(observation)
+            .expect("Runtime allocation-binding evidence");
+        assert_eq!(runtime.apply_calls.load(Ordering::SeqCst), 1);
+        drop(reopened);
+        let after_apply = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal after apply"),
+            runtime.clone(),
+            gateway(),
+        )
+        .with_resource_inventory(authority.clone());
+
+        let release_before_stop = claim_command(
+            node_id,
+            claim_id,
+            3,
+            2,
+            NodeCommandPayload::ResourceClaimRelease {
+                request: Box::new(NodeResourceClaimRelease {
+                    schema: NodeResourceClaimRelease::SCHEMA.into(),
+                    claim_generation: 2,
+                    claim_digest: format!("sha256:{}", "d".repeat(64)),
+                    binding: binding.clone(),
+                }),
+            },
+        );
+        assert!(matches!(
+            after_apply
+                .execute(release_before_stop)
+                .await
+                .expect("fenced release rejection")
+                .outcome,
+            NodeCommandOutcome::Rejected { .. }
+        ));
+
+        runtime.stop_not_found.store(true, Ordering::SeqCst);
+        let rejected_stop = claim_command(
+            node_id,
+            workload_id,
+            4,
+            spec.generation,
+            NodeCommandPayload::RuntimeStop {
+                request: RuntimeActionRequest {
+                    schema: RuntimeActionRequest::SCHEMA.into(),
+                    request_id: "claim-bound-rejected-stop".into(),
+                    unit_id: spec.unit_id.clone(),
+                    generation: spec.generation,
+                    deadline_at_ms: None,
+                },
+            },
+        );
+        assert!(matches!(
+            after_apply
+                .execute(rejected_stop)
+                .await
+                .expect("rejected Runtime stop")
+                .outcome,
+            NodeCommandOutcome::Rejected { .. }
+        ));
+        let release_after_rejected_stop = claim_command(
+            node_id,
+            claim_id,
+            5,
+            3,
+            NodeCommandPayload::ResourceClaimRelease {
+                request: Box::new(NodeResourceClaimRelease {
+                    schema: NodeResourceClaimRelease::SCHEMA.into(),
+                    claim_generation: 3,
+                    claim_digest: format!("sha256:{}", "e".repeat(64)),
+                    binding: binding.clone(),
+                }),
+            },
+        );
+        assert!(matches!(
+            after_apply
+                .execute(release_after_rejected_stop)
+                .await
+                .expect("release after rejected stop")
+                .outcome,
+            NodeCommandOutcome::Rejected { .. }
+        ));
+
+        runtime.stop_not_found.store(false, Ordering::SeqCst);
+        let stop = claim_command(
+            node_id,
+            workload_id,
+            6,
+            spec.generation,
+            NodeCommandPayload::RuntimeStop {
+                request: RuntimeActionRequest {
+                    schema: RuntimeActionRequest::SCHEMA.into(),
+                    request_id: "claim-bound-stop".into(),
+                    unit_id: spec.unit_id.clone(),
+                    generation: spec.generation,
+                    deadline_at_ms: None,
+                },
+            },
+        );
+        assert!(matches!(
+            after_apply
+                .execute(stop)
+                .await
+                .expect("Runtime stop")
+                .outcome,
+            NodeCommandOutcome::Succeeded { .. }
+        ));
+        drop(after_apply);
+        let after_stop = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal after stop"),
+            runtime,
+            gateway(),
+        )
+        .with_resource_inventory(authority);
+
+        let release = claim_command(
+            node_id,
+            claim_id,
+            7,
+            4,
+            NodeCommandPayload::ResourceClaimRelease {
+                request: Box::new(NodeResourceClaimRelease {
+                    schema: NodeResourceClaimRelease::SCHEMA.into(),
+                    claim_generation: 4,
+                    claim_digest: format!("sha256:{}", "f".repeat(64)),
+                    binding,
+                }),
+            },
+        );
+        assert!(matches!(
+            after_stop
+                .execute(release)
+                .await
+                .expect("resource claim release")
+                .outcome,
+            NodeCommandOutcome::Succeeded {
+                result
+            } if matches!(
+                result.as_ref(),
+                NodeCommandResult::ResourceClaimReleased { .. }
+            )
+        ));
+        drop(after_stop);
+        let after_release =
+            FileCommandJournal::new(directory.path(), node_id).expect("journal after release");
+        assert!(after_release
+            .active_resource_claim_bindings()
+            .await
+            .expect("active claims")
+            .is_empty());
     }
 
     #[tokio::test]
@@ -511,8 +1265,16 @@ mod tests {
         let directory = tempfile::tempdir().expect("journal directory");
         let node_id = Uuid::now_v7();
         let issued_at = Utc::now() - Duration::seconds(1);
-        let snapshot = GatewaySnapshot::new(3, Some(2), "management { enabled = true }\n")
-            .expect("Gateway snapshot");
+        let not_after = issued_at + Duration::minutes(1);
+        let snapshot = GatewaySnapshot::new(
+            node_id,
+            3,
+            Some(2),
+            issued_at,
+            not_after,
+            "management { enabled = true }\n",
+        )
+        .expect("Gateway snapshot");
         let envelope = NodeCommandEnvelope::new(
             NodeCommandMetadata {
                 command_id: Uuid::now_v7(),
@@ -521,7 +1283,7 @@ mod tests {
                 sequence: 1,
                 aggregate_id: Uuid::now_v7(),
                 issued_at,
-                not_after: issued_at + Duration::minutes(1),
+                not_after,
                 correlation_id: Uuid::now_v7(),
             },
             NodeCommandPayload::GatewaySnapshotInstall {
@@ -553,5 +1315,91 @@ mod tests {
             .validate_for(envelope.command_id, node_id, &snapshot)
             .expect("exact Gateway acknowledgement");
         assert_eq!(gateway.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn gateway_observation_is_read_only_exact_and_journaled_for_replay() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let node_id = Uuid::now_v7();
+        let issued_at = Utc::now() - Duration::seconds(1);
+        let not_after = issued_at + Duration::minutes(1);
+        let request = GatewaySnapshotObservationRequest::new(
+            node_id,
+            4,
+            format!("sha256:{}", "d".repeat(64)),
+        )
+        .expect("Gateway observation request");
+        let envelope = NodeCommandEnvelope::new(
+            NodeCommandMetadata {
+                command_id: Uuid::now_v7(),
+                lease_id: Uuid::now_v7(),
+                node_id,
+                sequence: 1,
+                aggregate_id: Uuid::now_v7(),
+                issued_at,
+                not_after,
+                correlation_id: Uuid::now_v7(),
+            },
+            NodeCommandPayload::GatewaySnapshotObserve {
+                request: request.clone(),
+            },
+        )
+        .expect("Gateway observation command");
+        let gateway = Arc::new(InspectGateway {
+            calls: AtomicUsize::new(0),
+            observation_calls: AtomicUsize::new(0),
+            outcome: GatewaySnapshotInstallOutcome::Applied {
+                protocol: a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            },
+            observation: Some(crate::GatewaySnapshotObservationOutcome {
+                state: GatewaySnapshotObservationState::NotApplied,
+                ready: false,
+                applied: Some(AppliedGatewaySnapshot {
+                    gateway_id: node_id,
+                    revision: 3,
+                    expected_revision: Some(2),
+                    snapshot_digest: format!("sha256:{}", "c".repeat(64)),
+                    issued_at: issued_at - Duration::minutes(2),
+                    expires_at: issued_at + Duration::hours(1),
+                    applied_at: issued_at - Duration::minutes(1),
+                }),
+                observed_at: issued_at + Duration::milliseconds(10),
+                protocol: a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            }),
+        });
+        let executor = CommandExecutor::new(
+            FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+            Arc::new(InspectRuntime {
+                calls: AtomicUsize::new(0),
+                error: false,
+            }),
+            gateway.clone(),
+        );
+
+        let acknowledgement = executor
+            .execute(envelope.clone())
+            .await
+            .expect("execute Gateway observation");
+        let NodeCommandOutcome::Succeeded { result } = &acknowledgement.outcome else {
+            panic!("Gateway observation must produce a result");
+        };
+        let NodeCommandResult::GatewaySnapshotObserved { observation } = result.as_ref() else {
+            panic!("Gateway observation returned the wrong result kind");
+        };
+        observation
+            .validate_for(envelope.command_id, node_id, &request)
+            .expect("exact Gateway observation");
+        assert_eq!(gateway.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(gateway.observation_calls.load(Ordering::SeqCst), 1);
+
+        let mut redelivered = envelope;
+        redelivered.lease_id = Uuid::now_v7();
+        let replayed = executor
+            .execute(redelivered)
+            .await
+            .expect("replay Gateway observation");
+        assert_eq!(replayed.outcome, acknowledgement.outcome);
+        assert_eq!(gateway.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(gateway.observation_calls.load(Ordering::SeqCst), 1);
     }
 }

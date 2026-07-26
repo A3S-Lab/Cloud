@@ -421,7 +421,8 @@ pub(super) async fn record_observation(
                     observed_at,
                     observation,
                 }],
-            },
+            }
+            .into(),
             observed_at,
         )
         .await?;

@@ -2,7 +2,8 @@ use super::{GetWorkloadLogs, GetWorkloadLogsHandler};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogGapMetadata, RuntimeObservationRecord,
+    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogGapMetadata, NodeResourceInventoryRecord,
+    RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
@@ -28,8 +29,8 @@ use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatch,
-    NodeObservationReceipt,
+    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeLogChunkReport, NodeObservationBatchEnvelope,
+    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogDiscontinuityReason, RuntimeLogStream};
 use async_trait::async_trait;
@@ -93,9 +94,24 @@ impl INodeControlRepository for LogMetadataRepository {
 
     async fn record_observations(
         &self,
-        _batch: NodeObservationBatch,
+        _batch: NodeObservationBatchEnvelope,
         _received_at: DateTime<Utc>,
     ) -> Result<NodeObservationReceipt, RepositoryError> {
+        unexpected()
+    }
+
+    async fn record_resource_inventory(
+        &self,
+        _inventory: NodeResourceInventory,
+        _received_at: DateTime<Utc>,
+    ) -> Result<NodeResourceInventoryReceipt, RepositoryError> {
+        unexpected()
+    }
+
+    async fn current_resource_inventory(
+        &self,
+        _node_id: NodeId,
+    ) -> Result<Option<NodeResourceInventoryRecord>, RepositoryError> {
         unexpected()
     }
 
@@ -645,6 +661,7 @@ async fn seed_workload() -> SeededWorkload {
     repository
         .create_deployment(CreateDeploymentBundle {
             workload: workload.clone(),
+            control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
             revision: revision.clone(),
             deployment: deployment.clone(),
             operation,

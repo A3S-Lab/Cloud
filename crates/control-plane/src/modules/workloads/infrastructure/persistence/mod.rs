@@ -1,5 +1,11 @@
 mod in_memory;
+mod in_memory_resource_claims;
+#[cfg(test)]
+mod in_memory_resource_claims_tests;
 mod postgres;
+#[cfg(test)]
+mod postgres_typed_orm_tests;
 
 pub use in_memory::InMemoryWorkloadRepository;
-pub use postgres::PostgresWorkloadRepository;
+pub use in_memory_resource_claims::InMemoryResourceClaimRepository;
+pub use postgres::{PostgresResourceClaimRepository, PostgresWorkloadRepository};

@@ -149,8 +149,67 @@ candidate waits for the exact Gateway acknowledgement and atomically retargets
 routes before retiring C. The PostgreSQL application gate calls the public
 rollback endpoint, verifies the new generation exactly clones the older
 resolved template and records `rollbackSourceRevisionId` in
-`cloud.deployment@2`, then proves durable idempotent replay still succeeds after
+`cloud.deployment@3`, then proves durable idempotent replay still succeeds after
 the workload stops.
+
+## Cloud Resource Claim lifecycle acceptance
+
+Every new workload deployment uses `cloud.deployment@3` and the exact sequence:
+
+```text
+database reserve
+  -> Agent-journaled Claim prepare
+  -> resource-bound Runtime apply
+  -> matching Claim ID and binding-digest observation
+  -> Runtime stop/remove evidence
+  -> higher-generation Agent Claim release
+```
+
+Versions 1 and 2 remain registered only for persisted Flow replay. The ordinary
+node-agent unit gate reconstructs the command journal after prepare, apply,
+stop, and release and rejects missing bindings, changed inventory, conflicting
+slots, premature release, and generation/digest regression. Run its focused
+restart case with:
+
+```bash
+cargo test -p a3s-cloud-node-agent --lib \
+  resource_claim_prepare_bind_and_release_are_restart_safe_and_fenced \
+  --locked
+```
+
+The isolated PostgreSQL 17 gate exercises reservation-before-placement
+recovery, real command leasing, exact prepare/apply acknowledgements,
+allocation-binding persistence, Secret-rotation derivation, update retirement,
+stop-before-release ordering, release retry, and activation-before-retirement
+process death. It also proves that rejected `not_found` or `stale_generation`
+stop outcomes do not fence a bound Claim:
+
+```bash
+A3S_CLOUD_TEST_POSTGRES_URL=postgres://USER:PASSWORD@HOST/DATABASE \
+cargo test -p a3s-cloud-control-plane \
+  --test postgres_integration \
+  postgres_foundation_is_migrated_atomic_and_idempotent \
+  --locked -- --nocapture --test-threads=1
+```
+
+The provider suite also runs
+`resource_claims::real_docker_claim_journal_survives_agent_and_provider_process_death`
+as a separate mandatory test. A private child executes the real
+`CommandExecutor` and `FileCommandJournal`, pauses after Docker creates the
+bound unit but before Runtime or command completion, and leaves both receipts
+durably pending. The parent replaces the isolated Docker daemon process, proves
+the child is still paused, sends `SIGKILL`, and reconstructs Runtime plus the
+Agent journal. Exact replay must adopt the original sole container and return
+the matching Claim ID and binding digest. Premature release and a
+capacity-conflicting Claim must fail until real Runtime stop/removal and exact
+Agent release complete; the competing Claim must then prepare successfully.
+
+The isolated runner accepts this test only when it emits exactly one
+`A3S_RESOURCE_CLAIM_CRASH_CERTIFICATION_PASS` marker and the ordinary provider,
+Artifact, mount, loop-device, network, and process cleanup audits remain empty.
+This is the complete `H0.1` process-death acceptance boundary; the
+Secret-rotation crash probe remains separate evidence for Secret transport and
+Runtime receipt recovery.
 
 ## Cloud Secret and log acceptance
 
@@ -204,12 +263,54 @@ replace it. The rotated workload gate now proves provider and agent process
 death preserve one exact Docker resource, one completed Runtime receipt, `0400`
 Secret material, redacted logs, and complete cleanup.
 
+## Managed Gateway snapshot conformance
+
+Build the Gateway revision pinned in
+`tools/gateway-conformance/gateway-revision`, then run the node-agent's
+four real-binary gates:
+
+```bash
+export A3S_CLOUD_TEST_GATEWAY_BIN=/absolute/path/to/a3s-gateway
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::remote_tests::installed_a3s_gateway_validates_and_reloads_complete_snapshots \
+  -- --ignored --exact --nocapture --test-threads=1
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::remote_tests::installed_a3s_gateway_rotates_managed_tls_and_target_generation \
+  -- --ignored --exact --nocapture --test-threads=1
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::remote_tests::replicated_gateway_tests::installed_a3s_gateways_converge_independently_and_recover_member_loss \
+  -- --ignored --exact --nocapture --test-threads=1
+cargo test -p a3s-cloud-node-agent --lib --locked \
+  gateway::reload_crash_tests::installed_a3s_gateway_recovers_native_apply_after_agent_process_death \
+  -- --ignored --exact --nocapture --test-threads=1
+```
+
+The first gate applies two complete native snapshots, rejects an invalid
+successor without changing exact readiness, and renews the proven snapshot with
+the same ACL bytes and digest. The renewal advances revision and expiry,
+exposes only the successor selector as ready, preserves traffic, and avoids a
+certificate request. The TLS gate rotates independently signed certificates
+and generation-bound targets, rejects the superseded certificate and selector,
+and restores only the replacement after Gateway restart.
+
+The replicated gate starts two real Gateway processes with independent Gateway
+IDs, trust roots, native journals, Agent journals, revisions, and Cloud cursors.
+Both serve one exact target; cross-member CA trust fails; either member remains
+available after peer loss; and the returning member reconstructs its applied
+state without another certificate issue or apply. The crash gate kills the
+Agent after Gateway has durably applied the snapshot but before the Cloud
+acknowledgement exists, then requires redelivery to project one exact durable
+acknowledgement without repeating native mutation. Together with the
+PostgreSQL 17 logical Route, threshold, recovery, rollback, and certificate
+convergence fixtures, these tests are the `H0.2` acceptance boundary.
+
 ## Clean-host E0 release acceptance
 
 The final E0 gate builds release-mode control-plane and node-agent binaries from
-exact clean Cloud and pinned Runtime revisions. On a disposable Linux host it
-starts digest-pinned PostgreSQL and registry fixtures, A3S Gateway 1.0.12, the
-control plane, and one real outbound Docker node, then drives:
+exact clean Cloud, Runtime, and Gateway revisions. On a disposable Linux host
+it starts digest-pinned PostgreSQL and registry fixtures, the control plane,
+one real outbound Docker node, and a native-snapshot managed Gateway bound to
+that enrolled node identity, then drives:
 
 ```text
 bootstrap -> enrollment -> release A -> managed TLS route -> ordered logs

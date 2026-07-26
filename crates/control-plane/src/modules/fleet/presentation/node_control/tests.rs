@@ -22,9 +22,11 @@ use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCertificateRotationRequest,
     NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch,
-    NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode, RuntimeObservationReport,
+    NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeHeartbeatV2,
+    NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
+    NodeObservationBatch, NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolError,
+    NodeProtocolErrorCode, NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
+    ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
 };
 use a3s_cloud_node_agent::{EnrolledNodeIdentity, FileNodeIdentityStore, NodeIdentityState};
 use a3s_runtime::contract::{
@@ -330,8 +332,98 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     assert_eq!(replayed_observation.accepted_reports, 0);
     assert_eq!(replayed_observation.replayed_reports, 1);
 
-    let snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("Gateway snapshot");
+    let inventory = NodeResourceInventory::new(
+        node_id,
+        agent_instance_id,
+        1,
+        Utc::now(),
+        vec![NodeResourceSlot::new(
+            ResourceKind::Cpu,
+            "cpu/shared",
+            ResourceAllocation::Scalar {
+                amount: 2_000,
+                unit: ResourceUnit::MilliCpu,
+            },
+        )
+        .expect("CPU inventory slot")],
+    )
+    .expect("resource inventory");
+    let inventory_endpoint = format!(
+        "https://localhost:{}/v1/node-control/inventories",
+        address.port()
+    );
+    let first_inventory = client
+        .post(&inventory_endpoint)
+        .json(&inventory)
+        .send()
+        .await
+        .expect("record resource inventory")
+        .json::<NodeResourceInventoryReceipt>()
+        .await
+        .expect("resource inventory receipt");
+    assert!(!first_inventory.replayed);
+    let replayed_inventory = client
+        .post(&inventory_endpoint)
+        .json(&inventory)
+        .send()
+        .await
+        .expect("replay resource inventory")
+        .json::<NodeResourceInventoryReceipt>()
+        .await
+        .expect("replayed resource inventory receipt");
+    assert!(replayed_inventory.replayed);
+
+    let v2_observed_at = Utc::now();
+    let v2_heartbeat = NodeObservationBatchV2 {
+        schema: NodeObservationBatchV2::SCHEMA.into(),
+        node_id,
+        agent_instance_id,
+        sent_at: v2_observed_at,
+        heartbeat: NodeHeartbeatV2 {
+            schema: NodeHeartbeatV2::SCHEMA.into(),
+            node_id,
+            agent_instance_id,
+            observed_at: v2_observed_at,
+            agent_version: "0.1.0".into(),
+            runtime_capabilities: capabilities(),
+            inventory: inventory.reference(),
+        },
+        observations: Vec::new(),
+    };
+    let v2_receipt = client
+        .post(&observations_endpoint)
+        .json(&v2_heartbeat)
+        .send()
+        .await
+        .expect("record v2 heartbeat")
+        .json::<NodeObservationReceipt>()
+        .await
+        .expect("v2 heartbeat receipt");
+    assert_eq!(v2_receipt.accepted_reports, 0);
+    let mut unknown_inventory = v2_heartbeat;
+    unknown_inventory.heartbeat.inventory.generation = 2;
+    assert_eq!(
+        client
+            .post(&observations_endpoint)
+            .json(&unknown_inventory)
+            .send()
+            .await
+            .expect("reject unknown inventory reference")
+            .status(),
+        reqwest::StatusCode::CONFLICT
+    );
+
+    let gateway_issued_at = Utc::now();
+    let gateway_not_after = gateway_issued_at + Duration::minutes(1);
+    let snapshot = GatewaySnapshot::new(
+        node_id,
+        1,
+        None,
+        gateway_issued_at,
+        gateway_not_after,
+        "management { enabled = true }\n",
+    )
+    .expect("Gateway snapshot");
     let gateway_command = nodes
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: NodeCommandId::new(),
@@ -340,8 +432,8 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
             payload: NodeCommandPayload::GatewaySnapshotInstall {
                 snapshot: Box::new(snapshot.clone()),
             },
-            issued_at: Utc::now(),
-            not_after: Utc::now() + Duration::minutes(1),
+            issued_at: gateway_issued_at,
+            not_after: gateway_not_after,
             correlation_id: Uuid::now_v7(),
         })
         .await
@@ -352,11 +444,15 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: gateway_command.id.as_uuid(),
         node_id,
+        gateway_id: node_id,
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: Utc::now(),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     let gateway_endpoint = format!(
         "https://localhost:{}/v1/node-control/gateway-acks",

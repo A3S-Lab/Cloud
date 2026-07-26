@@ -13,8 +13,9 @@ pub use application::{
     LogRetentionWorker, NodeArtifactAuthorizer, NodeLogGapReason, NodeLogPage, NodeLogReadQuery,
     NodeLogReader, NodeLogRecord, NodeQueryResult, RecordGatewayAcknowledgement,
     RecordGatewayAcknowledgementHandler, RecordNodeLogChunks, RecordNodeLogChunksHandler,
-    RecordNodeObservations, RecordNodeObservationsHandler, RotateNodeCertificate,
-    RotateNodeCertificateHandler, RotateNodeCertificateResult,
+    RecordNodeObservations, RecordNodeObservationsHandler, RecordNodeResourceInventory,
+    RecordNodeResourceInventoryHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
+    RotateNodeCertificateResult,
 };
 pub use infrastructure::{
     LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore,

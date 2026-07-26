@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 #[serde(rename_all = "snake_case")]
 pub enum GatewayCertificateConvergenceReason {
     Renewal,
+    SnapshotRenewal,
     DomainRevocation,
     CertificateRevocation,
     ProjectionRepair,
@@ -19,6 +20,7 @@ impl GatewayCertificateConvergenceReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Renewal => "renewal",
+            Self::SnapshotRenewal => "snapshot_renewal",
             Self::DomainRevocation => "domain_revocation",
             Self::CertificateRevocation => "certificate_revocation",
             Self::ProjectionRepair => "projection_repair",
@@ -28,6 +30,7 @@ impl GatewayCertificateConvergenceReason {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "renewal" => Ok(Self::Renewal),
+            "snapshot_renewal" => Ok(Self::SnapshotRenewal),
             "domain_revocation" => Ok(Self::DomainRevocation),
             "certificate_revocation" => Ok(Self::CertificateRevocation),
             "projection_repair" => Ok(Self::ProjectionRepair),
@@ -44,6 +47,7 @@ pub enum GatewayCertificateConvergenceState {
     Pending,
     Applied,
     Rejected,
+    Unavailable,
 }
 
 impl GatewayCertificateConvergenceState {
@@ -52,6 +56,7 @@ impl GatewayCertificateConvergenceState {
             Self::Pending => "pending",
             Self::Applied => "applied",
             Self::Rejected => "rejected",
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -60,6 +65,7 @@ impl GatewayCertificateConvergenceState {
             "pending" => Ok(Self::Pending),
             "applied" => Ok(Self::Applied),
             "rejected" => Ok(Self::Rejected),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err(format!(
                 "unsupported Gateway certificate convergence state {value:?}"
             )),
@@ -174,23 +180,73 @@ impl GatewayCertificateConvergence {
         self.validate()
     }
 
+    pub fn mark_unavailable(
+        &mut self,
+        failure: impl Into<String>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = failure.into();
+        let observed_at = canonical_timestamp(observed_at);
+        if !valid_failure(&failure) || observed_at < self.staged_at {
+            return Err("Gateway certificate convergence unavailability is invalid".into());
+        }
+        if self.state == GatewayCertificateConvergenceState::Unavailable
+            && self.failure.as_deref() == Some(failure.as_str())
+            && self.acknowledged_at == Some(observed_at)
+        {
+            return Ok(false);
+        }
+        if self.state != GatewayCertificateConvergenceState::Pending {
+            return Err(
+                "only a pending Gateway certificate convergence can become unavailable".into(),
+            );
+        }
+        self.state = GatewayCertificateConvergenceState::Unavailable;
+        self.failure = Some(failure);
+        self.acknowledged_at = Some(observed_at);
+        self.validate()?;
+        Ok(true)
+    }
+
+    pub fn active_certificate_id(&self) -> Option<GatewayCertificateId> {
+        if self.retained_routes.is_empty() {
+            None
+        } else {
+            Some(
+                self.replacement_certificate_id
+                    .unwrap_or(self.previous_certificate_id),
+            )
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         let retained_ids = route_ids(&self.retained_routes)?;
         let rejected_ids = route_ids(&self.rejected_routes)?;
+        let certificate_transition_is_valid = match self.reason {
+            GatewayCertificateConvergenceReason::SnapshotRenewal => {
+                !self.retained_routes.is_empty()
+                    && self.rejected_routes.is_empty()
+                    && self.replacement_certificate_id.is_none()
+            }
+            GatewayCertificateConvergenceReason::DomainRevocation => {
+                !self.rejected_routes.is_empty()
+                    && (self.retained_routes.is_empty()
+                        == self.replacement_certificate_id.is_none())
+            }
+            GatewayCertificateConvergenceReason::Renewal
+            | GatewayCertificateConvergenceReason::CertificateRevocation
+            | GatewayCertificateConvergenceReason::ProjectionRepair => {
+                !self.retained_routes.is_empty()
+                    && self.rejected_routes.is_empty()
+                    && self.replacement_certificate_id.is_some()
+            }
+        };
         if self.gateway_revision == 0
             || !valid_sha256(&self.snapshot_digest)
             || retained_ids.is_empty() && rejected_ids.is_empty()
             || !retained_ids.is_disjoint(&rejected_ids)
-            || self.retained_routes.is_empty() != self.replacement_certificate_id.is_none()
             || self.replacement_certificate_id == Some(self.previous_certificate_id)
-            || matches!(
-                self.reason,
-                GatewayCertificateConvergenceReason::Renewal
-                    | GatewayCertificateConvergenceReason::CertificateRevocation
-                    | GatewayCertificateConvergenceReason::ProjectionRepair
-            ) && !self.rejected_routes.is_empty()
-            || self.reason == GatewayCertificateConvergenceReason::DomainRevocation
-                && self.rejected_routes.is_empty()
+            || !certificate_transition_is_valid
         {
             return Err("Gateway certificate convergence identity is invalid".into());
         }
@@ -202,6 +258,9 @@ impl GatewayCertificateConvergence {
                 self.failure.is_none() && self.acknowledged_at.is_some()
             }
             GatewayCertificateConvergenceState::Rejected => {
+                self.failure.as_deref().is_some_and(valid_failure) && self.acknowledged_at.is_some()
+            }
+            GatewayCertificateConvergenceState::Unavailable => {
                 self.failure.as_deref().is_some_and(valid_failure) && self.acknowledged_at.is_some()
             }
         };

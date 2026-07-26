@@ -1,34 +1,49 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
+    GatewayScopeId, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
-    GatewayAckState, GatewayCertificateRequest, GatewaySnapshot, NodeGatewayAck,
+    AppliedGatewaySnapshot, GatewayAckState, GatewayCertificateRequest, GatewayManagementProtocol,
+    GatewaySnapshot, GatewaySnapshotObservationState, NodeGatewayAck,
+    NodeGatewaySnapshotObservation,
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use uuid::Uuid;
 
 fn route(now: chrono::DateTime<Utc>) -> Route {
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
     Route::create(
         RouteId::new(),
         OrganizationId::new(),
         ProjectId::new(),
         EnvironmentId::new(),
+        GatewayScopeId::new(),
         NodeId::new(),
         RouteHostname::parse("API.Example.COM").expect("hostname"),
         RoutePath::parse("/v1").expect("path"),
         DomainClaimId::new(),
         DomainNamePattern::parse("api.example.com").expect("domain pattern"),
         GatewayCertificateId::new(),
-        WorkloadId::new(),
-        WorkloadRevisionId::new(),
-        RoutePortName::parse("http").expect("port"),
-        UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").expect("port"),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            now,
+        )
+        .expect("target"),
         now,
     )
     .expect("route")
 }
+
+mod gateway_rollout_tests;
 
 #[test]
 fn normalizes_route_ownership_and_rejects_ambiguous_values() {
@@ -109,8 +124,11 @@ fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() 
     )
     .expect("certificate request");
     let snapshot = GatewaySnapshot::new_with_certificate(
+        node_id.as_uuid(),
         3,
         Some(2),
+        now,
+        now + Duration::minutes(10),
         format!(
             "entrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             request.certificate_file, request.private_key_file
@@ -135,11 +153,15 @@ fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() 
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: snapshot.revision,
         snapshot_digest: snapshot.snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(2),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(certificate.apply_gateway_acknowledgement(&applied).is_err());
     certificate
@@ -219,8 +241,15 @@ fn route_activates_only_for_the_exact_gateway_publication() {
     let now = Utc::now();
     let mut route = route(now);
     let command_id = NodeCommandId::new();
-    let snapshot =
-        GatewaySnapshot::new(3, Some(2), "management { enabled = true }\n").expect("snapshot");
+    let snapshot = GatewaySnapshot::new(
+        route.gateway_node_id.as_uuid(),
+        3,
+        Some(2),
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     route
         .stage(
             snapshot.revision,
@@ -234,11 +263,15 @@ fn route_activates_only_for_the_exact_gateway_publication() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: route.gateway_node_id.as_uuid(),
+        gateway_id: route.gateway_node_id.as_uuid(),
         revision: 4,
         snapshot_digest: snapshot.snapshot_digest.clone(),
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(2),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(route.apply_gateway_acknowledgement(&wrong).is_err());
     assert_eq!(route.state, RouteState::Publishing);
@@ -258,12 +291,64 @@ fn route_activates_only_for_the_exact_gateway_publication() {
 }
 
 #[test]
+fn logical_route_changes_only_after_its_gateway_rollout_outcome() {
+    let now = Utc::now();
+    let command_id = NodeCommandId::new();
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let mut activated = route(now);
+    activated
+        .stage(1, command_id, digest.clone(), now)
+        .expect("stage logical Route");
+    assert!(activated
+        .activate_from_gateway_rollout(now + Duration::seconds(2))
+        .expect("activate at rollout threshold"));
+    assert_eq!(activated.state, RouteState::Active);
+    assert_eq!(
+        activated.activated_at,
+        Some(canonical_timestamp(now + Duration::seconds(2)))
+    );
+    assert!(!activated
+        .activate_from_gateway_rollout(now + Duration::seconds(3))
+        .expect("activation replay"));
+
+    let mut rejected = route(now);
+    rejected
+        .stage(1, command_id, digest, now)
+        .expect("stage rejected logical Route");
+    assert!(rejected
+        .reject_from_gateway_rollout(
+            "Gateway rollout did not reach its readiness threshold",
+            now + Duration::seconds(2),
+        )
+        .expect("reject failed rollout"));
+    assert_eq!(rejected.state, RouteState::Rejected);
+    assert_eq!(
+        rejected.failure.as_deref(),
+        Some("Gateway rollout did not reach its readiness threshold")
+    );
+    assert_eq!(rejected.activated_at, None);
+    assert!(!rejected
+        .reject_from_gateway_rollout(
+            "Gateway rollout did not reach its readiness threshold",
+            now + Duration::seconds(2),
+        )
+        .expect("rejection replay"));
+}
+
+#[test]
 fn rejected_publication_preserves_failure_without_false_activation() {
     let now = Utc::now();
     let mut route = route(now);
     let command_id = NodeCommandId::new();
-    let snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("snapshot");
+    let snapshot = GatewaySnapshot::new(
+        route.gateway_node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     route
         .stage(1, command_id, snapshot.snapshot_digest.clone(), now)
         .expect("stage");
@@ -273,11 +358,17 @@ fn rejected_publication_preserves_failure_without_false_activation() {
             acknowledgement_id: Uuid::now_v7(),
             command_id: command_id.as_uuid(),
             node_id: route.gateway_node_id.as_uuid(),
+            gateway_id: route.gateway_node_id.as_uuid(),
             revision: 1,
             snapshot_digest: snapshot.snapshot_digest,
+            expires_at: snapshot.expires_at,
             state: GatewayAckState::Rejected,
+            ready: false,
             message: Some("validation failed".into()),
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("reject");
     assert_eq!(route.state, RouteState::Rejected);
@@ -286,12 +377,74 @@ fn rejected_publication_preserves_failure_without_false_activation() {
 }
 
 #[test]
+fn route_cutover_rejects_equal_and_stale_runtime_generations() {
+    let now = canonical_timestamp(Utc::now());
+    let mut active = route(now);
+    active.target.runtime_generation = 2;
+    let command_id = NodeCommandId::new();
+    let digest = format!("sha256:{}", "a".repeat(64));
+    active
+        .stage(1, command_id, digest.clone(), now)
+        .expect("stage active route");
+    active
+        .apply_gateway_acknowledgement(&NodeGatewayAck {
+            schema: NodeGatewayAck::SCHEMA.into(),
+            acknowledgement_id: Uuid::now_v7(),
+            command_id: command_id.as_uuid(),
+            node_id: active.gateway_node_id.as_uuid(),
+            gateway_id: active.gateway_node_id.as_uuid(),
+            revision: 1,
+            snapshot_digest: digest,
+            expires_at: now + Duration::minutes(10),
+            state: GatewayAckState::Applied,
+            ready: true,
+            message: None,
+            acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
+        })
+        .expect("activate route");
+
+    for candidate_generation in [2, 1] {
+        let candidate_revision_id = WorkloadRevisionId::new();
+        let target = RouteTarget::new(
+            active.workload_id,
+            candidate_revision_id,
+            format!(
+                "workload:{}:revision:{candidate_revision_id}",
+                active.workload_id
+            ),
+            candidate_generation,
+            active.target.port_name.clone(),
+            active.target.upstream.clone(),
+            now + Duration::seconds(1),
+        )
+        .expect("candidate target");
+        assert!(active
+            .prepare_cutover(
+                target,
+                GatewayCertificateId::new(),
+                now + Duration::seconds(2),
+            )
+            .is_err());
+    }
+}
+
+#[test]
 fn active_route_certificate_convergence_preserves_service_until_exact_apply() {
     let now = Utc::now();
     let mut active = route(now);
     let first_command = NodeCommandId::new();
-    let first_snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("snapshot");
+    let first_snapshot = GatewaySnapshot::new(
+        active.gateway_node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     active
         .stage(
             1,
@@ -306,11 +459,17 @@ fn active_route_certificate_convergence_preserves_service_until_exact_apply() {
             acknowledgement_id: Uuid::now_v7(),
             command_id: first_command.as_uuid(),
             node_id: active.gateway_node_id.as_uuid(),
+            gateway_id: active.gateway_node_id.as_uuid(),
             revision: 1,
             snapshot_digest: first_snapshot.snapshot_digest,
+            expires_at: first_snapshot.expires_at,
             state: GatewayAckState::Applied,
+            ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("activate route");
     let activated_at = active.activated_at;
@@ -348,8 +507,15 @@ fn revoked_domain_policy_removes_only_an_active_route() {
     let now = Utc::now();
     let mut active = route(now);
     let first_command = NodeCommandId::new();
-    let first_snapshot =
-        GatewaySnapshot::new(1, None, "management { enabled = true }\n").expect("snapshot");
+    let first_snapshot = GatewaySnapshot::new(
+        active.gateway_node_id.as_uuid(),
+        1,
+        None,
+        now,
+        now + Duration::minutes(10),
+        "management { enabled = true }\n",
+    )
+    .expect("snapshot");
     active
         .stage(
             1,
@@ -364,11 +530,17 @@ fn revoked_domain_policy_removes_only_an_active_route() {
             acknowledgement_id: Uuid::now_v7(),
             command_id: first_command.as_uuid(),
             node_id: active.gateway_node_id.as_uuid(),
+            gateway_id: active.gateway_node_id.as_uuid(),
             revision: 1,
             snapshot_digest: first_snapshot.snapshot_digest,
+            expires_at: first_snapshot.expires_at,
             state: GatewayAckState::Applied,
+            ready: true,
             message: None,
             acknowledged_at: now + Duration::seconds(1),
+            management_protocol: Some(
+                a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1(),
+            ),
         })
         .expect("activate route");
 
@@ -424,11 +596,15 @@ fn certificate_convergence_is_exact_and_preserves_route_versions() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: 3,
         snapshot_digest: digest.clone(),
+        expires_at: now + Duration::minutes(10),
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(convergence.acknowledge(&wrong).is_err());
     wrong.revision = 2;
@@ -443,6 +619,44 @@ fn certificate_convergence_is_exact_and_preserves_route_versions() {
         convergence.acknowledged_at,
         Some(canonical_timestamp(wrong.acknowledged_at))
     );
+}
+
+#[test]
+fn certificate_convergence_unavailability_is_terminal_and_replay_safe() {
+    let now = Utc::now();
+    let route = route(now);
+    let mut convergence = GatewayCertificateConvergence::stage(
+        route.organization_id,
+        route.gateway_node_id,
+        2,
+        NodeCommandId::new(),
+        GatewayCertificateId::new(),
+        None,
+        format!("sha256:{}", "a".repeat(64)),
+        Vec::new(),
+        vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
+        GatewayCertificateConvergenceReason::DomainRevocation,
+        now,
+    )
+    .expect("certificate convergence");
+    let observed_at = now + Duration::minutes(4);
+    let failure = "Gateway certificate convergence command expired before acknowledgement";
+
+    assert!(convergence
+        .mark_unavailable(failure, observed_at)
+        .expect("mark convergence unavailable"));
+    assert_eq!(
+        convergence.state,
+        GatewayCertificateConvergenceState::Unavailable
+    );
+    assert_eq!(convergence.failure.as_deref(), Some(failure));
+    assert_eq!(
+        convergence.acknowledged_at,
+        Some(canonical_timestamp(observed_at))
+    );
+    assert!(!convergence
+        .mark_unavailable(failure, observed_at)
+        .expect("replay unavailable convergence"));
 }
 
 #[test]
@@ -475,6 +689,46 @@ fn complete_domain_revocation_convergence_requires_no_replacement_certificate() 
         vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
         Vec::new(),
         GatewayCertificateConvergenceReason::Renewal,
+        now,
+    )
+    .is_err());
+}
+
+#[test]
+fn snapshot_renewal_retains_the_active_certificate_without_reissuing_it() {
+    let now = Utc::now();
+    let route = route(now);
+    let previous_certificate_id = GatewayCertificateId::new();
+    let convergence = GatewayCertificateConvergence::stage(
+        route.organization_id,
+        route.gateway_node_id,
+        2,
+        NodeCommandId::new(),
+        previous_certificate_id,
+        None,
+        format!("sha256:{}", "c".repeat(64)),
+        vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
+        Vec::new(),
+        GatewayCertificateConvergenceReason::SnapshotRenewal,
+        now,
+    )
+    .expect("snapshot renewal");
+    assert_eq!(
+        convergence.active_certificate_id(),
+        Some(previous_certificate_id)
+    );
+    assert!(convergence.replacement_certificate_id.is_none());
+    assert!(GatewayCertificateConvergence::stage(
+        route.organization_id,
+        route.gateway_node_id,
+        3,
+        NodeCommandId::new(),
+        previous_certificate_id,
+        Some(GatewayCertificateId::new()),
+        format!("sha256:{}", "d".repeat(64)),
+        vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
+        Vec::new(),
+        GatewayCertificateConvergenceReason::SnapshotRenewal,
         now,
     )
     .is_err());

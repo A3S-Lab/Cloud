@@ -1,28 +1,34 @@
 use a3s_boot::{BootRequest, CommandHandler, CqrsContext, HttpMethod, ModuleRef};
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewayCertificateRequest, GatewaySnapshot,
-    NodeCommandPayload, NodeGatewayAck,
+    NodeCommandPayload, NodeGatewayAck, NodeHeartbeatV2, NodeObservationBatchV2,
+    RuntimeObservationReport, RuntimeServiceEndpoint,
 };
-use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
-use a3s_cloud_control_plane::modules::edge::domain::events::GatewayRouteCutoverStaged;
+use a3s_cloud_control_plane::modules::edge::domain::events::{
+    DomainClaimChanged, GatewayRouteCutoverStaged, GatewayScopeCreated,
+};
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, StageGatewayRouteCutover, StageRoutePublication,
-    TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, StageGatewayRouteCutover,
+    StageRoutePublication, TransitionDomainClaim,
 };
 use a3s_cloud_control_plane::modules::edge::infrastructure::persistence::PostgresEdgeRepository;
 use a3s_cloud_control_plane::modules::edge::{
     DomainClaim, DomainNamePattern, EdgeGatewayAcknowledgementProjector, GatewayCertificate,
     GatewayCertificateMaterial, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
-    Route, RouteHostname, RoutePath, RoutePortName, RouteState, UpstreamEndpoint,
+    GatewayScope, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+    UpstreamEndpoint,
 };
-use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeRepository, RuntimeObservationRecord,
+};
 use a3s_cloud_control_plane::modules::fleet::{
     IGatewayAcknowledgementProjector, PostgresNodeRepository, RecordGatewayAcknowledgement,
     RecordGatewayAcknowledgementHandler,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::ControlPlane;
 use a3s_orm::PostgresExecutor;
@@ -38,7 +44,9 @@ pub struct EdgeFixture {
     pub node_id: NodeId,
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
+    pub revision_generation: u64,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub candidate_generation: u64,
     pub candidate_deployment_id: DeploymentId,
 }
 
@@ -46,7 +54,10 @@ pub struct EdgeApiFixture<'a> {
     pub organization_id: &'a str,
     pub project_id: &'a str,
     pub environment_id: &'a str,
+    pub workload_id: &'a str,
     pub workload_revision_id: &'a str,
+    pub runtime_generation: u64,
+    pub node_id: NodeId,
     pub token: &'a str,
 }
 
@@ -86,11 +97,79 @@ pub async fn exercise_edge_api(
     assert_eq!(verified_claim.status(), 202);
     assert_eq!(response_json(&verified_claim)?["data"]["state"], "verified");
 
+    let gateway_scope_collection_path = format!(
+        "/api/v1/organizations/{}/projects/{}/environments/{}/gateway-scopes",
+        fixture.organization_id, fixture.project_id, fixture.environment_id
+    );
+    let gateway_scope_request = json!({"nodeId": fixture.node_id});
+    let created_scope = app
+        .call(post_json(
+            &gateway_scope_collection_path,
+            "edge-api-gateway-scope",
+            gateway_scope_request,
+            fixture.token,
+        ))
+        .await?;
+    let replayed_scope = app
+        .call(post_json(
+            &gateway_scope_collection_path,
+            "edge-api-gateway-scope",
+            json!({
+                "nodeIds": [fixture.node_id],
+                "minReady": 1,
+                "maxUnavailable": 0
+            }),
+            fixture.token,
+        ))
+        .await?;
+    assert_eq!(created_scope.status(), 201);
+    assert_eq!(replayed_scope.status(), 200);
+    let gateway_scope_id = field_str(&response_json(&created_scope)?["data"], "id")?.to_owned();
+    assert_eq!(
+        response_json(&replayed_scope)?["data"]["id"],
+        gateway_scope_id
+    );
+    let listed_scopes = app
+        .call(get_json(&gateway_scope_collection_path, fixture.token))
+        .await?;
+    assert_eq!(listed_scopes.status(), 200);
+    assert_eq!(
+        response_json(&listed_scopes)?["data"][0]["nodeId"],
+        fixture.node_id.to_string()
+    );
+
+    let runtime_unit_id = format!(
+        "workload:{}:revision:{}",
+        fixture.workload_id, fixture.workload_revision_id
+    );
+    let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let target_observation = refresh_runtime_target_observation(
+        node_repository.as_ref(),
+        OrganizationId::from_uuid(Uuid::parse_str(fixture.organization_id)?),
+        fixture.node_id,
+        &runtime_unit_id,
+        fixture.runtime_generation,
+    )
+    .await?;
+    let nodes: Arc<dyn INodeControlRepository> = node_repository;
+    let persisted_target_observation = nodes
+        .latest_runtime_observation(
+            fixture.node_id,
+            &runtime_unit_id,
+            fixture.runtime_generation,
+        )
+        .await?
+        .ok_or("route fixture has no current Runtime observation")?;
+    assert_eq!(persisted_target_observation, target_observation);
+    let expected_upstream =
+        RuntimeServiceEndpoint::from_observation(&target_observation.observation, "http")?.origin;
+
     let collection_path = format!(
         "/api/v1/organizations/{}/projects/{}/environments/{}/routes",
         fixture.organization_id, fixture.project_id, fixture.environment_id
     );
     let request_body = json!({
+        "gatewayScopeId": gateway_scope_id,
         "workloadRevisionId": fixture.workload_revision_id,
         "domainClaimId": domain_claim_id,
         "hostname": "api.integration.example",
@@ -115,7 +194,11 @@ pub async fn exercise_edge_api(
         .await?;
     let first_body = response_json(&first)?;
     let replay_body = response_json(&replay)?;
-    assert_eq!(first.status(), 202);
+    assert_eq!(
+        first.status(),
+        202,
+        "unexpected first publication: {first_body}"
+    );
     assert_eq!(replay.status(), 200, "unexpected replay: {replay_body}");
     assert_eq!(first_body["data"]["replayed"], false);
     assert_eq!(replay_body["data"]["replayed"], true);
@@ -123,6 +206,17 @@ pub async fn exercise_edge_api(
     assert_eq!(replay_body["data"]["commandReplayed"], true);
     let route = &first_body["data"]["route"];
     assert_eq!(route["state"], "publishing");
+    assert_eq!(route["gatewayScopeId"], gateway_scope_id);
+    assert_eq!(route["runtimeUnitId"], runtime_unit_id);
+    assert_eq!(
+        route["runtimeGeneration"],
+        json!(fixture.runtime_generation)
+    );
+    assert_eq!(route["upstreamOrigin"], expected_upstream);
+    assert_eq!(
+        route["targetObservedAt"],
+        json!(target_observation.received_at)
+    );
     let route_id = field_uuid(route, "id")?;
     let node_id = NodeId::from_uuid(field_uuid(route, "gatewayNodeId")?);
     let command_id = NodeCommandId::from_uuid(field_uuid(route, "gatewayCommandId")?);
@@ -145,8 +239,6 @@ pub async fn exercise_edge_api(
     assert_eq!(detail.status(), 200);
     assert_eq!(response_json(&detail)?["data"]["state"], "publishing");
 
-    let nodes: Arc<dyn INodeControlRepository> =
-        Arc::new(PostgresNodeRepository::new(executor.clone()));
     let issued = nodes
         .find_command(node_id, command_id)
         .await?
@@ -172,11 +264,15 @@ pub async fn exercise_edge_api(
         acknowledgement_id: Uuid::now_v7(),
         command_id: command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision,
         snapshot_digest,
+        expires_at: snapshot.expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     let mut wrong_revision = acknowledgement.clone();
     wrong_revision.acknowledgement_id = Uuid::now_v7();
@@ -283,12 +379,114 @@ pub async fn exercise_edge_api(
     Ok(())
 }
 
+async fn refresh_runtime_target_observation(
+    repository: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    runtime_unit_id: &str,
+    runtime_generation: u64,
+) -> Result<RuntimeObservationRecord, Box<dyn std::error::Error>> {
+    let current = repository
+        .latest_runtime_observation(node_id, runtime_unit_id, runtime_generation)
+        .await?
+        .ok_or("route fixture has no Runtime observation to refresh")?;
+    let command_id = current
+        .command_id
+        .ok_or("route fixture Runtime observation is not command-bound")?;
+    let node = repository.find(organization_id, node_id).await?;
+    let inventory = repository
+        .current_resource_inventory(node_id)
+        .await?
+        .ok_or("route fixture node has no current inventory")?;
+    let runtime_capabilities: a3s_runtime::contract::RuntimeCapabilities =
+        serde_json::from_value(node.capabilities.document().clone())?;
+    let observed_at = Utc::now();
+    let observed_at_ms = u64::try_from(observed_at.timestamp_millis())
+        .map_err(|_| "route fixture clock predates the Unix epoch")?;
+    let mut observation = current.observation;
+    observation.observed_at_ms = observed_at_ms;
+    if let Some(health) = observation.health.as_mut() {
+        health.checked_at_ms = observed_at_ms;
+    }
+    let report_id = Uuid::now_v7();
+    let receipt = repository
+        .record_observations(
+            NodeObservationBatchV2 {
+                schema: NodeObservationBatchV2::SCHEMA.into(),
+                node_id: node_id.as_uuid(),
+                agent_instance_id: node.agent_instance_id,
+                sent_at: observed_at,
+                heartbeat: NodeHeartbeatV2 {
+                    schema: NodeHeartbeatV2::SCHEMA.into(),
+                    node_id: node_id.as_uuid(),
+                    agent_instance_id: node.agent_instance_id,
+                    observed_at,
+                    agent_version: node.agent_version,
+                    runtime_capabilities,
+                    inventory: inventory.inventory.reference(),
+                },
+                observations: vec![RuntimeObservationReport {
+                    report_id,
+                    command_id: Some(command_id.as_uuid()),
+                    observed_at,
+                    observation,
+                }],
+            }
+            .into(),
+            observed_at,
+        )
+        .await?;
+    assert_eq!(receipt.accepted_reports, 1);
+    assert_eq!(receipt.replayed_reports, 0);
+    let refreshed = repository
+        .latest_runtime_observation(node_id, runtime_unit_id, runtime_generation)
+        .await?
+        .ok_or("route fixture refresh did not persist a Runtime observation")?;
+    assert_eq!(refreshed.report_id, report_id);
+    assert_eq!(refreshed.command_id, Some(command_id));
+    Ok(refreshed)
+}
+
 pub async fn exercise_edge(
     executor: &PostgresExecutor,
     fixture: EdgeFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let repository = PostgresEdgeRepository::new(executor.clone());
     let now = Utc::now();
+    let gateway_scope = match repository
+        .list_gateway_scopes(
+            fixture.organization_id,
+            fixture.project_id,
+            fixture.environment_id,
+        )
+        .await?
+        .into_iter()
+        .find(|scope| scope.node_id == fixture.node_id)
+    {
+        Some(scope) => scope,
+        None => {
+            let scope = GatewayScope::create(
+                GatewayScopeId::new(),
+                fixture.organization_id,
+                fixture.project_id,
+                fixture.environment_id,
+                fixture.node_id,
+                now,
+            )?;
+            repository
+                .create_gateway_scope(CreateGatewayScopeWrite {
+                    scope: scope.clone(),
+                    idempotency: IdempotencyRequest::new(
+                        "postgres-edge-gateway-scopes",
+                        scope.id.to_string(),
+                        scope.node_id.to_string().as_bytes(),
+                    )?,
+                    event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7())?,
+                })
+                .await?
+                .value
+        }
+    };
     let initial_scope = repository.gateway_scope(fixture.node_id).await?;
     let initial_active = repository.active_routes(fixture.node_id).await?.len();
     let initial_routes = repository
@@ -309,6 +507,7 @@ pub async fn exercise_edge(
     let first_revision = initial_scope.next_revision()?;
     let mut first = staged(
         &fixture,
+        &gateway_scope,
         first_revision,
         initial_scope.installed_revision,
         "api.example.com",
@@ -365,11 +564,15 @@ pub async fn exercise_edge(
         acknowledgement_id: Uuid::now_v7(),
         command_id: stored.publication.command_id.as_uuid(),
         node_id: fixture.node_id.as_uuid(),
+        gateway_id: fixture.node_id.as_uuid(),
         revision: first_revision,
         snapshot_digest: stored.publication.snapshot_digest.clone(),
+        expires_at: stored.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(
         repository
@@ -403,6 +606,7 @@ pub async fn exercise_edge(
 
     let mut duplicate = staged(
         &fixture,
+        &gateway_scope,
         scope.next_revision()?,
         scope.installed_revision,
         "API.EXAMPLE.COM",
@@ -416,6 +620,7 @@ pub async fn exercise_edge(
 
     let mut second = staged(
         &fixture,
+        &gateway_scope,
         scope.next_revision()?,
         scope.installed_revision,
         "web.example.com",
@@ -449,11 +654,15 @@ pub async fn exercise_edge(
         acknowledgement_id: Uuid::now_v7(),
         command_id: second.publication.command_id.as_uuid(),
         node_id: fixture.node_id.as_uuid(),
+        gateway_id: fixture.node_id.as_uuid(),
         revision: second.publication.revision,
         snapshot_digest: second.publication.snapshot_digest.clone(),
+        expires_at: second.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: second.publication.command_issued_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     repository
         .project_gateway_acknowledgement(
@@ -468,10 +677,18 @@ pub async fn exercise_edge(
         .into_iter()
         .filter(|route| {
             route.workload_id == fixture.workload_id
-                && route.workload_revision_id == fixture.revision_id
+                && route.target.workload_revision_id == fixture.revision_id
         })
         .collect::<Vec<_>>();
     assert_eq!(before_cutover.len(), 2);
+    assert!(before_cutover.iter().all(|route| {
+        route.target.runtime_generation == fixture.revision_generation
+            && route.target.runtime_unit_id
+                == format!(
+                    "workload:{}:revision:{}",
+                    fixture.workload_id, fixture.revision_id
+                )
+    }));
     let scope = repository.gateway_scope(fixture.node_id).await?;
     let request = staged_cutover(
         &fixture,
@@ -490,6 +707,27 @@ pub async fn exercise_edge(
     let replay = replay?;
     assert_ne!(cutover.replayed, replay.replayed);
     assert_eq!(cutover.cutover, replay.cutover);
+    let restarted_repository = PostgresEdgeRepository::new(executor.clone());
+    let restarted_pending = restarted_repository
+        .find_gateway_route_cutover(fixture.organization_id, fixture.candidate_deployment_id)
+        .await?
+        .ok_or("restarted PostgreSQL repository lost the pending route cutover")?;
+    assert_eq!(
+        restarted_pending.previous_generation,
+        fixture.revision_generation
+    );
+    assert_eq!(
+        restarted_pending.candidate_generation,
+        fixture.candidate_generation
+    );
+    assert!(restarted_pending.routes.iter().all(|route| {
+        route.target.runtime_generation == fixture.candidate_generation
+            && route.target.runtime_unit_id
+                == format!(
+                    "workload:{}:revision:{}",
+                    fixture.workload_id, fixture.candidate_revision_id
+                )
+    }));
     assert_eq!(
         repository
             .replay_gateway_route_cutover(&idempotency)
@@ -533,7 +771,7 @@ pub async fn exercise_edge(
         &repository,
         &cutover.certificate,
         cutover_issued_at,
-        cutover_issued_at + Duration::days(6),
+        cutover_issued_at + Duration::days(30),
     )
     .await?;
     let applied = cutover_acknowledgement(&cutover.cutover, GatewayAckState::Applied);
@@ -543,18 +781,37 @@ pub async fn exercise_edge(
             applied.acknowledged_at + Duration::milliseconds(1),
         )
         .await?;
-    let stored_cutover = repository
+    let restarted_repository = PostgresEdgeRepository::new(executor.clone());
+    let stored_cutover = restarted_repository
         .find_gateway_route_cutover(fixture.organization_id, fixture.candidate_deployment_id)
         .await?
         .ok_or("PostgreSQL route cutover disappeared")?;
     assert_eq!(stored_cutover.state, GatewayRouteCutoverState::Applied);
+    assert_eq!(
+        stored_cutover.candidate_generation,
+        fixture.candidate_generation
+    );
     for route in stored_cutover.routes {
-        let active = repository
+        let active = restarted_repository
             .find_route(fixture.organization_id, route.id)
             .await?;
         assert_eq!(active, route);
-        assert_eq!(active.workload_revision_id, fixture.candidate_revision_id);
-        assert_eq!(active.upstream.as_str(), "http://127.0.0.1:49153/");
+        assert_eq!(
+            active.target.workload_revision_id,
+            fixture.candidate_revision_id
+        );
+        assert_eq!(active.target.upstream.as_str(), "http://127.0.0.1:49153/");
+        assert_eq!(
+            active.target.runtime_generation,
+            fixture.candidate_generation
+        );
+        assert_eq!(
+            active.target.runtime_unit_id,
+            format!(
+                "workload:{}:revision:{}",
+                fixture.workload_id, fixture.candidate_revision_id
+            )
+        );
     }
     super::edge_certificate_lifecycle_support::exercise(
         executor,
@@ -562,7 +819,7 @@ pub async fn exercise_edge(
             organization_id: fixture.organization_id,
             node_id: fixture.node_id,
             domain_claim,
-            started_at: now + Duration::seconds(8),
+            started_at: now + Duration::days(24),
         },
     )
     .await?;
@@ -675,8 +932,11 @@ fn staged_cutover(
         format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
     )?;
     let snapshot = GatewaySnapshot::new_with_certificate(
+        fixture.node_id.as_uuid(),
         gateway_revision,
         expected_revision,
+        staged_at,
+        staged_at + Duration::minutes(3),
         format!(
             "# PostgreSQL route cutover {}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             fixture.candidate_deployment_id,
@@ -688,12 +948,19 @@ fn staged_cutover(
     let mut candidates = active_routes
         .iter()
         .map(|route| {
-            route.prepare_cutover(
+            let target = RouteTarget::new(
+                fixture.workload_id,
                 fixture.candidate_revision_id,
+                format!(
+                    "workload:{}:revision:{}",
+                    fixture.workload_id, fixture.candidate_revision_id
+                ),
+                fixture.candidate_generation,
+                route.target.port_name.clone(),
                 UpstreamEndpoint::parse("http://127.0.0.1:49153")?,
-                certificate_id,
                 staged_at,
-            )
+            )?;
+            route.prepare_cutover(target, certificate_id, staged_at)
         })
         .collect::<Result<Vec<_>, String>>()?;
     for route in &mut candidates {
@@ -735,11 +1002,14 @@ fn staged_cutover(
         fixture.workload_id,
         fixture.revision_id,
         fixture.candidate_revision_id,
+        fixture.revision_generation,
+        fixture.candidate_generation,
         fixture.node_id,
         gateway_revision,
         command_id,
         certificate_id,
         publication.snapshot_digest.clone(),
+        publication.snapshot_expires_at,
         candidates,
         staged_at,
     )?;
@@ -770,17 +1040,22 @@ fn cutover_acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: cutover.gateway_command_id.as_uuid(),
         node_id: cutover.node_id.as_uuid(),
+        gateway_id: cutover.node_id.as_uuid(),
         revision: cutover.gateway_revision,
         snapshot_digest: cutover.snapshot_digest.clone(),
+        expires_at: cutover.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: cutover.staged_at + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn staged(
     fixture: &EdgeFixture,
+    gateway_scope: &GatewayScope,
     revision: u64,
     expected_revision: Option<u64>,
     hostname: &str,
@@ -799,8 +1074,11 @@ fn staged(
         format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
     )?;
     let snapshot = GatewaySnapshot::new_with_certificate(
+        fixture.node_id.as_uuid(),
         revision,
         expected_revision,
+        now,
+        now + Duration::minutes(3),
         format!(
             "# route {hostname}{path}\nentrypoints \"https\" {{ tls {{ cert_file = \"{}\"; key_file = \"{}\" }} }}\n",
             certificate_request.certificate_file, certificate_request.private_key_file
@@ -812,6 +1090,7 @@ fn staged(
         fixture.organization_id,
         fixture.project_id,
         fixture.environment_id,
+        gateway_scope.id,
         fixture.node_id,
         RouteHostname::parse(hostname)?,
         RoutePath::parse(path)?,
@@ -819,9 +1098,18 @@ fn staged(
         domain_claim.pattern.clone(),
         certificate_id,
         fixture.workload_id,
-        fixture.revision_id,
-        RoutePortName::parse("http")?,
-        UpstreamEndpoint::parse("http://127.0.0.1:49152")?,
+        RouteTarget::new(
+            fixture.workload_id,
+            fixture.revision_id,
+            format!(
+                "workload:{}:revision:{}",
+                fixture.workload_id, fixture.revision_id
+            ),
+            fixture.revision_generation,
+            RoutePortName::parse("http")?,
+            UpstreamEndpoint::parse("http://127.0.0.1:49152")?,
+            now,
+        )?,
         now,
     )?;
     route.stage(revision, command_id, snapshot.snapshot_digest.clone(), now)?;
@@ -847,6 +1135,7 @@ fn staged(
     let canonical = format!("{hostname}{path}");
     Ok(StageRoutePublication {
         route: route.clone(),
+        gateway_scope: gateway_scope.clone(),
         certificate,
         publication,
         expected_scope_version: 0,

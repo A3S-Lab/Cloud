@@ -12,6 +12,7 @@ pub enum GatewayPublicationState {
     Pending,
     Applied,
     Rejected,
+    Unavailable,
 }
 
 impl GatewayPublicationState {
@@ -20,6 +21,7 @@ impl GatewayPublicationState {
             Self::Pending => "pending",
             Self::Applied => "applied",
             Self::Rejected => "rejected",
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -28,6 +30,7 @@ impl GatewayPublicationState {
             "pending" => Ok(Self::Pending),
             "applied" => Ok(Self::Applied),
             "rejected" => Ok(Self::Rejected),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err(format!("unsupported Gateway publication state {value:?}")),
         }
     }
@@ -47,6 +50,7 @@ pub struct GatewayPublication {
     pub failure: Option<String>,
     pub command_issued_at: DateTime<Utc>,
     pub command_not_after: DateTime<Utc>,
+    pub snapshot_expires_at: DateTime<Utc>,
     pub acknowledged_at: Option<DateTime<Utc>>,
 }
 
@@ -55,10 +59,12 @@ impl GatewayPublication {
         node_id: NodeId,
         command_id: NodeCommandId,
         command_correlation_id: Uuid,
-        snapshot: GatewaySnapshot,
+        mut snapshot: GatewaySnapshot,
         command_issued_at: DateTime<Utc>,
         command_not_after: DateTime<Utc>,
     ) -> Result<Self, String> {
+        snapshot.issued_at = canonical_timestamp(snapshot.issued_at);
+        snapshot.expires_at = canonical_timestamp(snapshot.expires_at);
         snapshot.validate()?;
         if command_correlation_id.is_nil() {
             return Err("Gateway publication command correlation ID must not be nil".into());
@@ -67,6 +73,15 @@ impl GatewayPublication {
         let command_not_after = canonical_timestamp(command_not_after);
         if command_not_after <= command_issued_at {
             return Err("Gateway publication command expiry must follow its issue time".into());
+        }
+        if snapshot.gateway_id != node_id.as_uuid()
+            || snapshot.issued_at != command_issued_at
+            || snapshot.expires_at < command_not_after
+        {
+            return Err(
+                "Gateway publication command does not match its exact Gateway identity and validity"
+                    .into(),
+            );
         }
         Ok(Self {
             node_id,
@@ -81,14 +96,18 @@ impl GatewayPublication {
             failure: None,
             command_issued_at,
             command_not_after,
+            snapshot_expires_at: snapshot.expires_at,
             acknowledged_at: None,
         })
     }
 
     pub fn snapshot(&self) -> Result<GatewaySnapshot, String> {
         let snapshot = GatewaySnapshot::new_with_certificate(
+            self.node_id.as_uuid(),
             self.revision,
             self.expected_revision,
+            self.command_issued_at,
+            self.snapshot_expires_at,
             self.acl.clone(),
             self.certificate_request.clone(),
         )?;
@@ -126,6 +145,31 @@ impl GatewayPublication {
         self.acknowledged_at = Some(acknowledged_at);
         Ok(())
     }
+
+    pub fn mark_unavailable(
+        &mut self,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        validate_failure(failure)?;
+        let observed_at = canonical_timestamp(observed_at);
+        if observed_at < self.command_not_after {
+            return Err("Gateway publication cannot expire before its command deadline".into());
+        }
+        if self.state == GatewayPublicationState::Unavailable
+            && self.failure.as_deref() == Some(failure)
+            && self.acknowledged_at == Some(observed_at)
+        {
+            return Ok(false);
+        }
+        if self.state != GatewayPublicationState::Pending {
+            return Err("only a pending Gateway publication can become unavailable".into());
+        }
+        self.state = GatewayPublicationState::Unavailable;
+        self.failure = Some(failure.into());
+        self.acknowledged_at = Some(observed_at);
+        Ok(true)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,4 +195,15 @@ impl GatewayScopeState {
             .checked_add(1)
             .ok_or_else(|| "Gateway revision space is exhausted".into())
     }
+}
+
+fn validate_failure(failure: &str) -> Result<(), String> {
+    if failure.is_empty()
+        || failure.len() > 16 * 1024
+        || failure.contains(['\0', '\r', '\n'])
+        || failure.trim() != failure
+    {
+        return Err("Gateway publication failure must be a bounded single-line value".into());
+    }
+    Ok(())
 }

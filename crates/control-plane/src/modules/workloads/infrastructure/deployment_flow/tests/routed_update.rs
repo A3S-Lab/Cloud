@@ -1,6 +1,120 @@
 use super::*;
 
 #[tokio::test]
+async fn route_cutover_rejects_an_observation_from_another_runtime_command(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let routes = Arc::new(InMemoryEdgeRepository::new());
+    let (node_id, agent_instance_id, capabilities) =
+        ready_node(&nodes, organization_id, base).await?;
+    let compiler = gateway_compiler()?;
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("command-bound route fixture")?,
+        base,
+    );
+    let first = deployment_bundle(workload.clone(), 1, 'a', base, "command-bound-route-first")?;
+    let initial_route = publish_active_route(
+        &routes,
+        &compiler,
+        &workload,
+        first.revision.id,
+        node_id,
+        Utc::now(),
+    )
+    .await?;
+    let candidate = deployment_bundle(
+        workload.clone(),
+        2,
+        'b',
+        Utc::now(),
+        "command-bound-route-candidate",
+    )?;
+    let candidate_spec = project_runtime_spec(&candidate.revision)?;
+    let expected_command_id = NodeCommandId::new();
+    let other_command_id = NodeCommandId::new();
+    for command_id in [expected_command_id, other_command_id] {
+        nodes
+            .enqueue_command(NodeCommandDraft {
+                proposed_command_id: command_id,
+                node_id,
+                aggregate_id: candidate.deployment.id.as_uuid(),
+                payload: NodeCommandPayload::RuntimeInspect {
+                    unit_id: candidate_spec.unit_id.clone(),
+                    generation: candidate_spec.generation,
+                },
+                issued_at: Utc::now(),
+                not_after: Utc::now() + Duration::minutes(1),
+                correlation_id: candidate.operation.id.as_uuid(),
+            })
+            .await?;
+    }
+    let leased = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let other_command = leased
+        .commands
+        .iter()
+        .find(|command| command.command_id == other_command_id.as_uuid())
+        .ok_or("other Runtime command was not leased")?;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        other_command,
+        healthy_observation(&candidate_spec, RuntimeHealthState::Healthy)?,
+    )
+    .await?;
+
+    let route_port: Arc<dyn IEdgeRepository> = routes.clone();
+    let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
+        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&control_port)));
+    let updater = EdgeDeploymentRouteUpdater::new(
+        route_port,
+        control_port,
+        gateway_commands,
+        compiler,
+        Duration::seconds(5),
+    )?;
+    let now = Utc::now() + Duration::milliseconds(1);
+    let request = DeploymentRouteUpdateRequest {
+        deployment_id: candidate.deployment.id,
+        operation_id: candidate.operation.id,
+        organization_id,
+        project_id: workload.project_id,
+        environment_id: workload.environment_id,
+        workload_id: workload.id,
+        previous_revision_id: first.revision.id,
+        candidate_revision_id: candidate.revision.id,
+        node_id,
+        runtime_command_id: expected_command_id,
+        spec: candidate_spec,
+        verified_at: now,
+        convergence_deadline: now + Duration::seconds(5),
+    };
+    assert_eq!(
+        updater.stage(&request, now).await?,
+        DeploymentRouteStage::Failed {
+            reason: "candidate route target observation belongs to another command".into(),
+        }
+    );
+    assert!(routes
+        .find_gateway_route_cutover(organization_id, candidate.deployment.id)
+        .await?
+        .is_none());
+    assert_eq!(
+        routes.find_route(organization_id, initial_route.id).await?,
+        initial_route
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runtime_once(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base = Utc::now() - Duration::seconds(1);
@@ -23,11 +137,14 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
         Duration::seconds(5),
     )?);
     let runtime = DeploymentFlowRuntime::new(
-        workloads.clone(),
-        Arc::new(UnusedArtifactResolver),
-        nodes.clone(),
-        control_port,
-        route_updates,
+        DeploymentFlowDependencies::new(
+            workloads.clone(),
+            Arc::new(InMemoryResourceClaimRepository::new()),
+            Arc::new(UnusedArtifactResolver),
+            nodes.clone(),
+            control_port,
+            route_updates,
+        ),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(10_000, 5_000, 1, 10_000, 5_000, 1, 10_000)?,
     )?;
@@ -118,7 +235,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             rejected_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             rejected_operation.input.clone(),
         )
         .await?;
@@ -232,7 +349,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             accepted_operation.input.clone(),
         )
         .await?;
@@ -294,8 +411,22 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
         )
         .await?;
     let cutover_route = routes.find_route(organization_id, initial_route.id).await?;
-    assert_eq!(cutover_route.workload_revision_id, accepted_revision.id);
-    assert_eq!(cutover_route.upstream.as_str(), "http://127.0.0.1:49152/");
+    assert_eq!(
+        cutover_route.target.workload_revision_id,
+        accepted_revision.id
+    );
+    assert_eq!(
+        cutover_route.target.runtime_generation,
+        accepted_revision.generation
+    );
+    assert_eq!(
+        cutover_route.target.runtime_unit_id,
+        accepted_revision.runtime_unit_id()
+    );
+    assert_eq!(
+        cutover_route.target.upstream.as_str(),
+        "http://127.0.0.1:49152/"
+    );
     assert_eq!(
         workloads
             .find_workload(organization_id, accepted_deployment.workload_id)
@@ -352,7 +483,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             accepted_operation.input.clone(),
         )
         .await?;
@@ -419,7 +550,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             accepted_operation.input,
         )
         .await?;
@@ -462,7 +593,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .start_with_id(
             rollback_operation.id.to_string(),
-            workflow_spec(),
+            previous_workflow_spec(),
             rollback_operation.input.clone(),
         )
         .await?;
@@ -527,12 +658,18 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(2))
         .await?;
+    let rollback_route = routes.find_route(organization_id, initial_route.id).await?;
     assert_eq!(
-        routes
-            .find_route(organization_id, initial_route.id)
-            .await?
-            .workload_revision_id,
+        rollback_route.target.workload_revision_id,
         rollback_revision.id
+    );
+    assert_eq!(
+        rollback_route.target.runtime_generation,
+        rollback_revision.generation
+    );
+    assert_eq!(
+        rollback_route.target.runtime_unit_id,
+        rollback_revision.runtime_unit_id()
     );
     assert_eq!(
         workloads

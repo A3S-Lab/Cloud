@@ -1,9 +1,7 @@
-use crate::modules::edge::domain::{
-    DomainNamePattern, RouteHostname, RoutePath, RoutePortName, UpstreamEndpoint,
-};
+use crate::modules::edge::domain::{DomainNamePattern, RouteHostname, RoutePath, RouteTarget};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use chrono::{DateTime, Utc};
@@ -16,6 +14,7 @@ pub enum RouteState {
     Publishing,
     Active,
     Rejected,
+    Unavailable,
 }
 
 impl RouteState {
@@ -25,6 +24,7 @@ impl RouteState {
             Self::Publishing => "publishing",
             Self::Active => "active",
             Self::Rejected => "rejected",
+            Self::Unavailable => "unavailable",
         }
     }
 
@@ -34,6 +34,7 @@ impl RouteState {
             "publishing" => Ok(Self::Publishing),
             "active" => Ok(Self::Active),
             "rejected" => Ok(Self::Rejected),
+            "unavailable" => Ok(Self::Unavailable),
             _ => Err(format!("unsupported route state {value:?}")),
         }
     }
@@ -45,6 +46,7 @@ pub struct Route {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub gateway_scope_id: GatewayScopeId,
     pub gateway_node_id: NodeId,
     pub hostname: RouteHostname,
     pub path_prefix: RoutePath,
@@ -52,9 +54,8 @@ pub struct Route {
     pub domain_pattern: Option<DomainNamePattern>,
     pub gateway_certificate_id: Option<GatewayCertificateId>,
     pub workload_id: WorkloadId,
-    pub workload_revision_id: WorkloadRevisionId,
-    pub port_name: RoutePortName,
-    pub upstream: UpstreamEndpoint,
+    #[serde(flatten)]
+    pub target: RouteTarget,
     pub state: RouteState,
     pub gateway_revision: Option<u64>,
     pub gateway_command_id: Option<NodeCommandId>,
@@ -73,6 +74,7 @@ impl Route {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        gateway_scope_id: GatewayScopeId,
         gateway_node_id: NodeId,
         hostname: RouteHostname,
         path_prefix: RoutePath,
@@ -80,20 +82,23 @@ impl Route {
         domain_pattern: DomainNamePattern,
         gateway_certificate_id: GatewayCertificateId,
         workload_id: WorkloadId,
-        workload_revision_id: WorkloadRevisionId,
-        port_name: RoutePortName,
-        upstream: UpstreamEndpoint,
+        target: RouteTarget,
         created_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         if !domain_pattern.covers(&hostname) {
             return Err("domain claim pattern does not cover the route hostname".into());
         }
         let created_at = canonical_timestamp(created_at);
+        target.validate_for(workload_id)?;
+        if target.observed_at > created_at {
+            return Err("route target observation is newer than route creation".into());
+        }
         Ok(Self {
             id,
             organization_id,
             project_id,
             environment_id,
+            gateway_scope_id,
             gateway_node_id,
             hostname,
             path_prefix,
@@ -101,9 +106,7 @@ impl Route {
             domain_pattern: Some(domain_pattern),
             gateway_certificate_id: Some(gateway_certificate_id),
             workload_id,
-            workload_revision_id,
-            port_name,
-            upstream,
+            target,
             state: RouteState::Pending,
             gateway_revision: None,
             gateway_command_id: None,
@@ -149,8 +152,7 @@ impl Route {
 
     pub fn prepare_cutover(
         &self,
-        workload_revision_id: WorkloadRevisionId,
-        upstream: UpstreamEndpoint,
+        target: RouteTarget,
         gateway_certificate_id: GatewayCertificateId,
         prepared_at: DateTime<Utc>,
     ) -> Result<Self, String> {
@@ -164,14 +166,21 @@ impl Route {
         {
             return Err("only an active route can prepare a target cutover".into());
         }
-        if workload_revision_id == self.workload_revision_id {
-            return Err("route cutover must select a different immutable revision".into());
+        target.validate_for(self.workload_id)?;
+        if target.workload_revision_id == self.target.workload_revision_id
+            || target.runtime_generation <= self.target.runtime_generation
+            || target.port_name != self.target.port_name
+            || target.observed_at > prepared_at
+        {
+            return Err(
+                "route cutover must select a newer generation of a different immutable revision"
+                    .into(),
+            );
         }
         self.ensure_time(prepared_at)?;
 
         let mut candidate = self.clone();
-        candidate.workload_revision_id = workload_revision_id;
-        candidate.upstream = upstream;
+        candidate.target = target;
         candidate.state = RouteState::Pending;
         candidate.gateway_revision = None;
         candidate.gateway_command_id = None;
@@ -181,6 +190,14 @@ impl Route {
         candidate.updated_at = prepared_at;
         candidate.activated_at = None;
         Ok(candidate)
+    }
+
+    pub fn validate_target_binding(&self) -> Result<(), String> {
+        self.target.validate_for(self.workload_id)?;
+        if self.target.observed_at > self.updated_at {
+            return Err("route target observation is newer than the route projection".into());
+        }
+        Ok(())
     }
 
     pub fn apply_gateway_acknowledgement(
@@ -217,6 +234,93 @@ impl Route {
         self.aggregate_version += 1;
         self.updated_at = acknowledged_at;
         Ok(())
+    }
+
+    pub fn activate_from_gateway_rollout(
+        &mut self,
+        activated_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let activated_at = canonical_timestamp(activated_at);
+        if self.state == RouteState::Active {
+            return Ok(false);
+        }
+        if self.state != RouteState::Publishing
+            || self.gateway_revision.is_none()
+            || self.gateway_command_id.is_none()
+            || self.snapshot_digest.is_none()
+            || self.failure.is_some()
+            || self.domain_claim_id.is_none()
+            || self.domain_pattern.is_none()
+            || self.gateway_certificate_id.is_none()
+        {
+            return Err(
+                "only a complete publishing Route can activate from a Gateway rollout".into(),
+            );
+        }
+        self.ensure_time(activated_at)?;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Route aggregate version space is exhausted".to_string())?;
+        self.state = RouteState::Active;
+        self.updated_at = activated_at;
+        self.activated_at = Some(activated_at);
+        Ok(true)
+    }
+
+    pub fn reject_from_gateway_rollout(
+        &mut self,
+        failure: impl Into<String>,
+        rejected_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = validate_rollout_failure(failure.into())?;
+        let rejected_at = canonical_timestamp(rejected_at);
+        if self.state == RouteState::Rejected && self.failure.as_deref() == Some(&failure) {
+            return Ok(false);
+        }
+        if self.state != RouteState::Publishing {
+            return Err("only a publishing Route can be rejected by its Gateway rollout".into());
+        }
+        self.ensure_time(rejected_at)?;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Route aggregate version space is exhausted".to_string())?;
+        self.state = RouteState::Rejected;
+        self.failure = Some(failure);
+        self.updated_at = rejected_at;
+        self.activated_at = None;
+        Ok(true)
+    }
+
+    pub fn mark_unavailable_from_gateway_rollout(
+        &mut self,
+        failure: impl Into<String>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = validate_rollout_failure(failure.into())?;
+        let observed_at = canonical_timestamp(observed_at);
+        if self.state == RouteState::Unavailable
+            && self.failure.as_deref() == Some(&failure)
+            && self.updated_at == observed_at
+        {
+            return Ok(false);
+        }
+        if self.state != RouteState::Publishing {
+            return Err(
+                "only a publishing Route can become unavailable during a Gateway rollout".into(),
+            );
+        }
+        self.ensure_time(observed_at)?;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Route aggregate version space is exhausted".to_string())?;
+        self.state = RouteState::Unavailable;
+        self.failure = Some(failure);
+        self.updated_at = observed_at;
+        self.activated_at = None;
+        Ok(true)
     }
 
     pub fn bind_gateway_certificate(
@@ -298,4 +402,15 @@ fn valid_sha256(value: &str) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     })
+}
+
+fn validate_rollout_failure(value: String) -> Result<String, String> {
+    if value.is_empty()
+        || value.len() > 4096
+        || value.trim() != value
+        || value.contains(['\0', '\r', '\n'])
+    {
+        return Err("Gateway rollout Route failure must be a bounded single-line value".into());
+    }
+    Ok(value)
 }

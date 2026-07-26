@@ -189,6 +189,7 @@ pub(super) async fn dispatch(
             deadline_at_ms: Some(timestamp_millis(runtime_deadline)?),
             spec: input.scheduled.spec.clone(),
         }),
+        resource_claim: None,
     };
     let command = runtime
         .node_control
@@ -461,7 +462,7 @@ fn validate_apply_command(
     spec: &a3s_runtime::contract::RuntimeUnitSpec,
     command: &crate::modules::fleet::domain::entities::NodeCommand,
 ) -> a3s_flow::Result<()> {
-    let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
         return Err(FlowError::Runtime(
             "build command is not a Runtime apply".into(),
         ));
@@ -486,7 +487,7 @@ fn validate_apply_command(
 fn apply_result_deadline(
     command: &crate::modules::fleet::domain::entities::NodeCommand,
 ) -> a3s_flow::Result<DateTime<Utc>> {
-    let NodeCommandPayload::RuntimeApply { request } = &command.payload else {
+    let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
         return Err(FlowError::Runtime(
             "build command is not a Runtime apply".into(),
         ));

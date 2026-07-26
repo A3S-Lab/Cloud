@@ -4,6 +4,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PublishRouteRequest {
+    pub gateway_scope_id: Uuid,
     pub workload_revision_id: Uuid,
     pub domain_claim_id: Uuid,
     pub hostname: String,

@@ -1,4 +1,5 @@
 mod legacy_workflow;
+mod previous_workflow;
 mod steps;
 mod stop_workflow;
 #[cfg(test)]
@@ -7,18 +8,22 @@ mod types;
 mod workflow;
 
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
-use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use crate::modules::shared_kernel::domain::{
+    DeploymentId, OrganizationId, RepositoryError, ResourceClaimId,
+};
+pub use crate::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
+    PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+};
+use crate::modules::workloads::domain::entities::ResourceClaimState;
+use crate::modules::workloads::domain::repositories::{
+    IResourceClaimRepository, IWorkloadRepository,
+};
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
-
-pub const DEPLOYMENT_WORKFLOW_NAME: &str = "cloud.deployment";
-pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "2";
-pub const LEGACY_DEPLOYMENT_WORKFLOW_VERSION: &str = "1";
-pub const STOP_WORKFLOW_NAME: &str = "cloud.workload.stop";
-pub const STOP_WORKFLOW_VERSION: &str = "1";
 
 #[derive(Debug, Clone)]
 pub struct DeploymentFlowConfig {
@@ -86,6 +91,7 @@ fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 #[derive(Clone)]
 pub struct DeploymentFlowRuntime {
     pub(super) workloads: Arc<dyn IWorkloadRepository>,
+    pub(super) resource_claims: Arc<dyn IResourceClaimRepository>,
     pub(super) artifacts: Arc<dyn IOciArtifactResolver>,
     pub(super) nodes: Arc<dyn INodeRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
@@ -94,13 +100,39 @@ pub struct DeploymentFlowRuntime {
     pub(super) config: DeploymentFlowConfig,
 }
 
-impl DeploymentFlowRuntime {
+#[derive(Clone)]
+pub struct DeploymentFlowDependencies {
+    workloads: Arc<dyn IWorkloadRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    artifacts: Arc<dyn IOciArtifactResolver>,
+    nodes: Arc<dyn INodeRepository>,
+    node_control: Arc<dyn INodeControlRepository>,
+    route_updates: Arc<dyn IDeploymentRouteUpdater>,
+}
+
+impl DeploymentFlowDependencies {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
+        resource_claims: Arc<dyn IResourceClaimRepository>,
         artifacts: Arc<dyn IOciArtifactResolver>,
         nodes: Arc<dyn INodeRepository>,
         node_control: Arc<dyn INodeControlRepository>,
         route_updates: Arc<dyn IDeploymentRouteUpdater>,
+    ) -> Self {
+        Self {
+            workloads,
+            resource_claims,
+            artifacts,
+            nodes,
+            node_control,
+            route_updates,
+        }
+    }
+}
+
+impl DeploymentFlowRuntime {
+    pub fn new(
+        dependencies: DeploymentFlowDependencies,
         heartbeat_timeout: chrono::Duration,
         config: DeploymentFlowConfig,
     ) -> Result<Self, String> {
@@ -108,11 +140,12 @@ impl DeploymentFlowRuntime {
             return Err("deployment scheduler heartbeat timeout must be positive".into());
         }
         Ok(Self {
-            workloads,
-            artifacts,
-            nodes,
-            node_control,
-            route_updates,
+            workloads: dependencies.workloads,
+            resource_claims: dependencies.resource_claims,
+            artifacts: dependencies.artifacts,
+            nodes: dependencies.nodes,
+            node_control: dependencies.node_control,
+            route_updates: dependencies.route_updates,
             heartbeat_timeout,
             config,
         })
@@ -131,6 +164,9 @@ impl FlowRuntime for DeploymentFlowRuntime {
         ) {
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION) => {
                 workflow::replay(&self.config, invocation)
+            }
+            (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION) => {
+                previous_workflow::replay(&self.config, invocation)
             }
             (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION) => {
                 legacy_workflow::replay(&self.config, invocation)
@@ -156,4 +192,51 @@ impl FlowRuntime for DeploymentFlowRuntime {
 
 fn flow_error(context: &str, error: impl std::fmt::Display) -> FlowError {
     FlowError::Runtime(format!("{context}: {error}"))
+}
+
+fn resource_claim_id(deployment_id: DeploymentId) -> ResourceClaimId {
+    ResourceClaimId::from_uuid(deployment_id.as_uuid())
+}
+
+async fn cancel_database_reservation(
+    runtime: &DeploymentFlowRuntime,
+    organization_id: OrganizationId,
+    deployment_id: DeploymentId,
+    at: chrono::DateTime<chrono::Utc>,
+) -> a3s_flow::Result<()> {
+    let claim = match runtime
+        .resource_claims
+        .find(organization_id, resource_claim_id(deployment_id))
+        .await
+    {
+        Ok(claim) => claim,
+        Err(RepositoryError::NotFound) => return Ok(()),
+        Err(error) => {
+            return Err(flow_error(
+                "could not load database resource reservation for release",
+                error,
+            ))
+        }
+    };
+    match claim.state {
+        ResourceClaimState::Released => Ok(()),
+        ResourceClaimState::ReservedInDb => {
+            runtime
+                .resource_claims
+                .cancel_database_reservation(
+                    organization_id,
+                    claim.id,
+                    claim.aggregate_version,
+                    at.max(claim.updated_at),
+                )
+                .await
+                .map_err(|error| {
+                    flow_error("could not release database resource reservation", error)
+                })?;
+            Ok(())
+        }
+        _ => Err(FlowError::Runtime(
+            "issued resource claim requires Agent or trusted fencing release evidence".into(),
+        )),
+    }
 }

@@ -4,6 +4,7 @@ use crate::modules::shared_kernel::domain::{
     OperationId, OrganizationId, ProjectId, ResourceName, SecretId, SourceRevisionId, WorkloadId,
     WorkloadRevisionId,
 };
+use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use chrono::{Duration, Timelike, Utc};
 use std::collections::BTreeMap;
 
@@ -57,6 +58,388 @@ fn requested_template(uri: &str, expected_digest: Option<String>) -> RequestedSe
         ports: template.ports,
         health: template.health,
     }
+}
+
+#[test]
+fn managed_owner_and_effective_placement_are_closed_and_digest_bound() {
+    let owner = ManagedOwnerReference::new(
+        ManagedOwnerKind::parse("inference.deployment").expect("owner kind"),
+        uuid::Uuid::now_v7(),
+        7,
+        format!("sha256:{}", "a".repeat(64)),
+    )
+    .expect("managed owner");
+    let spec = WorkloadControlSpec::managed_single_replica(owner.clone()).expect("control spec");
+    spec.validate().expect("valid control spec");
+    assert_eq!(
+        spec.managed_owner
+            .as_ref()
+            .expect("owner")
+            .owner_generation(),
+        7
+    );
+    assert_eq!(spec.placement_policy.desired_replicas(), 1);
+    assert_eq!(spec.placement_policy.members_per_replica(), 1);
+    assert_eq!(
+        spec.placement_policy.topology(),
+        PlacementTopology::SingleNode
+    );
+    assert!(spec.placement_policy.digest().starts_with("sha256:"));
+
+    let mut corrupt = spec.placement_policy.document().expect("policy document");
+    corrupt["desiredReplicas"] = serde_json::json!(2);
+    let corrupt: EffectivePlacementPolicy =
+        serde_json::from_value(corrupt).expect("decode corrupt policy");
+    assert!(corrupt.validate().is_err());
+    assert!(ManagedOwnerKind::parse("InferenceDeployment").is_err());
+    assert!(ManagedOwnerReference::new(
+        ManagedOwnerKind::parse("inference.deployment").expect("owner kind"),
+        uuid::Uuid::nil(),
+        1,
+        format!("sha256:{}", "b".repeat(64)),
+    )
+    .is_err());
+}
+
+#[test]
+fn canonical_replica_identity_survives_generation_advances_and_fences_node_changes() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("canonical-replica").expect("name"),
+        now,
+    );
+    let first_revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        template('a'),
+        now,
+    )
+    .expect("first revision");
+    let mut replica =
+        WorkloadReplica::canonical(&workload, &first_revision).expect("canonical replica");
+    let replica_id = replica.id;
+    let mut member =
+        WorkloadReplicaMember::canonical(&workload, &replica).expect("canonical member");
+    let member_id = member.id;
+    let first_node = NodeId::new();
+    member
+        .place(first_node, now + Duration::seconds(1))
+        .expect("initial placement");
+    assert_eq!(member.placement_generation, 1);
+    member
+        .place(first_node, now + Duration::seconds(2))
+        .expect("idempotent placement");
+    assert_eq!(member.placement_generation, 1);
+    assert!(member
+        .place(NodeId::new(), now + Duration::seconds(3))
+        .is_err());
+
+    let second_revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        2,
+        template('b'),
+        now + Duration::seconds(4),
+    )
+    .expect("second revision");
+    replica
+        .advance(&second_revision, now + Duration::seconds(4))
+        .expect("advance replica");
+    assert_eq!(replica.id, replica_id);
+    assert_eq!(member.id, member_id);
+    assert_eq!(replica.generation, 2);
+    assert_eq!(replica.revision_id, second_revision.id);
+}
+
+#[test]
+fn deployment_binding_projects_one_provider_identity_for_one_replica_generation() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("replica-binding").expect("name"),
+        now,
+    );
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        template('c'),
+        now,
+    )
+    .expect("revision");
+    let replica = WorkloadReplica::canonical(&workload, &revision).expect("replica");
+    let mut member = WorkloadReplicaMember::canonical(&workload, &replica).expect("member");
+    let mut deployment = Deployment::create(
+        DeploymentId::new(),
+        workload.organization_id,
+        workload.id,
+        revision.id,
+        OperationId::new(),
+        now,
+    );
+    let mut binding = DeploymentReplicaBinding::create(&deployment, &revision, &replica, &member)
+        .expect("binding");
+    assert_eq!(binding.replica_generation, 1);
+    assert_eq!(binding.runtime_unit_id, revision.runtime_unit_id());
+
+    deployment.resolve(now).expect("resolve");
+    let node_id = NodeId::new();
+    deployment
+        .schedule(node_id, now + Duration::seconds(1))
+        .expect("schedule");
+    member
+        .place(node_id, now + Duration::seconds(1))
+        .expect("place");
+    binding
+        .assign(&deployment, &member)
+        .expect("bind placement");
+    assert_eq!(binding.node_id, Some(node_id));
+    assert_eq!(binding.placement_generation, 1);
+}
+
+#[test]
+fn resource_claim_requires_exact_prepare_bind_and_release_evidence() {
+    let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("nanosecond-precision Claim time");
+    let binding = placed_replica_binding(now);
+    let slots = vec![
+        ResourceSlotBinding {
+            kind: ResourceKind::Cpu,
+            stable_resource_id: "cpu-pool/0-249".into(),
+            allocation: ResourceAllocation::Scalar {
+                amount: 250,
+                unit: ResourceUnit::MilliCpu,
+            },
+            slot_generation: 3,
+            fence_token: uuid::Uuid::new_v4(),
+        },
+        ResourceSlotBinding {
+            kind: ResourceKind::HostPort,
+            stable_resource_id: "tcp/18080".into(),
+            allocation: ResourceAllocation::Range {
+                start: 18_080,
+                end_inclusive: 18_080,
+                unit: ResourceUnit::Port,
+            },
+            slot_generation: 8,
+            fence_token: uuid::Uuid::new_v4(),
+        },
+    ];
+    let node_id = binding.node_id.expect("placed node");
+    let reservation = ResourceClaimReservation {
+        id: crate::modules::shared_kernel::domain::ResourceClaimId::new(),
+        binding: binding.clone(),
+        node_id,
+        inventory: inventory_for_bindings(node_id, 11, now, &slots),
+        topology_digest: format!("sha256:{}", "2".repeat(64)),
+        slots: slots
+            .iter()
+            .map(|slot| ResourceSlotRequest {
+                kind: slot.kind,
+                stable_resource_id: slot.stable_resource_id.clone(),
+                allocation: slot.allocation.clone(),
+            })
+            .collect(),
+        reserved_at: now,
+    };
+    let mut claim = ResourceClaim::reserve(&reservation, slots).expect("reserve");
+    let prepare_command_id = NodeCommandId::new();
+    claim
+        .begin_preparation(prepare_command_id, now + Duration::seconds(1))
+        .expect("begin prepare");
+    let binding_digest = format!("sha256:{}", "3".repeat(64));
+    claim
+        .record_prepared(
+            prepare_command_id,
+            binding_digest.clone(),
+            now + Duration::seconds(2),
+        )
+        .expect("prepared");
+    claim
+        .bind(
+            ResourceClaimBindingEvidence {
+                runtime_unit_id: binding.runtime_unit_id.clone(),
+                runtime_generation: binding.runtime_generation,
+                binding_digest,
+                slots: claim.slot_evidence(),
+                observed_at: now + Duration::seconds(3),
+            },
+            now + Duration::seconds(3),
+        )
+        .expect("bind");
+    assert_eq!(claim.state, ResourceClaimState::BoundToRuntimeUnit);
+
+    let first_claim_digest = claim.claim_digest.clone();
+    let release_command_id = NodeCommandId::new();
+    claim
+        .begin_release(release_command_id, now + Duration::seconds(4))
+        .expect("begin release");
+    assert_eq!(claim.claim_generation, 2);
+    assert_ne!(claim.claim_digest, first_claim_digest);
+
+    let mut stale_slots = claim.slot_evidence();
+    stale_slots[0].slot_generation -= 1;
+    assert!(claim
+        .record_released(
+            ResourceClaimReleaseEvidence::AgentReleased {
+                command_id: release_command_id,
+                slots: stale_slots,
+                evidence_digest: format!("sha256:{}", "4".repeat(64)),
+                observed_at: now + Duration::seconds(5),
+            },
+            now + Duration::seconds(5),
+        )
+        .is_err());
+    claim
+        .record_released(
+            ResourceClaimReleaseEvidence::AgentReleased {
+                command_id: release_command_id,
+                slots: claim.slot_evidence(),
+                evidence_digest: format!("sha256:{}", "5".repeat(64)),
+                observed_at: now + Duration::seconds(5),
+            },
+            now + Duration::seconds(5),
+        )
+        .expect("released");
+    assert_eq!(claim.state, ResourceClaimState::Released);
+    claim.validate().expect("valid released claim");
+}
+
+#[test]
+fn orphaned_resource_claim_blocks_until_trusted_fencing_evidence() {
+    let now = Utc::now();
+    let now = now
+        .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
+        .expect("nanosecond-precision Claim time");
+    let binding = placed_replica_binding(now);
+    let node_id = binding.node_id.expect("placed node");
+    let slots = vec![ResourceSlotBinding {
+        kind: ResourceKind::Accelerator,
+        stable_resource_id: "GPU-00112233".into(),
+        allocation: ResourceAllocation::Scalar {
+            amount: 1,
+            unit: ResourceUnit::Count,
+        },
+        slot_generation: 9,
+        fence_token: uuid::Uuid::new_v4(),
+    }];
+    let reservation = ResourceClaimReservation {
+        id: crate::modules::shared_kernel::domain::ResourceClaimId::new(),
+        binding,
+        node_id,
+        inventory: inventory_for_bindings(node_id, 2, now, &slots),
+        topology_digest: format!("sha256:{}", "7".repeat(64)),
+        slots: slots
+            .iter()
+            .map(|slot| ResourceSlotRequest {
+                kind: slot.kind,
+                stable_resource_id: slot.stable_resource_id.clone(),
+                allocation: slot.allocation.clone(),
+            })
+            .collect(),
+        reserved_at: now,
+    };
+    let mut claim = ResourceClaim::reserve(&reservation, slots).expect("reserve");
+    claim
+        .orphan(
+            "agent disappeared while the claim was reserved".into(),
+            now + Duration::seconds(1),
+        )
+        .expect("orphan");
+    assert_eq!(claim.state, ResourceClaimState::Orphaned);
+    assert!(claim
+        .record_released(
+            ResourceClaimReleaseEvidence::ComputeFenced {
+                instance_generation: 0,
+                slots: claim.slot_evidence(),
+                evidence_digest: format!("sha256:{}", "8".repeat(64)),
+                observed_at: now + Duration::seconds(2),
+            },
+            now + Duration::seconds(2),
+        )
+        .is_err());
+    claim
+        .record_released(
+            ResourceClaimReleaseEvidence::ComputeFenced {
+                instance_generation: 3,
+                slots: claim.slot_evidence(),
+                evidence_digest: format!("sha256:{}", "9".repeat(64)),
+                observed_at: now + Duration::seconds(2),
+            },
+            now + Duration::seconds(2),
+        )
+        .expect("trusted fence");
+    assert_eq!(claim.state, ResourceClaimState::Released);
+}
+
+fn inventory_for_bindings(
+    node_id: NodeId,
+    generation: u64,
+    observed_at: chrono::DateTime<Utc>,
+    slots: &[ResourceSlotBinding],
+) -> NodeResourceInventory {
+    NodeResourceInventory::new(
+        node_id.as_uuid(),
+        uuid::Uuid::now_v7(),
+        generation,
+        observed_at,
+        slots
+            .iter()
+            .map(|slot| {
+                NodeResourceSlot::new(
+                    slot.kind,
+                    slot.stable_resource_id.clone(),
+                    slot.allocation.clone(),
+                )
+                .expect("inventory slot")
+            })
+            .collect(),
+    )
+    .expect("resource inventory")
+}
+
+fn placed_replica_binding(now: chrono::DateTime<Utc>) -> DeploymentReplicaBinding {
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("claim-binding").expect("name"),
+        now,
+    );
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        template('d'),
+        now,
+    )
+    .expect("revision");
+    let replica = WorkloadReplica::canonical(&workload, &revision).expect("replica");
+    let mut member = WorkloadReplicaMember::canonical(&workload, &replica).expect("member");
+    let node_id = NodeId::new();
+    member.place(node_id, now).expect("place member");
+    let mut deployment = Deployment::create(
+        DeploymentId::new(),
+        workload.organization_id,
+        workload.id,
+        revision.id,
+        OperationId::new(),
+        now,
+    );
+    deployment.resolve(now).expect("resolve");
+    deployment.schedule(node_id, now).expect("schedule");
+    DeploymentReplicaBinding::create(&deployment, &revision, &replica, &member).expect("binding")
 }
 
 #[test]

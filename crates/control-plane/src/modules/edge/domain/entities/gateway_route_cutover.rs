@@ -41,11 +41,14 @@ pub struct GatewayRouteCutover {
     pub workload_id: WorkloadId,
     pub previous_revision_id: WorkloadRevisionId,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub previous_generation: u64,
+    pub candidate_generation: u64,
     pub node_id: NodeId,
     pub gateway_revision: u64,
     pub gateway_command_id: NodeCommandId,
     pub gateway_certificate_id: GatewayCertificateId,
     pub snapshot_digest: String,
+    pub snapshot_expires_at: DateTime<Utc>,
     pub routes: Vec<Route>,
     pub state: GatewayRouteCutoverState,
     pub failure: Option<String>,
@@ -61,11 +64,14 @@ impl GatewayRouteCutover {
         workload_id: WorkloadId,
         previous_revision_id: WorkloadRevisionId,
         candidate_revision_id: WorkloadRevisionId,
+        previous_generation: u64,
+        candidate_generation: u64,
         node_id: NodeId,
         gateway_revision: u64,
         gateway_command_id: NodeCommandId,
         gateway_certificate_id: GatewayCertificateId,
         snapshot_digest: String,
+        snapshot_expires_at: DateTime<Utc>,
         mut routes: Vec<Route>,
         staged_at: DateTime<Utc>,
     ) -> Result<Self, String> {
@@ -77,11 +83,14 @@ impl GatewayRouteCutover {
             workload_id,
             previous_revision_id,
             candidate_revision_id,
+            previous_generation,
+            candidate_generation,
             node_id,
             gateway_revision,
             gateway_command_id,
             gateway_certificate_id,
             snapshot_digest,
+            snapshot_expires_at: canonical_timestamp(snapshot_expires_at),
             routes,
             state: GatewayRouteCutoverState::Pending,
             failure: None,
@@ -97,8 +106,10 @@ impl GatewayRouteCutover {
         let acknowledged_at = canonical_timestamp(acknowledgement.acknowledged_at);
         if acknowledgement.node_id != self.node_id.as_uuid()
             || acknowledgement.command_id != self.gateway_command_id.as_uuid()
+            || acknowledgement.gateway_id != self.node_id.as_uuid()
             || acknowledgement.revision != self.gateway_revision
             || acknowledgement.snapshot_digest != self.snapshot_digest
+            || acknowledgement.expires_at != self.snapshot_expires_at
         {
             return Err("Gateway acknowledgement does not match the staged route cutover".into());
         }
@@ -129,8 +140,11 @@ impl GatewayRouteCutover {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.previous_revision_id == self.candidate_revision_id
+            || self.previous_generation == 0
+            || self.candidate_generation <= self.previous_generation
             || self.gateway_revision == 0
             || !valid_sha256(&self.snapshot_digest)
+            || self.snapshot_expires_at <= self.staged_at
             || self.routes.is_empty()
             || self
                 .routes
@@ -144,10 +158,14 @@ impl GatewayRouteCutover {
             GatewayRouteCutoverState::Applied => RouteState::Active,
             GatewayRouteCutoverState::Rejected => RouteState::Rejected,
         };
+        for route in &self.routes {
+            route.validate_target_binding()?;
+        }
         if self.routes.iter().any(|route| {
             route.organization_id != self.organization_id
                 || route.workload_id != self.workload_id
-                || route.workload_revision_id != self.candidate_revision_id
+                || route.target.workload_revision_id != self.candidate_revision_id
+                || route.target.runtime_generation != self.candidate_generation
                 || route.gateway_node_id != self.node_id
                 || route.state != expected_route_state
                 || route.gateway_revision != Some(self.gateway_revision)

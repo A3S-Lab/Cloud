@@ -113,10 +113,11 @@ pub async fn exercise(
         compiler()?,
         std::time::Duration::from_secs(60),
         Duration::days(7),
+        Duration::hours(6),
         Duration::minutes(3),
         100,
     )?;
-    let before_renewal = repository.active_routes(scenario.node_id).await?;
+    let mut before_renewal = repository.active_routes(scenario.node_id).await?;
     if before_renewal.is_empty() {
         return Err("certificate lifecycle requires active routes".into());
     }
@@ -138,6 +139,61 @@ pub async fn exercise(
         .ok_or("installed certificate has no material")?
         .serial_number
         .clone();
+    let previous_certificate_version = previous_certificate.aggregate_version;
+    let initial_revision = before_renewal[0]
+        .gateway_revision
+        .ok_or("active route has no Gateway revision")?;
+    let initial_digest = before_renewal[0]
+        .snapshot_digest
+        .clone()
+        .ok_or("active route has no snapshot digest")?;
+    let snapshot_renew_at =
+        scenario.domain_claim.created_at + Duration::hours(18) + Duration::minutes(1);
+    let snapshot_report = reconciler.run_once(snapshot_renew_at).await?;
+    assert_eq!(snapshot_report.convergence_targets, 1);
+    assert_eq!(snapshot_report.staged_convergences, 1);
+    assert!(snapshot_report.failures.is_empty());
+    let snapshot_renewal = pending_for(repository.as_ref(), scenario.node_id).await?;
+    assert_eq!(
+        snapshot_renewal.convergence.reason,
+        GatewayCertificateConvergenceReason::SnapshotRenewal
+    );
+    assert_eq!(
+        snapshot_renewal.publication.expected_revision,
+        Some(initial_revision)
+    );
+    assert_eq!(snapshot_renewal.publication.snapshot_digest, initial_digest);
+    assert!(snapshot_renewal.publication.certificate_request.is_none());
+    assert!(snapshot_renewal
+        .convergence
+        .replacement_certificate_id
+        .is_none());
+    assert!(snapshot_renewal.certificate.is_none());
+    let snapshot_applied = acknowledgement(
+        &snapshot_renewal,
+        GatewayAckState::Applied,
+        snapshot_renew_at + Duration::milliseconds(100),
+    );
+    repository
+        .project_gateway_acknowledgement(
+            &snapshot_applied,
+            snapshot_applied.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await?;
+    before_renewal = repository.active_routes(scenario.node_id).await?;
+    assert!(before_renewal.iter().all(|route| {
+        route.gateway_revision == Some(snapshot_renewal.publication.revision)
+            && route.gateway_command_id == Some(snapshot_renewal.publication.command_id)
+            && route.snapshot_digest.as_deref() == Some(initial_digest.as_str())
+            && route.gateway_certificate_id == Some(previous_certificate_id)
+    }));
+    assert_eq!(
+        repository
+            .find_gateway_certificate(scenario.node_id, previous_certificate_id)
+            .await?
+            .aggregate_version,
+        previous_certificate_version
+    );
     let scope_before = repository.gateway_scope(scenario.node_id).await?;
 
     let first_report = reconciler.run_once(scenario.started_at).await?;
@@ -518,6 +574,7 @@ fn compiler() -> Result<GatewaySnapshotCompiler, String> {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
 }
 
@@ -570,10 +627,14 @@ fn acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: convergence.publication.command_id.as_uuid(),
         node_id: convergence.publication.node_id.as_uuid(),
+        gateway_id: convergence.publication.node_id.as_uuid(),
         revision: convergence.publication.revision,
         snapshot_digest: convergence.publication.snapshot_digest.clone(),
+        expires_at: convergence.publication.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "reload rejected".into()),
         acknowledged_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }

@@ -14,6 +14,8 @@ pub struct GatewayRouteCutoverStaged {
     pub workload_id: WorkloadId,
     pub previous_revision_id: WorkloadRevisionId,
     pub candidate_revision_id: WorkloadRevisionId,
+    pub previous_generation: u64,
+    pub candidate_generation: u64,
     pub node_id: NodeId,
     pub route_ids: Vec<RouteId>,
     pub gateway_certificate_id: GatewayCertificateId,
@@ -32,13 +34,14 @@ impl GatewayRouteCutoverStaged {
             || cutover.gateway_revision != publication.revision
             || cutover.gateway_command_id != publication.command_id
             || cutover.snapshot_digest != publication.snapshot_digest
+            || cutover.snapshot_expires_at != publication.snapshot_expires_at
         {
             return Err("route cutover event publication identity is inconsistent".into());
         }
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "edge.route.cutover-staged".into(),
-            schema_version: 1,
+            schema_version: 2,
             organization_id: cutover.organization_id.as_uuid(),
             aggregate_id: cutover.deployment_id.as_uuid(),
             aggregate_version: 1,
@@ -51,6 +54,8 @@ impl GatewayRouteCutoverStaged {
                 workload_id: cutover.workload_id,
                 previous_revision_id: cutover.previous_revision_id,
                 candidate_revision_id: cutover.candidate_revision_id,
+                previous_generation: cutover.previous_generation,
+                candidate_generation: cutover.candidate_generation,
                 node_id: cutover.node_id,
                 route_ids: cutover.routes.iter().map(|route| route.id).collect(),
                 gateway_certificate_id: cutover.gateway_certificate_id,

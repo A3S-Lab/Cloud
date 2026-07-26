@@ -1,6 +1,11 @@
+mod inventory;
 mod observations;
 mod telemetry;
 
+pub(crate) use inventory::require_current_inventory;
+pub(super) use inventory::{
+    current as current_resource_inventory, record as record_resource_inventory,
+};
 pub(super) use observations::{latest_runtime_observation, record_observations};
 pub(super) use telemetry::{
     compact_log_tombstones, list_log_chunks, list_log_chunks_for_retention,
@@ -17,16 +22,18 @@ use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
     NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogCompactionRange, NodeLogCompactionResult,
-    NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget, RuntimeObservationRecord,
+    NodeLogGapMetadata, NodeLogGapReceiptDraft, NodeLogRetentionTarget, NodeObservationSubmission,
+    RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, NodeCommandId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{
-    GatewayAckState, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
-    NodeCommandOutcome, NodeCommandPayload, NodeGatewayAck, NodeGatewayAckReceipt,
-    NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt,
+    GatewayAckState, GatewayManagementProtocolDiscovery, NodeCommandAck, NodeCommandLeaseRequest,
+    NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeLogChunkReceipt, NodeObservationBatchEnvelope,
+    NodeObservationReceipt,
 };
 use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
 use a3s_runtime::contract::RuntimeLogDiscontinuityReason;
@@ -210,7 +217,7 @@ pub(super) async fn enqueue(
                     return Err(RepositoryError::NotFound.into());
                 }
 
-                if let NodeCommandPayload::RuntimeApply { request } = &draft.payload {
+                if let NodeCommandPayload::RuntimeApply { request, .. } = &draft.payload {
                     let requested_spec_digest = request
                         .spec
                         .digest()
@@ -231,6 +238,7 @@ pub(super) async fn enqueue(
                         let command = existing.command()?;
                         let NodeCommandPayload::RuntimeApply {
                             request: existing_request,
+                            ..
                         } = &command.payload
                         else {
                             return Err(PostgresPersistenceError::Invariant(
@@ -456,10 +464,10 @@ pub(super) async fn lease(
 
 pub(super) async fn acknowledge(
     executor: &PostgresExecutor,
-    mut acknowledgement: NodeCommandAck,
+    acknowledgement: NodeCommandAck,
     _received_at: DateTime<Utc>,
 ) -> Result<IdempotentWrite<NodeCommandAck>, RepositoryError> {
-    acknowledgement.completed_at = canonical_timestamp(acknowledgement.completed_at);
+    let acknowledgement = NodeCommand::canonicalize_acknowledgement(acknowledgement);
     executor
         .transaction(move |transaction| {
             Box::pin(async move {

@@ -6,14 +6,91 @@ use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, ExternalBuildReference, RequestedServiceTemplate,
     ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
 };
-use a3s_orm::{DecodeError, FromRow, FromValue, Row};
+use a3s_orm::expression::Selection;
+use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-pub(super) const SELECT_WORKLOADS: &str = "select id, organization_id, project_id, environment_id, name, desired_state, active_revision_id, aggregate_version, created_at, updated_at from workloads";
-pub(super) const SELECT_REVISIONS: &str = "select r.id, r.workload_id, r.generation, r.resolution_state, r.artifact_source_uri, r.expected_artifact_digest, r.template_request, r.request_digest, r.artifact_uri, r.artifact_digest, r.artifact_media_type, r.template, r.template_digest, r.created_at, r.resolved_at, r.external_build_organization_id, r.external_build_project_id, r.external_build_environment_id, r.external_source_revision_id, r.external_build_run_id from workload_revisions r";
-pub(super) const SELECT_DEPLOYMENTS: &str = "select id, organization_id, workload_id, revision_id, operation_id, node_id, command_id, cleanup_command_id, retirement_command_id, status, failure, aggregate_version, requested_at, updated_at, activated_at, cancellation_requested_at, cancelled_at from deployments";
+use super::schema::{Deployments, WorkloadRevisions, Workloads};
+
+pub(super) struct WorkloadSelection;
+pub(super) struct RevisionSelection;
+pub(super) struct DeploymentSelection;
+
+impl Selection for WorkloadSelection {
+    type Output = WorkloadRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            Workloads::id().expression(),
+            Workloads::organization_id().expression(),
+            Workloads::project_id().expression(),
+            Workloads::environment_id().expression(),
+            Workloads::name().expression(),
+            Workloads::desired_state().expression(),
+            Workloads::active_revision_id().expression(),
+            Workloads::aggregate_version().expression(),
+            Workloads::created_at().expression(),
+            Workloads::updated_at().expression(),
+        ]
+    }
+}
+
+impl Selection for RevisionSelection {
+    type Output = RevisionRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            WorkloadRevisions::id().expression(),
+            WorkloadRevisions::workload_id().expression(),
+            WorkloadRevisions::generation().expression(),
+            WorkloadRevisions::resolution_state().expression(),
+            WorkloadRevisions::artifact_source_uri().expression(),
+            WorkloadRevisions::expected_artifact_digest().expression(),
+            WorkloadRevisions::template_request().expression(),
+            WorkloadRevisions::request_digest().expression(),
+            WorkloadRevisions::artifact_uri().expression(),
+            WorkloadRevisions::artifact_digest().expression(),
+            WorkloadRevisions::artifact_media_type().expression(),
+            WorkloadRevisions::template().expression(),
+            WorkloadRevisions::template_digest().expression(),
+            WorkloadRevisions::created_at().expression(),
+            WorkloadRevisions::resolved_at().expression(),
+            WorkloadRevisions::external_build_organization_id().expression(),
+            WorkloadRevisions::external_build_project_id().expression(),
+            WorkloadRevisions::external_build_environment_id().expression(),
+            WorkloadRevisions::external_source_revision_id().expression(),
+            WorkloadRevisions::external_build_run_id().expression(),
+        ]
+    }
+}
+
+impl Selection for DeploymentSelection {
+    type Output = DeploymentRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            Deployments::id().expression(),
+            Deployments::organization_id().expression(),
+            Deployments::workload_id().expression(),
+            Deployments::revision_id().expression(),
+            Deployments::operation_id().expression(),
+            Deployments::node_id().expression(),
+            Deployments::command_id().expression(),
+            Deployments::cleanup_command_id().expression(),
+            Deployments::retirement_command_id().expression(),
+            Deployments::status().expression(),
+            Deployments::failure().expression(),
+            Deployments::aggregate_version().expression(),
+            Deployments::requested_at().expression(),
+            Deployments::updated_at().expression(),
+            Deployments::activated_at().expression(),
+            Deployments::cancellation_requested_at().expression(),
+            Deployments::cancelled_at().expression(),
+        ]
+    }
+}
 
 pub(super) struct WorkloadRow {
     id: Uuid,

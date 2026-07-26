@@ -254,6 +254,33 @@ impl GatewayCertificate {
         Ok(())
     }
 
+    pub fn mark_delivery_unavailable(
+        &mut self,
+        failure: impl Into<String>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        let failure = sanitize_reason(failure, "Gateway certificate delivery failure is invalid")?;
+        let observed_at = canonical_timestamp(observed_at);
+        self.ensure_time(observed_at)?;
+        if self.state == GatewayCertificateState::Failed {
+            return Ok(false);
+        }
+        if !matches!(
+            self.state,
+            GatewayCertificateState::Provisioning | GatewayCertificateState::Issued
+        ) {
+            return Err("only an unready Gateway certificate can fail unavailable delivery".into());
+        }
+        self.state = GatewayCertificateState::Failed;
+        self.failure = Some(failure);
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Gateway certificate version space is exhausted".to_string())?;
+        self.updated_at = observed_at;
+        Ok(true)
+    }
+
     pub fn revoke(
         &mut self,
         reason: impl Into<String>,

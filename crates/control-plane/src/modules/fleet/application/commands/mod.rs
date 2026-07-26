@@ -7,6 +7,7 @@ pub mod lease_node_commands;
 pub mod record_gateway_acknowledgement;
 pub mod record_node_log_chunks;
 pub mod record_node_observations;
+pub mod record_node_resource_inventory;
 pub mod rotate_node_certificate;
 
 pub use acknowledge_node_command::{
@@ -26,6 +27,9 @@ pub use record_gateway_acknowledgement::{
 };
 pub use record_node_log_chunks::{RecordNodeLogChunks, RecordNodeLogChunksHandler};
 pub use record_node_observations::{RecordNodeObservations, RecordNodeObservationsHandler};
+pub use record_node_resource_inventory::{
+    RecordNodeResourceInventory, RecordNodeResourceInventoryHandler,
+};
 pub use rotate_node_certificate::{
     RotateNodeCertificate, RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };

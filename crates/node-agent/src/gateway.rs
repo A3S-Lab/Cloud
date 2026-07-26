@@ -2,22 +2,42 @@ use crate::gateway_certificate::{
     GatewayCertificateProvisioningError, NodeGatewayCertificateProvisioner,
     SystemGatewayCertificateClock,
 };
-use crate::state_file::{self, SecureStateError};
 use crate::{GatewayCertificateSigningTransport, NodeAgentConfig};
-use a3s_cloud_contracts::GatewaySnapshot;
+use a3s_cloud_contracts::{
+    AppliedGatewaySnapshot, GatewayManagementProtocol, GatewayManagementProtocolDiscovery,
+    GatewaySnapshot, GatewaySnapshotObservationRequest, GatewaySnapshotObservationState,
+};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 const MAX_MANAGEMENT_RESPONSE_BYTES: usize = 64 * 1024;
+const GATEWAY_VERSION_SCHEMA: &str = "a3s.gateway.version.v1";
+const GATEWAY_NAME: &str = "a3s-gateway";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GatewaySnapshotInstallOutcome {
-    Applied,
-    Rejected { message: String },
+    Applied {
+        protocol: GatewayManagementProtocol,
+    },
+    Rejected {
+        message: String,
+        protocol: Option<GatewayManagementProtocol>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewaySnapshotObservationOutcome {
+    pub state: GatewaySnapshotObservationState,
+    pub ready: bool,
+    pub applied: Option<AppliedGatewaySnapshot>,
+    pub observed_at: DateTime<Utc>,
+    pub protocol: GatewayManagementProtocol,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,12 +73,19 @@ pub trait GatewaySnapshotInstaller: Send + Sync {
         &self,
         snapshot: &GatewaySnapshot,
     ) -> Result<GatewaySnapshotInstallOutcome, GatewaySnapshotInstallError>;
+
+    async fn observe(
+        &self,
+        _request: &GatewaySnapshotObservationRequest,
+    ) -> Result<GatewaySnapshotObservationOutcome, GatewaySnapshotInstallError> {
+        Err(GatewaySnapshotInstallError::Protocol(
+            "Gateway snapshot observation is not supported by this installer".into(),
+        ))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 enum GatewayControlError {
-    #[error("{0}")]
-    Rejected(String),
     #[error("{0}")]
     Unavailable(String),
     #[error("{0}")]
@@ -67,12 +94,31 @@ enum GatewayControlError {
 
 #[async_trait]
 trait GatewayControl: Send + Sync {
-    async fn validate(&self, acl: &str) -> Result<(), GatewayControlError>;
-    async fn reload(&self, acl: &str) -> Result<(), GatewayControlError>;
+    async fn negotiate(&self) -> Result<GatewayManagementProtocol, GatewayControlError>;
+
+    async fn apply(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError>;
+
+    async fn readiness(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError>;
+
+    async fn observe(
+        &self,
+        request: &GatewaySnapshotObservationRequest,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+        let _ = request;
+        Err(GatewayControlError::Protocol(
+            "Gateway snapshot observation is not supported by this control".into(),
+        ))
+    }
 }
 
 pub struct DurableGatewaySnapshotInstaller {
-    state_file: PathBuf,
+    gateway_id: Uuid,
     control: Arc<dyn GatewayControl>,
     certificates: Option<Arc<NodeGatewayCertificateProvisioner>>,
     installation: Mutex<()>,
@@ -81,7 +127,7 @@ pub struct DurableGatewaySnapshotInstaller {
 impl DurableGatewaySnapshotInstaller {
     pub fn from_config(
         config: &NodeAgentConfig,
-        node_id: uuid::Uuid,
+        node_id: Uuid,
         transport: Arc<dyn GatewayCertificateSigningTransport>,
     ) -> Result<Self, GatewaySnapshotInstallError> {
         let token = config
@@ -91,8 +137,8 @@ impl DurableGatewaySnapshotInstaller {
             config.gateway.management_url.clone(),
             token,
             Duration::from_millis(config.gateway.connect_timeout_ms),
-            Duration::from_millis(config.gateway.validation_timeout_ms),
-            Duration::from_millis(config.gateway.reload_timeout_ms),
+            Duration::from_millis(config.gateway.apply_timeout_ms),
+            Duration::from_millis(config.gateway.readiness_timeout_ms),
         )?);
         let certificates = Arc::new(
             NodeGatewayCertificateProvisioner::new(
@@ -103,17 +149,13 @@ impl DurableGatewaySnapshotInstaller {
             )
             .map_err(map_certificate_error)?,
         );
-        Ok(Self::new_with_certificates(
-            config.gateway.state_file.clone(),
-            control,
-            certificates,
-        ))
+        Ok(Self::new_with_certificates(node_id, control, certificates))
     }
 
     #[cfg(test)]
-    fn new(state_file: PathBuf, control: Arc<dyn GatewayControl>) -> Self {
+    fn new(gateway_id: Uuid, control: Arc<dyn GatewayControl>) -> Self {
         Self {
-            state_file,
+            gateway_id,
             control,
             certificates: None,
             installation: Mutex::new(()),
@@ -121,97 +163,22 @@ impl DurableGatewaySnapshotInstaller {
     }
 
     fn new_with_certificates(
-        state_file: PathBuf,
+        gateway_id: Uuid,
         control: Arc<dyn GatewayControl>,
         certificates: Arc<NodeGatewayCertificateProvisioner>,
     ) -> Self {
         Self {
-            state_file,
+            gateway_id,
             control,
             certificates: Some(certificates),
             installation: Mutex::new(()),
         }
     }
 
-    async fn read_installed(
-        &self,
-    ) -> Result<Option<InstalledGatewaySnapshot>, GatewaySnapshotInstallError> {
-        let path = self.state_file.clone();
-        tokio::task::spawn_blocking(move || {
-            state_file::read_json(&path, "installed Gateway snapshot")
-                .map_err(map_state_error)
-                .and_then(|state: Option<InstalledGatewaySnapshot>| {
-                    if let Some(state) = &state {
-                        state.validate()?;
-                    }
-                    Ok(state)
-                })
-        })
-        .await
-        .map_err(|error| {
-            GatewaySnapshotInstallError::Storage(format!(
-                "Gateway state reader task failed: {error}"
-            ))
-        })?
-    }
-
-    async fn write_installed(
-        &self,
-        snapshot: GatewaySnapshot,
-    ) -> Result<(), GatewaySnapshotInstallError> {
-        let path = self.state_file.clone();
-        tokio::task::spawn_blocking(move || {
-            let parent = path.parent().ok_or_else(|| {
-                GatewaySnapshotInstallError::InvalidState(
-                    "Gateway state file has no parent directory".into(),
-                )
-            })?;
-            state_file::ensure_directory(parent).map_err(map_state_error)?;
-            state_file::atomic_write(
-                &path,
-                &InstalledGatewaySnapshot {
-                    schema: InstalledGatewaySnapshot::SCHEMA.into(),
-                    snapshot,
-                },
-            )
-            .map_err(map_state_error)
-        })
-        .await
-        .map_err(|error| {
-            GatewaySnapshotInstallError::Storage(format!(
-                "Gateway state writer task failed: {error}"
-            ))
-        })?
-    }
-
-    fn call_control(
-        result: Result<(), GatewayControlError>,
-    ) -> Result<Option<GatewaySnapshotInstallOutcome>, GatewaySnapshotInstallError> {
-        match result {
-            Ok(()) => Ok(None),
-            Err(GatewayControlError::Rejected(message)) => {
-                Ok(Some(GatewaySnapshotInstallOutcome::Rejected {
-                    message: sanitize_message(&message, "Gateway rejected the snapshot"),
-                }))
-            }
-            Err(GatewayControlError::Unavailable(message)) => {
-                Err(GatewaySnapshotInstallError::Unavailable(sanitize_message(
-                    &message,
-                    "Gateway management API is unavailable",
-                )))
-            }
-            Err(GatewayControlError::Protocol(message)) => {
-                Err(GatewaySnapshotInstallError::Protocol(sanitize_message(
-                    &message,
-                    "Gateway management response is invalid",
-                )))
-            }
-        }
-    }
-
     async fn provision_certificate(
         &self,
         snapshot: &GatewaySnapshot,
+        protocol: &GatewayManagementProtocol,
     ) -> Result<Option<GatewaySnapshotInstallOutcome>, GatewaySnapshotInstallError> {
         let Some(request) = snapshot.certificate_request.as_ref() else {
             return Ok(None);
@@ -219,6 +186,7 @@ impl DurableGatewaySnapshotInstaller {
         let Some(certificates) = self.certificates.as_ref() else {
             return Ok(Some(GatewaySnapshotInstallOutcome::Rejected {
                 message: "Gateway certificate provisioner is not configured".into(),
+                protocol: Some(protocol.clone()),
             }));
         };
         match certificates.provision(request).await {
@@ -229,10 +197,124 @@ impl DurableGatewaySnapshotInstaller {
                         &message,
                         "Gateway certificate provisioning was rejected",
                     ),
+                    protocol: Some(protocol.clone()),
                 }))
             }
             Err(error) => Err(map_certificate_error(error)),
         }
+    }
+
+    fn confirm_status(
+        &self,
+        snapshot: &GatewaySnapshot,
+        status: ManagedSnapshotStatus,
+        protocol: &GatewayManagementProtocol,
+    ) -> Result<GatewaySnapshotInstallOutcome, GatewaySnapshotInstallError> {
+        status.validate_shape()?;
+        let expected = ManagedSnapshotIdentity::from(snapshot);
+        if status.gateway_id != Some(self.gateway_id)
+            || status.requested.as_ref() != Some(&expected)
+        {
+            return Err(GatewaySnapshotInstallError::Protocol(
+                "Gateway status does not identify the requested Gateway snapshot".into(),
+            ));
+        }
+
+        match status.state {
+            ManagedSnapshotState::Applied => {
+                let Some(applied) = status.applied.as_ref() else {
+                    return Err(GatewaySnapshotInstallError::Protocol(
+                        "Gateway applied status omitted applied snapshot metadata".into(),
+                    ));
+                };
+                if !applied.matches(snapshot) {
+                    return Err(GatewaySnapshotInstallError::Protocol(
+                        "Gateway applied status does not match the requested snapshot".into(),
+                    ));
+                }
+                if !status.ready {
+                    return Err(GatewaySnapshotInstallError::Unavailable(sanitize_message(
+                        status.reason.as_deref().unwrap_or_default(),
+                        "Gateway has not confirmed exact snapshot readiness",
+                    )));
+                }
+                Ok(GatewaySnapshotInstallOutcome::Applied {
+                    protocol: protocol.clone(),
+                })
+            }
+            ManagedSnapshotState::Rejected => Ok(GatewaySnapshotInstallOutcome::Rejected {
+                message: sanitize_message(
+                    status.reason.as_deref().unwrap_or_default(),
+                    "Gateway rejected the snapshot",
+                ),
+                protocol: Some(protocol.clone()),
+            }),
+            ManagedSnapshotState::Applying => {
+                Err(GatewaySnapshotInstallError::Unavailable(sanitize_message(
+                    status.reason.as_deref().unwrap_or_default(),
+                    "Gateway snapshot application is not yet ready",
+                )))
+            }
+            ManagedSnapshotState::Expired | ManagedSnapshotState::NotApplied => {
+                Ok(GatewaySnapshotInstallOutcome::Rejected {
+                    message: sanitize_message(
+                        status.reason.as_deref().unwrap_or_default(),
+                        "Gateway did not apply the requested snapshot",
+                    ),
+                    protocol: Some(protocol.clone()),
+                })
+            }
+            ManagedSnapshotState::Disabled | ManagedSnapshotState::Uninitialized => {
+                Err(GatewaySnapshotInstallError::Protocol(sanitize_message(
+                    status.reason.as_deref().unwrap_or_default(),
+                    "Gateway native managed snapshots are not initialized",
+                )))
+            }
+        }
+    }
+
+    fn confirm_observation(
+        &self,
+        request: &GatewaySnapshotObservationRequest,
+        status: ManagedSnapshotStatus,
+        protocol: GatewayManagementProtocol,
+        observed_at: DateTime<Utc>,
+    ) -> Result<GatewaySnapshotObservationOutcome, GatewaySnapshotInstallError> {
+        status.validate_shape()?;
+        let expected = ManagedSnapshotIdentity::from(request);
+        if status.gateway_id != Some(self.gateway_id)
+            || status.requested.as_ref() != Some(&expected)
+        {
+            return Err(GatewaySnapshotInstallError::Protocol(
+                "Gateway observation status does not identify the requested snapshot".into(),
+            ));
+        }
+        let state = match status.state {
+            ManagedSnapshotState::Applying => GatewaySnapshotObservationState::Applying,
+            ManagedSnapshotState::Applied => GatewaySnapshotObservationState::Applied,
+            ManagedSnapshotState::Rejected => GatewaySnapshotObservationState::Rejected,
+            ManagedSnapshotState::Expired => GatewaySnapshotObservationState::Expired,
+            ManagedSnapshotState::NotApplied => GatewaySnapshotObservationState::NotApplied,
+            ManagedSnapshotState::Uninitialized => GatewaySnapshotObservationState::Uninitialized,
+            ManagedSnapshotState::Disabled => {
+                return Err(GatewaySnapshotInstallError::Protocol(
+                    "Gateway native managed snapshots are disabled".into(),
+                ))
+            }
+        };
+        let applied = status.applied.map(AppliedGatewaySnapshot::from);
+        if let Some(applied) = &applied {
+            applied
+                .validate()
+                .map_err(GatewaySnapshotInstallError::Protocol)?;
+        }
+        Ok(GatewaySnapshotObservationOutcome {
+            state,
+            ready: status.ready,
+            applied,
+            observed_at,
+            protocol,
+        })
     }
 }
 
@@ -245,117 +327,340 @@ impl GatewaySnapshotInstaller for DurableGatewaySnapshotInstaller {
         if let Err(error) = snapshot.validate() {
             return Ok(GatewaySnapshotInstallOutcome::Rejected {
                 message: sanitize_message(&error, "Gateway snapshot is invalid"),
+                protocol: None,
             });
         }
-        let _installation = self.installation.lock().await;
-        let installed = self.read_installed().await?;
-        if installed.as_ref().is_some_and(|installed| {
-            installed.snapshot.revision == snapshot.revision
-                && installed.snapshot.snapshot_digest == snapshot.snapshot_digest
-                && installed.snapshot.acl == snapshot.acl
-        }) {
-            if let Some(outcome) = self.provision_certificate(snapshot).await? {
-                return Ok(outcome);
-            }
-            return Ok(GatewaySnapshotInstallOutcome::Applied);
-        }
-        let installed_revision = installed.as_ref().map(|state| state.snapshot.revision);
-        if installed_revision != snapshot.expected_revision {
+        if snapshot.gateway_id != self.gateway_id {
             return Ok(GatewaySnapshotInstallOutcome::Rejected {
                 message: format!(
-                    "Gateway snapshot expected revision {}, but node has revision {}",
-                    display_revision(snapshot.expected_revision),
-                    display_revision(installed_revision)
+                    "Gateway snapshot targets {}, but this node manages Gateway {}",
+                    snapshot.gateway_id, self.gateway_id
                 ),
+                protocol: None,
             });
         }
-        if installed_revision.is_some_and(|revision| revision >= snapshot.revision) {
-            return Ok(GatewaySnapshotInstallOutcome::Rejected {
-                message: "Gateway snapshot revision does not advance the installed revision".into(),
-            });
-        }
-        if let Some(outcome) = self.provision_certificate(snapshot).await? {
+
+        let _installation = self.installation.lock().await;
+        let protocol = self.control.negotiate().await.map_err(map_control_error)?;
+        if let Some(outcome) = self.provision_certificate(snapshot, &protocol).await? {
             return Ok(outcome);
         }
-        if let Some(outcome) = Self::call_control(self.control.validate(&snapshot.acl).await)? {
-            return Ok(outcome);
+
+        let apply = self
+            .control
+            .apply(snapshot)
+            .await
+            .map_err(map_control_error)?;
+        let apply_outcome = self.confirm_status(snapshot, apply, &protocol)?;
+        if matches!(
+            apply_outcome,
+            GatewaySnapshotInstallOutcome::Rejected { .. }
+        ) {
+            return Ok(apply_outcome);
         }
-        if let Some(outcome) = Self::call_control(self.control.reload(&snapshot.acl).await)? {
-            return Ok(outcome);
+
+        let readiness = self
+            .control
+            .readiness(snapshot)
+            .await
+            .map_err(map_control_error)?;
+        self.confirm_status(snapshot, readiness, &protocol)
+    }
+
+    async fn observe(
+        &self,
+        request: &GatewaySnapshotObservationRequest,
+    ) -> Result<GatewaySnapshotObservationOutcome, GatewaySnapshotInstallError> {
+        request
+            .validate()
+            .map_err(GatewaySnapshotInstallError::InvalidState)?;
+        if request.gateway_id != self.gateway_id {
+            return Err(GatewaySnapshotInstallError::InvalidState(format!(
+                "Gateway snapshot observation targets {}, but this node manages Gateway {}",
+                request.gateway_id, self.gateway_id
+            )));
         }
-        self.write_installed(snapshot.clone()).await?;
-        Ok(GatewaySnapshotInstallOutcome::Applied)
+        let _installation = self.installation.lock().await;
+        let protocol = self.control.negotiate().await.map_err(map_control_error)?;
+        let status = self
+            .control
+            .observe(request)
+            .await
+            .map_err(map_control_error)?;
+        self.confirm_observation(request, status, protocol, Utc::now())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InstalledGatewaySnapshot {
-    schema: String,
-    snapshot: GatewaySnapshot,
+#[derive(Debug, Serialize)]
+struct ManagedSnapshotRequest<'a> {
+    schema: &'static str,
+    gateway_id: Uuid,
+    revision: u64,
+    expected_revision: Option<u64>,
+    snapshot_digest: &'a str,
+    issued_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    acl: &'a str,
 }
 
-impl InstalledGatewaySnapshot {
-    const SCHEMA: &'static str = "a3s.cloud.installed-gateway-snapshot.v1";
+impl<'a> From<&'a GatewaySnapshot> for ManagedSnapshotRequest<'a> {
+    fn from(snapshot: &'a GatewaySnapshot) -> Self {
+        Self {
+            schema: GatewayManagementProtocol::SNAPSHOT_REQUEST_V1,
+            gateway_id: snapshot.gateway_id,
+            revision: snapshot.revision,
+            expected_revision: snapshot.expected_revision,
+            snapshot_digest: &snapshot.snapshot_digest,
+            issued_at: snapshot.issued_at,
+            expires_at: snapshot.expires_at,
+            acl: &snapshot.acl,
+        }
+    }
+}
 
-    fn validate(&self) -> Result<(), GatewaySnapshotInstallError> {
-        if self.schema != Self::SCHEMA {
-            return Err(GatewaySnapshotInstallError::InvalidState(format!(
-                "unsupported installed Gateway snapshot schema {:?}",
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManagedSnapshotIdentity {
+    gateway_id: Uuid,
+    revision: u64,
+    snapshot_digest: String,
+}
+
+impl From<&GatewaySnapshot> for ManagedSnapshotIdentity {
+    fn from(snapshot: &GatewaySnapshot) -> Self {
+        Self {
+            gateway_id: snapshot.gateway_id,
+            revision: snapshot.revision,
+            snapshot_digest: snapshot.snapshot_digest.clone(),
+        }
+    }
+}
+
+impl From<&GatewaySnapshotObservationRequest> for ManagedSnapshotIdentity {
+    fn from(request: &GatewaySnapshotObservationRequest) -> Self {
+        Self {
+            gateway_id: request.gateway_id,
+            revision: request.revision,
+            snapshot_digest: request.snapshot_digest.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ManagedSnapshotState {
+    Disabled,
+    Uninitialized,
+    Applying,
+    Applied,
+    Rejected,
+    Expired,
+    NotApplied,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppliedManagedSnapshot {
+    gateway_id: Uuid,
+    revision: u64,
+    expected_revision: Option<u64>,
+    snapshot_digest: String,
+    issued_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    applied_at: DateTime<Utc>,
+}
+
+impl AppliedManagedSnapshot {
+    fn matches(&self, snapshot: &GatewaySnapshot) -> bool {
+        self.gateway_id == snapshot.gateway_id
+            && self.revision == snapshot.revision
+            && self.expected_revision == snapshot.expected_revision
+            && self.snapshot_digest == snapshot.snapshot_digest
+            && self.issued_at == snapshot.issued_at
+            && self.expires_at == snapshot.expires_at
+            && self.applied_at >= snapshot.issued_at
+            && self.applied_at < snapshot.expires_at
+    }
+}
+
+impl From<AppliedManagedSnapshot> for AppliedGatewaySnapshot {
+    fn from(snapshot: AppliedManagedSnapshot) -> Self {
+        Self {
+            gateway_id: snapshot.gateway_id,
+            revision: snapshot.revision,
+            expected_revision: snapshot.expected_revision,
+            snapshot_digest: snapshot.snapshot_digest,
+            issued_at: snapshot.issued_at,
+            expires_at: snapshot.expires_at,
+            applied_at: snapshot.applied_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RejectedManagedSnapshot {
+    gateway_id: Uuid,
+    revision: u64,
+    snapshot_digest: String,
+    rejected_at: DateTime<Utc>,
+    reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManagedSnapshotStatus {
+    schema: String,
+    gateway_id: Option<Uuid>,
+    #[serde(default)]
+    requested: Option<ManagedSnapshotIdentity>,
+    state: ManagedSnapshotState,
+    ready: bool,
+    replayed: bool,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    applied: Option<AppliedManagedSnapshot>,
+    #[serde(default)]
+    last_rejection: Option<RejectedManagedSnapshot>,
+}
+
+impl ManagedSnapshotStatus {
+    fn validate_shape(&self) -> Result<(), GatewaySnapshotInstallError> {
+        if self.schema != GatewayManagementProtocol::SNAPSHOT_STATUS_V1 {
+            return Err(GatewaySnapshotInstallError::Protocol(format!(
+                "unsupported Gateway managed snapshot status schema {:?}",
                 self.schema
             )));
         }
-        self.snapshot
-            .validate()
-            .map_err(GatewaySnapshotInstallError::InvalidState)
+        if self.ready && self.state != ManagedSnapshotState::Applied {
+            return Err(GatewaySnapshotInstallError::Protocol(
+                "Gateway reported readiness for a non-applied snapshot".into(),
+            ));
+        }
+        Ok(())
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayVersionInfo {
+    #[serde(default)]
+    schema: Option<String>,
+    name: String,
+    version: String,
+    api_version: String,
+    #[serde(default)]
+    management_protocols: Vec<AdvertisedGatewayManagementProtocol>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdvertisedGatewayManagementProtocol {
+    protocol: String,
+    snapshot_request_schema: String,
+    snapshot_status_schema: String,
+}
+
+fn select_management_protocol(
+    version: GatewayVersionInfo,
+) -> Result<GatewayManagementProtocol, GatewayControlError> {
+    if version.name != GATEWAY_NAME {
+        return Err(GatewayControlError::Protocol(format!(
+            "management endpoint identifies unsupported product {:?}",
+            version.name
+        )));
+    }
+    if version.version.trim().is_empty()
+        || version.version.len() > 128
+        || version.version.contains(['\0', '\r', '\n'])
+    {
+        return Err(GatewayControlError::Protocol(
+            "Gateway version is not a bounded single-line value".into(),
+        ));
+    }
+    if version.api_version != "v1" {
+        return Err(GatewayControlError::Protocol(format!(
+            "unsupported Gateway management API version {:?}",
+            version.api_version
+        )));
+    }
+
+    let Some(schema) = version.schema else {
+        if !version.management_protocols.is_empty() {
+            return Err(GatewayControlError::Protocol(
+                "unversioned Gateway response advertised management protocols".into(),
+            ));
+        }
+        return Ok(GatewayManagementProtocol::v1(
+            GatewayManagementProtocolDiscovery::LegacyVersionV1,
+        ));
+    };
+    if schema != GATEWAY_VERSION_SCHEMA {
+        return Err(GatewayControlError::Protocol(format!(
+            "unsupported Gateway version schema {schema:?}"
+        )));
+    }
+
+    let advertised_v1 = version
+        .management_protocols
+        .iter()
+        .filter(|candidate| candidate.protocol == GatewayManagementProtocol::V1)
+        .collect::<Vec<_>>();
+    if advertised_v1.len() != 1 {
+        return Err(GatewayControlError::Protocol(
+            "Gateway must advertise exactly one supported management protocol".into(),
+        ));
+    }
+    let advertised_v1 = advertised_v1[0];
+    if advertised_v1.snapshot_request_schema != GatewayManagementProtocol::SNAPSHOT_REQUEST_V1
+        || advertised_v1.snapshot_status_schema != GatewayManagementProtocol::SNAPSHOT_STATUS_V1
+    {
+        return Err(GatewayControlError::Protocol(
+            "Gateway management protocol v1 advertises incompatible snapshot schemas".into(),
+        ));
+    }
+    Ok(GatewayManagementProtocol::v1(
+        GatewayManagementProtocolDiscovery::Advertised,
+    ))
 }
 
 struct GatewayManagementClient {
     client: reqwest::Client,
-    base_url: String,
+    base_url: url::Url,
     token: String,
-    validation_timeout: Duration,
-    reload_timeout: Duration,
+    apply_timeout: Duration,
+    readiness_timeout: Duration,
 }
 
 impl GatewayManagementClient {
     fn new(
-        management_url: url::Url,
+        mut management_url: url::Url,
         token: String,
         connect_timeout: Duration,
-        validation_timeout: Duration,
-        reload_timeout: Duration,
+        apply_timeout: Duration,
+        readiness_timeout: Duration,
     ) -> Result<Self, GatewaySnapshotInstallError> {
         let client = reqwest::Client::builder()
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect_timeout)
             .build()
             .map_err(|error| GatewaySnapshotInstallError::Protocol(error.to_string()))?;
+        if !management_url.path().ends_with('/') {
+            let path = format!("{}/", management_url.path());
+            management_url.set_path(&path);
+        }
         Ok(Self {
             client,
-            base_url: management_url.as_str().trim_end_matches('/').into(),
+            base_url: management_url,
             token,
-            validation_timeout,
-            reload_timeout,
+            apply_timeout,
+            readiness_timeout,
         })
     }
 
-    async fn mutate(&self, action: &'static str, acl: &str) -> Result<(), GatewayControlError> {
-        let response = self
-            .client
-            .post(format!("{}/config/{action}", self.base_url))
-            .bearer_auth(&self.token)
-            .header(reqwest::header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(acl.to_owned())
-            .timeout(if action == "reload" {
-                self.reload_timeout
-            } else {
-                self.validation_timeout
-            })
-            .send()
-            .await
-            .map_err(|error| GatewayControlError::Unavailable(error.to_string()))?;
+    async fn decode(
+        response: reqwest::Response,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
         let status = response.status();
         if response
             .content_length()
@@ -374,53 +679,150 @@ impl GatewayManagementClient {
                 "Gateway management response exceeds 64 KiB".into(),
             ));
         }
-        if !status.is_success() {
-            let message = management_error_message(&body, status.as_u16());
-            return Err(
-                if status.is_server_error()
-                    || status == reqwest::StatusCode::REQUEST_TIMEOUT
-                    || status == reqwest::StatusCode::TOO_MANY_REQUESTS
-                {
-                    GatewayControlError::Unavailable(message)
-                } else if status == reqwest::StatusCode::BAD_REQUEST
-                    || status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
-                {
-                    GatewayControlError::Rejected(message)
-                } else {
-                    GatewayControlError::Protocol(message)
-                },
-            );
+        if matches!(
+            status,
+            StatusCode::OK
+                | StatusCode::CONFLICT
+                | StatusCode::UNPROCESSABLE_ENTITY
+                | StatusCode::SERVICE_UNAVAILABLE
+        ) {
+            return serde_json::from_slice(&body)
+                .map_err(|error| GatewayControlError::Protocol(error.to_string()));
         }
-        let mutation: GatewayMutationResponse = serde_json::from_slice(&body)
-            .map_err(|error| GatewayControlError::Protocol(error.to_string()))?;
-        let expected_reload = action == "reload";
-        if !mutation.valid || mutation.reloaded != expected_reload {
-            return Err(GatewayControlError::Protocol(format!(
-                "Gateway {action} response did not confirm the requested mutation"
-            )));
+
+        let message = management_error_message(&body, status.as_u16());
+        if status.is_server_error()
+            || status == StatusCode::REQUEST_TIMEOUT
+            || status == StatusCode::TOO_MANY_REQUESTS
+        {
+            Err(GatewayControlError::Unavailable(message))
+        } else {
+            Err(GatewayControlError::Protocol(message))
         }
-        Ok(())
+    }
+
+    async fn decode_version(
+        response: reqwest::Response,
+    ) -> Result<GatewayManagementProtocol, GatewayControlError> {
+        let status = response.status();
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_MANAGEMENT_RESPONSE_BYTES as u64)
+        {
+            return Err(GatewayControlError::Protocol(
+                "Gateway version response exceeds 64 KiB".into(),
+            ));
+        }
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| GatewayControlError::Unavailable(error.to_string()))?;
+        if body.len() > MAX_MANAGEMENT_RESPONSE_BYTES {
+            return Err(GatewayControlError::Protocol(
+                "Gateway version response exceeds 64 KiB".into(),
+            ));
+        }
+        if status == StatusCode::OK {
+            let version = serde_json::from_slice(&body)
+                .map_err(|error| GatewayControlError::Protocol(error.to_string()))?;
+            return select_management_protocol(version);
+        }
+
+        let message = management_error_message(&body, status.as_u16());
+        if status.is_server_error()
+            || status == StatusCode::REQUEST_TIMEOUT
+            || status == StatusCode::TOO_MANY_REQUESTS
+        {
+            Err(GatewayControlError::Unavailable(message))
+        } else {
+            Err(GatewayControlError::Protocol(message))
+        }
     }
 }
 
 #[async_trait]
 impl GatewayControl for GatewayManagementClient {
-    async fn validate(&self, acl: &str) -> Result<(), GatewayControlError> {
-        self.mutate("validate", acl).await
+    async fn negotiate(&self) -> Result<GatewayManagementProtocol, GatewayControlError> {
+        let url = self
+            .base_url
+            .join("version")
+            .map_err(|error| GatewayControlError::Protocol(error.to_string()))?;
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.token)
+            .timeout(self.readiness_timeout)
+            .send()
+            .await
+            .map_err(|error| GatewayControlError::Unavailable(error.to_string()))?;
+        Self::decode_version(response).await
     }
 
-    async fn reload(&self, acl: &str) -> Result<(), GatewayControlError> {
-        self.mutate("reload", acl).await
+    async fn apply(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+        let url = self
+            .base_url
+            .join("snapshots/apply")
+            .map_err(|error| GatewayControlError::Protocol(error.to_string()))?;
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(&self.token)
+            .json(&ManagedSnapshotRequest::from(snapshot))
+            .timeout(self.apply_timeout)
+            .send()
+            .await
+            .map_err(|error| GatewayControlError::Unavailable(error.to_string()))?;
+        Self::decode(response).await
     }
-}
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GatewayMutationResponse {
-    valid: bool,
-    reloaded: bool,
-    #[allow(dead_code)]
-    message: String,
+    async fn readiness(
+        &self,
+        snapshot: &GatewaySnapshot,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+        let mut url = self
+            .base_url
+            .join("snapshots/status")
+            .map_err(|error| GatewayControlError::Protocol(error.to_string()))?;
+        url.query_pairs_mut()
+            .append_pair("gateway_id", &snapshot.gateway_id.to_string())
+            .append_pair("revision", &snapshot.revision.to_string())
+            .append_pair("snapshot_digest", &snapshot.snapshot_digest);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.token)
+            .timeout(self.readiness_timeout)
+            .send()
+            .await
+            .map_err(|error| GatewayControlError::Unavailable(error.to_string()))?;
+        Self::decode(response).await
+    }
+
+    async fn observe(
+        &self,
+        request: &GatewaySnapshotObservationRequest,
+    ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+        let mut url = self
+            .base_url
+            .join("snapshots/status")
+            .map_err(|error| GatewayControlError::Protocol(error.to_string()))?;
+        url.query_pairs_mut()
+            .append_pair("gateway_id", &request.gateway_id.to_string())
+            .append_pair("revision", &request.revision.to_string())
+            .append_pair("snapshot_digest", &request.snapshot_digest);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.token)
+            .timeout(self.readiness_timeout)
+            .send()
+            .await
+            .map_err(|error| GatewayControlError::Unavailable(error.to_string()))?;
+        Self::decode(response).await
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -435,10 +837,14 @@ fn management_error_message(body: &[u8], status: u16) -> String {
         .unwrap_or_else(|| format!("Gateway management request failed with HTTP {status}"))
 }
 
-fn map_state_error(error: SecureStateError) -> GatewaySnapshotInstallError {
+fn map_control_error(error: GatewayControlError) -> GatewaySnapshotInstallError {
     match error {
-        SecureStateError::Invalid(message) => GatewaySnapshotInstallError::InvalidState(message),
-        SecureStateError::Storage(message) => GatewaySnapshotInstallError::Storage(message),
+        GatewayControlError::Unavailable(message) => GatewaySnapshotInstallError::Unavailable(
+            sanitize_message(&message, "Gateway management API is unavailable"),
+        ),
+        GatewayControlError::Protocol(message) => GatewaySnapshotInstallError::Protocol(
+            sanitize_message(&message, "Gateway management response is invalid"),
+        ),
     }
 }
 
@@ -465,10 +871,6 @@ fn map_certificate_error(
     }
 }
 
-fn display_revision(revision: Option<u64>) -> String {
-    revision.map_or_else(|| "none".into(), |revision| revision.to_string())
-}
-
 fn sanitize_message(message: &str, fallback: &str) -> String {
     let message = message.replace(['\0', '\r', '\n'], " ");
     let message = message.trim();
@@ -489,129 +891,290 @@ fn sanitize_message(message: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration as ChronoDuration;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[derive(Default)]
     struct FakeGatewayControl {
         calls: Mutex<Vec<&'static str>>,
-        reject_validation: AtomicBool,
-        fail_reload: AtomicBool,
+        observed_status: Mutex<Option<ManagedSnapshotStatus>>,
+        fail_negotiation: AtomicBool,
+        reject_apply: AtomicBool,
+        fail_readiness: AtomicBool,
+        wrong_digest: AtomicBool,
+    }
+
+    fn status(
+        snapshot: &GatewaySnapshot,
+        state: ManagedSnapshotState,
+        ready: bool,
+        reason: Option<&str>,
+    ) -> ManagedSnapshotStatus {
+        ManagedSnapshotStatus {
+            schema: GatewayManagementProtocol::SNAPSHOT_STATUS_V1.into(),
+            gateway_id: Some(snapshot.gateway_id),
+            requested: Some(ManagedSnapshotIdentity::from(snapshot)),
+            state,
+            ready,
+            replayed: false,
+            reason: reason.map(str::to_owned),
+            applied: (state == ManagedSnapshotState::Applied).then(|| AppliedManagedSnapshot {
+                gateway_id: snapshot.gateway_id,
+                revision: snapshot.revision,
+                expected_revision: snapshot.expected_revision,
+                snapshot_digest: snapshot.snapshot_digest.clone(),
+                issued_at: snapshot.issued_at,
+                expires_at: snapshot.expires_at,
+                applied_at: snapshot.issued_at + ChronoDuration::milliseconds(1),
+            }),
+            last_rejection: None,
+        }
     }
 
     #[async_trait]
     impl GatewayControl for FakeGatewayControl {
-        async fn validate(&self, _acl: &str) -> Result<(), GatewayControlError> {
-            self.calls.lock().await.push("validate");
-            if self.reject_validation.load(Ordering::SeqCst) {
-                Err(GatewayControlError::Rejected("invalid ACL".into()))
+        async fn negotiate(&self) -> Result<GatewayManagementProtocol, GatewayControlError> {
+            self.calls.lock().await.push("negotiate");
+            if self.fail_negotiation.load(Ordering::SeqCst) {
+                Err(GatewayControlError::Protocol(
+                    "Gateway advertised no compatible protocol".into(),
+                ))
             } else {
-                Ok(())
+                Ok(GatewayManagementProtocol::v1(
+                    GatewayManagementProtocolDiscovery::Advertised,
+                ))
             }
         }
 
-        async fn reload(&self, _acl: &str) -> Result<(), GatewayControlError> {
-            self.calls.lock().await.push("reload");
-            if self.fail_reload.load(Ordering::SeqCst) {
+        async fn apply(
+            &self,
+            snapshot: &GatewaySnapshot,
+        ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+            self.calls.lock().await.push("apply");
+            if self.reject_apply.load(Ordering::SeqCst) {
+                return Ok(status(
+                    snapshot,
+                    ManagedSnapshotState::Rejected,
+                    false,
+                    Some("invalid ACL"),
+                ));
+            }
+            let mut status = status(snapshot, ManagedSnapshotState::Applied, true, None);
+            if self.wrong_digest.load(Ordering::SeqCst) {
+                status
+                    .applied
+                    .as_mut()
+                    .expect("applied metadata")
+                    .snapshot_digest = format!("sha256:{}", "f".repeat(64));
+            }
+            Ok(status)
+        }
+
+        async fn readiness(
+            &self,
+            snapshot: &GatewaySnapshot,
+        ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+            self.calls.lock().await.push("readiness");
+            if self.fail_readiness.load(Ordering::SeqCst) {
                 Err(GatewayControlError::Unavailable(
-                    "Gateway is offline".into(),
+                    "Gateway is restarting".into(),
                 ))
             } else {
-                Ok(())
+                Ok(status(snapshot, ManagedSnapshotState::Applied, true, None))
             }
+        }
+
+        async fn observe(
+            &self,
+            _request: &GatewaySnapshotObservationRequest,
+        ) -> Result<ManagedSnapshotStatus, GatewayControlError> {
+            self.calls.lock().await.push("observe");
+            self.observed_status.lock().await.clone().ok_or_else(|| {
+                GatewayControlError::Protocol(
+                    "test Gateway observation status is unavailable".into(),
+                )
+            })
         }
     }
 
-    fn snapshot(revision: u64, expected_revision: Option<u64>) -> GatewaySnapshot {
+    fn snapshot(
+        gateway_id: Uuid,
+        revision: u64,
+        expected_revision: Option<u64>,
+    ) -> GatewaySnapshot {
+        let issued_at = Utc::now();
         GatewaySnapshot::new(
+            gateway_id,
             revision,
             expected_revision,
+            issued_at,
+            issued_at + ChronoDuration::minutes(10),
             format!("management {{ enabled = true }}\n# revision {revision}\n"),
         )
         .expect("Gateway snapshot")
     }
 
     #[tokio::test]
-    async fn install_is_atomic_compare_and_swap_and_exact_replay_is_local() {
-        let directory = tempfile::tempdir().expect("Gateway state directory");
+    async fn install_uses_native_apply_and_exact_readiness_for_replay() {
+        let gateway_id = Uuid::now_v7();
         let control = Arc::new(FakeGatewayControl::default());
-        let installer = DurableGatewaySnapshotInstaller::new(
-            directory.path().join("gateway.json"),
-            control.clone(),
-        );
-        assert_eq!(
-            installer
-                .install(&snapshot(1, None))
-                .await
-                .expect("install"),
-            GatewaySnapshotInstallOutcome::Applied
-        );
-        assert_eq!(
-            installer
-                .install(&snapshot(1, None))
-                .await
-                .expect("exact replay"),
-            GatewaySnapshotInstallOutcome::Applied
-        );
-        assert_eq!(&*control.calls.lock().await, &["validate", "reload"]);
+        let installer = DurableGatewaySnapshotInstaller::new(gateway_id, control.clone());
+        let snapshot = snapshot(gateway_id, 1, None);
 
-        let rejected = installer
-            .install(&snapshot(3, Some(2)))
-            .await
-            .expect("CAS rejection");
-        assert!(matches!(
-            rejected,
-            GatewaySnapshotInstallOutcome::Rejected { .. }
-        ));
         assert_eq!(
-            installer
-                .read_installed()
-                .await
-                .expect("installed state")
-                .expect("installed snapshot")
-                .snapshot
-                .revision,
-            1
+            installer.install(&snapshot).await.expect("install"),
+            GatewaySnapshotInstallOutcome::Applied {
+                protocol: GatewayManagementProtocol::v1(
+                    GatewayManagementProtocolDiscovery::Advertised
+                ),
+            }
+        );
+        assert_eq!(
+            installer.install(&snapshot).await.expect("exact replay"),
+            GatewaySnapshotInstallOutcome::Applied {
+                protocol: GatewayManagementProtocol::v1(
+                    GatewayManagementProtocolDiscovery::Advertised
+                ),
+            }
+        );
+        assert_eq!(
+            &*control.calls.lock().await,
+            &[
+                "negotiate",
+                "apply",
+                "readiness",
+                "negotiate",
+                "apply",
+                "readiness"
+            ]
         );
     }
 
     #[tokio::test]
-    async fn validation_and_reload_failures_preserve_the_prior_snapshot() {
-        let directory = tempfile::tempdir().expect("Gateway state directory");
+    async fn observation_reads_exact_physical_state_without_applying_the_candidate() {
+        let gateway_id = Uuid::now_v7();
         let control = Arc::new(FakeGatewayControl::default());
-        let installer = DurableGatewaySnapshotInstaller::new(
-            directory.path().join("gateway.json"),
-            control.clone(),
+        let installer = DurableGatewaySnapshotInstaller::new(gateway_id, control.clone());
+        let prior = snapshot(gateway_id, 1, None);
+        let candidate = snapshot(gateway_id, 2, Some(1));
+        let request = GatewaySnapshotObservationRequest::new(
+            gateway_id,
+            candidate.revision,
+            candidate.snapshot_digest.clone(),
+        )
+        .expect("Gateway observation request");
+        let mut observation_status = status(
+            &candidate,
+            ManagedSnapshotState::NotApplied,
+            false,
+            Some("The requested snapshot is not applied"),
         );
-        installer
-            .install(&snapshot(1, None))
-            .await
-            .expect("initial install");
+        observation_status.applied =
+            status(&prior, ManagedSnapshotState::Applied, true, None).applied;
+        *control.observed_status.lock().await = Some(observation_status);
 
-        control.reject_validation.store(true, Ordering::SeqCst);
+        let observed = installer.observe(&request).await.expect("observe Gateway");
+
+        assert_eq!(observed.state, GatewaySnapshotObservationState::NotApplied);
+        assert!(!observed.ready);
+        assert_eq!(
+            observed.applied.expect("prior applied snapshot").revision,
+            prior.revision
+        );
+        assert_eq!(&*control.calls.lock().await, &["negotiate", "observe"]);
+    }
+
+    #[tokio::test]
+    async fn rejection_and_readiness_failure_never_report_applied() {
+        let gateway_id = Uuid::now_v7();
+        let control = Arc::new(FakeGatewayControl::default());
+        let installer = DurableGatewaySnapshotInstaller::new(gateway_id, control.clone());
+        let snapshot = snapshot(gateway_id, 1, None);
+
+        control.reject_apply.store(true, Ordering::SeqCst);
         assert!(matches!(
-            installer
-                .install(&snapshot(2, Some(1)))
-                .await
-                .expect("validation rejection"),
+            installer.install(&snapshot).await.expect("rejection"),
             GatewaySnapshotInstallOutcome::Rejected { .. }
         ));
-        control.reject_validation.store(false, Ordering::SeqCst);
-        control.fail_reload.store(true, Ordering::SeqCst);
+        control.reject_apply.store(false, Ordering::SeqCst);
+        control.fail_readiness.store(true, Ordering::SeqCst);
         assert!(matches!(
-            installer.install(&snapshot(2, Some(1))).await,
+            installer.install(&snapshot).await,
             Err(GatewaySnapshotInstallError::Unavailable(_))
         ));
-        assert_eq!(
-            installer
-                .read_installed()
-                .await
-                .expect("installed state")
-                .expect("installed snapshot")
-                .snapshot
-                .revision,
-            1
-        );
     }
+
+    #[tokio::test]
+    async fn mismatched_gateway_status_is_a_protocol_failure() {
+        let gateway_id = Uuid::now_v7();
+        let control = Arc::new(FakeGatewayControl::default());
+        control.wrong_digest.store(true, Ordering::SeqCst);
+        let installer = DurableGatewaySnapshotInstaller::new(gateway_id, control);
+
+        assert!(matches!(
+            installer.install(&snapshot(gateway_id, 1, None)).await,
+            Err(GatewaySnapshotInstallError::Protocol(_))
+        ));
+    }
+
+    #[test]
+    fn protocol_selection_accepts_advertised_and_legacy_v1_but_rejects_unknown_schemas() {
+        let advertised = select_management_protocol(GatewayVersionInfo {
+            schema: Some(GATEWAY_VERSION_SCHEMA.into()),
+            name: GATEWAY_NAME.into(),
+            version: "0.8.0".into(),
+            api_version: "v1".into(),
+            management_protocols: vec![AdvertisedGatewayManagementProtocol {
+                protocol: GatewayManagementProtocol::V1.into(),
+                snapshot_request_schema: GatewayManagementProtocol::SNAPSHOT_REQUEST_V1.into(),
+                snapshot_status_schema: GatewayManagementProtocol::SNAPSHOT_STATUS_V1.into(),
+            }],
+        })
+        .expect("advertised protocol");
+        assert_eq!(
+            advertised.discovery,
+            GatewayManagementProtocolDiscovery::Advertised
+        );
+
+        let legacy = select_management_protocol(GatewayVersionInfo {
+            schema: None,
+            name: GATEWAY_NAME.into(),
+            version: "0.7.0".into(),
+            api_version: "v1".into(),
+            management_protocols: Vec::new(),
+        })
+        .expect("legacy v1 protocol");
+        assert_eq!(
+            legacy.discovery,
+            GatewayManagementProtocolDiscovery::LegacyVersionV1
+        );
+
+        assert!(select_management_protocol(GatewayVersionInfo {
+            schema: Some("a3s.gateway.version.v2".into()),
+            name: GATEWAY_NAME.into(),
+            version: "0.9.0".into(),
+            api_version: "v1".into(),
+            management_protocols: Vec::new(),
+        })
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn incompatible_gateway_is_rejected_before_snapshot_apply() {
+        let gateway_id = Uuid::now_v7();
+        let control = Arc::new(FakeGatewayControl::default());
+        control.fail_negotiation.store(true, Ordering::SeqCst);
+        let installer = DurableGatewaySnapshotInstaller::new(gateway_id, control.clone());
+
+        assert!(matches!(
+            installer.install(&snapshot(gateway_id, 1, None)).await,
+            Err(GatewaySnapshotInstallError::Protocol(_))
+        ));
+        assert_eq!(&*control.calls.lock().await, &["negotiate"]);
+    }
+
+    #[path = "gateway_compatibility_tests.rs"]
+    mod compatibility_tests;
 }
 
 #[cfg(test)]

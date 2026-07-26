@@ -9,8 +9,9 @@ use a3s_cloud_contracts::{
     NodeArtifactUploadRequest, NodeCertificateRotationRequest, NodeCertificateRotationResponse,
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
     NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeObservationBatch, NodeObservationReceipt, NodeProtocolError,
-    NodeSecretMaterialRequest, NodeSecretMaterialResponse,
+    NodeLogChunkReceipt, NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolError,
+    NodeResourceInventory, NodeResourceInventoryReceipt, NodeSecretMaterialRequest,
+    NodeSecretMaterialResponse,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -55,8 +56,13 @@ pub trait NodeControlTransport: Send + Sync {
 
     async fn record_observations(
         &self,
-        batch: &NodeObservationBatch,
+        batch: &NodeObservationBatchV2,
     ) -> Result<NodeObservationReceipt, NodeControlClientError>;
+
+    async fn report_resource_inventory(
+        &self,
+        inventory: &NodeResourceInventory,
+    ) -> Result<NodeResourceInventoryReceipt, NodeControlClientError>;
 
     async fn record_log_chunks(
         &self,
@@ -262,7 +268,7 @@ impl NodeControlClient {
 
     pub async fn record_observations(
         &self,
-        batch: &NodeObservationBatch,
+        batch: &NodeObservationBatchV2,
     ) -> Result<NodeObservationReceipt, NodeControlClientError> {
         let receipt: NodeObservationReceipt = self
             .send(
@@ -282,6 +288,42 @@ impl NodeControlClient {
         {
             return Err(NodeControlClientError::Invalid(
                 "node observation receipt changed the batch identity or count".into(),
+            ));
+        }
+        Ok(receipt)
+    }
+
+    pub async fn report_resource_inventory(
+        &self,
+        inventory: &NodeResourceInventory,
+    ) -> Result<NodeResourceInventoryReceipt, NodeControlClientError> {
+        inventory
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if inventory.node_id != self.node_id
+            || inventory.agent_instance_id != self.agent_instance_id
+        {
+            return Err(NodeControlClientError::Invalid(
+                "node inventory changed the authenticated agent identity".into(),
+            ));
+        }
+        let receipt: NodeResourceInventoryReceipt = self
+            .send(
+                self.client
+                    .post(self.endpoint("v1/node-control/inventories")?)
+                    .timeout(self.request_timeout)
+                    .json(inventory),
+            )
+            .await?;
+        receipt
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if receipt.node_id != inventory.node_id
+            || receipt.generation != inventory.generation
+            || receipt.digest != inventory.digest
+        {
+            return Err(NodeControlClientError::Invalid(
+                "node inventory receipt changed the snapshot identity".into(),
             ));
         }
         Ok(receipt)
@@ -629,9 +671,16 @@ impl NodeControlTransport for NodeControlClient {
 
     async fn record_observations(
         &self,
-        batch: &NodeObservationBatch,
+        batch: &NodeObservationBatchV2,
     ) -> Result<NodeObservationReceipt, NodeControlClientError> {
         NodeControlClient::record_observations(self, batch).await
+    }
+
+    async fn report_resource_inventory(
+        &self,
+        inventory: &NodeResourceInventory,
+    ) -> Result<NodeResourceInventoryReceipt, NodeControlClientError> {
+        NodeControlClient::report_resource_inventory(self, inventory).await
     }
 
     async fn record_log_chunks(
@@ -713,9 +762,20 @@ impl NodeControlTransport for ReloadableNodeControlClient {
 
     async fn record_observations(
         &self,
-        batch: &NodeObservationBatch,
+        batch: &NodeObservationBatchV2,
     ) -> Result<NodeObservationReceipt, NodeControlClientError> {
         self.inner.read().await.record_observations(batch).await
+    }
+
+    async fn report_resource_inventory(
+        &self,
+        inventory: &NodeResourceInventory,
+    ) -> Result<NodeResourceInventoryReceipt, NodeControlClientError> {
+        self.inner
+            .read()
+            .await
+            .report_resource_inventory(inventory)
+            .await
     }
 
     async fn record_log_chunks(

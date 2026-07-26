@@ -2,9 +2,10 @@ mod request;
 mod response;
 
 pub use request::{
-    CreateDomainClaimRequest, PublishRouteRequest, RevokeDomainClaimRequest,
-    VerifyDomainClaimRequest,
+    CreateDomainClaimRequest, CreateGatewayScopeRequest, PublishRouteRequest,
+    RevokeDomainClaimRequest, VerifyDomainClaimRequest,
 };
 pub use response::{
-    DomainClaimResponse, GatewayCertificateResponse, RoutePublicationResponse, RouteResponse,
+    DomainClaimResponse, GatewayCertificateResponse, GatewayScopeResponse,
+    RoutePublicationResponse, RouteResponse,
 };

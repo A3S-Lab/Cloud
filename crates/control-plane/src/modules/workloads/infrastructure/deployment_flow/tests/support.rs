@@ -5,6 +5,20 @@ pub(super) fn runtime(
     nodes: &Arc<InMemoryNodeRepository>,
     convergence_timeout: Duration,
 ) -> Result<DeploymentFlowRuntime, String> {
+    runtime_with_resource_claims(
+        workloads,
+        nodes,
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        convergence_timeout,
+    )
+}
+
+pub(super) fn runtime_with_resource_claims(
+    workloads: &Arc<InMemoryWorkloadRepository>,
+    nodes: &Arc<InMemoryNodeRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    convergence_timeout: Duration,
+) -> Result<DeploymentFlowRuntime, String> {
     let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -12,11 +26,14 @@ pub(super) fn runtime(
         .map_err(|_| "test convergence timeout is invalid")?;
     let runtime_apply_timeout = (milliseconds / 2).max(1);
     DeploymentFlowRuntime::new(
-        workload_port,
-        Arc::new(UnusedArtifactResolver),
-        node_port,
-        control_port,
-        Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
+        DeploymentFlowDependencies::new(
+            workload_port,
+            resource_claims,
+            Arc::new(UnusedArtifactResolver),
+            node_port,
+            control_port,
+            Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
+        ),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(
             milliseconds,
@@ -38,6 +55,7 @@ pub(super) fn gateway_compiler() -> Result<GatewaySnapshotCompiler, String> {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 5_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
 }
 
@@ -52,13 +70,43 @@ pub(super) async fn publish_active_route(
     let route_id = RouteId::new();
     let domain_claim_id = DomainClaimId::new();
     let certificate_id = GatewayCertificateId::new();
+    let gateway_scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        workload.organization_id,
+        workload.project_id,
+        workload.environment_id,
+        node_id,
+        staged_at,
+    )
+    .expect("Gateway scope");
+    repository
+        .create_gateway_scope(CreateGatewayScopeWrite {
+            scope: gateway_scope.clone(),
+            idempotency: IdempotencyRequest::new(
+                "test.gateway-scopes",
+                gateway_scope.id.to_string(),
+                node_id.to_string().as_bytes(),
+            )?,
+            event: GatewayScopeCreated::envelope(&gateway_scope, Uuid::now_v7())?,
+        })
+        .await?;
     let command_id = NodeCommandId::new();
     let correlation_id = Uuid::now_v7();
+    let target = RouteTarget::new(
+        workload.id,
+        revision_id,
+        format!("workload:{}:revision:{revision_id}", workload.id),
+        1,
+        RoutePortName::parse("http")?,
+        UpstreamEndpoint::parse("http://127.0.0.1:49151")?,
+        staged_at,
+    )?;
     let mut route = Route::create(
         route_id,
         workload.organization_id,
         workload.project_id,
         workload.environment_id,
+        gateway_scope.id,
         node_id,
         RouteHostname::parse("update.example.com")?,
         RoutePath::parse("/")?,
@@ -66,15 +114,17 @@ pub(super) async fn publish_active_route(
         DomainNamePattern::parse("update.example.com")?,
         certificate_id,
         workload.id,
-        revision_id,
-        RoutePortName::parse("http")?,
-        UpstreamEndpoint::parse("http://127.0.0.1:49151")?,
+        target,
         staged_at,
     )?;
     let snapshot = compiler.compile(
-        node_id,
-        1,
-        None,
+        crate::modules::edge::infrastructure::GatewaySnapshotMetadata::new(
+            node_id,
+            1,
+            None,
+            staged_at,
+            staged_at + Duration::seconds(5),
+        ),
         certificate_id,
         std::slice::from_ref(&route),
     )?;
@@ -105,6 +155,7 @@ pub(super) async fn publish_active_route(
     let staged = repository
         .stage_route_publication(StageRoutePublication {
             route,
+            gateway_scope,
             certificate,
             publication,
             expected_scope_version: 0,
@@ -138,11 +189,15 @@ pub(super) async fn publish_active_route(
         acknowledgement_id: Uuid::now_v7(),
         command_id: staged.publication.command_id.as_uuid(),
         node_id: staged.publication.node_id.as_uuid(),
+        gateway_id: staged.publication.node_id.as_uuid(),
         revision: staged.publication.revision,
         snapshot_digest: staged.publication.snapshot_digest,
+        expires_at: staged.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: staged_at + Duration::milliseconds(2),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     repository
         .project_gateway_acknowledgement(
@@ -179,11 +234,15 @@ pub(super) fn cutover_acknowledgement(
         acknowledgement_id: Uuid::now_v7(),
         command_id: cutover.gateway_command_id.as_uuid(),
         node_id: cutover.node_id.as_uuid(),
+        gateway_id: cutover.node_id.as_uuid(),
         revision: cutover.gateway_revision,
         snapshot_digest: cutover.snapshot_digest.clone(),
+        expires_at: cutover.snapshot_expires_at,
         state,
+        ready: state == GatewayAckState::Applied,
         message: (state == GatewayAckState::Rejected).then(|| "candidate rejected".into()),
         acknowledged_at: cutover.staged_at + Duration::milliseconds(2),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     }
 }
 
@@ -306,12 +365,40 @@ pub(super) async fn ready_node(
     ),
     Box<dyn std::error::Error>,
 > {
-    let secret = format!("a3sn_{}", "d".repeat(64));
+    ready_node_with_capacity(
+        nodes,
+        organization_id,
+        enrolled_at,
+        "deployment-test",
+        'd',
+        8_000,
+        8 * 1024 * 1024 * 1024,
+    )
+    .await
+}
+
+pub(super) async fn ready_node_with_capacity(
+    nodes: &Arc<InMemoryNodeRepository>,
+    organization_id: OrganizationId,
+    enrolled_at: chrono::DateTime<Utc>,
+    node_name: &str,
+    digest_character: char,
+    cpu_millis: u64,
+    memory_bytes: u64,
+) -> Result<
+    (
+        crate::modules::shared_kernel::domain::NodeId,
+        Uuid,
+        RuntimeCapabilities,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let secret = format!("a3sn_{}", digest_character.to_string().repeat(64));
     let credential = EnrollmentTokenCredential::from_secret(&secret)?;
     let token = EnrollmentToken::new(
         EnrollmentTokenId::new(),
         organization_id,
-        "deployment-test",
+        node_name,
         credential.clone(),
         enrolled_at,
         enrolled_at + Duration::minutes(5),
@@ -320,7 +407,7 @@ pub(super) async fn ready_node(
         .issue_enrollment_token(
             token,
             event(organization_id),
-            IdempotencyRequest::new("test.enrollment", "deployment-test", b"token")?,
+            IdempotencyRequest::new("test.enrollment", node_name, node_name.as_bytes())?,
         )
         .await?;
     let runtime_capabilities = capabilities();
@@ -335,13 +422,42 @@ pub(super) async fn ready_node(
             &credential,
             NodeEnrollmentDraft {
                 proposed_node_id: crate::modules::shared_kernel::domain::NodeId::new(),
-                name: NodeName::new("deployment-node")?,
+                name: NodeName::new(node_name)?,
                 agent_instance_id,
                 agent_version: "0.1.0".into(),
                 capabilities: node_capabilities.clone(),
-                request_digest: format!("sha256:{}", "e".repeat(64)),
+                request_digest: format!("sha256:{}", digest_character.to_string().repeat(64)),
                 requested_at: enrolled_at,
             },
+        )
+        .await?;
+    nodes
+        .record_resource_inventory(
+            NodeResourceInventory::new(
+                reservation.node.id.as_uuid(),
+                agent_instance_id,
+                1,
+                enrolled_at + Duration::milliseconds(1),
+                vec![
+                    NodeResourceSlot::new(
+                        ResourceKind::Cpu,
+                        "cpu/shared",
+                        ResourceAllocation::Scalar {
+                            amount: cpu_millis,
+                            unit: ResourceUnit::MilliCpu,
+                        },
+                    )?,
+                    NodeResourceSlot::new(
+                        ResourceKind::Memory,
+                        "memory/system",
+                        ResourceAllocation::Scalar {
+                            amount: memory_bytes,
+                            unit: ResourceUnit::Byte,
+                        },
+                    )?,
+                ],
+            )?,
+            enrolled_at + Duration::milliseconds(2),
         )
         .await?;
     nodes
@@ -350,7 +466,7 @@ pub(super) async fn ready_node(
             agent_instance_id,
             agent_version: "0.1.0".into(),
             capabilities: node_capabilities,
-            observed_at: enrolled_at + Duration::milliseconds(1),
+            observed_at: enrolled_at + Duration::milliseconds(3),
         })
         .await?;
     Ok((reservation.node.id, agent_instance_id, runtime_capabilities))
@@ -382,7 +498,7 @@ pub(super) fn deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
+        WorkflowIdentity::new("cloud.deployment", "3")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -394,6 +510,7 @@ pub(super) fn deployment_bundle(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,
@@ -427,7 +544,7 @@ pub(super) fn rollback_deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
+        WorkflowIdentity::new("cloud.deployment", "3")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -440,6 +557,7 @@ pub(super) fn rollback_deployment_bundle(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,
@@ -497,7 +615,7 @@ pub(super) fn requested_deployment_bundle_with_secrets(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
+        WorkflowIdentity::new("cloud.deployment", "3")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -509,6 +627,7 @@ pub(super) fn requested_deployment_bundle_with_secrets(
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
     Ok(CreateDeploymentBundle {
         workload,
+        control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
         revision,
         deployment,
         operation,
@@ -548,14 +667,137 @@ pub(super) async fn lease(
         .await
 }
 
+pub(super) async fn prepare_and_lease_apply(
+    engine: &FlowEngine,
+    nodes: &InMemoryNodeRepository,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    agent_instance_id: Uuid,
+    after_sequence: u64,
+) -> Result<a3s_cloud_contracts::NodeCommandLeaseResponse, Box<dyn std::error::Error>> {
+    let preparation_lease = lease(nodes, node_id, agent_instance_id, after_sequence).await?;
+    let preparation = preparation_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimPrepare { .. }
+            )
+        })
+        .ok_or("resource preparation command was not leased")?;
+    acknowledge_resource_claim(nodes, preparation).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let apply_lease = lease(nodes, node_id, agent_instance_id, preparation.sequence).await?;
+    if !apply_lease.commands.iter().any(|command| {
+        matches!(
+            command.payload,
+            a3s_cloud_contracts::NodeCommandPayload::RuntimeApply { .. }
+        )
+    }) {
+        return Err("resource-bound Runtime apply was not leased".into());
+    }
+    Ok(apply_lease)
+}
+
+pub(super) async fn release_after_runtime_fence(
+    engine: &FlowEngine,
+    nodes: &InMemoryNodeRepository,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    agent_instance_id: Uuid,
+    after_sequence: u64,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let release_lease = lease(nodes, node_id, agent_instance_id, after_sequence).await?;
+    let release = release_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or_else(|| {
+            format!(
+                "resource release command was not leased; commands={:?}",
+                release_lease
+                    .commands
+                    .iter()
+                    .map(|command| command.payload.schema())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    acknowledge_resource_claim(nodes, release).await?;
+    let sequence = release.sequence;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    Ok(sequence)
+}
+
+pub(super) async fn acknowledge_resource_claim(
+    nodes: &InMemoryNodeRepository,
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let completed_at = Utc::now().max(command.issued_at);
+    let result = match &command.payload {
+        a3s_cloud_contracts::NodeCommandPayload::ResourceClaimPrepare { request } => {
+            a3s_cloud_contracts::NodeCommandResult::ResourceClaimPrepared {
+                prepared: a3s_cloud_contracts::NodeResourceClaimPrepared::new(
+                    request,
+                    completed_at,
+                )?,
+            }
+        }
+        a3s_cloud_contracts::NodeCommandPayload::ResourceClaimRelease { request } => {
+            a3s_cloud_contracts::NodeCommandResult::ResourceClaimReleased {
+                released: a3s_cloud_contracts::NodeResourceClaimReleased::new(
+                    request,
+                    completed_at,
+                )?,
+            }
+        }
+        _ => return Err("node command is not a resource Claim command".into()),
+    };
+    nodes
+        .acknowledge_command(
+            a3s_cloud_contracts::NodeCommandAck {
+                schema: a3s_cloud_contracts::NodeCommandAck::SCHEMA.into(),
+                command_id: command.command_id,
+                lease_id: command.lease_id,
+                node_id: command.node_id,
+                sequence: command.sequence,
+                payload_digest: command.payload_digest.clone(),
+                completed_at,
+                outcome: a3s_cloud_contracts::NodeCommandOutcome::Succeeded {
+                    result: Box::new(result),
+                },
+            },
+            completed_at,
+        )
+        .await?;
+    Ok(())
+}
+
 pub(super) async fn record_observation(
     nodes: &InMemoryNodeRepository,
     node_id: crate::modules::shared_kernel::domain::NodeId,
     agent_instance_id: Uuid,
     capabilities: &RuntimeCapabilities,
     command: &a3s_cloud_contracts::NodeCommandEnvelope,
-    observation: RuntimeObservation,
+    mut observation: RuntimeObservation,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let a3s_cloud_contracts::NodeCommandPayload::RuntimeApply {
+        resource_claim: Some(binding),
+        ..
+    } = &command.payload
+    {
+        binding.bind_runtime_observation(&mut observation)?;
+    }
     let observed_at = Utc::now();
     nodes
         .record_observations(
@@ -578,7 +820,8 @@ pub(super) async fn record_observation(
                     observed_at,
                     observation,
                 }],
-            },
+            }
+            .into(),
             observed_at,
         )
         .await?;
@@ -733,6 +976,10 @@ pub(super) fn template(digest_character: char) -> ServiceTemplate {
 }
 
 pub(super) fn workflow_spec() -> WorkflowSpec {
+    WorkflowSpec::rust_embedded("cloud.deployment", "3", "a3s-cloud", "main")
+}
+
+pub(super) fn previous_workflow_spec() -> WorkflowSpec {
     WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main")
 }
 

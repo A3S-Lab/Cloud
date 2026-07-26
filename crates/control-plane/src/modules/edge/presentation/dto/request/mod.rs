@@ -1,9 +1,11 @@
 mod create_domain_claim_request;
+mod create_gateway_scope_request;
 mod publish_route_request;
 mod revoke_domain_claim_request;
 mod verify_domain_claim_request;
 
 pub use create_domain_claim_request::CreateDomainClaimRequest;
+pub use create_gateway_scope_request::CreateGatewayScopeRequest;
 pub use publish_route_request::PublishRouteRequest;
 pub use revoke_domain_claim_request::RevokeDomainClaimRequest;
 pub use verify_domain_claim_request::VerifyDomainClaimRequest;

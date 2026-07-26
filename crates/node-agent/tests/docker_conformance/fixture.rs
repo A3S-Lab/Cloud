@@ -211,6 +211,16 @@ impl DockerConformanceFixture {
             owns_socket_directory,
             "Docker provider restart target does not own the configured socket directory",
         )?;
+        let before_pid = target_inspection
+            .state
+            .as_ref()
+            .and_then(|state| state.pid)
+            .filter(|pid| *pid > 0)
+            .ok_or_else(|| {
+                RuntimeError::Protocol(
+                    "Docker provider restart target has no live process identity".into(),
+                )
+            })?;
 
         tokio::time::timeout(
             PROVIDER_OPERATION_TIMEOUT,
@@ -227,6 +237,33 @@ impl DockerConformanceFixture {
                 tokio::time::timeout(Duration::from_secs(1), self.docker.version()).await,
                 Ok(Ok(_))
             ) {
+                let restarted = tokio::time::timeout(
+                    PROVIDER_OPERATION_TIMEOUT,
+                    control.inspect_container(&target, None),
+                )
+                .await
+                .map_err(|_| {
+                    RuntimeError::ProviderUnavailable(
+                        "restarted Docker provider inspection timed out".into(),
+                    )
+                })?
+                .map_err(|error| {
+                    docker_fixture_error("inspect restarted Docker provider", error)
+                })?;
+                let after_pid = restarted
+                    .state
+                    .as_ref()
+                    .and_then(|state| state.pid)
+                    .filter(|pid| *pid > 0)
+                    .ok_or_else(|| {
+                        RuntimeError::Protocol(
+                            "restarted Docker provider has no live process identity".into(),
+                        )
+                    })?;
+                require(
+                    after_pid != before_pid,
+                    "Docker provider restart did not replace its process identity",
+                )?;
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(500)).await;

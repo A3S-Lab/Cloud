@@ -8,17 +8,42 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
-    validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot, NodeGatewayAck,
+    validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
+    GatewaySnapshotObservationRequest, NodeGatewayAck, NodeGatewaySnapshotObservation,
+    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
+    NodeResourceClaimRelease, NodeResourceClaimReleased,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NodeCommandPayload {
-    RuntimeApply { request: Box<RuntimeApplyRequest> },
-    RuntimeInspect { unit_id: String, generation: u64 },
-    RuntimeStop { request: RuntimeActionRequest },
-    RuntimeRemove { request: RuntimeActionRequest },
-    GatewaySnapshotInstall { snapshot: Box<GatewaySnapshot> },
+    ResourceClaimPrepare {
+        request: Box<NodeResourceClaimPrepare>,
+    },
+    RuntimeApply {
+        request: Box<RuntimeApplyRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resource_claim: Option<Box<NodeResourceClaimBinding>>,
+    },
+    RuntimeInspect {
+        unit_id: String,
+        generation: u64,
+    },
+    RuntimeStop {
+        request: RuntimeActionRequest,
+    },
+    RuntimeRemove {
+        request: RuntimeActionRequest,
+    },
+    ResourceClaimRelease {
+        request: Box<NodeResourceClaimRelease>,
+    },
+    GatewaySnapshotInstall {
+        snapshot: Box<GatewaySnapshot>,
+    },
+    GatewaySnapshotObserve {
+        request: GatewaySnapshotObservationRequest,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,26 +61,49 @@ pub struct NodeCommandMetadata {
 impl NodeCommandPayload {
     pub fn schema(&self) -> &'static str {
         match self {
-            Self::RuntimeApply { .. } => RuntimeApplyRequest::SCHEMA,
+            Self::ResourceClaimPrepare { .. } => NodeResourceClaimPrepare::SCHEMA,
+            Self::RuntimeApply {
+                resource_claim: Some(_),
+                ..
+            } => "a3s.cloud.runtime-resource-bound-apply.v1",
+            Self::RuntimeApply {
+                resource_claim: None,
+                ..
+            } => RuntimeApplyRequest::SCHEMA,
             Self::RuntimeInspect { .. } => "a3s.runtime.inspect-request.v1",
             Self::RuntimeStop { .. } => "a3s.runtime.stop-request.v1",
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
+            Self::ResourceClaimRelease { .. } => NodeResourceClaimRelease::SCHEMA,
             Self::GatewaySnapshotInstall { .. } => GatewaySnapshot::SCHEMA,
+            Self::GatewaySnapshotObserve { .. } => GatewaySnapshotObservationRequest::SCHEMA,
         }
     }
 
     pub fn generation(&self) -> u64 {
         match self {
-            Self::RuntimeApply { request } => request.spec.generation,
+            Self::ResourceClaimPrepare { request } => request.claim_generation,
+            Self::RuntimeApply { request, .. } => request.spec.generation,
             Self::RuntimeInspect { generation, .. } => *generation,
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
+            Self::ResourceClaimRelease { request } => request.claim_generation,
             Self::GatewaySnapshotInstall { snapshot } => snapshot.revision,
+            Self::GatewaySnapshotObserve { request } => request.revision,
         }
     }
 
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            Self::RuntimeApply { request } => request.validate(),
+            Self::ResourceClaimPrepare { request } => request.validate(),
+            Self::RuntimeApply {
+                request,
+                resource_claim,
+            } => {
+                request.validate()?;
+                if let Some(binding) = resource_claim {
+                    binding.validate_runtime_spec(&request.spec)?;
+                }
+                Ok(())
+            }
             Self::RuntimeInspect {
                 unit_id,
                 generation,
@@ -67,7 +115,9 @@ impl NodeCommandPayload {
                 Ok(())
             }
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
+            Self::ResourceClaimRelease { request } => request.validate(),
             Self::GatewaySnapshotInstall { snapshot } => snapshot.validate(),
+            Self::GatewaySnapshotObserve { request } => request.validate(),
         }
     }
 
@@ -136,6 +186,64 @@ impl NodeCommandEnvelope {
             return Err("command expiry must follow issue time".into());
         }
         self.payload.validate()?;
+        match &self.payload {
+            NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
+                if snapshot.gateway_id != self.node_id
+                    || snapshot.issued_at != self.issued_at
+                    || snapshot.expires_at < self.not_after
+                {
+                    return Err(
+                        "Gateway snapshot identity and validity must contain its node command"
+                            .into(),
+                    );
+                }
+            }
+            NodeCommandPayload::GatewaySnapshotObserve { request }
+                if request.gateway_id != self.node_id =>
+            {
+                return Err("Gateway snapshot observation targets another command node".into());
+            }
+            _ => {}
+        }
+        match &self.payload {
+            NodeCommandPayload::ResourceClaimPrepare { request } => {
+                if self.node_id != request.binding.node_id
+                    || self.aggregate_id != request.binding.claim_id
+                {
+                    return Err(
+                        "resource claim prepare command identity does not match its binding".into(),
+                    );
+                }
+            }
+            NodeCommandPayload::RuntimeApply {
+                resource_claim: Some(binding),
+                ..
+            } => {
+                if self.node_id != binding.node_id {
+                    return Err(
+                        "Runtime resource binding belongs to a different command node".into(),
+                    );
+                }
+            }
+            NodeCommandPayload::ResourceClaimRelease { request } => {
+                if self.node_id != request.binding.node_id
+                    || self.aggregate_id != request.binding.claim_id
+                {
+                    return Err(
+                        "resource claim release command identity does not match its binding".into(),
+                    );
+                }
+            }
+            NodeCommandPayload::RuntimeApply {
+                resource_claim: None,
+                ..
+            }
+            | NodeCommandPayload::RuntimeInspect { .. }
+            | NodeCommandPayload::RuntimeStop { .. }
+            | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::GatewaySnapshotInstall { .. }
+            | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
+        }
         if self.generation != self.payload.generation() {
             return Err("command generation does not match its payload".into());
         }
@@ -157,6 +265,9 @@ impl NodeCommandEnvelope {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NodeCommandResult {
+    ResourceClaimPrepared {
+        prepared: NodeResourceClaimPrepared,
+    },
     RuntimeApplied {
         observation: Box<RuntimeObservation>,
     },
@@ -169,20 +280,29 @@ pub enum NodeCommandResult {
     RuntimeRemoved {
         removal: RuntimeRemoval,
     },
+    ResourceClaimReleased {
+        released: NodeResourceClaimReleased,
+    },
     GatewaySnapshotInstalled {
         acknowledgement: NodeGatewayAck,
+    },
+    GatewaySnapshotObserved {
+        observation: NodeGatewaySnapshotObservation,
     },
 }
 
 impl NodeCommandResult {
     fn validate(&self) -> Result<(), String> {
         match self {
+            Self::ResourceClaimPrepared { prepared } => prepared.validate(),
             Self::RuntimeApplied { observation } => observation.validate(),
             Self::RuntimeInspected { inspection } | Self::RuntimeStopped { inspection } => {
                 inspection.validate()
             }
             Self::RuntimeRemoved { removal } => removal.validate(),
+            Self::ResourceClaimReleased { released } => released.validate(),
             Self::GatewaySnapshotInstalled { acknowledgement } => acknowledgement.validate(),
+            Self::GatewaySnapshotObserved { observation } => observation.validate(),
         }
     }
 
@@ -190,9 +310,22 @@ impl NodeCommandResult {
         self.validate()?;
         match (&command.payload, self) {
             (
-                NodeCommandPayload::RuntimeApply { request },
+                NodeCommandPayload::ResourceClaimPrepare { request },
+                Self::ResourceClaimPrepared { prepared },
+            ) => prepared.validate_for(request),
+            (
+                NodeCommandPayload::RuntimeApply {
+                    request,
+                    resource_claim,
+                },
                 Self::RuntimeApplied { observation },
-            ) => observation.validate_against(&request.spec),
+            ) => {
+                observation.validate_against(&request.spec)?;
+                if let Some(binding) = resource_claim {
+                    binding.validate_runtime_observation(observation)?;
+                }
+                Ok(())
+            }
             (
                 NodeCommandPayload::RuntimeInspect {
                     unit_id,
@@ -222,9 +355,17 @@ impl NodeCommandResult {
                 Err("node command result identity does not match its payload".into())
             }
             (
+                NodeCommandPayload::ResourceClaimRelease { request },
+                Self::ResourceClaimReleased { released },
+            ) => released.validate_for(request),
+            (
                 NodeCommandPayload::GatewaySnapshotInstall { snapshot },
                 Self::GatewaySnapshotInstalled { acknowledgement },
             ) => acknowledgement.validate_for(command.command_id, command.node_id, snapshot),
+            (
+                NodeCommandPayload::GatewaySnapshotObserve { request },
+                Self::GatewaySnapshotObserved { observation },
+            ) => observation.validate_for(command.command_id, command.node_id, request),
             _ => Err("node command result kind does not match its payload".into()),
         }
     }
@@ -317,11 +458,12 @@ impl NodeCommandAckReceipt {
 }
 
 impl NodeCommandAck {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-command-ack.v1";
+    pub const SCHEMA: &'static str = "a3s.cloud.node-command-ack.v2";
+    pub const LEGACY_SCHEMA: &'static str = "a3s.cloud.node-command-ack.v1";
 
     pub fn validate_against(&self, command: &NodeCommandEnvelope) -> Result<(), String> {
         command.validate()?;
-        if self.schema != Self::SCHEMA {
+        if self.schema != Self::SCHEMA && self.schema != Self::LEGACY_SCHEMA {
             return Err(format!(
                 "unsupported node command acknowledgement schema {:?}",
                 self.schema
@@ -341,13 +483,68 @@ impl NodeCommandAck {
         self.outcome.validate()?;
         if let NodeCommandOutcome::Succeeded { result } = &self.outcome {
             result.validate_against(command)?;
+            let resource_evidence_at = match result.as_ref() {
+                NodeCommandResult::ResourceClaimPrepared { prepared } => Some(prepared.prepared_at),
+                NodeCommandResult::ResourceClaimReleased { released } => Some(released.released_at),
+                NodeCommandResult::RuntimeApplied { .. }
+                | NodeCommandResult::RuntimeInspected { .. }
+                | NodeCommandResult::RuntimeStopped { .. }
+                | NodeCommandResult::RuntimeRemoved { .. }
+                | NodeCommandResult::GatewaySnapshotInstalled { .. }
+                | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
+            };
+            if resource_evidence_at
+                .is_some_and(|at| at < command.issued_at || at > self.completed_at)
+            {
+                return Err("resource Claim evidence time falls outside command execution".into());
+            }
+            if matches!(
+                command.payload,
+                NodeCommandPayload::ResourceClaimPrepare { .. }
+                    | NodeCommandPayload::ResourceClaimRelease { .. }
+                    | NodeCommandPayload::RuntimeApply {
+                        resource_claim: Some(_),
+                        ..
+                    }
+            ) && self.schema != Self::SCHEMA
+            {
+                return Err(
+                    "resource-bound commands require the current acknowledgement schema".into(),
+                );
+            }
             if let NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } = result.as_ref()
             {
+                let expected_gateway_schema = if self.schema == Self::SCHEMA {
+                    NodeGatewayAck::SCHEMA
+                } else {
+                    NodeGatewayAck::LEGACY_SCHEMA
+                };
+                if acknowledgement.schema != expected_gateway_schema {
+                    return Err(
+                        "Gateway acknowledgement schema does not match its command acknowledgement"
+                            .into(),
+                    );
+                }
                 if acknowledgement.acknowledged_at < command.issued_at
                     || acknowledgement.acknowledged_at > self.completed_at
                 {
                     return Err(
                         "Gateway acknowledgement time falls outside command execution".into(),
+                    );
+                }
+            }
+            if let NodeCommandResult::GatewaySnapshotObserved { observation } = result.as_ref() {
+                if self.schema != Self::SCHEMA {
+                    return Err(
+                        "Gateway snapshot observations require the current acknowledgement schema"
+                            .into(),
+                    );
+                }
+                if observation.observed_at < command.issued_at
+                    || observation.observed_at > self.completed_at
+                {
+                    return Err(
+                        "Gateway snapshot observation time falls outside command execution".into(),
                     );
                 }
             }

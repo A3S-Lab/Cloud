@@ -9,7 +9,8 @@ use crate::modules::fleet::application::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, LeaseNodeCommands,
     LeaseNodeCommandsHandler, RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,
     RecordNodeLogChunks, RecordNodeLogChunksHandler, RecordNodeObservations,
-    RecordNodeObservationsHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
+    RecordNodeObservationsHandler, RecordNodeResourceInventory, RecordNodeResourceInventoryHandler,
+    RotateNodeCertificate, RotateNodeCertificateHandler,
 };
 use crate::modules::fleet::application::{
     IGatewayAcknowledgementProjector, NodeArtifactAuthorizer,
@@ -26,8 +27,8 @@ use a3s_cloud_contracts::{
     NodeArtifactUploadReceipt, NodeArtifactUploadRequest,
     NodeCertificate as NodeCertificateContract, NodeCertificateRotationRequest,
     NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
-    NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch, NodeObservationBatch,
-    NodeSecretMaterialRequest, NodeSecretMaterialResponse,
+    NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch, NodeObservationBatchEnvelope,
+    NodeResourceInventory, NodeSecretMaterialRequest, NodeSecretMaterialResponse,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use axum::body::{to_bytes, Body};
@@ -70,6 +71,7 @@ struct NodeControlApiInner {
     lease: LeaseNodeCommandsHandler,
     acknowledge: AcknowledgeNodeCommandHandler,
     observations: RecordNodeObservationsHandler,
+    resource_inventory: RecordNodeResourceInventoryHandler,
     logs: RecordNodeLogChunksHandler,
     gateway: RecordGatewayAcknowledgementHandler,
     sign_gateway_certificate: SignGatewayCertificateHandler,
@@ -133,6 +135,7 @@ impl NodeControlApi {
                 )?,
                 acknowledge: AcknowledgeNodeCommandHandler::new(Arc::clone(&commands)),
                 observations: RecordNodeObservationsHandler::new(Arc::clone(&commands)),
+                resource_inventory: RecordNodeResourceInventoryHandler::new(Arc::clone(&commands)),
                 logs: RecordNodeLogChunksHandler::new(Arc::clone(&commands), logs),
                 gateway: RecordGatewayAcknowledgementHandler::new(commands, gateway_projector),
                 sign_gateway_certificate: SignGatewayCertificateHandler::new(
@@ -177,6 +180,10 @@ impl NodeControlApi {
                 post(acknowledge_command),
             )
             .route("/v1/node-control/observations", post(record_observations))
+            .route(
+                "/v1/node-control/inventories",
+                post(record_resource_inventory),
+            )
             .route("/v1/node-control/log-chunks", post(record_log_chunks))
             .route(
                 "/v1/node-control/secrets:materialize",
@@ -588,7 +595,7 @@ async fn record_observations(
 ) -> Result<Response, NodeControlHttpError> {
     let request_id = Uuid::now_v7();
     let node_id = api.authenticate(request_id, &peer).await?;
-    let batch: NodeObservationBatch = api.body(request_id, request).await?;
+    let batch: NodeObservationBatchEnvelope = api.body(request_id, request).await?;
     let result = api
         .inner
         .observations
@@ -596,6 +603,31 @@ async fn record_observations(
             RecordNodeObservations {
                 authenticated_node_id: node_id,
                 batch,
+                received_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    json_response(request_id, StatusCode::OK, &result)
+}
+
+async fn record_resource_inventory(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node_id = api.authenticate(request_id, &peer).await?;
+    let inventory: NodeResourceInventory = api.body(request_id, request).await?;
+    let result = api
+        .inner
+        .resource_inventory
+        .execute(
+            RecordNodeResourceInventory {
+                authenticated_node_id: node_id,
+                inventory,
                 received_at: Utc::now(),
             },
             context(),

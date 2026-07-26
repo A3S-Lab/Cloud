@@ -3,19 +3,20 @@ use super::{
     SignGatewayCertificate, SignGatewayCertificateHandler, VerifyDomainClaim,
     VerifyDomainClaimHandler,
 };
-use crate::modules::edge::domain::events::DomainClaimChanged;
+use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
 use crate::modules::edge::domain::repositories::{
-    CreateDomainClaimWrite, IEdgeRepository, TransitionDomainClaim,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayCommandDispatch,
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
-    IRouteTargetReader, RouteTarget,
+    IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
-    GatewayCertificateMaterial, GatewayPublication, RoutePortName, UpstreamEndpoint,
+    GatewayCertificateMaterial, GatewayPublication, GatewayRolloutPolicy, GatewayScope,
+    RoutePortName, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::infrastructure::{
@@ -23,8 +24,8 @@ use crate::modules::edge::infrastructure::{
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, IdempotencyRequest, NodeId, OrganizationId, ProjectId,
-    RepositoryError, WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayScopeId, IdempotencyRequest, NodeId, OrganizationId,
+    ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{GatewayAckState, GatewayCertificateSigningRequest, NodeGatewayAck};
@@ -36,9 +37,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+mod gateway_scope_tests;
+
 #[derive(Clone)]
 struct FixedTargetReader {
-    target: RouteTarget,
+    target: ResolvedRouteTarget,
 }
 
 #[async_trait]
@@ -51,11 +54,80 @@ impl IRouteTargetReader for FixedTargetReader {
         revision_id: WorkloadRevisionId,
         _port_name: &RoutePortName,
         _now: chrono::DateTime<Utc>,
-    ) -> Result<RouteTarget, RepositoryError> {
-        if revision_id != self.target.workload_revision_id {
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
+        if revision_id != self.target.target.workload_revision_id {
             return Err(RepositoryError::NotFound);
         }
         Ok(self.target.clone())
+    }
+}
+
+struct ReplicatedTargetReader {
+    workload_id: WorkloadId,
+    revision_id: WorkloadRevisionId,
+    observed_at: chrono::DateTime<Utc>,
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl IRouteTargetReader for ReplicatedTargetReader {
+    async fn resolve_healthy_target(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _revision_id: WorkloadRevisionId,
+        _port_name: &RoutePortName,
+        _now: chrono::DateTime<Utc>,
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
+        Err(RepositoryError::Conflict(
+            "replicated target reader requires the complete desired membership".into(),
+        ))
+    }
+
+    async fn resolve_healthy_target_set(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        revision_id: WorkloadRevisionId,
+        port_name: &RoutePortName,
+        member_node_ids: &[NodeId],
+        _now: chrono::DateTime<Utc>,
+    ) -> Result<ResolvedRouteTargetSet, RepositoryError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if revision_id != self.revision_id || port_name.as_str() != "http" {
+            return Err(RepositoryError::NotFound);
+        }
+        ResolvedRouteTargetSet::new(
+            member_node_ids,
+            member_node_ids
+                .iter()
+                .enumerate()
+                .map(|(index, node_id)| ResolvedRouteTarget {
+                    workload_id: self.workload_id,
+                    node_id: *node_id,
+                    target: RouteTarget::new(
+                        self.workload_id,
+                        self.revision_id,
+                        format!(
+                            "workload:{}:revision:{}",
+                            self.workload_id, self.revision_id
+                        ),
+                        1,
+                        RoutePortName::parse("http").expect("port"),
+                        UpstreamEndpoint::parse(format!(
+                            "http://127.0.0.1:{}",
+                            49_152 + u16::try_from(index).expect("member ordinal")
+                        ))
+                        .expect("upstream"),
+                        self.observed_at,
+                    )
+                    .expect("Route target"),
+                })
+                .collect(),
+        )
+        .map_err(RepositoryError::Conflict)
     }
 }
 
@@ -71,7 +143,7 @@ impl IRouteTargetReader for UnavailableTargetReader {
         _revision_id: WorkloadRevisionId,
         _port_name: &RoutePortName,
         _now: chrono::DateTime<Utc>,
-    ) -> Result<RouteTarget, RepositoryError> {
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
         Err(RepositoryError::Conflict(
             "current target evidence is no longer available".into(),
         ))
@@ -174,6 +246,7 @@ fn compiler() -> GatewaySnapshotCompiler {
         management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
     .expect("compiler")
 }
@@ -187,6 +260,7 @@ fn command(
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    gateway_scope_id: GatewayScopeId,
     revision_id: WorkloadRevisionId,
     domain_claim_id: DomainClaimId,
     hostname: &str,
@@ -197,6 +271,7 @@ fn command(
         organization_id,
         project_id,
         environment_id,
+        gateway_scope_id,
         workload_revision_id: revision_id,
         domain_claim_id,
         hostname: hostname.into(),
@@ -205,6 +280,59 @@ fn command(
         idempotency_key: key.into(),
         request_id: Uuid::now_v7(),
         requested_at,
+    }
+}
+
+async fn gateway_scope(
+    edge: &Arc<InMemoryEdgeRepository>,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    node_id: NodeId,
+    now: chrono::DateTime<Utc>,
+) -> GatewayScopeId {
+    let scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    )
+    .expect("Gateway scope");
+    edge.create_gateway_scope(CreateGatewayScopeWrite {
+        scope: scope.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-gateway-scopes",
+            scope.id.to_string(),
+            scope.node_id.to_string().as_bytes(),
+        )
+        .expect("scope idempotency"),
+        event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7()).expect("scope event"),
+    })
+    .await
+    .expect("create Gateway scope");
+    scope.id
+}
+
+fn fixed_target(
+    workload_id: WorkloadId,
+    revision_id: WorkloadRevisionId,
+    node_id: NodeId,
+) -> ResolvedRouteTarget {
+    ResolvedRouteTarget {
+        workload_id,
+        node_id,
+        target: RouteTarget::new(
+            workload_id,
+            revision_id,
+            format!("workload:{workload_id}:revision:{revision_id}"),
+            1,
+            RoutePortName::parse("http").expect("port name"),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
+            Utc::now() - Duration::days(1),
+        )
+        .expect("route target"),
     }
 }
 
@@ -308,15 +436,20 @@ async fn stage_certificate(
         now,
     )
     .await;
+    let workload_id = WorkloadId::new();
+    let gateway_scope_id = gateway_scope(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    )
+    .await;
     PublishRouteHandler::new(
         routes,
         Arc::new(FixedTargetReader {
-            target: RouteTarget {
-                workload_id: WorkloadId::new(),
-                workload_revision_id: revision_id,
-                node_id,
-                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
-            },
+            target: fixed_target(workload_id, revision_id, node_id),
         }),
         Arc::new(RecordingGatewayQueue::default()),
         compiler(),
@@ -328,6 +461,7 @@ async fn stage_certificate(
             organization_id,
             project_id,
             environment_id,
+            gateway_scope_id,
             revision_id,
             domain_claim_id,
             hostname,
@@ -530,17 +664,14 @@ async fn publishes_one_exact_command_and_replays_the_same_route_intent() {
     let environment_id = EnvironmentId::new();
     let revision_id = WorkloadRevisionId::new();
     let node_id = NodeId::new();
+    let workload_id = WorkloadId::new();
     let routes = Arc::new(InMemoryEdgeRepository::new());
     let queue = Arc::new(RecordingGatewayQueue::default());
+    let now = Utc::now();
     let handler = PublishRouteHandler::new(
         routes.clone(),
         Arc::new(FixedTargetReader {
-            target: RouteTarget {
-                workload_id: WorkloadId::new(),
-                workload_revision_id: revision_id,
-                node_id,
-                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
-            },
+            target: fixed_target(workload_id, revision_id, node_id),
         }),
         queue.clone(),
         compiler(),
@@ -553,18 +684,28 @@ async fn publishes_one_exact_command_and_replays_the_same_route_intent() {
         project_id,
         environment_id,
         "api.example.com",
-        Utc::now(),
+        now,
+    )
+    .await;
+    let gateway_scope_id = gateway_scope(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
     )
     .await;
     let request = command(
         organization_id,
         project_id,
         environment_id,
+        gateway_scope_id,
         revision_id,
         domain_claim_id,
         "api.example.com",
         "publish-api",
-        Utc::now(),
+        now,
     );
     let first = handler
         .execute(request.clone(), context())
@@ -619,17 +760,13 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
     let environment_id = EnvironmentId::new();
     let revision_id = WorkloadRevisionId::new();
     let node_id = NodeId::new();
+    let workload_id = WorkloadId::new();
     let routes = Arc::new(InMemoryEdgeRepository::new());
     let queue = Arc::new(RecordingGatewayQueue::default());
     let handler = PublishRouteHandler::new(
         routes.clone(),
         Arc::new(FixedTargetReader {
-            target: RouteTarget {
-                workload_id: WorkloadId::new(),
-                workload_revision_id: revision_id,
-                node_id,
-                upstream: UpstreamEndpoint::parse("http://127.0.0.1:49152").expect("upstream"),
-            },
+            target: fixed_target(workload_id, revision_id, node_id),
         }),
         queue,
         compiler(),
@@ -646,12 +783,22 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         now,
     )
     .await;
+    let gateway_scope_id = gateway_scope(
+        &routes,
+        organization_id,
+        project_id,
+        environment_id,
+        node_id,
+        now,
+    )
+    .await;
     let first = handler
         .execute(
             command(
                 organization_id,
                 project_id,
                 environment_id,
+                gateway_scope_id,
                 revision_id,
                 domain_claim_id,
                 "api.example.com",
@@ -674,11 +821,15 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         acknowledgement_id: Uuid::now_v7(),
         command_id: first.publication.publication.command_id.as_uuid(),
         node_id: node_id.as_uuid(),
+        gateway_id: node_id.as_uuid(),
         revision: 1,
         snapshot_digest: first.publication.publication.snapshot_digest.clone(),
+        expires_at: first.publication.publication.snapshot_expires_at,
         state: GatewayAckState::Applied,
+        ready: true,
         message: None,
         acknowledged_at: now + Duration::seconds(1),
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
     assert!(routes
         .project_gateway_acknowledgement(
@@ -694,6 +845,7 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
                 organization_id,
                 project_id,
                 environment_id,
+                gateway_scope_id,
                 revision_id,
                 domain_claim_id,
                 "web.example.com",
@@ -727,148 +879,4 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
         .contains("Host(`web.example.com`)"));
 }
 
-#[tokio::test]
-async fn signs_each_gateway_certificate_once_for_the_authenticated_node_and_csr() {
-    let routes = Arc::new(InMemoryEdgeRepository::new());
-    let node_id = NodeId::new();
-    let now = Utc::now();
-    let staged = stage_certificate(
-        Arc::clone(&routes),
-        node_id,
-        "api.example.com",
-        "sign-certificate",
-        now,
-    )
-    .await;
-    let authority = Arc::new(RecordingGatewayCertificateAuthority {
-        calls: AtomicUsize::new(0),
-        unavailable: AtomicBool::new(false),
-    });
-    let repository: Arc<dyn IEdgeRepository> = routes.clone();
-    let certificate_authority: Arc<dyn IGatewayCertificateAuthority> = authority.clone();
-    let handler =
-        SignGatewayCertificateHandler::new(repository, certificate_authority, Duration::days(30))
-            .expect("signing handler");
-    let request = GatewayCertificateSigningRequest {
-        schema: GatewayCertificateSigningRequest::SCHEMA.into(),
-        certificate_id: staged.certificate.id.as_uuid(),
-        node_id: node_id.as_uuid(),
-        csr_pem:
-            "-----BEGIN CERTIFICATE REQUEST-----\ndGVzdA==\n-----END CERTIFICATE REQUEST-----\n"
-                .into(),
-        requested_at: now + Duration::milliseconds(1),
-    };
-    let command = SignGatewayCertificate {
-        authenticated_node_id: node_id,
-        request: request.clone(),
-        received_at: now + Duration::seconds(1),
-    };
-    let issued = handler
-        .execute(command.clone(), context())
-        .await
-        .expect("command bus")
-        .expect("issue certificate");
-    assert_eq!(issued.dns_names, vec!["api.example.com"]);
-    assert!(!issued.certificate_pem.contains("PRIVATE KEY"));
-    let replay = handler
-        .execute(
-            SignGatewayCertificate {
-                received_at: now + Duration::seconds(2),
-                ..command
-            },
-            context(),
-        )
-        .await
-        .expect("command bus")
-        .expect("replay certificate");
-    assert_eq!(replay, issued);
-    assert_eq!(authority.calls.load(Ordering::SeqCst), 1);
-
-    let conflicting = handler
-        .execute(
-            SignGatewayCertificate {
-                authenticated_node_id: node_id,
-                request: GatewayCertificateSigningRequest {
-                    csr_pem: "-----BEGIN CERTIFICATE REQUEST-----\nY29uZmxpY3Q=\n-----END CERTIFICATE REQUEST-----\n".into(),
-                    ..request
-                },
-                received_at: now + Duration::seconds(3),
-            },
-            context(),
-        )
-        .await
-        .expect("command bus")
-        .expect_err("different CSR must conflict");
-    assert!(matches!(
-        conflicting,
-        crate::modules::shared_kernel::application::ApplicationError::Conflict(_)
-    ));
-    assert_eq!(authority.calls.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn keeps_unavailable_gateway_certificate_authority_retryable_without_provider_details() {
-    let routes = Arc::new(InMemoryEdgeRepository::new());
-    let node_id = NodeId::new();
-    let now = Utc::now();
-    let staged = stage_certificate(
-        Arc::clone(&routes),
-        node_id,
-        "failed.example.com",
-        "failed-signing",
-        now,
-    )
-    .await;
-    let repository: Arc<dyn IEdgeRepository> = routes.clone();
-    let authority = Arc::new(RecordingGatewayCertificateAuthority {
-        calls: AtomicUsize::new(0),
-        unavailable: AtomicBool::new(true),
-    });
-    let handler =
-        SignGatewayCertificateHandler::new(repository, authority.clone(), Duration::days(30))
-            .expect("signing handler");
-    let command = SignGatewayCertificate {
-        authenticated_node_id: node_id,
-        request: GatewayCertificateSigningRequest {
-            schema: GatewayCertificateSigningRequest::SCHEMA.into(),
-            certificate_id: staged.certificate.id.as_uuid(),
-            node_id: node_id.as_uuid(),
-            csr_pem:
-                "-----BEGIN CERTIFICATE REQUEST-----\nZmFpbA==\n-----END CERTIFICATE REQUEST-----\n"
-                    .into(),
-            requested_at: now + Duration::milliseconds(1),
-        },
-        received_at: now + Duration::seconds(1),
-    };
-    let result = handler
-        .execute(command.clone(), context())
-        .await
-        .expect("command bus")
-        .expect_err("unavailable authority");
-    assert!(matches!(
-        result,
-        crate::modules::shared_kernel::application::ApplicationError::Internal(_)
-    ));
-    let stored = routes
-        .find_gateway_certificate(node_id, staged.certificate.id)
-        .await
-        .expect("pending certificate");
-    assert_eq!(
-        stored.state,
-        crate::modules::edge::domain::GatewayCertificateState::Provisioning
-    );
-    assert_eq!(stored.failure, None);
-    assert_eq!(
-        stored.aggregate_version,
-        staged.certificate.aggregate_version
-    );
-
-    authority.unavailable.store(false, Ordering::SeqCst);
-    let issued = handler
-        .execute(command, context())
-        .await
-        .expect("command bus")
-        .expect("retry Gateway certificate signing");
-    assert_eq!(issued.serial_number, staged.certificate.id.to_string());
-    assert_eq!(authority.calls.load(Ordering::SeqCst), 2);
-}
+mod gateway_certificate_tests;

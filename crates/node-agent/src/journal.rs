@@ -1,8 +1,9 @@
 use crate::state_file::{self, SecureStateError, StateLock};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandOutcome,
-    NodeCommandPayload,
+    NodeCommandPayload, NodeCommandResult, NodeResourceClaimBinding, NodeResourceClaimRelease,
 };
+use a3s_runtime::contract::{RuntimeInspection, RuntimeUnitSpec};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -153,6 +154,7 @@ impl CommandJournal {
                 ));
             }
         }
+        self.resource_claim_projection()?;
         Ok(())
     }
 
@@ -167,6 +169,18 @@ impl CommandJournal {
             sequence += 1;
         }
         sequence
+    }
+
+    fn resource_claim_projection(
+        &self,
+    ) -> Result<ResourceClaimJournalProjection, CommandJournalError> {
+        let mut projection = ResourceClaimJournalProjection::default();
+        let mut entries = self.entries.values().collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.envelope.sequence);
+        for entry in entries {
+            projection.apply(entry)?;
+        }
+        Ok(projection)
     }
 }
 
@@ -242,6 +256,38 @@ impl FileCommandJournal {
     pub async fn log_targets(&self) -> Result<Vec<RuntimeLogTarget>, CommandJournalError> {
         let journal = self.clone();
         tokio::task::spawn_blocking(move || journal.log_targets_sync())
+            .await
+            .map_err(task_error)?
+    }
+
+    pub(crate) async fn active_resource_claim_bindings(
+        &self,
+    ) -> Result<Vec<NodeResourceClaimBinding>, CommandJournalError> {
+        let journal = self.clone();
+        tokio::task::spawn_blocking(move || journal.active_resource_claim_bindings_sync())
+            .await
+            .map_err(task_error)?
+    }
+
+    pub(crate) async fn validate_runtime_resource_binding(
+        &self,
+        spec: RuntimeUnitSpec,
+        binding: Option<NodeResourceClaimBinding>,
+    ) -> Result<(), CommandJournalError> {
+        let journal = self.clone();
+        tokio::task::spawn_blocking(move || {
+            journal.validate_runtime_resource_binding_sync(&spec, binding.as_ref())
+        })
+        .await
+        .map_err(task_error)?
+    }
+
+    pub(crate) async fn validate_resource_claim_release(
+        &self,
+        request: NodeResourceClaimRelease,
+    ) -> Result<(), CommandJournalError> {
+        let journal = self.clone();
+        tokio::task::spawn_blocking(move || journal.validate_resource_claim_release_sync(&request))
             .await
             .map_err(task_error)?
     }
@@ -451,7 +497,7 @@ impl FileCommandJournal {
             };
             match (&entry.envelope.payload, result.as_ref()) {
                 (
-                    NodeCommandPayload::RuntimeApply { request },
+                    NodeCommandPayload::RuntimeApply { request, .. },
                     a3s_cloud_contracts::NodeCommandResult::RuntimeApplied { .. },
                 ) => {
                     let candidate = RuntimeLogTarget {
@@ -480,6 +526,40 @@ impl FileCommandJournal {
         Ok(targets.into_values().collect())
     }
 
+    fn active_resource_claim_bindings_sync(
+        &self,
+    ) -> Result<Vec<NodeResourceClaimBinding>, CommandJournalError> {
+        state_file::ensure_directory(&self.root)?;
+        let _lock = StateLock::exclusive(&self.root.join(JOURNAL_LOCK_FILE))?;
+        let journal = self.read_journal()?;
+        Ok(journal.resource_claim_projection()?.active_bindings())
+    }
+
+    fn validate_runtime_resource_binding_sync(
+        &self,
+        spec: &RuntimeUnitSpec,
+        binding: Option<&NodeResourceClaimBinding>,
+    ) -> Result<(), CommandJournalError> {
+        state_file::ensure_directory(&self.root)?;
+        let _lock = StateLock::exclusive(&self.root.join(JOURNAL_LOCK_FILE))?;
+        let journal = self.read_journal()?;
+        journal
+            .resource_claim_projection()?
+            .validate_runtime_apply(spec, binding)
+    }
+
+    fn validate_resource_claim_release_sync(
+        &self,
+        request: &NodeResourceClaimRelease,
+    ) -> Result<(), CommandJournalError> {
+        state_file::ensure_directory(&self.root)?;
+        let _lock = StateLock::exclusive(&self.root.join(JOURNAL_LOCK_FILE))?;
+        let journal = self.read_journal()?;
+        journal
+            .resource_claim_projection()?
+            .validate_release(request)
+    }
+
     fn read_journal(&self) -> Result<CommandJournal, CommandJournalError> {
         let path = self.root.join(JOURNAL_FILE);
         let journal: CommandJournal = state_file::read_json(&path, "node command journal")?
@@ -502,18 +582,350 @@ fn state_mutation_digest(
     payload: &NodeCommandPayload,
 ) -> Result<Option<String>, CommandJournalError> {
     match payload {
-        NodeCommandPayload::RuntimeApply { request } => request
-            .spec
-            .digest()
-            .map(Some)
-            .map_err(CommandJournalError::Invalid),
+        NodeCommandPayload::ResourceClaimPrepare { request } => {
+            request.validate().map_err(CommandJournalError::Invalid)?;
+            Ok(Some(request.claim_digest.clone()))
+        }
+        NodeCommandPayload::RuntimeApply {
+            request,
+            resource_claim,
+        } => match resource_claim {
+            Some(_) => payload
+                .digest()
+                .map(Some)
+                .map_err(CommandJournalError::Invalid),
+            None => request
+                .spec
+                .digest()
+                .map(Some)
+                .map_err(CommandJournalError::Invalid),
+        },
         NodeCommandPayload::GatewaySnapshotInstall { snapshot } => {
             snapshot.validate().map_err(CommandJournalError::Invalid)?;
             Ok(Some(snapshot.snapshot_digest.clone()))
         }
+        NodeCommandPayload::GatewaySnapshotObserve { request } => {
+            request.validate().map_err(CommandJournalError::Invalid)?;
+            Ok(None)
+        }
         NodeCommandPayload::RuntimeInspect { .. }
         | NodeCommandPayload::RuntimeStop { .. }
         | NodeCommandPayload::RuntimeRemove { .. } => Ok(None),
+        NodeCommandPayload::ResourceClaimRelease { request } => {
+            request.validate().map_err(CommandJournalError::Invalid)?;
+            Ok(Some(request.claim_digest.clone()))
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ResourceClaimJournalProjection {
+    claims: BTreeMap<Uuid, ProjectedResourceClaim>,
+}
+
+impl ResourceClaimJournalProjection {
+    fn apply(&mut self, entry: &JournalEntry) -> Result<(), CommandJournalError> {
+        match &entry.envelope.payload {
+            NodeCommandPayload::ResourceClaimPrepare { request } => {
+                let projected = self
+                    .claims
+                    .entry(request.binding.claim_id)
+                    .or_insert_with(|| ProjectedResourceClaim::new(request));
+                projected.register_prepare(request)?;
+                if entry.completion.is_some() {
+                    projected.prepare_terminal = true;
+                }
+            }
+            NodeCommandPayload::ResourceClaimRelease { request } => {
+                let projected =
+                    self.claims
+                        .get_mut(&request.binding.claim_id)
+                        .ok_or_else(|| {
+                            CommandJournalError::Invalid(
+                                "resource claim release has no durable prepare command".into(),
+                            )
+                        })?;
+                projected.register_release(request)?;
+            }
+            NodeCommandPayload::RuntimeApply { .. }
+            | NodeCommandPayload::RuntimeInspect { .. }
+            | NodeCommandPayload::RuntimeStop { .. }
+            | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::GatewaySnapshotInstall { .. }
+            | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
+        }
+
+        let Some(completion) = &entry.completion else {
+            return Ok(());
+        };
+        let NodeCommandOutcome::Succeeded { result } = &completion.outcome else {
+            return Ok(());
+        };
+        match (&entry.envelope.payload, result.as_ref()) {
+            (
+                NodeCommandPayload::ResourceClaimPrepare { request },
+                NodeCommandResult::ResourceClaimPrepared { prepared },
+            ) => {
+                prepared
+                    .validate_for(request)
+                    .map_err(CommandJournalError::Invalid)?;
+                self.activate_prepared(request)?;
+            }
+            (
+                NodeCommandPayload::RuntimeApply {
+                    request,
+                    resource_claim: Some(binding),
+                },
+                NodeCommandResult::RuntimeApplied { observation },
+            ) => {
+                self.validate_runtime_apply(&request.spec, Some(binding))?;
+                binding
+                    .validate_runtime_observation(observation)
+                    .map_err(CommandJournalError::Invalid)?;
+                let projected = self.claims.get_mut(&binding.claim_id).ok_or_else(|| {
+                    CommandJournalError::Invalid(
+                        "Runtime apply references an unknown resource claim".into(),
+                    )
+                })?;
+                projected.bound = true;
+                projected.runtime_fenced = false;
+            }
+            (
+                NodeCommandPayload::RuntimeApply {
+                    request,
+                    resource_claim: None,
+                },
+                NodeCommandResult::RuntimeApplied { .. },
+            ) => {
+                self.validate_runtime_apply(&request.spec, None)?;
+            }
+            (
+                NodeCommandPayload::RuntimeStop { request },
+                NodeCommandResult::RuntimeStopped { inspection },
+            ) if stopped_or_absent(inspection) => {
+                self.mark_runtime_fenced(&request.unit_id, request.generation);
+            }
+            (
+                NodeCommandPayload::RuntimeRemove { request },
+                NodeCommandResult::RuntimeRemoved { .. },
+            ) => {
+                self.mark_runtime_fenced(&request.unit_id, request.generation);
+            }
+            (
+                NodeCommandPayload::ResourceClaimRelease { request },
+                NodeCommandResult::ResourceClaimReleased { released },
+            ) => {
+                self.validate_release(request)?;
+                released
+                    .validate_for(request)
+                    .map_err(CommandJournalError::Invalid)?;
+                let projected =
+                    self.claims
+                        .get_mut(&request.binding.claim_id)
+                        .ok_or_else(|| {
+                            CommandJournalError::Invalid(
+                                "released resource claim disappeared from the journal".into(),
+                            )
+                        })?;
+                projected.active = false;
+                projected.released = true;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn activate_prepared(
+        &mut self,
+        request: &a3s_cloud_contracts::NodeResourceClaimPrepare,
+    ) -> Result<(), CommandJournalError> {
+        let binding = &request.binding;
+        if self.claims.values().any(|candidate| {
+            candidate.active
+                && candidate.binding.claim_id != binding.claim_id
+                && candidate.binding.runtime_unit_id == binding.runtime_unit_id
+                && candidate.binding.runtime_generation == binding.runtime_generation
+        }) {
+            return Err(CommandJournalError::Invalid(
+                "two active resource claims bind one Runtime generation".into(),
+            ));
+        }
+        for candidate in self.claims.values().filter(|candidate| candidate.active) {
+            if candidate.binding.claim_id == binding.claim_id {
+                return Err(CommandJournalError::Invalid(
+                    "resource claim was prepared more than once".into(),
+                ));
+            }
+            for requested in &binding.slots {
+                if requested.kind.is_shared_capacity() {
+                    continue;
+                }
+                if candidate.binding.slots.iter().any(|slot| {
+                    slot.kind == requested.kind
+                        && slot.stable_resource_id == requested.stable_resource_id
+                }) {
+                    return Err(CommandJournalError::Invalid(format!(
+                        "exclusive resource slot {} has two active Agent claims",
+                        requested.stable_resource_id
+                    )));
+                }
+            }
+        }
+        let projected = self.claims.get_mut(&binding.claim_id).ok_or_else(|| {
+            CommandJournalError::Invalid("prepared resource claim disappeared".into())
+        })?;
+        projected.active = true;
+        projected.released = false;
+        Ok(())
+    }
+
+    fn mark_runtime_fenced(&mut self, unit_id: &str, generation: u64) {
+        for projected in self.claims.values_mut().filter(|candidate| {
+            candidate.active
+                && candidate.binding.runtime_unit_id == unit_id
+                && candidate.binding.runtime_generation == generation
+        }) {
+            projected.runtime_fenced = true;
+        }
+    }
+
+    fn active_bindings(&self) -> Vec<NodeResourceClaimBinding> {
+        self.claims
+            .values()
+            .filter(|claim| claim.active)
+            .map(|claim| claim.binding.clone())
+            .collect()
+    }
+
+    fn validate_runtime_apply(
+        &self,
+        spec: &RuntimeUnitSpec,
+        binding: Option<&NodeResourceClaimBinding>,
+    ) -> Result<(), CommandJournalError> {
+        spec.validate().map_err(CommandJournalError::Invalid)?;
+        let matching = self.claims.values().find(|claim| {
+            claim.active
+                && claim.binding.runtime_unit_id == spec.unit_id
+                && claim.binding.runtime_generation == spec.generation
+        });
+        match (binding, matching) {
+            (Some(binding), Some(projected)) if projected.binding == *binding => binding
+                .validate_runtime_spec(spec)
+                .map_err(CommandJournalError::Invalid),
+            (Some(_), Some(_)) => Err(CommandJournalError::Conflict(
+                "Runtime apply changed its prepared resource claim binding".into(),
+            )),
+            (Some(_), None) => Err(CommandJournalError::Conflict(
+                "Runtime apply has no active prepared resource claim".into(),
+            )),
+            (None, Some(_)) => Err(CommandJournalError::Conflict(
+                "unbound Runtime apply targets an active prepared resource claim".into(),
+            )),
+            (None, None) => Ok(()),
+        }
+    }
+
+    fn validate_release(
+        &self,
+        request: &NodeResourceClaimRelease,
+    ) -> Result<(), CommandJournalError> {
+        request.validate().map_err(CommandJournalError::Invalid)?;
+        let projected = self.claims.get(&request.binding.claim_id).ok_or_else(|| {
+            CommandJournalError::Conflict(
+                "resource claim release has no durable Agent preparation".into(),
+            )
+        })?;
+        if projected.binding != request.binding
+            || !projected.prepare_terminal
+            || request.claim_generation <= projected.prepare_generation
+            || request.claim_generation != projected.latest_generation
+            || request.claim_digest == projected.prepare_digest
+        {
+            return Err(CommandJournalError::Conflict(
+                "resource claim release does not advance its exact prepared binding".into(),
+            ));
+        }
+        if projected.released {
+            return Err(CommandJournalError::Conflict(
+                "resource claim binding is already released".into(),
+            ));
+        }
+        if projected.active && projected.bound && !projected.runtime_fenced {
+            return Err(CommandJournalError::Conflict(
+                "bound resource claim cannot release before Runtime stop or removal evidence"
+                    .into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ProjectedResourceClaim {
+    binding: NodeResourceClaimBinding,
+    prepare_generation: u64,
+    prepare_digest: String,
+    latest_generation: u64,
+    prepare_terminal: bool,
+    active: bool,
+    bound: bool,
+    runtime_fenced: bool,
+    released: bool,
+}
+
+impl ProjectedResourceClaim {
+    fn new(request: &a3s_cloud_contracts::NodeResourceClaimPrepare) -> Self {
+        Self {
+            binding: request.binding.clone(),
+            prepare_generation: request.claim_generation,
+            prepare_digest: request.claim_digest.clone(),
+            latest_generation: request.claim_generation,
+            prepare_terminal: false,
+            active: false,
+            bound: false,
+            runtime_fenced: false,
+            released: false,
+        }
+    }
+
+    fn register_prepare(
+        &mut self,
+        request: &a3s_cloud_contracts::NodeResourceClaimPrepare,
+    ) -> Result<(), CommandJournalError> {
+        request.validate().map_err(CommandJournalError::Invalid)?;
+        if self.binding != request.binding
+            || self.prepare_generation != request.claim_generation
+            || self.prepare_digest != request.claim_digest
+        {
+            return Err(CommandJournalError::Conflict(
+                "resource claim prepare binding changed across journal replay".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn register_release(
+        &mut self,
+        request: &NodeResourceClaimRelease,
+    ) -> Result<(), CommandJournalError> {
+        request.validate().map_err(CommandJournalError::Invalid)?;
+        if self.binding != request.binding
+            || request.claim_generation <= self.prepare_generation
+            || request.claim_generation < self.latest_generation
+        {
+            return Err(CommandJournalError::Conflict(
+                "resource claim release generation or binding regressed".into(),
+            ));
+        }
+        self.latest_generation = request.claim_generation;
+        Ok(())
+    }
+}
+
+fn stopped_or_absent(inspection: &RuntimeInspection) -> bool {
+    match inspection {
+        RuntimeInspection::NotFound { .. } => true,
+        RuntimeInspection::Found { observation, .. } => observation.state.is_terminal(),
     }
 }
 
@@ -664,13 +1076,14 @@ mod tests {
                     deadline_at_ms: None,
                     spec,
                 }),
+                resource_claim: None,
             },
         )
         .expect("Runtime apply envelope")
     }
 
     fn applied_outcome(envelope: &NodeCommandEnvelope) -> NodeCommandOutcome {
-        let NodeCommandPayload::RuntimeApply { request } = &envelope.payload else {
+        let NodeCommandPayload::RuntimeApply { request, .. } = &envelope.payload else {
             panic!("apply payload");
         };
         NodeCommandOutcome::Succeeded {
@@ -923,7 +1336,7 @@ mod tests {
         );
         let reference =
             CloudSecretReference::new(Uuid::now_v7(), Uuid::now_v7(), 3).expect("reference");
-        let NodeCommandPayload::RuntimeApply { request } = &mut envelope.payload else {
+        let NodeCommandPayload::RuntimeApply { request, .. } = &mut envelope.payload else {
             panic!("apply envelope payload");
         };
         request.spec.secrets.push(SecretReference {

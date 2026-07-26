@@ -87,6 +87,18 @@ its URI, digest, media type, size, replay, and reconstructed-driver identity,
 rejects an oversized output, detects same-length blob tampering, and requires
 removal to delete the output view and unreferenced blob.
 
+After the Runtime profiles pass, the provider suite runs a separate mandatory
+Resource Claim process-death certification through the real node
+`CommandExecutor` and `FileCommandJournal`. A child Agent durably prepares a
+Claim and pauses after the bound apply creates one Docker container but before
+the Runtime receipt or command acknowledgement completes. The parent restarts
+the labeled isolated provider, verifies its process identity changed, sends
+`SIGKILL` to the child, and reconstructs the Runtime and Agent journals. Replay
+must reattach the same sole container and emit the exact Claim ID and binding
+digest. The test also requires premature release and a capacity-conflicting
+Claim to fail, performs real stop and removal, releases with a higher Claim
+generation, and proves the competing Claim becomes reusable only afterward.
+
 The `Docker provider conformance` GitHub Actions workflow runs this provider
 gate on relevant pull requests and merges to `main`, every night, and on manual
 dispatch. It uses a disposable Ubuntu runner, checks every host prerequisite
@@ -173,7 +185,11 @@ expected fixture contains 18 manifests and 34 blobs under root digest
 The default provider evidence directory is
 `/tmp/a3s-cloud-docker-full-isolated-<run-id>`. A successful provider execution
 contains `result.txt` with `A3S_DOCKER_CERTIFICATION_PASS` and
-`exit-status.txt` with `0`.
+`exit-status.txt` with `0`. Its aggregate, Runtime-profile, and Resource Claim
+Cargo status files must all contain `0`.
+`resource-claim-crash-certification.txt` must contain exactly one
+`A3S_RESOURCE_CLAIM_CRASH_CERTIFICATION_PASS` line copied from the dedicated
+test log.
 
 The Cloud suite writes
 `/tmp/a3s-cloud-runtime-e2e-isolated-<run-id>`. Its success marker is

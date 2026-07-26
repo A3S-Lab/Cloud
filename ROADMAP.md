@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-24.**
+**Status as of 2026-07-26.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -82,7 +82,7 @@ and generated through `a3s-acl`.
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | Planned |
 | `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
-| `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | Planned |
+| `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service | Planned |
 
 ### 3.1 Verified baseline
@@ -116,7 +116,7 @@ reconciliation engine.
   worker-pruned real cache-hit evidence;
 - complete OCI graph validation, deterministic registry targets,
   authenticated digest-only publication, remote verification, replay adoption,
-  cleanup, and explicit deployment handoff to `cloud.deployment@2`; and
+  cleanup, and explicit deployment handoff to `cloud.deployment@3`; and
 - deterministic SPDX 2.3 and SLSA provenance, locally verified Ed25519 DSSE
   signing through persistent local or Vault Transit providers, durable
   evidence restoration, and tenant-scoped API/web inspection and download.
@@ -256,16 +256,183 @@ not a product capability until restore passes against a clean environment.
 
 ### 5.6 `H0`: production scale
 
-| Sub-gate | Foundation | Required evidence |
-| --- | --- | --- |
-| `H0.1` | Managed-owner references, durable replica identity, effective placement policy, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
-| `H0.2` | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected reload preserve the prior route |
-| `H0.3` | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
-| `H0.4` | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
-| `H0.5` | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
+| Sub-gate | State | Foundation | Required evidence |
+| --- | --- | --- | --- |
+| `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
+| `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
+| `H0.3` | Planned | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.4` | Planned | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
+| `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
 Kubernetes or Helm may package Cloud, but Workloads remains the only workload
 scheduler and Cloud product configuration remains ACL.
+
+The current `H0.1` foundation persists inference-neutral managed-owner
+references, one effective single-replica placement policy, one stable
+replica/member, and one exact deployment-to-Runtime binding for every existing
+Workload. Migration 040 backfills legacy Workloads without changing their
+Runtime unit identity. Workload list/detail responses expose owner, policy,
+replica generation, member, node, and placement generation.
+
+Migration 041 and the independent Resource Claim repository add canonical hard
+resource slots, monotonic slot generations, unguessable fence tokens, and the
+durable `reserved_in_db -> preparing_on_agent -> prepared_on_agent ->
+bound_to_runtime_unit -> releasing -> released` lifecycle with an
+operator-visible `orphaned` branch. Orphaning and timeout retain the active
+lease. Only exact Agent release, provider NotFound, or trusted compute fencing
+can release it. CPU, memory, and ephemeral-storage slots use shared scalar
+capacity accounting, while accelerator, host-port, and volume slots remain
+exclusive. Migration 043 narrows active-slot uniqueness to those exclusive
+kinds. Each PostgreSQL reservation serializes the stable slot, totals active
+allocations, rejects over-capacity requests, and advances the slot generation
+and fence token.
+
+Migration 044 extends the durable Fleet command queue with
+`resource_claim_prepare` and `resource_claim_release`. The node agent journals
+the exact Claim generation, digest, current inventory identity, Runtime
+unit/generation, sorted slots, and per-slot fencing evidence before
+acknowledgement. A resource-bound Runtime apply must match that prepared
+binding, and its observation must carry the exact Claim ID and binding digest
+before Cloud persists `bound_to_runtime_unit`. A bound Claim cannot release
+until the same Agent journal has durable Runtime stopped-or-absent evidence;
+the release command advances the Claim generation and digest and returns exact
+slot evidence.
+
+The schema-backed claim CRUD and aggregate JOIN use A3S ORM typed builders. The
+full Workloads repository and its shared idempotency/outbox writes use typed
+builders for every query and mutation, including PostgreSQL advisory and row
+locks, `SKIP LOCKED`, and parameterized JSONPath Secret-binding predicates. An
+architecture test rejects raw SQL and direct drivers anywhere in Workloads
+production persistence. In-memory and PostgreSQL 17 gates prove exact replay,
+competing exclusive and shared reservations, over-capacity rejection, orphan
+blocking, safe release, and generation/token rotation after fencing.
+
+Migration 042 adds strict, immutable Fleet inventory snapshots, normalized
+slots, and one current generation/digest head per enrolled node. The node agent
+persists its canonical inventory across restart, advances generation only for
+changed slot content, reports detected CPU and state-filesystem capacity plus
+Linux memory when available, and omits resources it cannot prove. The
+authenticated inventory endpoint accepts exact and historical replay without
+regressing the current head, requires exact next-generation content changes,
+and rejects identity conflicts. New v2 heartbeats must reference the current
+inventory while legacy v1 batches remain readable during migration. The
+PostgreSQL adapter uses only typed A3S ORM tables and builders, and the real
+PostgreSQL 17 gate verifies concurrent replay, recovery, head monotonicity, and
+stale-heartbeat rejection.
+
+Workloads now compiles CPU, memory, and optional ephemeral-storage requirements
+from the current inventory, leaving PID limits Runtime-local. PostgreSQL locks
+and verifies the exact Fleet inventory head in the same transaction that
+reserves capacity. Deployment Flow reserves before node assignment, derives a
+deterministic Claim ID from the Deployment ID, recovers a committed
+reservation-before-placement gap, and tries another eligible node after a
+typed capacity conflict. Normal cancellation, retirement, and stop paths may
+cancel only a never-issued `reserved_in_db` claim; later states retain the
+Agent/trusted-fence requirement.
+
+New deployment operations use `cloud.deployment@3`; v1 and v2 remain executable
+only for persisted Flow history. Create, update, rollback, source handoff, and
+Secret rotation share one version source. The v3 workflow reserves, prepares,
+binds, retires, and releases through deterministic commands. Reconciliation
+adopts an exact bound Claim, retries failed release with a higher generation and
+digest, and preserves allocation ownership when stop evidence is rejected or
+ambiguous. Unit and PostgreSQL 17 gates cover Agent journal restart after every
+boundary, reservation-before-placement recovery, activation-before-retirement
+process death, healthy update stop-before-release ordering, and Secret-rotation
+replay.
+
+The isolated real-provider gate now closes the `H0.1` process boundary. It
+persists prepare in the real Agent journal, pauses a bound apply after Docker
+creates one provider unit but before acknowledgement, replaces the provider
+process, kills the Agent process, and reconstructs both Runtime and command
+journals. Exact replay must reattach the same sole container and carry the
+matching Claim ID and binding digest. Release and a capacity-conflicting Claim
+must remain rejected until real Runtime stop/removal and the exact
+higher-generation Agent release; only then may the competing Claim prepare.
+The provider gate requires one stable pass marker and zero provider or Artifact
+residue. `H0.1` is a closed exact-SHA acceptance gate; `H0.3` is the next open
+production-scale foundation after the verified `H0.2` Gateway projection gate.
+The closing evidence is Cloud commit
+`5cd7c4eebc21905cb2758856d0e96b31a111116c` in
+[Docker provider conformance run 30157496417](https://github.com/A3S-Lab/Cloud/actions/runs/30157496417);
+both the real-provider and Cloud-consumer jobs passed.
+
+The verified `H0.2` foundation includes Cloud-owned logical Gateway scopes. Each
+scope belongs to one organization, project, and environment and now stores an
+ordered desired member set, a membership generation, and explicit `min_ready`
+and `max_unavailable` policy. Environment-scoped create/list APIs persist the
+resource idempotently and retain the legacy single-`nodeId` request. A
+Cloud-owned planner now resolves every desired member through its exact active
+or retiring Deployment, replica binding, Runtime command, generation, and fresh
+healthy node-local endpoint. It rejects partial, ambiguous, mixed-revision, and
+mixed-port target sets and compiles an independent complete snapshot,
+certificate, command, and staged Route projection for every member.
+Single-member publication retains the established path. Replicated publication
+atomically commits the logical Route, every physical projection, rollout,
+publication, certificate, ownership record, idempotency result, and outbox fact.
+A conflict rolls back the complete bundle, preventing a bootstrap-primary or
+partially addressable apply.
+
+Cloud persists each private route target as an exact immutable revision,
+deterministic Runtime unit, positive generation, declared port, canonical
+node-local origin, and command-bound healthy observation. Revision, unit, and
+generation enter the complete ACL digest. A cutover requires a different
+revision and strictly newer generation; rejection retains the prior target,
+while the exact applied acknowledgement atomically selects the candidate.
+PostgreSQL migration 036 splits legacy shared nodes deterministically by
+environment/node binding, backfills Route and serialized recovery documents,
+and enforces the complete tenancy/node relationship across restart.
+
+The node agent uses Gateway's native apply and exact-status APIs, Gateway's
+journal remains the sole applied-state authority, and unchanged snapshots renew
+inside a bounded pre-expiry window without replacing their ACL digest or active
+certificate before acknowledgement. A real pinned-Gateway fixture also rotates
+independently signed certificates and target origins, rejects the superseded
+certificate and selector, and recovers only the replacement after restart.
+Before mutation, the agent now selects an explicitly advertised
+`a3s.gateway.management-protocol.v1` tuple or the closed legacy-v1 baseline.
+Unknown and inconsistent descriptors fail closed. Gateway ack v4 and command
+ack v2 persist the selected protocol, while the control plane reads legacy
+v3/v1 acknowledgements and migration 037 leaves their unavailable evidence
+null. Migrations 038 and 039 add backward-compatible scope membership and a
+durable per-member `GatewayRollout` aggregate. Every physical member owns an
+independent revision, command, digest, expiry, certificate, and result. Meeting
+the configured threshold makes a rollout ready, exact success from every
+member makes it succeeded, and a fully observed mixed result becomes degraded.
+The worker-role rollout reconciler restores the complete active aggregate and
+its publications through typed A3S ORM, idempotently redispatches pending Fleet
+commands after restart, and projects exact command-deadline expiry as
+unavailable. The complete Edge PostgreSQL repository uses typed A3S ORM tables,
+queries, expressions, row locks, and table locks for logical scopes,
+publications, routes, cutovers, acknowledgements, DomainClaims, certificates,
+convergence, and rollouts. A source architecture test rejects raw SQL and direct
+database drivers throughout Edge production persistence. Domain, in-memory,
+migration, recreated-PostgreSQL 17, and durable Fleet queue tests cover this
+foundation, including route cutover and certificate-convergence recovery.
+
+Migration 045 adds the logical-to-physical Route projections and atomic rollout
+ownership model. Migration 046 adds read-only Gateway observation commands;
+migration 047 persists per-member physical-state recovery; migration 048 adds
+deterministic exact rollback; and migration 049 makes expired certificate
+convergence explicitly unavailable without disturbing the prior applied state.
+A logical Route activates only when the exact applied projections meet its
+threshold. A terminal rollout below threshold keeps the prior active Route,
+records rejected or unavailable candidate state, observes ambiguous members,
+and stages one higher-revision rollback to the exact known physical state.
+Rollback reuses only still-valid Ready certificates and remains visibly blocked
+when any compensation is rejected or unavailable. Domain revocation and
+certificate replacement release physical ownership member by member only after
+the matching acknowledgement.
+
+The cross-repository gate builds Gateway commit
+`7a146b6d53635861e5db4870fb4603a5c59c87ee`. Real Gateway processes prove
+complete snapshot reload, independent certificate and target replacement, two
+member-specific journals and trust roots, continued service after one member is
+lost, exact native-journal recovery when it returns, independent Cloud cursors,
+and Agent process death after native apply but before acknowledgement. Together
+with the recreated PostgreSQL 17 gate, this closes `H0.2`. Independently placed
+multi-node Gateways remain `H0.3`; production control-plane and Gateway HA remain
+`H0.4`.
 
 ### 5.7 `I0`: inference profile
 
@@ -274,7 +441,7 @@ scheduler and Cloud product configuration remains ACL.
 | `I0.0` | Versioned accelerator and node contracts with mixed-version safety | Verified `E0` node control |
 | `I0.1` | Single-node accelerator inventory, claims, Docker/CDI enforcement, and recovery | `I0.0` + `H0.1` |
 | `I0.2a` | Immutable model catalog/cache, typed backend compiler, and one healthy private vLLM Workload | `I0.1` |
-| `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, limits, streaming, and fallback | `H0.2` + `I0.2a` |
+| `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, per-Gateway limits, Redis-backed globally exact limits, streaming, and fallback | `H0.2` + `I0.2a` |
 | `I0.2c` | Durable Gateway usage spool, Cloud ledger, observability, model rollout, and rollback | `I0.2b` |
 | `I0.2d` | Credential-isolated external OpenAI-compatible Provider targets | `I0.2b` + `I0.2c` |
 | `I0.2e` | Grant-derived model/key self-service, diagnostics, playground, search, and usage showback | `C0.3` + `I0.2d` |
@@ -294,11 +461,12 @@ The default portfolio priority is:
 2. finish the remaining `G0` external private-provider and signed-evidence
    process-death gates;
 3. advance `C0.1` and the first `S0` foundation independently when staffed;
-4. begin `I0.0` plus `H0.1`, then follow the ordered inference slices without
-   bypassing their generic platform dependencies;
+4. preserve the closed `H0.1` real-provider Claim certification while beginning
+   `I0.0`, then follow the ordered inference slices without bypassing their
+   generic platform dependencies;
 5. start `P0` and `A0` only on the verified `G0` contracts they consume;
-6. advance `H0.2` and `H0.3` as real consumers require target projection and
-   multi-node placement; and
+6. preserve the verified `H0.2` projection gate while advancing `H0.3`
+   multi-node placement and networking; and
 7. close full production packaging, HA, autoscaling, and inference hardening
    through `H0.4`, `H0.5`, and `I0.5`.
 
@@ -342,9 +510,9 @@ routes, target sets, rollout, or scaling policy.
 ```text
 Cloud commits desired state
   -> Cloud compiles one complete Gateway-scope ACL snapshot
-  -> outbound node agent delivers the exact revision and digest
-  -> Gateway validates and atomically applies or preserves the prior snapshot
-  -> node agent records the exact applied or rejected result
+  -> outbound node agent delivers identity, revision, digest, and validity
+  -> Gateway natively applies, journals, and reports exact readiness
+  -> node agent records the exact ready-applied or rejected result
   -> Cloud advances only after the matching acknowledgement
 ```
 
@@ -361,9 +529,9 @@ are allowed only before the first response byte.
 
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
-| `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | ACL validation, atomic reload, HTTPS, routing, health, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical scopes, private endpoints, complete target sets, and applied-state projection | Explicit managed mode, mode validation, exact readiness, and rejection of local control loops | Restart, redelivery, and rejected reload cannot expose a stale target |
-| `I0.2b` | Inference routes, keys, grants, limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, framing, disconnect, and acknowledgement gates pass |
+| `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
+| `H0.2` | Logical Gateway scopes, ordered membership, exact target derivation, atomic Route-and-rollout staging, threshold activation, per-member recovery, certificate convergence, and exact rollback | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, read-only observation, and rejection of local control loops | Verified against Gateway `7a146b6`: two real members converge independently, preserve service through member loss, recover from native journals, reject cross-member trust, and replay apply-before-ack without duplicate mutation; PostgreSQL 17 proves atomic staging, threshold projection, failure retention, recovery, rollback, and typed A3S ORM persistence |
+| `I0.2b` | Inference routes, keys, grants, typed local/global limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, Redis-backed globally exact counters, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, local and shared-counter enforcement, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |
 | `C0.3` + `I0.2e` | Grants, authorized search, key lifecycle, role-focused console, diagnostics, playground, and showback | Expose bounded operational state only | Consumer, steward, and operator surfaces cannot reveal an ungranted resource |

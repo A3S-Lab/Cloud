@@ -25,7 +25,7 @@ impl CommandHandler<RecordNodeObservations> for RecordNodeObservationsHandler {
     > {
         let nodes = Arc::clone(&self.nodes);
         Box::pin(async move {
-            if command.batch.node_id != command.authenticated_node_id.as_uuid() {
+            if command.batch.node_id() != command.authenticated_node_id.as_uuid() {
                 return Ok(Err(ApplicationError::Forbidden(
                     "authenticated certificate does not belong to the observation batch".into(),
                 )));

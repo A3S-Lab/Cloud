@@ -1,10 +1,12 @@
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, SecretId, WorkloadId, WorkloadRevisionId,
+    ProjectId, RepositoryError, SecretId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, OciArtifact, Workload, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl,
+    WorkloadControlSpec, WorkloadReplica, WorkloadReplicaMember, WorkloadRevision,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -14,6 +16,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct CreateDeploymentBundle {
     pub workload: Workload,
+    pub control: WorkloadControlSpec,
     pub revision: WorkloadRevision,
     pub deployment: Deployment,
     pub operation: OperationRequest,
@@ -59,6 +62,7 @@ pub struct ActiveRuntimeTarget {
     pub workload: Workload,
     pub revision: WorkloadRevision,
     pub deployment: Deployment,
+    pub replica_binding: DeploymentReplicaBinding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,6 +170,32 @@ pub trait IWorkloadRepository: Send + Sync {
         organization_id: OrganizationId,
         workload_id: WorkloadId,
     ) -> Result<Workload, RepositoryError>;
+
+    async fn find_workload_control(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<WorkloadControl, RepositoryError>;
+
+    async fn find_workload_replica(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+        replica_id: WorkloadReplicaId,
+    ) -> Result<WorkloadReplica, RepositoryError>;
+
+    async fn find_workload_replica_member(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+        member_id: WorkloadReplicaMemberId,
+    ) -> Result<WorkloadReplicaMember, RepositoryError>;
+
+    async fn find_deployment_replica_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<DeploymentReplicaBinding, RepositoryError>;
 
     async fn list_workloads(
         &self,

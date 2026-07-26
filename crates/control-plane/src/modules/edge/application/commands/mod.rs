@@ -1,4 +1,5 @@
 pub mod create_domain_claim;
+pub mod create_gateway_scope;
 pub mod publish_route;
 pub mod revoke_domain_claim;
 pub mod sign_gateway_certificate;
@@ -6,6 +7,9 @@ pub mod verify_domain_claim;
 
 pub use create_domain_claim::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult,
+};
+pub use create_gateway_scope::{
+    CreateGatewayScope, CreateGatewayScopeHandler, CreateGatewayScopeResult,
 };
 pub use publish_route::{PublishRoute, PublishRouteHandler, PublishRouteResult};
 pub use revoke_domain_claim::{

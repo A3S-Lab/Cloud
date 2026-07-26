@@ -7,6 +7,9 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+};
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, WorkloadDesiredState,
 };
@@ -205,7 +208,8 @@ impl CommandHandler<RollbackWorkloadDeployment> for RollbackWorkloadDeploymentHa
                 workload.organization_id,
                 OperationSubject::new("deployment", deployment.id.as_uuid())
                     .map_err(BootError::Internal)?,
-                WorkflowIdentity::new("cloud.deployment", "2").map_err(BootError::Internal)?,
+                WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
+                    .map_err(BootError::Internal)?,
                 serde_json::json!({
                     "deploymentId": deployment.id,
                     "organizationId": workload.organization_id,
@@ -220,6 +224,7 @@ impl CommandHandler<RollbackWorkloadDeployment> for RollbackWorkloadDeploymentHa
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
+                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
                     revision,
                     deployment,
                     operation,

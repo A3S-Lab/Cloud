@@ -4,39 +4,54 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, GetDomainClaim,
-    GetDomainClaimHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
-    ListGatewayCertificates, ListGatewayCertificatesHandler, ListRoutes, ListRoutesHandler,
-    PublishRoute, PublishRouteHandler, PublishRouteResult, RevokeDomainClaim,
+    CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,
+    CreateGatewayScopeHandler, CreateGatewayScopeResult, GetDomainClaim, GetDomainClaimHandler,
+    GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler, ListGatewayCertificates,
+    ListGatewayCertificatesHandler, ListGatewayScopes, ListGatewayScopesHandler, ListRoutes,
+    ListRoutesHandler, PublishRoute, PublishRouteHandler, PublishRouteResult, RevokeDomainClaim,
     RevokeDomainClaimHandler, RevokeDomainClaimResult, SignGatewayCertificate,
     SignGatewayCertificateHandler, VerifyDomainClaim, VerifyDomainClaimHandler,
     VerifyDomainClaimResult,
 };
 pub use domain::repositories::{
-    CreateDomainClaimWrite, EdgeRoutePublicationResult, GatewayCertificateConvergenceResult,
-    GatewayCertificateConvergenceTarget, GatewayCertificateRouteStatus, GatewayRouteCutoverResult,
-    IEdgeRepository, StageGatewayCertificateConvergence, StageGatewayRouteCutover,
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
+    GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
+    GatewayCertificateRouteStatus, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
+    GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRolloutRollbackTarget,
+    GatewayRouteCutoverResult, IEdgeRepository, StageGatewayCertificateConvergence,
+    StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
     TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
-    GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, IDomainOwnershipVerifier,
-    IGatewayCertificateAuthority, IGatewayCommandQueue, IRouteTargetReader, RouteTarget,
+    GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayObservationCommand,
+    GatewayObservationCommandOutcome, GatewayObservationDispatch, IDomainOwnershipVerifier,
+    IGatewayCertificateAuthority, IGatewayCommandQueue, IGatewayObservationQueue,
+    IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
     GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
-    GatewayPublication, GatewayPublicationState, GatewayRouteCutover, GatewayRouteCutoverState,
-    GatewayRouteVersion, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, UpstreamEndpoint,
+    GatewayPublication, GatewayPublicationState, GatewayReplicaRecovery,
+    GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
+    GatewayRolloutPolicy, GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState,
+    GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope,
+    GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+    UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
-    FleetGatewayCommandQueue, GatewayCertificateReconciler,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    GatewayReplicaRecoveryReconciler, GatewayReplicaRecoveryReconciliationFailure,
+    GatewayReplicaRecoveryReconciliationReport, GatewayRolloutReconciler,
+    GatewayRolloutReconciliationFailure, GatewayRolloutReconciliationReport,
+    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
+    GatewayRolloutRollbackReconciliationFailure, GatewayRolloutRollbackReconciliationReport,
+    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    PlanGatewayRouteRollout, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

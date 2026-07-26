@@ -75,6 +75,33 @@ class RuntimeGateContractTests(unittest.TestCase):
             SCRIPT,
         )
 
+    def test_resource_claim_crash_certification_is_mandatory(self) -> None:
+        self.assertIn(
+            "resource_claims::real_docker_claim_journal_survives_agent_and_"
+            "provider_process_death",
+            SCRIPT,
+        )
+        self.assertIn(
+            'resource_claim_test_status=${PIPESTATUS[0]}',
+            SCRIPT,
+        )
+        self.assertRegex(
+            SCRIPT,
+            r"runtime_test_status -eq 0 && \$resource_claim_test_status -eq 0",
+        )
+        self.assertIn(
+            "A3S_RESOURCE_CLAIM_CRASH_CERTIFICATION_PASS ",
+            SCRIPT,
+        )
+        self.assertIn(
+            '"$evidence/resource-claim-crash-certification.txt"',
+            SCRIPT,
+        )
+        self.assertIn(
+            "resource Claim crash certification emitted an invalid pass marker",
+            SCRIPT,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

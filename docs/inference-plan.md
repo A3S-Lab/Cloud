@@ -428,21 +428,46 @@ modes, not placement preferences. Runtime observations echo the opaque
 allocation identity, stable resource IDs, fence tokens, and binding digest;
 Cloud maps that evidence back to its Workloads/Fleet claim record.
 
-Node command v2 adds idempotent `PrepareResourceClaim` and
-`ReleaseResourceClaim` payloads. The Cloud RuntimeApply command envelope may
-reference only a claim that the target agent has durably prepared at the same
-generation and per-slot fence tokens; the nested Runtime request receives only
-the opaque product-neutral binding above. Both Claim commands use
+The generic `H0.1` node protocol now carries idempotent
+`PrepareResourceClaim` and `ReleaseResourceClaim` payloads. The Cloud
+RuntimeApply command envelope may reference only a claim that the target Agent
+has durably prepared at the same generation and per-slot fence tokens; the
+nested Runtime request remains free of Cloud placement identity. Both Claim
+commands use
 `aggregate_id = claim_id` and
 `generation = claim_generation`. Placement generation, inventory
 generation/digest, Runtime unit generation, and the complete sorted slot list
 are payload preconditions covered by `claim_digest`; they are never substituted
 for the command generation. An exact replay returns the journaled result;
 conflicting resources, digest, generation, node, or fence token fail closed.
+The Agent adds the exact Claim ID and binding digest to Runtime observation
+evidence, and Cloud persists that match before treating the Claim as bound.
 
 ### 6.2 Inventory and telemetry
 
-The node agent reports a versioned, digest-addressed inventory snapshot with:
+The generic `H0.1` baseline now defines strict, versioned
+`NodeResourceInventory`, receipt, reference, heartbeat-v2, and
+observation-batch-v2 contracts. The node agent detects host CPU and
+state-filesystem capacity, reports Linux `MemTotal` when available, and omits
+unsupported memory, accelerators, ports, volumes, and networking rather than
+inventing capacity. It persists the canonical slot content, generation, and
+digest across restart and advances generation only when that content changes.
+
+Fleet accepts the authenticated snapshot through
+`POST /v1/node-control/inventories`. Migration 042 stores immutable historical
+snapshots, normalized slots, and one current head. Exact replay is idempotent,
+historical replay cannot regress the head, and changed content must advance the
+generation exactly once. A v2 heartbeat references the latest inventory
+generation and digest and is rejected unless that exact reference is current;
+legacy v1 observation batches remain readable during migration.
+
+The generic Workloads scheduler already compiles CPU, memory, and optional
+ephemeral-storage requirements from this current inventory. Its PostgreSQL
+claim transaction locks and verifies the exact tenant, node, Agent, generation,
+and digest head before capacity is reserved. PID limits remain Runtime-local
+because this inventory version has no PID slot.
+
+The completed inference profile extends this generic inventory with:
 
 - allocatable CPU, RAM, ephemeral storage, dedicated Artifact-cache storage,
   provider mount support, and bounded host/private-network port ranges;
@@ -454,19 +479,19 @@ The node agent reports a versioned, digest-addressed inventory snapshot with:
 - private-network and optional fabric/RDMA capabilities needed by distributed
   backends.
 
-Heartbeat references the latest inventory generation and digest. Full bounded
-inventory uses a separate idempotent report endpoint. High-frequency
-utilization, temperature, KV-cache pressure, TTFT, and throughput go to the
-metrics pipeline; they are not desired state or hard capacity truth.
+High-frequency utilization, temperature, KV-cache pressure, TTFT, and
+throughput go to the metrics pipeline; they are not desired state or hard
+capacity truth.
 
-Inventory projections use generation compare-and-swap. Claim prepare and
-Runtime apply both revalidate the exact inventory generation/digest, resource
+Inventory projections use generation compare-and-swap. Database reservation,
+Agent Claim prepare, and bound Runtime apply already reject a stale generic
+Fleet head. The `I0.1` extension must additionally revalidate accelerator
 health, partition identity, and topology digest. A MIG reconfiguration, device
 replacement, port-range change, or capacity regression invalidates the old
 candidate instead of being accepted as an equivalent node.
 
-The node agent implements a small `AcceleratorDetector` infrastructure trait.
-I0 supplies a deterministic virtual detector and a real NVIDIA detector. It
+`I0.1` adds a small `AcceleratorDetector` infrastructure trait with a
+deterministic virtual detector and a real NVIDIA detector. That slice also
 persists a resource-claim journal, translates stable IDs to CDI or Docker
 device requests, labels provider resources with claim/fencing/spec identity,
 and proves that an unclaimed device is invisible. Inference engine names never
@@ -477,6 +502,19 @@ enter the node-control protocol.
 Fleet persists inventory. The general Workloads scheduler owns placement and
 resource reservation through a Fleet inventory/claim port. The scheduler uses
 a deterministic filter, score, reserve, prepare, and bind pipeline.
+
+The implemented generic slice performs the filter, requirement compilation,
+database reserve, and placement prefix for one replica. It maps CPU, memory,
+and optional ephemeral storage to canonical scalar slot requests, reserves
+before persisting assignment, and uses the Deployment ID as the deterministic
+Claim ID. A committed reservation recovers the exact node after a process
+crash; a typed capacity conflict falls through to the next eligible candidate.
+CPU, memory, and ephemeral-storage slots allow multiple active claims up to
+their scalar capacity. Accelerator, host-port, and volume slots remain
+exclusive. Agent prepare, bound Runtime evidence, stopped-or-absent fencing,
+and exact Agent release are implemented for the generic scalar path.
+Accelerator-specific enforcement remains an `I0.1` extension over the same
+protocol and journal.
 
 One resource claim follows this durable state machine:
 
@@ -514,6 +552,20 @@ the server row and agent journal. Failure to obtain release or trusted fencing
 evidence produces an operator-visible `orphaned` claim that continues blocking
 the old resource.
 
+New deployments use `cloud.deployment@3` for this lifecycle. Versions 1 and 2
+remain executable only to replay persisted histories. The Agent reconstructs
+prepare, bind, stop/remove, and release state from its command journal; release
+advances Claim generation and digest, and a rejected `not_found` or
+`stale_generation` stop is never accepted as fencing evidence.
+
+The generic `H0.1` provider gate exercises that exact journal against real
+Docker across both daemon replacement and Agent `SIGKILL`. It requires one
+provider unit before and after replay, exact allocation-binding evidence,
+release and competing-capacity rejection before Runtime fencing, real
+stop/removal, exact Agent release, successful reuse only afterward, and zero
+provider residue. Accelerator claims in `I0.1` extend this accepted lifecycle
+rather than introducing another ownership path.
+
 Hard filters are evaluated before scoring:
 
 1. tenant quota, node pool, ready/fresh/non-draining state;
@@ -548,10 +600,13 @@ same-slot-generation provider `NotFound` evidence, or a trusted Compute-provider
 power-off/instance-generation fence. An uncertainty timeout alone is not
 fencing evidence.
 
-Initial exclusive reservations enforce a partial uniqueness constraint over
-active `(node_id, accelerator_id)` claims. Hardware partitions use their stable
-partition identity. Release occurs only after stop/remove or fencing evidence
-proves that the old generation can no longer use the device.
+Migration 043 enforces partial active-slot uniqueness only for exclusive
+accelerator, host-port, and volume slots. Shared scalar capacity is serialized
+per stable slot and totals every unreleased allocation before admitting another
+claim. Hardware partitions use their stable partition identity. Release occurs
+only after stop/remove or fencing evidence proves that the old generation can
+no longer use the device. The sole exception is a database-only cancellation
+for a claim that never left `reserved_in_db`.
 
 ## 8. Model artifacts and node cache
 
@@ -699,9 +754,10 @@ Edge owns the second layer, including replica health, load-balancing weight,
 cluster-private endpoint, source generation, and per-Gateway acknowledgement.
 
 Every InferenceRoute revision stores an immutable `EdgeRouteBindingRef`. H0.2
-introduces its logical `gateway_scope_id` so a scope can move from today's
-node-keyed Gateway to a dedicated or replicated Gateway set without changing
-Inference ownership. Publication validates that the DomainClaim, canonical
+provides its logical `gateway_scope_id`; the current cardinality-one mapping
+binds that scope to one node-keyed Gateway, while later placement can move it
+to a dedicated or replicated Gateway set without changing Inference ownership.
+Publication validates that the DomainClaim, canonical
 hostname, `/v1` path prefix, logical scope, route, and every local/provider
 target belong to the same organization/project/environment, that the verified
 claim covers the hostname, and that no Edge owner conflicts. Inference never
@@ -730,7 +786,7 @@ records its own revision/digest acknowledgement. H0 defines `minimum_ready` and
 the external load balancer readiness check, the route may serve after the
 configured minimum is ready, and rollout success still requires every desired
 Gateway replica or an explicit degraded terminal result. No global atomic
-Gateway reload is assumed.
+Gateway apply is assumed.
 
 I0.3 requires a Gateway placed outside the serving-node failure domain. Its
 node-loss gate covers a serving node. Gateway process/node loss and mixed
@@ -960,6 +1016,23 @@ aggregate and generation. Closed typed specifications store a canonical digest.
 Gang reservations and all members commit in one PostgreSQL transaction. Raw
 high-frequency metrics do not enter these tables.
 
+Migration 042 implements the generic Resource inventory slice for CPU, memory,
+and ephemeral-storage slots. Accelerator topology, device health,
+Artifact-cache observations, port ranges, and private-network/fabric
+capabilities remain `I0.1`/`H0.3` extensions over the same contract and Fleet
+head; they do not create a second inventory store.
+
+Migration 043 implements shared scalar accounting for CPU, memory, and
+ephemeral storage and preserves exclusive uniqueness for accelerators,
+host ports, and volumes. Workloads uses typed A3S ORM queries and
+transaction-scoped locks for both capacity accounting and exact-current Fleet
+head validation; inference does not add another claim store.
+
+Migration 044 admits Claim prepare and release command kinds to the durable
+Fleet queue. It changes no Inference ownership: accelerator extensions reuse
+the same typed Workloads Claim repository, Agent journal, Runtime binding
+evidence, and fenced release protocol.
+
 ## 12. Delivery gates
 
 ### I0.0: contracts and mixed-version safety
@@ -975,8 +1048,9 @@ high-frequency metrics do not enter these tables.
 
 - Depend on H0.1 managed-owner, single-replica and generic resource-claim
   foundations; I0 does not create a private claim implementation.
-- Add virtual and NVIDIA inventory, exclusive claim reservation, agent journal,
-  Docker/CDI enforcement, allocation evidence, and recovery.
+- Add virtual and NVIDIA inventory, exclusive device reservation, accelerator
+  evidence, and Docker/CDI enforcement to the existing Agent Claim journal and
+  recovery path.
 - Prove 100 concurrent reservations never allocate one device twice.
 - On a real NVIDIA host, expose exactly the claimed UUID and no other device.
 
@@ -1140,8 +1214,10 @@ The recommended merge order is:
 
 1. accelerator contract ADR, failing protocol fixtures, and Runtime vNext;
 2. Cloud nested v2 contracts, session negotiation, and compatibility fixtures;
-3. H0.1 managed-owner, one-replica and generic claim state machine;
-4. virtual inventory, then NVIDIA detection/enforcement and the real-host gate;
+3. H0.1 managed-owner, one-replica, generic inventory and claim state-machine
+   foundations;
+4. extend the implemented H0.1 prepare/release journal and Runtime binding with
+   virtual inventory, NVIDIA detection/enforcement, and the real-host gate;
 5. model file-manifest ingest/materialization/cache over the existing Artifacts
    and E0 Secret foundations;
 6. Inference domain/application skeleton and model/backend repositories;

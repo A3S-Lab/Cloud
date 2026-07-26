@@ -27,7 +27,10 @@ pub async fn kill_after_activation_before_retirement(
 ) -> TestResult {
     let lock_client = executor.pool().get().await?;
     lock_client
-        .batch_execute("begin; lock table node_commands in access exclusive mode")
+        // Runtime observation reloads the resource-bound apply command before
+        // activation. A SHARE lock keeps that evidence readable while still
+        // blocking the ROW EXCLUSIVE lock required to insert retirement.
+        .batch_execute("begin; lock table node_commands in share mode")
         .await?;
 
     let crash_result = run_parent_crash_probe(
@@ -127,11 +130,15 @@ pub async fn run_activation_crash_probe() -> TestResult {
     let executor = PostgresExecutor::connect_no_tls(&postgres_url, 2)?;
     let workloads = std::sync::Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let nodes = std::sync::Arc::new(
-        a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository::new(executor),
+        a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository::new(executor.clone()),
     );
-    let flow =
-        crate::secret_rotation_restart_support::restart_flow(&postgres_url, workloads, nodes)
-            .await?;
+    let flow = crate::secret_rotation_restart_support::restart_flow(
+        &executor,
+        &postgres_url,
+        workloads,
+        nodes,
+    )
+    .await?;
     let run_id = operation_id.to_string();
     let snapshot = flow.engine().snapshot(&run_id).await?;
     let waiting = snapshot
