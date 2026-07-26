@@ -53,6 +53,7 @@ import {
   workloadResult,
   workloadsResult,
 } from './results';
+import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 
 export interface CommandDependencies {
   fetch?: CloudFetch;
@@ -69,6 +70,7 @@ export async function executeCommand(
     throw usageError('a command and action are required; run a3s-cloud --help');
   }
   const command = `${positionals[0]} ${positionals[1]}`;
+  rejectMisplacedSourceRecipeOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -103,6 +105,10 @@ export async function executeCommand(
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi);
   if (edgeResult !== undefined) {
     return edgeResult;
+  }
+  const sourceResult = await executeSourceCommand(command, arguments_, context, cloudApi);
+  if (sourceResult !== undefined) {
+    return sourceResult;
   }
   switch (command) {
     case 'organizations list':

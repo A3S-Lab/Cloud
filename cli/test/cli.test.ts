@@ -15,6 +15,8 @@ const NODE_ID = '019c0000-0000-7000-8000-000000000009';
 const DOMAIN_CLAIM_ID = '019c0000-0000-7000-8000-000000000011';
 const GATEWAY_SCOPE_ID = '019c0000-0000-7000-8000-000000000012';
 const GATEWAY_NODE_ID = '019c0000-0000-7000-8000-000000000013';
+const SOURCE_REVISION_ID = '019c0000-0000-7000-8000-000000000014';
+const SOURCE_SUBSCRIPTION_ID = '019c0000-0000-7000-8000-000000000015';
 
 function envelope(data: unknown, status = 200): Response {
   return new Response(
@@ -461,6 +463,226 @@ describe('a3s-cloud CLI', () => {
     expect(duplicate.stderr()).toContain('must be unique');
     expect(threshold.stderr()).toContain('no greater than the member count');
     expect(misplaced.stderr()).toContain('valid only for gateway-scopes create');
+  });
+
+  it.each([
+    [
+      ['source-revisions', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/source-revisions`,
+      [],
+    ],
+    [
+      ['source-connections', 'get'],
+      `/organizations/${ORGANIZATION_ID}/source-connections/github`,
+      sourceResource('connection'),
+    ],
+    [
+      ['source-subscriptions', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/source-subscriptions/github`,
+      [],
+    ],
+  ] as const)('queries a Source resource through the typed client %#', async (command, path, response) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(response);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...command, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(output.stderr()).toBe('');
+  });
+
+  it('starts the no-store GitHub connection flow without inventing an idempotency contract', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(sourceResource('install'), 201);
+    };
+    const output = capture();
+
+    const exitCode = await runCli(['source-connections', 'begin', '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/source-connections/github`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.not.objectContaining({ 'Idempotency-Key': expect.anything() }),
+      })
+    );
+    expect(output.stdout()).toContain('"installationUrl"');
+    expect(output.stderr()).toBe('');
+  });
+
+  it.each([
+    {
+      command: [
+        'source-revisions',
+        'resolve',
+        'https://github.com/A3S-Lab/Cloud.git',
+        'branch',
+        'main',
+        '--context-path=services/api',
+        '--dockerfile-path=Dockerfile',
+        '--target=release',
+        '--platforms=linux/amd64,linux/arm64',
+      ],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/source-revisions`,
+      body: {
+        repository: { provider: 'github', url: 'https://github.com/A3S-Lab/Cloud.git' },
+        reference: { kind: 'branch', value: 'main' },
+        recipe: sourceRecipe(),
+      },
+      response: { ...sourceResource('revision'), replayed: false },
+    },
+    {
+      command: [
+        'source-subscriptions',
+        'create',
+        'https://github.com/A3S-Lab/Cloud.git',
+        'main',
+        '--context-path=services/api',
+        '--dockerfile-path=Dockerfile',
+        '--target=release',
+        '--platforms=linux/amd64,linux/arm64',
+      ],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/source-subscriptions/github`,
+      body: {
+        repository: { provider: 'github', url: 'https://github.com/A3S-Lab/Cloud.git' },
+        branch: 'main',
+        recipe: sourceRecipe(),
+      },
+      response: { ...sourceResource('subscription'), replayed: false },
+    },
+    {
+      command: ['source-subscriptions', 'deactivate', SOURCE_SUBSCRIPTION_ID],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/source-subscriptions/github/${SOURCE_SUBSCRIPTION_ID}/deactivate`,
+      body: undefined,
+      response: { ...sourceResource('subscription'), status: 'inactive', replayed: false },
+    },
+  ] as const)('executes an idempotent Source mutation %#', async (testCase) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(testCase.response, 201);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...testCase.command, '--idempotency-key=cli:source-1', '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${testCase.path}`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:source-1' }),
+        body: testCase.body === undefined ? undefined : JSON.stringify(testCase.body),
+      })
+    );
+    expect(output.stdout()).toContain('"replayed": false');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects unsafe or misplaced Source inputs before the network', async () => {
+    let called = false;
+    const fetcher: CloudFetch = async () => {
+      called = true;
+      return envelope({});
+    };
+    const cases = [
+      [
+        'source-revisions',
+        'resolve',
+        'http://github.com/A3S-Lab/Cloud',
+        'branch',
+        'main',
+        '--context-path=.',
+        '--dockerfile-path=Dockerfile',
+        '--platforms=linux/amd64',
+        '--idempotency-key=cli:source-http',
+      ],
+      [
+        'source-revisions',
+        'resolve',
+        'https://github.com/A3S--Lab/Cloud',
+        'branch',
+        'main',
+        '--context-path=.',
+        '--dockerfile-path=Dockerfile',
+        '--platforms=linux/amd64',
+        '--idempotency-key=cli:source-owner',
+      ],
+      [
+        'source-revisions',
+        'resolve',
+        'https://github.com/A3S-Lab/Cloud',
+        'pull_request',
+        '1',
+        '--context-path=.',
+        '--dockerfile-path=Dockerfile',
+        '--platforms=linux/amd64',
+        '--idempotency-key=cli:source-reference',
+      ],
+      [
+        'source-subscriptions',
+        'create',
+        'https://github.com/A3S-Lab/Cloud',
+        'main',
+        '--context-path=../escape',
+        '--dockerfile-path=Dockerfile',
+        '--platforms=linux/amd64',
+        '--idempotency-key=cli:source-path',
+      ],
+      [
+        'source-subscriptions',
+        'create',
+        'https://github.com/A3S-Lab/Cloud',
+        'main',
+        '--context-path=.',
+        '--dockerfile-path=Dockerfile',
+        '--platforms=linux/amd64,linux/amd64',
+        '--idempotency-key=cli:source-platform',
+      ],
+      ['organizations', 'list', '--platforms=linux/amd64'],
+    ];
+
+    for (const command of cases) {
+      const output = capture();
+      expect(
+        await runCli(command, {
+          ...output.runtime,
+          environment: completeEnvironment(),
+          fetch: fetcher,
+        })
+      ).toBe(2);
+    }
+    expect(called).toBe(false);
   });
 
   it('reads workload logs with bounded query options and exposes the next cursor', async () => {
@@ -982,6 +1204,87 @@ function edgeResource(kind: 'domain-claim' | 'gateway-scope'): Record<string, un
     updatedAt: '2026-07-27T00:00:00.000Z',
     verifiedAt: null,
     revokedAt: null,
+  };
+}
+
+function sourceRecipe(): Record<string, unknown> {
+  return {
+    schema: 'a3s.cloud.build-recipe.v1',
+    kind: 'dockerfile',
+    contextPath: 'services/api',
+    dockerfilePath: 'Dockerfile',
+    target: 'release',
+    platforms: ['linux/amd64', 'linux/arm64'],
+  };
+}
+
+function sourceResource(
+  kind: 'connection' | 'install' | 'revision' | 'subscription'
+): Record<string, unknown> {
+  if (kind === 'install') {
+    return {
+      provider: 'github',
+      installationUrl: 'https://github.com/apps/a3s-cloud/installations/new?state=opaque',
+      expiresAt: '2026-07-27T00:10:00.000Z',
+    };
+  }
+  if (kind === 'connection') {
+    return {
+      id: SOURCE_SUBSCRIPTION_ID,
+      organizationId: ORGANIZATION_ID,
+      provider: 'github',
+      installationId: 42,
+      account: { id: 7, login: 'A3S-Lab', type: 'organization' },
+      verifiedBy: { id: 8, login: 'operator' },
+      status: 'active',
+      providerAuthority: {
+        checkedAt: '2026-07-27T00:00:00.000Z',
+        checkAttemptedAt: '2026-07-27T00:00:00.000Z',
+        nextCheckAt: '2026-07-27T00:05:00.000Z',
+        consecutiveFailures: 0,
+        lastError: null,
+      },
+      connectedAt: '2026-07-27T00:00:00.000Z',
+      updatedAt: '2026-07-27T00:00:00.000Z',
+    };
+  }
+  if (kind === 'subscription') {
+    return {
+      id: SOURCE_SUBSCRIPTION_ID,
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      environmentId: ENVIRONMENT_ID,
+      connectionId: SOURCE_SUBSCRIPTION_ID,
+      installationId: 42,
+      repository: {
+        provider: 'github',
+        canonicalUrl: 'https://github.com/a3s-lab/cloud',
+        identity: 'github:github.com/a3s-lab/cloud',
+      },
+      branch: 'main',
+      recipe: sourceRecipe(),
+      recipeDigest: 'sha256:recipe',
+      status: 'active',
+      aggregateVersion: 1,
+      createdAt: '2026-07-27T00:00:00.000Z',
+      deactivatedAt: null,
+    };
+  }
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    environmentId: ENVIRONMENT_ID,
+    id: SOURCE_REVISION_ID,
+    repository: {
+      provider: 'github',
+      canonicalUrl: 'https://github.com/a3s-lab/cloud',
+      identity: 'github:github.com/a3s-lab/cloud',
+    },
+    commitSha: 'a'.repeat(40),
+    recipe: sourceRecipe(),
+    recipeDigest: 'sha256:recipe',
+    aggregateVersion: 1,
+    acceptedAt: '2026-07-27T00:00:00.000Z',
   };
 }
 

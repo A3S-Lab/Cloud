@@ -16,6 +16,10 @@ export interface ParsedArguments {
   expectedVersion?: string;
   minReady?: string;
   maxUnavailable?: string;
+  contextPath?: string;
+  dockerfilePath?: string;
+  target?: string;
+  platforms?: string;
   help: boolean;
   version: boolean;
 }
@@ -37,6 +41,10 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--expected-version': 'expectedVersion',
   '--min-ready': 'minReady',
   '--max-unavailable': 'maxUnavailable',
+  '--context-path': 'contextPath',
+  '--dockerfile-path': 'dockerfilePath',
+  '--target': 'target',
+  '--platforms': 'platforms',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {

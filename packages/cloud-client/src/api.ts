@@ -4,6 +4,7 @@ import type {
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
+  CreateGithubRepositorySubscriptionInput,
   CreateGatewayScopeInput,
   Deployment,
   DomainClaim,
@@ -13,6 +14,10 @@ import type {
   GatewayCertificate,
   GatewayScope,
   GatewayScopeMutationResult,
+  GithubConnection,
+  GithubConnectionInstall,
+  GithubRepositorySubscription,
+  GithubRepositorySubscriptionMutationResult,
   Node,
   Operation,
   Organization,
@@ -20,12 +25,15 @@ import type {
   Project,
   ProjectMutationResult,
   PublishRouteInput,
+  ResolveSourceRevisionInput,
   RetryBuildRunResult,
   Route,
   RoutePublicationResult,
   ServiceTemplate,
   SourceWorkloadTemplate,
   StopWorkloadResult,
+  SourceRevision,
+  SourceRevisionMutationResult,
   Workload,
   WorkloadDeploymentResult,
   WorkloadLogsPage,
@@ -421,6 +429,100 @@ export class CloudApi {
 
   listGatewayCertificates(organizationId: string, signal?: AbortSignal): Promise<GatewayCertificate[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/gateway-certificates`, signal);
+  }
+
+  listSourceRevisions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<SourceRevision[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/source-revisions`,
+      signal
+    );
+  }
+
+  resolveSourceRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: ResolveSourceRevisionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<SourceRevisionMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/source-revisions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getGithubConnection(organizationId: string, signal?: AbortSignal): Promise<GithubConnection> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/source-connections/github`, signal);
+  }
+
+  beginGithubConnection(organizationId: string, signal?: AbortSignal): Promise<GithubConnectionInstall> {
+    return this.request(
+      'POST',
+      `/organizations/${encodeURIComponent(organizationId)}/source-connections/github`,
+      { signal }
+    );
+  }
+
+  listGithubRepositorySubscriptions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<GithubRepositorySubscription[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/source-subscriptions/github`,
+      signal
+    );
+  }
+
+  createGithubRepositorySubscription(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateGithubRepositorySubscriptionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<GithubRepositorySubscriptionMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/source-subscriptions/github`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  deactivateGithubRepositorySubscription(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    subscriptionId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<GithubRepositorySubscriptionMutationResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/source-subscriptions/github/${encodeURIComponent(subscriptionId)}/deactivate`,
+      idempotencyKey,
+      signal
+    );
   }
 
   createWorkloadFromAcl(

@@ -34,7 +34,14 @@ Commands:
   workloads update ID   Update one workload from A3S ACL
   workloads stop ID     Stop one workload idempotently
   workloads rollback ID REV Roll back by cloning a proven revision
+  source-revisions list   List pinned source revisions in the selected environment
+  source-revisions resolve URL KIND REF Resolve one GitHub reference idempotently
   source-revisions deploy ID Deploy one built source revision from A3S ACL
+  source-connections get  Show the organization GitHub connection
+  source-connections begin Start the no-store GitHub installation flow
+  source-subscriptions list List GitHub repository subscriptions
+  source-subscriptions create URL BRANCH Create a GitHub subscription idempotently
+  source-subscriptions deactivate ID Deactivate a GitHub subscription idempotently
   deployments get ID    Get one deployment
   deployments cancel ID Request deployment cancellation idempotently
   domain-claims list     List domain ownership claims in the selected environment
@@ -69,6 +76,10 @@ Global options:
   --expected-version <n>    Current aggregate version for a node mutation
   --min-ready <n>           Required ready members for gateway-scopes create
   --max-unavailable <n>     Allowed unavailable members for gateway-scopes create
+  --context-path <path>      Repository context for a Source build recipe
+  --dockerfile-path <path>   Dockerfile path for a Source build recipe
+  --target <stage>           Optional Dockerfile target stage
+  --platforms <csv>          linux/amd64 and/or linux/arm64
   -h, --help              Show help
   -V, --version           Show version
 

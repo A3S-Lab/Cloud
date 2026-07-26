@@ -484,6 +484,25 @@ export type {
   RouteState,
 } from './edge';
 
+export type {
+  BuildPlatform,
+  CreateGithubRepositorySubscriptionInput,
+  DockerfileBuildRecipe,
+  GitProvider,
+  GitReferenceInput,
+  GitReferenceKind,
+  GithubConnection,
+  GithubConnectionInstall,
+  GithubConnectionStatus,
+  GithubRepositorySubscription,
+  GithubRepositorySubscriptionMutationResult,
+  GitRepository,
+  GitRepositoryInput,
+  ResolveSourceRevisionInput,
+  SourceRevision,
+  SourceRevisionMutationResult,
+} from './source';
+
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
 export type WorkloadLogRecordKind = 'data' | 'gap';
 export type WorkloadLogGapReason =

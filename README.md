@@ -111,7 +111,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   create core tenant resources and transition nodes with explicit optimistic
   concurrency; create, verify, and revoke DomainClaims, create multi-member
   logical Gateway scopes with explicit rollout thresholds, and publish routes
-  through replay-aware Edge commands; and inspect tokenless platform,
+  through replay-aware Edge commands; inspect GitHub connection authority,
+  resolve immutable source revisions, and manage repository subscriptions
+  through the existing Source commands; and inspect tokenless platform,
   liveness, and readiness diagnostics with a stable unhealthy exit status
 
 ### Delivery capability matrix
@@ -470,6 +472,19 @@ bun run --cwd cli src/main.ts routes publish \
   --idempotency-key="edge:route:<request-id>"
 bun run --cwd cli src/main.ts build-runs list
 bun run --cwd cli src/main.ts build-runs evidence "<build-run-uuid>" --output=json
+bun run --cwd cli src/main.ts source-connections get
+bun run --cwd cli src/main.ts source-connections begin --output=json
+bun run --cwd cli src/main.ts source-revisions list
+bun run --cwd cli src/main.ts source-revisions resolve \
+  "https://github.com/A3S-Lab/Cloud.git" branch main \
+  --context-path="." --dockerfile-path="Dockerfile" \
+  --platforms="linux/amd64" \
+  --idempotency-key="source:resolve:<request-id>"
+bun run --cwd cli src/main.ts source-subscriptions create \
+  "https://github.com/A3S-Lab/Cloud.git" main \
+  --context-path="." --dockerfile-path="Dockerfile" \
+  --platforms="linux/amd64" \
+  --idempotency-key="source:subscribe:<request-id>"
 bun run --cwd cli src/main.ts workloads create \
   --file=examples/workload.oci.example.acl \
   --idempotency-key="release:create:<request-id>"
@@ -506,9 +521,12 @@ sending a bearer token. A legitimate unhealthy health report remains visible
 on stdout and returns exit code `8`, while a real API error remains an error.
 DomainClaim create/verify/revoke and Gateway-scope create responses expose the
 authoritative `replayed` state; route publication exposes both request and
-Gateway-command replay state. Remaining source, Secret, and identity parity,
-node bootstrap, authorized search, and the compatibility/deprecation gate
-remain subsequent `C0.1` slices.
+Gateway-command replay state. Source revision resolution and repository
+subscription mutations expose the same durable replay state. GitHub connection
+bootstrap deliberately follows the existing short-lived no-store browser flow
+and should use `--output=json` to preserve the complete installation URL.
+Remaining Secret and identity parity, node bootstrap, authorized search, and
+the compatibility/deprecation gate remain subsequent `C0.1` slices.
 
 ## Platform Model
 
