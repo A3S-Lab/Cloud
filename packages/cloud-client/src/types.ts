@@ -469,7 +469,20 @@ export interface Workload {
   updatedAt: string;
 }
 
-export type { GatewayCertificate, GatewayCertificateState, Route, RouteState } from './edge';
+export type {
+  CreateGatewayScopeInput,
+  DomainClaim,
+  DomainClaimMutationResult,
+  DomainClaimState,
+  GatewayCertificate,
+  GatewayCertificateState,
+  GatewayScope,
+  GatewayScopeMutationResult,
+  PublishRouteInput,
+  Route,
+  RoutePublicationResult,
+  RouteState,
+} from './edge';
 
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
 export type WorkloadLogRecordKind = 'data' | 'gap';

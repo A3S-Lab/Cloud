@@ -37,8 +37,16 @@ Commands:
   source-revisions deploy ID Deploy one built source revision from A3S ACL
   deployments get ID    Get one deployment
   deployments cancel ID Request deployment cancellation idempotently
+  domain-claims list     List domain ownership claims in the selected environment
+  domain-claims get ID   Get one domain ownership claim
+  domain-claims create PATTERN Create a domain ownership claim idempotently
+  domain-claims verify ID PROOF Verify one domain ownership claim idempotently
+  domain-claims revoke ID REASON Revoke one domain ownership claim idempotently
+  gateway-scopes list    List logical Gateway scopes in the selected environment
+  gateway-scopes create NODE... Create a replicated Gateway scope idempotently
   routes list           List routes in the selected environment
   routes get ID         Get one route
+  routes publish SCOPE REV CLAIM HOST PATH PORT Publish one managed route idempotently
   build-runs list       List recent BuildRuns in the selected environment
   build-runs get ID     Get one BuildRun
   build-runs evidence ID Get verified BuildRun evidence
@@ -59,6 +67,8 @@ Global options:
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation
   --expected-version <n>    Current aggregate version for a node mutation
+  --min-ready <n>           Required ready members for gateway-scopes create
+  --max-unavailable <n>     Allowed unavailable members for gateway-scopes create
   -h, --help              Show help
   -V, --version           Show version
 

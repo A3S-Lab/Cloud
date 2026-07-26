@@ -4,10 +4,14 @@ import type {
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
-  Deployment,
   CloudDiagnostics,
+  Deployment,
+  DomainClaim,
+  DomainClaimMutationResult,
   Environment,
   EnvironmentMutationResult,
+  GatewayScope,
+  GatewayScopeMutationResult,
   Node,
   Operation,
   Organization,
@@ -16,6 +20,7 @@ import type {
   ProjectMutationResult,
   RetryBuildRunResult,
   Route,
+  RoutePublicationResult,
   StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
@@ -219,6 +224,74 @@ export function routesResult(rows: Route[]): CommandResult {
 
 export function routeResult(row: Route): CommandResult {
   return singleResult(row, ROUTE_COLUMNS);
+}
+
+const DOMAIN_CLAIM_COLUMNS: readonly TableColumn<DomainClaim>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'PATTERN', value: (row) => row.pattern },
+  { header: 'STATE', value: (row) => row.state },
+  { header: 'CHALLENGE NAME', value: (row) => row.challengeDnsName },
+  { header: 'CHALLENGE VALUE', value: (row) => row.challengeValue },
+  { header: 'UPDATED AT', value: (row) => row.updatedAt },
+  { header: 'FAILURE', value: (row) => row.failure },
+];
+
+export function domainClaimsResult(rows: DomainClaim[]): CommandResult {
+  return listResult(rows, DOMAIN_CLAIM_COLUMNS);
+}
+
+export function domainClaimResult(row: DomainClaim): CommandResult {
+  return singleResult(row, DOMAIN_CLAIM_COLUMNS);
+}
+
+export function domainClaimMutationResult(row: DomainClaimMutationResult): CommandResult {
+  return singleResult(row, [
+    ...DOMAIN_CLAIM_COLUMNS,
+    { header: 'REPLAYED', value: (value) => value.replayed },
+  ]);
+}
+
+const GATEWAY_SCOPE_COLUMNS: readonly TableColumn<GatewayScope>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'PRIMARY NODE', value: (row) => row.nodeId },
+  { header: 'MEMBERS', value: (row) => row.memberNodeIds.join(',') },
+  { header: 'GENERATION', value: (row) => row.membershipGeneration },
+  { header: 'MIN READY', value: (row) => row.minReady },
+  { header: 'MAX UNAVAILABLE', value: (row) => row.maxUnavailable },
+  { header: 'UPDATED AT', value: (row) => row.updatedAt },
+];
+
+export function gatewayScopesResult(rows: GatewayScope[]): CommandResult {
+  return listResult(rows, GATEWAY_SCOPE_COLUMNS);
+}
+
+export function gatewayScopeResult(row: GatewayScope): CommandResult {
+  return singleResult(row, GATEWAY_SCOPE_COLUMNS);
+}
+
+export function gatewayScopeMutationResult(row: GatewayScopeMutationResult): CommandResult {
+  return singleResult(row, [
+    ...GATEWAY_SCOPE_COLUMNS,
+    { header: 'REPLAYED', value: (value) => value.replayed },
+  ]);
+}
+
+export function routePublicationResult(row: RoutePublicationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'ROUTE', value: (value) => value.route.id },
+        { header: 'HOST', value: (value) => `${value.route.hostname}${value.route.pathPrefix}` },
+        { header: 'STATE', value: (value) => value.route.state },
+        { header: 'CERTIFICATE', value: (value) => value.certificate.id },
+        { header: 'CERTIFICATE STATE', value: (value) => value.certificate.state },
+        { header: 'REPLAYED', value: (value) => value.replayed },
+        { header: 'COMMAND REPLAYED', value: (value) => value.commandReplayed },
+      ]
+    ),
+  };
 }
 
 const BUILD_RUN_COLUMNS: readonly TableColumn<BuildRun>[] = [

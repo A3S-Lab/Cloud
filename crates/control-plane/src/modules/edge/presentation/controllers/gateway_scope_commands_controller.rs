@@ -1,6 +1,8 @@
 use crate::modules::edge::application::CreateGatewayScope;
 use crate::modules::edge::domain::GatewayRolloutPolicy;
-use crate::modules::edge::presentation::dto::{CreateGatewayScopeRequest, GatewayScopeResponse};
+use crate::modules::edge::presentation::dto::{
+    CreateGatewayScopeRequest, GatewayScopeMutationResponse,
+};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
@@ -58,7 +60,7 @@ pub fn gateway_scope_commands_controller(bus: Arc<CommandBus>) -> Result<Control
                     {
                         Ok(result) => BootResponse::json_with_status(
                             if result.replayed { 200 } else { 201 },
-                            &GatewayScopeResponse::from(result.scope),
+                            &GatewayScopeMutationResponse::new(result.scope, result.replayed),
                         ),
                         Err(error) => application_error_response(error, request_id),
                     }

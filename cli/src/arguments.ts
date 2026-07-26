@@ -14,6 +14,8 @@ export interface ParsedArguments {
   idempotencyKey?: string;
   file?: string;
   expectedVersion?: string;
+  minReady?: string;
+  maxUnavailable?: string;
   help: boolean;
   version: boolean;
 }
@@ -33,6 +35,8 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--idempotency-key': 'idempotencyKey',
   '--file': 'file',
   '--expected-version': 'expectedVersion',
+  '--min-ready': 'minReady',
+  '--max-unavailable': 'maxUnavailable',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {

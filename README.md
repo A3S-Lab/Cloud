@@ -109,8 +109,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stop/rollback/cancel/retry operations with caller-owned idempotency keys;
   create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud;
   create core tenant resources and transition nodes with explicit optimistic
-  concurrency; and inspect tokenless platform, liveness, and readiness
-  diagnostics with a stable unhealthy exit status
+  concurrency; create, verify, and revoke DomainClaims, create multi-member
+  logical Gateway scopes with explicit rollout thresholds, and publish routes
+  through replay-aware Edge commands; and inspect tokenless platform,
+  liveness, and readiness diagnostics with a stable unhealthy exit status
 
 ### Delivery capability matrix
 
@@ -452,8 +454,20 @@ bun run --cwd cli src/main.ts workloads list
 bun run --cwd cli src/main.ts workloads get "<workload-uuid>"
 bun run --cwd cli src/main.ts workloads logs "<workload-uuid>" "<revision-uuid>" --limit=100
 bun run --cwd cli src/main.ts deployments get "<deployment-uuid>"
+bun run --cwd cli src/main.ts domain-claims list
+bun run --cwd cli src/main.ts domain-claims create "api.example.com" \
+  --idempotency-key="edge:domain:<request-id>"
+bun run --cwd cli src/main.ts domain-claims verify "<domain-claim-uuid>" "<dns-proof>" \
+  --idempotency-key="edge:verify:<request-id>"
+bun run --cwd cli src/main.ts gateway-scopes create "<node-uuid-a>" "<node-uuid-b>" \
+  --min-ready=1 --max-unavailable=1 \
+  --idempotency-key="edge:scope:<request-id>"
 bun run --cwd cli src/main.ts routes list
 bun run --cwd cli src/main.ts routes get "<route-uuid>"
+bun run --cwd cli src/main.ts routes publish \
+  "<gateway-scope-uuid>" "<workload-revision-uuid>" "<domain-claim-uuid>" \
+  "api.example.com" "/" "http" \
+  --idempotency-key="edge:route:<request-id>"
 bun run --cwd cli src/main.ts build-runs list
 bun run --cwd cli src/main.ts build-runs evidence "<build-run-uuid>" --output=json
 bun run --cwd cli src/main.ts workloads create \
@@ -490,9 +504,11 @@ dispatches the same application commands used by JSON clients. `diagnostics
 status` reads the public platform, liveness, and readiness endpoints without
 sending a bearer token. A legitimate unhealthy health report remains visible
 on stdout and returns exit code `8`, while a real API error remains an error.
-Remaining edge, source, Secret, and identity mutation parity, node bootstrap,
-authorized search, and the compatibility/deprecation gate remain subsequent
-`C0.1` slices.
+DomainClaim create/verify/revoke and Gateway-scope create responses expose the
+authoritative `replayed` state; route publication exposes both request and
+Gateway-command replay state. Remaining source, Secret, and identity parity,
+node bootstrap, authorized search, and the compatibility/deprecation gate
+remain subsequent `C0.1` slices.
 
 ## Platform Model
 

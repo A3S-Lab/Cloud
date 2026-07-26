@@ -4,18 +4,25 @@ import type {
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
+  CreateGatewayScopeInput,
   Deployment,
+  DomainClaim,
+  DomainClaimMutationResult,
   Environment,
   EnvironmentMutationResult,
   GatewayCertificate,
+  GatewayScope,
+  GatewayScopeMutationResult,
   Node,
   Operation,
   Organization,
   OrganizationMutationResult,
   Project,
   ProjectMutationResult,
+  PublishRouteInput,
   RetryBuildRunResult,
   Route,
+  RoutePublicationResult,
   ServiceTemplate,
   SourceWorkloadTemplate,
   StopWorkloadResult,
@@ -286,6 +293,128 @@ export class CloudApi {
   getRoute(organizationId: string, routeId: string, signal?: AbortSignal): Promise<Route> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/routes/${encodeURIComponent(routeId)}`,
+      signal
+    );
+  }
+
+  listDomainClaims(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<DomainClaim[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/domain-claims`,
+      signal
+    );
+  }
+
+  getDomainClaim(organizationId: string, domainClaimId: string, signal?: AbortSignal): Promise<DomainClaim> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/domain-claims/${encodeURIComponent(domainClaimId)}`,
+      signal
+    );
+  }
+
+  createDomainClaim(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    pattern: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DomainClaimMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/domain-claims`,
+      idempotencyKey,
+      { pattern },
+      signal
+    );
+  }
+
+  verifyDomainClaim(
+    organizationId: string,
+    domainClaimId: string,
+    proof: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DomainClaimMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/domain-claims/${encodeURIComponent(domainClaimId)}/verify`,
+      idempotencyKey,
+      { proof },
+      signal
+    );
+  }
+
+  revokeDomainClaim(
+    organizationId: string,
+    domainClaimId: string,
+    reason: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DomainClaimMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/domain-claims/${encodeURIComponent(domainClaimId)}/revoke`,
+      idempotencyKey,
+      { reason },
+      signal
+    );
+  }
+
+  listGatewayScopes(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<GatewayScope[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/gateway-scopes`,
+      signal
+    );
+  }
+
+  createGatewayScope(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateGatewayScopeInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<GatewayScopeMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/gateway-scopes`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  publishRoute(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: PublishRouteInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<RoutePublicationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/routes`,
+      idempotencyKey,
+      input,
       signal
     );
   }

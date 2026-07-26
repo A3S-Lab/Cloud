@@ -128,7 +128,7 @@ describe('CloudApi', () => {
       calls.map(([input, init]) => ({
         input,
         method: init?.method,
-        idempotencyKey: (init?.headers as Record<string, string>)['Idempotency-Key'],
+        idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
         contentType: (init?.headers as Record<string, string>)['Content-Type'],
         body: init?.body,
       }))
@@ -173,7 +173,7 @@ describe('CloudApi', () => {
       calls.map(([input, init]) => ({
         input,
         method: init?.method,
-        idempotencyKey: (init?.headers as Record<string, string>)['Idempotency-Key'],
+        idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
         body: init?.body,
       }))
     ).toEqual([
@@ -232,6 +232,119 @@ describe('CloudApi', () => {
       '/api/v1/organizations/organization%20%2F%20one/workloads/workload%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/deployments/deployment%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/routes/route%20%2F%20one',
+    ]);
+  });
+
+  it('exposes complete Edge queries and idempotent mutations through existing REST paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.listDomainClaims('organization', 'project', 'environment');
+    await api.getDomainClaim('organization', 'claim');
+    await api.createDomainClaim(
+      'organization',
+      'project',
+      'environment',
+      '*.example.test',
+      'cli:claim-create-1'
+    );
+    await api.verifyDomainClaim(
+      'organization',
+      'claim',
+      'a3s-cloud-verification=proof',
+      'cli:claim-verify-1'
+    );
+    await api.revokeDomainClaim('organization', 'claim', 'customer request', 'cli:claim-revoke-1');
+    await api.listGatewayScopes('organization', 'project', 'environment');
+    await api.createGatewayScope(
+      'organization',
+      'project',
+      'environment',
+      { nodeIds: ['node-a', 'node-b'], minReady: 1, maxUnavailable: 1 },
+      'cli:scope-create-1'
+    );
+    await api.publishRoute(
+      'organization',
+      'project',
+      'environment',
+      {
+        gatewayScopeId: 'scope',
+        workloadRevisionId: 'revision',
+        domainClaimId: 'claim',
+        hostname: 'api.example.test',
+        pathPrefix: '/v1',
+        portName: 'http',
+      },
+      'cli:route-publish-1'
+    );
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
+        body: init?.body,
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/domain-claims',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/domain-claims/claim',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/domain-claims',
+        method: 'POST',
+        idempotencyKey: 'cli:claim-create-1',
+        body: JSON.stringify({ pattern: '*.example.test' }),
+      },
+      {
+        input: '/api/v1/organizations/organization/domain-claims/claim/verify',
+        method: 'POST',
+        idempotencyKey: 'cli:claim-verify-1',
+        body: JSON.stringify({ proof: 'a3s-cloud-verification=proof' }),
+      },
+      {
+        input: '/api/v1/organizations/organization/domain-claims/claim/revoke',
+        method: 'POST',
+        idempotencyKey: 'cli:claim-revoke-1',
+        body: JSON.stringify({ reason: 'customer request' }),
+      },
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/gateway-scopes',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/gateway-scopes',
+        method: 'POST',
+        idempotencyKey: 'cli:scope-create-1',
+        body: JSON.stringify({ nodeIds: ['node-a', 'node-b'], minReady: 1, maxUnavailable: 1 }),
+      },
+      {
+        input: '/api/v1/organizations/organization/projects/project/environments/environment/routes',
+        method: 'POST',
+        idempotencyKey: 'cli:route-publish-1',
+        body: JSON.stringify({
+          gatewayScopeId: 'scope',
+          workloadRevisionId: 'revision',
+          domainClaimId: 'claim',
+          hostname: 'api.example.test',
+          pathPrefix: '/v1',
+          portName: 'http',
+        }),
+      },
     ]);
   });
 
@@ -346,7 +459,7 @@ describe('CloudApi', () => {
         input,
         method: init?.method,
         contentType: (init?.headers as Record<string, string>)['Content-Type'],
-        idempotencyKey: (init?.headers as Record<string, string>)['Idempotency-Key'],
+        idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
         body: init?.body,
       }))
     ).toEqual([

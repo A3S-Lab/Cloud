@@ -90,6 +90,27 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses explicit Gateway rollout thresholds', () => {
+    expect(
+      parseArguments([
+        'gateway-scopes',
+        'create',
+        '019c0000-0000-7000-8000-000000000004',
+        '019c0000-0000-7000-8000-000000000005',
+        '--min-ready=1',
+        '--max-unavailable',
+        '1',
+        '--idempotency-key=route:scope-42',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        minReady: '1',
+        maxUnavailable: '1',
+        idempotencyKey: 'route:scope-42',
+      })
+    );
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],

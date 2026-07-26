@@ -33,8 +33,10 @@ credentials.
 The package currently exposes the Web management calls plus `C0.1` tenant,
 operational-resource, evidence, and bounded paged-log queries. Its Workload,
 deployment, and route types match the current replica/member and Gateway scope
-REST projections. It is internal and versioned with Cloud until public package
-compatibility and deprecation policy are completed.
+REST projections. DomainClaim and logical Gateway-scope queries and mutations,
+plus route publication, use the same tenant-guarded REST resources. It is
+internal and versioned with Cloud until public package compatibility and
+deprecation policy are completed.
 
 Mutating methods require a caller-owned idempotency key. The client accepts a
 portable visible-ASCII subset up to the server's 255-byte limit, rejects an
@@ -44,6 +46,15 @@ invalid key before transport, and sends the value only in `Idempotency-Key`.
 resource commands. `markNodeReady`, `drainNode`, and `revokeNode` additionally
 require a positive safe-integer aggregate version and preserve the server's
 optimistic-concurrency contract.
+
+`createDomainClaim`, `verifyDomainClaim`, and `revokeDomainClaim` return the
+complete DomainClaim projection with its durable `replayed` flag.
+`createGatewayScope` accepts an ordered member list plus `minReady` and
+`maxUnavailable`, and returns the complete logical scope with the same replay
+contract. `publishRoute` returns the Route, managed certificate, request replay
+state, and Gateway-command replay state. The client transports these commands;
+Cloud application services and A3S ORM-backed repositories remain
+authoritative for validation, tenancy, and persistence.
 
 `createWorkloadFromAcl`, `updateWorkloadFromAcl`, and
 `deploySourceRevisionFromAcl` transport one nonempty A3S ACL document of at

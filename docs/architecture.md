@@ -1454,6 +1454,23 @@ complete diagnostic result to stdout and returns stable exit code `8` whenever
 liveness or readiness is down, so automation can inspect both state and
 process status without treating an unhealthy report as a malformed response.
 
+Edge automation uses the existing tenant-guarded DomainClaim, logical
+Gateway-scope, and Route controllers. The shared client and CLI expose
+DomainClaim list/get/create/verify/revoke, Gateway-scope list/create, and Route
+publication; they never read Edge tables or contact Gateway members directly.
+A logical scope request carries one through 100 unique member node IDs and
+explicit `minReady`/`maxUnavailable` thresholds. Cloud application commands
+remain authoritative for ownership, membership, threshold, and route-target
+validation, and their production repositories remain typed A3S ORM adapters.
+
+DomainClaim create/verify/revoke and Gateway-scope create now return the
+complete public projection plus a durable `replayed` flag. An initial create
+uses HTTP `201`, an accepted verify or revoke uses `202`, and replay uses
+`200`. Route publication already returns the Route, managed certificate,
+request replay state, and Gateway-command replay state. These response
+contracts let automation retry safely without reconstructing state from
+internal persistence.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

@@ -47,6 +47,12 @@ Node `ready`, `drain`, and `revoke` additionally require
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale
 versions instead of applying a blind lifecycle transition.
 
+`gateway-scopes create` accepts one through 100 unique node UUIDs.
+`--min-ready` defaults to `1` and cannot exceed the member count;
+`--max-unavailable` defaults to `0` and must remain below the member count.
+Cloud remains authoritative for tenant ownership, membership, rollout policy,
+and idempotent creation.
+
 Desired-state commands additionally require `--file=<path>` and accept only a
 nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
 bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
@@ -83,8 +89,16 @@ workloads rollback <workload-id> <revision-id>
 source-revisions deploy <source-revision-id> --file=<path>
 deployments get <deployment-id>
 deployments cancel <deployment-id>
+domain-claims list
+domain-claims get <domain-claim-id>
+domain-claims create <pattern>
+domain-claims verify <domain-claim-id> <proof>
+domain-claims revoke <domain-claim-id> <reason>
+gateway-scopes list
+gateway-scopes create <node-id> [node-id...] [--min-ready=<count>] [--max-unavailable=<count>]
 routes list
 routes get <route-id>
+routes publish <gateway-scope-id> <workload-revision-id> <domain-claim-id> <hostname> <path-prefix> <port-name>
 build-runs list
 build-runs get <build-run-id>
 build-runs evidence <build-run-id>
@@ -130,12 +144,17 @@ array, while failure JSON is written to stderr under an `error` object.
 
 Table cells and error metadata are bounded and control characters are
 neutralized. Sensitive error-detail keys are redacted before JSON output.
+DomainClaim create/verify/revoke and Gateway-scope create output includes the
+server's durable `replayed` value. Route publication includes `replayed` and
+`commandReplayed`, so automation can distinguish request replay from Gateway
+command replay without inspecting internal state.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
 create/update/source deployment are implemented. Core Organization, Project,
 and Environment creation and version-checked node lifecycle transitions are
 also implemented. Public platform and health diagnostics are implemented with
-a stable unhealthy exit contract. Remaining edge, source, Secret, and identity
-resource mutations, node bootstrap, authorized search, and the
-compatibility/deprecation gate remain planned.
+a stable unhealthy exit contract. DomainClaim, logical Gateway-scope, and route
+publication parity is implemented through the same typed client. Remaining
+source, Secret, and identity resource parity, node bootstrap, authorized
+search, and the compatibility/deprecation gate remain planned.

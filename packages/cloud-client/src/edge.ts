@@ -53,3 +53,67 @@ export interface GatewayCertificate {
   readyAt: string | null;
   revokedAt: string | null;
 }
+
+export type DomainClaimState = 'pending' | 'verified' | 'rejected' | 'revoked';
+
+export interface DomainClaim {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  pattern: string;
+  challengeDnsName: string;
+  challengeValue: string;
+  state: DomainClaimState;
+  failure: string | null;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface DomainClaimMutationResult extends DomainClaim {
+  replayed: boolean;
+}
+
+export interface GatewayScope {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  nodeId: string;
+  memberNodeIds: string[];
+  membershipGeneration: number;
+  minReady: number;
+  maxUnavailable: number;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GatewayScopeMutationResult extends GatewayScope {
+  replayed: boolean;
+}
+
+export interface CreateGatewayScopeInput {
+  nodeIds: string[];
+  minReady: number;
+  maxUnavailable: number;
+}
+
+export interface PublishRouteInput {
+  gatewayScopeId: string;
+  workloadRevisionId: string;
+  domainClaimId: string;
+  hostname: string;
+  pathPrefix: string;
+  portName: string;
+}
+
+export interface RoutePublicationResult {
+  route: Route;
+  certificate: GatewayCertificate;
+  replayed: boolean;
+  commandReplayed: boolean;
+}
