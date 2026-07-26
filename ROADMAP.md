@@ -119,10 +119,14 @@ reconciliation engine.
   cleanup, and explicit deployment handoff to `cloud.deployment@3`; and
 - deterministic SPDX 2.3 and SLSA provenance, locally verified Ed25519 DSSE
   signing through persistent local or Vault Transit providers, durable
-  evidence restoration, and tenant-scoped API/web inspection and download.
+  evidence restoration, and tenant-scoped API/web inspection and download; and
+- a manual external-provider gate for a private GitHub repository, HTTPS OCI
+  Registry, Vault Transit Ed25519 signing, PostgreSQL 17, rootless BuildKit,
+  exact remote replay, and two real `SIGKILL` recovery boundaries.
 
-`G0` remains in progress until external private-provider certification and the
-production signed-evidence process-death gate pass.
+The gate implementation and a local real-provider rehearsal pass, but `G0`
+remains in progress because no operator-owned external run is recorded. The
+repository currently has no configured G0 provider secrets.
 
 `C0` now includes the initial `C0.1` automation slices:
 
@@ -211,14 +215,14 @@ Dependency rules:
 
 Next outcome:
 
-1. run the real external private-provider certification without persisting
-   repository credentials or provider private keys;
-2. run the signed-evidence gate against an operator-controlled Vault Transit
-   key and registry;
-3. inject process death after remote publication and after evidence
-   persistence, then prove one publication, one verified evidence document,
-   and authoritative cleanup; and
-4. close the complete source-to-published-Workload release evidence.
+1. configure the bounded private GitHub, HTTPS Registry, and Vault Transit
+   credentials required by the implemented manual workflow;
+2. dispatch both external-provider jobs from the exact release candidate and
+   retain their revision-bound evidence;
+3. verify the recorded run proves both `SIGKILL` boundaries, one publication,
+   one evidence document, and authoritative Runtime cleanup; and
+4. promote `G0` only after the complete source-to-published-Workload evidence
+   remains green with those operator-owned providers.
 
 `G0` is complete only when an exact source revision produces a verifiable,
 signed, digest-addressed OCI graph, survives retry/cancellation/process death,
@@ -490,8 +494,8 @@ additional APIs remain unavailable until their real conformance gates pass.
 The default portfolio priority is:
 
 1. preserve the verified `E0` release and its clean-host regression gate;
-2. finish the remaining `G0` external private-provider and signed-evidence
-   process-death gates;
+2. execute and retain the remaining operator-owned `G0` certification through
+   the implemented private-provider and signed-evidence process-death gates;
 3. advance `C0.1` and the first `S0` foundation independently when staffed;
 4. preserve the closed `H0.1` real-provider Claim certification while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their

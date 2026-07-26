@@ -106,9 +106,12 @@ Installation-token authentication and private checkout are
 implemented with local provider evidence: the App PEM key and token are
 materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
-gate has not been run without provider credentials. External private-provider
-certification remains unimplemented. Signed build evidence is implemented and
-restored fail-closed from PostgreSQL. Content-addressed BuildKit cache trust is
+gate is implemented but has not been run with operator credentials. External
+private-provider certification therefore remains unrecorded. Signed build
+evidence is implemented and restored fail-closed from PostgreSQL. The companion
+external Registry/Vault workflow implements two real `SIGKILL` recovery
+boundaries and has passed a local real-provider rehearsal, but that rehearsal
+is not operator certification. Content-addressed BuildKit cache trust is
 implemented: cache-required BuildRuns persist an exact validated cache graph,
 and retries can stage only the matching immediate parent's read-only Artifact.
 The published-build
@@ -1147,9 +1150,12 @@ terminal. App-authorization revocation invalidates every current connection
 whose proof was supplied by that user; it is not interpreted as installation
 deletion. Because GitHub does not supply one uniformly reliable event time for
 all of these deliveries, this slice orders first acceptance by local receipt
-and remains webhook-driven. Periodic authoritative polling, missed/out-of-order
-repair, delayed pre-reconnection delivery disambiguation, and a fresh provider
-check immediately before checkout remain subsequent G0 work.
+for each signed fact. Bounded authoritative polling now repairs missed or
+out-of-order installation and account lifecycle changes, disambiguates delayed
+facts across reconnection, and requires a fresh provider check immediately
+before private resolution or checkout. Verifying-user authorization revocation
+remains webhook-authoritative because GitHub exposes no tokenless current-user
+grant query and Cloud does not persist OAuth tokens.
 
 `POST .../source-revisions` accepts a typed branch, tag, or full Git object ID,
 normalizes an exact GitHub HTTPS locator, enforces the configured exact
@@ -1332,12 +1338,14 @@ and explicit published-build deployment are implemented. The gate cancels and
 removes the cache-producing parent, prunes all worker state, requires the child
 to parse the imported cache manifest and emit a real `CACHED` record,
 revalidates identical OCI/cache graphs, publishes and signs the child, and
-leaves no managed Task. External private-provider certification and the
-remaining production signed-evidence fault-injection evidence are later G0
-slices. BuildRun status, cancellation, retry-as-new-attempt, ordered log
-page/SSE, and web controls are implemented; the log projection reuses Fleet
-metadata and object storage while redacting node and internal Runtime
-identities.
+leaves no managed Task. The manual external-provider workflow now adds private
+GitHub resolution, operator Registry/Vault signing, and real process death
+after publication and evidence persistence. A local real-provider rehearsal
+passes; operator-owned execution and retained revision-bound evidence remain
+before G0 verification. BuildRun status, cancellation, retry-as-new-attempt,
+ordered log page/SSE, and web controls are implemented; the log projection
+reuses Fleet metadata and object storage while redacting node and internal
+Runtime identities.
 
 Hosted assets follow a separate publication chain:
 
