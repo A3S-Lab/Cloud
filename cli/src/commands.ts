@@ -54,6 +54,7 @@ import {
   workloadResult,
   workloadsResult,
 } from './results';
+import { executeSearchCommand } from './search-commands';
 import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 import { executeSecretCommand, rejectMisplacedSecretValueOption } from './secret-commands';
 import type { ReadStdin } from './standard-input';
@@ -109,6 +110,10 @@ export async function executeCommand(
     });
     return api;
   };
+  const searchResult = await executeSearchCommand(command, arguments_, context, cloudApi);
+  if (searchResult !== undefined) {
+    return searchResult;
+  }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi);
   if (edgeResult !== undefined) {
     return edgeResult;
