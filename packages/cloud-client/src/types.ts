@@ -333,9 +333,15 @@ export interface ObservedRuntime {
 export interface Deployment {
   id: string;
   workloadId: string;
+  replicaId: string;
+  replicaGeneration: number;
+  memberId: string;
+  placementGeneration: number;
   revision: WorkloadRevision;
   operationId: string;
   nodeId: string | null;
+  runtimeUnitId: string;
+  runtimeGeneration: number;
   commandId: string | null;
   cleanupCommandId: string | null;
   retirementCommandId: string | null;
@@ -349,6 +355,51 @@ export interface Deployment {
   activatedAt: string | null;
   cancellationRequestedAt: string | null;
   cancelledAt: string | null;
+}
+
+export interface ManagedWorkloadOwner {
+  kind: string;
+  ownerId: string;
+  ownerGeneration: number;
+  ownerSpecDigest: string;
+}
+
+export interface EffectivePlacementPolicy {
+  schema: string;
+  generation: number;
+  desiredReplicas: number;
+  membersPerReplica: number;
+  topology: 'single_node';
+  digest: string;
+}
+
+export interface WorkloadControl {
+  managedOwner: ManagedWorkloadOwner | null;
+  placementPolicy: EffectivePlacementPolicy;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkloadReplicaMember {
+  id: string;
+  ordinal: number;
+  nodeId: string | null;
+  placementGeneration: number;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkloadReplica {
+  id: string;
+  ordinal: number;
+  revisionId: string;
+  generation: number;
+  members: WorkloadReplicaMember[];
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CancelDeploymentResult {
@@ -396,6 +447,8 @@ export interface Workload {
   environmentId: string;
   name: string;
   desiredState: 'running' | 'stopped';
+  control: WorkloadControl;
+  replicas: WorkloadReplica[];
   desiredRevision: WorkloadRevision | null;
   activeRevision: WorkloadRevision | null;
   deployments: Deployment[];
@@ -404,56 +457,7 @@ export interface Workload {
   updatedAt: string;
 }
 
-export type RouteState = 'pending' | 'publishing' | 'active' | 'rejected';
-
-export interface Route {
-  id: string;
-  organizationId: string;
-  projectId: string;
-  environmentId: string;
-  gatewayNodeId: string;
-  hostname: string;
-  pathPrefix: string;
-  domainClaimId: string | null;
-  domainPattern: string | null;
-  gatewayCertificateId: string | null;
-  workloadId: string;
-  workloadRevisionId: string;
-  portName: string;
-  state: RouteState;
-  gatewayRevision: number | null;
-  gatewayCommandId: string | null;
-  snapshotDigest: string | null;
-  failure: string | null;
-  aggregateVersion: number;
-  createdAt: string;
-  updatedAt: string;
-  activatedAt: string | null;
-}
-
-export type GatewayCertificateState = 'provisioning' | 'issued' | 'ready' | 'failed' | 'revoked';
-
-export interface GatewayCertificate {
-  id: string;
-  organizationId: string;
-  nodeId: string;
-  domainClaimIds: string[];
-  dnsNames: string[];
-  gatewayRevision: number;
-  gatewayCommandId: string;
-  snapshotDigest: string;
-  state: GatewayCertificateState;
-  serialNumber: string | null;
-  fingerprint: string | null;
-  issuedAt: string | null;
-  expiresAt: string | null;
-  failure: string | null;
-  aggregateVersion: number;
-  createdAt: string;
-  updatedAt: string;
-  readyAt: string | null;
-  revokedAt: string | null;
-}
+export type { GatewayCertificate, GatewayCertificateState, Route, RouteState } from './edge';
 
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
 export type WorkloadLogRecordKind = 'data' | 'gap';

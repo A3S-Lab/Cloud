@@ -104,8 +104,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   Runtime health, logs, BuildRuns, updates, rollback, cancellation, and retry
 - **Typed Automation Slice**: Reuse one validated TypeScript client across the
   web console and `a3s-cloud` CLI, select tenant context without a credential
-  file, and list organizations, projects, environments, nodes, and operations
-  as bounded tables or stable JSON
+  file, inspect tenant and operational resources, BuildRun evidence, and paged
+  workload or build logs as bounded tables or stable JSON
 
 ### Delivery capability matrix
 
@@ -414,7 +414,7 @@ API specification.
 
 ### Use the Cloud CLI
 
-The first `C0.1` automation slice uses the same typed client as the web console.
+The in-progress `C0.1` automation surface uses the same typed client as the web console.
 The token is accepted only from `A3S_CLOUD_TOKEN`; it is never accepted as an
 argument or written to a context file.
 
@@ -425,6 +425,7 @@ export A3S_CLOUD_TOKEN="${A3S_CLOUD_ADMIN_TOKEN}"
 export A3S_CLOUD_URL="http://127.0.0.1:8080/api/v1"
 export A3S_CLOUD_ORGANIZATION_ID="<organization-uuid>"
 export A3S_CLOUD_PROJECT_ID="<project-uuid>"
+export A3S_CLOUD_ENVIRONMENT_ID="<environment-uuid>"
 
 bun run --cwd cli src/main.ts context show
 bun run --cwd cli src/main.ts organizations list --output=json
@@ -432,14 +433,23 @@ bun run --cwd cli src/main.ts projects list
 bun run --cwd cli src/main.ts environments list
 bun run --cwd cli src/main.ts nodes list
 bun run --cwd cli src/main.ts operations list
+bun run --cwd cli src/main.ts workloads list
+bun run --cwd cli src/main.ts workloads get "<workload-uuid>"
+bun run --cwd cli src/main.ts workloads logs "<workload-uuid>" "<revision-uuid>" --limit=100
+bun run --cwd cli src/main.ts deployments get "<deployment-uuid>"
+bun run --cwd cli src/main.ts routes list
+bun run --cwd cli src/main.ts routes get "<route-uuid>"
+bun run --cwd cli src/main.ts build-runs list
+bun run --cwd cli src/main.ts build-runs evidence "<build-run-uuid>" --output=json
 ```
 
 Use `bun run --cwd cli build` to produce the standalone `cli/dist/a3s-cloud`
 binary. Remote endpoints must use HTTPS and end in `/api/v1`; plain HTTP is
 accepted only for literal localhost or loopback addresses. See the
 [CLI reference](cli/README.md) for context variables, output contracts, and
-exit codes. Deployment, route, log, diagnostics, mutations, node bootstrap,
-and authorized search remain subsequent `C0.1` slices.
+exit codes. Operational resource and paged-log reads are implemented;
+mutations, administrative diagnostics, node bootstrap, authorized search, and
+the compatibility/deprecation gate remain subsequent `C0.1` slices.
 
 ## Platform Model
 

@@ -50,6 +50,56 @@ describe('CloudApi', () => {
     expect(calls[0]?.[0]).toBe('/api/v1/organizations/organization/nodes');
   });
 
+  it('exposes operational resources through the public tenant paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.getWorkload('organization / one', 'workload / one');
+    await api.getDeployment('organization / one', 'deployment / one');
+    await api.getRoute('organization / one', 'route / one');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/workloads/workload%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/deployments/deployment%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/routes/route%20%2F%20one',
+    ]);
+  });
+
+  it('reads bounded workload and BuildRun log pages with opaque cursors', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ records: [], nextCursor: null });
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.getWorkloadLogs('organization', 'workload', 'revision', {
+      cursor: 'v1:41',
+      limit: 25,
+      stream: 'stderr',
+    });
+    await api.getBuildRunLogs('organization', 'build-run', {
+      cursor: 'v1:9',
+      limit: 10,
+      stream: 'stdout',
+    });
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization/workloads/workload/revisions/revision/logs?cursor=v1%3A41&limit=25&stream=stderr',
+      '/api/v1/organizations/organization/build-runs/build-run/logs?cursor=v1%3A9&limit=10&stream=stdout',
+    ]);
+    expect(() => api.getBuildRunLogs('organization', 'build-run', { limit: 0 })).toThrow(
+      'log limit must be between 1 and 256'
+    );
+    expect(() => api.getBuildRunLogs('organization', 'build-run', { cursor: 'x'.repeat(1_025) })).toThrow(
+      'log cursor is invalid'
+    );
+  });
+
   it('creates resumable event-stream headers without putting credentials in URLs', () => {
     const api = new CloudApi('a3s_secret');
 

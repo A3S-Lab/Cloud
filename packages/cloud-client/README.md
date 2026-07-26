@@ -18,6 +18,8 @@ caller cancellation become stable `CloudApiError` values. Tokens are sent only
 in authorization headers and never appear in generated stream URLs or error
 messages.
 
-The package currently exposes the Web management calls plus the first `C0.1`
-CLI queries. It is internal and versioned with Cloud until public package
+The package currently exposes the Web management calls plus `C0.1` tenant,
+operational-resource, evidence, and bounded paged-log queries. Its Workload,
+deployment, and route types match the current replica/member and Gateway scope
+REST projections. It is internal and versioned with Cloud until public package
 compatibility and deprecation policy are completed.

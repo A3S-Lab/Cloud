@@ -95,6 +95,20 @@ export function requireProject(context: CloudContext): string {
   return context.projectId;
 }
 
+export function requireEnvironment(context: CloudContext): string {
+  if (!context.environmentId) {
+    throw usageError('an environment ID is required through --environment or A3S_CLOUD_ENVIRONMENT_ID');
+  }
+  return context.environmentId;
+}
+
+export function parseUuid(value: string, label: string): string {
+  if (!UUID_PATTERN.test(value)) {
+    throw usageError(`${label} must be a UUID`);
+  }
+  return value.toLowerCase();
+}
+
 export function normalizeApiUrl(value: string): string {
   if (!value || value.length > 2_048 || hasUnsafeControl(value)) {
     throw usageError('Cloud API URL is invalid');
@@ -126,10 +140,7 @@ function optionalUuid(value: string | undefined, label: string): string | undefi
   if (value === undefined) {
     return undefined;
   }
-  if (!UUID_PATTERN.test(value)) {
-    throw usageError(`${label} must be a UUID`);
-  }
-  return value.toLowerCase();
+  return parseUuid(value, label);
 }
 
 function optionalToken(value: string | undefined): string | undefined {
@@ -163,10 +174,10 @@ function parseTimeout(value: string | undefined): number {
   return timeout;
 }
 
-function hasUnsafeControl(value: string): boolean {
+export function hasUnsafeControl(value: string): boolean {
   for (const character of value) {
     const code = character.codePointAt(0) ?? 0;
-    if (code <= 0x20 || code === 0x7f) {
+    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) {
       return true;
     }
   }

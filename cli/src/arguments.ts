@@ -8,6 +8,9 @@ export interface ParsedArguments {
   environmentId?: string;
   output?: string;
   timeoutMs?: string;
+  cursor?: string;
+  limit?: string;
+  stream?: string;
   help: boolean;
   version: boolean;
 }
@@ -21,6 +24,9 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--environment': 'environmentId',
   '--output': 'output',
   '--timeout': 'timeoutMs',
+  '--cursor': 'cursor',
+  '--limit': 'limit',
+  '--stream': 'stream',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {

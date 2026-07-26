@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { Deployment, Operation, ServiceTemplate, Workload, WorkloadRevision } from '../../types/api';
+import type {
+  Deployment,
+  Operation,
+  Route,
+  ServiceTemplate,
+  Workload,
+  WorkloadRevision,
+} from '../../types/api';
 import {
   diffTemplates,
   eligibleRollbackRevisions,
   isWorkloadReadyForReplacement,
   parseServiceTemplateDraft,
+  routeStage,
   visibleOperations,
 } from './workload-view-model';
 
@@ -82,6 +90,8 @@ describe('workload view model', () => {
       environmentId: 'environment-1',
       name: 'api',
       desiredState: 'running',
+      control: workloadControl(current.createdAt),
+      replicas: [],
       desiredRevision: current,
       activeRevision: current,
       deployments: [
@@ -137,6 +147,14 @@ describe('workload view model', () => {
       'failed',
     ]);
   });
+
+  it('surfaces an unavailable current route as failed convergence', () => {
+    expect(routeStage('revision-3', [route('unavailable')])).toEqual({
+      name: 'Route active',
+      label: 'Unavailable',
+      state: 'failed',
+    });
+  });
 });
 
 function revision(id: string, generation: number): WorkloadRevision {
@@ -165,9 +183,15 @@ function deployment(
   return {
     id,
     workloadId: 'workload-1',
+    replicaId: `replica-${id}`,
+    replicaGeneration: workloadRevision.generation,
+    memberId: `member-${id}`,
+    placementGeneration: 1,
     revision: workloadRevision,
     operationId: `operation-${id}`,
     nodeId: 'node-1',
+    runtimeUnitId: `runtime-${id}`,
+    runtimeGeneration: workloadRevision.generation,
     commandId: 'command-1',
     cleanupCommandId: null,
     retirementCommandId: null,
@@ -184,6 +208,23 @@ function deployment(
   };
 }
 
+function workloadControl(timestamp: string): Workload['control'] {
+  return {
+    managedOwner: null,
+    placementPolicy: {
+      schema: 'a3s.workload-placement.v1',
+      generation: 1,
+      desiredReplicas: 1,
+      membersPerReplica: 1,
+      topology: 'single_node',
+      digest: 'sha256:placement',
+    },
+    aggregateVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 function operation(id: string, status: Operation['status']): Operation {
   return {
     id,
@@ -197,5 +238,37 @@ function operation(id: string, status: Operation['status']): Operation {
     requestedAt: '2026-07-20T00:00:00Z',
     updatedAt: '2026-07-20T00:00:01Z',
     error: null,
+  };
+}
+
+function route(state: Route['state']): Route {
+  return {
+    id: 'route-1',
+    organizationId: 'organization-1',
+    projectId: 'project-1',
+    environmentId: 'environment-1',
+    gatewayScopeId: 'gateway-scope-1',
+    gatewayNodeId: 'gateway-node-1',
+    hostname: 'api.example.test',
+    pathPrefix: '/',
+    domainClaimId: null,
+    domainPattern: null,
+    gatewayCertificateId: null,
+    workloadId: 'workload-1',
+    workloadRevisionId: 'revision-3',
+    runtimeUnitId: 'runtime-unit-1',
+    runtimeGeneration: 3,
+    portName: 'http',
+    upstreamOrigin: 'http://10.0.0.3:8080',
+    targetObservedAt: '2026-07-20T00:00:03Z',
+    state,
+    gatewayRevision: null,
+    gatewayCommandId: null,
+    snapshotDigest: null,
+    failure: state === 'unavailable' ? 'Gateway rollout is below readiness threshold' : null,
+    aggregateVersion: 1,
+    createdAt: '2026-07-20T00:00:03Z',
+    updatedAt: '2026-07-20T00:00:03Z',
+    activatedAt: null,
   };
 }

@@ -2,6 +2,7 @@ import { Ban, CircleStop } from 'lucide-react';
 import type { DeploymentStatus, Route, ServiceTemplate, Workload } from '../../types/api';
 import { humanize } from './console-format';
 import { WorkloadActions } from './workload-actions';
+import { routeStage } from './workload-view-model';
 
 interface WorkloadOverviewProps {
   workload: Workload | undefined;
@@ -160,37 +161,6 @@ function deploymentStages(
     return { ...stage, label: 'Pending', state: 'pending' as const };
   });
   return [...projected, routeStage(revisionId, routes)];
-}
-
-function routeStage(
-  revisionId: string | undefined,
-  routes: Route[]
-): {
-  name: string;
-  label: string;
-  state: 'pending' | 'current' | 'complete' | 'failed';
-} {
-  const revisionRoutes = revisionId ? routes.filter((route) => route.workloadRevisionId === revisionId) : [];
-  if (revisionRoutes.some((route) => route.state === 'rejected')) {
-    return { name: 'Route active', label: 'Rejected', state: 'failed' };
-  }
-  if (revisionRoutes.length > 0 && revisionRoutes.every((route) => route.state === 'active')) {
-    return {
-      name: 'Route active',
-      label: `${revisionRoutes.length} acknowledged`,
-      state: 'complete',
-    };
-  }
-  if (revisionRoutes.some((route) => route.state === 'publishing')) {
-    return { name: 'Route active', label: 'Publishing', state: 'current' };
-  }
-  if (revisionRoutes.some((route) => route.state === 'pending')) {
-    return { name: 'Route active', label: 'Pending', state: 'current' };
-  }
-  if (routes.some((route) => route.state === 'active')) {
-    return { name: 'Route active', label: 'Prior revision active', state: 'pending' };
-  }
-  return { name: 'Route active', label: 'No route projection', state: 'pending' };
 }
 
 function canCancel(status: DeploymentStatus): boolean {

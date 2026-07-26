@@ -133,7 +133,7 @@ Status as of 2026-07-26:
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
 | G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. The manual private-GitHub and external Registry/Vault gate now includes PostgreSQL 17, rootless BuildKit, and real process death after publication and evidence persistence. A local real-provider rehearsal passes, but no operator-owned run is recorded because the repository has no G0 provider secrets; external certification still blocks G0 verification |
-| C0 | In progress | One typed TypeScript client is shared by Web and the first standalone CLI slice. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, and organization/project/environment/node/operation queries pass client, CLI, Web, and compiled-binary tests. C0.1 still requires complete resource and mutation parity, node bootstrap, authorized search, compatibility policy, and cross-surface evidence |
+| C0 | In progress | One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant queries, workloads, deployments, routes, BuildRuns, signed evidence, and cursor-paginated workload/build logs pass client, CLI, and Web tests. C0.1 still requires mutation parity, administrative diagnostics, node bootstrap, authorized search, compatibility policy, and cross-surface evidence |
 | H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
 | H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
 
@@ -1084,13 +1084,16 @@ packages:
   `A3S_CLOUD_TOKEN`, resolves API and organization/project/environment context
   from flags or environment without persisting a credential file, requires
   HTTPS outside literal loopback, and provides table or JSON queries for
-  organizations, projects, environments, nodes, and operations.
+  organizations, projects, environments, nodes, operations, workloads,
+  deployments, routes, BuildRuns, signed evidence, and bounded cursor-paginated
+  workload/build logs. Resource identifiers and log bounds fail before network
+  access, while cursors remain opaque.
 
 This changes `C0` from planned to in progress, not verified. The next `C0.1`
-slices must add deployments, routes, logs, administrative diagnostics and
-mutations through the same typed client, followed by node bootstrap, authorized
-global search, REST compatibility/deprecation policy, and real cross-surface
-automation evidence. No CLI command may read PostgreSQL or contact a node.
+slices must add mutations and administrative diagnostics through the same typed
+client, followed by node bootstrap, authorized global search, REST
+compatibility/deprecation policy, and real cross-surface automation evidence.
+No CLI command may read PostgreSQL or contact a node.
 
 ### Work
 
