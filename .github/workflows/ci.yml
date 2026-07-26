@@ -639,6 +639,7 @@ jobs:
 
       - name: Validate shell syntax
         run: |
+          bash -n tools/g0-conformance/run_signed_build_gate.sh
           bash -n tools/runtime-conformance/run_isolated_docker_gate.sh
           bash -n tools/release-conformance/run_clean_host_gate.sh
 
