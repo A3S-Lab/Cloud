@@ -143,7 +143,13 @@ describe('CloudApi', () => {
             };
       return Promise.resolve(
         new Response(
-          JSON.stringify({ code: path.includes('/projects/') ? 200 : 202, message: 'Success', data }),
+          JSON.stringify({
+            code: path.includes('/projects/') ? 200 : 202,
+            message: 'Success',
+            data,
+            requestId: 'request-1',
+            timestamp: '2026-07-26T00:00:00.000Z',
+          }),
           { status: path.includes('/projects/') ? 200 : 202, headers: { 'content-type': 'application/json' } }
         )
       );

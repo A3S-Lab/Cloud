@@ -651,14 +651,67 @@ jobs:
 
       - name: Enforce ACL-only product configuration
         run: |
-          forbidden_files=$(git ls-files README.md config crates deploy docs tools web |
-            rg '\.(hcl|tf|tfvars)$' || true)
+          forbidden_files=$(git ls-files README.md cli config crates deploy docs packages tools web |
+            grep -E '\.(hcl|tf|tfvars)$' || true)
           if [[ -n $forbidden_files ]]; then
             printf '%s\n' "$forbidden_files"
             exit 1
           fi
-          if rg --hidden -n -i '\bHCL\b|\.hcl\b' \
-            README.md config crates deploy docs tools web; then
+          if git grep -I -n -i -E \
+            '(^|[^[:alnum:]_])HCL([^[:alnum:]_]|$)|\.hcl([^[:alnum:]_]|$)' -- \
+            README.md cli config crates deploy docs packages tools web; then
+            exit 1
+          fi
+
+  client-cli:
+    name: TypeScript client and CLI
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install client dependencies
+        working-directory: apps/cloud/packages/cloud-client
+        run: bun install --frozen-lockfile
+
+      - name: Validate typed client
+        working-directory: apps/cloud/packages/cloud-client
+        run: |
+          bun run typecheck
+          bun run format:check
+          bun run lint:check
+          bun run test
+
+      - name: Install CLI dependencies
+        working-directory: apps/cloud/cli
+        run: bun install --frozen-lockfile
+
+      - name: Validate CLI
+        working-directory: apps/cloud/cli
+        run: |
+          bun run typecheck
+          bun run format:check
+          bun run lint:check
+          bun run test
+          bun run build
+
+      - name: Verify compiled non-secret context
+        working-directory: apps/cloud/cli
+        run: |
+          output=$(A3S_CLOUD_TOKEN=a3s_ci_never_print \
+            ./dist/a3s-cloud context show --output=json)
+          grep -F '"tokenConfigured": true' <<<"$output"
+          if grep -F 'a3s_ci_never_print' <<<"$output"; then
             exit 1
           fi
 

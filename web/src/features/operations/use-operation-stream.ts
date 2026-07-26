@@ -42,11 +42,7 @@ export function useOperationStream(
         setState(attempt === 0 ? 'connecting' : 'retrying');
         try {
           const response = await fetch(api.operationStreamUrl(organizationId), {
-            headers: {
-              Accept: 'text/event-stream',
-              Authorization: `Bearer ${api.token}`,
-              ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}),
-            },
+            headers: api.eventStreamHeaders(lastEventId),
             signal: controller.signal,
           });
           if (response.status === 401 || response.status === 403) {

@@ -1392,7 +1392,7 @@ immutable inputs; they are not deployed alone.
   requires locally verified Ed25519-signed evidence bound to that digest;
   admission policy can be tightened without changing workload identity.
 
-## 11. API and web application
+## 11. API, web application, and typed clients
 
 HTTP APIs are versioned under `/api/v1`. Mutating endpoints accept an
 `Idempotency-Key`. Fast commands return the committed resource; long-running
@@ -1413,6 +1413,17 @@ Errors include HTTP `code`, stable business `statusCode`, safe `details`,
 `requestId`, and `timestamp`, and are documented in OpenAPI. Queries use cursor
 pagination. Operation updates use resumable SSE with an event sequence; the UI
 always reloads the authoritative projection after reconnecting.
+
+The `packages/cloud-client` TypeScript package is the single REST transport for
+the web console and `a3s-cloud` CLI. It validates both envelope variants and the
+HTTP/envelope status match, bounds request time, maps invalid responses and
+transport failure to stable client errors, and never places a bearer token in a
+URL or error. The first `C0.1` CLI slice is presentation-only: it resolves
+non-secret context from flags or environment, reads the token only from
+`A3S_CLOUD_TOKEN`, and invokes public tenant-guarded queries. It does not persist
+context, read PostgreSQL, contact nodes, or infer authorization from hidden
+output. Later CLI and MCP surfaces must continue through this API and the same
+application commands and queries.
 
 Secret mutations require the `secret:write` scope. The initial resource API is:
 
