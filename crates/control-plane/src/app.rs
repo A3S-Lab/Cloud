@@ -101,7 +101,9 @@ use crate::modules::workloads::{
     WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
-use crate::presentation::{ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware};
+use crate::presentation::{
+    ApiContractModule, ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware, API_PREFIX,
+};
 use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
     config::{
@@ -115,7 +117,7 @@ use crate::{
 };
 use a3s_boot::{
     AuthModule, BootApplication, BootError, CqrsModule, HealthIndicatorResult, HealthModule,
-    Module, ModuleRef, OpenApiInfo, ProviderDefinition, ProviderToken, Result, RouteDefinition,
+    Module, ModuleRef, ProviderDefinition, ProviderToken, Result, RouteDefinition,
     AUTH_PUBLIC_METADATA,
 };
 use a3s_event::{NatsConfig, StorageType};
@@ -1170,12 +1172,12 @@ fn build_application_with_health(
         .import(WorkloadsModule)
         .import(EdgeModule)
         .import(PlatformModule::new(&config))
+        .import(ApiContractModule)
         .use_global_middleware(RequestIdMiddleware)
         .use_global_auth()
         .use_global_interceptor(ApiResponseInterceptor)
         .use_global_filter(ApiErrorFilter)
-        .global_prefix("/api/v1")
-        .serve_openapi("/openapi.json", OpenApiInfo::new("A3S Cloud", "0.1.0"))
+        .global_prefix(API_PREFIX)
         .build()
 }
 

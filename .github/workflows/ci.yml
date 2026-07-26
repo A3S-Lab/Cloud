@@ -636,6 +636,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: apps/cloud
+          fetch-depth: 0
 
       - name: Validate shell syntax
         run: |
@@ -648,6 +649,20 @@ jobs:
 
       - name: Test clean-host release driver
         run: python3 -m unittest discover -s tools/release-conformance -p 'test_*.py'
+
+      - name: Test REST contract compatibility checker
+        run: python3 -m unittest discover -s tools/api-contract -p 'test_*.py'
+
+      - name: Enforce REST v1 compatibility against the PR base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          baseline="$RUNNER_TEMP/a3s-cloud-openapi-v1-base.json"
+          if git cat-file -e "$BASE_SHA:openapi/v1.json" 2>/dev/null; then
+            git show "$BASE_SHA:openapi/v1.json" >"$baseline"
+            python3 tools/api-contract/check_contract.py "$baseline" openapi/v1.json
+          fi
 
       - name: Enforce ACL-only product configuration
         run: |
