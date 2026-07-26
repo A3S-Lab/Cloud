@@ -1522,6 +1522,26 @@ The API-token surface is:
 - `POST /organizations/{organization}/api-tokens`
 - `DELETE /organizations/{organization}/api-tokens/{api-token}`
 
+Node bootstrap extends the same typed client with the existing
+`POST /organizations/{organization}/enrollment-tokens` Fleet command; it does
+not add a second enrollment endpoint or persistence path. The caller supplies
+one exact `a3sn_` credential through bounded fatal-UTF-8 standard input, the
+CLI clears the input bytes, and the request retains `node:write`, tenant guard,
+caller-owned idempotency, one-time use, and the server's maximum 24-hour
+lifetime. Successful output selects only credential-free enrollment metadata;
+credential-bearing API errors become one stable non-secret failure. The Fleet
+repository continues to persist only the digest with typed A3S ORM operations.
+
+The CLI does not install software itself or contact a node. It prints a Bash
+invocation that downloads one caller-selected HTTPS Agent binary, verifies its
+exact SHA-256 before `sudo install`, prompts for the credential on the target,
+and starts the Agent with an already provisioned absolute `.acl` file. The
+credential never enters the invocation, argv, configuration, output, or error.
+The release URL and digest must be obtained from trusted signed A3S release
+metadata; the checksum check prevents byte substitution but does not establish
+the trustworthiness of caller-supplied metadata. Cloud never accepts an SSH
+password or private key through this path.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

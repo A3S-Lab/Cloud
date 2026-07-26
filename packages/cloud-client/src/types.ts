@@ -53,7 +53,13 @@ export interface EnvironmentMutationResult extends Environment {
 
 export type { ApiToken, ApiTokenMutationResult, CreateApiTokenInput } from './identity';
 
-export type { Node, NodeAvailability, NodeState } from './node';
+export type {
+  EnrollmentToken,
+  IssueEnrollmentTokenInput,
+  Node,
+  NodeAvailability,
+  NodeState,
+} from './node';
 
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 

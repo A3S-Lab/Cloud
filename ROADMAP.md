@@ -181,11 +181,17 @@ repository currently has no configured G0 provider secrets.
   controllers. New credentials enter the CLI only through exact 68-byte
   `--token-stdin` input, are cleared from the input buffer, never appear in
   arguments, environment, configuration, output, or errors, and are persisted
-  only as digests through the A3S ORM repository.
+  only as digests through the A3S ORM repository; and
+- Node bootstrap issues an idempotent, short-lived one-time enrollment
+  credential through the existing tenant-guarded Fleet command. The CLI accepts
+  the exact credential only through bounded standard input, clears its input
+  bytes, projects no credential, and prints a Bash invocation that installs an
+  HTTPS release only after an exact SHA-256 check. The target prompts for the
+  credential and keeps it out of argv and the pre-provisioned A3S ACL config;
+  Cloud persists only its digest through the Fleet A3S ORM repository.
 
-`C0.1` remains in progress. Node bootstrap, authorized global search, contract
-compatibility policy, and real cross-surface automation evidence remain
-required.
+`C0.1` remains in progress. Authorized global search, contract compatibility
+policy, and real cross-surface automation evidence remain required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -308,10 +314,12 @@ list/resolve, and repository-subscription list/create/deactivate. The Secret
 slice adds metadata list/get and idempotent create/add-version/revoke-version
 without exposing plaintext outside the request body. The Identity slice adds
 API-token metadata list/get and idempotent stdin-only create/revoke without
-exposing credentials or bypassing digest-only A3S ORM persistence. Remaining
-node-bootstrap, compatibility, authorized-search, and cross-surface evidence
-work above must land against the same client and application commands or
-queries.
+exposing credentials or bypassing digest-only A3S ORM persistence. The node
+bootstrap slice adds stdin-only one-time enrollment issuance plus a
+checksum-verified Agent installation invocation without adding an SSH path or
+bypassing Fleet A3S ORM persistence. Remaining compatibility,
+authorized-search, and cross-surface evidence work above must land against the
+same client and application commands or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

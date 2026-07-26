@@ -461,6 +461,14 @@ bun run --cwd cli src/main.ts environments list
 bun run --cwd cli src/main.ts environments create "Production" \
   --idempotency-key="tenant:environment:<request-id>"
 bun run --cwd cli src/main.ts nodes list
+password-manager read "a3s-cloud/node-enrollment/worker-1" | \
+  bun run --cwd cli src/main.ts nodes bootstrap "worker-1" \
+    --enrollment-token-stdin \
+    --expires-at="<RFC3339-within-24-hours>" \
+    --agent-release-url="https://releases.example.test/a3s-cloud-node-agent-linux-x86_64" \
+    --agent-release-sha256="<64-lowercase-hex-sha256>" \
+    --node-config="/etc/a3s-cloud/node.acl" \
+    --idempotency-key="fleet:bootstrap:<request-id>"
 bun run --cwd cli src/main.ts nodes drain "<node-uuid>" \
   --expected-version="<current-aggregate-version>" \
   --idempotency-key="fleet:drain:<request-id>"
@@ -557,9 +565,16 @@ return metadata only. API-token create accepts the new credential only through
 `--token-stdin`, requires exactly `a3s_` plus 64 lowercase hexadecimal digits,
 clears the 68-byte input buffer, and projects both successful and failed
 mutations without the credential. This input is separate from the caller's
-`A3S_CLOUD_TOKEN`. Node bootstrap, authorized search, the
-compatibility/deprecation gate, and cross-surface evidence remain subsequent
-`C0.1` slices.
+`A3S_CLOUD_TOKEN`. Node bootstrap similarly accepts exactly `a3sn_` plus 64
+lowercase hexadecimal digits only through `--enrollment-token-stdin`, clears
+the 69-byte input buffer, and calls the existing `node:write` Fleet command.
+It returns credential-free token metadata and a Bash invocation that downloads
+one HTTPS Agent release, verifies its caller-supplied SHA-256, installs it, and
+prompts for the credential on the target without putting it in argv or the
+pre-provisioned absolute `.acl` node configuration. The release URL and digest
+must come from trusted A3S release metadata; accepting a digest does not create
+a trust root. Authorized search, the compatibility/deprecation gate, and real
+cross-surface evidence remain subsequent `C0.1` slices.
 
 ## Platform Model
 

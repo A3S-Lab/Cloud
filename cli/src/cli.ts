@@ -27,6 +27,7 @@ Commands:
   environments list    List environments in the selected project
   environments create NAME Create an environment idempotently
   nodes list            List nodes in the selected organization
+  nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready
   nodes drain ID        Drain one current node
   nodes revoke ID       Revoke one current node
@@ -91,8 +92,12 @@ Global options:
   --platforms <csv>          linux/amd64 and/or linux/arm64
   --value-stdin              Read Secret material exactly from standard input
   --token-stdin              Read a new API token credential from standard input
+  --enrollment-token-stdin   Read a node enrollment credential from standard input
   --scopes <csv>             API token scopes for api-tokens create
-  --expires-at <timestamp>   Optional RFC 3339 API token expiry
+  --expires-at <timestamp>   RFC 3339 credential expiry
+  --agent-release-url <url>  HTTPS node-agent release binary for nodes bootstrap
+  --agent-release-sha256 <digest> SHA-256 of the node-agent release binary
+  --node-config <path>       Absolute A3S ACL node config path on the target host
   -h, --help              Show help
   -V, --version           Show version
 
