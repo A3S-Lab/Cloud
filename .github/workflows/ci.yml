@@ -651,12 +651,13 @@ jobs:
       - name: Enforce ACL-only product configuration
         run: |
           forbidden_files=$(git ls-files README.md cli config crates deploy docs packages tools web |
-            rg '\.(hcl|tf|tfvars)$' || true)
+            grep -E '\.(hcl|tf|tfvars)$' || true)
           if [[ -n $forbidden_files ]]; then
             printf '%s\n' "$forbidden_files"
             exit 1
           fi
-          if rg --hidden -n -i '\bHCL\b|\.hcl\b' \
+          if git grep -I -n -i -E \
+            '(^|[^[:alnum:]_])HCL([^[:alnum:]_]|$)|\.hcl([^[:alnum:]_]|$)' -- \
             README.md cli config crates deploy docs packages tools web; then
             exit 1
           fi
@@ -708,8 +709,8 @@ jobs:
         run: |
           output=$(A3S_CLOUD_TOKEN=a3s_ci_never_print \
             ./dist/a3s-cloud context show --output=json)
-          rg '"tokenConfigured": true' <<<"$output"
-          if rg 'a3s_ci_never_print' <<<"$output"; then
+          grep -F '"tokenConfigured": true' <<<"$output"
+          if grep -F 'a3s_ci_never_print' <<<"$output"; then
             exit 1
           fi
 
