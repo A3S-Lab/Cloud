@@ -1198,6 +1198,17 @@ async fn api_token_queries_are_tenant_scoped_and_never_expose_credentials() -> R
     assert_eq!(response_json(&detail)?["data"]["id"], project_token_id);
     assert!(!String::from_utf8_lossy(detail.body()).contains(PROJECT_TOKEN));
 
+    let unknown = app
+        .call(get_as(
+            format!("{collection_path}/{}", Uuid::now_v7()),
+            TOKEN_MANAGER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(unknown.status(), 404);
+
+    let insufficient_scope = app.call(get_as(&collection_path, PROJECT_TOKEN)).await?;
+    assert_eq!(insufficient_scope.status(), 403);
+
     let cross_tenant = app
         .call(get_as(
             format!("/api/v1/organizations/{other_organization}/api-tokens"),

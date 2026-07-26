@@ -176,10 +176,16 @@ repository currently has no configured G0 provider secrets.
   Plaintext enters the CLI only through bounded fatal-UTF-8 standard input,
   never appears in arguments, environment, configuration, output, or errors,
   and never bypasses Cloud encryption or A3S ORM persistence.
+- Identity automation lists and reads tenant-scoped API-token metadata, creates
+  scoped credentials, and revokes them through the existing public Identity
+  controllers. New credentials enter the CLI only through exact 68-byte
+  `--token-stdin` input, are cleared from the input buffer, never appear in
+  arguments, environment, configuration, output, or errors, and are persisted
+  only as digests through the A3S ORM repository.
 
-`C0.1` remains in progress. Remaining identity resource parity, node
-bootstrap, authorized global search, contract compatibility policy, and real
-cross-surface automation evidence remain required.
+`C0.1` remains in progress. Node bootstrap, authorized global search, contract
+compatibility policy, and real cross-surface automation evidence remain
+required.
 
 ## 4. Delivery horizons and dependencies
 
@@ -300,9 +306,12 @@ route publication with explicit idempotency and replay projections. The Source
 slice adds GitHub connection inspection/bootstrap, immutable revision
 list/resolve, and repository-subscription list/create/deactivate. The Secret
 slice adds metadata list/get and idempotent create/add-version/revoke-version
-without exposing plaintext outside the request body. Remaining identity,
-bootstrap, compatibility, and authorized-search work above must land against
-the same client and application commands or queries.
+without exposing plaintext outside the request body. The Identity slice adds
+API-token metadata list/get and idempotent stdin-only create/revoke without
+exposing credentials or bypassing digest-only A3S ORM persistence. Remaining
+node-bootstrap, compatibility, authorized-search, and cross-surface evidence
+work above must land against the same client and application commands or
+queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

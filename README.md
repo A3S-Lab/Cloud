@@ -60,8 +60,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 
 - **Tenant Model**: Isolate organizations, projects, environments, resources,
   commands, queries, and observations
-- **Scoped Identity**: Bootstrap the first organization, issue expiring scoped
-  API tokens, and revoke credentials without storing token plaintext
+- **Scoped Identity**: Bootstrap the first organization, issue, inspect, and
+  revoke expiring scoped API tokens without storing token plaintext
 - **Durable Operations**: Persist intent before execution and resume A3S Flow
   operations, leases, retries, cleanup, and projections after interruption
 - **Outbound Node Control**: Enroll Linux nodes, rotate mTLS identities, lease
@@ -445,6 +445,15 @@ bun run --cwd cli src/main.ts diagnostics status --output=json
 bun run --cwd cli src/main.ts organizations list --output=json
 bun run --cwd cli src/main.ts organizations create "Operations" \
   --idempotency-key="tenant:organization:<request-id>"
+bun run --cwd cli src/main.ts api-tokens list
+password-manager read "a3s-cloud/automation-token" | \
+  bun run --cwd cli src/main.ts api-tokens create "Automation" \
+    --token-stdin --scopes="project:write,build:write" \
+    --expires-at="2027-01-02T03:04:05Z" \
+    --idempotency-key="identity:token:create:<request-id>"
+bun run --cwd cli src/main.ts api-tokens get "<api-token-uuid>" --output=json
+bun run --cwd cli src/main.ts api-tokens revoke "<api-token-uuid>" \
+  --idempotency-key="identity:token:revoke:<request-id>"
 bun run --cwd cli src/main.ts projects list
 bun run --cwd cli src/main.ts projects create "Cloud" \
   --idempotency-key="tenant:project:<request-id>"
@@ -543,9 +552,14 @@ Secret create and add-version read the exact standard-input bytes, reject
 empty, invalid UTF-8, or values larger than 1 MiB, and never trim the value.
 There is no plaintext argument, environment variable, configuration field, or
 result field. Replace the illustrative `password-manager` command above with a
-trusted provider that writes the intended bytes to stdout. Remaining identity
-parity, node bootstrap, authorized search, and the compatibility/deprecation
-gate remain subsequent `C0.1` slices.
+trusted provider that writes the intended bytes to stdout. API-token list/get
+return metadata only. API-token create accepts the new credential only through
+`--token-stdin`, requires exactly `a3s_` plus 64 lowercase hexadecimal digits,
+clears the 68-byte input buffer, and projects both successful and failed
+mutations without the credential. This input is separate from the caller's
+`A3S_CLOUD_TOKEN`. Node bootstrap, authorized search, the
+compatibility/deprecation gate, and cross-surface evidence remain subsequent
+`C0.1` slices.
 
 ## Platform Model
 

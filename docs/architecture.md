@@ -1502,6 +1502,26 @@ Cloud remains the sole tenancy, encryption, idempotency, rotation-effect, and
 A3S ORM persistence authority, and the CLI never reads Secret tables or
 contacts nodes.
 
+Identity automation uses the existing tenant-guarded API-token controller plus
+dedicated list/get queries. Both reads require `token:write`, apply the
+organization tenant guard, and return only ID, organization, name, scopes,
+aggregate version, creation time, optional expiry, and optional revocation
+time. Create and revoke retain the existing caller-owned idempotency contract.
+The CLI accepts a newly created credential only through `--token-stdin`, reads
+69 bytes to detect overflow, requires exactly `a3s_` plus 64 lowercase
+hexadecimal digits, uses fatal UTF-8 decoding, and clears the byte buffer. Safe
+result projections remove unexpected credential fields, and mutation errors
+are replaced by a stable non-secret error. PostgreSQL list/get/create/revoke
+all remain in the Identity repository and use typed A3S ORM queries; the CLI
+never reads Identity tables.
+
+The API-token surface is:
+
+- `GET /organizations/{organization}/api-tokens`
+- `GET /organizations/{organization}/api-tokens/{api-token}`
+- `POST /organizations/{organization}/api-tokens`
+- `DELETE /organizations/{organization}/api-tokens/{api-token}`
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

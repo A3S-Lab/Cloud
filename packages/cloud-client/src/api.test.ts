@@ -820,6 +820,13 @@ describe('CloudApi', () => {
     expect(() =>
       api.createApiToken('organization', { ...valid, expiresAt: 'tomorrow' }, 'client:token-invalid-expiry')
     ).toThrow('API token expiry must be an RFC 3339 timestamp');
+    expect(() =>
+      api.createApiToken(
+        'organization',
+        { ...valid, expiresAt: '2027-02-30T03:04:05Z' },
+        'client:token-invalid-calendar-expiry'
+      )
+    ).toThrow('API token expiry must be an RFC 3339 timestamp');
     expect(called).toBe(false);
   });
 
