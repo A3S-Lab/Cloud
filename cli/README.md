@@ -65,6 +65,17 @@ closed `a3s.cloud.build-recipe.v1` Dockerfile recipe before transport. Cloud
 remains the source policy, provider-resolution, tenancy, idempotency, and A3S
 ORM persistence authority.
 
+Secret create and version-add commands require `--value-stdin`. The CLI reads
+at most 1 MiB plus one byte for overflow detection, rejects empty input,
+rejects invalid UTF-8 with fatal decoding, preserves the accepted bytes
+without trimming, and clears the byte buffer after decoding. There is no
+plaintext value argument, environment variable, CLI configuration field, or
+CLI-managed value file. Secret responses are projected onto metadata and
+version-state fields only; tables, JSON, and sanitized mutation errors never
+render the submitted value. Pipe the exact bytes from an interactive or
+password-manager source, and remember that line-oriented producers may append
+a newline that becomes part of the Secret.
+
 Desired-state commands additionally require `--file=<path>` and accept only a
 nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
 bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
@@ -106,6 +117,11 @@ source-connections begin
 source-subscriptions list
 source-subscriptions create <repository-url> <branch> --context-path=<path> --dockerfile-path=<path> --platforms=<csv> [--target=<stage>]
 source-subscriptions deactivate <subscription-id>
+secrets list
+secrets get <secret-id>
+secrets create <name> --value-stdin
+secrets add-version <secret-id> --value-stdin
+secrets revoke-version <secret-id> <version>
 deployments get <deployment-id>
 deployments cancel <deployment-id>
 domain-claims list
@@ -171,6 +187,10 @@ Source revision resolution and repository-subscription create/deactivate output
 also includes the authoritative `replayed` value. `source-connections begin`
 returns a short-lived no-store installation URL; use `--output=json` when the
 complete URL must be copied because bounded table cells may abbreviate it.
+Secret create, add-version, and revoke-version output includes only the safe
+metadata projection, changed version state, and authoritative `replayed`
+value. Plaintext is excluded even if an invalid upstream response attempts to
+add a value field or echo it in an error.
 
 This is an in-progress `C0.1` surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
@@ -180,6 +200,7 @@ also implemented. Public platform and health diagnostics are implemented with
 a stable unhealthy exit contract. DomainClaim, logical Gateway-scope, and route
 publication parity is implemented through the same typed client. Source
 revision, GitHub connection, and repository-subscription parity is also
-implemented without bypassing the public API. Remaining Secret and identity
-resource parity, node bootstrap, authorized search, and the
+implemented without bypassing the public API. Secret metadata and version
+lifecycle parity is implemented with standard-input-only material handling.
+Remaining identity resource parity, node bootstrap, authorized search, and the
 compatibility/deprecation gate remain planned.

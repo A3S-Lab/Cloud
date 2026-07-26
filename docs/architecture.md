@@ -1481,6 +1481,19 @@ The CLI does not persist that URL and recommends JSON output when the complete
 value must be copied; provider setup and OAuth callbacks remain browser-facing
 Cloud endpoints.
 
+Secret automation uses the existing tenant-guarded Secret query and command
+controllers. The shared client and CLI expose metadata list/get plus
+create/add-version/revoke-version. Value-bearing CLI commands accept material
+only through an explicit `--value-stdin` flag, read at most 1 MiB plus one byte
+for overflow detection, use fatal UTF-8 decoding, preserve accepted bytes
+without trimming, and clear the input byte buffer. They do not accept
+plaintext through arguments, environment, configuration, or a CLI-managed
+file. Safe result projection selects only Secret metadata and version state;
+value-bearing API errors are replaced by a stable non-secret mutation error.
+Cloud remains the sole tenancy, encryption, idempotency, rotation-effect, and
+A3S ORM persistence authority, and the CLI never reads Secret tables or
+contacts nodes.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

@@ -87,9 +87,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   projection, activate only at the acknowledgement threshold, renew unchanged
   policy without reissuing TLS, and recover or roll back each member from exact
   native Gateway state
-- **Encrypted Secrets**: Store tenant-scoped immutable Secret versions and
-  materialize exact bindings only at authenticated registry or assigned-node
-  boundaries
+- **Encrypted Secrets**: Store tenant-scoped immutable Secret versions,
+  manage metadata and version lifecycle through the shared client and CLI
+  without rendering plaintext, and materialize exact bindings only at
+  authenticated registry or assigned-node boundaries
 - **Durable Logs**: Ship bounded ordered Runtime logs, preserve explicit gaps,
   redact bound Secrets, store immutable chunks, and expose cursor and resumable
   SSE queries
@@ -113,8 +114,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   logical Gateway scopes with explicit rollout thresholds, and publish routes
   through replay-aware Edge commands; inspect GitHub connection authority,
   resolve immutable source revisions, and manage repository subscriptions
-  through the existing Source commands; and inspect tokenless platform,
-  liveness, and readiness diagnostics with a stable unhealthy exit status
+  through the existing Source commands; list Secret metadata, inspect version
+  state, and create or rotate versions from bounded fatal-UTF-8 standard input
+  without placing plaintext in arguments, environment, configuration, output,
+  or errors; and inspect tokenless platform, liveness, and readiness
+  diagnostics with a stable unhealthy exit status
 
 ### Delivery capability matrix
 
@@ -480,6 +484,16 @@ bun run --cwd cli src/main.ts source-subscriptions create \
   --context-path="." --dockerfile-path="Dockerfile" \
   --platforms="linux/amd64" \
   --idempotency-key="source:subscribe:<request-id>"
+bun run --cwd cli src/main.ts secrets list
+bun run --cwd cli src/main.ts secrets get "<secret-uuid>" --output=json
+password-manager read "a3s-cloud/database-url" | \
+  bun run --cwd cli src/main.ts secrets create "Database URL" \
+    --value-stdin --idempotency-key="secret:create:<request-id>"
+password-manager read "a3s-cloud/database-url" | \
+  bun run --cwd cli src/main.ts secrets add-version "<secret-uuid>" \
+    --value-stdin --idempotency-key="secret:rotate:<request-id>"
+bun run --cwd cli src/main.ts secrets revoke-version "<secret-uuid>" 1 \
+  --idempotency-key="secret:revoke:<request-id>"
 bun run --cwd cli src/main.ts workloads create \
   --file=examples/workload.oci.example.acl \
   --idempotency-key="release:create:<request-id>"
@@ -520,8 +534,13 @@ Gateway-command replay state. Source revision resolution and repository
 subscription mutations expose the same durable replay state. GitHub connection
 bootstrap deliberately follows the existing short-lived no-store browser flow
 and should use `--output=json` to preserve the complete installation URL.
-Remaining Secret and identity parity, node bootstrap, authorized search, and
-the compatibility/deprecation gate remain subsequent `C0.1` slices.
+Secret create and add-version read the exact standard-input bytes, reject
+empty, invalid UTF-8, or values larger than 1 MiB, and never trim the value.
+There is no plaintext argument, environment variable, configuration field, or
+result field. Replace the illustrative `password-manager` command above with a
+trusted provider that writes the intended bytes to stdout. Remaining identity
+parity, node bootstrap, authorized search, and the compatibility/deprecation
+gate remain subsequent `C0.1` slices.
 
 ## Platform Model
 

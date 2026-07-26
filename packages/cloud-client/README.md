@@ -36,8 +36,10 @@ deployment, and route types match the current replica/member and Gateway scope
 REST projections. DomainClaim and logical Gateway-scope queries and mutations,
 plus route publication, use the same tenant-guarded REST resources. Source
 revision, GitHub connection, and repository-subscription methods use the
-existing Source controllers. It is internal and versioned with Cloud until
-public package compatibility and deprecation policy are completed.
+existing Source controllers. Secret list/get/create/add-version/revoke-version
+methods use the existing Secret controllers and expose metadata and version
+state only. It is internal and versioned with Cloud until public package
+compatibility and deprecation policy are completed.
 
 Replayable mutating methods require a caller-owned idempotency key. The client
 accepts a portable visible-ASCII subset up to the server's 255-byte limit,
@@ -70,6 +72,16 @@ authoritative provider status and the short-lived installation flow.
 subscription commands. Resolution and subscription mutation results include
 the API's durable `replayed` state; the client never resolves Git references
 or contacts GitHub itself.
+
+`listSecrets` and `getSecret` expose the tenant-scoped metadata and version
+projections. `createSecret`, `addSecretVersion`, and `revokeSecretVersion`
+reuse the existing application commands and require caller-owned idempotency
+keys. Value-bearing calls reject empty values or values larger than 1 MiB in
+UTF-8 before transport. Mutation responses contain only metadata, changed
+version state, and the durable `replayed` flag; Cloud remains authoritative for
+tenancy, encryption, rotation effects, and A3S ORM-backed persistence. Client
+callers must obtain plaintext from a secure input source rather than process
+arguments, environment variables, or configuration.
 
 `createWorkloadFromAcl`, `updateWorkloadFromAcl`, and
 `deploySourceRevisionFromAcl` transport one nonempty A3S ACL document of at
