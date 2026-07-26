@@ -908,8 +908,8 @@ change. The private-credential decorator requires the same fresh authority
 check for the exact organization, connection, and installation before either
 authenticated resolution or checkout can issue a token.
 Local issuer, resolver, and real Git smart-HTTP fixtures cover the private path,
-while the
-operator-credential external GitHub gate remains unexecuted. GitHub offers no
+while the operator-credential external GitHub gate is implemented but remains
+unexecuted. GitHub offers no
 tokenless current-user App-grant query, so signed authorization-revocation
 delivery remains authoritative without persisting OAuth tokens.
 BuildRun log queries and resumable streams resolve the aggregate's private node
@@ -919,8 +919,9 @@ bind BuildRun, attempt, parent, and Operation lineage without exposing node or
 Runtime unit identity. Signed evidence generation, persistence, restoration,
 tenant API projection, and web inspection are implemented. Content-addressed
 cache trust is implemented with worker-pruned real retry evidence. External
-private-provider certification and the production signed-evidence
-fault-injection run remain G0 work.
+private-provider and signed-evidence fault-injection workflows are implemented,
+including two real process-death boundaries. Operator-owned execution and
+retained revision-bound evidence remain G0 work.
 
 The implemented node Artifact transfer model binds every request to one
 authenticated node, persisted unexpired command, exact Runtime spec digest,
