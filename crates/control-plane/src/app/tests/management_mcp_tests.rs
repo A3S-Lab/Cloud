@@ -159,6 +159,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_environments_list",
             "a3s_cloud_projects_list",
             "a3s_cloud_search",
+            "a3s_cloud_nodes_list",
+            "a3s_cloud_nodes_get",
+            "a3s_cloud_operations_list",
+            "a3s_cloud_workloads_list",
+            "a3s_cloud_workloads_get",
+            "a3s_cloud_deployments_get",
+            "a3s_cloud_routes_list",
+            "a3s_cloud_routes_get",
+            "a3s_cloud_build_runs_list",
+            "a3s_cloud_build_runs_get",
         ]
     );
     assert!(read_only_tools["result"]["tools"]
@@ -170,6 +180,28 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     let project_writer_tools = list_tools(&app, PROJECT_TOKEN, 2).await?;
     assert!(tool_names(&project_writer_tools).contains(&"a3s_cloud_projects_create"));
     assert!(!tool_names(&project_writer_tools).contains(&"a3s_cloud_environments_create"));
+
+    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 4).await?;
+    assert_eq!(
+        tool_names(&administrator_tools),
+        vec![
+            "a3s_cloud_environments_create",
+            "a3s_cloud_environments_list",
+            "a3s_cloud_projects_create",
+            "a3s_cloud_projects_list",
+            "a3s_cloud_search",
+            "a3s_cloud_nodes_list",
+            "a3s_cloud_nodes_get",
+            "a3s_cloud_operations_list",
+            "a3s_cloud_workloads_list",
+            "a3s_cloud_workloads_get",
+            "a3s_cloud_deployments_get",
+            "a3s_cloud_routes_list",
+            "a3s_cloud_routes_get",
+            "a3s_cloud_build_runs_list",
+            "a3s_cloud_build_runs_get",
+        ]
+    );
 
     let hidden_call = app
         .call(mcp_request(
@@ -336,6 +368,132 @@ async fn management_mcp_reuses_project_commands_queries_and_idempotency() -> Res
             foreign_error["result"]["structuredContent"][field],
             missing_error["result"]["structuredContent"][field]
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-operations", "Acme").await?;
+    let project =
+        create_project(&app, &organization, "mcp-operations-project", "Operations").await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "mcp-operations-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+
+    for (id, name, arguments) in [
+        (1, "a3s_cloud_nodes_list", json!({})),
+        (2, "a3s_cloud_operations_list", json!({})),
+        (
+            3,
+            "a3s_cloud_workloads_list",
+            json!({"projectId": project, "environmentId": environment}),
+        ),
+        (
+            4,
+            "a3s_cloud_routes_list",
+            json!({"projectId": project, "environmentId": environment}),
+        ),
+        (
+            5,
+            "a3s_cloud_build_runs_list",
+            json!({"projectId": project, "environmentId": environment}),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        let body = response_json(&response)?;
+        assert_eq!(body["result"]["isError"], false, "{name}");
+        assert_eq!(
+            body["result"]["structuredContent"]["data"],
+            json!([]),
+            "{name}"
+        );
+    }
+
+    let missing_resource_id = Uuid::new_v4();
+    for (id, name, arguments) in [
+        (
+            6,
+            "a3s_cloud_nodes_get",
+            json!({"nodeId": missing_resource_id}),
+        ),
+        (
+            7,
+            "a3s_cloud_workloads_get",
+            json!({"workloadId": missing_resource_id}),
+        ),
+        (
+            8,
+            "a3s_cloud_deployments_get",
+            json!({"deploymentId": missing_resource_id}),
+        ),
+        (
+            9,
+            "a3s_cloud_routes_get",
+            json!({"routeId": missing_resource_id}),
+        ),
+        (
+            10,
+            "a3s_cloud_build_runs_get",
+            json!({"buildRunId": missing_resource_id}),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        let body = response_json(&response)?;
+        let structured = &body["result"]["structuredContent"];
+        assert_eq!(body["result"]["isError"], true, "{name}");
+        assert_eq!(structured["code"], 404, "{name}");
+        assert_eq!(structured["statusCode"], "NOT_FOUND", "{name}");
+        assert!(structured["details"].is_object(), "{name}");
+        assert!(structured["requestId"].is_string(), "{name}");
+        assert!(structured["timestamp"].is_string(), "{name}");
+    }
+
+    for (id, name, arguments) in [
+        (11, "a3s_cloud_operations_list", json!({"limit": 0})),
+        (12, "a3s_cloud_operations_list", json!({"limit": 201})),
+        (
+            13,
+            "a3s_cloud_build_runs_list",
+            json!({"projectId": project, "environmentId": environment, "limit": 0}),
+        ),
+        (
+            14,
+            "a3s_cloud_build_runs_list",
+            json!({"projectId": project, "environmentId": environment, "limit": 201}),
+        ),
+        (
+            15,
+            "a3s_cloud_nodes_list",
+            json!({"organizationId": organization}),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        assert_eq!(response_json(&response)?["error"]["code"], -32602, "{name}");
     }
     Ok(())
 }

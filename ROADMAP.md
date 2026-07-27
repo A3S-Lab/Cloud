@@ -208,14 +208,15 @@ repository currently has no configured G0 provider secrets.
   token-digest persistence through A3S ORM, and zero plaintext credentials in
   API/CLI evidence or the PostgreSQL dump.
 
-`C0.1` is verified. `C0` remains in progress. The first `C0.2` slice provides
-stateless scoped management MCP for core Project, Environment, and authorized
-search commands and queries. A dedicated real PostgreSQL gate now proves
-scope-derived catalogs, hidden mutation denial, REST-to-MCP idempotency replay,
-foreign-resource non-disclosure, immediate revocation, and digest-only A3S ORM
-persistence. Broader curated tool coverage remains. Grant-derived search is a
-separate `C0.3` authorization outcome; the current search boundary is the
-organization tenant guard.
+`C0.1` is verified. `C0` remains in progress. `C0.2` now provides stateless
+scoped management MCP for core Project, Environment, and authorized search
+commands and queries plus Node, Operation, Workload, Deployment, Route, and
+BuildRun reads. A dedicated real PostgreSQL gate proves scope-derived catalogs,
+strict bounds, operational query dispatch, hidden mutation denial, REST-to-MCP
+idempotency replay, foreign-resource non-disclosure, immediate revocation, and
+digest-only A3S ORM persistence. Selected log, evidence, and replay-safe
+mutation tools remain. Grant-derived search is a separate `C0.3` authorization
+outcome; the current search boundary is the organization tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -350,18 +351,20 @@ route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
 PostgreSQL, proves replay and authorization consistency, and rejects plaintext
-credentials across responses, logs, and persisted data. The first `C0.2` slice
-adds raw stateless Streamable HTTP JSON-RPC, current-token scope-derived tool
-discovery, organization context derived only from the authenticated principal,
-three core queries, and two idempotent create commands through the existing
+credentials across responses, logs, and persisted data. `C0.2` adds raw
+stateless Streamable HTTP JSON-RPC, current-token scope-derived tool discovery,
+organization context derived only from the authenticated principal, three core
+queries, two idempotent create commands, and ten operational Node, Operation,
+Workload, Deployment, Route, and BuildRun queries through the existing
 application buses. It rejects batches, foreign origins, hidden-tool invocation,
-forged organization input, and revoked tokens without adding business rules or
-a persistence path to the presentation surface. Its dedicated real PostgreSQL
-gate proves administrator/read-only tool catalogs, hidden-mutation zero-write,
-REST-to-MCP replay through one durable idempotency record, indistinguishable
-foreign and missing Project errors, next-request revocation, expected A3S ORM
-rows, and credential-free logs, evidence, and database dumps. Broader curated
-tools remain before `C0.2` verification.
+forged organization input, invalid query bounds, and revoked tokens without
+adding business rules or a persistence path to the presentation surface. Its
+dedicated real PostgreSQL gate proves exact administrator/read-only catalogs,
+hidden-mutation zero-write, REST-to-MCP replay through one durable idempotency
+record, indistinguishable foreign and missing Project errors, operational list
+and detail semantics, next-request revocation, expected A3S ORM rows, and
+credential-free logs, evidence, and database dumps. Selected log, evidence,
+and replay-safe mutation tools remain before `C0.2` verification.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

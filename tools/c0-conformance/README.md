@@ -34,13 +34,16 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 2. proves a hidden mutation cannot be invoked and leaves no Project row;
 3. creates a Project through REST and replays the same command and idempotency
    key through MCP using one durable record;
-4. rejects a forged organization argument and returns the same `404`
+4. creates one Environment, exercises Node, Operation, Workload, Route, and
+   BuildRun lists, checks missing Node, Workload, Deployment, Route, and
+   BuildRun details, and rejects invalid list bounds;
+5. rejects a forged organization argument and returns the same `404`
    business-error contract for a foreign and a missing Project;
-5. revokes the read-only Token through REST and requires the next MCP request
+6. revokes the read-only Token through REST and requires the next MCP request
    to return `401`; and
-6. requires the expected Project rows, Token digests, read-only scope,
-   revocation, and zero plaintext credentials in responses, logs, evidence, or
-   the PostgreSQL dump.
+7. requires the expected Project and Environment rows, Token digests, read-only
+   scope, revocation, and zero plaintext credentials in responses, logs,
+   evidence, or the PostgreSQL dump.
 
 Both scenarios execute production PostgreSQL repositories through A3S ORM.
 The runner creates isolated temporary state and a digest-pinned PostgreSQL

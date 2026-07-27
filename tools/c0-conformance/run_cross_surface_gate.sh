@@ -243,6 +243,10 @@ if [[ $scenario == management-mcp ]]; then
     psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
     --command="select count(*) from projects where name in ('MCP Conformance Project', 'MCP Foreign Project')")"
   [[ $mcp_project_count == 2 ]] || die "PostgreSQL did not retain the two expected MCP projects"
+  mcp_environment_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from environments e join projects p on p.organization_id = e.organization_id and p.id = e.project_id where p.name = 'MCP Conformance Project' and e.name = 'MCP Operational Environment'")"
+  [[ $mcp_environment_count == 1 ]] || die "PostgreSQL did not retain the expected MCP operational environment"
   hidden_project_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
     psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
     --command="select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
@@ -280,7 +284,7 @@ done
 {
   printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
   if [[ $scenario == management-mcp ]]; then
-    printf 'mcp_project_rows=2\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nread_only_scope_rows=1\n'
+    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nread_only_scope_rows=1\n'
   fi
 } >"$evidence_directory/persistence-check.txt"
 

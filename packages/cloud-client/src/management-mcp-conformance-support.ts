@@ -9,12 +9,32 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_projects_create',
   'a3s_cloud_projects_list',
   'a3s_cloud_search',
+  'a3s_cloud_nodes_list',
+  'a3s_cloud_nodes_get',
+  'a3s_cloud_operations_list',
+  'a3s_cloud_workloads_list',
+  'a3s_cloud_workloads_get',
+  'a3s_cloud_deployments_get',
+  'a3s_cloud_routes_list',
+  'a3s_cloud_routes_get',
+  'a3s_cloud_build_runs_list',
+  'a3s_cloud_build_runs_get',
 ] as const;
 
 export const READ_ONLY_TOOLS = [
   'a3s_cloud_environments_list',
   'a3s_cloud_projects_list',
   'a3s_cloud_search',
+  'a3s_cloud_nodes_list',
+  'a3s_cloud_nodes_get',
+  'a3s_cloud_operations_list',
+  'a3s_cloud_workloads_list',
+  'a3s_cloud_workloads_get',
+  'a3s_cloud_deployments_get',
+  'a3s_cloud_routes_list',
+  'a3s_cloud_routes_get',
+  'a3s_cloud_build_runs_list',
+  'a3s_cloud_build_runs_get',
 ] as const;
 
 export interface ConformanceEnvironment {

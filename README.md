@@ -124,16 +124,17 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
   `1.0.0`, and reject incompatible or invalidly deprecated contract changes
-- **Scoped Management MCP Slice**: Serve stateless Streamable HTTP MCP through
+- **Scoped Management MCP Operational Reads**: Serve stateless Streamable HTTP MCP through
   the same per-request API-token verifier, derive tenant context and tool
-  visibility from the current principal, expose read-only Project,
-  Environment, and authorized-search queries plus scope-gated idempotent create
-  commands through the existing query and command buses, reject batching and
+  visibility from the current principal, expose Project, Environment, search,
+  Node, Operation, Workload, Deployment, Route, and BuildRun queries plus
+  scope-gated idempotent Project and Environment commands through the existing
+  application buses, reject batching, forged tenant input, invalid bounds, and
   cross-origin confusion, and preserve the standard API envelope inside tool
-  results; prove scope-derived discovery, REST-to-MCP idempotency replay,
-  tenant non-disclosure, immediate revocation, and digest-only persistence
-  against real PostgreSQL through A3S ORM without creating another persistence
-  path
+  results; prove scope-derived discovery, operational reads, REST-to-MCP
+  idempotency replay, tenant non-disclosure, immediate revocation, and
+  digest-only persistence against real PostgreSQL through A3S ORM without
+  creating another persistence path
 
 ### Delivery capability matrix
 
@@ -620,12 +621,14 @@ against one control-plane process and PostgreSQL 17 database. It proves
 cross-surface idempotency replay, stable conflicts, authorized search,
 cross-tenant denial, immediate token revocation, A3S ORM persistence, and zero
 plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
-verified. The first [`C0.2` management MCP](docs/management-mcp.md) slice now
-provides the stateless protocol and scoped core-resource tool catalog. Its
-dedicated real PostgreSQL gate proves administrator/read-only catalogs, hidden
-mutation denial, REST-to-MCP replay, foreign-resource non-disclosure,
-next-request revocation, A3S ORM state, and credential-free evidence. Broader
-operational tool coverage remains before `C0.2` verification.
+verified. The [`C0.2` management MCP](docs/management-mcp.md) now provides the
+stateless protocol, scoped core-resource tools, and tenant-authorized Node,
+Operation, Workload, Deployment, Route, and BuildRun reads. Its dedicated real
+PostgreSQL gate proves exact administrator/read-only catalogs, strict bounded
+arguments, operational query dispatch, hidden mutation denial, REST-to-MCP
+replay, foreign-resource non-disclosure, next-request revocation, A3S ORM state,
+and credential-free evidence. Selected log, evidence, and replay-safe mutation
+coverage remains before `C0.2` verification.
 
 ## Platform Model
 
