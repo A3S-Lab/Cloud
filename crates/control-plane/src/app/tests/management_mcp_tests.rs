@@ -324,6 +324,13 @@ async fn management_mcp_reuses_project_commands_queries_and_idempotency() -> Res
         .await?;
     let foreign_error = response_json(&foreign)?;
     let missing_error = response_json(&missing)?;
+    assert_eq!(foreign_error["result"]["isError"], true);
+    assert_eq!(missing_error["result"]["isError"], true);
+    assert_eq!(foreign_error["result"]["structuredContent"]["code"], 404);
+    assert_eq!(
+        foreign_error["result"]["structuredContent"]["statusCode"],
+        "NOT_FOUND"
+    );
     for field in ["code", "statusCode", "message", "details"] {
         assert_eq!(
             foreign_error["result"]["structuredContent"][field],
