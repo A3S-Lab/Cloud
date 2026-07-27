@@ -121,7 +121,9 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   diagnostics with a stable unhealthy exit status; manage API-token metadata,
   credential lifecycle, and one-time node bootstrap without rendering
   stdin-only credentials; and search bounded organization-authorized resource
-  projections through the API, client, CLI, and Web without broad local reads
+  projections through the API, client, CLI, and Web without broad local reads;
+  expose one public raw OpenAPI v1 document, pin the shared client to contract
+  `1.0.0`, and reject incompatible or invalidly deprecated contract changes
 
 ### Delivery capability matrix
 
@@ -404,8 +406,11 @@ cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ```
 
 Database migrations run during startup. The default development profile uses
-the in-memory event provider. OpenAPI is available at
-`http://127.0.0.1:8080/api/v1/openapi.json`.
+the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
+without authentication at
+`http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
+committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
+1 and contract version `1.0.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -424,9 +429,10 @@ curl --request POST http://127.0.0.1:8080/api/v1/bootstrap \
 
 Subsequent requests use
 `Authorization: Bearer ${A3S_CLOUD_ADMIN_TOKEN}`. Every mutation also requires a
-stable `idempotency-key` header. Use OpenAPI and the web console for the current
-resource and operation surfaces instead of treating README examples as a second
-API specification.
+stable `idempotency-key` header. REST responses advertise the exact contract in
+`x-a3s-api-contract-version`. Use OpenAPI and the web console for the current
+resource and operation surfaces instead of treating README examples as a
+second API specification.
 
 ### Use the Cloud CLI
 
@@ -586,9 +592,18 @@ ORM. The shared client, CLI, and Web console all call that endpoint; none loads
 broad resource lists for local filtering. Web search debounces requests,
 supports keyboard selection, and validates server-generated contextual links
 before navigation. This is organization-level `C0.1` authorization, not the
-grant-derived resource filtering planned for `C0.3`. The
-compatibility/deprecation gate and real cross-surface evidence remain the
-subsequent `C0.1` slices.
+grant-derived resource filtering planned for `C0.3`.
+
+The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
+snapshot with stable operation IDs, explicit security, mutation headers,
+request media types, success and error statuses, shared envelope schemas, and
+the `/api/v1` server boundary. The TypeScript client and every HTTP response
+carry the same `1.0.0` contract version. CI compares `openapi/v1.json` with the
+pull request base and rejects removed paths or methods, new required inputs,
+removed response statuses or schema fields, and semantic changes without a
+version increment. A deprecated operation must name its replacement, record
+the deprecation version and date, and retain a minimum 180-day sunset window.
+Only real cross-surface automation evidence remains for `C0.1`.
 
 ## Platform Model
 

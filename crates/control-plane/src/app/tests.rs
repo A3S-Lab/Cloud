@@ -34,6 +34,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+mod api_contract_tests;
 mod build_tests;
 mod platform_tests;
 mod search_tests;

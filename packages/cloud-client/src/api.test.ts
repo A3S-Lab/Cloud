@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import { A3S_ACL_MEDIA_TYPE, CloudApi, CloudApiError, type CloudFetch, MAX_WORKLOAD_ACL_BYTES } from './api';
+import {
+  A3S_ACL_MEDIA_TYPE,
+  CLOUD_API_CONTRACT_VERSION,
+  CLOUD_API_MAJOR_VERSION,
+  CloudApi,
+  CloudApiError,
+  DEFAULT_CLOUD_API_BASE_PATH,
+  type CloudFetch,
+  MAX_WORKLOAD_ACL_BYTES,
+} from './api';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(
@@ -15,6 +24,13 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 describe('CloudApi', () => {
+  it('pins the shared client to the stable REST contract', () => {
+    expect(CLOUD_API_MAJOR_VERSION).toBe(1);
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.0.0');
+    expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
+    expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
+  });
+
   it('uses the shared authenticated transport and encodes tenant paths', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

@@ -194,12 +194,17 @@ repository currently has no configured G0 provider secrets.
   BuildRun, SourceRevision, Secret-metadata, and Operation projections. The API
   applies the tenant guard before a bounded A3S ORM query, while the shared
   client, CLI, and Web console use the same endpoint without broad local reads.
-  Web adds debounced keyboard search and validated contextual navigation.
+  Web adds debounced keyboard search and validated contextual navigation; and
+- REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
+  at `/api/v1/openapi.json`. The shared client and response headers pin contract
+  `1.0.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  operations, new required inputs, removed responses or schema fields, missing
+  version increments, and deprecations without a replacement and a 180-day
+  minimum sunset window.
 
-`C0.1` remains in progress. Contract compatibility/deprecation policy and real
-cross-surface automation evidence remain required. Grant-derived search is a
-separate `C0.3` authorization outcome; the current search boundary is the
-organization tenant guard.
+`C0.1` remains in progress only because real cross-surface automation evidence
+is still required. Grant-derived search is a separate `C0.3` authorization
+outcome; the current search boundary is the organization tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -328,9 +333,12 @@ checksum-verified Agent installation invocation without adding an SSH path or
 bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
-debounced Web navigation without broad local reads. Remaining compatibility
-and cross-surface evidence work above must land against the same client and
-application commands or queries.
+debounced Web navigation without broad local reads. The contract slice adds a
+public raw OpenAPI v1 snapshot, shared `1.0.0` client/response versioning,
+route-snapshot synchronization, semantic compatibility enforcement, and a
+minimum 180-day replacement-bound deprecation policy. Remaining cross-surface
+evidence work above must land against the same client and application commands
+or queries.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

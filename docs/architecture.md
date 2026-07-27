@@ -1414,6 +1414,25 @@ Errors include HTTP `code`, stable business `statusCode`, safe `details`,
 pagination. Operation updates use resumable SSE with an event sequence; the UI
 always reloads the authoritative projection after reconnecting.
 
+REST major version 1 has one committed OpenAPI 3.0.3 contract at
+`openapi/v1.json`, served as public raw JSON at `/api/v1/openapi.json`. It is
+outside the normal response envelope but uses the same request-ID and contract
+version headers. Resolved-route tests generate the candidate document and
+require exact snapshot parity. Stable operation IDs, explicit public or bearer
+security, mutation headers, request media types, success/error responses, and
+shared envelope schemas make the document usable without inferring behavior
+from controller code. The client default base path, document metadata, and all
+API responses pin contract `1.0.0`.
+
+Pull requests compare the candidate with the base contract. Version 1 cannot
+remove a path, method, accepted input, response status, or response schema
+field, add a required input, or narrow an input constraint. Additive semantic
+changes require a contract version increment. A deprecated operation records
+`x-a3s-deprecated-since`, `x-a3s-deprecated-on`,
+`x-a3s-sunset-not-before`, and `x-a3s-replacement-operation`; the replacement
+must exist and the sunset must remain at least 180 days after announcement.
+Removal requires a new REST major contract rather than silently changing v1.
+
 The `packages/cloud-client` TypeScript package is the single REST transport for
 the web console and `a3s-cloud` CLI. It validates both envelope variants and the
 HTTP/envelope status match, bounds request time, maps invalid responses and

@@ -1,4 +1,5 @@
 use crate::modules::shared_kernel::application::ApplicationError;
+use crate::presentation::{API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION};
 use a3s_boot::{
     BootError, BootResponse, BoxFuture, ExceptionFilter, ExecutionContext, Interceptor, Result,
 };
@@ -17,14 +18,18 @@ impl Interceptor for ApiResponseInterceptor {
         mut response: BootResponse,
     ) -> BoxFuture<'static, Result<BootResponse>> {
         Box::pin(async move {
+            let request_id = request_id(&context);
             if response.is_streaming() || response.is_event_stream() {
-                return Ok(response.with_header("x-request-id", request_id(&context).to_string()));
+                return Ok(response
+                    .with_header("x-request-id", request_id.to_string())
+                    .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION));
             }
             if response.header("x-a3s-api-envelope") == Some("1") {
                 response.headers.remove("x-a3s-api-envelope");
-                return Ok(response);
+                return Ok(response
+                    .with_header("x-request-id", request_id.to_string())
+                    .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION));
             }
-            let request_id = request_id(&context);
             success_response(response, request_id)
         })
     }
@@ -56,6 +61,7 @@ pub fn application_error_response(
     };
     Ok(BootResponse::json_with_status(status, &envelope)?
         .with_header("x-request-id", request_id.to_string())
+        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION)
         .with_header("x-a3s-api-envelope", "1"))
 }
 
@@ -123,7 +129,8 @@ pub(crate) fn boot_error_response(error: BootError, request_id: Uuid) -> Result<
         timestamp: Utc::now(),
     };
     Ok(BootResponse::json_with_status(status, &envelope)?
-        .with_header("x-request-id", request_id.to_string()))
+        .with_header("x-request-id", request_id.to_string())
+        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION))
 }
 
 fn copy_headers(
@@ -143,7 +150,9 @@ fn copy_headers(
         }
         target = target.append_header(name, value);
     }
-    Ok(target.with_header("x-request-id", request_id.to_string()))
+    Ok(target
+        .with_header("x-request-id", request_id.to_string())
+        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION))
 }
 
 fn replaced_header(name: &str) -> bool {
