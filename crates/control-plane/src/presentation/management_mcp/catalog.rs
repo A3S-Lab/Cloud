@@ -1,9 +1,12 @@
+use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_LOG_LIMIT};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use a3s_boot::AuthPrincipal;
 use serde_json::{json, Value};
 
 pub const BUILD_RUNS_GET: &str = "a3s_cloud_build_runs_get";
 pub const BUILD_RUNS_LIST: &str = "a3s_cloud_build_runs_list";
+pub const BUILD_RUN_LOGS_GET: &str = "a3s_cloud_build_run_logs_get";
+pub const BUILD_EVIDENCE_GET: &str = "a3s_cloud_build_evidence_get";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
@@ -17,6 +20,7 @@ pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
 pub const WORKLOADS_GET: &str = "a3s_cloud_workloads_get";
 pub const WORKLOADS_LIST: &str = "a3s_cloud_workloads_list";
+pub const WORKLOAD_LOGS_GET: &str = "a3s_cloud_workload_logs_get";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagementTool {
@@ -30,15 +34,18 @@ pub enum ManagementTool {
     OperationsList,
     WorkloadsList,
     WorkloadsGet,
+    WorkloadLogsGet,
     DeploymentsGet,
     RoutesList,
     RoutesGet,
     BuildRunsList,
     BuildRunsGet,
+    BuildRunLogsGet,
+    BuildEvidenceGet,
 }
 
 impl ManagementTool {
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 18] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ProjectsCreate,
@@ -49,11 +56,14 @@ impl ManagementTool {
         Self::OperationsList,
         Self::WorkloadsList,
         Self::WorkloadsGet,
+        Self::WorkloadLogsGet,
         Self::DeploymentsGet,
         Self::RoutesList,
         Self::RoutesGet,
         Self::BuildRunsList,
         Self::BuildRunsGet,
+        Self::BuildRunLogsGet,
+        Self::BuildEvidenceGet,
     ];
 
     pub fn visible_to(self, principal: &AuthPrincipal) -> bool {
@@ -87,11 +97,14 @@ impl ManagementTool {
             Self::OperationsList => OPERATIONS_LIST,
             Self::WorkloadsList => WORKLOADS_LIST,
             Self::WorkloadsGet => WORKLOADS_GET,
+            Self::WorkloadLogsGet => WORKLOAD_LOGS_GET,
             Self::DeploymentsGet => DEPLOYMENTS_GET,
             Self::RoutesList => ROUTES_LIST,
             Self::RoutesGet => ROUTES_GET,
             Self::BuildRunsList => BUILD_RUNS_LIST,
             Self::BuildRunsGet => BUILD_RUNS_GET,
+            Self::BuildRunLogsGet => BUILD_RUN_LOGS_GET,
+            Self::BuildEvidenceGet => BUILD_EVIDENCE_GET,
         }
     }
 
@@ -107,11 +120,14 @@ impl ManagementTool {
             | Self::OperationsList
             | Self::WorkloadsList
             | Self::WorkloadsGet
+            | Self::WorkloadLogsGet
             | Self::DeploymentsGet
             | Self::RoutesList
             | Self::RoutesGet
             | Self::BuildRunsList
-            | Self::BuildRunsGet => None,
+            | Self::BuildRunsGet
+            | Self::BuildRunLogsGet
+            | Self::BuildEvidenceGet => None,
         }
     }
 
@@ -177,6 +193,12 @@ impl ManagementTool {
                 uuid_id_schema("workloadId"),
                 true,
             ),
+            Self::WorkloadLogsGet => (
+                "Get workload logs",
+                "Get one bounded page of retained logs for a tenant-authorized Workload revision.",
+                workload_logs_schema(),
+                true,
+            ),
             Self::DeploymentsGet => (
                 "Get deployment",
                 "Get one tenant-authorized deployment and its observed operation state.",
@@ -204,6 +226,18 @@ impl ManagementTool {
             Self::BuildRunsGet => (
                 "Get build run",
                 "Get one tenant-authorized BuildRun and its publication summary.",
+                uuid_id_schema("buildRunId"),
+                true,
+            ),
+            Self::BuildRunLogsGet => (
+                "Get build run logs",
+                "Get one bounded page of retained logs for a tenant-authorized BuildRun.",
+                build_run_logs_schema(),
+                true,
+            ),
+            Self::BuildEvidenceGet => (
+                "Get build evidence",
+                "Get the signed evidence projection for a tenant-authorized BuildRun.",
                 uuid_id_schema("buildRunId"),
                 true,
             ),
@@ -286,6 +320,60 @@ fn build_run_list_schema() -> Value {
         "required": ["projectId", "environmentId"],
         "additionalProperties": false
     })
+}
+
+fn workload_logs_schema() -> Value {
+    let mut properties = log_page_properties();
+    properties.insert(
+        "workloadId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    properties.insert(
+        "revisionId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["workloadId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn build_run_logs_schema() -> Value {
+    let mut properties = log_page_properties();
+    properties.insert(
+        "buildRunId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["buildRunId"],
+        "additionalProperties": false
+    })
+}
+
+fn log_page_properties() -> serde_json::Map<String, Value> {
+    serde_json::Map::from_iter([
+        (
+            "cursor".into(),
+            json!({"type": "string", "pattern": "^v1:[0-9]+$"}),
+        ),
+        (
+            "limit".into(),
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_LOG_LIMIT,
+                "default": DEFAULT_LOG_LIMIT
+            }),
+        ),
+        (
+            "stream".into(),
+            json!({"type": "string", "enum": ["stdout", "stderr"]}),
+        ),
+    ])
 }
 
 fn create_project_schema() -> Value {

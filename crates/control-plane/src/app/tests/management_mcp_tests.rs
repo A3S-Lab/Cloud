@@ -164,11 +164,14 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_operations_list",
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
+            "a3s_cloud_workload_logs_get",
             "a3s_cloud_deployments_get",
             "a3s_cloud_routes_list",
             "a3s_cloud_routes_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
+            "a3s_cloud_build_run_logs_get",
+            "a3s_cloud_build_evidence_get",
         ]
     );
     assert!(read_only_tools["result"]["tools"]
@@ -195,11 +198,14 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_operations_list",
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
+            "a3s_cloud_workload_logs_get",
             "a3s_cloud_deployments_get",
             "a3s_cloud_routes_list",
             "a3s_cloud_routes_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
+            "a3s_cloud_build_run_logs_get",
+            "a3s_cloud_build_evidence_get",
         ]
     );
 
@@ -424,6 +430,50 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
         );
     }
 
+    let created_workload = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/workloads"
+            ),
+            "mcp-observability-workload",
+            json!({
+                "name": "observability",
+                "template": management_mcp_workload_template()
+            }),
+        ))
+        .await?;
+    assert_eq!(created_workload.status(), 202);
+    let created_workload = response_json(&created_workload)?;
+    let workload_id = created_workload["data"]["workloadId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("created workload has no workload ID".into()))?;
+    let revision_id = created_workload["data"]["revisionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("created workload has no revision ID".into()))?;
+    let workload_logs = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                23,
+                "a3s_cloud_workload_logs_get",
+                json!({
+                    "workloadId": workload_id,
+                    "revisionId": revision_id,
+                    "cursor": "v1:0",
+                    "limit": 1,
+                    "stream": "stdout"
+                }),
+            ),
+        ))
+        .await?;
+    let workload_logs = response_json(&workload_logs)?;
+    assert_eq!(workload_logs["result"]["isError"], false);
+    let workload_logs = &workload_logs["result"]["structuredContent"]["data"];
+    assert_eq!(workload_logs["workloadId"], workload_id);
+    assert_eq!(workload_logs["revisionId"], revision_id);
+    assert_eq!(workload_logs["records"], json!([]));
+    assert!(workload_logs["nextCursor"].is_null());
+
     let missing_resource_id = Uuid::new_v4();
     for (id, name, arguments) in [
         (
@@ -451,6 +501,24 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             "a3s_cloud_build_runs_get",
             json!({"buildRunId": missing_resource_id}),
         ),
+        (
+            11,
+            "a3s_cloud_workload_logs_get",
+            json!({
+                "workloadId": missing_resource_id,
+                "revisionId": missing_resource_id
+            }),
+        ),
+        (
+            12,
+            "a3s_cloud_build_run_logs_get",
+            json!({"buildRunId": missing_resource_id}),
+        ),
+        (
+            13,
+            "a3s_cloud_build_evidence_get",
+            json!({"buildRunId": missing_resource_id}),
+        ),
     ] {
         let response = app
             .call(mcp_request(
@@ -469,22 +537,50 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
     }
 
     for (id, name, arguments) in [
-        (11, "a3s_cloud_operations_list", json!({"limit": 0})),
-        (12, "a3s_cloud_operations_list", json!({"limit": 201})),
+        (14, "a3s_cloud_operations_list", json!({"limit": 0})),
+        (15, "a3s_cloud_operations_list", json!({"limit": 201})),
         (
-            13,
+            16,
             "a3s_cloud_build_runs_list",
             json!({"projectId": project, "environmentId": environment, "limit": 0}),
         ),
         (
-            14,
+            17,
             "a3s_cloud_build_runs_list",
             json!({"projectId": project, "environmentId": environment, "limit": 201}),
         ),
         (
-            15,
+            18,
             "a3s_cloud_nodes_list",
             json!({"organizationId": organization}),
+        ),
+        (
+            19,
+            "a3s_cloud_workload_logs_get",
+            json!({
+                "workloadId": missing_resource_id,
+                "revisionId": missing_resource_id,
+                "limit": 0
+            }),
+        ),
+        (
+            20,
+            "a3s_cloud_build_run_logs_get",
+            json!({"buildRunId": missing_resource_id, "limit": 257}),
+        ),
+        (
+            21,
+            "a3s_cloud_build_run_logs_get",
+            json!({"buildRunId": missing_resource_id, "cursor": "1"}),
+        ),
+        (
+            22,
+            "a3s_cloud_workload_logs_get",
+            json!({
+                "workloadId": missing_resource_id,
+                "revisionId": missing_resource_id,
+                "stream": "combined"
+            }),
         ),
     ] {
         let response = app
@@ -665,4 +761,31 @@ fn parse_organization_id(value: &str) -> Result<OrganizationId> {
     Uuid::parse_str(value)
         .map(OrganizationId::from_uuid)
         .map_err(|error| BootError::Internal(format!("invalid test organization ID: {error}")))
+}
+
+fn management_mcp_workload_template() -> Value {
+    json!({
+        "artifact": {
+            "uri": "oci://registry.example/cloud/observability:v1",
+            "expectedDigest": null
+        },
+        "process": {},
+        "secrets": [],
+        "resources": {
+            "cpuMillis": 100,
+            "memoryBytes": 33554432,
+            "pids": 32,
+            "ephemeralStorageBytes": null
+        },
+        "ports": [{"name": "http", "containerPort": 8080}],
+        "health": {
+            "portName": "http",
+            "path": "/health",
+            "intervalMs": 1000,
+            "timeoutMs": 500,
+            "healthyThreshold": 1,
+            "unhealthyThreshold": 3,
+            "stabilizationWindowMs": 1000
+        }
+    })
 }

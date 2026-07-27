@@ -1,5 +1,6 @@
 use crate::modules::artifacts::application::BuildRunLogPage;
 use crate::modules::fleet::NodeLogRecordResponse;
+use crate::presentation::format_log_cursor;
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -20,9 +21,7 @@ impl From<BuildRunLogPage> for BuildRunLogsResponse {
             operation_id: page.operation_id.as_uuid(),
             generation: page.generation,
             records: page.records.into_iter().map(Into::into).collect(),
-            next_cursor: page
-                .next_after_sequence
-                .map(|sequence| format!("v1:{sequence}")),
+            next_cursor: page.next_after_sequence.map(format_log_cursor),
         }
     }
 }

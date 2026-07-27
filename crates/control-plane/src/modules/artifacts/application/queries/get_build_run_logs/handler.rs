@@ -1,7 +1,7 @@
 use super::GetBuildRunLogs;
 use crate::modules::artifacts::application::BuildRunLogPage;
 use crate::modules::artifacts::domain::{BuildRun, IBuildRunRepository};
-use crate::modules::fleet::application::{NodeLogReadQuery, NodeLogReader};
+use crate::modules::fleet::application::{NodeLogReadQuery, NodeLogReader, MAX_LOG_PAGE_SIZE};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::fleet::domain::services::ILogChunkStore;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -36,10 +36,10 @@ impl QueryHandler<GetBuildRunLogs> for GetBuildRunLogsHandler {
         let builds = Arc::clone(&self.builds);
         let logs = self.logs.clone();
         Box::pin(async move {
-            if query.limit == 0 || query.limit > 256 {
-                return Ok(Err(ApplicationError::Invalid(
-                    "build log limit must be between 1 and 256".into(),
-                )));
+            if query.limit == 0 || query.limit > MAX_LOG_PAGE_SIZE {
+                return Ok(Err(ApplicationError::Invalid(format!(
+                    "build log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
+                ))));
             }
             let build = match builds.find(query.organization_id, query.build_run_id).await {
                 Ok(build) => build,

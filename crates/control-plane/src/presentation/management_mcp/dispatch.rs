@@ -1,7 +1,7 @@
 use super::arguments::{
-    self, BuildRunArguments, BuildRunListArguments, DeploymentArguments, EmptyArguments,
-    EnvironmentScopeArguments, NodeArguments, OperationListArguments, RouteArguments,
-    WorkloadArguments,
+    self, BuildRunArguments, BuildRunListArguments, BuildRunLogArguments, DeploymentArguments,
+    EmptyArguments, EnvironmentScopeArguments, NodeArguments, OperationListArguments,
+    RouteArguments, WorkloadArguments, WorkloadLogArguments,
 };
 use super::catalog::ManagementTool;
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
@@ -62,6 +62,10 @@ pub async fn execute(
             let arguments = arguments::parse::<WorkloadArguments>(arguments).ok()?;
             workloads::get_workload(query_bus, organization_id, arguments, request_id).await
         }
+        ManagementTool::WorkloadLogsGet => {
+            let arguments = arguments::parse::<WorkloadLogArguments>(arguments).ok()?;
+            workloads::get_workload_logs(query_bus, organization_id, arguments, request_id).await
+        }
         ManagementTool::DeploymentsGet => {
             let arguments = arguments::parse::<DeploymentArguments>(arguments).ok()?;
             workloads::get_deployment(query_bus, organization_id, arguments, request_id).await
@@ -81,6 +85,14 @@ pub async fn execute(
         ManagementTool::BuildRunsGet => {
             let arguments = arguments::parse::<BuildRunArguments>(arguments).ok()?;
             artifacts::get_build_run(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::BuildRunLogsGet => {
+            let arguments = arguments::parse::<BuildRunLogArguments>(arguments).ok()?;
+            artifacts::get_build_run_logs(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::BuildEvidenceGet => {
+            let arguments = arguments::parse::<BuildRunArguments>(arguments).ok()?;
+            artifacts::get_build_evidence(query_bus, organization_id, arguments, request_id).await
         }
     };
     Some(result)

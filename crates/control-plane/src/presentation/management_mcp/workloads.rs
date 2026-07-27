@@ -1,10 +1,14 @@
-use super::arguments::{DeploymentArguments, EnvironmentScopeArguments, WorkloadArguments};
+use super::arguments::{
+    DeploymentArguments, EnvironmentScopeArguments, WorkloadArguments, WorkloadLogArguments,
+};
 use super::tool_result;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId,
+    DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
 };
-use crate::modules::workloads::presentation::{DeploymentResponse, WorkloadResponse};
-use crate::modules::workloads::{GetDeployment, GetWorkload, ListWorkloads};
+use crate::modules::workloads::presentation::{
+    DeploymentResponse, WorkloadLogsResponse, WorkloadResponse,
+};
+use crate::modules::workloads::{GetDeployment, GetWorkload, GetWorkloadLogs, ListWorkloads};
 use a3s_boot::{QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
@@ -70,6 +74,28 @@ pub async fn get_deployment(
         Ok(deployment) => {
             tool_result::success(200, DeploymentResponse::from(deployment), request_id)
         }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_workload_logs(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: WorkloadLogArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetWorkloadLogs {
+            organization_id,
+            workload_id: WorkloadId::from_uuid(arguments.workload_id),
+            revision_id: WorkloadRevisionId::from_uuid(arguments.revision_id),
+            after_sequence: arguments.after_sequence,
+            limit: arguments.limit,
+            stream: arguments.stream.map(Into::into),
+        })
+        .await?
+    {
+        Ok(logs) => tool_result::success(200, WorkloadLogsResponse::from(logs), request_id),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

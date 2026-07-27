@@ -1,5 +1,6 @@
 use crate::modules::fleet::NodeLogRecordResponse;
 use crate::modules::workloads::application::WorkloadLogPage;
+use crate::presentation::format_log_cursor;
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -24,9 +25,7 @@ impl From<WorkloadLogPage> for WorkloadLogsResponse {
             unit_id: page.unit_id,
             generation: page.generation,
             records: page.records.into_iter().map(Into::into).collect(),
-            next_cursor: page
-                .next_after_sequence
-                .map(|sequence| format!("v1:{sequence}")),
+            next_cursor: page.next_after_sequence.map(format_log_cursor),
         }
     }
 }

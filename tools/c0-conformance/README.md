@@ -36,7 +36,8 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
    key through MCP using one durable record;
 4. creates one Environment, exercises Node, Operation, Workload, Route, and
    BuildRun lists, checks missing Node, Workload, Deployment, Route, and
-   BuildRun details, and rejects invalid list bounds;
+   BuildRun details plus Workload logs, BuildRun logs, and BuildRun evidence,
+   and rejects invalid list/log bounds, cursors, and stream filters;
 5. rejects a forged organization argument and returns the same `404`
    business-error contract for a foreign and a missing Project;
 6. revokes the read-only Token through REST and requires the next MCP request

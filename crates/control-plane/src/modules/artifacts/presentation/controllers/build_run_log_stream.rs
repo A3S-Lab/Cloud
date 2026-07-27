@@ -1,6 +1,7 @@
 use crate::modules::artifacts::application::{BuildRunLogPage, GetBuildRunLogs};
 use crate::modules::artifacts::presentation::dto::BuildRunLogsResponse;
 use crate::modules::shared_kernel::application::ApplicationError;
+use crate::presentation::format_log_cursor;
 use a3s_boot::{BootError, QueryBus, Result, SseEvent, SseStream};
 use std::sync::Arc;
 use std::time::Duration;
@@ -75,7 +76,7 @@ fn bounded_log_event(page: BuildRunLogPage) -> Result<Option<BoundedLogEvent>> {
         return Ok(None);
     }
     let records = std::mem::take(&mut response.records);
-    response.next_cursor = Some(format!("v1:{}", u64::MAX));
+    response.next_cursor = Some(format_log_cursor(u64::MAX));
     let base_size = serde_json::to_vec(&response)
         .map_err(|error| BootError::Internal(error.to_string()))?
         .len();
@@ -113,7 +114,7 @@ fn bounded_log_event(page: BuildRunLogPage) -> Result<Option<BoundedLogEvent>> {
         .ok_or_else(|| {
             BootError::Internal("live build log event lost its terminal sequence".into())
         })?;
-    let cursor = format!("v1:{through_sequence}");
+    let cursor = format_log_cursor(through_sequence);
     response.next_cursor = Some(cursor.clone());
     let encoded =
         serde_json::to_string(&response).map_err(|error| BootError::Internal(error.to_string()))?;

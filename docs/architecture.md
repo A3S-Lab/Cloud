@@ -1455,15 +1455,17 @@ loads the current API token through the Identity A3S ORM repository on every
 request. The adapter derives its organization only from the authenticated
 principal, filters and rechecks mutation tools by effective scope, rejects
 batches and foreign origins, and dispatches Project, Environment, search, Node,
-Operation, Workload, Deployment, Route, and BuildRun tools to the same
-`CommandBus` and `QueryBus` handlers used by REST. Domain-specific MCP adapters
-reuse the REST response DTOs; the protocol handler owns transport only and does
-not accumulate resource dispatch logic. Tool structured content contains the
-standard API success or business-error envelope. It has no session database,
-direct repository access, Redis path, node transport, or business rules. The
-dedicated production-binary gate uses PostgreSQL 17 through the same A3S ORM
-repositories to prove exact scope-derived catalogs, strict query bounds,
-operational list/detail semantics, REST-to-MCP idempotency replay,
+Operation, Workload, Deployment, Route, and BuildRun tools plus bounded
+cursor-paginated Workload and BuildRun logs and signed BuildRun evidence to the
+same `CommandBus` and `QueryBus` handlers used by REST. Domain-specific MCP
+adapters reuse the REST response DTOs; the protocol handler owns transport only
+and does not accumulate resource dispatch logic. Tool structured content
+contains the standard API success or business-error envelope. It has no session
+database, direct repository access, Redis path, node transport, live log
+stream, or business rules. The dedicated production-binary gate uses PostgreSQL
+17 through the same A3S ORM repositories to prove exact scope-derived catalogs,
+strict query bounds and cursors, operational list/detail/log/evidence semantics,
+REST-to-MCP idempotency replay,
 hidden-mutation zero-write, indistinguishable foreign and missing Project
 errors, and next-request token revocation while scanning responses, logs,
 evidence, and the database dump for plaintext credentials. See the

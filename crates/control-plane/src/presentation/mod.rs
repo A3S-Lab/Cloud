@@ -1,5 +1,6 @@
 mod api_contract;
 mod api_response_interceptor;
+mod log_cursor;
 mod management_mcp;
 mod request_id_middleware;
 
@@ -14,5 +15,6 @@ pub(crate) use api_response_interceptor::{
 pub use api_response_interceptor::{
     application_error_response, ApiErrorFilter, ApiResponseInterceptor,
 };
+pub(crate) use log_cursor::{format_log_cursor, parse_log_cursor};
 pub use management_mcp::{ManagementMcpModule, MANAGEMENT_MCP_PROTOCOL_VERSION};
 pub use request_id_middleware::RequestIdMiddleware;

@@ -1,6 +1,7 @@
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::workloads::application::{GetWorkloadLogs, WorkloadLogPage};
 use crate::modules::workloads::presentation::dto::WorkloadLogsResponse;
+use crate::presentation::format_log_cursor;
 use a3s_boot::{BootError, QueryBus, Result, SseEvent, SseStream};
 use std::sync::Arc;
 use std::time::Duration;
@@ -75,7 +76,7 @@ fn bounded_log_event(page: WorkloadLogPage) -> Result<Option<BoundedLogEvent>> {
         return Ok(None);
     }
     let records = std::mem::take(&mut response.records);
-    response.next_cursor = Some(format!("v1:{}", u64::MAX));
+    response.next_cursor = Some(format_log_cursor(u64::MAX));
     let base_size = serde_json::to_vec(&response)
         .map_err(|error| BootError::Internal(error.to_string()))?
         .len();
@@ -111,7 +112,7 @@ fn bounded_log_event(page: WorkloadLogPage) -> Result<Option<BoundedLogEvent>> {
         .last()
         .map(|record| record.sequence)
         .ok_or_else(|| BootError::Internal("live log event lost its terminal sequence".into()))?;
-    let cursor = format!("v1:{through_sequence}");
+    let cursor = format_log_cursor(through_sequence);
     response.next_cursor = Some(cursor.clone());
     let encoded =
         serde_json::to_string(&response).map_err(|error| BootError::Internal(error.to_string()))?;
