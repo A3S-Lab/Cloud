@@ -4,6 +4,7 @@ mod fleet_module;
 mod node_control;
 
 pub(crate) use dto::NodeLogRecordResponse;
+pub(crate) use dto::NodeResponse;
 pub use fleet_module::FleetModule;
 pub(crate) use node_control::NodeControlApi;
 pub use node_control::{NodeControlServer, NodeControlServerError};

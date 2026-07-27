@@ -1,3 +1,4 @@
+use super::arguments::EmptyArguments;
 use super::tool_result;
 use crate::modules::projects::presentation::{
     EnvironmentListItemResponse, EnvironmentResponse, ProjectListItemResponse, ProjectResponse,
@@ -30,10 +31,6 @@ pub struct CreateEnvironmentArguments {
 pub struct ProjectArguments {
     project_id: Uuid,
 }
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EmptyArguments {}
 
 pub async fn create_project(
     bus: Arc<CommandBus>,

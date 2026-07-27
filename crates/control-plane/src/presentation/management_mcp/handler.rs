@@ -1,16 +1,13 @@
+use super::arguments::{parse, parse_optional};
 use super::catalog::ManagementTool;
-use super::projects::{
-    self, CreateEnvironmentArguments, CreateProjectArguments, EmptyArguments, ProjectArguments,
-};
+use super::dispatch;
 use super::protocol::{
     self, BodyError, JsonRpcRequest, JSON_RPC_INTERNAL_ERROR, JSON_RPC_INVALID_PARAMS,
     JSON_RPC_INVALID_REQUEST, JSON_RPC_METHOD_NOT_FOUND, JSON_RPC_PARSE_ERROR,
 };
-use super::search::{self, SearchArguments};
 use super::MANAGEMENT_MCP_PROTOCOL_VERSION;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use a3s_boot::{AuthPrincipal, BootError, BootRequest, BootResponse, CommandBus, QueryBus, Result};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -119,7 +116,7 @@ impl ManagementMcpHandler {
         let Some(id) = request.id else {
             return protocol::accepted_response();
         };
-        let arguments = match parse_arguments::<InitializeArguments>(request.params) {
+        let arguments = match parse::<InitializeArguments>(request.params) {
             Ok(arguments) => arguments,
             Err(()) => {
                 return protocol::error_response(
@@ -159,7 +156,7 @@ impl ManagementMcpHandler {
         params: Value,
         principal: &AuthPrincipal,
     ) -> Result<BootResponse> {
-        let arguments = parse_optional_arguments::<ListToolsArguments>(params);
+        let arguments = parse_optional::<ListToolsArguments>(params);
         if arguments.is_err() || arguments.is_ok_and(|arguments| arguments.cursor.is_some()) {
             return protocol::error_response(
                 200,
@@ -181,7 +178,7 @@ impl ManagementMcpHandler {
         principal: AuthPrincipal,
         request_id: Uuid,
     ) -> Result<BootResponse> {
-        let call = match parse_arguments::<CallToolArguments>(params) {
+        let call = match parse::<CallToolArguments>(params) {
             Ok(call) => call,
             Err(()) => {
                 return protocol::error_response(
@@ -213,72 +210,17 @@ impl ManagementMcpHandler {
             }
         };
         let arguments = call.arguments.unwrap_or_else(|| json!({}));
-        let result = match tool {
-            ManagementTool::EnvironmentsCreate => {
-                let arguments = match parse_arguments::<CreateEnvironmentArguments>(arguments) {
-                    Ok(arguments) => arguments,
-                    Err(()) => return invalid_tool_arguments(id),
-                };
-                projects::create_environment(
-                    Arc::clone(&self.command_bus),
-                    organization_id,
-                    arguments,
-                    request_id,
-                )
-                .await
-            }
-            ManagementTool::EnvironmentsList => {
-                let arguments = match parse_arguments::<ProjectArguments>(arguments) {
-                    Ok(arguments) => arguments,
-                    Err(()) => return invalid_tool_arguments(id),
-                };
-                projects::list_environments(
-                    Arc::clone(&self.query_bus),
-                    organization_id,
-                    arguments,
-                    request_id,
-                )
-                .await
-            }
-            ManagementTool::ProjectsCreate => {
-                let arguments = match parse_arguments::<CreateProjectArguments>(arguments) {
-                    Ok(arguments) => arguments,
-                    Err(()) => return invalid_tool_arguments(id),
-                };
-                projects::create_project(
-                    Arc::clone(&self.command_bus),
-                    organization_id,
-                    arguments,
-                    request_id,
-                )
-                .await
-            }
-            ManagementTool::ProjectsList => {
-                let arguments = match parse_arguments::<EmptyArguments>(arguments) {
-                    Ok(arguments) => arguments,
-                    Err(()) => return invalid_tool_arguments(id),
-                };
-                projects::list_projects(
-                    Arc::clone(&self.query_bus),
-                    organization_id,
-                    arguments,
-                    request_id,
-                )
-                .await
-            }
-            ManagementTool::Search => {
-                let arguments = match parse_arguments::<SearchArguments>(arguments) {
-                    Ok(arguments) => arguments,
-                    Err(()) => return invalid_tool_arguments(id),
-                };
-                search::search(
-                    Arc::clone(&self.query_bus),
-                    organization_id,
-                    arguments,
-                    request_id,
-                )
-                .await
-            }
+        let Some(result) = dispatch::execute(
+            tool,
+            Arc::clone(&self.command_bus),
+            Arc::clone(&self.query_bus),
+            organization_id,
+            arguments,
+            request_id,
+        )
+        .await
+        else {
+            return invalid_tool_arguments(id);
         };
         match result {
             Ok(result) => protocol::result_response(id, result),
@@ -363,20 +305,6 @@ fn organization_id(principal: &AuthPrincipal) -> Result<OrganizationId> {
                     ))
                 })
         })
-}
-
-fn parse_arguments<T>(value: Value) -> std::result::Result<T, ()>
-where
-    T: DeserializeOwned,
-{
-    serde_json::from_value(value).map_err(|_| ())
-}
-
-fn parse_optional_arguments<T>(value: Value) -> std::result::Result<T, ()>
-where
-    T: DeserializeOwned,
-{
-    parse_arguments(if value.is_null() { json!({}) } else { value })
 }
 
 fn invalid_tool_arguments(id: Value) -> Result<BootResponse> {

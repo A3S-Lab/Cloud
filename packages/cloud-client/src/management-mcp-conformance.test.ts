@@ -171,6 +171,131 @@ conformanceIt(
     expect(replayData.id).toBe(projectId);
     expect(replayData.replayed).toBe(true);
 
+    const restEnvironment = await restEnvelope(
+      `${environment.baseUrl}/organizations/${organizationId}/projects/${projectId}/environments`,
+      'POST',
+      authenticatedHeaders(environment.adminToken, 'c0:mcp:operational-environment'),
+      { name: 'MCP Operational Environment' },
+      201,
+      credentials,
+      'REST operational environment creation'
+    );
+    const restEnvironmentData = objectValue(restEnvironment.body.data, 'REST environment data');
+    const environmentId = uuidValue(restEnvironmentData.id, 'REST environment ID');
+
+    const operationalListRequestIds: Record<string, string> = {};
+    for (const entry of [
+      { id: 20, name: 'a3s_cloud_nodes_list', arguments: {}, label: 'MCP node listing' },
+      { id: 21, name: 'a3s_cloud_operations_list', arguments: {}, label: 'MCP operation listing' },
+      {
+        id: 22,
+        name: 'a3s_cloud_workloads_list',
+        arguments: { projectId, environmentId },
+        label: 'MCP workload listing',
+      },
+      {
+        id: 23,
+        name: 'a3s_cloud_routes_list',
+        arguments: { projectId, environmentId },
+        label: 'MCP route listing',
+      },
+      {
+        id: 24,
+        name: 'a3s_cloud_build_runs_list',
+        arguments: { projectId, environmentId },
+        label: 'MCP BuildRun listing',
+      },
+    ]) {
+      const listed = await callTool(
+        environment,
+        environment.readOnlyToken,
+        entry.id,
+        entry.name,
+        entry.arguments,
+        credentials,
+        entry.label
+      );
+      expect(listed.result.isError).toBe(false);
+      expect(arrayValue(listed.structured.data, `${entry.label} data`)).toEqual([]);
+      operationalListRequestIds[entry.name] = requestId(listed.structured, `${entry.label} request ID`);
+    }
+
+    const missingOperationalId = crypto.randomUUID();
+    const missingOperationalRequestIds: Record<string, string> = {};
+    for (const entry of [
+      {
+        id: 25,
+        name: 'a3s_cloud_nodes_get',
+        arguments: { nodeId: missingOperationalId },
+        label: 'MCP missing node lookup',
+      },
+      {
+        id: 26,
+        name: 'a3s_cloud_workloads_get',
+        arguments: { workloadId: missingOperationalId },
+        label: 'MCP missing workload lookup',
+      },
+      {
+        id: 27,
+        name: 'a3s_cloud_deployments_get',
+        arguments: { deploymentId: missingOperationalId },
+        label: 'MCP missing deployment lookup',
+      },
+      {
+        id: 28,
+        name: 'a3s_cloud_routes_get',
+        arguments: { routeId: missingOperationalId },
+        label: 'MCP missing route lookup',
+      },
+      {
+        id: 29,
+        name: 'a3s_cloud_build_runs_get',
+        arguments: { buildRunId: missingOperationalId },
+        label: 'MCP missing BuildRun lookup',
+      },
+    ]) {
+      const missing = await callTool(
+        environment,
+        environment.readOnlyToken,
+        entry.id,
+        entry.name,
+        entry.arguments,
+        credentials,
+        entry.label
+      );
+      expect(missing.result.isError).toBe(true);
+      const contract = businessErrorContract(missing.structured);
+      expect(contract.code).toBe(404);
+      expect(contract.statusCode).toBe('NOT_FOUND');
+      missingOperationalRequestIds[entry.name] = requestId(missing.structured, `${entry.label} request ID`);
+    }
+
+    for (const entry of [
+      { id: 30, name: 'a3s_cloud_operations_list', arguments: { limit: 0 } },
+      { id: 31, name: 'a3s_cloud_operations_list', arguments: { limit: 201 } },
+      {
+        id: 32,
+        name: 'a3s_cloud_build_runs_list',
+        arguments: { projectId, environmentId, limit: 0 },
+      },
+      {
+        id: 33,
+        name: 'a3s_cloud_build_runs_list',
+        arguments: { projectId, environmentId, limit: 201 },
+      },
+    ]) {
+      const rejected = await mcpRequest(
+        environment,
+        environment.readOnlyToken,
+        toolCall(entry.id, entry.name, entry.arguments),
+        200,
+        credentials,
+        `${entry.name} invalid limit ${entry.arguments.limit}`
+      );
+      const error = objectValue(rejected.body.error, `${entry.name} invalid-limit error`);
+      expect(error.code).toBe(-32602);
+    }
+
     const foreignOrganization = await restEnvelope(
       `${environment.baseUrl}/organizations`,
       'POST',
@@ -258,19 +383,29 @@ conformanceIt(
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v1',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v2',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
       persistence: 'postgresql-17-through-a3s-orm',
       surfaces: ['rest', 'management-mcp'],
-      resources: { organizationId, projectId, foreignOrganizationId, foreignProjectId, readOnlyTokenId },
+      resources: {
+        organizationId,
+        projectId,
+        environmentId,
+        foreignOrganizationId,
+        foreignProjectId,
+        readOnlyTokenId,
+      },
       catalogs: { administrator: adminToolNames, readOnly: readOnlyToolNames },
       requestIds: {
         bootstrap: requestId(bootstrap.body, 'bootstrap request ID'),
         readOnlyTokenCreate: requestId(readOnlyToken.body, 'token-create request ID'),
         restProjectCreate: requestId(restProject.body, 'REST project request ID'),
         mcpProjectReplay: requestId(projectReplay.structured, 'MCP replay request ID'),
+        restEnvironmentCreate: requestId(restEnvironment.body, 'REST environment request ID'),
+        operationalLists: operationalListRequestIds,
+        missingOperationalResources: missingOperationalRequestIds,
         foreignProjectDenial: requestId(foreignProjectResult.structured, 'foreign-project denial request ID'),
         missingProjectDenial: requestId(missingProjectResult.structured, 'missing-project denial request ID'),
         tokenRevocation: requestId(revoked.body, 'token-revocation request ID'),
@@ -281,6 +416,8 @@ conformanceIt(
         'scope-derived-tool-catalogs',
         'hidden-mutation-denial-without-side-effect',
         'rest-to-mcp-idempotency-replay',
+        'operational-read-query-catalog',
+        'bounded-operational-query-arguments',
         'principal-derived-tenant-context',
         'foreign-and-missing-resource-error-equivalence',
         'immediate-token-revocation',

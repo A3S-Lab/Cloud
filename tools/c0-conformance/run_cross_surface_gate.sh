@@ -146,16 +146,33 @@ docker run --detach --name "$postgres_container" --pull=never \
 
 postgres_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$postgres_container")"
 [[ $postgres_port =~ ^[0-9]+$ ]] || die "PostgreSQL host port is invalid"
+# The image exposes a transient bootstrap postmaster before restarting as PID 1.
+# Bind readiness to one stable server identity so migrations never race that restart.
 postgres_ready=false
+postgres_ready_identity=''
+postgres_ready_streak=0
 for _ in $(seq 1 60); do
-  if docker exec "$postgres_container" pg_isready --dbname=a3s_cloud --username=a3s_cloud \
-    >/dev/null 2>&1; then
-    postgres_ready=true
-    break
+  postgres_identity="$(docker exec "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command='select pg_postmaster_start_time()' 2>/dev/null || true)"
+  if [[ -n $postgres_identity ]]; then
+    if [[ $postgres_identity == "$postgres_ready_identity" ]]; then
+      postgres_ready_streak=$((postgres_ready_streak + 1))
+    else
+      postgres_ready_identity="$postgres_identity"
+      postgres_ready_streak=1
+    fi
+    if ((postgres_ready_streak >= 3)); then
+      postgres_ready=true
+      break
+    fi
+  else
+    postgres_ready_identity=''
+    postgres_ready_streak=0
   fi
   sleep 1
 done
-[[ $postgres_ready == true ]] || die "PostgreSQL did not become ready"
+[[ $postgres_ready == true ]] || die "PostgreSQL did not become stably ready"
 [[ -z $(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$postgres_container") ]] ||
   die "PostgreSQL unexpectedly owns an anonymous volume"
 postgres_version="$(docker exec "$postgres_container" postgres --version)"
@@ -243,6 +260,10 @@ if [[ $scenario == management-mcp ]]; then
     psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
     --command="select count(*) from projects where name in ('MCP Conformance Project', 'MCP Foreign Project')")"
   [[ $mcp_project_count == 2 ]] || die "PostgreSQL did not retain the two expected MCP projects"
+  mcp_environment_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from environments e join projects p on p.organization_id = e.organization_id and p.id = e.project_id where p.name = 'MCP Conformance Project' and e.name = 'MCP Operational Environment'")"
+  [[ $mcp_environment_count == 1 ]] || die "PostgreSQL did not retain the expected MCP operational environment"
   hidden_project_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
     psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
     --command="select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
@@ -280,7 +301,7 @@ done
 {
   printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
   if [[ $scenario == management-mcp ]]; then
-    printf 'mcp_project_rows=2\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nread_only_scope_rows=1\n'
+    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nread_only_scope_rows=1\n'
   fi
 } >"$evidence_directory/persistence-check.txt"
 

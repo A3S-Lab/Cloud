@@ -6,9 +6,11 @@ The A3S Cloud management MCP endpoint is an authenticated presentation surface
 over existing Cloud application commands and queries. It is not an A0 hosted
 MCP asset, a second control plane, a database client, or a path to a node.
 
-The first `C0.2` slice exposes a deliberately small core-resource catalog. It
-proves the transport, authorization, tenant, idempotency, and response
-boundaries before additional existing Cloud operations are admitted as tools.
+The initial `C0.2` slice established the transport, authorization, tenant,
+idempotency, and response boundaries with core Project, Environment, and search
+tools. The operational-read slice adds Node, Operation, Workload, Deployment,
+Route, and BuildRun queries without adding another business or persistence
+path.
 
 ## Transport contract
 
@@ -55,6 +57,16 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_projects_list` | Query | None |
 | `a3s_cloud_environments_list` | Query | None |
 | `a3s_cloud_search` | Query | None |
+| `a3s_cloud_nodes_list` | Query | None |
+| `a3s_cloud_nodes_get` | Query | None |
+| `a3s_cloud_operations_list` | Query | None |
+| `a3s_cloud_workloads_list` | Query | None |
+| `a3s_cloud_workloads_get` | Query | None |
+| `a3s_cloud_deployments_get` | Query | None |
+| `a3s_cloud_routes_list` | Query | None |
+| `a3s_cloud_routes_get` | Query | None |
+| `a3s_cloud_build_runs_list` | Query | None |
+| `a3s_cloud_build_runs_get` | Query | None |
 | `a3s_cloud_projects_create` | Command | `project:write` |
 | `a3s_cloud_environments_create` | Command | `environment:write` |
 
@@ -104,19 +116,24 @@ same durable idempotency identity and replay projection.
 The dedicated `C0.2` scenario in
 [`tools/c0-conformance`](../tools/c0-conformance/README.md) boots the production
 control-plane binary with the shipped A3S ACL configuration and digest-pinned
-PostgreSQL 17. It proves administrator and `cloud:read` catalogs, denies a
-hidden mutation without a database write, replays one REST Project command
-through MCP using the same durable idempotency record, returns the same `404`
-business-error contract for foreign and missing Projects, and observes token
-revocation on the next MCP request. The persistence check requires the expected
-Token digests, read-only scope, revocation, Project rows, and zero plaintext
-credentials in responses, logs, evidence, or the PostgreSQL dump. Production
-persistence reaches PostgreSQL only through A3S ORM repositories.
+PostgreSQL 17. It proves the exact 15-tool administrator and 13-tool
+`cloud:read` catalogs, denies a hidden mutation without a database write,
+replays one REST Project command through MCP using the same durable idempotency
+record, and returns the same `404` business-error contract for foreign and
+missing Projects. It then creates a real Environment, exercises all five
+operational list tools, verifies all five detail tools return bounded
+`NOT_FOUND` envelopes for missing resources, rejects out-of-range limits, and
+observes token revocation on the next MCP request. The persistence check
+requires the expected Token digests, read-only scope, revocation, Project and
+Environment rows, and zero plaintext credentials in responses, logs, evidence,
+or the PostgreSQL dump. Production persistence reaches PostgreSQL only through
+A3S ORM repositories.
 
 ## Current limits
 
-`C0.2` remains in progress. The next slices expand the curated catalog over
-existing non-secret operational commands and queries. OAuth 2.1 discovery and
-consent follow only after the token-scoped confused-deputy gate. Destructive
-operations, Secret material, exec, terminal access, server-side sessions, and
-JSON-RPC batching are not exposed by this slice.
+`C0.2` remains in progress. The next slices can admit selected non-secret log,
+evidence, and replay-safe operational commands only with their existing scopes,
+idempotency contracts, and audit boundaries. OAuth 2.1 discovery and consent
+follow only after the token-scoped confused-deputy gate. Secret material, exec,
+terminal access, server-side sessions, and JSON-RPC batching are not exposed by
+this slice; destructive tools remain disabled.
