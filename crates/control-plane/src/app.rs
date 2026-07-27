@@ -752,6 +752,7 @@ fn build_application_with_health(
     let get_api_tokens = Arc::clone(&api_tokens);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
+    let list_environment_projects = Arc::clone(&projects);
     let query_environments = Arc::clone(&environments);
     let enrollment_nodes = Arc::clone(&nodes);
     let rotation_nodes = Arc::clone(&nodes);
@@ -1065,7 +1066,7 @@ fn build_application_with_health(
                     ListProjectsHandler::new(query_projects),
                 )
                 .query_handler::<crate::modules::projects::ListEnvironments, _>(
-                    ListEnvironmentsHandler::new(query_environments),
+                    ListEnvironmentsHandler::new(list_environment_projects, query_environments),
                 )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),

@@ -99,11 +99,24 @@ Mutation tools require a caller-owned idempotency key in their arguments. A
 REST call and an MCP call with the same command input and key resolve to the
 same durable idempotency identity and replay projection.
 
+## Conformance
+
+The dedicated `C0.2` scenario in
+[`tools/c0-conformance`](../tools/c0-conformance/README.md) boots the production
+control-plane binary with the shipped A3S ACL configuration and digest-pinned
+PostgreSQL 17. It proves administrator and `cloud:read` catalogs, denies a
+hidden mutation without a database write, replays one REST Project command
+through MCP using the same durable idempotency record, returns the same `404`
+business-error contract for foreign and missing Projects, and observes token
+revocation on the next MCP request. The persistence check requires the expected
+Token digests, read-only scope, revocation, Project rows, and zero plaintext
+credentials in responses, logs, evidence, or the PostgreSQL dump. Production
+persistence reaches PostgreSQL only through A3S ORM repositories.
+
 ## Current limits
 
 `C0.2` remains in progress. The next slices expand the curated catalog over
-existing non-secret operational commands and queries and add a real PostgreSQL
-cross-surface conformance gate. OAuth 2.1 discovery and consent follow only
-after the token-scoped confused-deputy gate. Destructive operations, Secret
-material, exec, terminal access, server-side sessions, and JSON-RPC batching
-are not exposed by this slice.
+existing non-secret operational commands and queries. OAuth 2.1 discovery and
+consent follow only after the token-scoped confused-deputy gate. Destructive
+operations, Secret material, exec, terminal access, server-side sessions, and
+JSON-RPC batching are not exposed by this slice.

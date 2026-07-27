@@ -210,10 +210,12 @@ repository currently has no configured G0 provider secrets.
 
 `C0.1` is verified. `C0` remains in progress. The first `C0.2` slice provides
 stateless scoped management MCP for core Project, Environment, and authorized
-search commands and queries; broader curated tool coverage and real
-PostgreSQL cross-surface evidence remain. Grant-derived search is a separate
-`C0.3` authorization outcome; the current search boundary is the organization
-tenant guard.
+search commands and queries. A dedicated real PostgreSQL gate now proves
+scope-derived catalogs, hidden mutation denial, REST-to-MCP idempotency replay,
+foreign-resource non-disclosure, immediate revocation, and digest-only A3S ORM
+persistence. Broader curated tool coverage remains. Grant-derived search is a
+separate `C0.3` authorization outcome; the current search boundary is the
+organization tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -312,7 +314,7 @@ format never becomes a second mutable source of truth.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, and automation contracts |
-| `C0.2` | In progress | Scoped management MCP over the same commands and queries |
+| `C0.2` | In progress | Scoped management MCP and real PostgreSQL parity over the same commands and queries |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
@@ -354,8 +356,12 @@ discovery, organization context derived only from the authenticated principal,
 three core queries, and two idempotent create commands through the existing
 application buses. It rejects batches, foreign origins, hidden-tool invocation,
 forged organization input, and revoked tokens without adding business rules or
-a persistence path to the presentation surface. Broader curated tools and real
-PostgreSQL conformance remain before `C0.2` verification.
+a persistence path to the presentation surface. Its dedicated real PostgreSQL
+gate proves administrator/read-only tool catalogs, hidden-mutation zero-write,
+REST-to-MCP replay through one durable idempotency record, indistinguishable
+foreign and missing Project errors, next-request revocation, expected A3S ORM
+rows, and credential-free logs, evidence, and database dumps. Broader curated
+tools remain before `C0.2` verification.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

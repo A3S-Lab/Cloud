@@ -1458,7 +1458,12 @@ batches and foreign origins, and dispatches Project, Environment, and search
 tools to the same `CommandBus` and `QueryBus` handlers used by REST. Tool
 structured content contains the standard API success or business-error
 envelope. It has no session database, direct repository access, Redis path,
-node transport, or business rules. See the
+node transport, or business rules. The dedicated production-binary gate uses
+PostgreSQL 17 through the same A3S ORM repositories to prove scope-derived
+catalogs, REST-to-MCP idempotency replay, hidden-mutation zero-write,
+indistinguishable foreign and missing Project errors, and next-request token
+revocation while scanning responses, logs, evidence, and the database dump for
+plaintext credentials. See the
 [management MCP contract](management-mcp.md).
 
 The first CLI mutation slice exposes Workload stop and rollback, Deployment

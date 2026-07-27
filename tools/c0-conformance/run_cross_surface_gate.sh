@@ -1,13 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 readonly POSTGRES_IMAGE="docker.io/library/postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
 
 cloud_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 evidence_directory="${1:-}"
+scenario="${2:-cross-surface}"
+
+[[ $# -le 2 ]] || {
+  printf 'usage: %s EVIDENCE_DIRECTORY [cross-surface|management-mcp]\n' "$0" >&2
+  exit 2
+}
+
+case "$scenario" in
+cross-surface)
+  scenario_evidence_name=cross-surface.json
+  scenario_log_name=cross-surface-test.log
+  ;;
+management-mcp)
+  scenario_evidence_name=management-mcp.json
+  scenario_log_name=management-mcp-test.log
+  ;;
+*)
+  printf 'unsupported C0 conformance scenario: %s\n' "$scenario" >&2
+  exit 2
+  ;;
+esac
 
 die() {
-  printf 'C0 cross-surface conformance failed: %s\n' "$1" >&2
+  printf 'C0 %s conformance failed: %s\n' "$scenario" "$1" >&2
   exit 1
 }
 
@@ -93,11 +115,13 @@ fi
   cd "$cloud_root/packages/cloud-client"
   bun install --frozen-lockfile
 )
-(
-  cd "$cloud_root/cli"
-  bun install --frozen-lockfile
-  bun run build
-)
+if [[ $scenario == cross-surface ]]; then
+  (
+    cd "$cloud_root/cli"
+    bun install --frozen-lockfile
+    bun run build
+  )
+fi
 (
   cd "$cloud_root"
   cargo build --locked -p a3s-cloud-control-plane
@@ -106,7 +130,9 @@ fi
 api_binary="$target_directory/debug/a3s-cloud-control-plane"
 cli_binary="$cloud_root/cli/dist/a3s-cloud"
 [[ -x $api_binary ]] || die "Cloud API binary was not built"
-[[ -x $cli_binary ]] || die "compiled Cloud CLI was not built"
+if [[ $scenario == cross-surface ]]; then
+  [[ -x $cli_binary ]] || die "compiled Cloud CLI was not built"
+fi
 
 postgres_password="c0_$(openssl rand -hex 16)"
 docker pull "$POSTGRES_IMAGE" >"$evidence_directory/postgres-pull.log"
@@ -167,21 +193,39 @@ for _ in $(seq 1 120); do
 done
 [[ $api_ready == true ]] || die "Cloud API did not become ready"
 
-scenario_evidence="$evidence_directory/cross-surface.json"
-(
-  cd "$cloud_root/packages/cloud-client"
-  A3S_CLOUD_C0_ADMIN_TOKEN="$admin_token" \
-    A3S_CLOUD_C0_BASE_URL=http://127.0.0.1:8080/api/v1 \
-    A3S_CLOUD_C0_BOOTSTRAP_TOKEN="$bootstrap_token" \
-    A3S_CLOUD_C0_CLI_BIN="$cli_binary" \
-    A3S_CLOUD_C0_CLOUD_REVISION="$cloud_revision" \
-    A3S_CLOUD_C0_CONFORMANCE=1 \
-    A3S_CLOUD_C0_EVIDENCE_FILE="$scenario_evidence" \
-    A3S_CLOUD_C0_RESTRICTED_TOKEN="$restricted_token" \
-    bun test src/cross-surface.test.ts --timeout 60000
-) 2>&1 | tee "$evidence_directory/cross-surface-test.log"
+scenario_evidence="$evidence_directory/$scenario_evidence_name"
+scenario_log="$evidence_directory/$scenario_log_name"
+case "$scenario" in
+cross-surface)
+  (
+    cd "$cloud_root/packages/cloud-client"
+    A3S_CLOUD_C0_ADMIN_TOKEN="$admin_token" \
+      A3S_CLOUD_C0_BASE_URL=http://127.0.0.1:8080/api/v1 \
+      A3S_CLOUD_C0_BOOTSTRAP_TOKEN="$bootstrap_token" \
+      A3S_CLOUD_C0_CLI_BIN="$cli_binary" \
+      A3S_CLOUD_C0_CLOUD_REVISION="$cloud_revision" \
+      A3S_CLOUD_C0_CONFORMANCE=1 \
+      A3S_CLOUD_C0_EVIDENCE_FILE="$scenario_evidence" \
+      A3S_CLOUD_C0_RESTRICTED_TOKEN="$restricted_token" \
+      bun test src/cross-surface.test.ts --timeout 60000
+  ) 2>&1 | tee "$scenario_log"
+  ;;
+management-mcp)
+  (
+    cd "$cloud_root/packages/cloud-client"
+    A3S_CLOUD_C0_MCP_ADMIN_TOKEN="$admin_token" \
+      A3S_CLOUD_C0_MCP_BASE_URL=http://127.0.0.1:8080/api/v1 \
+      A3S_CLOUD_C0_MCP_BOOTSTRAP_TOKEN="$bootstrap_token" \
+      A3S_CLOUD_C0_MCP_CLOUD_REVISION="$cloud_revision" \
+      A3S_CLOUD_C0_MCP_CONFORMANCE=1 \
+      A3S_CLOUD_C0_MCP_EVIDENCE_FILE="$scenario_evidence" \
+      A3S_CLOUD_C0_MCP_READ_ONLY_TOKEN="$restricted_token" \
+      bun test src/management-mcp-conformance.test.ts --timeout 60000
+  ) 2>&1 | tee "$scenario_log"
+  ;;
+esac
 
-[[ -s $scenario_evidence ]] || die "cross-surface scenario did not write evidence"
+[[ -s $scenario_evidence ]] || die "$scenario scenario did not write evidence"
 
 admin_digest="sha256:$(printf '%s' "$admin_token" | openssl dgst -sha256 | awk '{print $NF}')"
 restricted_digest="sha256:$(printf '%s' "$restricted_token" | openssl dgst -sha256 | awk '{print $NF}')"
@@ -194,6 +238,25 @@ revoked_token_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postg
   --command="select count(*) from api_tokens where token_hash = '$restricted_digest' and revoked_at is not null")"
 [[ $revoked_token_count == 1 ]] || die "restricted token revocation was not durable"
 
+if [[ $scenario == management-mcp ]]; then
+  mcp_project_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from projects where name in ('MCP Conformance Project', 'MCP Foreign Project')")"
+  [[ $mcp_project_count == 2 ]] || die "PostgreSQL did not retain the two expected MCP projects"
+  hidden_project_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
+  [[ $hidden_project_count == 0 ]] || die "hidden MCP mutation changed PostgreSQL state"
+  mcp_idempotency_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from idempotency_records where idempotency_key = 'c0:mcp:rest-project'")"
+  [[ $mcp_idempotency_count == 1 ]] || die "REST-to-MCP replay did not preserve one idempotency record"
+  read_only_scope_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from api_tokens where token_hash = '$restricted_digest' and scopes = '[\"cloud:read\"]'::jsonb and revoked_at is not null")"
+  [[ $read_only_scope_count == 1 ]] || die "read-only MCP scope or revocation was not durable"
+fi
+
 database_dump="$run_directory/postgres.sql"
 docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
   pg_dump --dbname=a3s_cloud --username=a3s_cloud --data-only --no-owner --no-privileges \
@@ -205,7 +268,7 @@ for credential in \
   for candidate in \
     "$database_dump" \
     "$evidence_directory/cloud-api.log" \
-    "$evidence_directory/cross-surface-test.log" \
+    "$scenario_log" \
     "$evidence_directory/postgres.log" \
     "$scenario_evidence"; do
     if grep --fixed-strings --quiet -- "$credential" "$candidate"; then
@@ -214,8 +277,19 @@ for credential in \
   done
 done
 
-printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n' \
-  >"$evidence_directory/persistence-check.txt"
-printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s source=%s contract=1.0.0\n' \
-  "$cloud_revision" "$runtime_revision" "$source_state" \
-  | tee "$evidence_directory/result.txt"
+{
+  printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
+  if [[ $scenario == management-mcp ]]; then
+    printf 'mcp_project_rows=2\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nread_only_scope_rows=1\n'
+  fi
+} >"$evidence_directory/persistence-check.txt"
+
+if [[ $scenario == cross-surface ]]; then
+  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s source=%s contract=1.0.0\n' \
+    "$cloud_revision" "$runtime_revision" "$source_state" \
+    | tee "$evidence_directory/result.txt"
+else
+  printf 'A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS cloud=%s runtime=%s source=%s protocol=2025-06-18 contract=1.0.0\n' \
+    "$cloud_revision" "$runtime_revision" "$source_state" \
+    | tee "$evidence_directory/result.txt"
+fi
