@@ -1448,6 +1448,19 @@ log cursors remain opaque and limits stay bounded. Later mutation and MCP
 surfaces must continue through this API and the same application commands and
 queries.
 
+The first `C0.2` management MCP surface is a presentation adapter beside REST,
+not a new application or infrastructure layer. `POST /api/v1/mcp` implements
+stateless Streamable HTTP JSON-RPC for MCP `2025-06-18`; global authentication
+loads the current API token through the Identity A3S ORM repository on every
+request. The adapter derives its organization only from the authenticated
+principal, filters and rechecks mutation tools by effective scope, rejects
+batches and foreign origins, and dispatches Project, Environment, and search
+tools to the same `CommandBus` and `QueryBus` handlers used by REST. Tool
+structured content contains the standard API success or business-error
+envelope. It has no session database, direct repository access, Redis path,
+node transport, or business rules. See the
+[management MCP contract](management-mcp.md).
+
 The first CLI mutation slice exposes Workload stop and rollback, Deployment
 cancel, and BuildRun cancel and retry. Every invocation requires a caller-owned
 visible-ASCII idempotency key of at most 255 bytes; the shared client validates

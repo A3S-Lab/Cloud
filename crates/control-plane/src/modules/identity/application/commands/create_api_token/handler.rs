@@ -53,7 +53,13 @@ impl CommandHandler<CreateApiToken> for CreateApiTokenHandler {
                 }
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            if !scopes.is_subset(&command.issuer_scopes) {
+            // Every authenticated organization token already has baseline read access.
+            // This explicit scope lets a token manager delegate that access without a write scope.
+            let mut issuer_scopes = command.issuer_scopes;
+            issuer_scopes.insert(
+                ApiTokenScope::parse(ApiTokenScope::CLOUD_READ).map_err(BootError::Internal)?,
+            );
+            if !scopes.is_subset(&issuer_scopes) {
                 return Ok(Err(ApplicationError::Forbidden(
                     "API token scopes cannot exceed the issuer's scopes".into(),
                 )));

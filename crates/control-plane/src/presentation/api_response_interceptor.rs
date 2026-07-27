@@ -39,6 +39,18 @@ pub fn application_error_response(
     error: ApplicationError,
     request_id: Uuid,
 ) -> Result<BootResponse> {
+    let envelope = application_error_envelope(error, request_id);
+    let status = envelope.code;
+    Ok(BootResponse::json_with_status(status, &envelope)?
+        .with_header("x-request-id", request_id.to_string())
+        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION)
+        .with_header("x-a3s-api-envelope", "1"))
+}
+
+pub(crate) fn application_error_envelope(
+    error: ApplicationError,
+    request_id: Uuid,
+) -> ApiErrorResponse {
     let (status, status_code, message) = match error {
         ApplicationError::Invalid(message) => (422, "UNPROCESSABLE_ENTITY", message),
         ApplicationError::NotFound(message) => (404, "NOT_FOUND", message),
@@ -51,18 +63,28 @@ pub fn application_error_response(
             (500, "INTERNAL_SERVER_ERROR", "Internal server error".into())
         }
     };
-    let envelope = ApiErrorResponse {
+    ApiErrorResponse {
         code: status,
         status_code: status_code.into(),
         message,
         details: json!({}),
         request_id,
         timestamp: Utc::now(),
-    };
-    Ok(BootResponse::json_with_status(status, &envelope)?
-        .with_header("x-request-id", request_id.to_string())
-        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION)
-        .with_header("x-a3s-api-envelope", "1"))
+    }
+}
+
+pub(crate) fn api_success_envelope<T>(
+    status: u16,
+    data: T,
+    request_id: Uuid,
+) -> ApiSuccessResponse<T> {
+    ApiSuccessResponse {
+        code: status,
+        message: "Success".into(),
+        data,
+        request_id,
+        timestamp: Utc::now(),
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -99,13 +121,7 @@ fn success_response(response: BootResponse, request_id: Uuid) -> Result<BootResp
         Value::String(String::from_utf8_lossy(response.body()).into_owned())
     };
     let status = response.status();
-    let envelope = ApiSuccessResponse {
-        code: status,
-        message: "Success".into(),
-        data,
-        request_id,
-        timestamp: Utc::now(),
-    };
+    let envelope = api_success_envelope(status, data, request_id);
     copy_headers(
         &response,
         BootResponse::json_with_status(status, &envelope)?,

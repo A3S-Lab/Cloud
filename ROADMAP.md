@@ -208,9 +208,12 @@ repository currently has no configured G0 provider secrets.
   token-digest persistence through A3S ORM, and zero plaintext credentials in
   API/CLI evidence or the PostgreSQL dump.
 
-`C0.1` is verified. `C0` remains in progress, with scoped management MCP next
-under `C0.2`. Grant-derived search is a separate `C0.3` authorization outcome;
-the current search boundary is the organization tenant guard.
+`C0.1` is verified. `C0` remains in progress. The first `C0.2` slice provides
+stateless scoped management MCP for core Project, Environment, and authorized
+search commands and queries; broader curated tool coverage and real
+PostgreSQL cross-surface evidence remain. Grant-derived search is a separate
+`C0.3` authorization outcome; the current search boundary is the organization
+tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -309,7 +312,7 @@ format never becomes a second mutable source of truth.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, and automation contracts |
-| `C0.2` | Planned | Scoped management MCP over the same commands and queries |
+| `C0.2` | In progress | Scoped management MCP over the same commands and queries |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
@@ -345,8 +348,14 @@ route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
 PostgreSQL, proves replay and authorization consistency, and rejects plaintext
-credentials across responses, logs, and persisted data. Work now advances to
-`C0.2` without adding business rules to a presentation surface.
+credentials across responses, logs, and persisted data. The first `C0.2` slice
+adds raw stateless Streamable HTTP JSON-RPC, current-token scope-derived tool
+discovery, organization context derived only from the authenticated principal,
+three core queries, and two idempotent create commands through the existing
+application buses. It rejects batches, foreign origins, hidden-tool invocation,
+forged organization input, and revoked tokens without adding business rules or
+a persistence path to the presentation surface. Broader curated tools and real
+PostgreSQL conformance remain before `C0.2` verification.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 
