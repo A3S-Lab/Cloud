@@ -436,7 +436,7 @@ second API specification.
 
 ### Use the Cloud CLI
 
-The in-progress `C0.1` automation surface uses the same typed client as the web console.
+The verified `C0.1` automation surface uses the same typed client as the web console.
 The token is accepted only from `A3S_CLOUD_TOKEN`; it is never accepted as an
 argument or written to a context file.
 
@@ -603,7 +603,14 @@ pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record
 the deprecation version and date, and retain a minimum 180-day sunset window.
-Only real cross-surface automation evidence remains for `C0.1`.
+
+The real [`C0.1` cross-surface gate](tools/c0-conformance/README.md) runs raw
+REST, the exact shared `CloudApi` import used by Web, and the compiled CLI
+against one control-plane process and PostgreSQL 17 database. It proves
+cross-surface idempotency replay, stable conflicts, authorized search,
+cross-tenant denial, immediate token revocation, A3S ORM persistence, and zero
+plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
+verified; scoped management MCP is the next `C0.2` control-surface slice.
 
 ## Platform Model
 
@@ -916,6 +923,7 @@ Real-provider and release certification must run on an isolated Linux host.
 Use the repository-owned instructions rather than copying partial commands from
 the README:
 
+- [`C0.1` Cross-Surface Conformance](tools/c0-conformance/README.md)
 - [Runtime Conformance](tools/runtime-conformance/README.md)
 - [Clean-Host Release Conformance](tools/release-conformance/README.md)
 - [Production Web Delivery](deploy/web/README.md)

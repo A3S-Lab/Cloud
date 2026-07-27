@@ -1588,6 +1588,18 @@ organization authorization only. Grant-derived filtering and role-focused
 search remain `C0.3` work and must be enforced by Cloud queries rather than
 hidden navigation.
 
+The `C0.1` release gate starts the production control-plane binary with the
+shipped ACL and PostgreSQL 17. Raw REST bootstraps the tenant, the exact
+`CloudApi` import consumed by React creates a Project, and the independently
+compiled CLI replays that command with the same idempotency key. The reverse
+REST-to-CLI replay covers Environment creation, while both client consumers
+must return the same authorized search IDs. The gate also verifies stable
+conflict responses, Web and CLI cross-tenant denial, next-request token
+revocation, the two expected digest-only API-token rows through A3S ORM, and a
+credential-free PostgreSQL dump. This evidence exercises presentation adapters
+over one application and persistence path; it does not move authorization or
+idempotency rules into the client packages.
+
 Workload create/update and SourceRevision deployment use a versioned A3S ACL
 admission boundary. The CLI reads at most 64 KiB of valid UTF-8 and transports
 the exact bytes as `application/vnd.a3s.acl`; it does not parse or normalize

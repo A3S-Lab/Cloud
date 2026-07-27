@@ -200,11 +200,17 @@ repository currently has no configured G0 provider secrets.
   `1.0.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
-  minimum sunset window.
+  minimum sunset window; and
+- the real `C0.1` conformance gate runs raw REST, the exact shared client import
+  used by Web, and the compiled CLI against one control-plane process and
+  PostgreSQL 17. It proves cross-surface idempotency replay, stable conflicts,
+  authorized-search parity, tenant denial, immediate token revocation, expected
+  token-digest persistence through A3S ORM, and zero plaintext credentials in
+  API/CLI evidence or the PostgreSQL dump.
 
-`C0.1` remains in progress only because real cross-surface automation evidence
-is still required. Grant-derived search is a separate `C0.3` authorization
-outcome; the current search boundary is the organization tenant guard.
+`C0.1` is verified. `C0` remains in progress, with scoped management MCP next
+under `C0.2`. Grant-derived search is a separate `C0.3` authorization outcome;
+the current search boundary is the organization tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -300,20 +306,20 @@ format never becomes a second mutable source of truth.
 
 ### 5.3 `C0`: control surfaces and team operations
 
-| Sub-gate | Outcome |
-| --- | --- |
-| `C0.1` | REST/CLI parity, stable errors, authorized search, and automation contracts |
-| `C0.2` | Scoped management MCP over the same commands and queries |
-| `C0.3` | Memberships, grants, role-focused console, attribution, notifications, and audit |
-| `C0.4` | Outbound-protocol exec and terminal with bounded sessions and full audit |
+| Sub-gate | State | Outcome |
+| --- | --- | --- |
+| `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, and automation contracts |
+| `C0.2` | Planned | Scoped management MCP over the same commands and queries |
+| `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
+| `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
 No presentation surface owns business rules or bypasses tenant guards,
 idempotency, operations, or audit.
 
-The implemented `C0.1` slices establish the shared typed transport,
+The verified `C0.1` slices establish the shared typed transport,
 non-persistent environment/flag context, safe output and exit-code contracts,
-read-only tenant commands, then adds workload, deployment, route, BuildRun,
-signed-evidence, and bounded paged-log queries. It does not close `C0.1`; the
+read-only tenant commands, then add workload, deployment, route, BuildRun,
+signed-evidence, and bounded paged-log queries. The
 operational mutation slice adds explicit idempotent stop, rollback, cancel, and
 retry commands, while the desired-state slice adds Cloud-admitted A3S ACL for
 Workload create/update and SourceRevision deployment. The core-resource slice
@@ -336,9 +342,11 @@ bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
 public raw OpenAPI v1 snapshot, shared `1.0.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
-minimum 180-day replacement-bound deprecation policy. Remaining cross-surface
-evidence work above must land against the same client and application commands
-or queries.
+minimum 180-day replacement-bound deprecation policy. The final conformance
+slice runs raw REST, the Web client import, and compiled CLI against real
+PostgreSQL, proves replay and authorization consistency, and rejects plaintext
+credentials across responses, logs, and persisted data. Work now advances to
+`C0.2` without adding business rules to a presentation surface.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 
@@ -572,7 +580,7 @@ The default portfolio priority is:
 1. preserve the verified `E0` release and its clean-host regression gate;
 2. execute and retain the remaining operator-owned `G0` certification through
    the implemented private-provider and signed-evidence process-death gates;
-3. advance `C0.1` and the first `S0` foundation independently when staffed;
+3. advance `C0.2` and the first `S0` foundation independently when staffed;
 4. preserve the closed `H0.1` real-provider Claim certification while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
