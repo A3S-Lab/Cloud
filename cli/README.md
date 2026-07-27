@@ -244,7 +244,7 @@ authoritative `replayed` value, and the checksum-verified Bash installation
 invocation. An unexpected response field or upstream error cannot render the
 submitted enrollment credential.
 
-This is an in-progress `C0.1` surface. Tenant and operational reads plus
+This is the verified `C0.1` automation surface. Tenant and operational reads plus
 explicitly idempotent operational mutations and ACL-backed Workload
 create/update/source deployment are implemented. Core Organization, Project,
 and Environment creation and version-checked node lifecycle transitions are
@@ -260,5 +260,6 @@ bootstrap is implemented with standard-input-only credential issuance,
 digest-only Fleet persistence, and a checksum-verified installation invocation.
 Organization-scoped authorized search parity is implemented through the same
 typed client and is also available in the Web console. The
-compatibility/deprecation gate and real cross-surface automation evidence remain
-planned.
+compatibility/deprecation gate passes, and the real cross-surface gate proves
+raw REST, the Web client import, and this compiled CLI against one Cloud process
+and PostgreSQL database. Scoped management MCP remains the next `C0.2` slice.
