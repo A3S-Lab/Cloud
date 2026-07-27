@@ -146,16 +146,33 @@ docker run --detach --name "$postgres_container" --pull=never \
 
 postgres_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$postgres_container")"
 [[ $postgres_port =~ ^[0-9]+$ ]] || die "PostgreSQL host port is invalid"
+# The image exposes a transient bootstrap postmaster before restarting as PID 1.
+# Bind readiness to one stable server identity so migrations never race that restart.
 postgres_ready=false
+postgres_ready_identity=''
+postgres_ready_streak=0
 for _ in $(seq 1 60); do
-  if docker exec "$postgres_container" pg_isready --dbname=a3s_cloud --username=a3s_cloud \
-    >/dev/null 2>&1; then
-    postgres_ready=true
-    break
+  postgres_identity="$(docker exec "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command='select pg_postmaster_start_time()' 2>/dev/null || true)"
+  if [[ -n $postgres_identity ]]; then
+    if [[ $postgres_identity == "$postgres_ready_identity" ]]; then
+      postgres_ready_streak=$((postgres_ready_streak + 1))
+    else
+      postgres_ready_identity="$postgres_identity"
+      postgres_ready_streak=1
+    fi
+    if ((postgres_ready_streak >= 3)); then
+      postgres_ready=true
+      break
+    fi
+  else
+    postgres_ready_identity=''
+    postgres_ready_streak=0
   fi
   sleep 1
 done
-[[ $postgres_ready == true ]] || die "PostgreSQL did not become ready"
+[[ $postgres_ready == true ]] || die "PostgreSQL did not become stably ready"
 [[ -z $(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$postgres_container") ]] ||
   die "PostgreSQL unexpectedly owns an anonymous volume"
 postgres_version="$(docker exec "$postgres_container" postgres --version)"
