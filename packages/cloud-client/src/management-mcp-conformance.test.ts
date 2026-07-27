@@ -253,6 +253,24 @@ conformanceIt(
         arguments: { buildRunId: missingOperationalId },
         label: 'MCP missing BuildRun lookup',
       },
+      {
+        id: 34,
+        name: 'a3s_cloud_workload_logs_get',
+        arguments: { workloadId: missingOperationalId, revisionId: missingOperationalId },
+        label: 'MCP missing workload log lookup',
+      },
+      {
+        id: 35,
+        name: 'a3s_cloud_build_run_logs_get',
+        arguments: { buildRunId: missingOperationalId },
+        label: 'MCP missing BuildRun log lookup',
+      },
+      {
+        id: 36,
+        name: 'a3s_cloud_build_evidence_get',
+        arguments: { buildRunId: missingOperationalId },
+        label: 'MCP missing build evidence lookup',
+      },
     ]) {
       const missing = await callTool(
         environment,
@@ -282,6 +300,30 @@ conformanceIt(
         id: 33,
         name: 'a3s_cloud_build_runs_list',
         arguments: { projectId, environmentId, limit: 201 },
+      },
+      {
+        id: 37,
+        name: 'a3s_cloud_workload_logs_get',
+        arguments: { workloadId: missingOperationalId, revisionId: missingOperationalId, limit: 0 },
+      },
+      {
+        id: 38,
+        name: 'a3s_cloud_build_run_logs_get',
+        arguments: { buildRunId: missingOperationalId, limit: 257 },
+      },
+      {
+        id: 39,
+        name: 'a3s_cloud_build_run_logs_get',
+        arguments: { buildRunId: missingOperationalId, cursor: '1' },
+      },
+      {
+        id: 40,
+        name: 'a3s_cloud_workload_logs_get',
+        arguments: {
+          workloadId: missingOperationalId,
+          revisionId: missingOperationalId,
+          stream: 'combined',
+        },
       },
     ]) {
       const rejected = await mcpRequest(
@@ -383,7 +425,7 @@ conformanceIt(
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v2',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v3',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
@@ -418,6 +460,7 @@ conformanceIt(
         'rest-to-mcp-idempotency-replay',
         'operational-read-query-catalog',
         'bounded-operational-query-arguments',
+        'paged-log-and-evidence-query-boundaries',
         'principal-derived-tenant-context',
         'foreign-and-missing-resource-error-equivalence',
         'immediate-token-revocation',

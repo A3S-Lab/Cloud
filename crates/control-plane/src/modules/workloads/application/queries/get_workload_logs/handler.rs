@@ -1,5 +1,5 @@
 use super::GetWorkloadLogs;
-use crate::modules::fleet::application::{NodeLogReadQuery, NodeLogReader};
+use crate::modules::fleet::application::{NodeLogReadQuery, NodeLogReader, MAX_LOG_PAGE_SIZE};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::fleet::domain::services::ILogChunkStore;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -36,10 +36,10 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
         let workloads = Arc::clone(&self.workloads);
         let logs = self.logs.clone();
         Box::pin(async move {
-            if query.limit == 0 || query.limit > 256 {
-                return Ok(Err(ApplicationError::Invalid(
-                    "workload log limit must be between 1 and 256".into(),
-                )));
+            if query.limit == 0 || query.limit > MAX_LOG_PAGE_SIZE {
+                return Ok(Err(ApplicationError::Invalid(format!(
+                    "workload log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
+                ))));
             }
             let workload = match workloads
                 .find_workload(query.organization_id, query.workload_id)

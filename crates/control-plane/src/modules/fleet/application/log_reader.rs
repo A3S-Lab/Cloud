@@ -11,6 +11,8 @@ use a3s_cloud_contracts::NodeLogChunkReport;
 use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogStream};
 use std::sync::Arc;
 
+pub const MAX_LOG_PAGE_SIZE: u16 = 256;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeLogGapReason {
     Missing,
@@ -70,10 +72,10 @@ impl NodeLogReader {
     }
 
     pub async fn read(&self, query: NodeLogReadQuery) -> ApplicationResult<NodeLogPage> {
-        if query.limit == 0 || query.limit > 256 {
-            return Err(ApplicationError::Invalid(
-                "log limit must be between 1 and 256".into(),
-            ));
+        if query.limit == 0 || query.limit > MAX_LOG_PAGE_SIZE {
+            return Err(ApplicationError::Invalid(format!(
+                "log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
+            )));
         }
         let fetch_limit = usize::from(query.limit) + 1;
         let metadata_query = NodeLogChunkQuery {

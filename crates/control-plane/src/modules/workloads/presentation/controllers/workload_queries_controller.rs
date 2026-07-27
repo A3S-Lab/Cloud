@@ -9,7 +9,7 @@ use crate::modules::workloads::application::{
 use crate::modules::workloads::presentation::dto::{
     DeploymentResponse, WorkloadLogsResponse, WorkloadResponse,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{application_error_response, parse_log_cursor};
 use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use a3s_runtime::contract::RuntimeLogStream;
 use serde::Deserialize;
@@ -219,10 +219,7 @@ fn decode_cursor(cursor: Option<&str>) -> Result<Option<u64>> {
     let Some(cursor) = cursor else {
         return Ok(None);
     };
-    cursor
-        .strip_prefix("v1:")
-        .filter(|sequence| !sequence.is_empty())
-        .and_then(|sequence| sequence.parse::<u64>().ok())
+    parse_log_cursor(cursor)
         .map(Some)
         .ok_or_else(|| BootError::BadRequest("invalid workload log cursor".into()))
 }

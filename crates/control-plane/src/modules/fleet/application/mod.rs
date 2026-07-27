@@ -22,6 +22,7 @@ pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
 pub use log_compaction::LogCompactionWorker;
 pub use log_reader::{
     NodeLogGapReason, NodeLogPage, NodeLogReadQuery, NodeLogReader, NodeLogRecord,
+    MAX_LOG_PAGE_SIZE,
 };
 pub use log_retention::LogRetentionWorker;
 pub use node_artifact_authorizer::NodeArtifactAuthorizer;

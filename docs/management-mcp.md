@@ -10,7 +10,9 @@ The initial `C0.2` slice established the transport, authorization, tenant,
 idempotency, and response boundaries with core Project, Environment, and search
 tools. The operational-read slice adds Node, Operation, Workload, Deployment,
 Route, and BuildRun queries without adding another business or persistence
-path.
+path. The observability-read slice adds bounded Workload and BuildRun log pages
+and signed BuildRun evidence through the same application queries and REST
+response projections.
 
 ## Transport contract
 
@@ -62,11 +64,14 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_operations_list` | Query | None |
 | `a3s_cloud_workloads_list` | Query | None |
 | `a3s_cloud_workloads_get` | Query | None |
+| `a3s_cloud_workload_logs_get` | Query | None |
 | `a3s_cloud_deployments_get` | Query | None |
 | `a3s_cloud_routes_list` | Query | None |
 | `a3s_cloud_routes_get` | Query | None |
 | `a3s_cloud_build_runs_list` | Query | None |
 | `a3s_cloud_build_runs_get` | Query | None |
+| `a3s_cloud_build_run_logs_get` | Query | None |
+| `a3s_cloud_build_evidence_get` | Query | None |
 | `a3s_cloud_projects_create` | Command | `project:write` |
 | `a3s_cloud_environments_create` | Command | `environment:write` |
 
@@ -111,18 +116,36 @@ Mutation tools require a caller-owned idempotency key in their arguments. A
 REST call and an MCP call with the same command input and key resolve to the
 same durable idempotency identity and replay projection.
 
+## Bounded observability reads
+
+`a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
+`cursor`, `limit`, and `stream` arguments. `a3s_cloud_build_run_logs_get`
+accepts `buildRunId` with the same optional page arguments. Cursors use the
+opaque REST-compatible `v1:<sequence>` form, the default page contains 100
+records, the maximum is 256, and `stream` is either `stdout` or `stderr`.
+Responses reuse the REST log DTOs and retain explicit gap records and the next
+opaque cursor.
+
+`a3s_cloud_build_evidence_get` accepts only `buildRunId` and returns the same
+signed SPDX/SLSA evidence projection as REST. The MCP surface performs no live
+node read and exposes no SSE stream: retained log objects, metadata, and
+evidence continue through the existing QueryBus handlers, A3S ORM repositories,
+and configured object store. Existing ingestion redaction and tenant guards
+remain authoritative.
+
 ## Conformance
 
 The dedicated `C0.2` scenario in
 [`tools/c0-conformance`](../tools/c0-conformance/README.md) boots the production
 control-plane binary with the shipped A3S ACL configuration and digest-pinned
-PostgreSQL 17. It proves the exact 15-tool administrator and 13-tool
+PostgreSQL 17. It proves the exact 18-tool administrator and 16-tool
 `cloud:read` catalogs, denies a hidden mutation without a database write,
 replays one REST Project command through MCP using the same durable idempotency
 record, and returns the same `404` business-error contract for foreign and
 missing Projects. It then creates a real Environment, exercises all five
-operational list tools, verifies all five detail tools return bounded
-`NOT_FOUND` envelopes for missing resources, rejects out-of-range limits, and
+operational list tools, verifies all eight detail, log, and evidence tools
+return bounded `NOT_FOUND` envelopes for missing resources, rejects
+out-of-range limits, malformed cursors, and unsupported stream filters, and
 observes token revocation on the next MCP request. The persistence check
 requires the expected Token digests, read-only scope, revocation, Project and
 Environment rows, and zero plaintext credentials in responses, logs, evidence,
@@ -131,9 +154,9 @@ A3S ORM repositories.
 
 ## Current limits
 
-`C0.2` remains in progress. The next slices can admit selected non-secret log,
-evidence, and replay-safe operational commands only with their existing scopes,
-idempotency contracts, and audit boundaries. OAuth 2.1 discovery and consent
-follow only after the token-scoped confused-deputy gate. Secret material, exec,
-terminal access, server-side sessions, and JSON-RPC batching are not exposed by
-this slice; destructive tools remain disabled.
+`C0.2` remains in progress. The next slices can admit selected replay-safe
+operational commands only with their existing scopes, idempotency contracts,
+and audit boundaries. OAuth 2.1 discovery and consent follow only after the
+token-scoped confused-deputy gate. Secret material, exec, terminal access,
+server-side sessions, live log streams, and JSON-RPC batching are not exposed
+by this slice; destructive tools remain disabled.
