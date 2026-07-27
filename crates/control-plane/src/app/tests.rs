@@ -36,6 +36,7 @@ use uuid::Uuid;
 
 mod api_contract_tests;
 mod build_tests;
+mod management_mcp_tests;
 mod platform_tests;
 mod search_tests;
 mod secret_tests;

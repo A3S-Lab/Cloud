@@ -262,4 +262,6 @@ Organization-scoped authorized search parity is implemented through the same
 typed client and is also available in the Web console. The
 compatibility/deprecation gate passes, and the real cross-surface gate proves
 raw REST, the Web client import, and this compiled CLI against one Cloud process
-and PostgreSQL database. Scoped management MCP remains the next `C0.2` slice.
+and PostgreSQL database. The first `C0.2` scoped management MCP slice now reuses
+the same core application commands and queries; it does not change this CLI's
+transport or credential contract.

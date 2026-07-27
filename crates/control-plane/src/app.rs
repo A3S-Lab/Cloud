@@ -102,7 +102,8 @@ use crate::modules::workloads::{
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
-    ApiContractModule, ApiErrorFilter, ApiResponseInterceptor, RequestIdMiddleware, API_PREFIX,
+    ApiContractModule, ApiErrorFilter, ApiResponseInterceptor, ManagementMcpModule,
+    RequestIdMiddleware, API_PREFIX,
 };
 use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
@@ -1172,6 +1173,7 @@ fn build_application_with_health(
         .import(WorkloadsModule)
         .import(EdgeModule)
         .import(PlatformModule::new(&config))
+        .import(ManagementMcpModule)
         .import(ApiContractModule)
         .use_global_middleware(RequestIdMiddleware)
         .use_global_auth()

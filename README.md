@@ -124,6 +124,13 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
   `1.0.0`, and reject incompatible or invalidly deprecated contract changes
+- **Scoped Management MCP Slice**: Serve stateless Streamable HTTP MCP through
+  the same per-request API-token verifier, derive tenant context and tool
+  visibility from the current principal, expose read-only Project,
+  Environment, and authorized-search queries plus scope-gated idempotent create
+  commands through the existing query and command buses, reject batching and
+  cross-origin confusion, and preserve the standard API envelope inside tool
+  results without creating another persistence path
 
 ### Delivery capability matrix
 
@@ -610,7 +617,10 @@ against one control-plane process and PostgreSQL 17 database. It proves
 cross-surface idempotency replay, stable conflicts, authorized search,
 cross-tenant denial, immediate token revocation, A3S ORM persistence, and zero
 plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
-verified; scoped management MCP is the next `C0.2` control-surface slice.
+verified. The first [`C0.2` management MCP](docs/management-mcp.md) slice now
+provides the stateless protocol and scoped core-resource tool catalog; broader
+tool coverage and real PostgreSQL cross-surface evidence remain before `C0.2`
+verification.
 
 ## Platform Model
 

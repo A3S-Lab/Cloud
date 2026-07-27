@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct ApiTokenScope(String);
 
 impl ApiTokenScope {
+    pub const CLOUD_READ: &'static str = "cloud:read";
     pub const PLATFORM_WRITE: &'static str = "platform:write";
     pub const TOKEN_WRITE: &'static str = "token:write";
     pub const PROJECT_WRITE: &'static str = "project:write";
@@ -42,6 +43,7 @@ impl ApiTokenScope {
 
     pub fn bootstrap_scopes() -> std::collections::BTreeSet<Self> {
         [
+            Self::CLOUD_READ,
             Self::PLATFORM_WRITE,
             Self::TOKEN_WRITE,
             Self::PROJECT_WRITE,
