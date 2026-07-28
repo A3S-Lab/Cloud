@@ -11,6 +11,7 @@ mod gateway_certificate;
 mod identity;
 mod journal;
 mod log_shipper;
+mod outbound_batch;
 mod resource_claim;
 mod resource_inventory;
 mod secret;

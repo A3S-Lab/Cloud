@@ -116,8 +116,8 @@ The first release gate is `E0`, and it is verified. Source delivery (`G0`),
 stable control surfaces (`C0`), and stateful foundations (`S0`) may advance as
 independent lanes. Project import (`P0`) depends on the immutable source and
 build contracts from G0. Hosted assets (`A0`) reuse the same source-to-artifact
-path. `A1.0` may consolidate existing sequence streaming, immutable object
-storage, and durable node-agent delivery primitives in parallel; user-visible
+path. `A1.0` has consolidated existing sequence streaming, immutable object
+storage, and durable node-agent delivery primitives; user-visible
 `A1.1` work starts only after `A0` supplies immutable release identities, and
 its approval slice consumes `C0.3` grants and audit. Production multi-node work
 (`H0`) starts only after the product surfaces it must scale have passed their
@@ -1348,7 +1348,7 @@ Deliver the capability through these ordered sub-gates:
 
 | Sub-gate | Work | Dependency |
 | --- | --- | --- |
-| `A1.0` | Extract one shared sequence cursor/SSE transport from the Workload, BuildRun, and Operation streams; consolidate filesystem and S3-compatible immutable-object backends behind one infrastructure client with typed domain adapters and namespaces; extract the node-agent log shipper's durable pending-batch/receipt behavior as a reusable outbound-batch primitive | Verified `E0`; may proceed while `A0` is built |
+| `A1.0` | Extract one shared sequence cursor/SSE transport from the Workload, BuildRun, and Operation streams; consolidate filesystem and S3-compatible immutable-object backends behind one infrastructure client with typed domain adapters and namespaces; extract the node-agent log shipper's durable pending-batch/receipt behavior as a reusable outbound-batch primitive | Verified `E0`; independent of `A0` |
 | `A1.1` | Add `AgentConversation` and `AgentExecution` aggregates, commands, queries, projections, and one monotonically sequenced semantic event stream | Immutable `A0` `AssetRelease` identity plus `A1.0` |
 | `A1.2` | Define a versioned Harness command, event-batch, receipt, cancellation, and recovery contract in `contracts`; carry it over existing Fleet long poll, `node_commands`, leases, and the node-agent journal; run the Agent release through its existing Workload and Runtime identity | `A1.1` |
 | `A1.3` | Resolve and persist immutable Agent, Skill, MCP, workspace, and tool bindings before dispatch; record bounded tool request/result events and correlate audit without copying mutable manifests or secret material | `A1.2` and immutable `A0` releases |
@@ -1380,14 +1380,22 @@ Current `A1.0` implementation:
 - the former filesystem and S3 log-store implementations are removed, and the
   Artifact adapter no longer owns another lock, staging, publication, hashing,
   or raw filesystem read mechanism;
+- `outbound_batch::DurableOutboundBatch` is the sole node-agent lifecycle for
+  staging one typed outbound batch, replaying it exactly after restart,
+  validating its typed receipt, and settling it;
+- `LogShippingState` embeds that primitive transparently in its existing
+  version-1 JSON field. The validated receipt advances every included cursor
+  and removes the pending batch in the same atomic state-file publication;
 - the duplicate `workload_log_stream.rs`, `build_run_log_stream.rs`, and
   `log_cursor.rs` implementations are removed; and
 - unit, HTTP/controller, Management MCP, DTO-redaction, and source-architecture
   tests prevent a domain-local cursor codec, sequence stream, polling loop, or
-  low-level object-store mechanism from returning.
+  low-level object-store mechanism from returning. Node-agent compatibility,
+  restart, receipt-integrity, and architecture tests likewise prevent a second
+  outbound-batch lifecycle.
 
-The node-agent outbound-batch journal/receipt primitive is the remaining
-`A1.0` work.
+These three consolidation slices close `A1.0`. They add no Agent-specific
+queue, cursor, object backend, or node-control channel.
 
 Implement `AgentConversation` as the aggregate that owns the next event
 sequence and conversation lifecycle. Implement `AgentExecution` as the
@@ -2028,9 +2036,9 @@ dates. The next slice is always the smallest vertical behavior that can pass a
 real exit gate.
 
 `A1.0` is a prerequisite consolidation lane, not a parallel Agent platform.
-It may proceed before `A0`, but `A1.1` and later cannot invent temporary release
-identities while waiting for the catalog. The approval slice cannot ship ahead
-of the common `C0.3` grant evaluator and audit chain.
+It is complete without `A0`, but `A1.1` and later cannot invent temporary
+release identities while waiting for the catalog. The approval slice cannot
+ship ahead of the common `C0.3` grant evaluator and audit chain.
 
 E0 is verified, so I0 implementation may proceed in the order above. No
 user-visible Inference capability is claimed before its owning I0 and H0 exit

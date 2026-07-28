@@ -65,7 +65,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Durable Operations**: Persist intent before execution and resume A3S Flow
   operations, leases, retries, cleanup, and projections after interruption
 - **Outbound Node Control**: Enroll Linux nodes, rotate mTLS identities, lease
-  idempotent commands, and receive observations without opening inbound node
+  idempotent commands, persist exact outbound batches until a typed receipt
+  settles them, and receive observations without opening inbound node
   management ports
 - **Versioned Node Inventory**: Detect real host CPU and state-filesystem
   capacity, report Linux memory when available, preserve content-addressed
@@ -92,8 +93,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   without rendering plaintext, and materialize exact bindings only at
   authenticated registry or assigned-node boundaries
 - **Durable Logs**: Ship bounded ordered Runtime logs, preserve explicit gaps,
-  redact bound Secrets, store immutable chunks, and expose cursor and resumable
-  SSE queries
+  redact bound Secrets, replay one exact receipt-gated pending batch after
+  restart, store immutable chunks, and expose cursor and resumable SSE queries
 - **Safe Changes**: Replace an active workload immutably, preserve the prior
   healthy revision until cutover, and roll back by cloning a proven template
   into a new generation
@@ -150,6 +151,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
 | `A0` — Release catalog | Immutable Agent and MCP releases plus Skill publication through the common delivery path | Planned |
+| `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned (`A1.0` verified) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed serving, OpenAI-compatible traffic, scoped keys, Providers, routing, usage, and governed self-service | Planned |
@@ -158,6 +160,15 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 outbound Linux node, Docker-backed stateless workloads, managed HTTPS, ordered
 logs, immutable update and rollback, and repeatable cleanup. Later gates must
 reuse this deployment and reconciliation path.
+
+The `A1.0` consolidation gate is verified. Workload and BuildRun logs share one
+sequence/SSE implementation, Operation snapshots reuse the same polling
+transport without fabricating a sequence, log chunks and node Artifacts share
+one namespaced immutable-object client behind typed adapters, and the node
+agent uses one typed durable outbound-batch primitive for exact restart replay
+and receipt-gated settlement. These are reusable foundations only; user-visible
+Agent execution begins with `A1.1` after `A0` supplies immutable release
+identities.
 
 `G0` already includes GitHub App connections and signed webhooks, private
 repository access, immutable source revisions, BuildRuns, cancellation, retry,

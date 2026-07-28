@@ -1,3 +1,4 @@
+use crate::outbound_batch::{DurableOutboundBatch, OutboundBatchError, OutboundBatchProtocol};
 use crate::state_file::{self, StateLock};
 use crate::{LogShippingConfig, NodeControlClientError, NodeControlTransport, RuntimeLogTarget};
 use a3s_cloud_contracts::{
@@ -39,7 +40,27 @@ struct LogShippingState {
     schema: String,
     node_id: Uuid,
     cursors: BTreeMap<String, BTreeMap<u64, DurableLogCursor>>,
-    pending: Option<NodeLogChunkBatch>,
+    pending: DurableOutboundBatch<NodeLogChunkBatch>,
+}
+
+impl OutboundBatchProtocol for NodeLogChunkBatch {
+    type Receipt = NodeLogChunkReceipt;
+
+    fn validate(&self) -> Result<(), String> {
+        NodeLogChunkBatch::validate(self)
+    }
+
+    fn validate_receipt(&self, receipt: &Self::Receipt) -> Result<(), String> {
+        receipt.validate()?;
+        if receipt.batch_id != self.batch_id
+            || receipt.node_id != self.node_id
+            || usize::from(receipt.accepted_chunks) != self.chunks.len()
+            || usize::from(receipt.accepted_gaps) != self.gaps.len()
+        {
+            return Err("log receipt changed the pending batch identity or record counts".into());
+        }
+        Ok(())
+    }
 }
 
 impl LogShippingState {
@@ -50,7 +71,7 @@ impl LogShippingState {
             schema: Self::SCHEMA.into(),
             node_id,
             cursors: BTreeMap::new(),
-            pending: None,
+            pending: DurableOutboundBatch::empty(),
         }
     }
 
@@ -81,8 +102,8 @@ impl LogShippingState {
                 }
             }
         }
-        if let Some(pending) = &self.pending {
-            pending.validate().map_err(LogShippingError::Invalid)?;
+        self.pending.validate().map_err(outbound_error)?;
+        if let Some(pending) = self.pending.pending() {
             if pending.node_id != self.node_id {
                 return Err(LogShippingError::Invalid(
                     "pending log batch belongs to another node".into(),
@@ -214,7 +235,7 @@ impl FileLogShippingState {
         let _lock =
             StateLock::exclusive(&self.root.join(LOG_SHIPPING_LOCK_FILE)).map_err(state_error)?;
         let mut state = self.read_state()?;
-        if state.pending.is_none() {
+        if !state.pending.is_pending() {
             let original = state.cursors.clone();
             state.retain_targets(targets);
             if state.cursors != original {
@@ -235,34 +256,20 @@ impl FileLogShippingState {
         let _lock =
             StateLock::exclusive(&self.root.join(LOG_SHIPPING_LOCK_FILE)).map_err(state_error)?;
         let mut state = self.read_state()?;
-        if state.pending.is_some() {
-            return Err(LogShippingError::Conflict(
-                "a durable log batch is already pending".into(),
-            ));
-        }
-        state.pending = Some(batch);
+        state.pending.stage(batch).map_err(outbound_error)?;
         state.validate(self.node_id)?;
         self.write_state(&state)
     }
 
     fn commit_sync(&self, receipt: NodeLogChunkReceipt) -> Result<(), LogShippingError> {
-        receipt.validate().map_err(LogShippingError::Invalid)?;
         state_file::ensure_directory(&self.root).map_err(state_error)?;
         let _lock =
             StateLock::exclusive(&self.root.join(LOG_SHIPPING_LOCK_FILE)).map_err(state_error)?;
         let mut state = self.read_state()?;
-        let pending = state.pending.as_ref().ok_or_else(|| {
-            LogShippingError::Conflict("log receipt has no durable pending batch".into())
-        })?;
-        if receipt.batch_id != pending.batch_id
-            || receipt.node_id != pending.node_id
-            || usize::from(receipt.accepted_chunks) != pending.chunks.len()
-            || usize::from(receipt.accepted_gaps) != pending.gaps.len()
-        {
-            return Err(LogShippingError::Invalid(
-                "log receipt changed the pending batch identity or record counts".into(),
-            ));
-        }
+        let pending = state
+            .pending
+            .acknowledge(&receipt)
+            .map_err(outbound_error)?;
         let mut committed = BTreeMap::<(String, u64), DurableLogCursor>::new();
         for report in &pending.chunks {
             committed.insert(
@@ -301,7 +308,6 @@ impl FileLogShippingState {
                 .or_default()
                 .insert(generation, cursor);
         }
-        state.pending = None;
         state.validate(self.node_id)?;
         self.write_state(&state)
     }
@@ -317,7 +323,7 @@ impl FileLogShippingState {
         let _lock =
             StateLock::exclusive(&self.root.join(LOG_SHIPPING_LOCK_FILE)).map_err(state_error)?;
         let mut state = self.read_state()?;
-        if state.pending.is_some() {
+        if state.pending.is_pending() {
             return Err(LogShippingError::Conflict(
                 "cannot mark a log source connected while a batch is pending".into(),
             ));
@@ -387,8 +393,8 @@ impl LogShipper {
     ) -> Result<bool, LogShippingError> {
         validate_targets(targets)?;
         let snapshot = self.state.snapshot(targets.to_vec()).await?;
-        if let Some(pending) = snapshot.pending {
-            self.upload(pending).await?;
+        if let Some(pending) = snapshot.pending.pending() {
+            self.upload(pending.clone()).await?;
             return Ok(true);
         }
         let Some(batch) = self.collect(targets, &snapshot).await? else {
@@ -598,6 +604,13 @@ fn validate_target(unit_id: &str, generation: u64) -> Result<(), LogShippingErro
 
 fn state_error(error: state_file::SecureStateError) -> LogShippingError {
     LogShippingError::State(error.to_string())
+}
+
+fn outbound_error(error: OutboundBatchError) -> LogShippingError {
+    match error {
+        OutboundBatchError::Invalid(message) => LogShippingError::Invalid(message),
+        OutboundBatchError::Conflict(message) => LogShippingError::Conflict(message),
+    }
 }
 
 fn task_error(error: tokio::task::JoinError) -> LogShippingError {

@@ -208,7 +208,7 @@ async fn restart_replays_the_exact_bounded_batch_before_reading_more_logs() {
         .snapshot(targets.clone())
         .await
         .expect("pending state");
-    let pending = persisted.pending.as_ref().expect("durable pending batch");
+    let pending = persisted.pending.pending().expect("durable pending batch");
     assert_eq!(pending.chunks.len(), 2);
     assert!(persisted.cursor("service-1", 1).is_none());
     let first_batch = first_transport
@@ -251,7 +251,7 @@ async fn restart_replays_the_exact_bounded_batch_before_reading_more_logs() {
         .snapshot(targets.clone())
         .await
         .expect("committed state");
-    assert!(committed.pending.is_none());
+    assert!(!committed.pending.is_pending());
     assert_eq!(
         committed
             .cursor("service-1", 1)
@@ -292,7 +292,7 @@ async fn invalid_receipt_keeps_the_pending_batch_and_does_not_advance_the_cursor
         .snapshot(targets.clone())
         .await
         .expect("pending state");
-    assert!(pending.pending.is_some());
+    assert!(pending.pending.is_pending());
     assert!(pending.cursor("service-1", 1).is_none());
 
     *transport.accepted_override.lock().await = None;
@@ -303,7 +303,7 @@ async fn invalid_receipt_keeps_the_pending_batch_and_does_not_advance_the_cursor
         .snapshot(targets)
         .await
         .expect("committed state");
-    assert!(committed.pending.is_none());
+    assert!(!committed.pending.is_pending());
     assert_eq!(
         committed
             .cursor("service-1", 1)
@@ -427,6 +427,8 @@ async fn source_disconnect_replays_exactly_and_is_not_reported_repeatedly() {
         .await
         .expect("pending gap")
         .pending
+        .pending()
+        .cloned()
         .expect("durable pending gap");
     assert!(pending.chunks.is_empty());
     assert_eq!(pending.gaps.len(), 1);
@@ -489,13 +491,13 @@ async fn discontinuity_identity_must_match_the_exact_runtime_query() {
         Err(LogShippingError::Invalid(message))
             if message.contains("requested identity")
     ));
-    assert!(shipper
+    assert!(!shipper
         .state
         .snapshot(targets)
         .await
         .expect("state")
         .pending
-        .is_none());
+        .is_pending());
 }
 
 #[tokio::test]

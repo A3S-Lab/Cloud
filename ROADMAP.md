@@ -279,8 +279,8 @@ Dependency rules:
   baseline.
 - `P0` depends on the immutable source and build contracts from `G0`.
 - `A0` reuses `G0` source, Artifact, publication, and deployment contracts.
-- `A1.0` may consolidate shared infrastructure from the verified `E0` baseline
-  while `A0` is built. `A1.1` and later sub-gates consume immutable `A0`
+- `A1.0` has consolidated shared infrastructure from the verified `E0`
+  baseline. `A1.1` and later sub-gates consume immutable `A0`
   `AssetRelease` identities; approval and governance consume `C0.3` grants and
   audit.
 - `A1` extends Operations and Flow, Fleet node control, Workloads, Runtime,
@@ -407,7 +407,7 @@ authorization, idempotency, Operations, or audit.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
-| `A1.0` | In progress | Consolidate one sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
+| `A1.0` | Verified | One sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
 | `A1.1` | Planned | Add `AgentConversation` and `AgentExecution` aggregates plus one durable, monotonically sequenced semantic event stream |
 | `A1.2` | Planned | Add a versioned Harness command/event protocol over the existing Fleet node-control channel and node-agent journal |
 | `A1.3` | Planned | Pin Agent, Skill, MCP, workspace, and tool bindings to immutable identities and record auditable tool request/result events |
@@ -435,7 +435,7 @@ persistence uses migrations and typed A3S ORM repositories.
 | Immutable objects | Existing filesystem and S3-compatible object backends | Share one low-level content-addressed client while preserving typed domain ports, namespaces, admission limits, and retention policy |
 | Optional Redis | No durable Agent authority | Redis may accelerate ephemeral fan-out only after correctness without it; it never owns conversations, queues, locks, cursors, approvals, or checkpoints |
 
-The first two `A1.0` slices are implemented. One shared sequence component now
+`A1.0` is implemented. One shared sequence component now
 owns the versioned cursor, `Last-Event-ID` precedence, bounded SSE record
 events, and cursor advancement for Workload and BuildRun logs. A separate
 shared polling transport owns interval scheduling, keepalive cadence, and retry
@@ -447,8 +447,14 @@ object client now owns namespaced filesystem and S3-compatible conditional
 creation, exact replay, bounded reads and streams, digest verification,
 idempotent deletion, and health probes. Log chunks and node Artifacts retain
 typed domain adapters, admission rules, receipts, and retention policy without
-reimplementing those mechanisms. `A1.0` remains in progress only until the
-node-agent outbound-batch primitive is consolidated.
+reimplementing those mechanisms. The node-agent
+`outbound_batch::DurableOutboundBatch` primitive now owns single-pending-batch
+admission, exact restart replay, typed receipt validation, and settlement.
+`LogShippingState` embeds it without changing the version-1 JSON shape, so
+cursor advancement and pending-batch removal remain one atomic state write.
+Focused compatibility, restart, receipt-integrity, and source-architecture
+tests prevent a second outbound-batch lifecycle. Together these slices close
+`A1.0` without adding another queue, cursor, or node-control channel.
 
 Google AX may be evaluated only as an optional adapter behind the versioned
 Harness port after `A1.5` and after its integration contract is stable. Cloud
@@ -675,8 +681,8 @@ The default portfolio priority is:
 1. preserve the verified `E0` release and its clean-host regression gate;
 2. execute and retain the remaining operator-owned `G0` certification through
    the implemented private-provider and signed-evidence process-death gates;
-3. start `A1.0` infrastructure consolidation while advancing `C0.3` and the
-   first `S0` foundation independently when staffed;
+3. preserve the verified `A1.0` shared-infrastructure regressions while
+   advancing `C0.3` and the first `S0` foundation independently when staffed;
 4. preserve the closed `H0.1` real-provider Claim certification while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;

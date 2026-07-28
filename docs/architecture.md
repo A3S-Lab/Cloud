@@ -707,11 +707,14 @@ labels remain reference-only throughout.
 
 Successful Runtime apply/remove completions are also projected from the command
 journal into restart-safe active log targets. A separate node-agent loop reads
-ordered provider chunks after the durable cursor, persists at most one pending
-batch before upload, and replays that exact batch ID and content after restart.
-It advances per-unit-generation cursors only after an exact validated receipt.
-ACL configuration bounds polling independently and closes each batch at 256
-chunk/gap records and 16 MiB of log text.
+ordered provider chunks after the durable cursor and stages at most one batch
+through the shared `outbound_batch::DurableOutboundBatch` primitive before
+upload. The typed batch protocol validates the exact receipt before settlement,
+and restart replays the identical batch ID and content before reading more
+provider logs. `LogShippingState` embeds the primitive in its existing
+version-1 JSON field, so per-unit-generation cursor advancement and pending
+removal publish atomically. ACL configuration bounds polling independently and
+closes each batch at 256 chunk/gap records and 16 MiB of log text.
 
 Before Docker returns stdout/stderr, the driver resolves every immutable Secret
 reference bound to that Runtime unit. Authorization or materialization failure
