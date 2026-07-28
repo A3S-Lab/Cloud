@@ -24,19 +24,20 @@ Cloud control plane and Gateway data plane. This document owns detailed
 implementation order, exit criteria, and evidence. It reuses the roadmap
 boundary without creating a second Gateway control loop.
 
-The roadmap has three delivery horizons:
+The roadmap has four delivery horizons:
 
 | Horizon | Required gates | Product outcome |
 | --- | --- | --- |
 | Usable service platform | `R0` through `E0` | One operator can deploy, reach, observe, update, and roll back one stateless Service on one Linux node |
 | Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, multi-service import, stable automation surfaces, and A3S asset releases use the same deployment path |
+| Agent execution platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases become durable, resumable, approval-governed executions with replayable trajectories |
 | Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable |
 
 These horizons are cumulative. A broader interface or import format never
 creates a second orchestration path and never weakens an earlier durability,
 security, or recovery gate.
 
-Inference is an optional product profile over the same platform, not a fourth
+Inference is an optional product profile over the same platform, not another
 deployment engine. Its single-node accelerator and model-serving gates begin
 after E0; its multi-node replica and distributed-serving gates consume H0's
 generic replica, placement, target-set, networking, and HA primitives. The
@@ -83,6 +84,8 @@ flowchart LR
     E0 --> C0[Control surfaces and team operations]
     G0 --> P0[Developer workflows and project import]
     G0 --> A0[Agent/MCP/Skill hosting]
+    A0 --> A1[Durable Agent execution]
+    C0 -->|C0.3 grants and audit| A1
     E0 --> S0[Databases, volumes, backups]
     E0 --> I00[I0.0 versioned accelerator contracts]
     E0 --> H01[H0.1 managed replica and claim foundation]
@@ -101,6 +104,7 @@ flowchart LR
     P0 --> H04[H0.4 production deployment and HA]
     C0 --> H04
     A0 --> H04
+    A1 --> H04
     S0 --> H04
     H03 --> H04
     H04 --> H05[H0.5 measured autoscaling and hardening]
@@ -112,14 +116,18 @@ The first release gate is `E0`, and it is verified. Source delivery (`G0`),
 stable control surfaces (`C0`), and stateful foundations (`S0`) may advance as
 independent lanes. Project import (`P0`) depends on the immutable source and
 build contracts from G0. Hosted assets (`A0`) reuse the same source-to-artifact
-path. Production multi-node work (`H0`) starts only after the product surfaces
-it must scale have passed their single-node gates.
+path. `A1.0` may consolidate existing sequence streaming, immutable object
+storage, and durable node-agent delivery primitives in parallel; user-visible
+`A1.1` work starts only after `A0` supplies immutable release identities, and
+its approval slice consumes `C0.3` grants and audit. Production multi-node work
+(`H0`) starts only after the product surfaces it must scale have passed their
+single-node gates.
 
 H0 is delivered through the numbered sub-gates below. H0.1 through H0.3 may be
 proved against an owning profile after that profile's single-node gate. I0 uses
 that rule to exercise inference-neutral replica, claim, target-set, placement,
 and network primitives. This does not mark the broader H0 milestone complete
-for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
+for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
@@ -158,6 +166,7 @@ authoritative model:
 | Web, worker, and scheduled Task profiles | `P0` | Compile explicit product profiles into the common Runtime Service or Task contracts |
 | CLI, management MCP, collaboration, notifications, and audited exec | `C0` | Reuse public commands, queries, scopes, idempotency, and audit |
 | Agent, MCP, and Skill releases | `A0` | A3S-specific catalog over the common build and deployment path |
+| Agent conversations, executions, approvals, checkpoints, forks, and trajectories | `A1` | Cloud-owned semantic execution history over A0 releases, Operations/Flow, Fleet node control, Workloads, Runtime, and shared streaming; no second controller or data plane |
 | Databases, volumes, and backups | `S0` | Model state explicitly with fencing and verified restore |
 | Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
 | Generic accelerator inventory, claims, and enforcement | `I0.0`/`I0.1` with `H0` placement ownership | Extend Runtime, Fleet, and Workloads without introducing model or backend semantics into their core contracts |
@@ -1160,8 +1169,9 @@ The scoped management MCP runs through the same application commands and
 queries. Core-resource tools, ten operational resource reads, two bounded
 paged-log reads, one signed-evidence read, and five replay-safe operational
 commands pass its real PostgreSQL cross-surface gate.
-Desired-state files remain A3S ACL; the CLI must not add JSON or TOML
-configuration. No CLI command may read PostgreSQL or contact a node.
+Desired-state files and CLI configuration remain A3S ACL; the CLI must not add
+a second configuration format. No CLI command may read PostgreSQL or contact a
+node.
 
 ### Work
 
@@ -1318,7 +1328,118 @@ generic asset metadata platform.
 - Database constraints, parsers, API schemas, and UI contain no compatibility
   asset kinds.
 
-## 13. Milestone S0: databases, volumes, and backups
+## 13. Milestone A1: durable Agent execution
+
+### Goal
+
+Turn an immutable `A0` Agent release into a tenant-scoped, durable, resumable,
+and approval-governed execution without introducing a second scheduler, event
+log, node-control channel, object store, audit path, or source of truth.
+
+The Cloud API is the client control boundary. A Harness executes behind a typed
+port on an existing managed Workload, while A3S Flow, Operations, Fleet node
+control, and A3S Runtime retain their existing responsibilities. Gateway may
+transport a future native protocol, but it never owns conversations,
+executions, approvals, checkpoints, or replay.
+
+### Work
+
+Deliver the capability through these ordered sub-gates:
+
+| Sub-gate | Work | Dependency |
+| --- | --- | --- |
+| `A1.0` | Extract one shared sequence cursor/SSE transport from the Workload, BuildRun, and Operation streams; consolidate filesystem and S3-compatible immutable-object backends behind one infrastructure client with typed domain adapters and namespaces; extract the node-agent log shipper's durable pending-batch/receipt behavior as a reusable outbound-batch primitive | Verified `E0`; may proceed while `A0` is built |
+| `A1.1` | Add `AgentConversation` and `AgentExecution` aggregates, commands, queries, projections, and one monotonically sequenced semantic event stream | Immutable `A0` `AssetRelease` identity plus `A1.0` |
+| `A1.2` | Define a versioned Harness command, event-batch, receipt, cancellation, and recovery contract in `contracts`; carry it over existing Fleet long poll, `node_commands`, leases, and the node-agent journal; run the Agent release through its existing Workload and Runtime identity | `A1.1` |
+| `A1.3` | Resolve and persist immutable Agent, Skill, MCP, workspace, and tool bindings before dispatch; record bounded tool request/result events and correlate audit without copying mutable manifests or secret material | `A1.2` and immutable `A0` releases |
+| `A1.4` | Add grant-checked approval checkpoints, expiry policy, logical pause/resume, denial/cancellation, and exact resume-command replay through Operations and the Harness lifecycle | `A1.3` plus `C0.3` grants and audit |
+| `A1.5` | Persist immutable checkpoint objects and projections, create explicit parent/fork lineage, expose trajectory query/export and telemetry correlation, and close the real-provider crash and cleanup gates | `A1.4` |
+
+Implement `AgentConversation` as the aggregate that owns the next event
+sequence and conversation lifecycle. Implement `AgentExecution` as the
+aggregate that owns one run, its immutable bindings, current logical state,
+Operation identity, Harness identity, and optional parent execution. Tool
+calls, approvals, checkpoint creation, model output, failures, and terminal
+state are semantic execution events, not Flow history or Runtime logs.
+
+The bounded context may add only these durable record families:
+
+- `agent_conversations`, including the sole `last_event_sequence` head;
+- `agent_executions`;
+- `agent_execution_events`;
+- immutable execution-binding child records;
+- `agent_approval_checkpoints`; and
+- `agent_execution_checkpoints`.
+
+Bounded event content may be stored inline. Larger prompt, response, tool, and
+checkpoint content must be written once to the shared immutable object backend
+and referenced by digest, length, media type, and namespace. Do not add
+`agent_execution_heads`, an Agent-specific content table, or another mutable
+blob API. Consolidating the low-level backend does not collapse domain ports:
+logs, build artifacts, Agent content, and checkpoints retain typed admission,
+retention, and authorization policies.
+
+Use the following single-authority map for every A1 design review:
+
+| Concern | Authority to reuse | Prohibited duplicate |
+| --- | --- | --- |
+| Request replay | `idempotency_records` | Agent-specific idempotency table or in-memory replay authority |
+| Long-running work | A3S Flow plus Operations | Agent job queue, workflow engine, or controller |
+| Semantic conversation history | `agent_execution_events` with `agent_conversations.last_event_sequence` | Flow history as transcript, Runtime logs as events, or a second event log |
+| Node commands and results | `node_commands`, leases, Fleet long poll, and the node-agent durable journal | Direct client-to-Agent channel, Harness control socket exposed to clients, or Agent command queue |
+| Durable outbound batches | Shared node-agent pending-batch/receipt primitive extracted in `A1.0` | Agent-only spool, cursor, or acknowledgement journal |
+| Integration publication | Transactional Outbox plus A3S Event | Agent event bus or transcript publication; Outbox carries only bounded lifecycle IDs, states, and digests |
+| Authorization and audit | Identity grants plus `C0.3` and `audit_records` | Agent-local grants, approval ACL, or audit store |
+| Scheduling and provider lifecycle | Workloads plus A3S Runtime | Harness scheduler, Agent placement engine, or provider-specific lifecycle controller |
+| Asset identity | `A0` `AssetRelease` | Mutable repository refs or copied manifest state inside an execution |
+| Immutable content | Shared infrastructure object client with typed domain adapters | Parallel filesystem/S3 clients or an untyped cross-domain object service |
+| Client streaming | Shared sequence cursor, reconnect, gap, and SSE transport | Agent-specific cursor codec or best-effort in-memory stream |
+| Optional Redis | No durable Agent authority | Redis-backed sessions, queues, locks, cursors, approvals, or checkpoints |
+
+All A1 relational reads, writes, locks, and transactions use migrations and
+typed A3S ORM tables/builders. Add an architecture test that rejects raw SQL
+and direct database drivers in A1 production persistence. PostgreSQL remains
+authoritative when Redis, SSE subscribers, the control-plane process, the node
+agent, or the Harness is unavailable.
+
+Google AX may be evaluated only after `A1.5` as an optional implementation of
+the versioned Harness port, and only after its integration contract is stable.
+Do not import AX's controller, event-log authority, scheduler, native
+configuration, or unstable wire protocol into the Cloud domain or transport
+contract.
+
+### Exit gate
+
+- One immutable `A0` Agent release executes through the existing Workload,
+  Runtime, Fleet command, and node-agent journal path; no client or Gateway
+  endpoint can bypass Cloud authorization or create work directly.
+- Concurrent create/retry requests resolve through the common idempotency
+  record to one execution and one Operation. Flow replay and process death do
+  not duplicate the Runtime unit, Harness command, semantic event, tool call,
+  approval, or checkpoint.
+- Event sequences are contiguous and immutable. SSE reconnect from every
+  committed cursor returns the same suffix, reports retention gaps explicitly,
+  and never treats Runtime logs, Flow history, or telemetry as semantic events.
+- Every execution binds exact Agent, Skill, MCP, workspace, and tool identities
+  before dispatch. A yanked release remains readable for a pinned execution,
+  while an unbound or changed digest fails closed.
+- Approval-required tool work cannot execute before a current authorized grant
+  commits an explicit decision. Duplicate approval and resume requests replay;
+  denial, expiry, cancellation, and process death cannot emit a hidden resume.
+- Checkpoint creation is digest-verified and adoptable after a crash. Forking
+  creates one new execution with immutable parent/checkpoint lineage and cannot
+  mutate the parent trajectory.
+- Real PostgreSQL, object-store, Docker Runtime, node-agent, Harness, SSE, and
+  process-death gates pass all A1 crash rows in the verification matrix and
+  leave no unreferenced object, live Runtime unit, pending command, open grant,
+  or secret-bearing evidence.
+- Tenant denial, revocation, redaction, bounded-content, malformed protocol,
+  stale sequence, conflicting receipt, and object-tamper fixtures fail closed.
+- Source architecture tests prove A3S ORM is the only A1 relational
+  persistence path and reject new idempotency, Outbox, audit, scheduler, queue,
+  node-channel, cursor-codec, and low-level object-store mechanisms.
+
+## 14. Milestone S0: databases, volumes, and backups
 
 ### Goal
 
@@ -1366,7 +1487,7 @@ provider state in workload metadata.
 - Deleting a workload obeys volume retention policy; no implicit cascade loses
   retained data.
 
-## 14. Milestone H0: multi-node, replicas, and production hardening
+## 15. Milestone H0: multi-node, replicas, and production hardening
 
 ### Goal
 
@@ -1627,7 +1748,7 @@ remains ACL.
   and missing artifacts, and requires nodes and external providers to prove
   their state again.
 
-## 15. Product boundaries and optional extensions
+## 16. Product boundaries and optional extensions
 
 The following capabilities are useful integrations but are not allowed to
 expand the Cloud core or delay its critical path:
@@ -1640,11 +1761,12 @@ expand the Cloud core or delay its critical path:
 | Commercial billing and managed-cloud plans | Keep in a separately deployed service/profile that consumes public usage and entitlement contracts. Billing cannot enter scheduling, deployment, or domain aggregates. |
 | Development tunnels | Allow an optional, explicitly non-production C0 adapter with expiring credentials and visible routing state. Tunnels are never the production ingress or node-control path. |
 | Additional Runtime providers | Add containerd, A3S Box, or cloud compute only through Runtime conformance plus Cloud deployment, recovery, logs, routing, cancellation, and cleanup gates. |
+| Agent framework integrations | Keep Google AX and other frameworks behind the versioned A1 Harness port. An adapter may translate framework behavior, but cannot import another controller, event log, scheduler, configuration authority, or client control path. |
 
 These boundaries are revisited only with an operator use case and an owning
 domain. Feature breadth alone is not sufficient evidence.
 
-## 16. Independent timeout and cancellation model
+## 17. Independent timeout and cancellation model
 
 Timeouts are typed policy owned by the step that can act on expiry. They are
 not subtractions from one model-call-style global timer.
@@ -1661,6 +1783,9 @@ not subtractions from one model-call-style global timer.
 | Health check | per-probe timeout and stabilization window | keep prior revision active |
 | Gateway publish | native apply/readiness deadline | retain prior config revision |
 | Log stream | idle and retention policies | reconnect or truncate with an explicit gap |
+| Harness event batch | delivery and receipt deadline | retain and replay the exact durable batch without advancing its cursor |
+| Agent approval | explicit expiry and cancellation policy | remain logically paused, deny, or cancel; never infer approval or resume |
+| Agent execution stream | subscriber idle and event-retention policies | reconnect from the committed sequence or report an explicit gap |
 | Cleanup | bounded synchronous wait plus reconcile deadline | expose pending cleanup |
 
 All policies use an injected monotonic clock in tests and validated A3S ACL in
@@ -1669,7 +1794,7 @@ still owns live child steps. If remote cleanup outlives the foreground request,
 the Operation projection must show `cleanup_pending` until reconciliation
 proves the resource stopped or records an operator-visible orphan.
 
-## 17. Verification matrix
+## 18. Verification matrix
 
 ### Test levels
 
@@ -1684,6 +1809,7 @@ proves the resource stopped or records an operator-visible orphan.
 | Build | Real source provider, isolated builder, registry, cache, provenance, cancellation, and credential-boundary evidence |
 | Project import | Golden detection/Compose plans, unsupported input, webhook disorder, preview cleanup, and monorepo affected-set evidence |
 | Interfaces | REST/web/CLI/MCP contract parity, scope equivalence, revocation, redaction, and terminal lifetime evidence |
+| Agent execution | Real A0 release binding, Harness protocol conformance, exact event/SSE replay, tool approval, checkpoint/fork lineage, redaction, process-death recovery, and cleanup evidence |
 | Stateful | Real volume fencing, engine readiness, backup corruption, restore query, credential rotation, and retention evidence |
 | Scale | Real multi-node placement, replica identity, Gateway target sets, drain, partition, autoscaling, and failover evidence |
 | Inference | Real accelerator isolation, immutable model cache, backend conformance, OpenAI streaming, model authorization, usage deduplication, multi-node replica and gang recovery evidence |
@@ -1740,19 +1866,24 @@ Later gates extend the same fault-injection discipline:
 | 12 | Preview route activation before close/expiry cleanup | `P0` | Cleanup removes the exact preview without touching a reused source revision or another environment |
 | 13 | Notification fact commit before provider acknowledgement | `C0` | Retry produces one logical notification and never replays the business command |
 | 14 | Remote exec start before session acknowledgement | `C0` | Reconnect adopts or terminates the exact bounded process and expires its grant |
-| 15 | Backup object upload before manifest commit | `S0` | Reconciliation verifies and adopts the object or records and removes an orphan; no false successful backup exists |
-| 16 | Volume detach before replacement attach | `S0`/`H0` | A replacement writer remains blocked until durable fencing evidence exists |
-| 17 | Replica provider create before placement projection | `H0` | Restart adopts one provider unit for the replica generation and does not consume an extra replica slot |
-| 18 | Accelerator reservation commit before node prepare | `I0.1` | Replay prepares the exact claim or compensates it; no device is allocated twice |
-| 19 | Some placement-group members prepare before another rejects | `I0.4` | The complete group converges to all ready or no committed claims and no Gateway target |
-| 20 | Gateway usage batch send before contiguous ingestion acknowledgement | `I0.2c` | Replay records one request/attempt fact; interruption or loss remains an explicit gap rather than zero |
+| 15 | Harness output object persisted before database receipt | `A1.1`/`A1.2` | Reconciliation verifies and adopts the exact digest into one semantic event or safely removes an unreferenced object; no committed event references missing content |
+| 16 | Semantic execution event committed before SSE visibility | `A1.1` | Reconnect queries the authoritative sequence and returns the committed suffix exactly once; loss of an in-memory notification cannot hide or duplicate an event |
+| 17 | Harness event batch sent before contiguous receipt | `A1.2` | The node agent retains and replays the identical durable batch; Cloud deduplicates its sequence range and advances the cursor only in the exact receipt |
+| 18 | Approval decision committed before resume command | `A1.4` | Reconciliation emits one deterministic resume for the approved checkpoint; denial, expiry, or cancellation emits none, and replay never repeats approved tool work |
+| 19 | Checkpoint object stored before checkpoint projection | `A1.5` | Reconciliation verifies and adopts the exact object or safely records/removes an orphan; a fork can reference only a committed digest-verified checkpoint |
+| 20 | Backup object upload before manifest commit | `S0` | Reconciliation verifies and adopts the object or records and removes an orphan; no false successful backup exists |
+| 21 | Volume detach before replacement attach | `S0`/`H0` | A replacement writer remains blocked until durable fencing evidence exists |
+| 22 | Replica provider create before placement projection | `H0` | Restart adopts one provider unit for the replica generation and does not consume an extra replica slot |
+| 23 | Accelerator reservation commit before node prepare | `I0.1` | Replay prepares the exact claim or compensates it; no device is allocated twice |
+| 24 | Some placement-group members prepare before another rejects | `I0.4` | The complete group converges to all ready or no committed claims and no Gateway target |
+| 25 | Gateway usage batch send before contiguous ingestion acknowledgement | `I0.2c` | Replay records one request/attempt fact; interruption or loss remains an explicit gap rather than zero |
 
 Each owning milestone must add its row to the current-evidence table when the
 real fault gate passes. Planned rows are not release evidence.
 
-## 18. Delivery sequence and next backlog
+## 19. Delivery sequence and next backlog
 
-### 18.1 E0 completion record
+### 19.1 E0 completion record
 
 D0 and E0 are closed. E0's route desired-state, managed TLS mechanics, versioned
 complete snapshot transport, Secret injection, filesystem/S3-compatible
@@ -1843,7 +1974,7 @@ E0 is verified. Post-E0 product surfaces may now land only through their owning
 milestone gates; they cannot create tables, routes, providers, or user-visible
 claims that bypass the verified E0 contracts.
 
-### 18.2 Post-E0 delivery lanes
+### 19.2 Post-E0 delivery lanes
 
 With E0 verified, work may proceed in parallel only along these owned lanes:
 
@@ -1853,13 +1984,19 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped MCP -> `C0.3` membership/role-focused console/attribution/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
+| Agent execution | `A1.0`: verified `E0`; `A1.1+`: immutable `A0` release identities; `A1.4`: `C0.3` grants and audit | `A1.0` shared SSE/object/outbound-batch primitives -> `A1.1` conversations/executions/events -> `A1.2` Harness protocol -> `A1.3` immutable bindings/tool events -> `A1.4` approval/pause/resume -> `A1.5` checkpoints/forks/trajectories |
 | Stateful platform | `E0` | `S0` local volume -> PostgreSQL -> backup/restore -> additional engines and remote volume provider |
-| Production scale | `P0`, `C0`, `A0`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
+| Production scale | `P0`, `C0`, `A0`, `A1`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
 | Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` enterprise gateway self-service/governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth |
 
 The lane table expresses dependency, not a promise of equal staffing or calendar
 dates. The next slice is always the smallest vertical behavior that can pass a
 real exit gate.
+
+`A1.0` is a prerequisite consolidation lane, not a parallel Agent platform.
+It may proceed before `A0`, but `A1.1` and later cannot invent temporary release
+identities while waiting for the catalog. The approval slice cannot ship ahead
+of the common `C0.3` grant evaluator and audit chain.
 
 E0 is verified, so I0 implementation may proceed in the order above. No
 user-visible Inference capability is claimed before its owning I0 and H0 exit
@@ -1867,7 +2004,7 @@ gates pass. See
 [`inference-plan.md`](inference-plan.md) for ownership, protocol evolution,
 scheduling, persistence slices, crash points, and exit evidence.
 
-### 18.3 Milestone definition of done
+### 19.3 Milestone definition of done
 
 A milestone is complete only when all of the following are true:
 

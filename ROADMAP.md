@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-27.**
+**Status as of 2026-07-28.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -43,6 +43,8 @@ Cloud owns:
 
 - organizations, projects, environments, identity, membership, and grants;
 - immutable application, Agent, MCP, Skill, model, and provider revisions;
+- tenant-scoped Agent conversations, executions, approvals, checkpoints,
+  forks, and replayable trajectories after `A1`;
 - Workloads, desired replica count, placement, rollout, and the sole
   production autoscaling evaluator;
 - source resolution, isolated builds, artifact publication, and release
@@ -81,6 +83,7 @@ and generated through `a3s-acl`.
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
 | `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | Planned |
+| `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service | Planned |
@@ -227,9 +230,10 @@ the current search boundary is the organization tenant guard.
 | --- | --- | --- |
 | Usable service platform | `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one stateless Service on one Linux node |
 | Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path |
+| Agent execution platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases become durable, resumable, approval-governed executions with replayable trajectories |
 | Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable |
 
-Inference is an optional profile across these horizons, not a fourth deployment
+Inference is an optional profile across these horizons, not another deployment
 engine or delivery horizon. It may begin after `E0` and becomes production-ready
 only after its named `H0` and `C0` foundations pass.
 
@@ -243,6 +247,8 @@ flowchart LR
     G0 --> P0[Developer workflows]
     G0 --> A0[Agent MCP Skill releases]
     E0 --> C0[Control surfaces]
+    A0 --> A1[Durable Agent execution]
+    C0 -->|C0.3 grants and audit| A1
     E0 --> S0[Stateful platform]
     E0 --> H01[H0.1 managed replicas and claims]
     H01 --> H02[H0.2 private target projection]
@@ -250,6 +256,7 @@ flowchart LR
     P0 --> H04[H0.4 production installation and HA]
     C0 --> H04
     A0 --> H04
+    A1 --> H04
     S0 --> H04
     H03 --> H04
     H04 --> H05[H0.5 autoscaling and hardening]
@@ -272,9 +279,16 @@ Dependency rules:
   baseline.
 - `P0` depends on the immutable source and build contracts from `G0`.
 - `A0` reuses `G0` source, Artifact, publication, and deployment contracts.
+- `A1.0` may consolidate shared infrastructure from the verified `E0` baseline
+  while `A0` is built. `A1.1` and later sub-gates consume immutable `A0`
+  `AssetRelease` identities; approval and governance consume `C0.3` grants and
+  audit.
+- `A1` extends Operations and Flow, Fleet node control, Workloads, Runtime,
+  Artifacts, the transactional Outbox, and shared sequence streaming. It does
+  not add another scheduler, job queue, node channel, or integration bus.
 - `H0.1` through `H0.3` may first be proven by an owning profile, but the full
-  `H0` product gate also requires the single-node `P0`, `C0`, `A0`, and `S0`
-  surfaces it must scale.
+  `H0` product gate also requires the single-node `P0`, `C0`, `A0`, `A1`, and
+  `S0` surfaces it must scale.
 - `I0` is an optional product profile, not another deployment engine. It
   consumes Workloads, Fleet, Edge, Identity, Artifacts, Secrets, Operations,
   and the named `H0`/`C0` foundations.
@@ -384,7 +398,49 @@ Ordered delivery:
 
 Agent and MCP are asset and workload profiles, not separate schedulers.
 
-### 5.5 `S0`: stateful platform
+### 5.5 `A1`: durable Agent execution
+
+`A1` turns an immutable `A0` Agent release into a tenant-scoped execution. The
+Cloud API remains the client control boundary, and Gateway remains a transport
+data plane; neither a Harness nor a client gains a direct path around Cloud
+authorization, idempotency, Operations, or audit.
+
+| Sub-gate | State | Outcome |
+| --- | --- | --- |
+| `A1.0` | Planned | Consolidate one sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
+| `A1.1` | Planned | Add `AgentConversation` and `AgentExecution` aggregates plus one durable, monotonically sequenced semantic event stream |
+| `A1.2` | Planned | Add a versioned Harness command/event protocol over the existing Fleet node-control channel and node-agent journal |
+| `A1.3` | Planned | Pin Agent, Skill, MCP, workspace, and tool bindings to immutable identities and record auditable tool request/result events |
+| `A1.4` | Planned | Add grant-checked approval checkpoints and logical pause/resume through the existing Operation and Harness lifecycle |
+| `A1.5` | Planned | Add immutable checkpoints, explicit fork lineage, trajectory export, telemetry correlation, and recovery evidence |
+
+The only new durable domain records are `agent_conversations`,
+`agent_executions`, `agent_execution_events`, immutable execution-binding child
+records, `agent_approval_checkpoints`, and `agent_execution_checkpoints`.
+`agent_conversations.last_event_sequence` is the sole event-stream head.
+Events keep bounded content inline or reference an immutable object by digest;
+there is no separate Agent execution head or content store. All relational
+persistence uses migrations and typed A3S ORM repositories.
+
+| Concern | Existing authority | `A1` rule |
+| --- | --- | --- |
+| API replay | `idempotency_records` | Reuse the caller-scoped record; do not add Agent-specific idempotency tables |
+| Long-running coordination | A3S Flow plus Operations | Flow history controls execution and recovery; `agent_execution_events` remains the user-visible semantic history |
+| Node delivery | `node_commands`, leases, and the node-agent durable journal | Extend the versioned protocol and extract the existing pending-batch/receipt primitive; do not add another queue or channel |
+| Integration facts | Transactional Outbox plus A3S Event | Publish bounded lifecycle IDs, states, and digests only; prompts, tool payloads, and model output remain in execution storage |
+| Audit and approval authority | `audit_records` plus `C0.3` grants | Reuse the common audit chain and authorization evaluator; do not create an Agent audit subsystem |
+| Scheduling and provider lifecycle | Workloads plus A3S Runtime | Run the selected Agent release and Harness through the common placement, apply, health, stop, and recovery path |
+| Published assets | `A0` `AssetRelease` | Bind immutable Agent, MCP, and Skill release IDs; never copy mutable manifests into an execution |
+| Streaming and cursors | Existing ordered Workload, BuildRun, and Operation streams | Extract one shared sequence cursor, reconnect, gap, and SSE transport implementation before adding the Agent stream |
+| Immutable objects | Existing filesystem and S3-compatible object backends | Share one low-level content-addressed client while preserving typed domain ports, namespaces, admission limits, and retention policy |
+| Optional Redis | No durable Agent authority | Redis may accelerate ephemeral fan-out only after correctness without it; it never owns conversations, queues, locks, cursors, approvals, or checkpoints |
+
+Google AX may be evaluated only as an optional adapter behind the versioned
+Harness port after `A1.5` and after its integration contract is stable. Cloud
+does not adopt AX's controller, event-log authority, scheduler, native
+configuration, or unstable wire protocol.
+
+### 5.6 `S0`: stateful platform
 
 Ordered delivery:
 
@@ -398,7 +454,7 @@ Ordered delivery:
 A stateful move cannot proceed until the prior writer is fenced. A backup is
 not a product capability until restore passes against a clean environment.
 
-### 5.6 `H0`: production scale
+### 5.7 `H0`: production scale
 
 | Sub-gate | State | Foundation | Required evidence |
 | --- | --- | --- | --- |
@@ -578,7 +634,7 @@ with the recreated PostgreSQL 17 gate, this closes `H0.2`. Independently placed
 multi-node Gateways remain `H0.3`; production control-plane and Gateway HA remain
 `H0.4`.
 
-### 5.7 `I0`: inference profile
+### 5.8 `I0`: inference profile
 
 | Sub-gate | Outcome | Dependency |
 | --- | --- | --- |
@@ -604,14 +660,17 @@ The default portfolio priority is:
 1. preserve the verified `E0` release and its clean-host regression gate;
 2. execute and retain the remaining operator-owned `G0` certification through
    the implemented private-provider and signed-evidence process-death gates;
-3. advance `C0.3` and the first `S0` foundation independently when staffed;
+3. start `A1.0` infrastructure consolidation while advancing `C0.3` and the
+   first `S0` foundation independently when staffed;
 4. preserve the closed `H0.1` real-provider Claim certification while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
 5. start `P0` and `A0` only on the verified `G0` contracts they consume;
-6. preserve the verified `H0.2` projection gate while advancing `H0.3`
+6. after immutable `A0` release identities exist, deliver `A1.1` through
+   `A1.3`; add `A1.4` only on `C0.3` grants and audit, then close `A1.5`;
+7. preserve the verified `H0.2` projection gate while advancing `H0.3`
    multi-node placement and networking; and
-7. close full production packaging, HA, autoscaling, and inference hardening
+8. close full production packaging, HA, autoscaling, and inference hardening
    through `H0.4`, `H0.5`, and `I0.5`.
 
 This order expresses dependency and product risk, not equal staffing or a
@@ -627,8 +686,8 @@ the Cloud product lanes above.
 
 | Product | Position | Owns |
 | --- | --- | --- |
-| A3S Cloud | Self-hosted control plane | Tenancy, identity, catalogs, Workloads, desired replicas, placement, rollout, autoscaling, complete Gateway policy, operations, usage ledger, and management surfaces |
-| A3S Gateway | AI traffic and protocol data plane | Transport, TLS, streaming, local enforcement, healthy endpoint selection, atomic snapshot application, request-path telemetry, and the planned durable usage spool |
+| A3S Cloud | Self-hosted control plane | Tenancy, identity, catalogs, Agent conversations and executions, approvals, checkpoints, Workloads, desired replicas, placement, rollout, autoscaling, complete Gateway policy, operations, usage ledger, and management surfaces |
+| A3S Gateway | AI traffic and protocol data plane | Transport, TLS, streaming, local enforcement, healthy endpoint selection, atomic snapshot application, request-path telemetry, and the planned durable usage spool; it does not own Agent execution state |
 
 Cloud never becomes the per-request proxy or synchronous authorization
 dependency. Gateway never becomes a tenant database, scheduler, production
@@ -679,7 +738,7 @@ are allowed only before the first response byte.
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |
 | `C0.3` + `I0.2e` | Grants, authorized search, key lifecycle, role-focused console, diagnostics, playground, and showback | Expose bounded operational state only | Consumer, steward, and operator surfaces cannot reveal an ungranted resource |
-| `A0` + `C0` | Agent/MCP catalog, deployment, identity, and management contracts | Add a native protocol data plane only against a closed session and authorization contract | No second asset, identity, or deployment model appears in Gateway |
+| `A1` + `C0` | Agent/MCP release binding, conversations, executions, approvals, checkpoints, identity, and management contracts | Remain transport-only if a future native Agent protocol is justified; do not persist conversations, schedule Harness work, grant approvals, or expose a direct client control path | No second asset, execution, identity, audit, or deployment authority appears in Gateway |
 | `H0.3` through `I0.5` | Multi-node placement, Gateway HA, sole autoscaler, quotas, recovery, and provider policy | Private upstream identity, drain, exact-revision readiness, complete signals, and failure hardening | Node/Gateway loss, mixed versions, scale, backlog, and restore meet published limits |
 
 No joint gate is complete because one repository passes unit tests alone.
@@ -714,6 +773,10 @@ The current roadmap does not include:
 
 - a second deployment or scheduling path for imports, Agents, MCP, stateful
   resources, or inference;
+- a second Agent event log, execution controller, Harness scheduler, job queue,
+  node-control channel, or Redis-backed source of truth;
+- a direct client-to-Agent, client-to-Harness, or client-to-Gateway execution
+  control path;
 - Cloud on the live request or token-stream path;
 - a Cloud-equivalent control plane inside Gateway;
 - training, fine-tuning, or notebook lifecycle inside `I0`;
