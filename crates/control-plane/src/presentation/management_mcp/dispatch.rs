@@ -3,9 +3,13 @@ use super::arguments::{
     EmptyArguments, EnvironmentScopeArguments, NodeArguments, OperationListArguments,
     RouteArguments, WorkloadArguments, WorkloadLogArguments,
 };
+use super::artifacts::BuildRunMutationArguments;
 use super::catalog::ManagementTool;
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
+use super::workloads::{
+    CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
+};
 use super::{artifacts, edge, nodes, operations, projects, search, workloads};
 use crate::modules::shared_kernel::domain::OrganizationId;
 use a3s_boot::{CommandBus, QueryBus, Result};
@@ -66,9 +70,21 @@ pub async fn execute(
             let arguments = arguments::parse::<WorkloadLogArguments>(arguments).ok()?;
             workloads::get_workload_logs(query_bus, organization_id, arguments, request_id).await
         }
+        ManagementTool::WorkloadsStop => {
+            let arguments = arguments::parse::<StopWorkloadArguments>(arguments).ok()?;
+            workloads::stop_workload(command_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkloadsRollback => {
+            let arguments = arguments::parse::<RollbackWorkloadArguments>(arguments).ok()?;
+            workloads::rollback_workload(command_bus, organization_id, arguments, request_id).await
+        }
         ManagementTool::DeploymentsGet => {
             let arguments = arguments::parse::<DeploymentArguments>(arguments).ok()?;
             workloads::get_deployment(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::DeploymentsCancel => {
+            let arguments = arguments::parse::<CancelDeploymentArguments>(arguments).ok()?;
+            workloads::cancel_deployment(command_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::RoutesList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;
@@ -93,6 +109,14 @@ pub async fn execute(
         ManagementTool::BuildEvidenceGet => {
             let arguments = arguments::parse::<BuildRunArguments>(arguments).ok()?;
             artifacts::get_build_evidence(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::BuildRunsCancel => {
+            let arguments = arguments::parse::<BuildRunMutationArguments>(arguments).ok()?;
+            artifacts::cancel_build_run(command_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::BuildRunsRetry => {
+            let arguments = arguments::parse::<BuildRunMutationArguments>(arguments).ok()?;
+            artifacts::retry_build_run(command_bus, organization_id, arguments, request_id).await
         }
     };
     Some(result)

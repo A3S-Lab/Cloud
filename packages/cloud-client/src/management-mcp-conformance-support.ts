@@ -15,13 +15,18 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_workloads_list',
   'a3s_cloud_workloads_get',
   'a3s_cloud_workload_logs_get',
+  'a3s_cloud_workloads_stop',
+  'a3s_cloud_workloads_rollback',
   'a3s_cloud_deployments_get',
+  'a3s_cloud_deployments_cancel',
   'a3s_cloud_routes_list',
   'a3s_cloud_routes_get',
   'a3s_cloud_build_runs_list',
   'a3s_cloud_build_runs_get',
   'a3s_cloud_build_run_logs_get',
   'a3s_cloud_build_evidence_get',
+  'a3s_cloud_build_runs_cancel',
+  'a3s_cloud_build_runs_retry',
 ] as const;
 
 export const READ_ONLY_TOOLS = [
@@ -110,7 +115,7 @@ export async function restEnvelope(
   url: string,
   method: 'POST' | 'DELETE',
   headers: Record<string, string>,
-  body: JsonObject | undefined,
+  body: JsonObject | string | undefined,
   expectedStatus: number,
   credentials: readonly string[],
   label: string
@@ -118,7 +123,7 @@ export async function restEnvelope(
   const response = await fetch(url, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: typeof body === 'string' ? body : body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
   assertCredentialFree(text, credentials, label);

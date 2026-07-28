@@ -1,14 +1,27 @@
 use super::arguments::{BuildRunArguments, BuildRunListArguments, BuildRunLogArguments};
 use super::tool_result;
 use crate::modules::artifacts::presentation::{
-    BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,
+    BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse,
+    RetryBuildRunResponse,
 };
-use crate::modules::artifacts::{GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns};
+use crate::modules::artifacts::{
+    CancelBuildRun, GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns, RetryBuildRun,
+};
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
-use a3s_boot::{QueryBus, Result};
+use a3s_boot::{CommandBus, QueryBus, Result};
+use chrono::Utc;
+use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BuildRunMutationArguments {
+    pub build_run_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
+    pub idempotency_key: String,
+}
 
 pub async fn list_build_runs(
     bus: Arc<QueryBus>,
@@ -91,6 +104,52 @@ pub async fn get_build_evidence(
     {
         Ok(evidence) => {
             tool_result::success(200, BuildEvidenceResponse::from(evidence), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn cancel_build_run(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    arguments: BuildRunMutationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CancelBuildRun {
+            organization_id,
+            build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            idempotency_key: arguments.idempotency_key,
+            requested_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 202 };
+            tool_result::success(status, CancelBuildRunResponse::from(result), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn retry_build_run(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    arguments: BuildRunMutationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RetryBuildRun {
+            organization_id,
+            build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            idempotency_key: arguments.idempotency_key,
+            requested_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 202 };
+            tool_result::success(status, RetryBuildRunResponse::from(result), request_id)
         }
         Err(error) => tool_result::application_error(error, request_id),
     }

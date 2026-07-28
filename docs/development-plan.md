@@ -123,7 +123,7 @@ for P0, C0, A0, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-27:
+Status as of 2026-07-28:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -133,7 +133,7 @@ Status as of 2026-07-27:
 | D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
 | G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. The manual private-GitHub and external Registry/Vault gate now includes PostgreSQL 17, rootless BuildKit, and real process death after publication and evidence persistence. A local real-provider rehearsal passes, but no operator-owned run is recorded because the repository has no G0 provider secrets; external certification still blocks G0 verification |
-| C0 | In progress | `C0.1` is verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` adds stateless Streamable HTTP management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload/BuildRun logs, signed BuildRun evidence, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact scope-derived catalogs, strict bounds and cursors, operational query dispatch, hidden-mutation zero-write, REST-to-MCP replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. Selected replay-safe mutation tools remain |
+| C0 | In progress | `C0.1` and `C0.2` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` adds stateless Streamable HTTP management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload/BuildRun logs, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.3` and `C0.4` remain planned. |
 | H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
 | H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
 
@@ -1155,11 +1155,11 @@ packages:
   digests through A3S ORM, and zero plaintext credentials in responses, logs,
   evidence, or the PostgreSQL dump.
 
-`C0.1` is verified. The broader `C0` milestone remains in progress. `C0.2`
-implements scoped management MCP through the same application commands
-and queries. Core-resource tools, ten operational resource reads, two bounded
-paged-log reads, and one signed-evidence read now pass its real PostgreSQL
-cross-surface gate; selected replay-safe mutation tools remain.
+`C0.1` and `C0.2` are verified. The broader `C0` milestone remains in progress.
+The scoped management MCP runs through the same application commands and
+queries. Core-resource tools, ten operational resource reads, two bounded
+paged-log reads, one signed-evidence read, and five replay-safe operational
+commands pass its real PostgreSQL cross-surface gate.
 Desired-state files remain A3S ACL; the CLI must not add JSON or TOML
 configuration. No CLI command may read PostgreSQL or contact a node.
 
@@ -1203,7 +1203,17 @@ configuration. No CLI command may read PostgreSQL or contact a node.
   input, perform no live node access, and share the authoritative maximum log
   page invariant. The PostgreSQL gate verifies exact expanded catalogs,
   missing-resource non-disclosure, invalid bounds, cursors, and stream filters,
-  and credential-free evidence. Selected replay-safe mutation tools remain.
+  and credential-free evidence.
+- Implemented as the operational-mutation `C0.2` slice: Workload stop and
+  rollback plus Deployment cancel require `workload:write`; BuildRun cancel and
+  retry require `build:write`. Every tool requires a caller-owned idempotency
+  key, derives the organization from the authenticated principal, invokes the
+  existing CommandBus handler with the REST response DTO, and exposes no
+  repository, Redis, object-store, or node path. Focused tests prove exact
+  replay and strict argument rejection. The real PostgreSQL gate proves the
+  23-tool administrator and 16-tool read-only catalogs, annotations, all five
+  missing-resource command boundaries, a durable Workload-stop replay, A3S ORM
+  state, and credential-free evidence. `C0.2` is verified.
 - Start MCP authentication with bounded API tokens. Add OAuth 2.1 discovery,
   dynamic client registration, PKCE, consent, and revocation only after the
   token-scoped tool contract and confused-deputy tests pass.

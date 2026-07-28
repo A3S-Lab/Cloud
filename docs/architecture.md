@@ -1456,16 +1456,19 @@ request. The adapter derives its organization only from the authenticated
 principal, filters and rechecks mutation tools by effective scope, rejects
 batches and foreign origins, and dispatches Project, Environment, search, Node,
 Operation, Workload, Deployment, Route, and BuildRun tools plus bounded
-cursor-paginated Workload and BuildRun logs and signed BuildRun evidence to the
-same `CommandBus` and `QueryBus` handlers used by REST. Domain-specific MCP
+cursor-paginated Workload and BuildRun logs, signed BuildRun evidence, Workload
+stop/rollback, Deployment cancel, and BuildRun cancel/retry to the same
+`CommandBus` and `QueryBus` handlers used by REST. The operational commands
+require caller-owned idempotency keys and their existing `workload:write` or
+`build:write` scopes. Domain-specific MCP
 adapters reuse the REST response DTOs; the protocol handler owns transport only
 and does not accumulate resource dispatch logic. Tool structured content
 contains the standard API success or business-error envelope. It has no session
 database, direct repository access, Redis path, node transport, live log
 stream, or business rules. The dedicated production-binary gate uses PostgreSQL
 17 through the same A3S ORM repositories to prove exact scope-derived catalogs,
-strict query bounds and cursors, operational list/detail/log/evidence semantics,
-REST-to-MCP idempotency replay,
+strict arguments and annotations, operational read and command semantics,
+Project REST-to-MCP replay, exact Workload-stop replay,
 hidden-mutation zero-write, indistinguishable foreign and missing Project
 errors, and next-request token revocation while scanning responses, logs,
 evidence, and the database dump for plaintext credentials. See the

@@ -101,6 +101,18 @@ conformanceIt(
     );
     const adminToolNames = toolNames(adminCatalog);
     expect(adminToolNames).toEqual([...ADMIN_TOOLS]);
+    const readOnlyToolSet = new Set<string>(READ_ONLY_TOOLS);
+    const destructiveToolSet = new Set<string>([
+      'a3s_cloud_workloads_stop',
+      'a3s_cloud_deployments_cancel',
+      'a3s_cloud_build_runs_cancel',
+    ]);
+    for (const tool of toolDefinitions(adminCatalog)) {
+      expect(tool.annotations.readOnlyHint).toBe(readOnlyToolSet.has(tool.name));
+      expect(tool.annotations.destructiveHint).toBe(destructiveToolSet.has(tool.name));
+      expect(tool.annotations.idempotentHint).toBe(true);
+      expect(tool.annotations.openWorldHint).toBe(false);
+    }
 
     const readOnlyCatalog = await listTools(
       environment,
@@ -288,6 +300,71 @@ conformanceIt(
       missingOperationalRequestIds[entry.name] = requestId(missing.structured, `${entry.label} request ID`);
     }
 
+    const missingMutationRequestIds: Record<string, string> = {};
+    for (const entry of [
+      {
+        id: 41,
+        name: 'a3s_cloud_workloads_stop',
+        arguments: {
+          workloadId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:missing-workload-stop',
+        },
+        label: 'MCP missing Workload stop',
+      },
+      {
+        id: 42,
+        name: 'a3s_cloud_workloads_rollback',
+        arguments: {
+          workloadId: missingOperationalId,
+          sourceRevisionId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:missing-workload-rollback',
+        },
+        label: 'MCP missing Workload rollback',
+      },
+      {
+        id: 43,
+        name: 'a3s_cloud_deployments_cancel',
+        arguments: {
+          deploymentId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:missing-deployment-cancel',
+        },
+        label: 'MCP missing Deployment cancellation',
+      },
+      {
+        id: 44,
+        name: 'a3s_cloud_build_runs_cancel',
+        arguments: {
+          buildRunId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:missing-build-run-cancel',
+        },
+        label: 'MCP missing BuildRun cancellation',
+      },
+      {
+        id: 45,
+        name: 'a3s_cloud_build_runs_retry',
+        arguments: {
+          buildRunId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:missing-build-run-retry',
+        },
+        label: 'MCP missing BuildRun retry',
+      },
+    ]) {
+      const missing = await callTool(
+        environment,
+        environment.adminToken,
+        entry.id,
+        entry.name,
+        entry.arguments,
+        credentials,
+        entry.label
+      );
+      expect(missing.result.isError).toBe(true);
+      const contract = businessErrorContract(missing.structured);
+      expect(contract.code).toBe(404);
+      expect(contract.statusCode).toBe('NOT_FOUND');
+      missingMutationRequestIds[entry.name] = requestId(missing.structured, `${entry.label} request ID`);
+    }
+
     for (const entry of [
       { id: 30, name: 'a3s_cloud_operations_list', arguments: { limit: 0 } },
       { id: 31, name: 'a3s_cloud_operations_list', arguments: { limit: 201 } },
@@ -337,6 +414,131 @@ conformanceIt(
       const error = objectValue(rejected.body.error, `${entry.name} invalid-limit error`);
       expect(error.code).toBe(-32602);
     }
+
+    for (const entry of [
+      {
+        id: 46,
+        name: 'a3s_cloud_workloads_stop',
+        arguments: { workloadId: missingOperationalId },
+        label: 'Workload stop without idempotency',
+      },
+      {
+        id: 47,
+        name: 'a3s_cloud_workloads_rollback',
+        arguments: {
+          workloadId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:rollback-without-source',
+        },
+        label: 'Workload rollback without source revision',
+      },
+      {
+        id: 48,
+        name: 'a3s_cloud_deployments_cancel',
+        arguments: {
+          deploymentId: missingOperationalId,
+          idempotencyKey: 'c0:mcp:forged-deployment-tenant',
+          organizationId: crypto.randomUUID(),
+        },
+        label: 'Deployment cancellation with forged organization',
+      },
+      {
+        id: 49,
+        name: 'a3s_cloud_build_runs_cancel',
+        arguments: { buildRunId: missingOperationalId, idempotencyKey: '' },
+        label: 'BuildRun cancellation with empty idempotency',
+      },
+      {
+        id: 50,
+        name: 'a3s_cloud_build_runs_retry',
+        arguments: { idempotencyKey: 'c0:mcp:retry-without-build-run' },
+        label: 'BuildRun retry without BuildRun',
+      },
+    ]) {
+      const rejected = await mcpRequest(
+        environment,
+        environment.adminToken,
+        toolCall(entry.id, entry.name, entry.arguments),
+        200,
+        credentials,
+        entry.label
+      );
+      const error = objectValue(rejected.body.error, `${entry.label} error`);
+      expect(error.code).toBe(-32602);
+      expect(error.message).toBe('Invalid tool arguments');
+    }
+
+    const workloadAcl = `version = 1
+
+workload "mcp-stop" {
+  artifact {
+    uri = "oci://registry.example.test/a3s/mcp-stop:conformance"
+  }
+  resources {
+    cpu_millis = 100
+    memory_bytes = 33554432
+    pids = 32
+  }
+  port "http" {
+    container_port = 8080
+  }
+  health {
+    port_name = "http"
+    path = "/health"
+    interval_ms = 1000
+    timeout_ms = 500
+    healthy_threshold = 1
+    unhealthy_threshold = 3
+    stabilization_window_ms = 1000
+  }
+}
+`;
+    const workloadCreate = await restEnvelope(
+      `${environment.baseUrl}/organizations/${organizationId}/projects/${projectId}/environments/${environmentId}/workloads`,
+      'POST',
+      {
+        ...authenticatedHeaders(environment.adminToken, 'c0:mcp:workload-create'),
+        'content-type': 'application/vnd.a3s.acl',
+      },
+      workloadAcl,
+      202,
+      credentials,
+      'REST ACL Workload creation'
+    );
+    const workloadCreateData = objectValue(workloadCreate.body.data, 'REST Workload creation data');
+    const workloadId = uuidValue(workloadCreateData.workloadId, 'REST Workload ID');
+
+    const workloadStop = await callTool(
+      environment,
+      environment.adminToken,
+      51,
+      'a3s_cloud_workloads_stop',
+      { workloadId, idempotencyKey: 'c0:mcp:workload-stop' },
+      credentials,
+      'MCP Workload stop'
+    );
+    expect(workloadStop.result.isError).toBe(false);
+    expect(workloadStop.structured.code).toBe(202);
+    const workloadStopData = objectValue(workloadStop.structured.data, 'MCP Workload stop data');
+    expect(workloadStopData.workloadId).toBe(workloadId);
+    expect(workloadStopData.replayed).toBe(false);
+
+    const workloadStopReplay = await callTool(
+      environment,
+      environment.adminToken,
+      52,
+      'a3s_cloud_workloads_stop',
+      { workloadId, idempotencyKey: 'c0:mcp:workload-stop' },
+      credentials,
+      'MCP Workload stop replay'
+    );
+    expect(workloadStopReplay.result.isError).toBe(false);
+    expect(workloadStopReplay.structured.code).toBe(200);
+    const workloadStopReplayData = objectValue(
+      workloadStopReplay.structured.data,
+      'MCP Workload stop replay data'
+    );
+    expect(workloadStopReplayData.workloadId).toBe(workloadId);
+    expect(workloadStopReplayData.replayed).toBe(true);
 
     const foreignOrganization = await restEnvelope(
       `${environment.baseUrl}/organizations`,
@@ -425,7 +627,7 @@ conformanceIt(
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v3',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v4',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
@@ -435,6 +637,7 @@ conformanceIt(
         organizationId,
         projectId,
         environmentId,
+        workloadId,
         foreignOrganizationId,
         foreignProjectId,
         readOnlyTokenId,
@@ -446,8 +649,15 @@ conformanceIt(
         restProjectCreate: requestId(restProject.body, 'REST project request ID'),
         mcpProjectReplay: requestId(projectReplay.structured, 'MCP replay request ID'),
         restEnvironmentCreate: requestId(restEnvironment.body, 'REST environment request ID'),
+        restWorkloadCreate: requestId(workloadCreate.body, 'REST Workload request ID'),
+        mcpWorkloadStop: requestId(workloadStop.structured, 'MCP Workload stop request ID'),
+        mcpWorkloadStopReplay: requestId(
+          workloadStopReplay.structured,
+          'MCP Workload stop replay request ID'
+        ),
         operationalLists: operationalListRequestIds,
         missingOperationalResources: missingOperationalRequestIds,
+        missingOperationalMutations: missingMutationRequestIds,
         foreignProjectDenial: requestId(foreignProjectResult.structured, 'foreign-project denial request ID'),
         missingProjectDenial: requestId(missingProjectResult.structured, 'missing-project denial request ID'),
         tokenRevocation: requestId(revoked.body, 'token-revocation request ID'),
@@ -461,6 +671,9 @@ conformanceIt(
         'operational-read-query-catalog',
         'bounded-operational-query-arguments',
         'paged-log-and-evidence-query-boundaries',
+        'replay-safe-operational-mutation-catalog',
+        'strict-operational-mutation-arguments',
+        'mcp-operational-mutation-idempotency-replay',
         'principal-derived-tenant-context',
         'foreign-and-missing-resource-error-equivalence',
         'immediate-token-revocation',
