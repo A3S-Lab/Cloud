@@ -52,7 +52,7 @@ pub async fn exercise_secret_rotation_restart(
     secret_uuid: Uuid,
     version: u64,
     node: &DeploymentFlowFixture,
-    security_state_dir: &Path,
+    _security_state_dir: &Path,
     sensitive_plaintexts: &[&str],
 ) -> Result<SecretRotationRestartFixture, Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
@@ -366,28 +366,8 @@ pub async fn exercise_secret_rotation_restart(
         .iter()
         .all(|plaintext| !serialized_command.contains(plaintext)));
 
-    let provider_recovery = if std::env::var_os("A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER").is_some()
-    {
-        Some(
-            crate::secret_rotation_provider_crash_support::recover_provider_apply(
-                executor,
-                postgres_url,
-                organization_id,
-                node.node_id,
-                security_state_dir,
-                command.clone(),
-                sensitive_plaintexts,
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
-    let acknowledgement = if let Some(recovery) = provider_recovery.as_ref() {
-        recovery.acknowledgement().clone()
-    } else {
-        runtime_apply_acknowledgement(command, healthy_observation(&request.spec)?)?
-    };
+    let acknowledgement =
+        runtime_apply_acknowledgement(command, healthy_observation(&request.spec)?)?;
     persist_command_result(
         &node_repository,
         node.node_id,
@@ -620,10 +600,6 @@ pub async fn exercise_secret_rotation_restart(
             .await?,
         1
     );
-
-    if let Some(recovery) = provider_recovery {
-        recovery.cleanup(sensitive_plaintexts).await?;
-    }
 
     Ok(SecretRotationRestartFixture {
         revision_id: target_revision_id,

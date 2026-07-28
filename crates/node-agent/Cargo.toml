@@ -11,7 +11,6 @@ a3s-acl.workspace = true
 a3s-cloud-contracts = { path = "../contracts" }
 a3s-runtime.workspace = true
 async-trait.workspace = true
-bollard.workspace = true
 chrono.workspace = true
 fs2.workspace = true
 futures-util.workspace = true
@@ -33,6 +32,9 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+a3s-box-runtime.workspace = true
 
 [lints]
 workspace = true

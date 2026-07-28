@@ -170,24 +170,6 @@ pub async fn exercise_deployment_cancellation(
         "cancelled"
     );
 
-    let mut dispatched_body = workload_body;
-    dispatched_body["name"] = json!("Dispatched cancellation fixture");
-    let dispatched_workload = app
-        .call(post_json(
-            workload_path,
-            "api-dispatched-cancellation-fixture",
-            dispatched_body,
-            admin_token,
-        ))
-        .await?;
-    assert_eq!(dispatched_workload.status(), 202);
-    crate::deployment_flow_support::exercise_dispatched_cancellation(
-        executor,
-        postgres_url,
-        Uuid::parse_str(organization_id)?,
-        &response_json(&dispatched_workload)?["data"],
-    )
-    .await?;
     Ok(())
 }
 

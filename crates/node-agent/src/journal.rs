@@ -1355,7 +1355,7 @@ mod tests {
             .await
             .expect("journal JSON");
         assert!(persisted.contains(&reference.to_string()));
-        assert!(!persisted.contains("materialized-at-docker"));
+        assert!(!persisted.contains("materialized-at-runtime"));
     }
 
     #[tokio::test]

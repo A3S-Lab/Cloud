@@ -30,11 +30,10 @@ logs {
   max_batch_bytes = 16777216
 }
 
-docker {
-  socket = "unix:///var/run/docker.sock"
-  namespace = "a3s-cloud"
-  operation_timeout_ms = 120000
-  secret_memory_dir = "/dev/shm/a3s-cloud/secrets"
+box {
+  home_dir = "/var/lib/a3s-box"
+  control_timeout_ms = 120000
+  task_poll_interval_ms = 50
 }
 
 gateway {

@@ -627,7 +627,7 @@ mod tests {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if self.error {
                 Err(RuntimeError::ProviderUnavailable(
-                    "Docker is offline".into(),
+                    "A3S Box is offline".into(),
                 ))
             } else {
                 Ok(RuntimeInspection::NotFound {

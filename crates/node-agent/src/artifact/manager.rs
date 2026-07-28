@@ -125,7 +125,7 @@ impl NodeArtifactManager {
         Ok(observation)
     }
 
-    pub(crate) async fn mount_path(
+    pub async fn mount_path(
         &self,
         spec: &RuntimeUnitSpec,
         mount: &RuntimeMount,
@@ -134,7 +134,7 @@ impl NodeArtifactManager {
         self.cache.mount_path(&spec_digest, mount).await
     }
 
-    pub(crate) async fn capture_output(
+    pub async fn capture_output(
         &self,
         spec: &RuntimeUnitSpec,
         output: &RuntimeOutputSpec,
@@ -147,7 +147,7 @@ impl NodeArtifactManager {
             .await
     }
 
-    pub(crate) async fn cleanup_spec(&self, spec_digest: &str) -> Result<(), NodeArtifactError> {
+    pub async fn cleanup_spec(&self, spec_digest: &str) -> Result<(), NodeArtifactError> {
         self.cache.cleanup_spec(spec_digest).await
     }
 }
@@ -155,7 +155,7 @@ impl NodeArtifactManager {
 fn validate_output_spec(output: &RuntimeOutputSpec) -> Result<(), NodeArtifactError> {
     if output.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
         return Err(NodeArtifactError::Invalid(
-            "Docker Task outputs require the supported directory archive media type".into(),
+            "Runtime Task outputs require the supported directory archive media type".into(),
         ));
     }
     Ok(())

@@ -1,16 +1,20 @@
-use a3s_cloud_node_agent::{
-    run_node_agent, DockerRuntimeDriver, NodeAgentConfig, NodeRuntimeBinding, NodeRuntimeProvider,
-};
-use a3s_runtime::{
-    FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
-};
 use std::error::Error;
+#[cfg(target_os = "linux")]
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::watch;
 
+#[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    use a3s_box_runtime::{BoxRuntimeDriver, BoxRuntimeDriverConfig};
+    use a3s_cloud_node_agent::{run_node_agent, NodeAgentConfig, NodeRuntimeProvider};
+    use a3s_runtime::{
+        FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver,
+        RuntimeStateStore,
+    };
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::watch;
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -20,15 +24,18 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .try_init()?;
     let config_path = config_path()?;
     let config = NodeAgentConfig::load(config_path)?;
-    let driver = Arc::new(DockerRuntimeDriver::connect(&config.docker)?);
+    let driver = Arc::new(BoxRuntimeDriver::new(BoxRuntimeDriverConfig {
+        home_dir: config.box_runtime.home_dir.clone(),
+        control_timeout: Duration::from_millis(config.box_runtime.control_timeout_ms),
+        task_poll_interval: Duration::from_millis(config.box_runtime.task_poll_interval_ms),
+    })?);
     let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
         config.node.state_dir.join("runtime"),
     ));
-    let runtime_driver: Arc<dyn RuntimeDriver> = driver.clone();
+    let runtime_driver: Arc<dyn RuntimeDriver> = driver;
     let runtime: Arc<dyn RuntimeClient> =
         Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-    let binding: Arc<dyn NodeRuntimeBinding> = driver;
-    let provider = NodeRuntimeProvider::new(runtime, binding);
+    let provider = NodeRuntimeProvider::new(runtime);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal = tokio::spawn(async move {
         wait_for_shutdown_signal().await;
@@ -40,6 +47,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
+fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    Err("A3S Cloud Node Agent requires Linux because A3S Box is its sole Runtime provider".into())
+}
+
+#[cfg(target_os = "linux")]
 fn config_path() -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
     let mut arguments = std::env::args_os();
     let executable = arguments
@@ -56,6 +69,7 @@ fn config_path() -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
 }
 
 #[cfg(unix)]
+#[cfg(target_os = "linux")]
 async fn wait_for_shutdown_signal() {
     let terminate = async {
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
@@ -78,7 +92,7 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(all(target_os = "linux", not(unix)))]
 async fn wait_for_shutdown_signal() {
     if let Err(error) = tokio::signal::ctrl_c().await {
         tracing::error!(%error, "could not wait for interrupt signal");
