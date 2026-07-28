@@ -134,6 +134,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let ca = std::fs::read(&bundle_path).expect("CA PEM");
     let root = reqwest::Certificate::from_pem(&ca).expect("root certificate");
     let without_identity = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(root.clone())
         .build()
         .expect("client without identity");
@@ -169,6 +170,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         foreign_key.serialize_pem()
     );
     let foreign_client = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(
             reqwest::Certificate::from_pem(&ca).expect("server root for foreign client"),
         )
@@ -186,6 +188,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
 
     let identity_pem = enrolled_identity.identity_pem();
     let client = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(root)
         .identity(reqwest::Identity::from_pem(identity_pem.as_bytes()).expect("client identity"))
         .build()
@@ -669,6 +672,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         Some(rotation_request.clone())
     );
     let restarted_old_client = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(
             reqwest::Certificate::from_pem(&ca).expect("server root after rotation crash"),
         )
@@ -718,6 +722,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     );
 
     let client = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(
             reqwest::Certificate::from_pem(&ca).expect("server root for replacement client"),
         )
@@ -738,6 +743,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     *rotation_now.write().expect("rotation test clock") +=
         rotation_replay_window + Duration::milliseconds(1);
     let expired_replay = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(
             reqwest::Certificate::from_pem(&ca).expect("server root for old replay client"),
         )

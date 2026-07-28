@@ -640,6 +640,7 @@ impl GatewayManagementClient {
         readiness_timeout: Duration,
     ) -> Result<Self, GatewaySnapshotInstallError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect_timeout)

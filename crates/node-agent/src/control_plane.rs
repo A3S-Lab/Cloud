@@ -860,6 +860,7 @@ async fn build_client(
         ));
     }
     let mut builder = Client::builder()
+        .use_rustls_tls()
         .connect_timeout(Duration::from_millis(config.connect_timeout_ms))
         .tls_built_in_root_certs(false)
         .redirect(reqwest::redirect::Policy::none())

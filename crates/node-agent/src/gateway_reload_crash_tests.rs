@@ -535,7 +535,10 @@ management {{
 }
 
 async fn wait_for_gateway(base_url: &str, child: &mut Child) -> TestResult {
-    let client = reqwest::Client::builder().no_proxy().build()?;
+    let client = reqwest::Client::builder()
+        .use_rustls_tls()
+        .no_proxy()
+        .build()?;
     for _ in 0..100 {
         if child.try_wait()?.is_some() {
             return Err("A3S Gateway exited before its management API was ready".into());

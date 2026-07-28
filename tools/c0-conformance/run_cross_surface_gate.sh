@@ -189,7 +189,6 @@ run_box run "$POSTGRES_IMAGE" \
   --isolation sandbox \
   --detach \
   --name "$postgres_box" \
-  --tmpfs /var/lib/postgresql/data:size=1073741824,rw \
   --env POSTGRES_DB=a3s_cloud \
   --env "POSTGRES_PASSWORD=$postgres_password" \
   --env POSTGRES_USER=a3s_cloud \
