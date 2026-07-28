@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub const MAXIMUM_LIST_LIMIT: usize = 200;
 pub const MAXIMUM_LOG_LIMIT: u16 = MAX_LOG_PAGE_SIZE;
 pub const DEFAULT_LOG_LIMIT: u16 = 100;
+pub const MAXIMUM_IDEMPOTENCY_KEY_LENGTH: usize = 255;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -184,6 +185,20 @@ where
         .ok_or_else(|| D::Error::custom("invalid log cursor"))
 }
 
+pub(super) fn deserialize_idempotency_key<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let key = String::deserialize(deserializer)?;
+    if key.is_empty()
+        || key.len() > MAXIMUM_IDEMPOTENCY_KEY_LENGTH
+        || key.contains(['\0', '\r', '\n'])
+    {
+        return Err(D::Error::custom("invalid idempotency key"));
+    }
+    Ok(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +238,28 @@ mod tests {
             json!({"buildRunId": build_run_id, "organizationId": Uuid::new_v4()}),
         ] {
             assert!(parse::<BuildRunLogArguments>(arguments).is_err());
+        }
+    }
+
+    #[test]
+    fn idempotency_keys_are_bounded_and_header_safe() {
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Arguments {
+            #[serde(deserialize_with = "deserialize_idempotency_key")]
+            idempotency_key: String,
+        }
+
+        let arguments = parse::<Arguments>(json!({"idempotencyKey": "caller-owned"}))
+            .expect("valid idempotency key");
+        assert_eq!(arguments.idempotency_key, "caller-owned");
+
+        for idempotency_key in [
+            String::new(),
+            "x".repeat(MAXIMUM_IDEMPOTENCY_KEY_LENGTH + 1),
+            "line\nbreak".into(),
+        ] {
+            assert!(parse::<Arguments>(json!({"idempotencyKey": idempotency_key})).is_err());
         }
     }
 }

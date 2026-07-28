@@ -4,6 +4,10 @@ use crate::modules::shared_kernel::domain::OrganizationId;
 
 const MCP_PATH: &str = "/api/v1/mcp";
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
+const MCP_WORKLOAD_TOKEN: &str =
+    "a3s_1111111111111111111111111111111111111111111111111111111111111111";
+const MCP_BUILD_TOKEN: &str =
+    "a3s_2222222222222222222222222222222222222222222222222222222222222222";
 
 #[tokio::test]
 async fn management_mcp_initializes_as_raw_stateless_json_rpc() -> Result<()> {
@@ -127,6 +131,26 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         None,
     )
     .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "mcp-workload-writer",
+        "MCP workload writer",
+        MCP_WORKLOAD_TOKEN,
+        &[ApiTokenScope::WORKLOAD_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "mcp-build-writer",
+        "MCP build writer",
+        MCP_BUILD_TOKEN,
+        &[ApiTokenScope::BUILD_WRITE],
+        None,
+    )
+    .await?;
     let read_only = app
         .call(post_json_as(
             format!("/api/v1/organizations/{organization}/api-tokens"),
@@ -184,7 +208,23 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     assert!(tool_names(&project_writer_tools).contains(&"a3s_cloud_projects_create"));
     assert!(!tool_names(&project_writer_tools).contains(&"a3s_cloud_environments_create"));
 
-    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 4).await?;
+    let workload_writer_tools = list_tools(&app, MCP_WORKLOAD_TOKEN, 3).await?;
+    for name in [
+        "a3s_cloud_workloads_stop",
+        "a3s_cloud_workloads_rollback",
+        "a3s_cloud_deployments_cancel",
+    ] {
+        assert!(tool_names(&workload_writer_tools).contains(&name), "{name}");
+    }
+    assert!(!tool_names(&workload_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
+    assert!(!tool_names(&workload_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
+
+    let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 4).await?;
+    assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
+    assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
+    assert!(!tool_names(&build_writer_tools).contains(&"a3s_cloud_workloads_stop"));
+
+    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 5).await?;
     assert_eq!(
         tool_names(&administrator_tools),
         vec![
@@ -199,13 +239,18 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
             "a3s_cloud_workload_logs_get",
+            "a3s_cloud_workloads_stop",
+            "a3s_cloud_workloads_rollback",
             "a3s_cloud_deployments_get",
+            "a3s_cloud_deployments_cancel",
             "a3s_cloud_routes_list",
             "a3s_cloud_routes_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
             "a3s_cloud_build_evidence_get",
+            "a3s_cloud_build_runs_cancel",
+            "a3s_cloud_build_runs_retry",
         ]
     );
 
@@ -474,6 +519,51 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
     assert_eq!(workload_logs["records"], json!([]));
     assert!(workload_logs["nextCursor"].is_null());
 
+    let stopped = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                24,
+                "a3s_cloud_workloads_stop",
+                json!({
+                    "workloadId": workload_id,
+                    "idempotencyKey": "mcp-stop-workload"
+                }),
+            ),
+        ))
+        .await?;
+    let stopped = response_json(&stopped)?;
+    assert_eq!(stopped["result"]["isError"], false);
+    assert_eq!(stopped["result"]["structuredContent"]["code"], 202);
+    assert_eq!(
+        stopped["result"]["structuredContent"]["data"]["workloadId"],
+        workload_id
+    );
+    assert_eq!(
+        stopped["result"]["structuredContent"]["data"]["replayed"],
+        false
+    );
+
+    let stop_replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                25,
+                "a3s_cloud_workloads_stop",
+                json!({
+                    "workloadId": workload_id,
+                    "idempotencyKey": "mcp-stop-workload"
+                }),
+            ),
+        ))
+        .await?;
+    let stop_replay = response_json(&stop_replay)?;
+    assert_eq!(stop_replay["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        stop_replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
     let missing_resource_id = Uuid::new_v4();
     for (id, name, arguments) in [
         (
@@ -518,6 +608,47 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             13,
             "a3s_cloud_build_evidence_get",
             json!({"buildRunId": missing_resource_id}),
+        ),
+        (
+            26,
+            "a3s_cloud_workloads_stop",
+            json!({
+                "workloadId": missing_resource_id,
+                "idempotencyKey": "missing-workload-stop"
+            }),
+        ),
+        (
+            27,
+            "a3s_cloud_workloads_rollback",
+            json!({
+                "workloadId": missing_resource_id,
+                "sourceRevisionId": missing_resource_id,
+                "idempotencyKey": "missing-workload-rollback"
+            }),
+        ),
+        (
+            28,
+            "a3s_cloud_deployments_cancel",
+            json!({
+                "deploymentId": missing_resource_id,
+                "idempotencyKey": "missing-deployment-cancel"
+            }),
+        ),
+        (
+            29,
+            "a3s_cloud_build_runs_cancel",
+            json!({
+                "buildRunId": missing_resource_id,
+                "idempotencyKey": "missing-build-cancel"
+            }),
+        ),
+        (
+            30,
+            "a3s_cloud_build_runs_retry",
+            json!({
+                "buildRunId": missing_resource_id,
+                "idempotencyKey": "missing-build-retry"
+            }),
         ),
     ] {
         let response = app
@@ -580,6 +711,28 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
                 "workloadId": missing_resource_id,
                 "revisionId": missing_resource_id,
                 "stream": "combined"
+            }),
+        ),
+        (
+            31,
+            "a3s_cloud_workloads_stop",
+            json!({"workloadId": missing_resource_id}),
+        ),
+        (
+            32,
+            "a3s_cloud_workloads_rollback",
+            json!({
+                "workloadId": missing_resource_id,
+                "idempotencyKey": "missing-source-revision"
+            }),
+        ),
+        (
+            33,
+            "a3s_cloud_build_runs_cancel",
+            json!({
+                "buildRunId": missing_resource_id,
+                "idempotencyKey": "unknown-field",
+                "organizationId": organization
             }),
         ),
     ] {

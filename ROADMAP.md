@@ -208,16 +208,18 @@ repository currently has no configured G0 provider secrets.
   token-digest persistence through A3S ORM, and zero plaintext credentials in
   API/CLI evidence or the PostgreSQL dump.
 
-`C0.1` is verified. `C0` remains in progress. `C0.2` now provides stateless
-scoped management MCP for core Project, Environment, and authorized search
-commands and queries plus Node, Operation, Workload, Deployment, Route, and
-BuildRun reads, bounded cursor-paginated Workload and BuildRun logs, and signed
-BuildRun evidence. A dedicated real PostgreSQL gate proves scope-derived
-catalogs, strict bounds and cursors, operational query dispatch, hidden mutation
-denial, REST-to-MCP idempotency replay, foreign-resource non-disclosure,
-immediate revocation, and digest-only A3S ORM persistence. Selected replay-safe
-mutation tools remain. Grant-derived search is a separate `C0.3` authorization
-outcome; the current search boundary is the organization tenant guard.
+`C0.1` and `C0.2` are verified. `C0` remains in progress. `C0.2` provides
+stateless scoped management MCP for core Project, Environment, and authorized
+search commands and queries plus Node, Operation, Workload, Deployment, Route,
+and BuildRun reads, bounded cursor-paginated Workload and BuildRun logs, and
+signed BuildRun evidence. Five replay-safe Workload stop/rollback, Deployment
+cancel, and BuildRun cancel/retry commands reuse the existing mutation scopes
+and application handlers. A dedicated real PostgreSQL gate proves scope-derived
+catalogs, strict arguments and annotations, operational query and command
+dispatch, hidden-mutation zero-write, Project and Workload idempotency replay,
+foreign-resource non-disclosure, immediate revocation, and digest-only A3S ORM
+persistence. Grant-derived search is a separate `C0.3` authorization outcome;
+the current search boundary is the organization tenant guard.
 
 ## 4. Delivery horizons and dependencies
 
@@ -316,7 +318,7 @@ format never becomes a second mutable source of truth.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, and automation contracts |
-| `C0.2` | In progress | Scoped management MCP and real PostgreSQL parity over the same commands and queries |
+| `C0.2` | Verified | Scoped management MCP and real PostgreSQL parity over the same commands and queries |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
@@ -357,16 +359,18 @@ stateless Streamable HTTP JSON-RPC, current-token scope-derived tool discovery,
 organization context derived only from the authenticated principal, three core
 queries, two idempotent create commands, ten operational Node, Operation,
 Workload, Deployment, Route, and BuildRun queries, two bounded cursor-paginated
-log queries, and one signed-evidence query through the existing application
-buses. It rejects batches, foreign origins, hidden-tool invocation, forged
-organization input, invalid query bounds or cursors, and revoked tokens without
-adding business rules or a persistence path to the presentation surface. Its
-dedicated real PostgreSQL gate proves exact administrator/read-only catalogs,
-hidden-mutation zero-write, REST-to-MCP replay through one durable idempotency
-record, indistinguishable foreign and missing Project errors, operational list,
-detail, log, and evidence semantics, next-request revocation, expected A3S ORM
-rows, and credential-free logs, evidence, and database dumps. Selected
-replay-safe mutation tools remain before `C0.2` verification.
+log queries, one signed-evidence query, and five replay-safe operational
+commands through the existing application buses. Workload stop/rollback and
+Deployment cancel require `workload:write`; BuildRun cancel/retry require
+`build:write`. It rejects batches, foreign origins, hidden-tool invocation,
+forged organization input, invalid arguments or cursors, and revoked tokens
+without adding business rules or a persistence path to the presentation
+surface. Its dedicated real PostgreSQL gate proves exact 23-tool administrator
+and 16-tool read-only catalogs, hidden-mutation zero-write, Project and Workload
+replay through one durable record per idempotency identity, indistinguishable
+foreign and missing Project errors, operational read and command boundaries,
+next-request revocation, expected A3S ORM rows, and credential-free logs,
+evidence, and database dumps. `C0.2` is verified.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 
@@ -600,7 +604,7 @@ The default portfolio priority is:
 1. preserve the verified `E0` release and its clean-host regression gate;
 2. execute and retain the remaining operator-owned `G0` certification through
    the implemented private-provider and signed-evidence process-death gates;
-3. advance `C0.2` and the first `S0` foundation independently when staffed;
+3. advance `C0.3` and the first `S0` foundation independently when staffed;
 4. preserve the closed `H0.1` real-provider Claim certification while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;

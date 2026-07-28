@@ -272,6 +272,14 @@ if [[ $scenario == management-mcp ]]; then
     psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
     --command="select count(*) from idempotency_records where idempotency_key = 'c0:mcp:rest-project'")"
   [[ $mcp_idempotency_count == 1 ]] || die "REST-to-MCP replay did not preserve one idempotency record"
+  mcp_workload_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from workloads where name = 'mcp-stop' and desired_state = 'stopped'")"
+  [[ $mcp_workload_count == 1 ]] || die "MCP Workload stop did not persist the expected desired state"
+  mcp_workload_stop_idempotency_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="select count(*) from idempotency_records where idempotency_key = 'c0:mcp:workload-stop'")"
+  [[ $mcp_workload_stop_idempotency_count == 1 ]] || die "MCP Workload stop replay did not preserve one idempotency record"
   read_only_scope_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
     psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
     --command="select count(*) from api_tokens where token_hash = '$restricted_digest' and scopes = '[\"cloud:read\"]'::jsonb and revoked_at is not null")"
@@ -301,7 +309,7 @@ done
 {
   printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
   if [[ $scenario == management-mcp ]]; then
-    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nread_only_scope_rows=1\n'
+    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n'
   fi
 } >"$evidence_directory/persistence-check.txt"
 

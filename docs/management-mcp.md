@@ -12,7 +12,9 @@ tools. The operational-read slice adds Node, Operation, Workload, Deployment,
 Route, and BuildRun queries without adding another business or persistence
 path. The observability-read slice adds bounded Workload and BuildRun log pages
 and signed BuildRun evidence through the same application queries and REST
-response projections.
+response projections. The operational-mutation slice adds five replay-safe
+Workload, Deployment, and BuildRun commands through the existing application
+handlers and REST response projections.
 
 ## Transport contract
 
@@ -74,6 +76,11 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_build_evidence_get` | Query | None |
 | `a3s_cloud_projects_create` | Command | `project:write` |
 | `a3s_cloud_environments_create` | Command | `environment:write` |
+| `a3s_cloud_workloads_stop` | Command | `workload:write` |
+| `a3s_cloud_workloads_rollback` | Command | `workload:write` |
+| `a3s_cloud_deployments_cancel` | Command | `workload:write` |
+| `a3s_cloud_build_runs_cancel` | Command | `build:write` |
+| `a3s_cloud_build_runs_retry` | Command | `build:write` |
 
 A tool that is unavailable to the current principal is absent from
 `tools/list` and is indistinguishable from an unknown tool when invoked. The
@@ -133,30 +140,51 @@ evidence continue through the existing QueryBus handlers, A3S ORM repositories,
 and configured object store. Existing ingestion redaction and tenant guards
 remain authoritative.
 
+## Replay-safe operational mutations
+
+`a3s_cloud_workloads_stop`, `a3s_cloud_deployments_cancel`, and
+`a3s_cloud_build_runs_cancel` are marked destructive. Workload rollback and
+BuildRun retry are non-destructive recovery actions. All five are non-read-only,
+idempotent, closed-world tools.
+
+Every invocation requires `idempotencyKey` with 1 through 255 header-safe UTF-8
+bytes. Workload stop also requires `workloadId`; rollback requires `workloadId`
+and `sourceRevisionId`; Deployment cancel requires `deploymentId`; and both
+BuildRun commands require `buildRunId`. Unknown properties, missing fields,
+invalid UUIDs, empty or oversized keys, and newline-bearing keys fail as
+JSON-RPC invalid parameters before command dispatch.
+
+The adapter derives the organization from the authenticated principal, adds
+the request ID and current timestamp where the existing command requires them,
+and dispatches through `CommandBus`. It does not read a repository, SQL, Redis,
+an object store, or a node. Initial accepted commands return code `202`; exact
+replays return code `200` and `replayed: true` in the standard envelope.
+
 ## Conformance
 
 The dedicated `C0.2` scenario in
 [`tools/c0-conformance`](../tools/c0-conformance/README.md) boots the production
 control-plane binary with the shipped A3S ACL configuration and digest-pinned
-PostgreSQL 17. It proves the exact 18-tool administrator and 16-tool
-`cloud:read` catalogs, denies a hidden mutation without a database write,
+PostgreSQL 17. It proves the exact 23-tool administrator and 16-tool
+`cloud:read` catalogs and their read-only, destructive, idempotent, and
+closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
-record, and returns the same `404` business-error contract for foreign and
-missing Projects. It then creates a real Environment, exercises all five
-operational list tools, verifies all eight detail, log, and evidence tools
-return bounded `NOT_FOUND` envelopes for missing resources, rejects
-out-of-range limits, malformed cursors, and unsupported stream filters, and
-observes token revocation on the next MCP request. The persistence check
-requires the expected Token digests, read-only scope, revocation, Project and
-Environment rows, and zero plaintext credentials in responses, logs, evidence,
-or the PostgreSQL dump. Production persistence reaches PostgreSQL only through
-A3S ORM repositories.
+record; and returns the same `404` business-error contract for foreign and
+missing Projects. It creates a real Environment, exercises all five operational
+list tools, verifies all eight detail/log/evidence tools and all five commands
+return bounded `NOT_FOUND` envelopes for missing resources, and rejects invalid
+read and command arguments. It also creates one Workload from A3S ACL, stops it
+through MCP, proves exact replay, and observes token revocation on the next MCP
+request. The persistence check requires the expected Token digests, read-only
+scope, revocation, Project, Environment, stopped Workload, and idempotency rows,
+plus zero plaintext credentials in responses, logs, evidence, or the PostgreSQL
+dump. Production persistence reaches PostgreSQL only through A3S ORM
+repositories.
 
 ## Current limits
 
-`C0.2` remains in progress. The next slices can admit selected replay-safe
-operational commands only with their existing scopes, idempotency contracts,
-and audit boundaries. OAuth 2.1 discovery and consent follow only after the
+`C0.2` is verified. OAuth 2.1 discovery and consent follow only after the
 token-scoped confused-deputy gate. Secret material, exec, terminal access,
 server-side sessions, live log streams, and JSON-RPC batching are not exposed
-by this slice; destructive tools remain disabled.
+by this slice. No additional mutation is admitted without its existing scope,
+idempotency contract, tenant boundary, and audit behavior.

@@ -1,12 +1,15 @@
-use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_LOG_LIMIT};
+use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use a3s_boot::AuthPrincipal;
 use serde_json::{json, Value};
 
 pub const BUILD_RUNS_GET: &str = "a3s_cloud_build_runs_get";
 pub const BUILD_RUNS_LIST: &str = "a3s_cloud_build_runs_list";
+pub const BUILD_RUNS_CANCEL: &str = "a3s_cloud_build_runs_cancel";
+pub const BUILD_RUNS_RETRY: &str = "a3s_cloud_build_runs_retry";
 pub const BUILD_RUN_LOGS_GET: &str = "a3s_cloud_build_run_logs_get";
 pub const BUILD_EVIDENCE_GET: &str = "a3s_cloud_build_evidence_get";
+pub const DEPLOYMENTS_CANCEL: &str = "a3s_cloud_deployments_cancel";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
@@ -20,6 +23,8 @@ pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
 pub const WORKLOADS_GET: &str = "a3s_cloud_workloads_get";
 pub const WORKLOADS_LIST: &str = "a3s_cloud_workloads_list";
+pub const WORKLOADS_ROLLBACK: &str = "a3s_cloud_workloads_rollback";
+pub const WORKLOADS_STOP: &str = "a3s_cloud_workloads_stop";
 pub const WORKLOAD_LOGS_GET: &str = "a3s_cloud_workload_logs_get";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,17 +40,22 @@ pub enum ManagementTool {
     WorkloadsList,
     WorkloadsGet,
     WorkloadLogsGet,
+    WorkloadsStop,
+    WorkloadsRollback,
     DeploymentsGet,
+    DeploymentsCancel,
     RoutesList,
     RoutesGet,
     BuildRunsList,
     BuildRunsGet,
     BuildRunLogsGet,
     BuildEvidenceGet,
+    BuildRunsCancel,
+    BuildRunsRetry,
 }
 
 impl ManagementTool {
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 23] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ProjectsCreate,
@@ -57,13 +67,18 @@ impl ManagementTool {
         Self::WorkloadsList,
         Self::WorkloadsGet,
         Self::WorkloadLogsGet,
+        Self::WorkloadsStop,
+        Self::WorkloadsRollback,
         Self::DeploymentsGet,
+        Self::DeploymentsCancel,
         Self::RoutesList,
         Self::RoutesGet,
         Self::BuildRunsList,
         Self::BuildRunsGet,
         Self::BuildRunLogsGet,
         Self::BuildEvidenceGet,
+        Self::BuildRunsCancel,
+        Self::BuildRunsRetry,
     ];
 
     pub fn visible_to(self, principal: &AuthPrincipal) -> bool {
@@ -98,13 +113,18 @@ impl ManagementTool {
             Self::WorkloadsList => WORKLOADS_LIST,
             Self::WorkloadsGet => WORKLOADS_GET,
             Self::WorkloadLogsGet => WORKLOAD_LOGS_GET,
+            Self::WorkloadsStop => WORKLOADS_STOP,
+            Self::WorkloadsRollback => WORKLOADS_ROLLBACK,
             Self::DeploymentsGet => DEPLOYMENTS_GET,
+            Self::DeploymentsCancel => DEPLOYMENTS_CANCEL,
             Self::RoutesList => ROUTES_LIST,
             Self::RoutesGet => ROUTES_GET,
             Self::BuildRunsList => BUILD_RUNS_LIST,
             Self::BuildRunsGet => BUILD_RUNS_GET,
             Self::BuildRunLogsGet => BUILD_RUN_LOGS_GET,
             Self::BuildEvidenceGet => BUILD_EVIDENCE_GET,
+            Self::BuildRunsCancel => BUILD_RUNS_CANCEL,
+            Self::BuildRunsRetry => BUILD_RUNS_RETRY,
         }
     }
 
@@ -112,6 +132,10 @@ impl ManagementTool {
         match self {
             Self::EnvironmentsCreate => Some(ApiTokenScope::ENVIRONMENT_WRITE),
             Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
+            Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
+                Some(ApiTokenScope::WORKLOAD_WRITE)
+            }
+            Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::EnvironmentsList
             | Self::ProjectsList
             | Self::Search
@@ -199,11 +223,29 @@ impl ManagementTool {
                 workload_logs_schema(),
                 true,
             ),
+            Self::WorkloadsStop => (
+                "Stop workload",
+                "Stop one tenant-authorized Workload with explicit idempotency.",
+                idempotent_uuid_id_schema("workloadId"),
+                false,
+            ),
+            Self::WorkloadsRollback => (
+                "Roll back workload",
+                "Roll back one tenant-authorized Workload to an existing revision with explicit idempotency.",
+                rollback_workload_schema(),
+                false,
+            ),
             Self::DeploymentsGet => (
                 "Get deployment",
                 "Get one tenant-authorized deployment and its observed operation state.",
                 uuid_id_schema("deploymentId"),
                 true,
+            ),
+            Self::DeploymentsCancel => (
+                "Cancel deployment",
+                "Cancel one tenant-authorized Deployment with explicit idempotency.",
+                idempotent_uuid_id_schema("deploymentId"),
+                false,
             ),
             Self::RoutesList => (
                 "List routes",
@@ -241,7 +283,23 @@ impl ManagementTool {
                 uuid_id_schema("buildRunId"),
                 true,
             ),
+            Self::BuildRunsCancel => (
+                "Cancel build run",
+                "Cancel one tenant-authorized BuildRun with explicit idempotency.",
+                idempotent_uuid_id_schema("buildRunId"),
+                false,
+            ),
+            Self::BuildRunsRetry => (
+                "Retry build run",
+                "Retry one tenant-authorized BuildRun with explicit idempotency.",
+                idempotent_uuid_id_schema("buildRunId"),
+                false,
+            ),
         };
+        let destructive = matches!(
+            self,
+            Self::WorkloadsStop | Self::DeploymentsCancel | Self::BuildRunsCancel
+        );
         json!({
             "name": self.name(),
             "title": title,
@@ -249,7 +307,7 @@ impl ManagementTool {
             "inputSchema": input_schema,
             "annotations": {
                 "readOnlyHint": read_only,
-                "destructiveHint": false,
+                "destructiveHint": destructive,
                 "idempotentHint": true,
                 "openWorldHint": false
             }
@@ -296,6 +354,39 @@ fn uuid_id_schema(property: &str) -> Value {
         "properties": properties,
         "required": [property],
         "additionalProperties": false
+    })
+}
+
+fn idempotent_uuid_id_schema(property: &str) -> Value {
+    let mut properties = serde_json::Map::new();
+    properties.insert(property.into(), json!({"type": "string", "format": "uuid"}));
+    properties.insert("idempotencyKey".into(), idempotency_key_schema());
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [property, "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn rollback_workload_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workloadId": {"type": "string", "format": "uuid"},
+            "sourceRevisionId": {"type": "string", "format": "uuid"},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["workloadId", "sourceRevisionId", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn idempotency_key_schema() -> Value {
+    json!({
+        "type": "string",
+        "minLength": 1,
+        "maxLength": MAXIMUM_IDEMPOTENCY_KEY_LENGTH
     })
 }
 
@@ -381,7 +472,7 @@ fn create_project_schema() -> Value {
         "type": "object",
         "properties": {
             "name": {"type": "string", "minLength": 1, "maxLength": 100},
-            "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255}
+            "idempotencyKey": idempotency_key_schema()
         },
         "required": ["name", "idempotencyKey"],
         "additionalProperties": false
@@ -394,7 +485,7 @@ fn create_environment_schema() -> Value {
         "properties": {
             "projectId": {"type": "string", "format": "uuid"},
             "name": {"type": "string", "minLength": 1, "maxLength": 100},
-            "idempotencyKey": {"type": "string", "minLength": 1, "maxLength": 255}
+            "idempotencyKey": idempotency_key_schema()
         },
         "required": ["projectId", "name", "idempotencyKey"],
         "additionalProperties": false

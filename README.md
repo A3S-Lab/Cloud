@@ -625,12 +625,13 @@ plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
 verified. The [`C0.2` management MCP](docs/management-mcp.md) now provides the
 stateless protocol, scoped core-resource tools, tenant-authorized Node,
 Operation, Workload, Deployment, Route, and BuildRun reads, bounded paged
-Workload and BuildRun logs, and signed BuildRun evidence. Its dedicated real
-PostgreSQL gate proves exact administrator/read-only catalogs, strict bounded
-arguments and log cursors, operational query dispatch, hidden mutation denial,
-REST-to-MCP replay, foreign-resource non-disclosure, next-request revocation,
-A3S ORM state, and credential-free evidence. Selected replay-safe mutation
-coverage remains before `C0.2` verification.
+Workload and BuildRun logs, signed BuildRun evidence, and five replay-safe
+Workload, Deployment, and BuildRun mutation tools. Its dedicated real
+PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only
+catalogs, strict arguments and annotations, operational query and command
+dispatch, hidden mutation denial, Project and Workload replay, foreign-resource
+non-disclosure, next-request revocation, A3S ORM state, and credential-free
+evidence. `C0.2` is verified.
 
 ## Platform Model
 
