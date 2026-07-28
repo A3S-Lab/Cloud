@@ -130,7 +130,7 @@ jobs:
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
           A3S_BOX_RUNTIME_CONFORMANCE: "1"
           A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-          A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.manifest.v1+json
+          A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
