@@ -2,10 +2,12 @@ pub mod domain;
 pub mod infrastructure;
 
 pub use domain::{
-    Asset, AssetArchived, AssetCreated, AssetKind, AssetRelease, AssetReleaseArtifact,
+    Asset, AssetArchived, AssetCreated, AssetGitRepository, AssetGitRepositoryError,
+    AssetGitRepositoryWrite, AssetKind, AssetRelease, AssetReleaseArtifact,
     AssetReleaseArtifactKind, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseState,
     AssetReleaseVersion, AssetReleaseWrite, AssetReleaseWriteReference, AssetReleaseYanked,
     AssetState, AssetWrite, AssetWriteReference, CreateAssetReleaseWrite, CreateAssetWrite,
-    IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
+    IAssetGitRepository, IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
+    DEFAULT_ASSET_BRANCH, SKILL_BUNDLE_MEDIA_TYPE,
 };
-pub use infrastructure::PostgresAssetRepository;
+pub use infrastructure::{LocalAssetGitRepository, PostgresAssetRepository};

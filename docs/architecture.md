@@ -1362,15 +1362,30 @@ tenant-scoped A3S ORM repository enforce organization-name and release-version
 uniqueness, optimistic lifecycle transitions, replay through the shared
 idempotency table, and atomic typed events through the existing Outbox. Real
 PostgreSQL tests prove tenant isolation, archival, publication immutability,
-yanked addressability, and rollback of rejected writes. It does not yet expose
-hosted Git, publication commands, deployment, Skill binding, or catalog reads.
+yanked addressability, and rollback of rejected writes.
 
-PostgreSQL stores asset and release metadata. The authoritative bare Git
-repository lives on durable POSIX storage and is addressed by immutable
-`asset_id`; a distributed single-writer lease protects ref updates. Smart HTTP
-is implemented before SSH. Object storage holds atomic repository bundles,
-backups, release archives, and other content-addressed artifacts, not a live
-file-by-file mirror of Git objects.
+The first `A0.2` slice adds one `IAssetGitRepository` domain port and a local
+durable adapter. The adapter addresses repositories by the tenant-qualified
+identity `{organization_id}/{asset_id}.git`, initializes `main`, records and
+revalidates immutable schema, organization, and Asset metadata, enables Git
+receive and transfer integrity checks, and atomically publishes a staged bare
+repository before syncing its parent directories. Concurrent provisioning
+converges on one repository, while symlinked paths and changed identity fail
+closed. It and Source checkout share the same hardened Git process runner.
+
+This filesystem slice adds no database access, queue, scheduler, or object
+storage path. Smart HTTP authorization, PostgreSQL write leases and quotas
+through A3S ORM, backups through the shared immutable-object boundary, and
+pinned ACL admission through `a3s-acl` remain before `A0.2` is complete. No
+publication command, deployment, Skill binding, or catalog read is exposed.
+
+PostgreSQL stores asset and release metadata. The implemented local profile
+keeps the authoritative bare Git repository on durable POSIX storage and
+addresses it by `(organization_id, asset_id)`; the production profile adds an
+A3S ORM-backed PostgreSQL single-writer lease before ref updates. Smart HTTP is
+implemented before SSH. The existing immutable-object boundary will hold
+atomic repository bundles, backups, release archives, and other
+content-addressed artifacts, not a live file-by-file mirror of Git objects.
 
 `.a3s/asset.acl` accepts only Agent, MCP, or Skill manifests. Published releases
 bind commit SHA, manifest digest, and artifact digest. Agent and MCP releases

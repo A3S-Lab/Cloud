@@ -467,8 +467,11 @@ tables directly. Audit records are append-only and separate from event delivery.
 
 - `kind` is one of `agent`, `mcp`, or `skill`; unknown values fail closed.
 - Asset names are unique within one organization namespace.
-- The hosted Git repository is addressed by immutable `asset_id`, not its name.
-- The default branch is mutable metadata; releases always pin a commit SHA.
+- The hosted Git repository is addressed by `(organization_id, asset_id)`, not
+  its mutable name; the local path is
+  `{root}/{organization_id}/{asset_id}.git`.
+- The repository starts on `main`; releases always pin a commit SHA rather than
+  a mutable branch.
 - Archiving prevents new releases but never deletes existing releases.
 - Asset ACL changes are read from a commit and validated before release.
 

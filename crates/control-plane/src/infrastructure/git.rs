@@ -13,7 +13,7 @@ const MAX_COMMAND_OUTPUT_BYTES: usize = 32 * 1024 * 1024;
 const GIT_HTTP_EXTRA_HEADER_ENV: &str = "A3S_CLOUD_GIT_HTTP_EXTRA_HEADER";
 
 #[derive(Debug, thiserror::Error)]
-pub(super) enum GitCommandError {
+pub(crate) enum GitCommandError {
     #[error("Git executable is unavailable")]
     ExecutableUnavailable,
     #[error("Git command could not be started")]
@@ -26,7 +26,7 @@ pub(super) enum GitCommandError {
     Failed,
 }
 
-pub(super) struct GitCommandRunner {
+pub(crate) struct GitCommandRunner {
     executable: PathBuf,
     timeout: Duration,
     allow_file_protocol: bool,
@@ -34,7 +34,7 @@ pub(super) struct GitCommandRunner {
 }
 
 impl GitCommandRunner {
-    pub(super) fn discover(
+    pub(crate) fn discover(
         timeout: Duration,
         allow_file_protocol: bool,
         allow_http_protocol: bool,
@@ -47,7 +47,7 @@ impl GitCommandRunner {
         })
     }
 
-    pub(super) async fn run(
+    pub(crate) async fn run(
         &self,
         working_directory: &Path,
         home: &Path,
@@ -200,4 +200,36 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(not(unix))]
 fn is_executable(path: &Path) -> bool {
     path.is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn git_consumers_reuse_the_shared_command_runner() {
+        for (name, source) in [
+            (
+                "Source checkout",
+                include_str!("../modules/sources/infrastructure/git_source_checkout.rs"),
+            ),
+            (
+                "Asset repository",
+                include_str!("../modules/assets/infrastructure/git_repository/mod.rs"),
+            ),
+        ] {
+            assert!(
+                source.contains("GitCommandRunner"),
+                "{name} must use GitCommandRunner"
+            );
+            for forbidden in [
+                "tokio::process::Command",
+                "std::process::Command",
+                "Command::new(",
+            ] {
+                assert!(
+                    !source.contains(forbidden),
+                    "{name} must reuse GitCommandRunner; found {forbidden}"
+                );
+            }
+        }
+    }
 }

@@ -1,10 +1,9 @@
-mod command;
 mod receipt;
 mod tree;
 
-use self::command::{GitCommandError, GitCommandRunner};
 use self::receipt::{read_receipt, write_receipt, CheckoutReceipt, RECEIPT_SCHEMA};
 use self::tree::{digest_worktree, valid_object_id, valid_sha256, GitTreeManifest};
+use crate::infrastructure::{GitCommandError, GitCommandRunner};
 use crate::modules::sources::domain::{
     CheckedOutSource, GitProvider, ISourceCheckout, SourceCheckoutError, SourceCheckoutRequest,
     SourceProviderCredential,

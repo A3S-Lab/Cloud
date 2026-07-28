@@ -171,9 +171,19 @@ PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
 organization-scoped names and immutable versioned release identities; enforces
 the `active -> archived` and `draft -> published -> yanked` lifecycles; and
 commits typed events, idempotency records, and aggregate changes atomically
-through A3S ORM. This foundation does not yet expose hosted Git, release APIs,
-build publication, Workload deployment, Skill binding, or catalog surfaces, so
-the complete `A0` gate remains in progress.
+through A3S ORM.
+
+`A0.2` is now in progress. Its first slice provides one local durable bare-Git
+adapter addressed by organization and immutable Asset ID, publishes newly
+initialized repositories through atomic staging, records and verifies the
+organization, Asset, schema, and `main`-branch identity, enables Git object
+integrity checks, converges concurrent provisioning, and fails closed on
+symlinked paths or changed identity. Source checkout and hosted repositories
+reuse the same hardened Git command runner. No Smart HTTP route is public yet;
+authorization, PostgreSQL write leases, quotas, backup and restore, and pinned
+`.a3s/asset.acl` admission remain before `A0.2` can be verified. Release APIs,
+build publication, Workload deployment, Skill binding, and catalog surfaces
+remain `A0.3` through `A0.5`, so the complete `A0` gate remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload and BuildRun logs share one
 sequence/SSE implementation, Operation snapshots reuse the same polling
@@ -691,11 +701,12 @@ Runtime owns capability discovery and idempotent `apply`, `inspect`, `stop`, and
 deployment workflows, release provenance, routing, and convergence decisions.
 
 Applications use this path today. Agent, MCP, and Skill publication has an
-implemented `A0.1` domain and PostgreSQL foundation, while its hosted source,
-publication, deployment, binding, and catalog surfaces remain later `A0`
-sub-gates. Stateful resources remain `S0`; replicas and multi-node placement
-remain `H0`; accelerator and inference capabilities remain `I0`. These profiles
-do not create separate schedulers.
+implemented `A0.1` domain and PostgreSQL foundation plus the first `A0.2` local
+bare-repository slice. Authorized Smart HTTP and the remaining repository
+safety gates, publication, deployment, binding, and catalog surfaces remain
+open `A0` work. Stateful resources remain `S0`; replicas and multi-node
+placement remain `H0`; accelerator and inference capabilities remain `I0`.
+These profiles do not create separate schedulers.
 
 ## Delivery Model
 

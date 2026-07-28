@@ -1,4 +1,5 @@
 mod flow;
+mod git;
 mod immutable_object;
 mod oci_registry_client;
 mod postgres;
@@ -11,6 +12,7 @@ pub use flow::{
 };
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 
+pub(crate) use git::{GitCommandError, GitCommandRunner};
 pub(crate) use immutable_object::{
     ImmutableObjectClient, ImmutableObjectError, ImmutableObjectOpenResult, ImmutableObjectRead,
     ImmutableObjectVerification, S3ImmutableObjectOptions,

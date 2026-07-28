@@ -143,7 +143,7 @@ Status as of 2026-07-28:
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
 | G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. The manual private-GitHub and external Registry/Vault gate now includes PostgreSQL 17, rootless BuildKit, and real process death after publication and evidence persistence. A local real-provider rehearsal passes, but no operator-owned run is recorded because the repository has no G0 provider secrets; external certification still blocks G0 verification |
 | C0 | In progress | `C0.1` and `C0.2` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` adds stateless Streamable HTTP management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload/BuildRun logs, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.3` and `C0.4` remain planned. |
-| A0 | In progress | `A0.1` is verified. Exact Agent/MCP/Skill Asset and AssetRelease aggregates, tenant-scoped migration 051, typed A3S ORM transactions, shared idempotency and Outbox, optimistic concurrency, immutable published identities, yanked addressability, and cross-tenant denial pass isolated real PostgreSQL tests. Hosted Git, publication, deployment, Skill binding, and catalog surfaces remain `A0.2` through `A0.5`. |
+| A0 | In progress | `A0.1` is verified. Exact Agent/MCP/Skill Asset and AssetRelease aggregates, tenant-scoped migration 051, typed A3S ORM transactions, shared idempotency and Outbox, optimistic concurrency, immutable published identities, yanked addressability, and cross-tenant denial pass isolated real PostgreSQL tests. The first `A0.2` slice adds a tenant-qualified local bare-repository foundation with atomic provisioning, immutable identity checks, and the shared Git runner. Smart HTTP authorization, PostgreSQL leases and quotas, backup/restore, manifest admission, publication, deployment, Skill binding, and catalog surfaces remain. |
 | H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
 | H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
 
@@ -1305,12 +1305,13 @@ generic asset metadata platform.
 
 `A0` is in progress. `A0.1` is verified; it establishes the durable release
 identity that later publication and Agent execution slices consume without
-claiming a usable hosted catalog.
+claiming a usable hosted catalog. `A0.2` has started with the local repository
+safety foundation, but no hosted Git endpoint is public.
 
 | Sub-gate | State | Scope |
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset/AssetRelease domain, immutable identities, tenant-scoped PostgreSQL schema and A3S ORM repository, optimistic concurrency, shared idempotency/Outbox, and real PostgreSQL behavior evidence |
-| `A0.2` | Planned | Safe hosted Git repository and pinned manifest admission |
+| `A0.2` | In progress | Tenant-qualified local bare repositories, immutable identity checks, atomic concurrent provisioning, and the shared Git runner are implemented; authorized Smart HTTP, A3S ORM-backed write leases and quotas, backup/restore, and pinned manifest admission remain |
 | `A0.3` | Planned | Atomic release build, artifact publication, provenance, selection, and yank lifecycle |
 | `A0.4` | Planned | Agent/MCP deployment through the existing Workload path |
 | `A0.5` | Planned | Immutable Skill binding and authorized catalog surfaces |
@@ -1323,11 +1324,23 @@ exact replay, changed-request conflicts, uniqueness, stale versions,
 cross-tenant denial, archived-Asset publication denial, published identity
 immutability, yanked addressability, and failed-write atomicity.
 
+The first `A0.2` slice adds one `IAssetGitRepository` domain port and a local
+durable adapter. Repositories live at
+`{root}/{organization_id}/{asset_id}.git`, use `main`, carry immutable schema,
+organization, and Asset metadata, enable receive and transfer object checks,
+and are published by staging-directory rename followed by directory sync.
+Concurrent attempts converge on one repository; archived Assets remain
+inspectable but cannot provision missing repositories; symlinked paths and
+changed identity fail closed. The adapter and Source checkout use the same
+hardened Git command runner.
+
 ### Remaining work
 
-- Add Git Smart HTTP backed by bare repositories on durable POSIX storage,
-  immutable asset IDs, repository leases, authorization, quotas, and atomic
-  backup bundles.
+- Add tenant-authorized Git Smart HTTP over the implemented durable POSIX bare
+  repositories, then add A3S ORM-backed PostgreSQL single-writer leases and
+  quotas without introducing Redis or another coordination store.
+- Create and restore atomic repository bundles through the shared
+  immutable-object boundary rather than another object-storage client.
 - Validate `.a3s/asset.acl` at a pinned commit and reject every unsupported kind.
 - Build and publish immutable releases binding commit SHA, manifest digest, and
   artifact digest; keep release, listing visibility, and deployment separate.

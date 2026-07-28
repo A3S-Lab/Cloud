@@ -238,6 +238,21 @@ the current search boundary is the organization tenant guard.
 No hosted Git or release API is public yet, and no Agent, MCP, or Skill is
 deployable from this foundation alone. `A0` therefore remains in progress.
 
+`A0.2` is now in progress. The first repository-safety slice provides a local
+durable bare-Git adapter under
+`{root}/{organization_id}/{asset_id}.git`. It initializes `main`, binds and
+revalidates immutable tenant, Asset, and repository-schema metadata, enables
+receive and transfer object checks, publishes through atomic staging and parent
+directory sync, converges concurrent provisioning, and rejects symlinked paths
+or identity tampering. It reuses the hardened Git command runner already owned
+by Source checkout; it does not add a second Git subprocess mechanism.
+
+This slice exposes no Smart HTTP route and adds no relational persistence.
+`A0.2` remains open until authenticated tenant-scoped Git access, A3S
+ORM-backed PostgreSQL write leases and quotas, backup and restore through the
+shared immutable-object boundary, and pinned `.a3s/asset.acl` admission through
+`a3s-acl` pass their integration and recovery gates.
+
 ## 4. Delivery horizons and dependencies
 
 | Horizon | Required gates | Product outcome |
@@ -414,15 +429,27 @@ evidence, and database dumps. `C0.2` is verified.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset and AssetRelease aggregates, immutable identity rules, tenant-scoped A3S ORM persistence, optimistic transitions, shared idempotency and Outbox, and real PostgreSQL behavior evidence |
-| `A0.2` | Planned | Asset-ID-addressed Git Smart HTTP, durable POSIX repositories, authorization, single-writer leases, quotas, atomic backup/restore, and pinned `.a3s/asset.acl` validation |
+| `A0.2` | In progress | Tenant-qualified Asset-ID bare-repository foundation is implemented; authorized Git Smart HTTP, A3S ORM-backed PostgreSQL single-writer leases and quotas, atomic backup/restore, and pinned `.a3s/asset.acl` validation remain |
 | `A0.3` | Planned | Atomic source-to-artifact publication, immutable release provenance, draft recovery, yanking, and release selection over the verified `G0` build contracts |
 | `A0.4` | Planned | Agent and MCP deployment, health, logs, update, rollback, and cleanup through the existing Workload, Flow, Fleet, Runtime, and Gateway path |
 | `A0.5` | Planned | Immutable Skill bundle binding plus tenant-authorized release/catalog API, client, CLI, and Web surfaces without generic forge features |
 
-`A0.1` is a durable prerequisite, not a user-visible catalog. The next slice is
-`A0.2`; `A0.3` cannot close until the exact `G0` source, Artifact, publication,
-and evidence contracts it consumes are verified. A published `A0.3` release is
-the first identity that `A1.1` may bind.
+`A0.1` is a durable prerequisite, not a user-visible catalog. Close `A0.2` in
+this order:
+
+1. retain the implemented local bare-repository, immutable identity, atomic
+   provisioning, and shared Git-runner foundation;
+2. add tenant-authorized Smart HTTP through the existing authentication and
+   audit boundaries;
+3. serialize ref writes and enforce quotas through PostgreSQL using A3S ORM;
+4. create and restore atomic repository bundles through the existing
+   immutable-object boundary; and
+5. admit only a pinned `.a3s/asset.acl` parsed by `a3s-acl`.
+
+No step adds another Git runner, database access layer, queue, object store, or
+configuration language. `A0.3` cannot close until the exact `G0` source,
+Artifact, publication, and evidence contracts it consumes are verified. A
+published `A0.3` release is the first identity that `A1.1` may bind.
 
 Agent and MCP are asset and workload profiles, not separate schedulers.
 
