@@ -24,3 +24,17 @@ impl fmt::Display for GitCommitSha {
         self.0.fmt(formatter)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_only_full_git_object_ids_and_canonicalizes_hexadecimal_case() {
+        let sha = GitCommitSha::parse("A".repeat(40)).expect("full SHA-1 object ID");
+        assert_eq!(sha.as_str(), "a".repeat(40));
+        assert!(GitCommitSha::parse("a".repeat(64)).is_ok());
+        assert!(GitCommitSha::parse("a".repeat(39)).is_err());
+        assert!(GitCommitSha::parse("g".repeat(40)).is_err());
+    }
+}

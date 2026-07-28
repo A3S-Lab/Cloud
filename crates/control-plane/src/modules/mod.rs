@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod assets;
 pub mod edge;
 pub mod fleet;
 pub mod identity;

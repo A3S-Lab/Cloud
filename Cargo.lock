@@ -80,6 +80,7 @@ dependencies = [
  "ring",
  "rustls",
  "rustls-pemfile",
+ "semver",
  "serde",
  "serde_json",
  "serde_urlencoded",
