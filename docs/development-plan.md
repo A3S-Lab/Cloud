@@ -1365,15 +1365,18 @@ Current `A1.0` implementation:
 - one poll interval, delayed missed-tick policy, keepalive cadence, retry
   value, record limit, event-byte bound, and exact terminal-sequence advance
   now govern both streams;
+- `presentation::polling_sse` is the sole interval, missed-tick, keepalive, and
+  retry transport for sequence streams and the Operation snapshot stream;
+- Operation snapshots retain their existing content-hash event IDs and do not
+  fabricate a semantic sequence merely to share the polling transport;
 - the duplicate `workload_log_stream.rs`, `build_run_log_stream.rs`, and
   `log_cursor.rs` implementations are removed; and
 - unit, HTTP/controller, Management MCP, DTO-redaction, and source-architecture
-  tests prevent a domain-local cursor codec or sequence stream from returning.
+  tests prevent a domain-local cursor codec, sequence stream, or polling loop
+  from returning.
 
-The Operation endpoint remains a hash-addressed snapshot stream rather than a
-sequence stream. Its polling/keepalive transport, the immutable object backend,
-and the node-agent outbound-batch journal/receipt primitive remain the open
-`A1.0` work; no semantic sequence is fabricated for Operation snapshots.
+The immutable object client and the node-agent outbound-batch journal/receipt
+primitive are the remaining `A1.0` work.
 
 Implement `AgentConversation` as the aggregate that owns the next event
 sequence and conversation lifecycle. Implement `AgentExecution` as the

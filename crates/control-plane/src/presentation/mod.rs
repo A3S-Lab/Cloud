@@ -1,6 +1,7 @@
 mod api_contract;
 mod api_response_interceptor;
 mod management_mcp;
+mod polling_sse;
 mod request_id_middleware;
 mod sequence_stream;
 
@@ -16,6 +17,7 @@ pub use api_response_interceptor::{
     application_error_response, ApiErrorFilter, ApiResponseInterceptor,
 };
 pub use management_mcp::{ManagementMcpModule, MANAGEMENT_MCP_PROTOCOL_VERSION};
+pub(crate) use polling_sse::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
 pub use request_id_middleware::RequestIdMiddleware;
 pub(crate) use sequence_stream::{
     decode_sequence_cursor, default_live_sequence_limit, format_sequence_cursor,

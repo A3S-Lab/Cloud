@@ -1,3 +1,4 @@
+use super::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
 use crate::modules::shared_kernel::application::ApplicationError;
 use a3s_boot::{BootError, BootRequest, Result, SseEvent, SseStream};
 use serde::Serialize;
@@ -91,39 +92,29 @@ where
     P: SequencePage,
     Load: Fn(Q) -> LoadFuture + Send + Sync + 'static,
     LoadFuture: Future<Output = Result<P>> + Send + 'static,
-    Advance: Fn(&mut Q, u64) + Send + Sync + 'static,
+    Advance: Fn(&mut Q, u64) + Clone + Send + Sync + 'static,
 {
     let initial = load_page(query.clone()).await?;
-    let retry_ms = u64::try_from(LIVE_SEQUENCE_POLL_INTERVAL.as_millis()).map_err(|_| {
-        BootError::Internal(format!("live {stream_name} retry duration overflowed"))
-    })?;
+    let initial = sequence_page_event(&mut query, initial, &advance, stream_name)?;
+    let options = PollingSseOptions::new(
+        &format!("live {stream_name}"),
+        LIVE_SEQUENCE_POLL_INTERVAL,
+        LIVE_SEQUENCE_KEEPALIVE_POLLS,
+    )?;
 
-    Ok(Box::pin(async_stream::try_stream! {
-        let mut initial = Some(initial);
-        let mut empty_polls = 0_u64;
-        let mut interval = tokio::time::interval(LIVE_SEQUENCE_POLL_INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        interval.tick().await;
-        loop {
-            let page = match initial.take() {
-                Some(page) => page,
-                None => {
-                    interval.tick().await;
-                    load_page(query.clone()).await?
-                }
-            };
-            if let Some(event) = bounded_sequence_event(page, stream_name, retry_ms)? {
-                advance(&mut query, event.through_sequence);
-                empty_polls = 0;
-                yield event.event;
-                continue;
+    Ok(polling_sse_stream(
+        query,
+        PollingSseInitial::Completed(initial),
+        move |mut query| {
+            let page = load_page(query.clone());
+            let advance = advance.clone();
+            async move {
+                let event = sequence_page_event(&mut query, page.await?, &advance, stream_name)?;
+                Ok((query, event))
             }
-            empty_polls = empty_polls.saturating_add(1);
-            if empty_polls == 1 || empty_polls % LIVE_SEQUENCE_KEEPALIVE_POLLS == 0 {
-                yield SseEvent::comment("keepalive").with_retry(retry_ms);
-            }
-        }
-    }))
+        },
+        options,
+    ))
 }
 
 struct BoundedSequenceEvent {
@@ -131,10 +122,26 @@ struct BoundedSequenceEvent {
     through_sequence: u64,
 }
 
+fn sequence_page_event<Q, P, Advance>(
+    query: &mut Q,
+    page: P,
+    advance: &Advance,
+    stream_name: &str,
+) -> Result<Option<SseEvent>>
+where
+    P: SequencePage,
+    Advance: Fn(&mut Q, u64),
+{
+    let Some(event) = bounded_sequence_event(page, stream_name)? else {
+        return Ok(None);
+    };
+    advance(query, event.through_sequence);
+    Ok(Some(event.event))
+}
+
 fn bounded_sequence_event<P>(
     mut response: P,
     stream_name: &str,
-    retry_ms: u64,
 ) -> Result<Option<BoundedSequenceEvent>>
 where
     P: SequencePage,
@@ -200,10 +207,7 @@ where
     }
 
     Ok(Some(BoundedSequenceEvent {
-        event: SseEvent::new(encoded)
-            .with_event("records")
-            .with_id(cursor)
-            .with_retry(retry_ms),
+        event: SseEvent::new(encoded).with_event("records").with_id(cursor),
         through_sequence,
     }))
 }
@@ -317,7 +321,6 @@ mod tests {
                 next_cursor: None,
             },
             "test stream",
-            1_000,
         )
         .expect("bounded event")
         .expect("nonempty event");

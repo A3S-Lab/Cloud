@@ -435,13 +435,16 @@ persistence uses migrations and typed A3S ORM repositories.
 | Immutable objects | Existing filesystem and S3-compatible object backends | Share one low-level content-addressed client while preserving typed domain ports, namespaces, admission limits, and retention policy |
 | Optional Redis | No durable Agent authority | Redis may accelerate ephemeral fan-out only after correctness without it; it never owns conversations, queues, locks, cursors, approvals, or checkpoints |
 
-The first `A1.0` slice is implemented: one shared presentation component now
-owns the versioned sequence cursor, `Last-Event-ID` precedence, bounded SSE
-record events, polling, keepalive, and cursor advancement for both Workload and
-BuildRun logs. The duplicate domain-local stream files and cursor decoders are
-removed, and an architecture test prevents their return. `A1.0` remains in
-progress until the Operation polling transport, immutable object backend, and
-node-agent outbound-batch primitive are consolidated.
+The first two `A1.0` slices are implemented. One shared sequence component now
+owns the versioned cursor, `Last-Event-ID` precedence, bounded SSE record
+events, and cursor advancement for Workload and BuildRun logs. A separate
+shared polling transport owns interval scheduling, keepalive cadence, and retry
+metadata for those sequence streams and the hash-addressed Operation snapshot
+stream without inventing an Operation sequence. The duplicate domain-local
+stream files and cursor decoders are removed, and architecture tests prevent
+either transport from being reimplemented by controllers. `A1.0` remains in
+progress only until the immutable object client and node-agent outbound-batch
+primitive are consolidated.
 
 Google AX may be evaluated only as an optional adapter behind the versioned
 Harness port after `A1.5` and after its integration contract is stable. Cloud
