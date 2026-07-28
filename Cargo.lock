@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.1.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=6368f14c7663cd41923e4136ce6363ea7821cf5a#6368f14c7663cd41923e4136ce6363ea7821cf5a"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=213b260c7060cfdf4978c07dba1b3f53719f9568#213b260c7060cfdf4978c07dba1b3f53719f9568"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-common",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.1.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=6368f14c7663cd41923e4136ce6363ea7821cf5a#6368f14c7663cd41923e4136ce6363ea7821cf5a"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=213b260c7060cfdf4978c07dba1b3f53719f9568#213b260c7060cfdf4978c07dba1b3f53719f9568"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.1.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=6368f14c7663cd41923e4136ce6363ea7821cf5a#6368f14c7663cd41923e4136ce6363ea7821cf5a"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=213b260c7060cfdf4978c07dba1b3f53719f9568#213b260c7060cfdf4978c07dba1b3f53719f9568"
 dependencies = [
  "a3s-box-core",
  "a3s-box-netproxy",
