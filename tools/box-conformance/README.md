@@ -18,9 +18,10 @@ record behind.
 Real MicroVM and TEE profiles remain hardware-qualified in A3S Box. Cloud does
 not reimplement those provider tests.
 
-`install_box_release.sh` installs checksum-pinned Linux x86_64 runtime artifacts
-for Box and A3S OCI Runtime, then builds the Box CLI from the exact Cloud-pinned
-revision over those host libraries. Disposable PostgreSQL, NATS, Registry, and
-object-storage fixtures therefore use the same Box capability surface as the
-Cloud dependency. The script verifies both release archives independently and
-does not require a VM-capable host or another workload daemon.
+`install_box_release.sh` installs checksum-pinned Linux x86_64 Box host
+libraries and companion artifacts, then builds the Box CLI, A3S OCI CLI, and
+A3S OCI Agent from the exact Cloud-pinned revisions. Disposable PostgreSQL,
+NATS, Registry, and object-storage fixtures therefore use the same Box and OCI
+capability surface as the Cloud provider gate. The script verifies the host
+artifact archive and does not require a VM-capable host or another workload
+daemon.
