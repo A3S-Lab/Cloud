@@ -48,8 +48,10 @@ From the Cloud repository directory:
 just cloud
 ```
 
-This starts the pinned development dependencies, control-plane API, and
-hot-reloading web console. The API listens on `127.0.0.1:8080` by default.
+With `A3S_CLOUD_POSTGRES_URL` set to an existing PostgreSQL instance, this
+starts the control-plane API and hot-reloading web console. The API listens on
+`127.0.0.1:8080` by default. The legacy dependency bootstrap is being removed
+under `BX0` and is not part of the Box-only release contract.
 
 ```bash
 curl http://127.0.0.1:8080/api/v1/health/live
@@ -75,6 +77,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
+- **Box-Only Execution Migration**: Converge every Task, Service, build,
+  network, mount, Secret, log, output, and cleanup operation through the shared A3S Runtime
+  contract and A3S Box, with no Docker-compatible daemon or fallback provider
+- **Planned Power-Backed Inference**: Compile the first inference profile into
+  an immutable A3S Power Service hosted by A3S Box; Cloud retains placement,
+  device claims, routing, authorization, and usage authority
 - **Managed Replica Foundation**: Persist an inference-neutral owner,
   effective placement policy, stable replica/member identity, exact deployment
   binding, current-inventory requirement compilation, shared scalar capacity,
@@ -98,8 +106,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Safe Changes**: Replace an active workload immutably, preserve the prior
   healthy revision until cutover, and roll back by cloning a proven template
   into a new generation
-- **Source Delivery Slices**: Resolve exact GitHub commits, run isolated
-  BuildKit tasks, validate trusted content-addressed caches and complete OCI
+- **Historical Source Delivery Evidence**: Resolve exact GitHub commits, run
+  isolated builds, validate trusted content-addressed caches and complete OCI
   graphs, publish by digest, freeze locally verified signed SPDX/SLSA evidence,
   and hand successful builds to the existing workload deployment path
 - **Hosted Asset Foundation**: Persist tenant-scoped Agent, MCP, and Skill
@@ -147,11 +155,13 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 
 | Gate | Product outcome | State |
 | --- | --- | --- |
-| `R0` — Universal Runtime | Task and Service contracts, durable identity, capability matching, and Docker conformance | Verified |
+| `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
+| `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
+| `R0` — Universal Runtime | Task and Service contracts, durable identity, capability matching, and provider conformance | Historical evidence; Box re-certification pending |
 | `F0` — Foundation | A3S Boot API, PostgreSQL, tenancy, identity, Flow operations, outbox, projections, and web shell | Verified |
-| `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, command journal, and Docker driver | Verified |
-| `D0` — OCI deployment | Digest-pinned revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, ordered logs, immutable update, cloned rollback, web operations, and clean-host recovery | Verified |
+| `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, command journal, and sole Box driver | Historical evidence; Box re-certification pending |
+| `D0` — OCI deployment | Digest-pinned revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Historical evidence; Box re-certification pending |
+| `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, ordered logs, immutable update, cloned rollback, web operations, and clean-host recovery | Historical evidence; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, trusted retry caches, OCI validation and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
@@ -161,10 +171,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed serving, OpenAI-compatible traffic, scoped keys, Providers, routing, usage, and governed self-service | Planned |
 
-`R0` through `E0` are one cumulative verified baseline: one control plane, one
-outbound Linux node, Docker-backed stateless workloads, managed HTTPS, ordered
-logs, immutable update and rollback, and repeatable cleanup. Later gates must
-reuse this deployment and reconciliation path.
+The original `R0` through `E0` behavior was certified against the retired
+Docker implementation. That evidence remains useful regression history, but it
+does not certify the current Box-only product contract. `BX0` must reproduce
+the complete baseline on exact A3S Box revisions before those gates are
+published as verified again. Later gates must reuse the same deployment and
+reconciliation path.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
@@ -407,7 +419,8 @@ evidence, and the ordered product portfolio.
 
 - Rust 1.85 or later
 - PostgreSQL 17 or a compatible supported release
-- Docker for the first Runtime provider and real deployment gates
+- A3S Box for all node-local workload and build execution
+- A3S Power for the inference profile
 - The A3S Gateway source revision pinned in
   `tools/gateway-conformance/gateway-revision` for routed service operation
 - Bun and Node.js 22 or later for the web console and CLI development
@@ -430,22 +443,11 @@ provided and keeps the API and web process under one signal boundary:
 just cloud
 ```
 
-Stop the pinned PostgreSQL, NATS, and registry dependencies separately:
+To run the API directly, provide PostgreSQL and the required
+environment-backed credentials:
 
 ```bash
-just cloud-down
-```
-
-To run the API directly, start the development dependencies and provide the
-required environment-backed credentials:
-
-```bash
-docker compose \
-  --env-file deploy/dev/.env.example \
-  --file deploy/dev/compose.yaml \
-  up --detach --wait
-
-export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/a3s_cloud"
+export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:replace-me@127.0.0.1:5432/a3s_cloud"
 export A3S_CLOUD_BOOTSTRAP_TOKEN="replace-with-at-least-32-random-characters"
 export A3S_CLOUD_GITHUB_WEBHOOK_SECRET="replace-with-32-to-512-random-bytes"
 
@@ -751,7 +753,7 @@ GitHub reference
   -> verified immutable commit and versioned recipe
   -> tenant-owned BuildRun and cloud.build@3 operation
   -> bounded exact checkout and content-addressed Artifact
-  -> isolated Runtime Task and BuildKit build
+  -> isolated Runtime Task and typed A3S Box build
   -> complete OCI and trusted retry-cache graph validation
   -> deterministic digest-only registry publication
   -> deterministic SPDX/SLSA evidence and locally verified DSSE signature
@@ -862,7 +864,8 @@ A3S Boot control-plane API
         |
         v  outbound mTLS command lease
 node agent
-        +----> A3S Runtime ----> Docker / containerd / A3S Box
+        +----> A3S Runtime ----> A3S Box
+        |                         +----> A3S Power Service (inference)
         +----> A3S Gateway ----> active edge revision
         +----> inventories, observations, and durable acknowledgements
 ```
@@ -874,6 +877,8 @@ node agent
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
 | A3S Runtime | Provider-neutral Task and Service lifecycle |
+| A3S Box | Sole node-local execution, image build, network, mount, log, snapshot, and cleanup provider |
+| A3S Power | Required Box-hosted inference serving and attestation boundary |
 | A3S Gateway | HTTPS, routing, health, native snapshot application, and durable applied-state recovery |
 | A3S ACL | Closed product configuration and validated manifests |
 
@@ -897,12 +902,12 @@ credential values do not belong in ACL.
 | `server`, `auth`, `postgres` | API role, bootstrap, and durable state |
 | `events`, `operations` | Outbox publication and durable operation timing |
 | `node_control`, `fleet` | Outbound mTLS protocol, leases, inventories, and observations |
-| `deployments`, `builds`, `artifacts` | Workload and source-build execution bounds |
+| `deployments`, `builds`, `artifacts` | Workload and Box source-build execution bounds |
 | `registry`, `sources` | OCI publication and GitHub delivery policy |
 | `edge`, `gateway` | Route compilation, certificates, snapshot validity, and node-local native Gateway application |
 | `logs` | Durable log object storage, paging, retention, and compaction |
 | `security` | Development or production PKI and encryption providers |
-| `docker` | Node-local Docker and transient Secret materialization policy |
+| `box` | Node-local A3S Box provider, isolation, build, and transient Secret materialization policy |
 
 Use [control-plane configuration](config/cloud.acl) and
 [node-agent configuration](config/node.example.acl) as the executable

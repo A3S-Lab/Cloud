@@ -2,7 +2,15 @@
 
 ## 1. Status and decisions
 
-R0 through E0 are implemented and verified. E0 has durable Edge route
+`BX0` is in progress. A3S Box is the sole Cloud execution and image-build
+provider, and A3S Power is the required local inference Service boundary. The
+previous Docker/Bollard implementation and its R0 through E0 evidence are
+historical regression records only; they do not certify the Box-only release.
+The paragraphs below that describe completed Docker/BuildKit gates record that
+historical behavior until `BX0.5` removes the retired implementation and ports
+the evidence to exact Box revisions.
+
+R0 through E0 behavior was previously implemented and certified. E0 has durable Edge route
 ownership, exact and wildcard domain claims, managed Gateway certificate
 provisioning, HTTPS-only snapshot compilation, Fleet dispatch, exact
 acknowledgement projection, and injected-time renewal/revocation convergence
@@ -133,6 +141,11 @@ separate Linux node agent, and a React web application.
 The following decisions are fixed for the first architecture:
 
 - A3S Runtime is the required provider-neutral data-plane contract.
+- A3S Box is Cloud's sole local Runtime and image-build provider. Cloud never
+  selects or falls back to a Docker-compatible provider.
+- A3S Power is the required local inference boundary and runs as an ordinary
+  Box-hosted Runtime Service. It owns serving and attestation, not scheduling,
+  device claims, routing, authorization, or usage accounting.
 - A3S Runtime is general purpose. Candidate and Judge remain Bench concepts and
   do not appear in the Runtime core contract.
 - PostgreSQL stores business desired state.
@@ -164,8 +177,9 @@ flowchart LR
     end
 
     agent[Node agent] -- outbound mTLS long poll --> api
-    agent --> runtime[A3S Runtime provider]
-    runtime --> provider[Docker / containerd / A3S Box]
+    agent --> runtime[A3S Runtime]
+    runtime --> box[A3S Box]
+    box --> power[A3S Power Service]
     agent --> gateway[A3S Gateway]
     gateway --> workload[Healthy Runtime unit]
 ```
@@ -215,10 +229,11 @@ states, and arbitrary provider option maps do not belong in this contract.
 Providers advertise accepted artifact media types and capabilities before an
 application submits a unit.
 
-The core may own `ProviderId`, provider factories, and a provider registry. It
-does not choose a provider based on login state, an operator config file, or a
-hard-coded Docker fallback. Cloud selects a node/provider by required
-capabilities; Bench and Code own their own explicit selection policies.
+The Runtime core may own `ProviderId`, provider factories, and a provider
+registry for reuse by other products. Cloud binds exactly one provider ID:
+A3S Box. It schedules by required capabilities and fails closed when Box cannot
+satisfy them; it does not select a provider from login state or configuration
+and has no fallback. Bench and Code own their own explicit selection policies.
 
 The provider-neutral client surface is:
 
@@ -271,7 +286,8 @@ backends, tensor/pipeline parallelism, model routes, usage, Inference scaling
 intent, and the Workloads-owned effective autoscaling policy remain Cloud
 concepts. A typed backend compiler converts an immutable
 Inference deployment revision into an inference-managed Workload execution
-plan; neither Runtime nor the node agent branches on `vllm`, `power`, or `ray`.
+plan. The compiler targets A3S Power, while Runtime and the node agent remain
+inference-neutral and never branch on Power or an internal engine name.
 Inference route revisions persist only a validated same-environment reference to
 an Edge-owned DomainClaim, logical Gateway scope, hostname and binding
 generation. Edge remains authoritative for certificate, target-set and applied
@@ -298,8 +314,9 @@ not require more product-role variants in the core lifecycle enum.
 `RuntimeClient` owns protocol semantics. `RuntimeDriver` owns provider calls.
 The shared managed client owns idempotent reservation, monotonic generation,
 reattachment, terminal-state protection, and durable operation identity.
-Drivers may use Docker, containerd, A3S Box, or another provider, but callers
-never branch on those names to weaken semantics.
+Cloud composes the shared A3S Box driver directly. It does not implement a
+second Box lifecycle adapter or retain another provider driver. Other Runtime
+consumers may certify other drivers without expanding Cloud's provider set.
 
 The Runtime repository must expose a conformance suite. Each provider must
 prove duplicate apply, process restart and reattachment, stale-generation
@@ -348,7 +365,7 @@ inside the same transaction.
 | Projects | create project/environment, request deletion | operation coordinator |
 | Sources | verify and own a provider installation; authenticate and accept provider webhook delivery; resolve and accept immutable external source revision | GitHub App authorization, provider webhook verifier, source resolver, build coordinator |
 | Assets | create asset, accept Git revision, publish/yank release | Git store, artifact registry |
-| Artifacts | build, register, verify, sign, retain artifact | BuildKit, OCI registry, object store, signer |
+| Artifacts | build, register, verify, sign, retain artifact | A3S Box build port, OCI registry, object store, signer |
 | Fleet | issue enrollment, accept node observation/log batch, drain/revoke node | certificate authority, node control, log object store |
 | Workloads | create revision, deploy, stop, update, roll back | scheduler, Runtime dispatch, Flow, Fleet log metadata |
 | Inference (planned I0) | register model/backend revisions, create/revise/scale model service, publish model route | artifact resolver, managed Workloads, Fleet inventory, Edge target sets, Identity principals, metrics |
@@ -1757,9 +1774,9 @@ boundaries satisfy these requirements.
 | A3S Flow | Required | Durable deployment/build/backup operations |
 | A3S Event | Required | Committed integration-fact API over local or NATS providers |
 | A3S Gateway | Required for public routes | Proxy, TLS, ACME, atomic reload target |
-| A3S Box | Conditional | Stronger Agent/MCP isolation where selected |
+| A3S Box | Required | Sole node-local workload/build execution, isolation, networking, mounts, logs, snapshots, and cleanup |
 | A3S Observer / Sentry | Conditional | Telemetry or wire security after boundary review |
-| A3S Power | Optional after I0 backend conformance | One typed inference backend; never model, placement, or device authority |
+| A3S Power | Required for I0 | Sole local inference serving and attestation boundary; never model, placement, device, route, authorization, or usage authority |
 | A3S Lane | Not initially used | Flow's PostgreSQL task leases already own durable work |
 | AHP | Excluded | No required Cloud capability |
 | A3S Code, Memory, Search, Bench, Updater | Not product dependencies | No capability in the first Cloud loop |
@@ -1777,7 +1794,7 @@ provided by the middleware below rather than reimplemented in A3S Cloud.
 | Transactional state and coordination | PostgreSQL | HA PostgreSQL; PgBouncer when measured connection pressure requires it | Required from F0; remains the source of desired state and leases |
 | Durable workflow work | A3S Flow PostgreSQL store and task queue | The same store/queue with multiple leased workers | Required; do not add another job queue for the same work |
 | Integration event fan-out | A3S Event local provider | NATS JetStream durable streams and consumers | NATS is required when API, workers, or integrations run as independent replicas |
-| OCI build execution | Operator-provisioned rootless BuildKit Unix socket volume | Isolated BuildKit workers selected by platform/architecture | Required when external Git or hosted source builds are enabled; Runtime Volume capability alone does not prove the configured socket exists |
+| OCI build execution | Typed A3S Box build boundary | Isolated Box build workers selected by platform/architecture | Required when external Git or hosted source builds are enabled; build plans are closed A3S ACL and preserve OCI identity/provenance |
 | OCI artifact storage | Existing external registry for image-only deployment | CNCF Distribution or Harbor with retention, replication, and access policy | Cloud-owned registry is required when Cloud owns builds |
 | Object and log-segment storage | Filesystem adapter for development | S3-compatible storage such as RustFS, MinIO, or a managed S3 service | Required for production logs, asset archives, backups, SBOMs, and provenance |
 | Hosted Git repository storage | Local durable POSIX filesystem | Replicated POSIX/block storage with PostgreSQL single-writer leases and object-store backups | Required only when hosted assets are enabled; live loose Git objects do not use S3 |
@@ -1795,15 +1812,13 @@ provides durable distributed delivery after commit; PostgreSQL still proves
 whether a command is required. NATS subjects carry event IDs and compact fact
 payloads, not secret material, logs, or Runtime command authority.
 
-BuildKit is a build engine, not the Runtime. The implemented build Flow submits
-an isolated Runtime Task containing a digest-pinned BuildKit client and typed
-recipe; Runtime remains unaware of Dockerfiles, buildpacks, and registry
-policy. On Docker nodes, the operator must provision the physical volume as
-`a3s-{namespace}-volume-{first16(sha256(volume_id))}`, mount it into a rootless
-BuildKit daemon at `/run/user/1000/a3s-buildkit`, and keep
-`buildkitd.sock` available there. The Task sees that volume read-only. Missing
-or stale socket infrastructure fails the build; node capability advertisement
-does not satisfy this operator readiness gate.
+The Box build boundary is not a second Runtime or scheduler. Build Flow submits
+one isolated Runtime Task with an immutable ACL build plan and content-addressed
+inputs. Box owns local build execution, cache isolation, snapshots, and cleanup;
+Artifacts owns OCI graph validation, publication, SPDX/SLSA evidence, and
+retention. Runtime remains unaware of build-system syntax and registry policy.
+Missing Box build capability fails closed rather than opening a daemon socket
+or selecting a compatibility path.
 
 Registry publication is a separate typed Artifacts port. The Flow first commits
 an immutable target containing registry, repository, root digest, media type,

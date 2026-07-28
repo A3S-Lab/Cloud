@@ -28,7 +28,7 @@ The roadmap has four delivery horizons:
 
 | Horizon | Required gates | Product outcome |
 | --- | --- | --- |
-| Usable service platform | `R0` through `E0` | One operator can deploy, reach, observe, update, and roll back one stateless Service on one Linux node |
+| Usable service platform | `BX0` plus `R0` through `E0` | One operator can deploy, reach, observe, update, and roll back one Box-hosted stateless Service on one Linux node |
 | Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, multi-service import, stable automation surfaces, and A3S asset releases use the same deployment path |
 | Agent execution platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases become durable, resumable, approval-governed executions with replayable trajectories |
 | Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable |
@@ -38,10 +38,12 @@ creates a second orchestration path and never weakens an earlier durability,
 security, or recovery gate.
 
 Inference is an optional product profile over the same platform, not another
-deployment engine. Its single-node accelerator and model-serving gates begin
-after E0; its multi-node replica and distributed-serving gates consume H0's
-generic replica, placement, target-set, networking, and HA primitives. The
-detailed I0 design is maintained in [`inference-plan.md`](inference-plan.md).
+deployment engine. When enabled, A3S Power is its required local serving
+boundary and runs through A3S Box. Its single-node accelerator and model-serving
+gates begin after the Box re-certification of E0; its multi-node replica and
+distributed-serving gates consume H0's generic replica, placement, target-set,
+networking, and HA primitives. The detailed I0 design is maintained in
+[`inference-plan.md`](inference-plan.md).
 
 ## 2. Engineering rules
 
@@ -55,6 +57,10 @@ detailed I0 design is maintained in [`inference-plan.md`](inference-plan.md).
 - Pin A3S dependency revisions and keep one app-local `Cargo.lock`.
 - Put every external middleware behind a typed application port and test its
   real provider; backend names never enter domain decisions.
+- Compose the shared A3S Box Runtime driver directly. Do not add another Box
+  lifecycle adapter, provider selector, or Docker-compatible fallback.
+- Compile local inference only to the A3S Power Service contract. An engine
+  used inside Power never becomes a Cloud backend, scheduler, or control path.
 - Do not mark an integration complete with an in-memory repository, fake
   Runtime driver, fake Gateway acknowledgement, or mocked health response.
 - Every long-running command is idempotent, cancellable, resumable after
@@ -76,7 +82,8 @@ detailed I0 design is maintained in [`inference-plan.md`](inference-plan.md).
 
 ```mermaid
 flowchart LR
-    R0[Universal Runtime] --> F0[Cloud foundation]
+    BX0[Box-only execution and build] --> R0[Universal Runtime]
+    R0 --> F0[Cloud foundation]
     F0 --> N0[Node enrollment and control]
     N0 --> D0[OCI deployment convergence]
     D0 --> E0[HTTPS, logs, update, rollback]
@@ -112,7 +119,8 @@ flowchart LR
     H05 --> I05
 ```
 
-The first release gate is `E0`, and it is verified. Source delivery (`G0`),
+The first behavioral release gate is `E0`; its prior provider evidence is now
+historical until `BX0` re-certifies it on A3S Box. Source delivery (`G0`),
 stable control surfaces (`C0`), and stateful foundations (`S0`) may advance as
 independent lanes. Project import (`P0`) depends on the immutable source and
 build contracts from G0. Hosted assets (`A0`) reuse the same source-to-artifact
@@ -136,20 +144,22 @@ Status as of 2026-07-28:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| R0 | Verified | General Task and Service conformance passes against the real Docker provider |
+| BX0 | In progress | Box/Runtime capability alignment is tracked by A3S-Lab/Box#172 and Cloud migration by A3S-Lab/Cloud#85; no Box-only release evidence is retained yet |
+| PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
+| R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
-| N0 | Verified | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery pass |
-| D0 | Verified | Real digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution pass |
-| E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
+| N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
+| D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
+| E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
 | G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. The manual private-GitHub and external Registry/Vault gate now includes PostgreSQL 17, rootless BuildKit, and real process death after publication and evidence persistence. A local real-provider rehearsal passes, but no operator-owned run is recorded because the repository has no G0 provider secrets; external certification still blocks G0 verification |
 | C0 | In progress | `C0.1` and `C0.2` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` adds stateless Streamable HTTP management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload/BuildRun logs, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.3` and `C0.4` remain planned. |
 | A0 | In progress | `A0.1` is verified. Exact Agent/MCP/Skill Asset and AssetRelease aggregates, tenant-scoped migration 051, typed A3S ORM transactions, shared idempotency and Outbox, optimistic concurrency, immutable published identities, yanked addressability, and cross-tenant denial pass isolated real PostgreSQL tests. The first `A0.2` slice adds a tenant-qualified local bare-repository foundation with atomic provisioning, immutable identity checks, and the shared Git runner. Smart HTTP authorization, PostgreSQL leases and quotas, backup/restore, manifest admission, publication, deployment, Skill binding, and catalog surfaces remain. |
-| H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
-| H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
+| H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
+| H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
 
-E0 closes the first usable-service MVP. D0 verification alone did not imply
-public reachability, durable log retention, immutable update, or rollback; the
-verified E0 release evidence now supplies that complete single-node loop.
+E0 defines the first usable-service MVP. The prior evidence supplies complete
+historical regression coverage, but the Box-only release remains blocked until
+`BX0` reproduces that single-node loop.
 
 ### 3.2 Capability ownership
 
@@ -159,6 +169,7 @@ authoritative model:
 
 | Capability | Owning gate | Planning decision |
 | --- | --- | --- |
+| Local execution and image build | `BX0` | A3S Box is the sole provider; no Docker-compatible fallback, socket, fixture, or lifecycle implementation remains |
 | Prebuilt OCI deployment | `D0` | Verified; remains the common deployment path |
 | HTTPS, logs, update, and rollback | `E0` | Verified first release; later milestones reuse this path without weakening it |
 | Workload and provider secrets | `E0` | Store encrypted values behind tenant-scoped references; never persist or project plaintext |
@@ -172,10 +183,94 @@ authoritative model:
 | Databases, volumes, and backups | `S0` | Model state explicitly with fencing and verified restore |
 | Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
 | Generic accelerator inventory, claims, and enforcement | `I0.0`/`I0.1` with `H0` placement ownership | Extend Runtime, Fleet, and Workloads without introducing model or backend semantics into their core contracts |
-| Model catalog, inference deployment, model routes, and usage | `I0` | Add a separate Inference bounded context that compiles into managed Workloads and Edge target sets |
+| Model catalog, inference deployment, model routes, and usage | `I0` | Add a separate Inference bounded context that compiles the required A3S Power profile into Box-hosted managed Workloads and Edge target sets |
 | Enterprise inference-gateway self-service and governance | `C0` + `I0.2d`/`I0.2e` | C0 owns principals, grants, role-focused navigation, authorized search, and project attribution; I0 owns provider certification, model/key self-service, route diagnostics, API exploration, and usage showback |
 | Edge caching and transport optimization | `E0`/`H0` | A3S Gateway owns HTTP, TLS, compression, and cache mechanics; Cloud owns desired policy |
 | Mail hosting, native desktop, and commercial billing | Outside core | Use integrations or separately owned products; do not couple them to workload orchestration |
+
+### 3.3 Milestone BX0: sole A3S Box provider
+
+#### Goal
+
+Remove every Docker/Bollard/runtime-socket dependency from Cloud and certify
+the existing product behavior through the shared A3S Box Runtime driver. This
+is a provider migration, not a new scheduler, lifecycle contract, node channel,
+build controller, state store, or object store.
+
+#### Work
+
+1. `BX0.1`: align the exact Box and Runtime revisions, configure one `box`
+   provider through closed A3S ACL, compose the shared driver in the Node Agent,
+   and remove provider selection and fallback.
+2. `BX0.2`: pass digest-pinned Task and Service apply, inspect, health-neutral
+   lifecycle, generation recovery, logs, exec, CPU/memory/PID/time bounds,
+   cancellation, stop, remove, and residue cleanup.
+3. `BX0.3`: pass private networking and endpoint evidence, HTTP/TCP/command
+   health, Secret materialization, Artifact/Volume/tmpfs mounts, Task outputs,
+   registry credentials, allocation evidence, and Box Sandbox/MicroVM/TEE
+   isolation without silent downgrade.
+4. `BX0.4`: replace the BuildKit/Docker-oriented source-build implementation
+   with the typed Box build boundary and immutable ACL build plans. Preserve
+   complete OCI graph validation, trusted content-addressed cache identity,
+   publication, SPDX/SLSA evidence, signing, replay, cancellation, and cleanup.
+5. `BX0.5`: port provider, consumer, source-build, Claim, Gateway, and clean-host
+   gates; remove Bollard, Docker source/configuration/environment variables,
+   daemon sockets, fixtures, workflows, and stale docs; add a zero-Docker
+   architecture test covering source, tests, examples, scripts, and workflows.
+
+The Node Agent is still the authenticated remote boundary. Box is node-local.
+Runtime owns provider-neutral lifecycle semantics; Box owns execution, images,
+networks, mounts, logs, snapshots, isolation, builds, and cleanup. All
+relational state remains in PostgreSQL through A3S ORM.
+
+#### Exit gate
+
+On a clean supported Linux host with no Docker or compatible daemon, install
+exact Cloud, Runtime, Box, Gateway, and Power revisions; enroll one outbound
+node; build and publish an OCI Artifact; deploy, route, observe, update, roll
+back, stop, and remove a Service; serve one bounded Power request with exact
+generation-bound evidence; recover provider process/VM and Agent/control-plane
+death at the named durable boundaries; and restore the preflight inventory with
+no workload, Secret, credential, mount, network, volume, VM, image-build, or
+temporary-file residue.
+
+Provider-specific completion records in the milestone sections below describe
+the retired implementation. They remain regression requirements, not current
+release evidence, until the corresponding Box gate passes. `BX0.5` removes the
+retired procedures after their behavior has been ported.
+
+### 3.4 Milestone PW0.1: required A3S Power profile
+
+#### Goal
+
+Make A3S Power the sole local inference serving and attestation boundary. Power
+runs as a digest-pinned ordinary Runtime Service inside A3S Box and never gains
+its own scheduler, deployment controller, device allocator, route authority,
+authorization authority, usage ledger, queue, or lifecycle store.
+
+#### Work
+
+- Replace Power's product configuration with closed A3S ACL parsed by
+  `a3s-acl`; no compatibility parser or generated alternate configuration.
+- Define one immutable typed Power Service profile for image, model, endpoint,
+  resources, internal engine policy, TEE, attestation, health, graceful stop,
+  logs, and exact endpoint discovery.
+- Compile the profile through Inference into the existing Workloads, Flow,
+  Fleet Claim, Runtime, Box, Edge/Gateway, Operations, and audit paths.
+- Bind attestation and allocation evidence to the exact model, Power, Box,
+  node, Claim, Runtime unit, and Service generation. Fail readiness on missing,
+  stale, replayed, or invalid required evidence without leaking plaintext.
+- Accept model/provider credentials only through immutable Secret references
+  and typed Box materialization.
+
+#### Exit gate
+
+Deploy Power through Cloud onto Box, become healthy, serve bounded streaming
+and non-streaming requests, update and roll back through the common Workload
+path, and stop cleanly. Repeat across Power process death, Agent death, Box VM
+loss, and required TEE/non-TEE profiles. Persist no prompt, response, Secret,
+credential, or alternate configuration in PostgreSQL, ACL, Runtime specs, logs,
+metrics, evidence, diagnostics, or Outbox facts.
 
 ## 4. Milestone R0: generalize A3S Runtime
 
@@ -1838,7 +1933,7 @@ expand the Cloud core or delay its critical path:
 | Native desktop application | Do not create a separate client feature set. Keep web responsive/PWA-capable and consider a thin shell only after C0 interface parity and demonstrated offline or local-host needs. |
 | Commercial billing and managed-cloud plans | Keep in a separately deployed service/profile that consumes public usage and entitlement contracts. Billing cannot enter scheduling, deployment, or domain aggregates. |
 | Development tunnels | Allow an optional, explicitly non-production C0 adapter with expiring credentials and visible routing state. Tunnels are never the production ingress or node-control path. |
-| Additional Runtime providers | Add containerd, A3S Box, or cloud compute only through Runtime conformance plus Cloud deployment, recovery, logs, routing, cancellation, and cleanup gates. |
+| Additional Runtime providers | Excluded from Cloud. A3S Box is the sole provider; cloud compute must produce an ordinarily enrolled Box node rather than another Runtime driver. |
 | Agent framework integrations | Keep Google AX and other frameworks behind the versioned A1 Harness port. An adapter may translate framework behavior, but cannot import another controller, event log, scheduler, configuration authority, or client control path. |
 
 These boundaries are revisited only with an operator use case and an owning
@@ -1882,7 +1977,7 @@ proves the resource stopped or records an operator-visible orphan.
 | Application | Command/query tests with port fakes and deterministic clocks |
 | Persistence | Real PostgreSQL transactions, isolation, migrations, cancellation cleanup |
 | Protocol | Golden versioned payloads, backward-read policy, malformed and replay cases |
-| Runtime | Exported conformance suite plus real Docker Task and Service execution |
+| Runtime | Exported conformance suite plus real A3S Box Task and Service execution |
 | Integration | Real Flow PostgreSQL store, Event relay, registry, Gateway, object/Git storage |
 | Build | Real source provider, isolated builder, registry, cache, provenance, cancellation, and credential-boundary evidence |
 | Project import | Golden detection/Compose plans, unsupported input, webhook disorder, preview cleanup, and monorepo affected-set evidence |
@@ -2058,8 +2153,9 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
+| Box-only provider migration | Release blocking | `BX0.1` dependency/config alignment -> `BX0.2` lifecycle -> `BX0.3` networking/mounts/health/Secrets/outputs/evidence -> `BX0.4` typed Box builds -> `BX0.5` complete re-certification, retired-code removal, and zero-Docker guard |
 | Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> typed rootless BuildKit/OCI gate -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> isolated Build Flow Runtime -> registry publication -> locally verified signed evidence -> evidence API/web -> deployment handoff -> content-addressed cache trust -> external-provider and fault-injection operator gates |
-| Developer workflows | `G0` | `P0` Dockerfile/A3S detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
+| Developer workflows | `G0` | `P0` A3S ACL build-plan/source-layout detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped MCP -> `C0.3` membership/role-focused console/attribution/notifications/audit -> `C0.4` exec/terminal |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent/MCP deployment -> Skill binding |
 | Agent execution | `A1.0`: verified `E0`; `A1.1+`: immutable `A0` release identities; `A1.4`: `C0.3` grants and audit | `A1.0` shared SSE/object/outbound-batch primitives -> `A1.1` conversations/executions/events -> `A1.2` Harness protocol -> `A1.3` immutable bindings/tool events -> `A1.4` approval/pause/resume -> `A1.5` checkpoints/forks/trajectories |

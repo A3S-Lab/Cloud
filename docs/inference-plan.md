@@ -2,10 +2,11 @@
 
 ## 1. Status and objective
 
-**Status: Planned.** None of the capabilities in this document are shipped
-until their owning exit gates pass. E0 is verified as of 2026-07-20, so I0
-implementation may now proceed through the ordered slices below. Production
-capability claims remain blocked until their owning I0 and H0 exit gates pass.
+**Status: Planned; blocked by `BX0` and `PW0.1`.** None of the capabilities in
+this document are shipped until their owning exit gates pass. The prior E0
+behavior is historical evidence until it is re-certified on A3S Box.
+Production capability claims remain blocked until the Box-only platform, the
+required A3S Power profile, and their owning I0 and H0 exit gates pass.
 
 The root [product roadmap](../ROADMAP.md) places `I0` in the complete Cloud
 portfolio and publishes its current status and dependencies. This document
@@ -31,11 +32,11 @@ UI, or implementation compatibility with GPUStack. The finished profile will:
 - recover truthfully from process, node, device, network, and control-plane
   failure.
 
-The first published provider combination is NVIDIA plus Docker plus vLLM.
-A3S Power is the second backend adapter and proves that the Cloud contract is
-not vLLM-specific. Additional accelerator vendors, Runtime providers, and
-inference engines remain unavailable until they pass the same real-provider
-conformance gates.
+The first and required provider combination is NVIDIA plus A3S Box plus A3S
+Power. Power runs as an ordinary immutable Runtime Service hosted by Box. Cloud
+does not expose vLLM, Ray, or another Power engine as a separate first-class
+backend. Additional accelerator vendors and inference capabilities remain
+unavailable until they pass the same real-provider conformance gates.
 
 The capability boundary is explicit:
 
@@ -43,15 +44,15 @@ The capability boundary is explicit:
 | --- | --- | --- |
 | Enrolled-node accelerator inventory, health and exclusive allocation | Included in the first profile | `I0.0`/`I0.1`, Fleet and Workloads |
 | Immutable model catalog, source resolution and node cache | Included | `I0.2a`, Artifacts and Inference |
-| Typed vLLM serving and same-node tensor parallelism | Included first | `I0.2a` |
+| Typed A3S Power serving and same-node tensor parallelism | Included first | `PW0.1` + `I0.2a` |
 | OpenAI Models, Chat Completions, Completions and Embeddings APIs | Included with an exact endpoint contract | `I0.2b`, Gateway and Inference |
 | Model authorization, rate limits, weighted targets, fallback and usage | Included | `I0.2b`/`I0.2c` |
 | Independent replicas on multiple nodes | Included | `H0.3` + `I0.3` |
-| One Ray/vLLM replica spanning multiple GPU nodes | Included after independent replicas | `H0.3` + `I0.4` |
+| One Power distributed serving replica spanning multiple GPU nodes | Included after independent replicas | `H0.3` + `I0.4` |
 | External OpenAI-compatible provider targets | Included as a later isolated slice | `I0.2d` |
 | Role-focused model discovery, project key lifecycle, provider/route diagnostics, API exploration, and usage showback | Included after the underlying data-plane, usage, external-provider, and C0 principal gates | `C0.3` + `I0.2e` |
 | Production Gateway/control-plane HA and autoscaling | Reuse the generic platform implementation | `H0.4`/`H0.5` + `I0.5` gates |
-| Power, hardware partitions and additional accelerator vendors/backends | Deferred until conformance passes | `I0.5` |
+| Hardware partitions and additional accelerator vendors | Deferred until conformance passes | `I0.5` |
 | Responses API and Jina-compatible rerank | Deferred beyond the initial data-plane gate | `I0.5` candidate |
 | Soft fractional GPU/VRAM sharing | Not a production capability in I0 | Future hardware-enforced or isolated design only |
 | GPU cloud-instance provisioning and SSH credential custody | Outside Inference | Future Fleet/Compute provider, if justified |
@@ -68,7 +69,7 @@ The capability boundary is explicit:
 3. Workloads owns generic accelerator requirements and placement policy.
    Runtime receives only exact accelerator bindings selected by Cloud and
    exposes generic enforcement/allocation evidence. It never receives model
-   catalogs, vLLM flags, tenant identity, or scheduler policy.
+   catalogs, Power engine details, tenant identity, or scheduler policy.
 4. Fleet owns node identity, liveness, accelerator and cache observations, and
    the node-control protocol. Scheduling consumes those observations through a
    typed application port.
@@ -96,6 +97,10 @@ The capability boundary is explicit:
 12. Usage showback may snapshot project attribution references and export
     durable usage facts, but price catalogs, balances, invoices, settlement,
     and commercial entitlements remain outside the Cloud core.
+13. A3S Box is the sole Runtime and build provider. A3S Power is the sole local
+    inference Service boundary. Power never owns placement, device allocation,
+    routing, tenant authorization, usage accounting, or another lifecycle
+    store.
 
 ## 3. Bounded-context ownership
 
@@ -156,11 +161,11 @@ ModelRevision; failure and retry state remain in the attempt/Operation rather
 than mutating a supposedly immutable revision.
 
 `InferenceBackend` is a catalog entry with immutable `BackendRevision` values.
-A revision binds a typed backend profile, digest-pinned OCI image, supported
-model formats, accelerator and distribution requirements, declared ports,
-readiness contract, and compiler version. I0 initially exposes closed, typed
-vLLM and Power profiles. A user-supplied image remains a generic Workload until
-a typed backend manifest and conformance gate exist.
+A revision binds the closed A3S Power profile, digest-pinned OCI image,
+supported model formats, accelerator and distribution requirements, declared
+ports, readiness and attestation contracts, and compiler version. A
+user-supplied image remains a generic Workload and cannot become a local
+inference backend by naming an engine.
 
 `InferenceDeployment` owns model-serving intent and immutable deployment
 revisions. A revision binds one model revision, one backend revision, typed
@@ -205,8 +210,7 @@ ServingTopology
   Distributed {
     nodes,
     tensor_parallel,
-    pipeline_parallel,
-    distribution: Ray
+    pipeline_parallel
   }
 ```
 
@@ -492,9 +496,9 @@ candidate instead of being accepted as an equivalent node.
 
 `I0.1` adds a small `AcceleratorDetector` infrastructure trait with a
 deterministic virtual detector and a real NVIDIA detector. That slice also
-persists a resource-claim journal, translates stable IDs to CDI or Docker
-device requests, labels provider resources with claim/fencing/spec identity,
-and proves that an unclaimed device is invisible. Inference engine names never
+persists a resource-claim journal, translates stable IDs to typed Box device
+bindings, labels provider resources with claim/fencing/spec identity, and
+proves that an unclaimed device is invisible. Inference engine names never
 enter the node-control protocol.
 
 ## 7. Resource reservation and scheduling
@@ -558,13 +562,13 @@ prepare, bind, stop/remove, and release state from its command journal; release
 advances Claim generation and digest, and a rejected `not_found` or
 `stale_generation` stop is never accepted as fencing evidence.
 
-The generic `H0.1` provider gate exercises that exact journal against real
-Docker across both daemon replacement and Agent `SIGKILL`. It requires one
-provider unit before and after replay, exact allocation-binding evidence,
-release and competing-capacity rejection before Runtime fencing, real
-stop/removal, exact Agent release, successful reuse only afterward, and zero
-provider residue. Accelerator claims in `I0.1` extend this accepted lifecycle
-rather than introducing another ownership path.
+The historical `H0.1` provider gate exercised that exact journal against the
+retired provider. `BX0` must re-certify it against real Box process/VM loss and
+Agent `SIGKILL`. The gate requires one provider unit before and after replay,
+exact allocation-binding evidence, release and competing-capacity rejection
+before Runtime fencing, real stop/removal, exact Agent release, successful
+reuse only afterward, and zero provider residue. Accelerator claims in `I0.1`
+extend this lifecycle rather than introducing another ownership path.
 
 Hard filters are evaluated before scoring:
 
@@ -678,25 +682,26 @@ a generic Workload execution plan. Resource estimates are explicit inputs to
 scheduling and include a safety margin; failure to produce a safe plan is an
 unsupported-capability error, not a best-effort launch.
 
-Backend adapters emit typed Runtime process, mount, network, health, and claim
-fields. They may use typed CLI arguments or environment bindings, but Cloud
-never writes a backend's alternate product configuration file. Power is
-eligible only after its Cloud adapter is ACL-native at the product boundary or
-proves a fully typed CLI/environment launch without generating non-ACL config.
+The A3S Power compiler emits typed Runtime process, mount, network, health,
+attestation, and claim fields. Power configuration is closed A3S ACL parsed by
+`a3s-acl`; Cloud never writes an alternate product configuration file. The
+compiler accepts an immutable Power profile and produces an ordinary Box-hosted
+Workload plan. Any engine or proxy selected inside Power remains behind the
+Power Service contract and is neither a Cloud backend nor a Runtime provider.
 
-The vLLM adapter first supports one GPU and same-node tensor parallelism. It
-then adds a typed Ray distribution plan. Ray is not a Runtime provider. It is a
-backend launch graph over ordinary Runtime Service units:
+The Power profile first supports one GPU and same-node tensor parallelism. It
+then adds a typed Power-managed distributed plan over ordinary Runtime Service
+units:
 
 ```text
 tentative placement, disk reservation and verified prefetch
   -> revalidate and atomically prepare compute, accelerator and port claims
   -> create private endpoints and a short-lived rendezvous secret
-  -> start and verify the CPU-only ray-head unit
-  -> start one ray-worker unit per member, each owning its node's GPU claim
-  -> continuously verify exact membership, ranks, world size and generation
-  -> start the CPU-only vllm-driver/server unit without a duplicate GPU claim
-  -> probe and publish only the server endpoint as a healthy target
+  -> start one Power member Service per placement member and exact GPU claim
+  -> continuously verify Power membership, ranks, world size and generation
+  -> verify the Power API Service owns no duplicate accelerator claim
+  -> validate attestation for the exact model, Power, Box and Service generation
+  -> probe and publish only the Power API endpoint as a healthy target
 ```
 
 A backend compiler may combine roles only when its typed execution plan proves
@@ -706,9 +711,9 @@ does not claim atomic process creation across nodes.
 
 One missing or stale member makes the complete serving replica unavailable.
 The first implementation restarts the complete group rather than claiming
-elastic Ray recovery. Cleanup removes the Gateway target first, stops the
-server, head and workers, revokes rendezvous secrets and endpoints, then
-releases port/device claims and the database reservation. Planned
+elastic recovery. Cleanup removes the Gateway target first, stops every Power
+member, revokes rendezvous secrets and endpoints, then releases port/device
+claims and the database reservation. Planned
 scale-down and rollout wait for the target-removal acknowledgement and a
 bounded in-flight drain window before stop; timeout follows explicit abort or
 cleanup-pending policy rather than silently terminating an active stream.
@@ -975,12 +980,12 @@ fallback, and measurement completeness over authorized principal, credential,
 model, route, Provider, project/environment, and attribution dimensions.
 
 I0.2d certifies one generic OpenAI-compatible external Provider contract first.
-Named Azure OpenAI, Anthropic, Gemini, DeepSeek, Qwen, externally managed vLLM,
-and Ollama adapters behind Cloud's OpenAI-compatible contract are candidates
-for I0.5 only after each passes a real endpoint-specific protocol, streaming,
-error, usage, credential-isolation, and failure-recovery suite. A
-compatible-looking model list or registration form is not certification. This
-policy does not delay the local typed vLLM backend owned by I0.2a.
+Named Azure OpenAI, Anthropic, Gemini, DeepSeek, Qwen, and Ollama adapters
+behind Cloud's OpenAI-compatible contract are candidates for I0.5 only after
+each passes a real endpoint-specific protocol, streaming, error, usage,
+credential-isolation, and failure-recovery suite. A compatible-looking model
+list or registration form is not certification. This policy is independent of
+the required local Power backend owned by I0.2a.
 
 Showback is operational evidence, not a commercial ledger. Cloud does not own
 price catalogs, monetary credits or balances, checkout, invoices, settlement,
@@ -1049,7 +1054,7 @@ evidence, and fenced release protocol.
 - Depend on H0.1 managed-owner, single-replica and generic resource-claim
   foundations; I0 does not create a private claim implementation.
 - Add virtual and NVIDIA inventory, exclusive device reservation, accelerator
-  evidence, and Docker/CDI enforcement to the existing Agent Claim journal and
+  evidence, and Box device enforcement to the existing Agent Claim journal and
   recovery path.
 - Prove 100 concurrent reservations never allocate one device twice.
 - On a real NVIDIA host, expose exactly the claimed UUID and no other device.
@@ -1058,14 +1063,14 @@ evidence, and fenced release protocol.
 
 - Extend the existing Artifacts and E0 Secret foundations with immutable model
   file-manifest ingest/materialization, then land Inference model/backend
-  catalogs, immutable resolution, cache, the vLLM compiler, one
-  inference-managed Workload, and a real backend health/inference probe.
+  catalogs, immutable resolution, cache, the Power compiler, one Box-hosted
+  inference-managed Workload, and a real Power health/inference probe.
 - Prove source failure, corrupt/partial cache, incompatible backend, OOM, stop,
   and process restart without a public route or duplicate unit.
 - Prove a private-source Task cannot use a cross-environment Secret, replay an
   expired materialization grant, or leave credential/plaintext state durable.
-- Keep Power unavailable in this slice; add it only after it passes the same
-  backend conformance profile in I0.5.
+- Require exact model, Power, Box, node, and Service-generation evidence;
+  missing, stale, replayed, or invalid required attestation prevents readiness.
 
 ### I0.2b: OpenAI data plane, model route, and authorization
 
@@ -1125,9 +1130,9 @@ evidence, and fenced release protocol.
 ### I0.4: one distributed replica across nodes
 
 - Depend on H0.3 placement-group, gang-claim and cluster-private-network gates;
-  add the typed Ray launch graph, continuous membership, group health and
-  compensation.
-- Pass a real two-node, four-GPU vLLM gate. Every injected 3-of-4 preparation,
+  add the typed Power distributed plan, continuous membership, group health
+  and compensation.
+- Pass a real two-node, four-GPU Power gate. Every injected 3-of-4 preparation,
   membership, rank, port, partition, and process failure must converge to
   either every declared GPU claim/member ready or no active target and no
   releasable committed claim. Runtime unit count need not equal GPU count.
@@ -1144,8 +1149,8 @@ evidence, and fenced release protocol.
 - Add a named external Provider adapter only after its real endpoint passes the
   generic egress safety gates plus its own protocol, streaming, error, usage,
   credential-rotation, timeout, fallback, and recovery conformance. Azure
-  OpenAI, Anthropic, Gemini, DeepSeek, Qwen, externally managed vLLM, and Ollama
-  remain candidates until that evidence exists.
+  OpenAI, Anthropic, Gemini, DeepSeek, Qwen, and Ollama remain candidates until
+  that evidence exists.
 - Do not claim fractional sharing, multi-vendor support, or distributed
   recovery, named Provider support, or API compatibility from capability
   advertisement alone.
@@ -1165,10 +1170,10 @@ In addition to the repository verification matrix, I0 requires:
 - PostgreSQL concurrency tests for reservation, fencing, replica identity,
   idempotency, and tenant isolation;
 - golden protocol tests for old/new agent negotiation and canonical digests;
-- virtual accelerator and real NVIDIA Docker conformance;
+- virtual accelerator and real NVIDIA Box conformance;
 - real model-source download, resume, corruption, deduplication, disk pressure,
   and cache eviction tests;
-- real vLLM streaming, same-node tensor parallel, weighted target distribution,
+- real Power streaming, same-node tensor parallel, weighted target distribution,
   fallback, auth revocation, and usage deduplication;
 - real generic OpenAI-compatible external-Provider conformance covering model
   discovery, streaming, errors, timeouts, fallback, Secret rotation, usage, and
@@ -1179,7 +1184,7 @@ In addition to the repository verification matrix, I0 requires:
   reconciliation;
 - real multi-node placement, drain, node return with stale epoch, and route
   convergence; and
-- real Ray/vLLM gang tests with process kills and network faults at every
+- real Power distributed-group tests with process kills and network faults at every
   durable boundary.
 
 New crash points include:
@@ -1194,7 +1199,7 @@ New crash points include:
 8. Artifact rename or cache-pin journal before cache acknowledgement;
 9. concurrent disk reservation and attempted eviction of an in-use Artifact;
 10. all Runtime members ready before serving health projection;
-11. asymmetric Ray partition, stale head or membership loss after readiness;
+11. asymmetric Power member partition or membership loss after readiness;
 12. target-set reload before exact Gateway acknowledgement;
 13. target removal acknowledgement before Runtime stop;
 14. client response completes before terminal usage spool append;
@@ -1221,7 +1226,8 @@ The recommended merge order is:
 5. model file-manifest ingest/materialization/cache over the existing Artifacts
    and E0 Secret foundations;
 6. Inference domain/application skeleton and model/backend repositories;
-7. I0.2a vLLM backend health without a public route;
+7. PW0.1 ACL-native Power Service profile and I0.2a Power health without a
+   public route;
 8. H0.2 cardinality-one target set/private endpoint, then I0.2b Gateway
    dispatch, EdgeRouteBinding, environment inference keys, authorization and
    streaming;
@@ -1231,10 +1237,10 @@ The recommended merge order is:
     foundations, then I0.2e enterprise gateway self-service and governance;
 12. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
 13. I0.3 independent replica failover and rolling update;
-14. H0.3 placement-group/private-network gate, then I0.4 Ray/vLLM;
+14. H0.3 placement-group/private-network gate, then I0.4 distributed Power;
 15. H0.4 production deployment/HA and H0.5 sole autoscaling controller;
 16. I0.5 inference HA, load, quota and disaster gates; and
-17. Power and named vendor/backend/Provider adapters through conformance.
+17. named vendor and external-Provider adapters through conformance.
 
 No slice weakens the verified E0 path, creates a parallel deployment path, or
 marks a capability available before its real-provider and recovery gates pass.

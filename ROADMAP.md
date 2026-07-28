@@ -28,6 +28,7 @@ The roadmap is gate-driven, not date-driven:
 | Verified | The complete real-provider, failure, recovery, cleanup, and release evidence passes |
 | In progress | A usable implementation slice exists, but named exit evidence remains |
 | Planned | The capability is unavailable until its owning gate passes |
+| Historical | Prior implementation evidence retained for regression coverage; it does not certify the current provider contract |
 
 ## 2. Product position
 
@@ -70,15 +71,22 @@ Cloud does not own:
 All Cloud product configuration uses closed, validated A3S ACL and is parsed
 and generated through `a3s-acl`.
 
+A3S Box is the sole node-local execution and image-build provider. A3S Power is
+the required inference serving boundary and runs as an ordinary Box-hosted
+Runtime Service. Neither product adds a scheduler, node channel, queue, desired
+state store, routing authority, or usage authority to Cloud.
+
 ## 3. Current roadmap
 
 | Gate | Product outcome | State |
 | --- | --- | --- |
-| `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real Docker conformance | Verified |
+| `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
+| `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
+| `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real provider conformance | Historical; Box re-certification pending |
 | `F0` — Foundation | Boot control plane, PostgreSQL, tenancy, identity, Flow operations, outbox, projections, API, and web shell | Verified |
-| `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and Docker driver | Verified |
-| `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Verified |
-| `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Verified |
+| `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver | Historical; Box re-certification pending |
+| `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
+| `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
@@ -88,9 +96,9 @@ and generated through `a3s-acl`.
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service | Planned |
 
-### 3.1 Verified baseline
+### 3.1 Baseline requiring Box re-certification
 
-`R0` through `E0` form one cumulative verified release:
+`R0` through `E0` define one cumulative behavioral baseline:
 
 ```text
 general Runtime
@@ -100,13 +108,43 @@ general Runtime
   -> managed HTTPS, logs, update, rollback, and clean-host recovery
 ```
 
-Later work must reuse this path. A new interface, asset type, import format,
-accelerator, replica policy, or provider never creates a second deployment or
-reconciliation engine.
+The retired Docker implementation proved these behaviors, so its records remain
+historical regression evidence. They do not certify the Box-only release.
+`BX0` must reproduce the complete baseline on exact Cloud, Runtime, Box, and
+Gateway revisions. Later work must reuse this path. A new interface, asset
+type, import format, accelerator, replica policy, or provider never creates a
+second deployment or reconciliation engine.
 
 ### 3.2 Current in-progress gates
 
-`G0` currently includes:
+`BX0` is the release-blocking provider migration:
+
+1. `BX0.1` pins one certified Box/Runtime pair, adds closed `box` ACL
+   configuration, and removes provider fallback.
+2. `BX0.2` migrates digest-pinned Task/Service lifecycle, recovery, logs,
+   resources, stop/remove, cancellation, and cleanup.
+3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
+   tmpfs mounts, outputs, and registry credentials through typed Box ports.
+4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
+   build boundary and ACL build plans while preserving OCI validation,
+   publication, cache, SPDX/SLSA evidence, and process-death recovery.
+5. `BX0.5` ports every conformance and clean-host gate, removes Bollard,
+   Docker configuration, sockets, fixtures, and stale documentation, and adds
+   a zero-Docker architecture guard.
+
+`PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
+makes the immutable ACL-native A3S Power profile the first local I0 backend and
+proves Box-hosted health, bounded streaming and non-streaming inference,
+attestation, process/VM recovery, update, rollback, and cleanup.
+
+The exit gate installs Cloud, Box, Gateway, and Power on a clean supported
+Linux host without Docker or a compatible daemon; deploys, reaches, observes,
+updates, rolls back, and removes a Service; builds and publishes one OCI
+Artifact; serves one bounded Power inference request; recovers the named
+process/VM failures; and leaves no execution, Secret, credential, mount,
+network, volume, VM, or build residue.
+
+The historical `G0` provider implementation currently includes:
 
 - canonical GitHub identities, repository policy, immutable source revisions,
   and versioned build recipes;
@@ -257,7 +295,7 @@ shared immutable-object boundary, and pinned `.a3s/asset.acl` admission through
 
 | Horizon | Required gates | Product outcome |
 | --- | --- | --- |
-| Usable service platform | `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one stateless Service on one Linux node |
+| Usable service platform | `BX0` plus `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one Box-hosted stateless Service on one Linux node |
 | Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path |
 | Agent execution platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases become durable, resumable, approval-governed executions with replayable trajectories |
 | Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable |
@@ -268,7 +306,8 @@ only after its named `H0` and `C0` foundations pass.
 
 ```mermaid
 flowchart LR
-    R0[Universal Runtime] --> F0[Cloud foundation]
+    BX0[Box-only execution and build] --> R0[Universal Runtime]
+    R0 --> F0[Cloud foundation]
     F0 --> N0[Node control]
     N0 --> D0[OCI deployment]
     D0 --> E0[Reachable service]
@@ -333,6 +372,18 @@ Dependency rules:
 
 ## 5. Product delivery lanes
 
+### 5.0 `BX0`: Box-only execution and build
+
+`BX0` has priority over feature expansion because every provider-backed gate
+depends on it. Cloud reuses the existing Box Runtime driver and extends it in
+A3S Box; it does not implement another Box lifecycle adapter. The Node Agent
+remains the authenticated remote boundary, Runtime remains the provider-neutral
+lifecycle contract, and Box remains local to the node.
+
+No migrated slice may retain Docker as a fallback. A slice lands only when its
+Box conformance and cleanup evidence passes; the final slice deletes the
+retired code and rejects new Docker/Bollard/configuration references in CI.
+
 ### 5.1 `G0`: external source delivery
 
 Next outcome:
@@ -355,7 +406,7 @@ resource or credential.
 
 Ordered delivery:
 
-1. Dockerfile and A3S build-plan detection;
+1. A3S ACL build-plan detection and bounded source-layout proposals;
 2. explicit web, worker, and scheduled Task/Service profiles;
 3. pull-request previews with bounded lifetime and cleanup;
 4. monorepo affected-set planning; and
@@ -715,40 +766,46 @@ multi-node Gateways remain `H0.3`; production control-plane and Gateway HA remai
 | Sub-gate | Outcome | Dependency |
 | --- | --- | --- |
 | `I0.0` | Versioned accelerator and node contracts with mixed-version safety | Verified `E0` node control |
-| `I0.1` | Single-node accelerator inventory, claims, Docker/CDI enforcement, and recovery | `I0.0` + `H0.1` |
-| `I0.2a` | Immutable model catalog/cache, typed backend compiler, and one healthy private vLLM Workload | `I0.1` |
+| `I0.1` | Single-node accelerator inventory, claims, Box device enforcement, and recovery | `I0.0` + `H0.1` + `BX0.3` |
+| `I0.2a` | Immutable model catalog/cache, typed Power compiler, and one healthy private Box-hosted Power Workload | `I0.1` + `PW0.1` |
 | `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, per-Gateway limits, Redis-backed globally exact limits, streaming, and fallback | `H0.2` + `I0.2a` |
 | `I0.2c` | Durable Gateway usage spool, Cloud ledger, observability, model rollout, and rollback | `I0.2b` |
 | `I0.2d` | Credential-isolated external OpenAI-compatible Provider targets | `I0.2b` + `I0.2c` |
 | `I0.2e` | Grant-derived model/key self-service, diagnostics, playground, search, and usage showback | `C0.3` + `I0.2d` |
 | `I0.3` | Multi-node independent serving replicas and failover | `I0.2e` + `H0.3` |
-| `I0.4` | One typed Ray/vLLM distributed replica across multiple nodes | `I0.3` + `H0.3` placement-group and private-network gates |
+| `I0.4` | One typed Power distributed serving replica across multiple nodes | `I0.3` + `H0.3` placement-group and private-network gates |
 | `I0.5` | Gateway/control-plane HA, autoscaling, quota, disaster recovery, provider breadth, and load hardening | `I0.4` + `H0.4` + `H0.5` |
 
-The first provider combination is NVIDIA, Docker, and vLLM. Power, hardware
-partitions, additional accelerator vendors, named external Providers, and
-additional APIs remain unavailable until their real conformance gates pass.
+The first and required provider combination is NVIDIA, A3S Box, and A3S Power.
+Cloud does not expose vLLM, Ray, or another Power engine as a separate
+first-class backend. Hardware partitions, additional accelerator vendors,
+named external Providers, and additional APIs remain unavailable until their
+real conformance gates pass.
 
 ## 6. Near-term execution order
 
 The default portfolio priority is:
 
-1. preserve the verified `E0` release and its clean-host regression gate;
-2. execute and retain the remaining operator-owned `G0` certification through
+1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
+   historical regression coverage, and re-certify `R0` through `E0`, `G0`,
+   `H0.1`, and `H0.2` on exact Box revisions;
+2. complete `PW0.1` and make the immutable Box-hosted Power profile the first
+   `I0` backend;
+3. execute and retain the remaining operator-owned `G0` certification through
    the implemented private-provider and signed-evidence process-death gates;
-3. preserve the verified `A1.0` shared-infrastructure regressions while
+4. preserve the verified `A1.0` shared-infrastructure regressions while
    advancing `C0.3` and the first `S0` foundation independently when staffed;
-4. preserve the closed `H0.1` real-provider Claim certification while beginning
+5. re-certify the `H0.1` real-provider Claim behavior while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
-5. advance `A0.2` repository safety independently, but start `P0` and `A0.3`
+6. advance `A0.2` repository safety independently, but start `P0` and `A0.3`
    only on the verified `G0` contracts they consume;
-6. start `A1.1` after immutable published `A0.3` identities exist, add `A1.2`
+7. start `A1.1` after immutable published `A0.3` identities exist, add `A1.2`
    after `A0.4` Agent deployment, add `A1.3` after `A0.5` bindings, then gate
    `A1.4` on `C0.3` grants and audit before closing `A1.5`;
-7. preserve the verified `H0.2` projection gate while advancing `H0.3`
+8. re-certify the `H0.2` projection gate while advancing `H0.3`
    multi-node placement and networking; and
-8. close full production packaging, HA, autoscaling, and inference hardening
+9. close full production packaging, HA, autoscaling, and inference hardening
    through `H0.4`, `H0.5`, and `I0.5`.
 
 This order expresses dependency and product risk, not equal staffing or a

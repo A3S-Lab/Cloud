@@ -1,9 +1,36 @@
 # Runtime Provider Conformance
 
-The Docker Runtime certification is a dedicated provider gate. The integration
-test is deliberately `ignored` during ordinary workspace tests so an absent
-Docker prerequisite is visible as skipped rather than silently reported as a
-passing provider test.
+## Current Box-only gate
+
+A3S Box is the sole Cloud Runtime and build provider. The Box certification
+must use the shared `BoxRuntimeDriver`, an exact pinned Box/Runtime revision,
+and a dedicated supported Linux runner with no Docker-compatible daemon. Cloud
+must not add a second Box driver or retain a fallback provider.
+
+The gate is being implemented under `BX0` and must exercise every capability
+Box advertises: Base, Recovery, Networking, Mounts, Health, Resources, Logs,
+Exec, Security, Outputs, Evidence, and clean-host cleanup. It also composes the
+real Cloud consumer paths for Workload deployment, Claims, Secrets, Artifacts,
+builds, Gateway cutover, update, rollback, cancellation, process/VM loss, Agent
+loss, and exact replay. A profile is unavailable until its real Box behavior
+passes; skipped prerequisites are never success.
+
+The retained exit evidence must bind the exact Cloud, Runtime, Box, Gateway,
+and Power revisions and prove the final host inventory matches preflight with
+no workload, Secret, credential, mount, network, volume, VM, build, or temporary
+residue. Product configuration is closed A3S ACL and all relational evidence is
+persisted through A3S ORM.
+
+## Historical Docker evidence
+
+The remainder of this document records the retired provider's evidence so the
+Box gate preserves all previously tested failure and recovery behavior. It is
+not current release certification and will be removed with the retired
+implementation in `BX0.5`.
+
+The historical integration test was deliberately `ignored` during ordinary
+workspace tests so an absent prerequisite was visible as skipped rather than
+silently reported as a passing provider test.
 
 Run the gate only on a dedicated Linux provider runner:
 
