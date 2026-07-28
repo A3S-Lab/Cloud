@@ -1,5 +1,5 @@
 use super::ImmutableObjectError;
-use object_store::aws::AmazonS3Builder;
+use object_store::aws::{AmazonS3Builder, S3CopyIfNotExists};
 use object_store::{ClientOptions, ObjectStore, RetryConfig};
 use std::fmt;
 use std::sync::Arc;
@@ -64,6 +64,7 @@ pub(super) fn build(
         .with_access_key_id(options.access_key_id)
         .with_secret_access_key(options.secret_access_key)
         .with_virtual_hosted_style_request(options.virtual_hosted_style)
+        .with_copy_if_not_exists(S3CopyIfNotExists::Multipart)
         .with_client_options(client_options)
         .with_retry(retry);
     if let Some(endpoint) = options.endpoint {

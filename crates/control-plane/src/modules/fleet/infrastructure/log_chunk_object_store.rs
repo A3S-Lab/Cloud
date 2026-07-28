@@ -81,6 +81,7 @@ fn map_error(error: ImmutableObjectError) -> LogChunkStoreError {
     match error {
         ImmutableObjectError::Invalid(message) => LogChunkStoreError::Invalid(message),
         ImmutableObjectError::Conflict(object_key) => LogChunkStoreError::Conflict(object_key),
+        ImmutableObjectError::Integrity(message) => LogChunkStoreError::Unavailable(message),
         ImmutableObjectError::Unavailable(message) => LogChunkStoreError::Unavailable(message),
     }
 }

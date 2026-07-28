@@ -12,7 +12,8 @@ pub use flow::{
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 
 pub(crate) use immutable_object::{
-    ImmutableObjectClient, ImmutableObjectError, ImmutableObjectRead, S3ImmutableObjectOptions,
+    ImmutableObjectClient, ImmutableObjectError, ImmutableObjectOpenResult, ImmutableObjectRead,
+    ImmutableObjectVerification, S3ImmutableObjectOptions,
 };
 pub(crate) use oci_registry_client::{
     required_registry_header, OciRegistryClient, OciRegistryClientError,

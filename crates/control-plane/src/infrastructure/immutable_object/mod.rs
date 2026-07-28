@@ -1,5 +1,6 @@
 mod local;
 mod s3;
+mod stream;
 
 #[cfg(test)]
 mod tests;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) use s3::S3ImmutableObjectOptions;
+pub(crate) use stream::{ImmutableObjectOpenResult, ImmutableObjectVerification};
 
 const MAX_OBJECT_PATH_BYTES: usize = 4096;
 
@@ -33,6 +35,8 @@ pub(crate) enum ImmutableObjectError {
     Invalid(String),
     #[error("immutable object conflicts with existing content: {0}")]
     Conflict(String),
+    #[error("immutable object failed integrity validation: {0}")]
+    Integrity(String),
     #[error("immutable object storage is unavailable: {0}")]
     Unavailable(String),
 }

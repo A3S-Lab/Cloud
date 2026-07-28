@@ -442,9 +442,13 @@ shared polling transport owns interval scheduling, keepalive cadence, and retry
 metadata for those sequence streams and the hash-addressed Operation snapshot
 stream without inventing an Operation sequence. The duplicate domain-local
 stream files and cursor decoders are removed, and architecture tests prevent
-either transport from being reimplemented by controllers. `A1.0` remains in
-progress only until the immutable object client and node-agent outbound-batch
-primitive are consolidated.
+either transport from being reimplemented by controllers. One shared immutable
+object client now owns namespaced filesystem and S3-compatible conditional
+creation, exact replay, bounded reads and streams, digest verification,
+idempotent deletion, and health probes. Log chunks and node Artifacts retain
+typed domain adapters, admission rules, receipts, and retention policy without
+reimplementing those mechanisms. `A1.0` remains in progress only until the
+node-agent outbound-batch primitive is consolidated.
 
 Google AX may be evaluated only as an optional adapter behind the versioned
 Harness port after `A1.5` and after its integration contract is stable. Cloud

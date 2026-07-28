@@ -1369,14 +1369,25 @@ Current `A1.0` implementation:
   retry transport for sequence streams and the Operation snapshot stream;
 - Operation snapshots retain their existing content-hash event IDs and do not
   fabricate a semantic sequence merely to share the polling transport;
+- `infrastructure::immutable_object` is the sole low-level namespaced client
+  for filesystem and S3-compatible conditional creation, byte and streaming
+  admission, exact replay, bounded reads, digest verification, idempotent
+  deletion, and health probes;
+- `LogChunkObjectStore` and `LocalNodeArtifactStore` remain typed domain
+  adapters. Log validation and retention, Artifact media/size admission, the
+  versioned Artifact receipt, and blob-before-receipt repair remain in their
+  bounded contexts;
+- the former filesystem and S3 log-store implementations are removed, and the
+  Artifact adapter no longer owns another lock, staging, publication, hashing,
+  or raw filesystem read mechanism;
 - the duplicate `workload_log_stream.rs`, `build_run_log_stream.rs`, and
   `log_cursor.rs` implementations are removed; and
 - unit, HTTP/controller, Management MCP, DTO-redaction, and source-architecture
-  tests prevent a domain-local cursor codec, sequence stream, or polling loop
-  from returning.
+  tests prevent a domain-local cursor codec, sequence stream, polling loop, or
+  low-level object-store mechanism from returning.
 
-The immutable object client and the node-agent outbound-batch journal/receipt
-primitive are the remaining `A1.0` work.
+The node-agent outbound-batch journal/receipt primitive is the remaining
+`A1.0` work.
 
 Implement `AgentConversation` as the aggregate that owns the next event
 sequence and conversation lifecycle. Implement `AgentExecution` as the
