@@ -120,7 +120,8 @@ second deployment or reconciliation engine.
 `BX0` is the release-blocking provider migration:
 
 1. `BX0.1` pins one certified Box/Runtime pair, adds closed `box` ACL
-   configuration, and removes provider fallback.
+   configuration, and removes provider fallback. The implementation is
+   complete; the exact Linux provider gate is the remaining verification.
 2. `BX0.2` migrates digest-pinned Task/Service lifecycle, recovery, logs,
    resources, stop/remove, cancellation, and cleanup.
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
@@ -131,6 +132,13 @@ second deployment or reconciliation engine.
 5. `BX0.5` ports every conformance and clean-host gate, removes Bollard,
    Docker configuration, sockets, fixtures, and stale documentation, and adds
    a zero-Docker architecture guard.
+
+Cloud now delegates provider certification to the exact A3S Box revision and
+uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
+retired provider workflows, release harness, and source-build certification
+script have been removed instead of retained as fallbacks. This does not mark
+`BX0.2` through `BX0.5` complete: the Box-owned capability work and a new
+clean-host release gate must restore the named behavioral evidence.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and

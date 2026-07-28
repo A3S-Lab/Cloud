@@ -1,0 +1,192 @@
+name: Box provider conformance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/box-conformance.yml
+      - Cargo.lock
+      - Cargo.toml
+      - crates/contracts/**
+      - crates/node-agent/**
+      - tools/box-conformance/**
+  pull_request:
+    paths:
+      - .github/workflows/box-conformance.yml
+      - Cargo.lock
+      - Cargo.toml
+      - crates/contracts/**
+      - crates/node-agent/**
+      - tools/box-conformance/**
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: box-provider-conformance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  box-certification:
+    name: Real A3S Box provider
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned provider revisions
+        id: revisions
+        working-directory: apps/cloud
+        run: |
+          box_revision=$(<tools/box-conformance/box-revision)
+          oci_runtime_revision=$(<tools/box-conformance/oci-runtime-revision)
+          [[ $box_revision =~ ^[0-9a-f]{40}$ ]]
+          [[ $oci_runtime_revision =~ ^[0-9a-f]{40}$ ]]
+          grep --fixed-strings \
+            "rev = \"$box_revision\"" Cargo.toml
+          echo "box=$box_revision" >>"$GITHUB_OUTPUT"
+          echo "oci_runtime=$oci_runtime_revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout A3S Box
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Box
+          ref: ${{ steps.revisions.outputs.box }}
+          path: crates/box
+          submodules: recursive
+
+      - name: Checkout A3S OCI Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/OCI-Runtime
+          ref: ${{ steps.revisions.outputs.oci_runtime }}
+          path: crates/oci-runtime
+
+      - name: Install stable Rust and build dependencies
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+
+      - name: Install host dependencies and a non-VM libkrun link stub
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential musl-tools protobuf-compiler
+          sed -nE \
+            's/^[[:space:]]*pub fn (krun_[A-Za-z0-9_]+).*/long \1(void) { return -1; }/p' \
+            crates/box/src/deps/libkrun-sys/src/lib.rs \
+            | sort -u >"$RUNNER_TEMP/krun-stub.c"
+          test -s "$RUNNER_TEMP/krun-stub.c"
+          gcc -shared -o "$RUNNER_TEMP/libkrun.so" "$RUNNER_TEMP/krun-stub.c"
+          sudo install -m 0755 "$RUNNER_TEMP/libkrun.so" /usr/lib/libkrun.so
+          sudo ldconfig
+          grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
+          grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
+
+      - name: Build the exact Box and OCI Runtime artifacts
+        env:
+          A3S_DEPS_STUB: "1"
+        run: |
+          cargo build --manifest-path crates/box/src/Cargo.toml --locked \
+            -p a3s-box-shim -p a3s-box-runtime
+          cargo build --manifest-path crates/box/src/Cargo.toml --locked --release \
+            -p a3s-box-guest-init --target x86_64-unknown-linux-musl
+          cargo build --manifest-path crates/oci-runtime/Cargo.toml --locked --release \
+            -p a3s-oci-cli -p a3s-oci-agent
+
+      - name: Install the dedicated Box conformance home
+        env:
+          A3S_HOME: ${{ runner.temp }}/a3s-cloud-runtime-conformance
+        run: |
+          test ! -e "$A3S_HOME"
+          install -d -m 0755 "$A3S_HOME/bin"
+          install -m 0755 crates/box/src/target/debug/a3s-box-shim \
+            "$A3S_HOME/bin/a3s-box-shim"
+          install -m 0755 \
+            crates/box/src/target/x86_64-unknown-linux-musl/release/a3s-box-guest-init \
+            "$A3S_HOME/bin/a3s-box-guest-init"
+          install -m 0755 crates/oci-runtime/target/release/a3s-oci \
+            "$A3S_HOME/bin/a3s-oci"
+          install -m 0755 crates/oci-runtime/target/release/a3s-oci-agent \
+            "$A3S_HOME/bin/a3s-oci-agent"
+          find "$A3S_HOME/bin" -maxdepth 1 -type f -print -exec sha256sum {} \; \
+            >"$RUNNER_TEMP/a3s-box-provider-binaries.txt"
+
+      - name: Run every advertised Box Runtime profile
+        env:
+          A3S_HOME: ${{ runner.temp }}/a3s-cloud-runtime-conformance
+          A3S_BOX_OCI_AGENT_PATH: ${{ runner.temp }}/a3s-cloud-runtime-conformance/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ runner.temp }}/a3s-cloud-runtime-conformance/bin/a3s-oci
+          A3S_BOX_RUNTIME_CONFORMANCE: "1"
+          A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.manifest.v1+json
+          A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          install -d -m 0755 "$EVIDENCE_DIR"
+          cp "$RUNNER_TEMP/a3s-box-provider-binaries.txt" "$EVIDENCE_DIR/binaries.txt"
+          git -C crates/box rev-parse HEAD >"$EVIDENCE_DIR/box.sha"
+          git -C crates/oci-runtime rev-parse HEAD >"$EVIDENCE_DIR/oci-runtime.sha"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          set +e
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_BOX_RUNTIME_CONFORMANCE="$A3S_BOX_RUNTIME_CONFORMANCE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path crates/box/src/Cargo.toml --locked \
+              -p a3s-box-runtime \
+              a3s_runtime_driver::conformance_tests::box_runtime_passes_all_advertised_profiles \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/conformance.log"
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          exit "$gate_status"
+
+      - name: Verify provider cleanup
+        if: always()
+        env:
+          A3S_HOME: ${{ runner.temp }}/a3s-cloud-runtime-conformance
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          install -d -m 0755 "$EVIDENCE_DIR"
+          ps aux >"$EVIDENCE_DIR/processes-after.txt"
+          find "$A3S_HOME" -maxdepth 4 -print \
+            >"$EVIDENCE_DIR/home-after.txt" 2>&1 || true
+          if pgrep -fa 'a3s-box-shim|a3s-oci-agent|a3s-oci.*native-linux-service' \
+            >"$EVIDENCE_DIR/leaked-processes.txt"; then
+            cat "$EVIDENCE_DIR/leaked-processes.txt"
+            exit 1
+          fi
+          test ! -e "$A3S_HOME/boxes.json"
+          test ! -d "$A3S_HOME/runtime-state"
+          sudo rm -rf "$A3S_HOME"
+
+      - name: Upload Box certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: box-provider-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-box-provider-evidence
+          if-no-files-found: error
+          retention-days: 30

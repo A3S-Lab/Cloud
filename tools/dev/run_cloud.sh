@@ -40,17 +40,16 @@ if [[ $skip_prepare != true ]]; then
 fi
 
 if [[ -z ${A3S_CLOUD_POSTGRES_URL:-} ]]; then
-  require_command docker
-  if ! docker info >/dev/null 2>&1; then
+  require_command a3s-box
+  if ! a3s-box info >/dev/null 2>&1; then
     printf '%s\n' \
-      'Docker is unavailable. Start Docker or provide A3S_CLOUD_POSTGRES_URL' \
+      'A3S Box is unavailable. Install A3S Box or provide A3S_CLOUD_POSTGRES_URL' \
       'for an existing PostgreSQL instance.' >&2
     exit 1
   fi
-  docker compose \
-    --env-file "$repository_root/deploy/dev/.env.example" \
-    --file "$repository_root/deploy/dev/compose.yaml" \
-    up --detach --wait
+  a3s-box compose \
+    --file "$repository_root/deploy/dev/compose.acl" \
+    up --detach --timeout 120
   export A3S_CLOUD_POSTGRES_URL='postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/a3s_cloud'
 fi
 

@@ -1,353 +1,86 @@
-# Runtime Provider Conformance
+# Runtime Conformance
 
-## Current Box-only gate
+A3S Cloud has one node-local execution provider: A3S Box. Cloud consumes the
+shared `BoxRuntimeDriver` through the provider-neutral A3S Runtime contract and
+does not maintain another provider implementation or provider test suite.
 
-A3S Box is the sole Cloud Runtime and build provider. The Box certification
-must use the shared `BoxRuntimeDriver`, an exact pinned Box/Runtime revision,
-and a dedicated supported Linux runner with no Docker-compatible daemon. Cloud
-must not add a second Box driver or retain a fallback provider.
+## Revision ownership
 
-The gate is being implemented under `BX0` and must exercise every capability
-Box advertises: Base, Recovery, Networking, Mounts, Health, Resources, Logs,
-Exec, Security, Outputs, Evidence, and clean-host cleanup. It also composes the
-real Cloud consumer paths for Workload deployment, Claims, Secrets, Artifacts,
-builds, Gateway cutover, update, rollback, cancellation, process/VM loss, Agent
-loss, and exact replay. A profile is unavailable until its real Box behavior
-passes; skipped prerequisites are never success.
+The release candidate binds four exact repositories:
 
-The retained exit evidence must bind the exact Cloud, Runtime, Box, Gateway,
-and Power revisions and prove the final host inventory matches preflight with
-no workload, Secret, credential, mount, network, volume, VM, build, or temporary
-residue. Product configuration is closed A3S ACL and all relational evidence is
-persisted through A3S ORM.
+| Component | Revision source | Responsibility |
+| --- | --- | --- |
+| A3S Runtime | `tools/runtime-conformance/runtime-revision` and `Cargo.toml` | Provider-neutral lifecycle, records, contracts, and conformance profiles |
+| A3S Box | `tools/box-conformance/box-revision` and `Cargo.toml` | Images, execution, networking, mounts, logs, health, resources, attestation, builds, and cleanup |
+| A3S OCI Runtime | `tools/box-conformance/oci-runtime-revision` | Shared-kernel Sandbox execution used on hosted Linux runners |
+| A3S Cloud | Git commit under test | Desired state, node commands, journals, reconciliation, routing, and evidence |
 
-## Historical Docker evidence
+Every revision is a full 40-character commit. The workspace dependency and
+revision file must match. A gate must fail before execution when they differ.
 
-The remainder of this document records the retired provider's evidence so the
-Box gate preserves all previously tested failure and recovery behavior. It is
-not current release certification and will be removed with the retired
-implementation in `BX0.5`.
+## Provider gate
 
-The historical integration test was deliberately `ignored` during ordinary
-workspace tests so an absent prerequisite was visible as skipped rather than
-silently reported as a passing provider test.
+`.github/workflows/box-conformance.yml` checks out the exact Box and A3S OCI
+Runtime revisions, builds the Box shim and guest init, and installs them in a
+dedicated temporary Box home. It then runs the single real-provider Runtime
+conformance suite owned by A3S Box.
 
-Run the gate only on a dedicated Linux provider runner:
+The suite derives its required profiles from the capabilities returned by the
+driver. It must exercise every advertised profile and reject missing evidence;
+a workflow matrix cannot silently omit a newly advertised capability. The
+provider inventory before and after the run must match. Managed units, Runtime
+state, shims, runtime owners, mounts, sockets, and temporary execution roots
+are all part of cleanup evidence.
 
-```bash
-export A3S_CLOUD_TEST_DOCKER=1
-export A3S_CLOUD_TEST_DOCKER_SOCKET=unix:///run/a3s-runtime-provider/docker.sock
-export A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER=a3s-runtime-provider
-export A3S_CLOUD_TEST_SECRET_MEMORY_DIR=/dev/shm/a3s-cloud/runtime-provider
+Hardware-specific MicroVM and TEE qualification remains in A3S Box. Cloud
+records the exact Box evidence but does not duplicate its implementation.
 
-cargo test -p a3s-cloud-node-agent \
-  --test docker_conformance \
-  real_docker_passes_all_advertised_runtime_profiles \
-  -- --ignored --exact --nocapture --test-threads=1
-```
+## Cloud consumer gates
 
-`A3S_CLOUD_TEST_DOCKER_SOCKET` defaults to
-`unix:///var/run/docker.sock`. Recovery certification additionally requires a
-restartable, isolated Docker provider. The container named by
-`A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER` must expose that socket and carry the
-label:
+Cloud tests own only Cloud behavior above Runtime:
 
-```text
-a3s.runtime.conformance.provider=true
-```
+- command leasing, expiry, replay, and acknowledgement ordering;
+- durable Runtime receipts and generation fencing;
+- desired-state reconciliation after Agent and control-plane interruption;
+- resource-claim preparation, binding, release, and orphan fencing;
+- Artifact transfer receipts and output publication;
+- ordered log batches and explicit discontinuities;
+- Gateway target publication from typed Runtime endpoints; and
+- cleanup completion before terminal Cloud state.
 
-`A3S_CLOUD_TEST_SECRET_MEMORY_DIR` must be a private tmpfs directory mounted
-into that container at the same absolute path. The isolated runner creates and
-validates this mount automatically.
+These tests use Runtime fakes for deterministic failure boundaries. A release
+claim is made only after the same behavior passes the real Box provider gate
+and the clean-host Cloud loop.
 
-Never point the restart target at shared infrastructure. A runner that uses
-the host Docker daemon must be disposable and own the daemon restart outside
-the test process.
+## Box-hosted integration fixtures
 
-The suite always runs Base and Recovery and derives every other profile from
-the driver's reported capabilities. Docker currently activates Networking,
-Mounts, Health, Resources, Logs, Security, and Outputs. Each profile performs provider
-inspection and workload-visible behavior checks. The fixture uses a unique
-namespace, enforces bounded Docker operations, removes only namespace-owned
-containers and volumes, and requires the canonical post-cleanup inventory to
-equal its baseline.
+`tools/box-conformance/install_box_release.sh` installs a checksum-pinned Box
+release with its matching A3S OCI Runtime. Local development and the C0
+cross-surface gates use this installation to host disposable service fixtures.
+The current local profile contains PostgreSQL, NATS, and Registry; C0 runs its
+PostgreSQL fixture through the same Box boundary. Product and fixture
+configuration is A3S ACL. The fixtures use a dedicated `A3S_HOME` and are
+removed through Box.
 
-Because Docker advertises `SecretReferences`, Security certification also uses
-a run-specific tmpfs directory shared with the isolated provider. A file Secret
-is resolved only inside the driver and echoed by the workload. The gate requires
-the Runtime spec, Docker inspection, Runtime inspection, and Runtime observation
-evidence to exclude the value, while logs contain only `[REDACTED]`. A caller
-retry and provider restart must retain one provider container and one `0400`
-material file; removal must delete the generation directory.
+The fixture release is not provider certification evidence. Provider
+certification always builds and tests the exact source revision pinned by the
+Cloud release candidate.
 
-Mounts certification keeps a named-volume Service running across a distinct
-caller request and an isolated provider restart. Each phase must re-adopt the
-same container and the same single Docker volume. A separate read-only Task
-then verifies the exact pre-restart token and write denial before the Service
-and volume are removed explicitly.
+## Current migration boundary
 
-The same Mounts profile seeds one content-addressed directory archive through
-the node Artifact manager, materializes it under the exact Runtime spec digest,
-and requires Docker to use one absolute read-only bind. The workload verifies
-the expected bytes and write denial; a reconstructed driver must reattach the
-same container, and removal must delete the spec view and its now-unreferenced
-blob.
+`BX0.1` is implemented: Cloud pins the Runtime/Box pair, parses only the closed
+ACL `box` block, constructs the shared Box driver directly, and has no fallback
+provider. The following evidence remains required before `BX0` is verified:
 
-Outputs certification runs a finite Task with one declared bounded directory
-output. It hashes the exact Docker archive bytes, checks local URI/media/size
-identity, replays the same apply, reconstructs both client and driver, rejects
-an over-limit output, and detects same-length blob corruption on inspection.
-Removal must clear the output receipt and reclaim the unreferenced blob.
+1. Task and Service lifecycle, recovery, logs, resources, stop, remove,
+   cancellation, and residue on the exact Box revision.
+2. Private networking, typed endpoints, health, Secrets, Artifact/Volume/tmpfs
+   mounts, outputs, and registry credentials.
+3. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
+   publication, replay, and process-death evidence.
+4. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,
+   observe, update, rollback, inference, stop, removal, and exact cleanup.
 
-Recovery certification also captures a real Docker log cursor before the
-isolated provider restart, reconstructs the driver and client, requires the
-same provider resource and pre-restart record to remain visible, and resumes
-strictly after the exact cursor without fabricating a discontinuity.
-
-When developing on a dedicated Docker host that cannot safely restart its
-daemon, the following non-certifying probe exercises only the advertised
-optional behavior and still enforces cleanup and inventory equality:
-
-```bash
-A3S_CLOUD_TEST_DOCKER=1 cargo test -p a3s-cloud-node-agent \
-  --test docker_conformance \
-  real_docker_exercises_advertised_optional_profile_behavior \
-  -- --ignored --exact --nocapture --test-threads=1
-```
-
-Its result never substitutes for the mandatory Base and Recovery gate.
-Set `A3S_CLOUD_TEST_RUNTIME_PROFILE` to one of `networking`, `mounts`,
-`health`, `resources`, `logs`, `security`, or `outputs` to run one focused optional
-profile during development. Omitting it runs all optional profiles.
-
-Docker log queries page forward from the earliest retained provider record.
-The initial request stops after `limit` records, while a cursor request scans
-from the preceding provider timestamp boundary until it finds the exact
-stream/timestamp/ordinal/digest cursor and then returns the next page. A missing
-cursor returns `RuntimeError::LogDiscontinuity` with the exact unit, generation,
-requested cursor, and `cursor_lost` reason, never an empty successful page. A
-durable unit whose managed Docker source disappeared returns the same typed
-boundary with `source_disconnected`; transport and provider availability errors
-remain retryable.
-
-Docker does not expose an API for requesting two log records with an identical
-daemon nanosecond timestamp. The real profile verifies provider ordering,
-unique cursors, and resume behavior. The production cursor/sequence helpers
-separately have a deterministic unit case with two records at the exact same
-timestamp, proving ordinal disambiguation without modifying Docker's log files.
-The real rotation profile removes the managed source, verifies the exact
-`source_disconnected` boundary, recreates the same generation, and then verifies
-that the old cursor yields the exact `cursor_lost` boundary.
-
-## Cloud immutable update and rollback acceptance
-
-The Cloud consumer gate runs the real one-node update scenario directly
-against the isolated Docker provider:
-
-```bash
-A3S_CLOUD_TEST_DOCKER=1 cargo test \
-  -p a3s-cloud-control-plane \
-  --test docker_deployment \
-  real_docker_updates_preserve_a_failed_candidate_and_rollback_retires_the_current_revision \
-  -- --exact --nocapture --test-threads=1
-```
-
-The scenario deploys healthy revision A, applies permanently unhealthy
-candidate B, and proves A remains selected, healthy, and running. It then
-applies a distinct healthy candidate C on the same node, requires C to become
-selected in `retiring`, leases the deterministic Runtime stop for A, and accepts
-only durable stopped-or-absent evidence before C becomes terminal `active`. It
-then clones A's exact resolved template into new generation D, runs D through
-real Docker health, selects D in `retiring`, and requires the deterministic stop
-for C before D becomes terminal `active`. A second lease after each retirement
-must contain no duplicate command.
-
-The PostgreSQL parent also holds retirement command access closed and resumes
-the update in a child Flow process. Once the child has durably selected the
-candidate as `retiring`, the parent verifies that no cleanup command committed
-and sends `SIGKILL`. A reconstructed coordinator must replay activation,
-dispatch one deterministic stop for the previous immutable revision, and reach
-terminal `active` only after stopped-or-absent evidence. This real process probe
-runs in both the Linux Secret/log job and the isolated Cloud consumer job.
-
-This real-provider gate certifies Runtime update, rollback, and retirement
-behavior. The routed control-plane suite separately proves that the rollback
-candidate waits for the exact Gateway acknowledgement and atomically retargets
-routes before retiring C. The PostgreSQL application gate calls the public
-rollback endpoint, verifies the new generation exactly clones the older
-resolved template and records `rollbackSourceRevisionId` in
-`cloud.deployment@3`, then proves durable idempotent replay still succeeds after
-the workload stops.
-
-## Cloud Resource Claim lifecycle acceptance
-
-Every new workload deployment uses `cloud.deployment@3` and the exact sequence:
-
-```text
-database reserve
-  -> Agent-journaled Claim prepare
-  -> resource-bound Runtime apply
-  -> matching Claim ID and binding-digest observation
-  -> Runtime stop/remove evidence
-  -> higher-generation Agent Claim release
-```
-
-Versions 1 and 2 remain registered only for persisted Flow replay. The ordinary
-node-agent unit gate reconstructs the command journal after prepare, apply,
-stop, and release and rejects missing bindings, changed inventory, conflicting
-slots, premature release, and generation/digest regression. Run its focused
-restart case with:
-
-```bash
-cargo test -p a3s-cloud-node-agent --lib \
-  resource_claim_prepare_bind_and_release_are_restart_safe_and_fenced \
-  --locked
-```
-
-The isolated PostgreSQL 17 gate exercises reservation-before-placement
-recovery, real command leasing, exact prepare/apply acknowledgements,
-allocation-binding persistence, Secret-rotation derivation, update retirement,
-stop-before-release ordering, release retry, and activation-before-retirement
-process death. It also proves that rejected `not_found` or `stale_generation`
-stop outcomes do not fence a bound Claim:
-
-```bash
-A3S_CLOUD_TEST_POSTGRES_URL=postgres://USER:PASSWORD@HOST/DATABASE \
-cargo test -p a3s-cloud-control-plane \
-  --test postgres_integration \
-  postgres_foundation_is_migrated_atomic_and_idempotent \
-  --locked -- --nocapture --test-threads=1
-```
-
-The provider suite also runs
-`resource_claims::real_docker_claim_journal_survives_agent_and_provider_process_death`
-as a separate mandatory test. A private child executes the real
-`CommandExecutor` and `FileCommandJournal`, pauses after Docker creates the
-bound unit but before Runtime or command completion, and leaves both receipts
-durably pending. The parent replaces the isolated Docker daemon process, proves
-the child is still paused, sends `SIGKILL`, and reconstructs Runtime plus the
-Agent journal. Exact replay must adopt the original sole container and return
-the matching Claim ID and binding digest. Premature release and a
-capacity-conflicting Claim must fail until real Runtime stop/removal and exact
-Agent release complete; the competing Claim must then prepare successfully.
-
-The isolated runner accepts this test only when it emits exactly one
-`A3S_RESOURCE_CLAIM_CRASH_CERTIFICATION_PASS` marker and the ordinary provider,
-Artifact, mount, loop-device, network, and process cleanup audits remain empty.
-This is the complete `H0.1` process-death acceptance boundary; the
-Secret-rotation crash probe remains separate evidence for Secret transport and
-Runtime receipt recovery.
-
-## Cloud Secret and log acceptance
-
-The isolated runner's `--suite cloud` path additionally sets
-`A3S_CLOUD_TEST_SECRET_MEMORY_DIR` to a run-specific directory beneath
-`/dev/shm`, verifies that the directory is tmpfs-backed, and bind-mounts the
-same absolute path into the nested Docker provider. The PostgreSQL integration
-gate compiles as the ordinary CI user and runs only its test binary as root,
-matching the isolated release runner. This makes the tmpfs source root-owned so
-the root workload can read its `0400` file while the container remains
-unprivileged with every capability dropped. The gate then:
-
-- authorizes and decrypts an active Secret version through the production
-  application handler;
-- in the dedicated Linux CI form, binds a separate encrypted registry
-  credential, proves anonymous access is rejected, resolves the manifest
-  through the production credential-aware control-plane resolver, removes the
-  cached fixture image, and pulls its digest from the authenticated private
-  registry;
-- injects it into a real Docker environment variable and `0400` file without
-  placing plaintext in the Runtime command;
-- emits it on stdout and stderr and requires provider-boundary redaction;
-- pauses a child after the real rotated Docker apply creates a healthy
-  container but before its Runtime receipt completes, restarts the labeled
-  isolated provider, kills the child agent, reconstructs Runtime, and requires
-  exact-container reattachment plus completion and replay of that same receipt;
-- starts a child handler that exits after a synced immutable object publication
-  but before PostgreSQL receipt persistence, proves no batch metadata committed,
-  then reconstructs the handler/repository/store and adopts the exact objects
-  into one receipt;
-- corrupts only a non-secret real Docker marker after receipt, requires exact
-  replay not to repair accepted immutable content, and reads its ordered
-  `corrupt` gap plus both sanitized Secret records through the tenant-authorized
-  REST endpoint; and
-- scans control-plane rows, Flow history, node state, and durable log objects
-  for plaintext and requires the post-test tmpfs directory to contain no
-  Secret files.
-
-This gate proves the real provider success path, an actual control-plane
-object-before-receipt process-death boundary, exact orphan adoption, and
-filesystem corruption projection. The Cloud consumer gate also runs the
-healthy-A, failed-B, healthy-C, cloned-A rollback sequence and proves
-deterministic retirement of A and then C. The PostgreSQL control-plane gate
-separately kills the in-memory orchestration boundary after a Secret rotation
-commit, races reconstructed restart workers, requires one causally linked
-derived revision and Runtime apply command, then reconstructs Flow after the
-reference-only result and verifies terminal activation plus final plaintext
-scans. The digest-pinned MinIO gate overwrites a real accepted object and
-requires verified reads to return corruption while immutable replay refuses to
-replace it. The rotated workload gate now proves provider and agent process
-death preserve one exact Docker resource, one completed Runtime receipt, `0400`
-Secret material, redacted logs, and complete cleanup.
-
-## Managed Gateway snapshot conformance
-
-Build the Gateway revision pinned in
-`tools/gateway-conformance/gateway-revision`, then run the node-agent's
-four real-binary gates:
-
-```bash
-export A3S_CLOUD_TEST_GATEWAY_BIN=/absolute/path/to/a3s-gateway
-cargo test -p a3s-cloud-node-agent --lib --locked \
-  gateway::remote_tests::installed_a3s_gateway_validates_and_reloads_complete_snapshots \
-  -- --ignored --exact --nocapture --test-threads=1
-cargo test -p a3s-cloud-node-agent --lib --locked \
-  gateway::remote_tests::installed_a3s_gateway_rotates_managed_tls_and_target_generation \
-  -- --ignored --exact --nocapture --test-threads=1
-cargo test -p a3s-cloud-node-agent --lib --locked \
-  gateway::remote_tests::replicated_gateway_tests::installed_a3s_gateways_converge_independently_and_recover_member_loss \
-  -- --ignored --exact --nocapture --test-threads=1
-cargo test -p a3s-cloud-node-agent --lib --locked \
-  gateway::reload_crash_tests::installed_a3s_gateway_recovers_native_apply_after_agent_process_death \
-  -- --ignored --exact --nocapture --test-threads=1
-```
-
-The first gate applies two complete native snapshots, rejects an invalid
-successor without changing exact readiness, and renews the proven snapshot with
-the same ACL bytes and digest. The renewal advances revision and expiry,
-exposes only the successor selector as ready, preserves traffic, and avoids a
-certificate request. The TLS gate rotates independently signed certificates
-and generation-bound targets, rejects the superseded certificate and selector,
-and restores only the replacement after Gateway restart.
-
-The replicated gate starts two real Gateway processes with independent Gateway
-IDs, trust roots, native journals, Agent journals, revisions, and Cloud cursors.
-Both serve one exact target; cross-member CA trust fails; either member remains
-available after peer loss; and the returning member reconstructs its applied
-state without another certificate issue or apply. The crash gate kills the
-Agent after Gateway has durably applied the snapshot but before the Cloud
-acknowledgement exists, then requires redelivery to project one exact durable
-acknowledgement without repeating native mutation. Together with the
-PostgreSQL 17 logical Route, threshold, recovery, rollback, and certificate
-convergence fixtures, these tests are the `H0.2` acceptance boundary.
-
-## Clean-host E0 release acceptance
-
-The final E0 gate builds release-mode control-plane and node-agent binaries from
-exact clean Cloud, Runtime, and Gateway revisions. On a disposable Linux host
-it starts digest-pinned PostgreSQL and registry fixtures, the control plane,
-one real outbound Docker node, and a native-snapshot managed Gateway bound to
-that enrolled node identity, then drives:
-
-```text
-bootstrap -> enrollment -> release A -> managed TLS route -> ordered logs
-          -> resumable SSE -> release B -> cloned-A rollback -> durable stop
-```
-
-The gate requires a distinct live Docker identity for A, B, and rollback, zero
-running units after stop, clean Cloud and Runtime worktrees, empty targeted
-inventories, and exact before/after host container, volume, and network
-inventories. Cleanup removes only run-owned resources and private state, and a
-final fixed-string scan rejects evidence containing any generated credential.
-Only then does the runner write `A3S_CLOUD_CLEAN_HOST_E0_PASS`. This real
-process-level gate is now verified and closes E0.
+No incomplete capability may be represented as supported. Missing host
+capability, missing evidence, stale generation, uncertain cleanup, or revision
+mismatch fails closed and keeps the owning roadmap gate open.

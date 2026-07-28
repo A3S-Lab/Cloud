@@ -52,14 +52,23 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 
 Both scenarios execute production PostgreSQL repositories through A3S ORM.
 The runner creates isolated temporary state and a digest-pinned PostgreSQL
-container, stores its database on tmpfs, and removes both on exit.
+Service in an A3S Box Sandbox, stores its database on tmpfs, and removes the
+Box and state root on exit.
 
 ## Running the gates
 
-Run from a clean Cloud checkout whose sibling Runtime checkout matches
-`tools/runtime-conformance/runtime-revision`:
+Run on Linux from a clean Cloud checkout whose sibling Runtime checkout matches
+`tools/runtime-conformance/runtime-revision`. Install the checksum-pinned Box
+fixture release or provide an equivalent exact `A3S_CLOUD_BOX_BIN`:
 
 ```bash
+box_root="$(mktemp -d)"
+tools/box-conformance/install_box_release.sh "$box_root"
+export PATH="$box_root:$PATH"
+export LD_LIBRARY_PATH="$box_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export A3S_BOX_OCI_RUNTIME_PATH="$box_root/a3s-oci"
+export A3S_BOX_OCI_AGENT_PATH="$box_root/a3s-oci-agent"
+
 c0_evidence="$(mktemp -d)"
 tools/c0-conformance/run_cross_surface_gate.sh "$c0_evidence"
 cat "$c0_evidence/result.txt"
@@ -69,9 +78,10 @@ tools/c0-conformance/run_cross_surface_gate.sh "$mcp_evidence" management-mcp
 cat "$mcp_evidence/result.txt"
 ```
 
-Ports `127.0.0.1:8080` and `127.0.0.1:8443` must be available because the gate
-verifies the shipped development ACL unchanged. A local pre-commit rehearsal
-may set `A3S_CLOUD_C0_ALLOW_DIRTY=true`; its result is explicitly marked
+Ports `127.0.0.1:8080`, `127.0.0.1:8443`, and `54320` must be available. Set
+`A3S_CLOUD_BOX_RUN_AS_ROOT=true` when the host requires root-owned namespaces
+and cgroups. A local pre-commit rehearsal may set
+`A3S_CLOUD_C0_ALLOW_DIRTY=true`; its result is explicitly marked
 `dirty-rehearsal` and is not release evidence.
 
 A passing clean default run writes `A3S_CLOUD_C0_1_CROSS_SURFACE_PASS`. A

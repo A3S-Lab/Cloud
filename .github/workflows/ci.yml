@@ -114,206 +114,6 @@ jobs:
             modules::sources::infrastructure::git_source_checkout::tests::real_github_checkout_materializes_the_resolved_commit_without_git_metadata \
             -- --ignored --exact --nocapture --test-threads=1
 
-  rootless-buildkit:
-    name: Runtime BuildKit private Registry
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    defaults:
-      run:
-        shell: bash
-        working-directory: apps/cloud
-    steps:
-      - name: Checkout Cloud
-        uses: actions/checkout@v4
-        with:
-          path: apps/cloud
-
-      - name: Read pinned Runtime revision
-        id: runtime_revision
-        run: |
-          revision=$(<tools/runtime-conformance/runtime-revision)
-          [[ $revision =~ ^[0-9a-f]{40}$ ]]
-          echo "revision=$revision" >>"$GITHUB_OUTPUT"
-
-      - name: Checkout Runtime
-        uses: actions/checkout@v4
-        with:
-          repository: A3S-Lab/Runtime
-          ref: ${{ steps.runtime_revision.outputs.revision }}
-          path: crates/runtime
-
-      - name: Install Rust 1.85.0
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 1.85.0
-          cache: false
-
-      - name: Permit RootlessKit user namespaces on the Ubuntu runner
-        run: |
-          # Required by BuildKit rootless mode on Ubuntu 24.04:
-          # https://github.com/moby/buildkit/blob/v0.31.2/docs/rootless.md#ubuntu-2404-or-later
-          restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
-          if [[ -r $restriction ]] && [[ $(< "$restriction") == 1 ]]; then
-            sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
-          fi
-          [[ ! -r $restriction ]] || [[ $(< "$restriction") == 0 ]]
-
-      - name: Start digest-pinned rootless BuildKit on the operator socket volume
-        run: |
-          buildkit_image=docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b
-          busybox_image=docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-          buildkit_namespace=cloud-buildkit-gate
-          buildkit_volume_id=a3s-cloud-buildkit-v0-31-2
-          buildkit_volume="a3s-${buildkit_namespace}-volume-$(printf '%s' "$buildkit_volume_id" | sha256sum | cut -c1-16)"
-          busybox_fixture=a3s-cloud-buildkit-busybox-fixture
-          busybox_rootfs="$RUNNER_TEMP/a3s-cloud-buildkit-busybox-rootfs.tar"
-          docker pull "$buildkit_image"
-          docker pull --platform linux/amd64 "$busybox_image"
-          docker create --name "$busybox_fixture" --platform linux/amd64 \
-            "$busybox_image"
-          docker export --output "$busybox_rootfs" "$busybox_fixture"
-          docker rm "$busybox_fixture"
-          chmod 0444 "$busybox_rootfs"
-          rootfs_bytes=$(stat --format '%s' "$busybox_rootfs")
-          (( rootfs_bytes > 0 && rootfs_bytes <= 16777216 ))
-          tar --list --file "$busybox_rootfs" \
-            bin/busybox lib/ld-linux-x86-64.so.2 lib/libc.so.6 lib64
-          ! docker container inspect "$busybox_fixture" >/dev/null 2>&1
-          docker volume create "$buildkit_volume"
-          docker run --rm --user 0 --entrypoint /bin/sh \
-            --volume "$buildkit_volume:/run/user/1000/a3s-buildkit" \
-            "$buildkit_image" \
-            -ceu 'chown 1000:1000 /run/user/1000/a3s-buildkit'
-          docker run --detach --privileged \
-            --name a3s-cloud-buildkit \
-            --publish 127.0.0.1:12340:1234 \
-            --volume "$buildkit_volume:/run/user/1000/a3s-buildkit" \
-            "$buildkit_image" \
-            --addr unix:///run/user/1000/a3s-buildkit/buildkitd.sock \
-            --addr tcp://0.0.0.0:1234 \
-            --oci-worker-no-process-sandbox
-          [[ $(docker inspect --format '{{.Config.User}}' a3s-cloud-buildkit) == 1000:1000 ]]
-          docker cp a3s-cloud-buildkit:/usr/bin/buildctl "$RUNNER_TEMP/buildctl"
-          chmod 0700 "$RUNNER_TEMP/buildctl"
-          buildctl_version=$("$RUNNER_TEMP/buildctl" --version)
-          [[ $buildctl_version == *"v0.31.2"* ]]
-          ready=false
-          for attempt in $(seq 1 90); do
-            state=$(docker inspect --format '{{.State.Status}}' a3s-cloud-buildkit)
-            if [[ $state == exited || $state == dead ]]; then
-              docker logs a3s-cloud-buildkit
-              exit 1
-            fi
-            if "$RUNNER_TEMP/buildctl" \
-              --addr tcp://127.0.0.1:12340 debug workers >/dev/null 2>&1; then
-              ready=true
-              break
-            fi
-            sleep 1
-          done
-          if [[ $ready != true ]]; then
-            docker logs a3s-cloud-buildkit
-            exit 1
-          fi
-          [[ $(docker exec a3s-cloud-buildkit id -u) == 1000 ]]
-          docker exec a3s-cloud-buildkit \
-            test -S /run/user/1000/a3s-buildkit/buildkitd.sock
-
-      - name: Start authenticated private Registry
-        env:
-          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
-          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
-        run: |
-          registry_image=registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
-          htpasswd_image=httpd:2.4.63-alpine@sha256:cc34b8bdde6ee55ea52db9819baa13ea36e4c7447eb7595db9ea720d1831851e
-          docker pull "$registry_image"
-          docker pull "$htpasswd_image"
-          auth_directory="$RUNNER_TEMP/a3s-cloud-build-registry-auth"
-          install -d -m 0700 "$auth_directory"
-          docker run --rm \
-            --entrypoint /usr/local/apache2/bin/htpasswd \
-            "$htpasswd_image" -Bbn \
-            "$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
-            "$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
-            >"$auth_directory/htpasswd"
-          docker run --detach --rm \
-            --name a3s-cloud-build-registry \
-            --publish 127.0.0.1:50030:5000 \
-            --mount "type=bind,source=$auth_directory,target=/auth,readonly" \
-            --tmpfs /var/lib/registry:rw,nosuid,nodev,noexec,size=1073741824 \
-            --env REGISTRY_AUTH=htpasswd \
-            --env REGISTRY_AUTH_HTPASSWD_REALM="A3S Cloud build acceptance" \
-            --env REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
-            "$registry_image"
-          ready=false
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 2 \
-              --user "$A3S_CLOUD_TEST_REGISTRY_USERNAME:$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
-              http://127.0.0.1:50030/v2/ >/dev/null; then
-              ready=true
-              break
-            fi
-            sleep 0.5
-          done
-          if [[ $ready != true ]]; then
-            docker logs a3s-cloud-build-registry
-            exit 1
-          fi
-          [[ $(curl --silent --output /dev/null --write-out '%{http_code}' \
-            http://127.0.0.1:50030/v2/) == 401 ]]
-
-      - name: Build and validate a real OCI image layout
-        env:
-          A3S_CLOUD_TEST_BUILDCTL: ${{ runner.temp }}/buildctl
-          A3S_CLOUD_TEST_BUILDKIT_ADDRESS: tcp://127.0.0.1:12340
-        run: |
-          cargo test -p a3s-cloud-control-plane --lib --locked \
-            modules::artifacts::infrastructure::buildkit_build_service::tests::real_rootless_buildkit_builds_and_validates_oci_layout \
-            -- --ignored --exact --nocapture --test-threads=1
-
-      - name: Run the Runtime-to-Registry production gate
-        env:
-          A3S_CLOUD_TEST_BUILDKIT_CONTAINER: a3s-cloud-buildkit
-          A3S_CLOUD_TEST_BUSYBOX_ROOTFS: ${{ runner.temp }}/a3s-cloud-buildkit-busybox-rootfs.tar
-          A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
-          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
-          A3S_CLOUD_TEST_REGISTRY_URL: http://127.0.0.1:50030/
-          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
-          A3S_CLOUD_TEST_RUNTIME_BUILDKIT: "1"
-          A3S_CLOUD_TEST_RUNTIME_BUILDKIT_NAMESPACE: cloud-buildkit-gate
-          A3S_CLOUD_TEST_RUNTIME_BUILDKIT_VOLUME_ID: a3s-cloud-buildkit-v0-31-2
-        run: |
-          cargo test -p a3s-cloud-control-plane --lib --locked \
-            modules::artifacts::infrastructure::build_flow::tests::runtime_gate::real_runtime_task_builds_publishes_and_rejects_network_access \
-            -- --ignored --exact --nocapture --test-threads=1
-          managed_containers=$(docker ps --all --quiet \
-            --filter label=a3s.cloud.managed=true \
-            --filter label=a3s.cloud.namespace=cloud-buildkit-gate)
-          if [[ -n $managed_containers ]]; then
-            docker inspect $managed_containers
-            exit 1
-          fi
-
-      - name: Stop BuildKit and Registry fixtures
-        if: always()
-        run: |
-          managed_containers=$(docker ps --all --quiet \
-            --filter label=a3s.cloud.managed=true \
-            --filter label=a3s.cloud.namespace=cloud-buildkit-gate)
-          [[ -z $managed_containers ]] || \
-            docker rm --force $managed_containers || true
-          docker rm --force a3s-cloud-buildkit-busybox-fixture || true
-          docker logs a3s-cloud-buildkit || true
-          docker logs a3s-cloud-build-registry || true
-          docker rm --force a3s-cloud-buildkit || true
-          docker rm --force a3s-cloud-build-registry || true
-          buildkit_volume_id=a3s-cloud-buildkit-v0-31-2
-          buildkit_volume="a3s-cloud-buildkit-gate-volume-$(printf '%s' "$buildkit_volume_id" | sha256sum | cut -c1-16)"
-          docker volume rm "$buildkit_volume" || true
-          ! docker volume inspect "$buildkit_volume" >/dev/null 2>&1
-          rm -rf "$RUNNER_TEMP/a3s-cloud-build-registry-auth"
-          rm -f "$RUNNER_TEMP/a3s-cloud-buildkit-busybox-rootfs.tar" \
-            "$RUNNER_TEMP/buildctl"
 
   gateway-managed-tls:
     name: Gateway managed TLS
@@ -385,244 +185,6 @@ jobs:
               gateway::reload_crash_tests::installed_a3s_gateway_recovers_native_apply_after_agent_process_death \
               -- --ignored --exact --nocapture --test-threads=1
 
-  s3-compatible-logs:
-    name: S3-compatible logs
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        shell: bash
-        working-directory: apps/cloud
-    steps:
-      - name: Checkout Cloud
-        uses: actions/checkout@v4
-        with:
-          path: apps/cloud
-
-      - name: Read pinned Runtime revision
-        id: runtime_revision
-        run: |
-          revision=$(<tools/runtime-conformance/runtime-revision)
-          [[ $revision =~ ^[0-9a-f]{40}$ ]]
-          echo "revision=$revision" >>"$GITHUB_OUTPUT"
-
-      - name: Checkout Runtime
-        uses: actions/checkout@v4
-        with:
-          repository: A3S-Lab/Runtime
-          ref: ${{ steps.runtime_revision.outputs.revision }}
-          path: crates/runtime
-
-      - name: Install Rust 1.85.0
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 1.85.0
-
-      - name: Start pinned MinIO
-        run: |
-          docker run --detach --rm \
-            --name a3s-cloud-minio \
-            --publish 127.0.0.1:9000:9000 \
-            --env MINIO_ROOT_USER=a3s-cloud-test \
-            --env MINIO_ROOT_PASSWORD=a3s-cloud-test-secret \
-            quay.io/minio/minio@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
-            server /data --address :9000
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs a3s-cloud-minio
-          exit 1
-
-      - name: Create disposable log bucket
-        run: |
-          docker run --rm --network host \
-            --env MC_HOST_local=http://a3s-cloud-test:a3s-cloud-test-secret@127.0.0.1:9000 \
-            quay.io/minio/mc@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3 \
-            mb --ignore-existing local/a3s-cloud-ci
-
-      - name: Exercise immutable S3 log lifecycle
-        env:
-          A3S_CLOUD_TEST_S3_ACCESS_KEY_ID: a3s-cloud-test
-          A3S_CLOUD_TEST_S3_BUCKET: a3s-cloud-ci
-          A3S_CLOUD_TEST_S3_ENDPOINT: http://127.0.0.1:9000
-          A3S_CLOUD_TEST_S3_REGION: us-east-1
-          A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY: a3s-cloud-test-secret
-        run: |
-          cargo test -p a3s-cloud-control-plane --lib --locked \
-            modules::fleet::infrastructure::s3_log_chunk_store::tests::real_s3_compatible_store_preserves_immutable_log_semantics \
-            -- --ignored --exact --nocapture --test-threads=1
-
-      - name: Stop MinIO
-        if: always()
-        run: docker rm --force a3s-cloud-minio || true
-
-  linux-secret-logs:
-    name: Linux Secret and logs
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-        working-directory: apps/cloud
-    steps:
-      - name: Checkout Cloud
-        uses: actions/checkout@v4
-        with:
-          path: apps/cloud
-
-      - name: Read pinned Runtime revision
-        id: runtime_revision
-        run: |
-          revision=$(<tools/runtime-conformance/runtime-revision)
-          [[ $revision =~ ^[0-9a-f]{40}$ ]]
-          echo "revision=$revision" >>"$GITHUB_OUTPUT"
-
-      - name: Checkout Runtime
-        uses: actions/checkout@v4
-        with:
-          repository: A3S-Lab/Runtime
-          ref: ${{ steps.runtime_revision.outputs.revision }}
-          path: crates/runtime
-
-      - name: Install Rust 1.85.0
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 1.85.0
-
-      - name: Start pinned PostgreSQL and private registry fixture
-        env:
-          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
-          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
-        run: |
-          docker run --detach --rm \
-            --name a3s-cloud-secret-log-postgres \
-            --publish 127.0.0.1:54320:5432 \
-            --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=2147483648 \
-            --env POSTGRES_DB=postgres \
-            --env POSTGRES_USER=a3s_cloud \
-            --env POSTGRES_PASSWORD=a3s_cloud \
-            postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
-          for attempt in $(seq 1 90); do
-            if docker exec a3s-cloud-secret-log-postgres \
-              pg_isready --dbname=postgres --username=a3s_cloud >/dev/null 2>&1; then
-              break
-            fi
-            [[ $attempt -ne 90 ]]
-            sleep 0.5
-          done
-          docker pull \
-            docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-          registry_image=registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
-          htpasswd_image=httpd:2.4.63-alpine@sha256:cc34b8bdde6ee55ea52db9819baa13ea36e4c7447eb7595db9ea720d1831851e
-          docker pull "$registry_image"
-          docker pull "$htpasswd_image"
-          auth_directory="$RUNNER_TEMP/a3s-cloud-registry-auth"
-          install -d -m 0700 "$auth_directory"
-          docker run --rm \
-            --entrypoint /usr/local/apache2/bin/htpasswd \
-            "$htpasswd_image" -Bbn \
-            "$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
-            "$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
-            >"$auth_directory/htpasswd"
-          docker run --detach --rm \
-            --name a3s-cloud-secret-log-registry \
-            --publish 127.0.0.1:50030:5000 \
-            --mount "type=bind,source=$auth_directory,target=/auth,readonly" \
-            --env REGISTRY_AUTH=htpasswd \
-            --env REGISTRY_AUTH_HTPASSWD_REALM="A3S Cloud acceptance" \
-            --env REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
-            "$registry_image"
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 2 \
-              --user "$A3S_CLOUD_TEST_REGISTRY_USERNAME:$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
-              http://127.0.0.1:50030/v2/ >/dev/null; then
-              break
-            fi
-            [[ $attempt -ne 60 ]]
-            sleep 0.5
-          done
-          [[ $(curl --silent --output /dev/null --write-out '%{http_code}' \
-            http://127.0.0.1:50030/v2/) == 401 ]]
-          printf '%s' "$A3S_CLOUD_TEST_REGISTRY_PASSWORD" |
-            docker login 127.0.0.1:50030 \
-              --username "$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
-              --password-stdin
-          private_repository=127.0.0.1:50030/a3s/busybox
-          docker tag \
-            docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-            "$private_repository:acceptance"
-          docker push "$private_repository:acceptance"
-          private_reference=
-          while IFS= read -r reference; do
-            case "$reference" in
-              "$private_repository"@sha256:*)
-                private_reference=$reference
-                break
-                ;;
-            esac
-          done < <(docker image inspect \
-            --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-            "$private_repository:acceptance")
-          [[ -n $private_reference ]]
-          echo "A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT=oci://$private_reference" \
-            >>"$GITHUB_ENV"
-          image_id=$(docker image inspect \
-            --format '{{.Id}}' "$private_repository:acceptance")
-          docker image rm --force "$image_id"
-          ! docker image inspect "$private_reference" >/dev/null 2>&1
-
-      - name: Exercise registry publication, PostgreSQL Secrets, and redacted logs
-        env:
-          A3S_CLOUD_TEST_DOCKER: "1"
-          A3S_CLOUD_TEST_DOCKER_SOCKET: unix:///var/run/docker.sock
-          A3S_CLOUD_TEST_POSTGRES_URL: postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/postgres
-          A3S_CLOUD_TEST_REGISTRY_URL: http://127.0.0.1:50030/
-          A3S_CLOUD_TEST_SECRET_MEMORY_DIR: /dev/shm/a3s-cloud/ci-secret-logs
-          A3S_CLOUD_TEST_REGISTRY_USERNAME: a3s-cloud-ci
-          A3S_CLOUD_TEST_REGISTRY_PASSWORD: a3s-cloud-ci-password
-        run: |
-          install -d -m 0700 "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR"
-          cargo test -p a3s-cloud-control-plane \
-            --test oci_registry_integration --locked \
-            real_private_registry_publishes_and_replays_a_validated_oci_graph \
-            -- --exact --nocapture --test-threads=1
-          cargo test -p a3s-cloud-control-plane --test postgres_integration --locked --no-run
-          test_binary=$(find target/debug/deps -maxdepth 1 -type f \
-            -name 'postgres_integration-*' -perm -111 -print -quit)
-          [[ -n $test_binary ]]
-          sudo env \
-            A3S_CLOUD_TEST_DOCKER="$A3S_CLOUD_TEST_DOCKER" \
-            A3S_CLOUD_TEST_DOCKER_SOCKET="$A3S_CLOUD_TEST_DOCKER_SOCKET" \
-            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
-            A3S_CLOUD_TEST_SECRET_MEMORY_DIR="$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" \
-            A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT="$A3S_CLOUD_TEST_PRIVATE_REGISTRY_ARTIFACT" \
-            A3S_CLOUD_TEST_REGISTRY_USERNAME="$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
-            A3S_CLOUD_TEST_REGISTRY_PASSWORD="$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
-            RUST_BACKTRACE=1 \
-            "$test_binary" \
-            postgres_foundation_is_migrated_atomic_and_idempotent \
-            --exact --nocapture --test-threads=1
-          [[ -z $(sudo find "$A3S_CLOUD_TEST_SECRET_MEMORY_DIR" -type f -print -quit) ]]
-
-      - name: Stop Secret and log fixtures
-        if: always()
-        run: |
-          managed_containers=$(docker ps --all --quiet \
-            --filter label=a3s.cloud.managed=true)
-          for container in $managed_containers; do
-            docker inspect --format \
-              'name={{.Name}} state={{.State.Status}} exit={{.State.ExitCode}} ports={{json .NetworkSettings.Ports}} mounts={{range .Mounts}}{{.Destination}}:rw={{.RW}} {{end}}' \
-              "$container" || true
-          done
-          [[ -z $managed_containers ]] ||
-            docker rm --force $managed_containers || true
-          docker rm --force a3s-cloud-secret-log-registry || true
-          docker rm --force a3s-cloud-secret-log-postgres || true
-          docker logout 127.0.0.1:50030 || true
-          rm -rf "$RUNNER_TEMP/a3s-cloud-registry-auth"
-          sudo rm -rf /dev/shm/a3s-cloud/ci-secret-logs
 
   repository-policy:
     name: Repository policy
@@ -640,16 +202,10 @@ jobs:
 
       - name: Validate shell syntax
         run: |
+          bash -n tools/box-conformance/install_box_release.sh
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
-          bash -n tools/g0-conformance/run_signed_build_gate.sh
-          bash -n tools/runtime-conformance/run_isolated_docker_gate.sh
-          bash -n tools/release-conformance/run_clean_host_gate.sh
-
-      - name: Test OCI fixture helper
-        run: python3 -m unittest discover -s tools/runtime-conformance -p 'test_*.py'
-
-      - name: Test clean-host release driver
-        run: python3 -m unittest discover -s tools/release-conformance -p 'test_*.py'
+          bash -n tools/dev/run_cloud.sh
+          bash -n tools/dev/test_run_cloud.sh
 
       - name: Test REST contract compatibility checker
         run: python3 -m unittest discover -s tools/api-contract -p 'test_*.py'
@@ -676,6 +232,26 @@ jobs:
           if git grep -I -n -i -E \
             '(^|[^[:alnum:]_])HCL([^[:alnum:]_]|$)|\.hcl([^[:alnum:]_]|$)' -- \
             README.md cli config crates deploy docs packages tools web; then
+            exit 1
+          fi
+
+      - name: Enforce Box-only runtime and automation paths
+        run: |
+          removed_provider='do'"cker"
+          removed_builder='build'"kit"
+          removed_client='boll'"ard"
+          forbidden_paths=$(git ls-files \
+            .github justfile deploy tools/box-conformance tools/c0-conformance \
+            tools/dev tools/g0-conformance tools/runtime-conformance |
+            grep -E -i "(^|/)($removed_provider|$removed_builder|$removed_client)([^/]*)(/|$)" || true)
+          if [[ -n $forbidden_paths ]]; then
+            printf '%s\n' "$forbidden_paths"
+            exit 1
+          fi
+          removed_runtime_pattern="(^|[;&|[:space:]])$removed_provider([[:space:]]|$)|/var/run/$removed_provider\\.sock|$removed_client|$removed_builder"
+          if git grep -I -n -E "$removed_runtime_pattern" -- \
+            .github justfile deploy tools/box-conformance tools/c0-conformance \
+            tools/dev tools/g0-conformance tools/runtime-conformance; then
             exit 1
           fi
 
@@ -734,7 +310,7 @@ jobs:
   c0-cross-surface:
     name: C0.1 cross-surface
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -769,7 +345,20 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Install checksum-pinned A3S Box fixture runtime
+        run: |
+          tools/box-conformance/install_box_release.sh "$RUNNER_TEMP/a3s-box"
+          echo "$RUNNER_TEMP/a3s-box" >>"$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/a3s-box/lib" >>"$GITHUB_ENV"
+          echo "A3S_BOX_OCI_RUNTIME_PATH=$RUNNER_TEMP/a3s-box/a3s-oci" >>"$GITHUB_ENV"
+          echo "A3S_BOX_OCI_AGENT_PATH=$RUNNER_TEMP/a3s-box/a3s-oci-agent" >>"$GITHUB_ENV"
+          grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
+          grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
+
       - name: Run real REST, Web-client, CLI, and PostgreSQL gate
+        env:
+          A3S_CLOUD_BOX_BIN: ${{ runner.temp }}/a3s-box/a3s-box
+          A3S_CLOUD_BOX_RUN_AS_ROOT: "true"
         run: tools/c0-conformance/run_cross_surface_gate.sh "$RUNNER_TEMP/a3s-cloud-c0-evidence"
 
       - name: Upload sanitized C0.1 evidence
@@ -784,7 +373,7 @@ jobs:
   c0-management-mcp:
     name: C0.2 management MCP
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -819,7 +408,20 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Install checksum-pinned A3S Box fixture runtime
+        run: |
+          tools/box-conformance/install_box_release.sh "$RUNNER_TEMP/a3s-box"
+          echo "$RUNNER_TEMP/a3s-box" >>"$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/a3s-box/lib" >>"$GITHUB_ENV"
+          echo "A3S_BOX_OCI_RUNTIME_PATH=$RUNNER_TEMP/a3s-box/a3s-oci" >>"$GITHUB_ENV"
+          echo "A3S_BOX_OCI_AGENT_PATH=$RUNNER_TEMP/a3s-box/a3s-oci-agent" >>"$GITHUB_ENV"
+          grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
+          grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
+
       - name: Run real REST, management MCP, A3S ORM, and PostgreSQL gate
+        env:
+          A3S_CLOUD_BOX_BIN: ${{ runner.temp }}/a3s-box/a3s-box
+          A3S_CLOUD_BOX_RUN_AS_ROOT: "true"
         run: |
           tools/c0-conformance/run_cross_surface_gate.sh \
             "$RUNNER_TEMP/a3s-cloud-c0-mcp-evidence" management-mcp
