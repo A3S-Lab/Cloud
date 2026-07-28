@@ -35,6 +35,8 @@ jobs:
     name: Real A3S Box provider
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      A3S_HOME: /tmp/a3s-cloud-runtime-conformance-${{ github.run_id }}-${{ github.run_attempt }}
     defaults:
       run:
         shell: bash
@@ -105,8 +107,6 @@ jobs:
             -p a3s-oci-cli -p a3s-oci-agent
 
       - name: Install the dedicated Box conformance home
-        env:
-          A3S_HOME: ${{ runner.temp }}/a3s-cloud-runtime-conformance
         run: |
           test ! -e "$A3S_HOME"
           install -d -m 0755 "$A3S_HOME/bin"
@@ -124,9 +124,8 @@ jobs:
 
       - name: Run every advertised Box Runtime profile
         env:
-          A3S_HOME: ${{ runner.temp }}/a3s-cloud-runtime-conformance
-          A3S_BOX_OCI_AGENT_PATH: ${{ runner.temp }}/a3s-cloud-runtime-conformance/bin/a3s-oci-agent
-          A3S_BOX_OCI_RUNTIME_PATH: ${{ runner.temp }}/a3s-cloud-runtime-conformance/bin/a3s-oci
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
           A3S_BOX_RUNTIME_CONFORMANCE: "1"
           A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
           A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.manifest.v1+json
@@ -166,7 +165,6 @@ jobs:
       - name: Verify provider cleanup
         if: always()
         env:
-          A3S_HOME: ${{ runner.temp }}/a3s-cloud-runtime-conformance
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
           install -d -m 0755 "$EVIDENCE_DIR"
