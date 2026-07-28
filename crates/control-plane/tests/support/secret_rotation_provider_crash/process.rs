@@ -337,7 +337,7 @@ pub(super) async fn managed_container_ids(
 pub(super) async fn restart_isolated_provider(provider_socket: &str) -> TestResult {
     let target = std::env::var("A3S_CLOUD_TEST_DOCKER_RESTART_CONTAINER")
         .map_err(|_| "isolated provider restart target is required")?;
-    let control = Docker::connect_with_unix_defaults()?;
+    let control = Docker::connect_with_socket_defaults()?;
     let before = tokio::time::timeout(
         Duration::from_secs(30),
         control.inspect_container(&target, None),
@@ -408,10 +408,11 @@ pub(super) async fn restart_isolated_provider(provider_socket: &str) -> TestResu
 }
 
 fn connect_provider(socket: &str) -> TestResult<Docker> {
-    let socket = socket
-        .strip_prefix("unix://")
-        .ok_or("Docker provider socket must use unix://")?;
-    Ok(Docker::connect_with_unix(socket, 30, API_DEFAULT_VERSION)?)
+    Ok(Docker::connect_with_socket(
+        socket,
+        30,
+        API_DEFAULT_VERSION,
+    )?)
 }
 
 pub(super) fn docker_socket() -> String {

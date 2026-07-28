@@ -748,6 +748,7 @@ pub(super) fn assert_tree_excludes_plaintext(
     Ok(())
 }
 
+#[cfg(unix)]
 pub(super) fn assert_secret_file_modes(
     root: &Path,
     expected: &[u32],
@@ -770,6 +771,14 @@ pub(super) fn assert_secret_file_modes(
     modes.sort_unstable();
     assert_eq!(modes, expected);
     Ok(())
+}
+
+#[cfg(not(unix))]
+pub(super) fn assert_secret_file_modes(
+    _root: &Path,
+    _expected: &[u32],
+) -> Result<(), Box<dyn std::error::Error>> {
+    Err("Secret file mode assertions require Unix permissions".into())
 }
 
 fn test_artifact_resolver() -> Arc<dyn IOciArtifactResolver> {
