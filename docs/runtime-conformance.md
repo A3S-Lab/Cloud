@@ -54,9 +54,9 @@ and the clean-host Cloud loop.
 
 ## Box-hosted integration fixtures
 
-`tools/box-conformance/install_box_release.sh` installs a checksum-pinned Box
-release with its matching A3S OCI Runtime. Local development and the C0
-cross-surface gates use this installation to host disposable service fixtures.
+`tools/box-conformance/install_box_release.sh` installs independently
+checksum-pinned Box and A3S OCI Runtime releases. Local development and the C0
+cross-surface gates use this release pair to host disposable service fixtures.
 The current local profile contains PostgreSQL, NATS, and Registry; C0 runs its
 PostgreSQL fixture through the same Box boundary. Product and fixture
 configuration is A3S ACL. The fixtures use a dedicated `A3S_HOME` and are

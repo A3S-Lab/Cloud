@@ -474,13 +474,16 @@ fn verify_chain_and_dns(
             ))
         })?;
     }
-    let verifier = rustls::client::WebPkiServerVerifier::builder(Arc::new(roots))
-        .build()
-        .map_err(|error| {
-            GatewayCertificateProvisioningError::Invalid(format!(
-                "Gateway CA verifier is invalid: {error}"
-            ))
-        })?;
+    let verifier = rustls::client::WebPkiServerVerifier::builder_with_provider(
+        Arc::new(roots),
+        Arc::new(rustls::crypto::ring::default_provider()),
+    )
+    .build()
+    .map_err(|error| {
+        GatewayCertificateProvisioningError::Invalid(format!(
+            "Gateway CA verifier is invalid: {error}"
+        ))
+    })?;
     let dns_name = representative_dns_name(&request.dns_names[0]);
     let server_name = ServerName::try_from(dns_name).map_err(|error| {
         GatewayCertificateProvisioningError::Invalid(format!(
