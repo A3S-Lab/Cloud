@@ -1,7 +1,13 @@
 use super::*;
+use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
 use a3s_runtime::contract::{RuntimeLogChunk, RuntimeLogStream};
+use object_store::aws::AmazonS3Builder;
 use object_store::memory::InMemory;
+use object_store::path::Path as ObjectPath;
+use object_store::{ClientOptions, ObjectStore};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
+use std::time::Duration;
 
 fn report(data: &str) -> NodeLogChunkReport {
     NodeLogChunkReport {
@@ -22,7 +28,9 @@ fn report(data: &str) -> NodeLogChunkReport {
 #[tokio::test]
 async fn s3_log_objects_are_immutable_verified_and_retention_safe() {
     let objects: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-    let store = S3LogChunkStore::from_store(objects, "logs").expect("S3 test store");
+    let client =
+        ImmutableObjectClient::from_store(Arc::clone(&objects), "logs").expect("object client");
+    let store = LogChunkObjectStore::from_client(client);
     assert!(store.health().await.expect("health"));
     let node_id = Uuid::now_v7();
     let first = store
@@ -54,9 +62,8 @@ async fn s3_log_objects_are_immutable_verified_and_retention_safe() {
         Err(LogChunkStoreError::Invalid(_))
     ));
 
-    let path = store.object_path(&first.object_key).expect("stored path");
-    store
-        .objects
+    let path = ObjectPath::parse(format!("logs/{}", first.object_key)).expect("stored path");
+    objects
         .put(&path, b"{not-json".as_slice().into())
         .await
         .expect("corrupt object");
@@ -98,11 +105,11 @@ fn s3_options_debug_output_redacts_credentials() {
 fn s3_options_reject_empty_credentials_and_inverted_timeouts() {
     let mut invalid = options("https://objects.example");
     invalid.secret_access_key.clear();
-    assert!(S3LogChunkStore::new(invalid).is_err());
+    assert!(ImmutableObjectClient::s3(invalid).is_err());
 
     let mut invalid = options("https://objects.example");
     invalid.connect_timeout = Duration::from_secs(31);
-    assert!(S3LogChunkStore::new(invalid).is_err());
+    assert!(ImmutableObjectClient::s3(invalid).is_err());
 }
 
 #[tokio::test]
@@ -117,11 +124,21 @@ async fn real_s3_compatible_store_preserves_immutable_log_semantics() {
     let secret_access_key =
         std::env::var("A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY").expect("S3 test secret key");
     let allow_http = endpoint.starts_with("http://");
-    let store = S3LogChunkStore::new(S3LogChunkStoreOptions {
+    let prefix = format!("a3s-cloud-tests/{}", Uuid::now_v7());
+    let objects = AmazonS3Builder::new()
+        .with_region(region.clone())
+        .with_bucket_name(bucket.clone())
+        .with_access_key_id(access_key_id.clone())
+        .with_secret_access_key(secret_access_key.clone())
+        .with_endpoint(endpoint.clone())
+        .with_client_options(ClientOptions::new().with_allow_http(allow_http))
+        .build()
+        .expect("raw S3 client");
+    let client = ImmutableObjectClient::s3(S3ImmutableObjectOptions {
         endpoint: Some(endpoint),
         region,
         bucket,
-        prefix: format!("a3s-cloud-tests/{}", Uuid::now_v7()),
+        prefix: prefix.clone(),
         access_key_id,
         secret_access_key,
         session_token: None,
@@ -132,7 +149,8 @@ async fn real_s3_compatible_store_preserves_immutable_log_semantics() {
         retry_timeout: Duration::from_secs(60),
         max_retries: 3,
     })
-    .expect("real S3 test store");
+    .expect("real S3 object client");
+    let store = LogChunkObjectStore::from_client(client);
     assert!(store.health().await.expect("real S3 health"));
     let node_id = Uuid::now_v7();
     let first = store
@@ -160,11 +178,9 @@ async fn real_s3_compatible_store_preserves_immutable_log_semantics() {
             .expect("read real S3 log object"),
         RetrievedLogChunk::Found(report("real-s3"))
     );
-    let path = store
-        .object_path(&first.object_key)
-        .expect("real S3 object path");
-    store
-        .objects
+    let path =
+        ObjectPath::parse(format!("{prefix}/{}", first.object_key)).expect("real S3 object path");
+    objects
         .put(&path, b"{\"corrupt\":true}".as_slice().into())
         .await
         .expect("corrupt real S3 log object");
@@ -198,8 +214,8 @@ async fn real_s3_compatible_store_preserves_immutable_log_semantics() {
     );
 }
 
-fn options(endpoint: &str) -> S3LogChunkStoreOptions {
-    S3LogChunkStoreOptions {
+fn options(endpoint: &str) -> S3ImmutableObjectOptions {
+    S3ImmutableObjectOptions {
         endpoint: Some(endpoint.into()),
         region: "us-east-1".into(),
         bucket: "a3s-cloud-logs".into(),

@@ -6,7 +6,7 @@ use a3s_cloud_control_plane::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
 };
 use a3s_cloud_control_plane::modules::fleet::{
-    LocalLogChunkStore, PostgresNodeRepository, RecordNodeLogChunks, RecordNodeLogChunksHandler,
+    LogChunkObjectStore, PostgresNodeRepository, RecordNodeLogChunks, RecordNodeLogChunksHandler,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::NodeId;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
@@ -173,7 +173,7 @@ pub(super) async fn persist_redacted_docker_logs(
         .get(crash_ordinal)
         .cloned()
         .ok_or("log recovery probe ordinal exceeded its batch")?;
-    let objects = LocalLogChunkStore::new(security_state_dir.join("logs"))?;
+    let objects = LogChunkObjectStore::local(security_state_dir)?;
     assert_eq!(
         objects
             .get(&crashed_object_key, &corrupted.checksum)
@@ -230,7 +230,7 @@ async fn crash_after_log_object_publish(
 
     let executable = std::env::current_exe()?;
     let postgres_url = postgres_url.to_owned();
-    let log_root = security_state_dir.join("logs");
+    let log_root = security_state_dir.to_path_buf();
     let node_id = node_id.to_string();
     let child_batch_path = batch_path.clone();
     let child_marker_path = marker_path.clone();
@@ -293,7 +293,7 @@ async fn crash_after_log_object_publish(
         .chunks
         .get(usize::from(crash_ordinal))
         .ok_or("crash probe ordinal exceeded its batch")?;
-    let objects = LocalLogChunkStore::new(security_state_dir.join("logs"))?;
+    let objects = LogChunkObjectStore::local(security_state_dir)?;
     assert_eq!(
         objects.get(&object_key, &report.checksum).await?,
         RetrievedLogChunk::Found(report.clone()),
@@ -327,7 +327,7 @@ pub async fn run_log_object_publish_crash_probe() -> Result<(), Box<dyn std::err
     let batch = serde_json::from_slice::<NodeLogChunkBatch>(&std::fs::read(batch_path)?)?;
     let executor = PostgresExecutor::connect_no_tls(&postgres_url, 2)?;
     let nodes: Arc<dyn INodeControlRepository> = Arc::new(PostgresNodeRepository::new(executor));
-    let inner = LocalLogChunkStore::new(log_root)?;
+    let inner = LogChunkObjectStore::local(log_root)?;
     let objects: Arc<dyn ILogChunkStore> = Arc::new(CrashAfterLogObjectPublish {
         inner,
         crash_ordinal,
@@ -351,7 +351,7 @@ pub async fn run_log_object_publish_crash_probe() -> Result<(), Box<dyn std::err
 }
 
 struct CrashAfterLogObjectPublish {
-    inner: LocalLogChunkStore,
+    inner: LogChunkObjectStore,
     crash_ordinal: u16,
     marker_path: PathBuf,
 }
@@ -405,7 +405,7 @@ async fn record_log_batch(
     let nodes: Arc<dyn INodeControlRepository> =
         Arc::new(PostgresNodeRepository::new(executor.clone()));
     let objects: Arc<dyn ILogChunkStore> =
-        Arc::new(LocalLogChunkStore::new(security_state_dir.join("logs"))?);
+        Arc::new(LogChunkObjectStore::local(security_state_dir)?);
     RecordNodeLogChunksHandler::new(nodes, objects)
         .execute(
             RecordNodeLogChunks {

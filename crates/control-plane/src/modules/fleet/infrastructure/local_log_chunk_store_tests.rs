@@ -1,4 +1,4 @@
-use super::LocalLogChunkStore;
+use super::LogChunkObjectStore;
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk,
 };
@@ -26,7 +26,7 @@ fn report(data: &str) -> NodeLogChunkReport {
 #[tokio::test]
 async fn local_log_objects_are_immutable_idempotent_and_path_safe() {
     let directory = tempfile::tempdir().expect("log directory");
-    let store = LocalLogChunkStore::new(directory.path()).expect("log store");
+    let store = LogChunkObjectStore::local(directory.path()).expect("log store");
     assert!(store.health().await.expect("health"));
     let batch_id = Uuid::now_v7();
     let node_id = Uuid::now_v7();
@@ -57,9 +57,12 @@ async fn local_log_objects_are_immutable_idempotent_and_path_safe() {
         store.remove("../outside").await,
         Err(LogChunkStoreError::Invalid(_))
     ));
-    tokio::fs::write(directory.path().join(&first.object_key), b"{not-json")
-        .await
-        .expect("corrupt stored object");
+    tokio::fs::write(
+        directory.path().join("logs").join(&first.object_key),
+        b"{not-json",
+    )
+    .await
+    .expect("corrupt stored object");
     assert_eq!(
         store
             .get(&first.object_key, &report("hello").checksum)
@@ -87,7 +90,7 @@ async fn local_log_objects_are_immutable_idempotent_and_path_safe() {
 #[tokio::test]
 async fn local_log_reader_accepts_a_valid_maximum_chunk_after_json_escaping() {
     let directory = tempfile::tempdir().expect("log directory");
-    let store = LocalLogChunkStore::new(directory.path()).expect("log store");
+    let store = LogChunkObjectStore::local(directory.path()).expect("log store");
     let maximum_escaped_data = "\\".repeat(1024 * 1024);
     let maximum_report = report(&maximum_escaped_data);
     maximum_report.validate().expect("maximum valid report");

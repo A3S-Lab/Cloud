@@ -1,3 +1,4 @@
+use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
@@ -33,11 +34,10 @@ use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
     EnrollNodeHandler, FleetModule, GetNodeHandler, IGatewayAcknowledgementProjector,
     IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodesHandler,
-    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore, LogCompactionWorker,
+    LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore, LogCompactionWorker,
     LogRetentionWorker, NodeControlApi, NodeControlServer, PostgresNodeRepository,
     RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
-    RotateNodeCertificateHandler, S3LogChunkStore, S3LogChunkStoreOptions,
-    VaultCertificateAuthority, VaultKeyEncryptionService,
+    RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::identity::domain::repositories::IApiTokenRepository;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
@@ -1447,32 +1447,31 @@ fn log_chunk_store(
 ) -> std::result::Result<Arc<dyn ILogChunkStore>, ControlPlaneStartupError> {
     match config.logs.storage_provider {
         LogStorageProviderKind::Local => Ok(Arc::new(
-            LocalLogChunkStore::new(std::path::Path::new(&config.security.state_dir).join("logs"))
+            LogChunkObjectStore::local(&config.security.state_dir)
                 .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
         )),
         LogStorageProviderKind::S3 => {
             let credentials = config.s3_log_credentials()?.ok_or_else(|| {
                 ControlPlaneStartupError::LogStorage("S3 credentials were not resolved".into())
             })?;
-            Ok(Arc::new(
-                S3LogChunkStore::new(S3LogChunkStoreOptions {
-                    endpoint: (!config.logs.s3_endpoint.is_empty())
-                        .then(|| config.logs.s3_endpoint.clone()),
-                    region: config.logs.s3_region.clone(),
-                    bucket: config.logs.s3_bucket.clone(),
-                    prefix: config.logs.s3_prefix.clone(),
-                    access_key_id: credentials.access_key_id,
-                    secret_access_key: credentials.secret_access_key,
-                    session_token: credentials.session_token,
-                    allow_http: config.logs.s3_allow_http,
-                    virtual_hosted_style: config.logs.s3_virtual_hosted_style,
-                    request_timeout: Duration::from_millis(config.logs.s3_request_timeout_ms),
-                    connect_timeout: Duration::from_millis(config.logs.s3_connect_timeout_ms),
-                    retry_timeout: Duration::from_millis(config.logs.s3_retry_timeout_ms),
-                    max_retries: config.logs.s3_max_retries,
-                })
-                .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
-            ))
+            let objects = ImmutableObjectClient::s3(S3ImmutableObjectOptions {
+                endpoint: (!config.logs.s3_endpoint.is_empty())
+                    .then(|| config.logs.s3_endpoint.clone()),
+                region: config.logs.s3_region.clone(),
+                bucket: config.logs.s3_bucket.clone(),
+                prefix: config.logs.s3_prefix.clone(),
+                access_key_id: credentials.access_key_id,
+                secret_access_key: credentials.secret_access_key,
+                session_token: credentials.session_token,
+                allow_http: config.logs.s3_allow_http,
+                virtual_hosted_style: config.logs.s3_virtual_hosted_style,
+                request_timeout: Duration::from_millis(config.logs.s3_request_timeout_ms),
+                connect_timeout: Duration::from_millis(config.logs.s3_connect_timeout_ms),
+                retry_timeout: Duration::from_millis(config.logs.s3_retry_timeout_ms),
+                max_retries: config.logs.s3_max_retries,
+            })
+            .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?;
+            Ok(Arc::new(LogChunkObjectStore::from_client(objects)))
         }
     }
 }

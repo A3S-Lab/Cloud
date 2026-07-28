@@ -18,9 +18,8 @@ pub use application::{
     RotateNodeCertificateResult,
 };
 pub use infrastructure::{
-    LocalCertificateAuthority, LocalKeyEncryptionService, LocalLogChunkStore,
+    LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore,
     PostgresNodeRepository, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
-pub(crate) use infrastructure::{S3LogChunkStore, S3LogChunkStoreOptions};
 pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};
 pub(crate) use presentation::{NodeControlApi, NodeLogRecordResponse};

@@ -53,7 +53,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
             LocalGatewayCertificateAuthority::load_or_create(directory.path().join("gateway-ca"))
                 .expect("Gateway CA"),
         ),
-        Arc::new(LocalLogChunkStore::new(directory.path().join("logs")).expect("log object store")),
+        Arc::new(LogChunkObjectStore::local(directory.path()).expect("log object store")),
         authority,
         Arc::new(InMemoryWorkloadRepository::new()),
         Arc::new(InMemorySecretRepository::new()),

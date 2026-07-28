@@ -13,7 +13,7 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{ILogChunkStore, RetrievedLogChunk};
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
-use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LocalLogChunkStore};
+use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::events::OrganizationCreated;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
@@ -315,8 +315,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .replayed
     );
 
-    let log_store =
-        Arc::new(LocalLogChunkStore::new(ca_directory.path().join("logs")).expect("log store"));
+    let log_store = Arc::new(LogChunkObjectStore::local(ca_directory.path()).expect("log store"));
     let log_handler = RecordNodeLogChunksHandler::new(nodes.clone(), log_store.clone());
     let log_data = "service started";
     let log_batch = NodeLogChunkBatch {

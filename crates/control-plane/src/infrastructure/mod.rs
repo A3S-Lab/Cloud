@@ -1,4 +1,5 @@
 mod flow;
+mod immutable_object;
 mod oci_registry_client;
 mod postgres;
 mod postgres_schema;
@@ -10,6 +11,9 @@ pub use flow::{
 };
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 
+pub(crate) use immutable_object::{
+    ImmutableObjectClient, ImmutableObjectError, ImmutableObjectRead, S3ImmutableObjectOptions,
+};
 pub(crate) use oci_registry_client::{
     required_registry_header, OciRegistryClient, OciRegistryClientError,
 };

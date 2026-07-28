@@ -11,7 +11,7 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{ICertificateAuthority, NodeCertificateRequest};
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
-use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LocalLogChunkStore};
+use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
 use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
@@ -75,7 +75,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let commands: Arc<dyn INodeControlRepository> = nodes.clone();
     let node_repository: Arc<dyn INodeRepository> = nodes.clone();
     let log_store =
-        Arc::new(LocalLogChunkStore::new(directory.path().join("logs")).expect("log object store"));
+        Arc::new(LogChunkObjectStore::local(directory.path()).expect("log object store"));
     let edge = Arc::new(InMemoryEdgeRepository::new());
     let api = NodeControlApi::new(
         node_repository,
