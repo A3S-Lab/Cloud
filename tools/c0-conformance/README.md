@@ -53,13 +53,16 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 Both scenarios execute production PostgreSQL repositories through A3S ORM.
 The runner creates isolated temporary state and a digest-pinned PostgreSQL
 Service in an A3S Box Sandbox, stores its database on tmpfs, and removes the
-Box and state root on exit.
+Box and state root on exit. Host access uses Box's loopback-only,
+generation-fenced `port-forward` command; Sandbox static publication is not a
+fallback path.
 
 ## Running the gates
 
 Run on Linux from a clean Cloud checkout whose sibling Runtime checkout matches
-`tools/runtime-conformance/runtime-revision`. Install the checksum-pinned Box
-fixture release or provide an equivalent exact `A3S_CLOUD_BOX_BIN`:
+`tools/runtime-conformance/runtime-revision`. Install the exact-revision Box
+fixture or provide an equivalent `A3S_CLOUD_BOX_BIN` together with its exact
+`A3S_CLOUD_BOX_REVISION`:
 
 ```bash
 box_root="$(mktemp -d)"
@@ -86,5 +89,5 @@ and cgroups. A local pre-commit rehearsal may set
 
 A passing clean default run writes `A3S_CLOUD_C0_1_CROSS_SURFACE_PASS`. A
 passing clean MCP run writes `A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS`. Both results
-bind the exact Cloud and Runtime revisions and retain only sanitized scenario
-evidence, provider logs, and credential-free persistence checks.
+bind the exact Cloud, Runtime, and Box revisions and retain only sanitized
+scenario evidence, provider logs, and credential-free persistence checks.

@@ -310,7 +310,7 @@ jobs:
   c0-cross-surface:
     name: C0.1 cross-surface
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -345,13 +345,14 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install checksum-pinned A3S Box fixture runtime
+      - name: Install exact-revision A3S Box fixture runtime
         run: |
           tools/box-conformance/install_box_release.sh "$RUNNER_TEMP/a3s-box"
           echo "$RUNNER_TEMP/a3s-box" >>"$GITHUB_PATH"
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/a3s-box/lib" >>"$GITHUB_ENV"
           echo "A3S_BOX_OCI_RUNTIME_PATH=$RUNNER_TEMP/a3s-box/a3s-oci" >>"$GITHUB_ENV"
           echo "A3S_BOX_OCI_AGENT_PATH=$RUNNER_TEMP/a3s-box/a3s-oci-agent" >>"$GITHUB_ENV"
+          echo "A3S_CLOUD_BOX_REVISION=$(<"$RUNNER_TEMP/a3s-box/BOX-REVISION")" >>"$GITHUB_ENV"
           grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
           grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
 
@@ -373,7 +374,7 @@ jobs:
   c0-management-mcp:
     name: C0.2 management MCP
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -408,13 +409,14 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install checksum-pinned A3S Box fixture runtime
+      - name: Install exact-revision A3S Box fixture runtime
         run: |
           tools/box-conformance/install_box_release.sh "$RUNNER_TEMP/a3s-box"
           echo "$RUNNER_TEMP/a3s-box" >>"$GITHUB_PATH"
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/a3s-box/lib" >>"$GITHUB_ENV"
           echo "A3S_BOX_OCI_RUNTIME_PATH=$RUNNER_TEMP/a3s-box/a3s-oci" >>"$GITHUB_ENV"
           echo "A3S_BOX_OCI_AGENT_PATH=$RUNNER_TEMP/a3s-box/a3s-oci-agent" >>"$GITHUB_ENV"
+          echo "A3S_CLOUD_BOX_REVISION=$(<"$RUNNER_TEMP/a3s-box/BOX-REVISION")" >>"$GITHUB_ENV"
           grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
           grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
 

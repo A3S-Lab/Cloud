@@ -140,6 +140,12 @@ script have been removed instead of retained as fallbacks. This does not mark
 `BX0.2` through `BX0.5` complete: the Box-owned capability work and a new
 clean-host release gate must restore the named behavioral evidence.
 
+The first `BX0.3` network slice is implemented pending its Linux gates: C0
+removes static Sandbox publication and starts Box's loopback-only,
+generation-fenced `port-forward` command. It reuses Box's canonical execution
+connector and lifecycle record; Cloud does not own a namespace connector,
+forwarding daemon, or alternate endpoint registry.
+
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and
 proves Box-hosted health, bounded streaming and non-streaming inference,

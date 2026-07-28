@@ -181,10 +181,12 @@ reconciliation path.
 `BX0.1` now pins one A3S Runtime/A3S Box pair, starts the Node Agent with the
 shared Box Runtime driver, accepts only the closed ACL `box` configuration, and
 contains no fallback provider. Local dependencies and the C0 PostgreSQL gates
-run through checksum-pinned A3S Box artifacts. Provider certification invokes
-the conformance suite owned by A3S Box; Cloud no longer carries a second
-provider suite. Full Box networking, mounts, Secrets, outputs, builds, and the
-clean-host release loop remain release-blocking `BX0` work.
+run through checksum-pinned A3S Box runtime artifacts plus an exact-revision Box
+CLI. C0 reaches its Sandbox-hosted PostgreSQL fixture only through Box's
+generation-fenced loopback forwarder. Provider certification invokes the
+conformance suite owned by A3S Box; Cloud no longer carries a second provider
+suite. Full Box networking, mounts, Secrets, outputs, builds, and the clean-host
+release loop remain release-blocking `BX0` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists

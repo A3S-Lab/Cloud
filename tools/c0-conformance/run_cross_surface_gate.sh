@@ -43,6 +43,15 @@ for command_name in bun cargo curl git openssl python3; do
 done
 box_binary="${A3S_CLOUD_BOX_BIN:-$(command -v a3s-box || true)}"
 [[ -n $box_binary && -x $box_binary ]] || die "A3S Box is unavailable"
+expected_box_revision="$(<"$cloud_root/tools/box-conformance/box-revision")"
+[[ $expected_box_revision =~ ^[0-9a-f]{40}$ ]] || die "Box revision is not exact"
+box_revision="${A3S_CLOUD_BOX_REVISION:-}"
+box_revision_file="$(dirname "$box_binary")/BOX-REVISION"
+if [[ -z $box_revision && -f $box_revision_file ]]; then
+  box_revision="$(<"$box_revision_file")"
+fi
+[[ $box_revision == "$expected_box_revision" ]] ||
+  die "Box fixture does not match the pinned revision"
 if [[ ${A3S_CLOUD_BOX_RUN_AS_ROOT:-false} == true ]]; then
   require_command sudo
 fi
@@ -57,6 +66,19 @@ run_box() {
       "$box_binary" "$@"
   else
     "$box_binary" "$@"
+  fi
+}
+
+run_box_forwarder() {
+  if [[ ${A3S_CLOUD_BOX_RUN_AS_ROOT:-false} == true ]]; then
+    exec sudo env \
+      A3S_HOME="$A3S_HOME" \
+      A3S_BOX_OCI_AGENT_PATH="${A3S_BOX_OCI_AGENT_PATH:-}" \
+      A3S_BOX_OCI_RUNTIME_PATH="${A3S_BOX_OCI_RUNTIME_PATH:-}" \
+      LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+      "$box_binary" "$@"
+  else
+    exec "$box_binary" "$@"
   fi
 }
 
@@ -103,6 +125,7 @@ run_directory="$(mktemp -d "${TMPDIR:-/tmp}/a3s-cloud-c0.XXXXXX")"
 export A3S_HOME="$run_directory/box"
 postgres_box="a3s-cloud-c0-${cloud_revision:0:8}-$$"
 api_pid=''
+port_forward_pid=''
 
 cleanup() {
   local status=$?
@@ -110,6 +133,10 @@ cleanup() {
   if [[ -n $api_pid ]]; then
     kill "$api_pid" >/dev/null 2>&1 || true
     wait "$api_pid" >/dev/null 2>&1 || true
+  fi
+  if [[ -n $port_forward_pid ]]; then
+    kill "$port_forward_pid" >/dev/null 2>&1 || true
+    wait "$port_forward_pid" >/dev/null 2>&1 || true
   fi
   run_box logs "$postgres_box" >"$evidence_directory/postgres.log" 2>&1 || true
   run_box rm --force "$postgres_box" >/dev/null 2>&1 || true
@@ -162,7 +189,6 @@ run_box run "$POSTGRES_IMAGE" \
   --isolation sandbox \
   --detach \
   --name "$postgres_box" \
-  --publish "$POSTGRES_PORT:5432/tcp" \
   --tmpfs /var/lib/postgresql/data:size=1073741824,rw \
   --env POSTGRES_DB=a3s_cloud \
   --env "POSTGRES_PASSWORD=$postgres_password" \
@@ -204,6 +230,33 @@ done
 postgres_version="$(run_box exec "$postgres_box" -- postgres --version)"
 [[ $postgres_version == *"PostgreSQL) 17."* ]] || die "PostgreSQL major version is not 17"
 printf '%s\n' "$postgres_version" >"$evidence_directory/postgres-version.txt"
+
+run_box_forwarder port-forward "$postgres_box" \
+  --host-port "$POSTGRES_PORT" \
+  --guest-port 5432 \
+  --max-connections 64 \
+  --connect-timeout-secs 5 \
+  >"$evidence_directory/postgres-port-forward.log" 2>&1 &
+port_forward_pid=$!
+
+port_forward_ready=false
+for _ in $(seq 1 30); do
+  kill -0 "$port_forward_pid" >/dev/null 2>&1 ||
+    die "A3S Box PostgreSQL port-forward exited before readiness"
+  if python3 - "$POSTGRES_PORT" <<'PY'
+import socket
+import sys
+
+with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=1):
+    pass
+PY
+  then
+    port_forward_ready=true
+    break
+  fi
+  sleep 1
+done
+[[ $port_forward_ready == true ]] || die "A3S Box PostgreSQL port-forward did not become ready"
 
 bootstrap_token="$(openssl rand -hex 32)"
 admin_token="a3s_$(openssl rand -hex 32)"
@@ -331,11 +384,11 @@ done
 } >"$evidence_directory/persistence-check.txt"
 
 if [[ $scenario == cross-surface ]]; then
-  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s source=%s contract=1.0.0\n' \
-    "$cloud_revision" "$runtime_revision" "$source_state" \
+  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s contract=1.0.0\n' \
+    "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 else
-  printf 'A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS cloud=%s runtime=%s source=%s protocol=2025-06-18 contract=1.0.0\n' \
-    "$cloud_revision" "$runtime_revision" "$source_state" \
+  printf 'A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2025-06-18 contract=1.0.0\n' \
+    "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 fi
