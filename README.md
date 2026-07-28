@@ -102,6 +102,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   BuildKit tasks, validate trusted content-addressed caches and complete OCI
   graphs, publish by digest, freeze locally verified signed SPDX/SLSA evidence,
   and hand successful builds to the existing workload deployment path
+- **Hosted Asset Foundation**: Persist tenant-scoped Agent, MCP, and Skill
+  identities plus draft, published, and yanked release state; enforce canonical
+  SemVer, immutable Git and SHA-256 identities, typed OCI or Skill artifacts,
+  optimistic concurrency, replay-safe writes, and transactional outbox events
+  through A3S ORM
 - **Web Operations**: Inspect deployment history, route and certificate state,
   Runtime health, logs, BuildRuns, updates, rollback, cancellation, and retry
 - **Typed Automation Slice**: Reuse one validated TypeScript client across the
@@ -150,7 +155,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `G0` — External source delivery | Pinned Git sources, isolated builds, trusted retry caches, OCI validation and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
-| `A0` — Release catalog | Immutable Agent and MCP releases plus Skill publication through the common delivery path | Planned |
+| `A0` — Release catalog | Immutable Agent and MCP releases plus Skill publication through the common delivery path | In progress |
 | `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned (`A1.0` verified) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
@@ -161,14 +166,23 @@ outbound Linux node, Docker-backed stateless workloads, managed HTTPS, ordered
 logs, immutable update and rollback, and repeatable cleanup. Later gates must
 reuse this deployment and reconciliation path.
 
+The `A0.1` hosted-asset identity foundation is verified against real
+PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
+organization-scoped names and immutable versioned release identities; enforces
+the `active -> archived` and `draft -> published -> yanked` lifecycles; and
+commits typed events, idempotency records, and aggregate changes atomically
+through A3S ORM. This foundation does not yet expose hosted Git, release APIs,
+build publication, Workload deployment, Skill binding, or catalog surfaces, so
+the complete `A0` gate remains in progress.
+
 The `A1.0` consolidation gate is verified. Workload and BuildRun logs share one
 sequence/SSE implementation, Operation snapshots reuse the same polling
 transport without fabricating a sequence, log chunks and node Artifacts share
 one namespaced immutable-object client behind typed adapters, and the node
 agent uses one typed durable outbound-batch primitive for exact restart replay
 and receipt-gated settlement. These are reusable foundations only; user-visible
-Agent execution begins with `A1.1` after `A0` supplies immutable release
-identities.
+Agent execution begins with `A1.1` only after `A0.3` supplies published,
+immutable release identities.
 
 `G0` already includes GitHub App connections and signed webhooks, private
 repository access, immutable source revisions, BuildRuns, cancellation, retry,
@@ -676,10 +690,12 @@ Runtime owns capability discovery and idempotent `apply`, `inspect`, `stop`, and
 `remove` mechanics. Cloud owns resource identity, desired state, placement,
 deployment workflows, release provenance, routing, and convergence decisions.
 
-Applications use this path today. Agent, MCP, and Skill publication remains the
-planned `A0` release profile; stateful resources remain `S0`; replicas and
-multi-node placement remain `H0`; accelerator and inference capabilities remain
-`I0`. These profiles do not create separate schedulers.
+Applications use this path today. Agent, MCP, and Skill publication has an
+implemented `A0.1` domain and PostgreSQL foundation, while its hosted source,
+publication, deployment, binding, and catalog surfaces remain later `A0`
+sub-gates. Stateful resources remain `S0`; replicas and multi-node placement
+remain `H0`; accelerator and inference capabilities remain `I0`. These profiles
+do not create separate schedulers.
 
 ## Delivery Model
 

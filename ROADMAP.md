@@ -82,7 +82,7 @@ and generated through `a3s-acl`.
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
-| `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | Planned |
+| `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | In progress |
 | `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
@@ -224,6 +224,20 @@ foreign-resource non-disclosure, immediate revocation, and digest-only A3S ORM
 persistence. Grant-derived search is a separate `C0.3` authorization outcome;
 the current search boundary is the organization tenant guard.
 
+`A0.1` now provides the hosted-asset identity and persistence foundation:
+
+- exact `agent`, `mcp`, and `skill` Asset kinds and closed lifecycle states;
+- canonical SemVer, Git commit, manifest digest, and typed artifact identities;
+- organization-scoped Asset-name and per-Asset release-version uniqueness;
+- optimistic aggregate transitions, strict typed domain-event validation,
+  shared idempotency records, and the existing transactional Outbox; and
+- migration 051 plus one A3S ORM PostgreSQL repository, with real-database
+  evidence for replay, stale-write rejection, tenant isolation, archival,
+  publication immutability, yanking, and atomic event persistence.
+
+No hosted Git or release API is public yet, and no Agent, MCP, or Skill is
+deployable from this foundation alone. `A0` therefore remains in progress.
+
 ## 4. Delivery horizons and dependencies
 
 | Horizon | Required gates | Product outcome |
@@ -245,9 +259,16 @@ flowchart LR
     D0 --> E0[Reachable service]
     E0 --> G0[Source delivery]
     G0 --> P0[Developer workflows]
-    G0 --> A0[Agent MCP Skill releases]
+    F0 --> A01[A0.1 asset identity]
+    A01 --> A02[A0.2 repository safety]
+    G0 --> A03[A0.3 release publication]
+    A02 --> A03
+    A03 --> A04[A0.4 Agent MCP deployment]
+    A04 --> A05[A0.5 Skill and catalog]
     E0 --> C0[Control surfaces]
-    A0 --> A1[Durable Agent execution]
+    A03 -->|A1.1 identity| A1[Durable Agent execution]
+    A04 -->|A1.2 runtime| A1
+    A05 -->|A1.3 bindings| A1
     C0 -->|C0.3 grants and audit| A1
     E0 --> S0[Stateful platform]
     E0 --> H01[H0.1 managed replicas and claims]
@@ -255,7 +276,7 @@ flowchart LR
     H02 --> H03[H0.3 multi-node placement and network]
     P0 --> H04[H0.4 production installation and HA]
     C0 --> H04
-    A0 --> H04
+    A05 --> H04
     A1 --> H04
     S0 --> H04
     H03 --> H04
@@ -278,11 +299,13 @@ Dependency rules:
 - `G0`, `C0`, and `S0` may advance independently from the verified `E0`
   baseline.
 - `P0` depends on the immutable source and build contracts from `G0`.
-- `A0` reuses `G0` source, Artifact, publication, and deployment contracts.
+- `A0.1` uses the verified Foundation persistence, idempotency, and Outbox
+  contracts. `A0.2` adds hosted repository safety. `A0.3` and later reuse the
+  source, Artifact, publication, and deployment contracts verified by `G0`.
 - `A1.0` has consolidated shared infrastructure from the verified `E0`
-  baseline. `A1.1` and later sub-gates consume immutable `A0`
-  `AssetRelease` identities; approval and governance consume `C0.3` grants and
-  audit.
+  baseline. `A1.1` consumes a published immutable `A0.3` `AssetRelease`,
+  `A1.2` consumes `A0.4` Agent deployment, and `A1.3` consumes `A0.5` Skill and
+  MCP bindings; approval and governance consume `C0.3` grants and audit.
 - `A1` extends Operations and Flow, Fleet node control, Workloads, Runtime,
   Artifacts, the transactional Outbox, and shared sequence streaming. It does
   not add another scheduler, job queue, node channel, or integration bus.
@@ -388,22 +411,27 @@ evidence, and database dumps. `C0.2` is verified.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 
-Ordered delivery:
+| Sub-gate | State | Outcome |
+| --- | --- | --- |
+| `A0.1` | Verified | Exact Asset and AssetRelease aggregates, immutable identity rules, tenant-scoped A3S ORM persistence, optimistic transitions, shared idempotency and Outbox, and real PostgreSQL behavior evidence |
+| `A0.2` | Planned | Asset-ID-addressed Git Smart HTTP, durable POSIX repositories, authorization, single-writer leases, quotas, atomic backup/restore, and pinned `.a3s/asset.acl` validation |
+| `A0.3` | Planned | Atomic source-to-artifact publication, immutable release provenance, draft recovery, yanking, and release selection over the verified `G0` build contracts |
+| `A0.4` | Planned | Agent and MCP deployment, health, logs, update, rollback, and cleanup through the existing Workload, Flow, Fleet, Runtime, and Gateway path |
+| `A0.5` | Planned | Immutable Skill bundle binding plus tenant-authorized release/catalog API, client, CLI, and Web surfaces without generic forge features |
 
-1. repository and manifest safety;
-2. immutable Agent and MCP releases;
-3. deployment through the common Workload path;
-4. immutable Skill bundle publication and binding; and
-5. release provenance, rollback, and catalog operations.
+`A0.1` is a durable prerequisite, not a user-visible catalog. The next slice is
+`A0.2`; `A0.3` cannot close until the exact `G0` source, Artifact, publication,
+and evidence contracts it consumes are verified. A published `A0.3` release is
+the first identity that `A1.1` may bind.
 
 Agent and MCP are asset and workload profiles, not separate schedulers.
 
 ### 5.5 `A1`: durable Agent execution
 
-`A1` turns an immutable `A0` Agent release into a tenant-scoped execution. The
-Cloud API remains the client control boundary, and Gateway remains a transport
-data plane; neither a Harness nor a client gains a direct path around Cloud
-authorization, idempotency, Operations, or audit.
+`A1` turns a published immutable `A0.3` Agent release into a tenant-scoped
+execution. The Cloud API remains the client control boundary, and Gateway
+remains a transport data plane; neither a Harness nor a client gains a direct
+path around Cloud authorization, idempotency, Operations, or audit.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
@@ -430,7 +458,7 @@ persistence uses migrations and typed A3S ORM repositories.
 | Integration facts | Transactional Outbox plus A3S Event | Publish bounded lifecycle IDs, states, and digests only; prompts, tool payloads, and model output remain in execution storage |
 | Audit and approval authority | `audit_records` plus `C0.3` grants | Reuse the common audit chain and authorization evaluator; do not create an Agent audit subsystem |
 | Scheduling and provider lifecycle | Workloads plus A3S Runtime | Run the selected Agent release and Harness through the common placement, apply, health, stop, and recovery path |
-| Published assets | `A0` `AssetRelease` | Bind immutable Agent, MCP, and Skill release IDs; never copy mutable manifests into an execution |
+| Published assets | `A0.3` through `A0.5` `AssetRelease` | Bind immutable Agent, MCP, and Skill release IDs; never copy mutable manifests into an execution |
 | Streaming and cursors | Existing ordered Workload, BuildRun, and Operation streams | Extract one shared sequence cursor, reconnect, gap, and SSE transport implementation before adding the Agent stream |
 | Immutable objects | Existing filesystem and S3-compatible object backends | Share one low-level content-addressed client while preserving typed domain ports, namespaces, admission limits, and retention policy |
 | Optional Redis | No durable Agent authority | Redis may accelerate ephemeral fan-out only after correctness without it; it never owns conversations, queues, locks, cursors, approvals, or checkpoints |
@@ -686,9 +714,11 @@ The default portfolio priority is:
 4. preserve the closed `H0.1` real-provider Claim certification while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
-5. start `P0` and `A0` only on the verified `G0` contracts they consume;
-6. after immutable `A0` release identities exist, deliver `A1.1` through
-   `A1.3`; add `A1.4` only on `C0.3` grants and audit, then close `A1.5`;
+5. advance `A0.2` repository safety independently, but start `P0` and `A0.3`
+   only on the verified `G0` contracts they consume;
+6. start `A1.1` after immutable published `A0.3` identities exist, add `A1.2`
+   after `A0.4` Agent deployment, add `A1.3` after `A0.5` bindings, then gate
+   `A1.4` on `C0.3` grants and audit before closing `A1.5`;
 7. preserve the verified `H0.2` projection gate while advancing `H0.3`
    multi-node placement and networking; and
 8. close full production packaging, HA, autoscaling, and inference hardening

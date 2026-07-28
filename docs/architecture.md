@@ -1350,11 +1350,20 @@ ordered log page/SSE, and web controls are implemented; the log projection
 reuses Fleet metadata and object storage while redacting node and internal
 Runtime identities.
 
-Hosted assets follow a separate publication chain:
+The target hosted-asset publication chain is:
 
 ```text
 Asset -> Git commit -> validation/release gate -> Artifact -> Listing -> Deployment
 ```
+
+The implemented `A0.1` foundation defines exact Agent, MCP, and Skill `Asset`
+aggregates plus immutable `AssetRelease` identities. Migration 051 and one
+tenant-scoped A3S ORM repository enforce organization-name and release-version
+uniqueness, optimistic lifecycle transitions, replay through the shared
+idempotency table, and atomic typed events through the existing Outbox. Real
+PostgreSQL tests prove tenant isolation, archival, publication immutability,
+yanked addressability, and rollback of rejected writes. It does not yet expose
+hosted Git, publication commands, deployment, Skill binding, or catalog reads.
 
 PostgreSQL stores asset and release metadata. The authoritative bare Git
 repository lives on durable POSIX storage and is addressed by immutable
@@ -1639,8 +1648,8 @@ create/update requires an `artifact`; source deployment forbids it and derives
 the artifact through the proven BuildRun. An ACL update also binds the named
 Workload to the targeted Workload ID, preventing a valid manifest from being
 sent to the wrong aggregate. JSON Web requests remain compatible and converge
-on the same application command and canonical idempotency input. JSON and TOML
-files are not Cloud CLI configuration formats.
+on the same application command and canonical idempotency input. The Cloud CLI
+accepts product configuration only as A3S ACL.
 
 Secret mutations require the `secret:write` scope. The initial resource API is:
 

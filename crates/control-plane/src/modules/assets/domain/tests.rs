@@ -1,9 +1,11 @@
 use super::*;
 use crate::modules::artifacts::domain::OCI_IMAGE_INDEX_MEDIA_TYPE;
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, GitCommitSha, OrganizationId, ResourceName, Sha256Digest,
+    AssetId, AssetReleaseId, GitCommitSha, IdempotencyRequest, OrganizationId, ResourceName,
+    Sha256Digest,
 };
 use chrono::{Duration, TimeZone, Utc};
+use uuid::Uuid;
 
 fn now() -> chrono::DateTime<Utc> {
     Utc.timestamp_opt(1_800_000_000, 123_456_000)
@@ -174,4 +176,46 @@ fn malformed_restored_state_fails_closed() {
     let mut asset = asset;
     asset.state = AssetState::Archived;
     assert!(asset.validate().is_err());
+}
+
+#[test]
+fn repository_writes_reject_forged_event_metadata_and_payloads() {
+    let asset = asset(AssetKind::Agent);
+    let mut created_event =
+        AssetCreated::envelope(&asset, Uuid::now_v7()).expect("Asset created event");
+    created_event.payload["name"] = serde_json::Value::String("Forged Asset".into());
+    let create = CreateAssetWrite {
+        asset: asset.clone(),
+        event: created_event,
+        idempotency: IdempotencyRequest::new("assets", "create", b"create").expect("idempotency"),
+    };
+    assert!(create.validate().is_err());
+
+    let mut invalid_envelope =
+        AssetCreated::envelope(&asset, Uuid::now_v7()).expect("Asset created event");
+    invalid_envelope.event_id = Uuid::nil();
+    let create = CreateAssetWrite {
+        asset: asset.clone(),
+        event: invalid_envelope,
+        idempotency: IdempotencyRequest::new("assets", "invalid", b"invalid").expect("idempotency"),
+    };
+    assert!(create.validate().is_err());
+
+    let draft = draft(&asset);
+    let mut published = draft.clone();
+    published
+        .publish(&asset, oci_artifact(), now() + Duration::seconds(1))
+        .expect("publish");
+    let mut published_event =
+        AssetReleasePublished::envelope(&published, Uuid::now_v7()).expect("published event");
+    published_event.payload["artifact_digest"] =
+        serde_json::Value::String(format!("sha256:{}", "0".repeat(64)));
+    let transition = TransitionAssetReleaseWrite {
+        release: published,
+        expected_aggregate_version: draft.aggregate_version,
+        event: published_event,
+        idempotency: IdempotencyRequest::new("asset-releases", "publish", b"publish")
+            .expect("idempotency"),
+    };
+    assert!(transition.validate().is_err());
 }

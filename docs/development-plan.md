@@ -118,8 +118,9 @@ independent lanes. Project import (`P0`) depends on the immutable source and
 build contracts from G0. Hosted assets (`A0`) reuse the same source-to-artifact
 path. `A1.0` has consolidated existing sequence streaming, immutable object
 storage, and durable node-agent delivery primitives; user-visible
-`A1.1` work starts only after `A0` supplies immutable release identities, and
-its approval slice consumes `C0.3` grants and audit. Production multi-node work
+`A1.1` work starts only after `A0.3` supplies a published immutable release,
+`A1.2` consumes `A0.4` Agent deployment, and `A1.3` consumes `A0.5` bindings.
+The approval slice consumes `C0.3` grants and audit. Production multi-node work
 (`H0`) starts only after the product surfaces it must scale have passed their
 single-node gates.
 
@@ -142,6 +143,7 @@ Status as of 2026-07-28:
 | E0 | Verified | All isolated route, Gateway, Secret, log, update, rollback, Web, and crash-boundary gates pass. The clean-host Linux release gate builds exact Cloud/Runtime revisions, enrolls one outbound Docker node, deploys digest-pinned A, activates managed TLS, proves ordered logs and cursor-resumed SSE, cuts over to B, rolls back through a cloned A revision, stops durably, restores host inventory exactly, and finds no generated credential in evidence |
 | G0 | In progress | Exact source, isolated Runtime build, content-addressed BuildKit cache validation and worker-pruned retry reuse, complete OCI validation, authenticated digest-only publication, remote graph verification, replay/cancellation adoption, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing through persistent local or Vault Transit providers, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry/log controls are implemented. The manual private-GitHub and external Registry/Vault gate now includes PostgreSQL 17, rootless BuildKit, and real process death after publication and evidence persistence. A local real-provider rehearsal passes, but no operator-owned run is recorded because the repository has no G0 provider secrets; external certification still blocks G0 verification |
 | C0 | In progress | `C0.1` and `C0.2` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` adds stateless Streamable HTTP management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload/BuildRun logs, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.3` and `C0.4` remain planned. |
+| A0 | In progress | `A0.1` is verified. Exact Agent/MCP/Skill Asset and AssetRelease aggregates, tenant-scoped migration 051, typed A3S ORM transactions, shared idempotency and Outbox, optimistic concurrency, immutable published identities, yanked addressability, and cross-tenant denial pass isolated real PostgreSQL tests. Hosted Git, publication, deployment, Skill binding, and catalog surfaces remain `A0.2` through `A0.5`. |
 | H0.1 | Verified | Exact Cloud SHA, real Docker provider replacement, Agent process death, Claim fencing, conflicting-capacity rejection, higher-generation release, and residue audit pass in conformance run 30157496417 |
 | H0.2 | Verified | PostgreSQL 17 proves atomic logical Route and per-member rollout staging, threshold activation, prior-state retention, physical observation, certificate convergence, and exact rollback. Gateway `7a146b6d53635861e5db4870fb4603a5c59c87ee` passes complete reload, TLS/target replacement, two-member loss/recovery, and native-apply-before-Cloud-ack process death |
 
@@ -1299,10 +1301,30 @@ node.
 Add hosted source and releases without creating a second deployment engine or a
 generic asset metadata platform.
 
-### Work
+### Current state
 
-- Implement Asset and AssetRelease aggregates with the exact `agent`, `mcp`,
-  and `skill` kind set.
+`A0` is in progress. `A0.1` is verified; it establishes the durable release
+identity that later publication and Agent execution slices consume without
+claiming a usable hosted catalog.
+
+| Sub-gate | State | Scope |
+| --- | --- | --- |
+| `A0.1` | Verified | Exact Asset/AssetRelease domain, immutable identities, tenant-scoped PostgreSQL schema and A3S ORM repository, optimistic concurrency, shared idempotency/Outbox, and real PostgreSQL behavior evidence |
+| `A0.2` | Planned | Safe hosted Git repository and pinned manifest admission |
+| `A0.3` | Planned | Atomic release build, artifact publication, provenance, selection, and yank lifecycle |
+| `A0.4` | Planned | Agent/MCP deployment through the existing Workload path |
+| `A0.5` | Planned | Immutable Skill binding and authorized catalog surfaces |
+
+Migration 051 stores organization-scoped Asset names and immutable release
+identities. The repository uses only typed A3S ORM queries and transactions;
+aggregate writes commit their existing shared idempotency record and Outbox
+event in the same transaction. Its isolated PostgreSQL gate covers concurrent
+exact replay, changed-request conflicts, uniqueness, stale versions,
+cross-tenant denial, archived-Asset publication denial, published identity
+immutability, yanked addressability, and failed-write atomicity.
+
+### Remaining work
+
 - Add Git Smart HTTP backed by bare repositories on durable POSIX storage,
   immutable asset IDs, repository leases, authorization, quotas, and atomic
   backup bundles.
@@ -1332,9 +1354,10 @@ generic asset metadata platform.
 
 ### Goal
 
-Turn an immutable `A0` Agent release into a tenant-scoped, durable, resumable,
-and approval-governed execution without introducing a second scheduler, event
-log, node-control channel, object store, audit path, or source of truth.
+Turn a published immutable `A0.3` Agent release into a tenant-scoped, durable,
+resumable, and approval-governed execution without introducing a second
+scheduler, event log, node-control channel, object store, audit path, or source
+of truth.
 
 The Cloud API is the client control boundary. A Harness executes behind a typed
 port on an existing managed Workload, while A3S Flow, Operations, Fleet node
@@ -1349,9 +1372,9 @@ Deliver the capability through these ordered sub-gates:
 | Sub-gate | Work | Dependency |
 | --- | --- | --- |
 | `A1.0` | Extract one shared sequence cursor/SSE transport from the Workload, BuildRun, and Operation streams; consolidate filesystem and S3-compatible immutable-object backends behind one infrastructure client with typed domain adapters and namespaces; extract the node-agent log shipper's durable pending-batch/receipt behavior as a reusable outbound-batch primitive | Verified `E0`; independent of `A0` |
-| `A1.1` | Add `AgentConversation` and `AgentExecution` aggregates, commands, queries, projections, and one monotonically sequenced semantic event stream | Immutable `A0` `AssetRelease` identity plus `A1.0` |
-| `A1.2` | Define a versioned Harness command, event-batch, receipt, cancellation, and recovery contract in `contracts`; carry it over existing Fleet long poll, `node_commands`, leases, and the node-agent journal; run the Agent release through its existing Workload and Runtime identity | `A1.1` |
-| `A1.3` | Resolve and persist immutable Agent, Skill, MCP, workspace, and tool bindings before dispatch; record bounded tool request/result events and correlate audit without copying mutable manifests or secret material | `A1.2` and immutable `A0` releases |
+| `A1.1` | Add `AgentConversation` and `AgentExecution` aggregates, commands, queries, projections, and one monotonically sequenced semantic event stream | Published immutable `A0.3` `AssetRelease` identity plus `A1.0` |
+| `A1.2` | Define a versioned Harness command, event-batch, receipt, cancellation, and recovery contract in `contracts`; carry it over existing Fleet long poll, `node_commands`, leases, and the node-agent journal; run the Agent release through its existing Workload and Runtime identity | `A1.1` plus `A0.4` Agent deployment |
+| `A1.3` | Resolve and persist immutable Agent, Skill, MCP, workspace, and tool bindings before dispatch; record bounded tool request/result events and correlate audit without copying mutable manifests or secret material | `A1.2` plus `A0.5` immutable bindings |
 | `A1.4` | Add grant-checked approval checkpoints, expiry policy, logical pause/resume, denial/cancellation, and exact resume-command replay through Operations and the Harness lifecycle | `A1.3` plus `C0.3` grants and audit |
 | `A1.5` | Persist immutable checkpoint objects and projections, create explicit parent/fork lineage, expose trajectory query/export and telemetry correlation, and close the real-provider crash and cleanup gates | `A1.4` |
 
@@ -1433,7 +1456,7 @@ Use the following single-authority map for every A1 design review:
 | Integration publication | Transactional Outbox plus A3S Event | Agent event bus or transcript publication; Outbox carries only bounded lifecycle IDs, states, and digests |
 | Authorization and audit | Identity grants plus `C0.3` and `audit_records` | Agent-local grants, approval ACL, or audit store |
 | Scheduling and provider lifecycle | Workloads plus A3S Runtime | Harness scheduler, Agent placement engine, or provider-specific lifecycle controller |
-| Asset identity | `A0` `AssetRelease` | Mutable repository refs or copied manifest state inside an execution |
+| Asset identity | Published `A0.3` through `A0.5` `AssetRelease` | Mutable repository refs or copied manifest state inside an execution |
 | Immutable content | Shared infrastructure object client with typed domain adapters | Parallel filesystem/S3 clients or an untyped cross-domain object service |
 | Client streaming | Shared sequence cursor, reconnect, gap, and SSE transport | Agent-specific cursor codec or best-effort in-memory stream |
 | Optional Redis | No durable Agent authority | Redis-backed sessions, queues, locks, cursors, approvals, or checkpoints |

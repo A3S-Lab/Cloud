@@ -463,6 +463,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/050_authorized_search_projections.sql"
             )),
         ),
+        Migration::new(
+            "051",
+            "hosted Asset and immutable release foundation",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/051_hosted_assets.sql"
+            )),
+        ),
     ]
 }
 

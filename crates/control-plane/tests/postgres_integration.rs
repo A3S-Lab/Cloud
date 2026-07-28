@@ -37,6 +37,8 @@ use uuid::Uuid;
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/assets.rs"]
+mod assets_support;
 #[path = "support/build_evidence.rs"]
 mod build_evidence_support;
 #[path = "support/build_runs.rs"]
@@ -236,6 +238,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists audit_records cascade;
              drop table if exists outbox_events cascade;
              drop table if exists idempotency_records cascade;
+             drop table if exists asset_releases cascade;
+             drop table if exists assets cascade;
              drop table if exists environments cascade;
              drop table if exists projects cascade;
              drop table if exists organizations cascade;
@@ -253,7 +257,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 50);
+    assert_eq!(applied, 51);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -760,6 +764,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "051",
+                "hosted Asset and immutable release foundation",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/051_hosted_assets.sql"
+                )),
+            ),
+            Migration::new(
+                "052",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -928,6 +940,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )?)?),
         OrganizationId::from_uuid(Uuid::parse_str(&response_id(
             &account_conflict_organization,
+        )?)?),
+    )
+    .await?;
+    assets_support::exercise_assets(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
         )?)?),
     )
     .await?;
@@ -1329,8 +1349,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 27);
-    assert_eq!(idempotency_records, 19);
+    assert_eq!(outbox_events, 34);
+    assert_eq!(idempotency_records, 26);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
