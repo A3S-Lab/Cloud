@@ -1355,6 +1355,26 @@ Deliver the capability through these ordered sub-gates:
 | `A1.4` | Add grant-checked approval checkpoints, expiry policy, logical pause/resume, denial/cancellation, and exact resume-command replay through Operations and the Harness lifecycle | `A1.3` plus `C0.3` grants and audit |
 | `A1.5` | Persist immutable checkpoint objects and projections, create explicit parent/fork lineage, expose trajectory query/export and telemetry correlation, and close the real-provider crash and cleanup gates | `A1.4` |
 
+Current `A1.0` implementation:
+
+- `presentation::sequence_stream` is the sole version-1 sequence cursor codec
+  and shared bounded SSE page transport for Workload and BuildRun logs;
+- `Last-Event-ID` consistently takes precedence over a query cursor, empty
+  headers fall back to the query cursor, and invalid cursors retain the
+  resource-specific public error;
+- one poll interval, delayed missed-tick policy, keepalive cadence, retry
+  value, record limit, event-byte bound, and exact terminal-sequence advance
+  now govern both streams;
+- the duplicate `workload_log_stream.rs`, `build_run_log_stream.rs`, and
+  `log_cursor.rs` implementations are removed; and
+- unit, HTTP/controller, Management MCP, DTO-redaction, and source-architecture
+  tests prevent a domain-local cursor codec or sequence stream from returning.
+
+The Operation endpoint remains a hash-addressed snapshot stream rather than a
+sequence stream. Its polling/keepalive transport, the immutable object backend,
+and the node-agent outbound-batch journal/receipt primitive remain the open
+`A1.0` work; no semantic sequence is fabricated for Operation snapshots.
+
 Implement `AgentConversation` as the aggregate that owns the next event
 sequence and conversation lifecycle. Implement `AgentExecution` as the
 aggregate that owns one run, its immutable bindings, current logical state,

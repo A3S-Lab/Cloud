@@ -1,4 +1,3 @@
-use super::workload_log_stream::workload_log_stream;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
@@ -9,8 +8,14 @@ use crate::modules::workloads::application::{
 use crate::modules::workloads::presentation::dto::{
     DeploymentResponse, WorkloadLogsResponse, WorkloadResponse,
 };
-use crate::presentation::{application_error_response, parse_log_cursor};
-use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use crate::presentation::{
+    application_error_response, decode_sequence_cursor, default_live_sequence_limit,
+    resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
+    MAX_LIVE_SEQUENCE_RECORDS,
+};
+use a3s_boot::{
+    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, SseStream,
+};
 use a3s_runtime::contract::RuntimeLogStream;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -118,7 +123,10 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             revision_id: WorkloadRevisionId::from_uuid(
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
-                            after_sequence: decode_cursor(parameters.cursor.as_deref())?,
+                            after_sequence: decode_sequence_cursor(
+                                parameters.cursor.as_deref(),
+                                "workload log",
+                            )?,
                             limit: parameters.limit,
                             stream: parameters.stream.map(Into::into),
                         })
@@ -136,18 +144,16 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 let bus = Arc::clone(&stream_logs_bus);
                 async move {
                     let parameters: WorkloadLiveLogsQuery = request.query()?;
-                    if parameters.limit == 0 || parameters.limit > MAX_LIVE_LOG_RECORDS {
+                    if parameters.limit == 0 || parameters.limit > MAX_LIVE_SEQUENCE_RECORDS {
                         return Err(BootError::BadRequest(format!(
-                            "live workload log limit must be between 1 and {MAX_LIVE_LOG_RECORDS}"
+                            "live workload log limit must be between 1 and {MAX_LIVE_SEQUENCE_RECORDS}"
                         )));
                     }
-                    let after_sequence = match request
-                        .header("last-event-id")
-                        .filter(|event_id| !event_id.is_empty())
-                    {
-                        Some(event_id) => decode_cursor(Some(event_id))?,
-                        None => decode_cursor(parameters.cursor.as_deref())?,
-                    };
+                    let after_sequence = resolve_sequence_cursor(
+                        &request,
+                        parameters.cursor.as_deref(),
+                        "workload log",
+                    )?;
                     workload_log_stream(
                         bus,
                         GetWorkloadLogs {
@@ -184,7 +190,7 @@ struct WorkloadLogsQuery {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WorkloadLiveLogsQuery {
     cursor: Option<String>,
-    #[serde(default = "default_live_log_limit")]
+    #[serde(default = "default_live_sequence_limit")]
     limit: u16,
     stream: Option<WorkloadLogStreamQuery>,
 }
@@ -209,19 +215,22 @@ const fn default_log_limit() -> u16 {
     100
 }
 
-const MAX_LIVE_LOG_RECORDS: u16 = 16;
-
-const fn default_live_log_limit() -> u16 {
-    MAX_LIVE_LOG_RECORDS
-}
-
-fn decode_cursor(cursor: Option<&str>) -> Result<Option<u64>> {
-    let Some(cursor) = cursor else {
-        return Ok(None);
-    };
-    parse_log_cursor(cursor)
-        .map(Some)
-        .ok_or_else(|| BootError::BadRequest("invalid workload log cursor".into()))
+async fn workload_log_stream(bus: Arc<QueryBus>, query: GetWorkloadLogs) -> Result<SseStream> {
+    stream_sequence_pages(
+        query,
+        move |query| {
+            let bus = Arc::clone(&bus);
+            async move {
+                bus.execute(query)
+                    .await?
+                    .map(WorkloadLogsResponse::from)
+                    .map_err(|error| sequence_stream_error(error, "live workload log query failed"))
+            }
+        },
+        |query, sequence| query.after_sequence = Some(sequence),
+        "workload log",
+    )
+    .await
 }
 
 fn request_id(request: &BootRequest) -> Result<Uuid> {

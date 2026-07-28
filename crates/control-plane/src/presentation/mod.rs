@@ -1,8 +1,8 @@
 mod api_contract;
 mod api_response_interceptor;
-mod log_cursor;
 mod management_mcp;
 mod request_id_middleware;
+mod sequence_stream;
 
 pub use api_contract::{
     generate_openapi_contract, openapi_info, ApiContractModule, API_CONTRACT_VERSION_HEADER,
@@ -15,6 +15,10 @@ pub(crate) use api_response_interceptor::{
 pub use api_response_interceptor::{
     application_error_response, ApiErrorFilter, ApiResponseInterceptor,
 };
-pub(crate) use log_cursor::{format_log_cursor, parse_log_cursor};
 pub use management_mcp::{ManagementMcpModule, MANAGEMENT_MCP_PROTOCOL_VERSION};
 pub use request_id_middleware::RequestIdMiddleware;
+pub(crate) use sequence_stream::{
+    decode_sequence_cursor, default_live_sequence_limit, format_sequence_cursor,
+    parse_sequence_cursor, resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
+    SequencePage, SequenceRecord, MAX_LIVE_SEQUENCE_RECORDS,
+};

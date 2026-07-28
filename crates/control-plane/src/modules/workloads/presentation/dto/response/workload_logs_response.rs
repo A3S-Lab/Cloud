@@ -1,6 +1,6 @@
 use crate::modules::fleet::NodeLogRecordResponse;
 use crate::modules::workloads::application::WorkloadLogPage;
-use crate::presentation::format_log_cursor;
+use crate::presentation::{format_sequence_cursor, SequencePage};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -25,7 +25,27 @@ impl From<WorkloadLogPage> for WorkloadLogsResponse {
             unit_id: page.unit_id,
             generation: page.generation,
             records: page.records.into_iter().map(Into::into).collect(),
-            next_cursor: page.next_after_sequence.map(format_log_cursor),
+            next_cursor: page.next_after_sequence.map(format_sequence_cursor),
         }
+    }
+}
+
+impl SequencePage for WorkloadLogsResponse {
+    type Record = NodeLogRecordResponse;
+
+    fn records(&self) -> &[Self::Record] {
+        &self.records
+    }
+
+    fn take_records(&mut self) -> Vec<Self::Record> {
+        std::mem::take(&mut self.records)
+    }
+
+    fn replace_records(&mut self, records: Vec<Self::Record>) {
+        self.records = records;
+    }
+
+    fn set_next_cursor(&mut self, cursor: Option<String>) {
+        self.next_cursor = cursor;
     }
 }

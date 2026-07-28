@@ -407,7 +407,7 @@ authorization, idempotency, Operations, or audit.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
-| `A1.0` | Planned | Consolidate one sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
+| `A1.0` | In progress | Consolidate one sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
 | `A1.1` | Planned | Add `AgentConversation` and `AgentExecution` aggregates plus one durable, monotonically sequenced semantic event stream |
 | `A1.2` | Planned | Add a versioned Harness command/event protocol over the existing Fleet node-control channel and node-agent journal |
 | `A1.3` | Planned | Pin Agent, Skill, MCP, workspace, and tool bindings to immutable identities and record auditable tool request/result events |
@@ -434,6 +434,14 @@ persistence uses migrations and typed A3S ORM repositories.
 | Streaming and cursors | Existing ordered Workload, BuildRun, and Operation streams | Extract one shared sequence cursor, reconnect, gap, and SSE transport implementation before adding the Agent stream |
 | Immutable objects | Existing filesystem and S3-compatible object backends | Share one low-level content-addressed client while preserving typed domain ports, namespaces, admission limits, and retention policy |
 | Optional Redis | No durable Agent authority | Redis may accelerate ephemeral fan-out only after correctness without it; it never owns conversations, queues, locks, cursors, approvals, or checkpoints |
+
+The first `A1.0` slice is implemented: one shared presentation component now
+owns the versioned sequence cursor, `Last-Event-ID` precedence, bounded SSE
+record events, polling, keepalive, and cursor advancement for both Workload and
+BuildRun logs. The duplicate domain-local stream files and cursor decoders are
+removed, and an architecture test prevents their return. `A1.0` remains in
+progress until the Operation polling transport, immutable object backend, and
+node-agent outbound-batch primitive are consolidated.
 
 Google AX may be evaluated only as an optional adapter behind the versioned
 Harness port after `A1.5` and after its integration contract is stable. Cloud

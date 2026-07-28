@@ -1,4 +1,5 @@
 use crate::modules::fleet::application::{NodeLogGapReason, NodeLogRecord};
+use crate::presentation::SequenceRecord;
 use a3s_runtime::contract::{RuntimeLogDiscontinuityReason, RuntimeLogStream};
 use serde::Serialize;
 
@@ -22,6 +23,12 @@ pub struct NodeLogRecordResponse {
     pub from_sequence: Option<u64>,
     pub through_sequence: Option<u64>,
     pub compacted_chunks: Option<u64>,
+}
+
+impl SequenceRecord for NodeLogRecordResponse {
+    fn sequence(&self) -> u64 {
+        self.sequence
+    }
 }
 
 impl From<NodeLogRecord> for NodeLogRecordResponse {

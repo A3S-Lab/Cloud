@@ -1,5 +1,5 @@
 use crate::modules::fleet::application::MAX_LOG_PAGE_SIZE;
-use crate::presentation::parse_log_cursor;
+use crate::presentation::parse_sequence_cursor;
 use a3s_runtime::contract::RuntimeLogStream;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
@@ -180,7 +180,7 @@ where
     D: Deserializer<'de>,
 {
     let cursor = String::deserialize(deserializer)?;
-    parse_log_cursor(&cursor)
+    parse_sequence_cursor(&cursor)
         .map(Some)
         .ok_or_else(|| D::Error::custom("invalid log cursor"))
 }
