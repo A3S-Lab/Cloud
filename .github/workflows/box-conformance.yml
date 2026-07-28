@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      A3S_HOME: /tmp/a3s-cloud-runtime-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+      A3S_HOME: /tmp/a3s-r17-${{ github.run_id }}-${{ github.run_attempt }}
     defaults:
       run:
         shell: bash
@@ -109,6 +109,8 @@ jobs:
       - name: Install the dedicated Box conformance home
         run: |
           test ! -e "$A3S_HOME"
+          runtime_socket="$A3S_HOME/run/a3s-oci/00000000-0000-0000-0000-000000000000/runtime.sock"
+          test "${#runtime_socket}" -lt 108
           install -d -m 0755 "$A3S_HOME/bin"
           install -m 0755 crates/box/src/target/debug/a3s-box-shim \
             "$A3S_HOME/bin/a3s-box-shim"
