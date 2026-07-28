@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      A3S_HOME: /tmp/a3s-r17-${{ github.run_id }}-${{ github.run_attempt }}
+      A3S_HOME: /tmp/runtime-conformance-${{ github.run_id }}-${{ github.run_attempt }}
     defaults:
       run:
         shell: bash
