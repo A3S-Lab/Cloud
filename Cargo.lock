@@ -184,7 +184,7 @@ dependencies = [
 [[package]]
 name = "a3s-orm"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/ORM.git?rev=2b72ef88995803c07b1102acc61dc9135d10466c#2b72ef88995803c07b1102acc61dc9135d10466c"
+source = "git+https://github.com/A3S-Lab/ORM.git?rev=a09b4db0f55c29cff3cb7963f2d45125ed7b3936#a09b4db0f55c29cff3cb7963f2d45125ed7b3936"
 dependencies = [
  "async-trait",
  "bytes",

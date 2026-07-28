@@ -933,10 +933,11 @@ fn directory_archive(files: &[(&str, &[u8], u32)]) -> Result<Vec<u8>, std::io::E
 }
 
 fn docker(socket: &str) -> Result<Docker, Box<dyn Error>> {
-    let path = socket.strip_prefix("unix://").ok_or_else(|| {
-        std::io::Error::other("Runtime BuildKit gate Docker socket must use unix://")
-    })?;
-    Ok(Docker::connect_with_unix(path, 300, API_DEFAULT_VERSION)?)
+    Ok(Docker::connect_with_socket(
+        socket,
+        300,
+        API_DEFAULT_VERSION,
+    )?)
 }
 
 fn runtime_volume_name(namespace: &str, volume_id: &str) -> String {

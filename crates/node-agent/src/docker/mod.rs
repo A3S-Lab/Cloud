@@ -75,7 +75,7 @@ impl DockerRuntimeDriver {
             ));
         }
         let timeout_seconds = config.operation_timeout_ms.div_ceil(1_000).max(1);
-        let docker = Docker::connect_with_unix(socket, timeout_seconds, API_DEFAULT_VERSION)
+        let docker = Docker::connect_with_socket(socket, timeout_seconds, API_DEFAULT_VERSION)
             .map_err(docker_error)?;
         let health_client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(5))

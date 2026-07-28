@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 #[path = "docker_conformance/artifacts.rs"]
 mod artifacts;
 #[path = "docker_conformance/fixture.rs"]
