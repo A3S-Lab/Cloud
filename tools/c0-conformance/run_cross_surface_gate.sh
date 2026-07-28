@@ -122,6 +122,7 @@ PY
 
 run_directory="$(mktemp -d "${TMPDIR:-/tmp}/a3s-cloud-c0.XXXXXX")"
 [[ $run_directory == "${TMPDIR:-/tmp}"/a3s-cloud-c0.* ]] || die "temporary directory is invalid"
+chmod 0711 "$run_directory"
 export A3S_HOME="$run_directory/box"
 postgres_box="a3s-cloud-c0-${cloud_revision:0:8}-$$"
 api_pid=''
