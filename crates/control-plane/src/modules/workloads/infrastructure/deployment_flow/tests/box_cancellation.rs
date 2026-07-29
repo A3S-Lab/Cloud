@@ -160,6 +160,21 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     if applying.status != DeploymentStatus::Applying {
         return Err(invalid("deployment advanced before cancellation was requested").into());
     }
+    let prepared_claim = resource_claims
+        .find(
+            organization_id,
+            ResourceClaimId::from_uuid(deployment.id.as_uuid()),
+        )
+        .await?;
+    if prepared_claim.state
+        != crate::modules::workloads::domain::entities::ResourceClaimState::PreparedOnAgent
+    {
+        return Err(invalid(format!(
+            "cancellation fixture expected a prepared Agent Claim, found {}",
+            prepared_claim.state.as_str()
+        ))
+        .into());
+    }
     workloads
         .mark_cancellation_requested(
             deployment.id,
@@ -203,18 +218,20 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
             invalid("Agent interruption changed the durable pending-cleanup projection").into(),
         );
     }
-    if resource_claims
+    let interrupted_claim = resource_claims
         .find(
             organization_id,
             ResourceClaimId::from_uuid(deployment.id.as_uuid()),
         )
-        .await?
-        .state
-        != crate::modules::workloads::domain::entities::ResourceClaimState::BoundToRuntimeUnit
+        .await?;
+    if interrupted_claim.state
+        != crate::modules::workloads::domain::entities::ResourceClaimState::PreparedOnAgent
     {
-        return Err(
-            invalid("Agent interruption released the resource Claim before recovery").into(),
-        );
+        return Err(invalid(format!(
+            "Agent interruption changed the held Claim to {} before recovery",
+            interrupted_claim.state.as_str()
+        ))
+        .into());
     }
 
     drop(engine);
