@@ -220,6 +220,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists audit_records cascade;
              drop table if exists outbox_events cascade;
              drop table if exists idempotency_records cascade;
+             drop table if exists mcp_service_profiles cascade;
              drop table if exists asset_releases cascade;
              drop table if exists assets cascade;
              drop table if exists environments cascade;
@@ -239,7 +240,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 51);
+    assert_eq!(applied, 52);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -754,6 +755,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "052",
+                "immutable hosted MCP Service profiles",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/052_mcp_service_profiles.sql"
+                )),
+            ),
+            Migration::new(
+                "053",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

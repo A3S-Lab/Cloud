@@ -471,6 +471,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/051_hosted_assets.sql"
             )),
         ),
+        Migration::new(
+            "052",
+            "immutable hosted MCP Service profiles",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/052_mcp_service_profiles.sql"
+            )),
+        ),
     ]
 }
 
