@@ -2,6 +2,8 @@
 
 mod agent;
 mod artifact;
+#[cfg(target_os = "linux")]
+mod box_runtime;
 mod config;
 mod control_plane;
 mod executor;
@@ -20,6 +22,8 @@ pub use artifact::{
     DownloadedNodeArtifact, LocalArtifactReader, NodeArtifactError, NodeArtifactManager,
     NodeArtifactTransport,
 };
+#[cfg(target_os = "linux")]
+pub use box_runtime::build_box_runtime_client;
 pub use config::{
     ArtifactConfig, BoxRuntimeConfig, ConfigError, ControlPlaneConfig, GatewayControlConfig,
     LogShippingConfig, NodeAgentConfig, NodeConfig,

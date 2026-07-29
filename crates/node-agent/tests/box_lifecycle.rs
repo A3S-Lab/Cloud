@@ -11,11 +11,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "linux")]
-use a3s_box_runtime::{BoxRuntimeDriver, BoxRuntimeDriverConfig, BoxStateStore};
+use a3s_box_runtime::BoxStateStore;
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
     NodeCommandPayload, NodeCommandResult,
 };
+#[cfg(target_os = "linux")]
+use a3s_cloud_node_agent::{build_box_runtime_client, BoxRuntimeConfig};
 use a3s_cloud_node_agent::{CommandExecutor, FileCommandJournal, JournalDecision};
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -23,8 +25,6 @@ use a3s_runtime::contract::{
     RuntimeObservation, RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState,
 };
 use a3s_runtime::RuntimeClient;
-#[cfg(target_os = "linux")]
-use a3s_runtime::{FileRuntimeStateStore, ManagedRuntimeClient, RuntimeDriver, RuntimeStateStore};
 use chrono::{Duration as ChronoDuration, Utc};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -265,14 +265,14 @@ async fn prove_service_generation_lifecycle(
 
 #[cfg(target_os = "linux")]
 fn runtime(home: &Path, state_root: &Path) -> TestResult<Arc<dyn RuntimeClient>> {
-    let driver = Arc::new(BoxRuntimeDriver::new(BoxRuntimeDriverConfig {
-        home_dir: home.to_path_buf(),
-        control_timeout: Duration::from_secs(120),
-        task_poll_interval: Duration::from_millis(25),
-    })?);
-    let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(state_root));
-    let driver: Arc<dyn RuntimeDriver> = driver;
-    Ok(Arc::new(ManagedRuntimeClient::new(state, driver)))
+    Ok(build_box_runtime_client(
+        &BoxRuntimeConfig {
+            home_dir: home.to_path_buf(),
+            control_timeout_ms: 120_000,
+            task_poll_interval_ms: 25,
+        },
+        state_root,
+    )?)
 }
 
 #[cfg(not(target_os = "linux"))]

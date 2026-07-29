@@ -783,6 +783,46 @@ pub(super) async fn acknowledge_resource_claim(
     Ok(())
 }
 
+pub(super) async fn acknowledge_runtime_removal(
+    nodes: &InMemoryNodeRepository,
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeRemove { request } = &command.payload
+    else {
+        return Err("node command is not a Runtime remove command".into());
+    };
+    let completed_at = Utc::now().max(command.issued_at);
+    let removed_at_ms = u64::try_from(completed_at.timestamp_millis())
+        .map_err(|_| "Runtime removal fixture predates the Unix epoch")?;
+    nodes
+        .acknowledge_command(
+            a3s_cloud_contracts::NodeCommandAck {
+                schema: a3s_cloud_contracts::NodeCommandAck::SCHEMA.into(),
+                command_id: command.command_id,
+                lease_id: command.lease_id,
+                node_id: command.node_id,
+                sequence: command.sequence,
+                payload_digest: command.payload_digest.clone(),
+                completed_at,
+                outcome: a3s_cloud_contracts::NodeCommandOutcome::Succeeded {
+                    result: Box::new(a3s_cloud_contracts::NodeCommandResult::RuntimeRemoved {
+                        removal: a3s_runtime::contract::RuntimeRemoval {
+                            schema: a3s_runtime::contract::RuntimeRemoval::SCHEMA.into(),
+                            request_id: request.request_id.clone(),
+                            unit_id: request.unit_id.clone(),
+                            generation: request.generation,
+                            removed_at_ms,
+                            already_absent: false,
+                        },
+                    }),
+                },
+            },
+            completed_at,
+        )
+        .await?;
+    Ok(())
+}
+
 pub(super) async fn record_observation(
     nodes: &InMemoryNodeRepository,
     node_id: crate::modules::shared_kernel::domain::NodeId,
