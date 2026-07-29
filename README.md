@@ -188,13 +188,15 @@ only through Box's generation-fenced loopback forwarder. The
 passed every capability advertised by the pinned Box revision; Cloud does not
 carry a second provider conformance implementation.
 
-The first `BX0.2` consumer-recovery slice is implemented pending its dedicated
-Linux gate. It replays an Agent crash after Box apply but before command-journal
-completion, preserves the exact durable Runtime receipt and provider identity,
-replaces a running Service generation, and proves logs, inspection, stop,
-removal, and empty Box state. Full Box networking, health, mounts, Secrets,
-outputs, builds, and the clean-host release loop remain release-blocking `BX0`
-work.
+The first `BX0.2` consumer-recovery slice is verified by the
+[dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30424869899).
+It replays an Agent crash after Box apply but before command-journal completion,
+preserves the exact durable Runtime receipt and provider identity, replaces a
+running Service generation, and proves logs, inspection, stop, removal, and
+empty Box state. Hard-resource Claim binding and release, deployment
+cancellation, abnormal-interruption cleanup, full Box networking, health,
+mounts, Secrets, outputs, builds, and the clean-host release loop remain
+release-blocking `BX0` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
