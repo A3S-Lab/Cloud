@@ -1,0 +1,142 @@
+name: Cloud Product Site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - architecture-3d/**
+      - website/**
+      - .github/workflows/cloud-pages.yml
+      - README.md
+      - ROADMAP.md
+  pull_request:
+    branches:
+      - main
+    paths:
+      - architecture-3d/**
+      - website/**
+      - .github/workflows/cloud-pages.yml
+      - README.md
+      - ROADMAP.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: Build product site and architecture
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install Bun 1.3.14
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Check website formatting
+        working-directory: website
+        run: npm run format:check
+
+      - name: Lint website and verify roadmap projection
+        working-directory: website
+        run: npm run lint
+
+      - name: Install architecture dependencies
+        working-directory: architecture-3d
+        run: bun install --frozen-lockfile
+
+      - name: Check architecture types
+        working-directory: architecture-3d
+        run: bun run typecheck
+
+      - name: Check architecture formatting
+        working-directory: architecture-3d
+        run: bun run format:check
+
+      - name: Check architecture lint
+        working-directory: architecture-3d
+        run: bun run lint:check
+
+      - name: Verify Archify source projection
+        working-directory: architecture-3d
+        run: |
+          bun run archify:source
+          git diff --exit-code -- archify/a3s-cloud.architecture.json
+
+      - name: Test architecture application
+        working-directory: architecture-3d
+        run: bun run test
+
+      - name: Configure repository paths
+        run: |
+          repository_name=${GITHUB_REPOSITORY#*/}
+          echo "DOCS_BASE=/${repository_name}/" >>"$GITHUB_ENV"
+          echo "DOCS_ORIGIN=https://${GITHUB_REPOSITORY_OWNER,,}.github.io" >>"$GITHUB_ENV"
+          echo "A3S_ARCHITECTURE_BASE_PATH=/${repository_name}/architecture/" >>"$GITHUB_ENV"
+
+      - name: Build product website
+        working-directory: website
+        run: npm run build
+
+      - name: Build interactive architecture
+        working-directory: architecture-3d
+        run: bun run build
+
+      - name: Assemble one Pages artifact
+        run: |
+          mkdir -p website/doc_build/architecture
+          cp -R architecture-3d/dist/. website/doc_build/architecture/
+
+      - name: Verify product routes and architecture assets
+        working-directory: website
+        env:
+          A3S_EXPECT_ARCHITECTURE: 1
+        run: npm run check:site
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/doc_build
+
+  deploy:
+    name: Deploy Cloud product site
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

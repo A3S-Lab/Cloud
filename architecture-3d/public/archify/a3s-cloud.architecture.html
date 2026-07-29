@@ -1354,25 +1354,10 @@
     .relationship-lens-actions {
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
+      align-items: stretch;
       gap: 0.18rem;
     }
     .relationship-lens-actions button { white-space: nowrap; }
-    .relationship-lens-actions #btn-focus-clear {
-      display: grid;
-      width: 1.75rem;
-      height: 1.75rem;
-      padding: 0;
-      place-items: center;
-      color: var(--text-muted);
-      font-size: 1rem;
-      line-height: 1;
-    }
-    .relationship-lens-actions #btn-focus-clear:hover,
-    .relationship-lens-actions #btn-focus-clear:focus-visible {
-      background: var(--toolbar-hover);
-      color: var(--text);
-    }
     .relationship-lens-actions #btn-focus-copy { color: var(--frontend-stroke); }
     .relationship-lens-actions #btn-focus-relations { display: none; }
     .relationship-lens-eyebrow {
@@ -1435,163 +1420,12 @@
     .semantic-passport-meta [hidden] { display: none; }
     html[data-preset="blueprint"] .semantic-passport-meta span,
     html[data-preset="blueprint"] .semantic-passport-meta code { border-radius: 0.1rem; }
-    .semantic-passport-evidence {
-      margin-top: 0.52rem;
-      padding: 0.5rem;
-      border: 1px solid color-mix(in srgb, var(--backend-stroke) 32%, var(--toolbar-border));
-      border-radius: 0.55rem;
-      background: color-mix(in srgb, var(--backend-fill) 18%, var(--panel));
-    }
-    .semantic-passport-evidence[hidden] { display: none; }
-    html[data-preset="blueprint"] .semantic-passport-evidence { border-radius: 0.18rem; }
-    .semantic-passport-evidence-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.55rem;
-      margin-bottom: 0.35rem;
-    }
-    .semantic-passport-evidence-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.28rem;
-      color: var(--backend-stroke);
-      font-size: 0.5rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .semantic-passport-evidence-status::before {
-      content: '';
-      width: 0.38rem;
-      height: 0.38rem;
-      border-radius: 50%;
-      background: var(--backend-stroke);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--backend-stroke) 14%, transparent);
-    }
-    .semantic-passport-repository {
-      min-width: 0;
-      overflow: hidden;
-      color: var(--text-faint);
-      font-size: 0.5rem;
-      text-decoration: none;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .semantic-passport-repository:hover,
-    .semantic-passport-repository:focus-visible { color: var(--backend-stroke); }
-    .semantic-passport-evidence-links { display: grid; gap: 0.22rem; }
-    .semantic-passport-source {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 0.15rem 0.45rem;
-      align-items: center;
-      padding: 0.34rem 0.4rem;
-      border: 1px solid transparent;
-      border-radius: 0.38rem;
-      color: var(--text-muted);
-      text-decoration: none;
-    }
-    .semantic-passport-source:hover,
-    .semantic-passport-source:focus-visible {
-      border-color: color-mix(in srgb, var(--backend-stroke) 42%, transparent);
-      background: color-mix(in srgb, var(--backend-fill) 32%, transparent);
-      color: var(--text);
-    }
-    .semantic-passport-source strong {
-      overflow: hidden;
-      font-size: 0.5625rem;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .semantic-passport-source code {
-      color: var(--backend-stroke);
-      font: inherit;
-      font-size: 0.5rem;
-    }
-    .semantic-passport-source small {
-      grid-column: 1 / -1;
-      overflow: hidden;
-      color: var(--text-faint);
-      font-size: 0.5rem;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
     .relationship-lens-summary {
       display: block;
       margin-top: 0.12rem;
       color: var(--text-faint);
       font-size: 0.5625rem;
     }
-    .semantic-passport-reach {
-      display: grid;
-      gap: 0.28rem;
-      margin-top: 0.52rem;
-      padding-top: 0.48rem;
-      border-top: 1px solid color-mix(in srgb, var(--toolbar-border) 76%, transparent);
-    }
-    .semantic-passport-reach[hidden] { display: none; }
-    .semantic-passport-reach-label {
-      color: var(--text-faint);
-      font-size: 0.5rem;
-      font-weight: 800;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-    .semantic-passport-reach-actions {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.25rem;
-    }
-    .semantic-passport-reach-actions button {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      min-width: 0;
-      min-height: 2rem;
-      padding: 0.32rem 0.42rem;
-      border: 1px solid color-mix(in srgb, var(--toolbar-border) 86%, transparent);
-      background: color-mix(in srgb, var(--panel) 70%, transparent);
-      color: var(--text-muted);
-      text-align: left;
-    }
-    .semantic-passport-reach-actions button:hover:not(:disabled),
-    .semantic-passport-reach-actions button:focus-visible {
-      border-color: color-mix(in srgb, var(--frontend-stroke) 62%, var(--toolbar-border));
-      color: var(--text);
-    }
-    .semantic-passport-reach-actions button:focus-visible {
-      outline: 2px solid var(--frontend-stroke);
-      outline-offset: 1px;
-    }
-    .semantic-passport-reach-actions button:disabled {
-      cursor: default;
-      opacity: 0.5;
-    }
-    .semantic-passport-reach-actions button[aria-pressed="true"] {
-      border-color: color-mix(in srgb, var(--reach-color, var(--frontend-stroke)) 72%, var(--toolbar-border));
-      background: color-mix(in srgb, var(--reach-fill, var(--frontend-fill)) 48%, transparent);
-      color: var(--text);
-    }
-    #btn-reach-upstream {
-      --reach-color: var(--database-stroke);
-      --reach-fill: var(--database-fill);
-    }
-    #btn-reach-downstream {
-      --reach-color: var(--backend-stroke);
-      --reach-fill: var(--backend-fill);
-    }
-    .semantic-passport-reach-actions strong {
-      color: var(--reach-color, var(--frontend-stroke));
-      font-size: 0.625rem;
-    }
-    .semantic-passport-reach-status {
-      color: var(--text-faint);
-      font-size: 0.525rem;
-      line-height: 1.4;
-    }
-    .semantic-passport-reach-status[hidden] { display: none; }
     .relationship-lens-list {
       max-height: min(18rem, 46vh);
       overflow: auto;
@@ -2682,8 +2516,6 @@
       .story-carrier-overlay { display: none !important; }
       .diagram-container svg[data-focus-active] [data-node-id],
       .diagram-container svg[data-focus-active] [data-edge-from],
-      .diagram-container svg[data-reach-active] [data-node-id],
-      .diagram-container svg[data-reach-active] [data-edge-from],
       .diagram-container svg[data-story-beat] [data-story-step],
       .diagram-container svg[data-story-beat] [data-edge-from][data-story-beat-step],
       .diagram-container svg[data-route-active] [data-node-id],
@@ -3229,8 +3061,6 @@
        the global zoom level. Reveal only their exact semantic matches. */
     svg[data-focus-active] [data-focus-match][data-detail],
     svg[data-focus-active] [data-focus-match] [data-detail],
-    svg[data-reach-active] [data-reach-match][data-detail],
-    svg[data-reach-active] [data-reach-match] [data-detail],
     svg[data-lens-active] [data-lens-match][data-detail],
     svg[data-lens-active] [data-lens-match] [data-detail],
     svg[data-legend-preview-active] [data-legend-preview-match][data-detail],
@@ -3249,7 +3079,6 @@
       pointer-events: auto;
     }
     svg[data-focus-active] [data-focus-match] [data-detail-anchor],
-    svg[data-reach-active] [data-reach-match] [data-detail-anchor],
     svg[data-lens-active] [data-lens-match] [data-detail-anchor],
     svg[data-legend-preview-active] [data-legend-preview-match] [data-detail-anchor],
     svg[data-intent-trace-active] [data-intent-trace-match] [data-detail-anchor],
@@ -3280,41 +3109,6 @@
     svg [data-node-id]:focus-visible {
       filter: drop-shadow(0 0 7px var(--frontend-stroke));
       outline: none;
-    }
-    /* Verified Source Beacons are installed at runtime only for nodes whose
-       repository evidence passed the local revision/blob/line checks. They
-       live inside the owning node so every focus, route, story, and guided
-       view keeps one coherent opacity state. Export serialization removes
-       them before producing the canonical SVG or any derived visual. */
-    .source-evidence-beacon {
-      pointer-events: none;
-      opacity: 0.76;
-      transition: opacity 160ms ease, filter 160ms ease;
-    }
-    .source-evidence-beacon rect {
-      fill: color-mix(in srgb, var(--mask) 92%, var(--backend-stroke));
-      stroke: color-mix(in srgb, var(--backend-stroke) 82%, var(--panel-border));
-      stroke-width: 1;
-      vector-effect: non-scaling-stroke;
-    }
-    .source-evidence-beacon text {
-      fill: var(--backend-stroke);
-      font-size: 5.5px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      text-anchor: middle;
-      text-transform: uppercase;
-    }
-    svg [data-node-id]:hover .source-evidence-beacon,
-    svg [data-node-id]:focus-visible .source-evidence-beacon,
-    svg [data-node-id][data-focus-selected] .source-evidence-beacon {
-      opacity: 1;
-      filter: drop-shadow(0 0 4px color-mix(in srgb, var(--backend-stroke) 72%, transparent));
-    }
-    svg[data-preset="signal-flow"] .source-evidence-beacon { opacity: 0.9; }
-    svg[data-preset="blueprint"] .source-evidence-beacon rect {
-      rx: 0.8px;
-      filter: none;
     }
     svg [data-legend-kind][role="button"] { cursor: pointer; }
     svg [data-legend-kind]:focus { outline: none; }
@@ -3429,30 +3223,6 @@
     svg[data-focus-active] [data-focus-match] { opacity: 1; }
     svg[data-focus-active] [data-focus-selected] {
       filter: drop-shadow(0 0 10px var(--frontend-stroke));
-    }
-
-    /* Authored Reachability is a bounded graph query over the relationships
-       already present in the artifact. Upstream walks incoming edges;
-       downstream walks outgoing edges. It never claims runtime causality and
-       changes only viewer emphasis, not canonical geometry or export bytes. */
-    svg[data-reach-active] [data-node-id],
-    svg[data-reach-active] [data-edge-from] { opacity: 0.09; }
-    svg[data-reach-active] [data-reach-match] { opacity: 1; }
-    svg[data-reach-active="upstream"] [data-reach-origin] {
-      filter: drop-shadow(0 0 11px var(--database-stroke));
-    }
-    svg[data-reach-active="downstream"] [data-reach-origin] {
-      filter: drop-shadow(0 0 11px var(--backend-stroke));
-    }
-    svg[data-reach-active="upstream"] [data-edge-from][data-reach-match] {
-      filter: drop-shadow(0 0 4px color-mix(in srgb, var(--database-stroke) 72%, transparent));
-    }
-    svg[data-reach-active="downstream"] [data-edge-from][data-reach-match] {
-      filter: drop-shadow(0 0 4px color-mix(in srgb, var(--backend-stroke) 72%, transparent));
-    }
-    svg[data-preset="blueprint"][data-reach-active] [data-reach-origin],
-    svg[data-preset="blueprint"][data-reach-active] [data-edge-from][data-reach-match] {
-      filter: none;
     }
 
     /* Direct Relationship Explorer makes authored paths a real input surface
@@ -3733,9 +3503,6 @@
     svg[data-preset="blueprint"][data-focus-active] [data-focus-selected] {
       filter: drop-shadow(0 0 3px var(--frontend-stroke));
     }
-    svg[data-preset="blueprint"][data-focus-active][data-reach-active] [data-focus-selected][data-reach-origin] {
-      filter: none;
-    }
     svg[data-preset="blueprint"][data-relationship-preview-active] [data-relationship-preview],
     svg[data-preset="blueprint"][data-relationship-preview-active] [data-relationship-preview-source],
     svg[data-preset="blueprint"][data-relationship-preview-active] [data-relationship-preview-target] {
@@ -4001,7 +3768,6 @@
       }
       .relationship-pulse-overlay { display: none !important; }
       .guided-view-chapter { transition: none !important; }
-      .source-evidence-beacon,
       svg [data-node-id], svg [data-edge-from], svg [data-detail], svg [data-detail-anchor], svg [data-legend-hit], svg { transition: none !important; }
     }
   </style>
@@ -4050,7 +3816,6 @@
       <div class="export-menu" id="export-menu" role="menu" aria-label="Export">
         <button data-format="share-card" type="button" role="menuitem" tabindex="-1">Share Card <span class="hint">1200&times;630 PNG</span></button>
         <button data-action="route-share-card" type="button" role="menuitem" tabindex="-1" hidden disabled>Route Share Card <span class="hint">1200&times;630 PNG</span></button>
-        <button data-action="reach-share-card" type="button" role="menuitem" tabindex="-1" hidden disabled>Reach Share Card <span class="hint">1200&times;630 PNG</span></button>
         <button data-action="copy-share-card" type="button" role="menuitem" tabindex="-1">Copy Share Card <span class="hint">PNG</span></button>
         <hr role="separator">
         <button data-action="copy"  type="button" role="menuitem" tabindex="-1">Copy to clipboard <span class="hint">PNG</span></button>
@@ -4076,7 +3841,6 @@
     </div>
 
     <script id="archify-guided-views-data" type="application/json">[{"id":"management-boundary","label":"Management boundary","focus":["clients","web","a3s-box","code-tui","gateway","api"],"note":"Web and Code both cross the public Gateway before the private Boot API."},{"id":"deploy-converge","label":"Deploy and converge","focus":["api","workloads","operations","flow","node-agent","runtime","box-provider","workload-unit"],"note":"Follow desired state through durable coordination into one provider-backed unit."},{"id":"middleware-layer","label":"Middleware and durable truth","focus":["postgres","flow","event","object-storage"],"note":"SQL truth, workflow history, committed facts, and immutable bytes stay distinct."},{"id":"power-gpu","label":"Cloud Inference and A3S Power","focus":["inference","workloads","fleet","runtime","power","gpu-compute"],"note":"Cloud Inference owns intent; Power is one backend inside a managed workload."},{"id":"live-request","label":"Live request path","focus":["clients","gateway","workload-unit","cpu-compute","gpu-compute"],"note":"Gateway reaches an acknowledged target while Cloud control services stay off-path."}]</script>
-
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
       <div class="guided-view-copy">
@@ -4159,8 +3923,8 @@
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="4" x="657" y="678" width="500" height="104" rx="12" class="c-region" stroke-width="1"/>
         <text x="665" y="696" class="t-cloud" font-size="9" font-weight="600">05 · Node execution · Managed Node Plane</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="5" x="171" y="803" width="1472" height="104" rx="12" class="c-region" stroke-width="1"/>
-        <text x="179" y="821" class="t-cloud" font-size="9" font-weight="600">06 · Providers · Provider &amp; Workload Layer</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="5" x="387" y="803" width="1040" height="104" rx="12" class="c-region" stroke-width="1"/>
+        <text x="395" y="821" class="t-cloud" font-size="9" font-weight="600">06 · Providers · Provider &amp; Workload Layer</text>
 
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="6" x="279" y="934" width="1256" height="104" rx="12" class="c-region" stroke-width="1"/>
         <text x="287" y="952" class="t-cloud" font-size="9" font-weight="600">07 · Physical resources · Infrastructure &amp; Hardware</text>
@@ -4176,60 +3940,58 @@
         <path data-edge-from="api" data-edge-to="workloads" data-edge-key="7" data-edge-id="api-workloads" data-composition-points="841,335;664,335;664,485;487,485" d="M 841 335 L 672 335 Q 664 335 664 343 L 664 477 Q 664 485 656 485 L 487 485" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="api" data-edge-to="sources" data-edge-key="8" data-edge-id="api-sources" data-composition-points="973,315;1096,315;1096,414;1219,414" d="M 973 315 L 1088 315 Q 1096 315 1096 323 L 1096 406 Q 1096 414 1104 414 L 1219 414" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="api" data-edge-to="inference" data-edge-key="9" data-edge-id="api-inference" data-composition-points="900,361;900,395" d="M 900 361 L 900 395" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="inference" data-edge-to="power" data-edge-key="10" data-edge-id="inference-power" data-composition-points="907,457;907,470;907,792;1123,792;1123,825" d="M 907 457 L 907 463.5 Q 907 470 907 476.5 L 907 784 Q 907 792 915 792 L 1115 792 Q 1123 792 1123 800 L 1123 825" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="inference" data-edge-to="power" data-edge-key="10" data-edge-id="inference-power" data-composition-points="907,457;907,470;907,792;1123,792;907,825" d="M 907 457 L 907 463.5 Q 907 470 907 476.5 L 907 784 Q 907 792 915 792 L 1115 792 Q 1123 792 1115.0917609386263 793.2082031899321 L 907 825" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="sources" data-edge-to="artifacts" data-edge-key="11" data-edge-id="sources-artifacts" data-composition-points="1351,414;1489,414" d="M 1351 414 L 1489 414" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="artifacts" data-edge-to="operations" data-edge-key="12" data-edge-id="artifacts-operations" data-composition-points="1489,428;1474,428;1474,499;1459,499" d="M 1489 428 L 1481.5 428 Q 1474 428 1474 435.5 L 1474 491.5 Q 1474 499 1466.5 499 L 1459 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="workloads" data-edge-to="operations" data-edge-key="13" data-edge-id="workloads-operations" data-composition-points="421,530;487,540;1327,540;1393,530" d="M 421 530 L 479.0902759662019 538.8015569645761 Q 487 540 495 540 L 1319 540 Q 1327 540 1334.909724033798 538.8015569645761 L 1393 530" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="operations" data-edge-to="flow" data-edge-key="14" data-edge-id="operations-flow" data-composition-points="1327,506;1327,551.5;757,551.5;757,597" d="M 1327 506 L 1327 543.5 Q 1327 551.5 1319 551.5 L 765 551.5 Q 757 551.5 757 559.5 L 757 597" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="flow" data-edge-to="node-agent" data-edge-key="15" data-edge-id="flow-node-agent" data-composition-points="757,611;718,611;718,731;679,731" d="M 757 611 L 726 611 Q 718 611 718 619 L 718 723 Q 718 731 710 731 L 679 731" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="node-agent" data-edge-to="runtime" data-edge-key="16" data-edge-id="node-runtime" data-composition-points="811,734;907,734;907,716;1003,716" d="M 811 734 L 899 734 Q 907 734 907 726 L 907 724 Q 907 716 915 716 L 1003 716" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="docker-buildkit" data-edge-key="17" data-edge-id="runtime-provider" data-composition-points="1003,731;1003,786;325,786;325,841" d="M 1003 731 L 1003 778 Q 1003 786 995 786 L 333 786 Q 325 786 325 794 L 325 841" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="box-provider" data-edge-key="18" data-edge-id="runtime-box" data-composition-points="1003,726;880,726;880,842;757,842" d="M 1003 726 L 888 726 Q 880 726 880 734 L 880 834 Q 880 842 872 842 L 757 842" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="box-provider" data-edge-to="workload-unit" data-edge-key="19" data-edge-id="box-workload" data-composition-points="691,825;757,792;1555,792;1555,825" d="M 691 825 L 749.8445824720006 795.5777087639997 Q 757 792 765 792 L 1547 792 Q 1555 792 1555 800 L 1555 825" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="cpu-compute" data-edge-key="20" data-edge-id="runtime-cpu" data-composition-points="1003,746;988,746;988,973;973,973" d="M 1003 746 L 995.5 746 Q 988 746 988 753.5 L 988 965.5 Q 988 973 980.5 973 L 973 973" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="gpu-compute" data-edge-key="21" data-edge-id="runtime-gpu" data-composition-points="1135,738;1258,738;1258,980;1381,980" d="M 1135 738 L 1250 738 Q 1258 738 1258 746 L 1258 972 Q 1258 980 1266 980 L 1381 980" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="power" data-edge-to="cpu-compute" data-edge-key="22" data-edge-id="power-cpu" data-composition-points="1057,856;1015,856;1015,1001;973,1001" d="M 1057 856 L 1023 856 Q 1015 856 1015 864 L 1015 993 Q 1015 1001 1007 1001 L 973 1001" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="power" data-edge-to="gpu-compute" data-edge-key="23" data-edge-id="power-gpu" data-composition-points="1189,863;1285,863;1285,994;1381,994" d="M 1189 863 L 1277 863 Q 1285 863 1285 871 L 1285 986 Q 1285 994 1293 994 L 1381 994" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="docker-buildkit" data-edge-to="cpu-compute" data-edge-key="24" data-edge-id="buildkit-cpu" data-composition-points="325,861;583,861;583,980;841,980" d="M 325 861 L 575 861 Q 583 861 583 869 L 583 972 Q 583 980 591 980 L 841 980" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="docker-buildkit" data-edge-to="registry" data-edge-key="25" data-edge-id="buildkit-registry" data-composition-points="325,871;313,871;313,987;301,987" d="M 325 871 L 319 871 Q 313 871 313 877 L 313 981 Q 313 987 307 987 L 301 987" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="registry" data-edge-to="workloads" data-edge-key="26" data-edge-id="registry-workloads" data-composition-points="433,987;394,987;394,506;355,506" d="M 433 987 L 402 987 Q 394 987 394 979 L 394 514 Q 394 506 386 506 L 355 506" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="workload-unit" data-edge-key="27" data-edge-id="runtime-workload" data-composition-points="1135,724;1312,724;1312,847;1489,847" d="M 1135 724 L 1304 724 Q 1312 724 1312 732 L 1312 839 Q 1312 847 1320 847 L 1489 847" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="cpu-compute" data-edge-to="workload-unit" data-edge-key="28" data-edge-id="cpu-workload" data-composition-points="973,987;1231,987;1231,865;1489,865" d="M 973 987 L 1223 987 Q 1231 987 1231 979 L 1231 873 Q 1231 865 1239 865 L 1489 865" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="gpu-compute" data-edge-to="workload-unit" data-edge-key="29" data-edge-id="gpu-workload" data-composition-points="1513,987;1501,987;1501,871;1489,871" d="M 1513 987 L 1507 987 Q 1501 987 1501 981 L 1501 877 Q 1501 871 1495 871 L 1489 871" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="workload-unit" data-edge-to="edge" data-edge-key="30" data-edge-id="workload-edge" data-composition-points="1489,841;1312,841;1312,499;1135,499" d="M 1489 841 L 1320 841 Q 1312 841 1312 833 L 1312 507 Q 1312 499 1304 499 L 1135 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="edge" data-edge-to="node-agent" data-edge-key="31" data-edge-id="edge-agent" data-composition-points="1003,513;907,513;907,728;811,728" d="M 1003 513 L 915 513 Q 907 513 907 521 L 907 720 Q 907 728 899 728 L 811 728" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="node-agent" data-edge-to="gateway" data-edge-key="32" data-edge-id="agent-gateway" data-composition-points="811,716;826,716;826,241.5;841,241.5" d="M 811 716 L 818.5 716 Q 826 716 826 708.5 L 826 249 Q 826 241.5 833.5 241.5 L 841 241.5" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="clients" data-edge-to="gateway" data-edge-key="33" data-edge-id="clients-gateway" data-composition-points="252,110;252,164.5;841,164.5;841,219" d="M 252 110 L 252 156.5 Q 252 164.5 260 164.5 L 833 164.5 Q 841 164.5 841 172.5 L 841 219" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="gateway" data-edge-to="workload-unit" data-edge-key="34" data-edge-id="gateway-workload" data-composition-points="973,234;1680,234;1680,856;1621,856" d="M 973 234 L 1672 234 Q 1680 234 1680 242 L 1680 848 Q 1680 856 1672 856 L 1621 856" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="workload-unit" data-edge-to="node-agent" data-edge-key="35" data-edge-id="workload-agent-logs" data-composition-points="1489,853;1489,799.5;811,799.5;811,746" d="M 1489 853 L 1489 807.5 Q 1489 799.5 1481 799.5 L 819 799.5 Q 811 799.5 811 791.5 L 811 746" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="node-agent" data-edge-to="fleet" data-edge-key="36" data-edge-id="agent-fleet" data-composition-points="811,731;850,731;850,540;745,540;745,530" d="M 811 731 L 842 731 Q 850 731 850 723 L 850 548 Q 850 540 842 540 L 750 540 Q 745 540 745 535 L 745 530" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="fleet" data-edge-to="object-storage" data-edge-key="37" data-edge-id="fleet-object-store" data-composition-points="811,513;811,558.5;1489,558.5;1489,604" d="M 811 513 L 811 550.5 Q 811 558.5 819 558.5 L 1481 558.5 Q 1489 558.5 1489 566.5 L 1489 604" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="object-storage" data-edge-to="api" data-edge-key="38" data-edge-id="object-store-api" data-composition-points="1621,604;1680,604;1680,330;973,330" d="M 1621 604 L 1672 604 Q 1680 604 1680 596 L 1680 338 Q 1680 330 1672 330 L 973 330" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="workloads" data-edge-to="postgres" data-edge-key="39" data-edge-id="contexts-postgres" data-composition-points="355,492;340,492;340,604;325,604" d="M 355 492 L 347.5 492 Q 340 492 340 499.5 L 340 596.5 Q 340 604 332.5 604 L 325 604" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="artifacts" data-edge-to="object-storage" data-edge-key="40" data-edge-id="artifacts-store" data-composition-points="1555,445;1555,573" d="M 1555 445 L 1555 573" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="projects" data-edge-to="event" data-edge-key="41" data-edge-id="contexts-event" data-composition-points="595,428;826,428;826,604;1057,604" d="M 595 428 L 818 428 Q 826 428 826 436 L 826 596 Q 826 604 834 604 L 1057 604" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="inference" data-edge-to="workloads" data-edge-key="42" data-edge-id="inference-workloads" data-composition-points="841,433;664,433;664,513;487,513" d="M 841 433 L 672 433 Q 664 433 664 441 L 664 505 Q 664 513 656 513 L 487 513" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="inference" data-edge-to="fleet" data-edge-key="43" data-edge-id="inference-fleet" data-composition-points="841,419;826,419;826,499;811,499" d="M 841 419 L 833.5 419 Q 826 419 826 426.5 L 826 491.5 Q 826 499 818.5 499 L 811 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="fleet" data-edge-to="gpu-compute" data-edge-key="44" data-edge-id="fleet-gpu" data-composition-points="745,530;745,540;1680,540;1680,1004;1513,987" d="M 745 530 L 745 535 Q 745 540 750 540 L 1672 540 Q 1680 540 1680 548 L 1680 996 Q 1680 1004 1672.0411306461813 1003.1898156945215 L 1513 987" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="inference" data-edge-to="edge" data-edge-key="45" data-edge-id="inference-edge" data-composition-points="973,426;988,426;988,499;1003,499" d="M 973 426 L 980.5 426 Q 988 426 988 433.5 L 988 491.5 Q 988 499 995.5 499 L 1003 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="a3s-box" data-edge-to="code-tui" data-edge-key="46" data-edge-id="struct-box-hosts-code-a3s-box-code-tui" data-composition-points="1405,103;1483.5,103;1483.5,96;1562,96" d="M 1405 103 L 1480 103 Q 1483.5 103 1483.5 99.5 L 1483.5 99.5 Q 1483.5 96 1487 96 L 1562 96" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="identity" data-edge-key="47" data-edge-id="struct-boot-hosts-contexts-api-identity" data-composition-points="841,325;841,373;325,373;325,421" d="M 841 325 L 841 365 Q 841 373 833 373 L 333 373 Q 325 373 325 381 L 325 421" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="projects" data-edge-key="48" data-edge-id="struct-boot-hosts-contexts-api-projects" data-composition-points="841,330;718,330;718,414;595,414" d="M 841 330 L 726 330 Q 718 330 718 338 L 718 406 Q 718 414 710 414 L 595 414" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="inference" data-edge-key="49" data-edge-id="struct-boot-hosts-contexts-api-inference" data-composition-points="914,361;914,395" d="M 914 361 L 914 395" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="sources" data-edge-key="50" data-edge-id="struct-boot-hosts-contexts-api-sources" data-composition-points="973,330;1096,330;1096,428;1219,428" d="M 973 330 L 1088 330 Q 1096 330 1096 338 L 1096 420 Q 1096 428 1104 428 L 1219 428" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="artifacts" data-edge-key="51" data-edge-id="struct-boot-hosts-contexts-api-artifacts" data-composition-points="973,322.5;973,361.25;1489,361.25;1489,400" d="M 973 322.5 L 973 353.25 Q 973 361.25 981 361.25 L 1481 361.25 Q 1489 361.25 1489 369.25 L 1489 400" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="workloads" data-edge-key="52" data-edge-id="struct-boot-hosts-contexts-api-workloads" data-composition-points="841,345;664,345;664,499;487,499" d="M 841 345 L 672 345 Q 664 345 664 353 L 664 491 Q 664 499 656 499 L 487 499" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="fleet" data-edge-key="53" data-edge-id="struct-boot-hosts-contexts-api-fleet" data-composition-points="841,340;826,340;826,485;811,485" d="M 841 340 L 833.5 340 Q 826 340 826 347.5 L 826 477.5 Q 826 485 818.5 485 L 811 485" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="edge" data-edge-key="54" data-edge-id="struct-boot-hosts-contexts-api-edge" data-composition-points="973,337.5;988,337.5;988,485;1003,485" d="M 973 337.5 L 980.5 337.5 Q 988 337.5 988 345 L 988 477.5 Q 988 485 995.5 485 L 1003 485" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="api" data-edge-to="operations" data-edge-key="55" data-edge-id="struct-boot-hosts-contexts-api-operations" data-composition-points="973,345;1150,345;1150,492;1327,492" d="M 973 345 L 1142 345 Q 1150 345 1150 353 L 1150 484 Q 1150 492 1158 492 L 1327 492" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="gateway" data-edge-to="web" data-edge-key="56" data-edge-id="struct-gateway-routes-web-gateway-web" data-composition-points="841,226.5;691,226.5;691,96;541,96" d="M 841 226.5 L 699 226.5 Q 691 226.5 691 218.5 L 691 104 Q 691 96 683 96 L 541 96" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="node-agent" data-edge-to="runtime" data-edge-key="57" data-edge-id="struct-agent-manages-runtime-node-agent-runtime" data-composition-points="811,740;907,740;907,721;1003,721" d="M 811 740 L 899 740 Q 907 740 907 732 L 907 729 Q 907 721 915 721 L 1003 721" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="node-agent" data-edge-to="gateway" data-edge-key="58" data-edge-id="struct-agent-configures-gateway-node-agent-gateway" data-composition-points="811,722;826,722;826,249;841,249" d="M 811 722 L 818.5 722 Q 826 722 826 714.5 L 826 256.5 Q 826 249 833.5 249 L 841 249" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="runtime" data-edge-to="docker-buildkit" data-edge-key="59" data-edge-id="struct-runtime-drives-providers-runtime-docker-buildkit" data-composition-points="1003,741;1003,796;325,796;325,851" d="M 1003 741 L 1003 788 Q 1003 796 995 796 L 333 796 Q 325 796 325 804 L 325 851" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="runtime" data-edge-to="box-provider" data-edge-key="60" data-edge-id="struct-runtime-drives-providers-runtime-box-provider" data-composition-points="1003,736;880,736;880,856;757,856" d="M 1003 736 L 888 736 Q 880 736 880 744 L 880 848 Q 880 856 872 856 L 757 856" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="box-provider" data-edge-to="workload-unit" data-edge-key="61" data-edge-id="struct-box-provider-hosts-workloads-box-provider-workload-unit" data-composition-points="691,825;757,796;1555,796;1555,825" d="M 691 825 L 749.6758443678158 799.2181895959598 Q 757 796 765 796 L 1547 796 Q 1555 796 1555 804 L 1555 825" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="workload-unit" data-edge-to="power" data-edge-key="62" data-edge-id="struct-workload-runs-power-workload-unit-power" data-composition-points="1489,859;1339,859;1339,849;1189,849" d="M 1489 859 L 1344 859 Q 1339 859 1339 854 L 1339 854 Q 1339 849 1334 849 L 1189 849" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="cpu-compute" data-edge-to="box-provider" data-edge-key="63" data-edge-id="struct-cpu-supplies-box-provider-cpu-compute-box-provider" data-composition-points="841,994;799,994;799,870;757,870" d="M 841 994 L 807 994 Q 799 994 799 986 L 799 878 Q 799 870 791 870 L 757 870" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="runtime" data-edge-to="box-provider" data-edge-key="17" data-edge-id="runtime-box" data-composition-points="1003,736;1003,788.5;541,788.5;541,841" d="M 1003 736 L 1003 780.5 Q 1003 788.5 995 788.5 L 549 788.5 Q 541 788.5 541 796.5 L 541 841" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="box-provider" data-edge-to="workload-unit" data-edge-key="18" data-edge-id="box-workload" data-composition-points="475,825;757,792;1555,792;1339,825" d="M 475 825 L 749.0542196854296 792.9298253559604 Q 757 792 765 792 L 1547 792 Q 1555 792 1547.0917609386263 793.2082031899321 L 1339 825" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="box-provider" data-edge-to="cpu-compute" data-edge-key="19" data-edge-id="box-cpu" data-composition-points="541,853;691,853;691,980;841,980" d="M 541 853 L 683 853 Q 691 853 691 861 L 691 972 Q 691 980 699 980 L 841 980" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="box-provider" data-edge-to="gpu-compute" data-edge-key="20" data-edge-id="box-gpu" data-composition-points="541,859;541,915.5;1381,915.5;1381,972" d="M 541 859 L 541 907.5 Q 541 915.5 549 915.5 L 1373 915.5 Q 1381 915.5 1381 923.5 L 1381 972" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="power" data-edge-to="cpu-compute" data-edge-key="21" data-edge-id="power-cpu" data-composition-points="907,887;907,956" d="M 907 887 L 907 956" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="power" data-edge-to="gpu-compute" data-edge-key="22" data-edge-id="power-gpu" data-composition-points="973,863;1177,863;1177,992;1381,992" d="M 973 863 L 1169 863 Q 1177 863 1177 871 L 1177 984 Q 1177 992 1185 992 L 1381 992" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="box-provider" data-edge-to="registry" data-edge-key="23" data-edge-id="box-build-registry" data-composition-points="409,856;421,856;421,994;433,994" d="M 409 856 L 415 856 Q 421 856 421 862 L 421 988 Q 421 994 427 994 L 433 994" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="registry" data-edge-to="workloads" data-edge-key="24" data-edge-id="registry-workloads" data-composition-points="433,980;394,980;394,506;355,506" d="M 433 980 L 402 980 Q 394 980 394 972 L 394 514 Q 394 506 386 506 L 355 506" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="runtime" data-edge-to="workload-unit" data-edge-key="25" data-edge-id="runtime-workload" data-composition-points="1135,731;1204,731;1204,848.5;1273,848.5" d="M 1135 731 L 1196 731 Q 1204 731 1204 739 L 1204 840.5 Q 1204 848.5 1212 848.5 L 1273 848.5" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="cpu-compute" data-edge-to="workload-unit" data-edge-key="26" data-edge-id="cpu-workload" data-composition-points="973,987;1123,987;1123,871;1273,871" d="M 973 987 L 1115 987 Q 1123 987 1123 979 L 1123 879 Q 1123 871 1131 871 L 1273 871" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="gpu-compute" data-edge-to="workload-unit" data-edge-key="27" data-edge-id="gpu-workload" data-composition-points="1381,982;1393,982;1393,856;1405,856" d="M 1381 982 L 1387 982 Q 1393 982 1393 976 L 1393 862 Q 1393 856 1399 856 L 1405 856" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="workload-unit" data-edge-to="edge" data-edge-key="28" data-edge-id="workload-edge" data-composition-points="1273,841;1204,841;1204,499;1135,499" d="M 1273 841 L 1212 841 Q 1204 841 1204 833 L 1204 507 Q 1204 499 1196 499 L 1135 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="edge" data-edge-to="node-agent" data-edge-key="29" data-edge-id="edge-agent" data-composition-points="1003,513;907,513;907,728;811,728" d="M 1003 513 L 915 513 Q 907 513 907 521 L 907 720 Q 907 728 899 728 L 811 728" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="node-agent" data-edge-to="gateway" data-edge-key="30" data-edge-id="agent-gateway" data-composition-points="811,716;826,716;826,241.5;841,241.5" d="M 811 716 L 818.5 716 Q 826 716 826 708.5 L 826 249 Q 826 241.5 833.5 241.5 L 841 241.5" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="clients" data-edge-to="gateway" data-edge-key="31" data-edge-id="clients-gateway" data-composition-points="252,110;252,164.5;841,164.5;841,219" d="M 252 110 L 252 156.5 Q 252 164.5 260 164.5 L 833 164.5 Q 841 164.5 841 172.5 L 841 219" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="gateway" data-edge-to="workload-unit" data-edge-key="32" data-edge-id="gateway-workload" data-composition-points="973,234;1680,234;1680,856;1405,856" d="M 973 234 L 1672 234 Q 1680 234 1680 242 L 1680 848 Q 1680 856 1672 856 L 1405 856" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="workload-unit" data-edge-to="node-agent" data-edge-key="33" data-edge-id="workload-agent-logs" data-composition-points="1273,856;1273,801;811,801;811,746" d="M 1273 856 L 1273 809 Q 1273 801 1265 801 L 819 801 Q 811 801 811 793 L 811 746" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="node-agent" data-edge-to="fleet" data-edge-key="34" data-edge-id="agent-fleet" data-composition-points="811,731;850,731;850,540;745,540;745,530" d="M 811 731 L 842 731 Q 850 731 850 723 L 850 548 Q 850 540 842 540 L 750 540 Q 745 540 745 535 L 745 530" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="fleet" data-edge-to="object-storage" data-edge-key="35" data-edge-id="fleet-object-store" data-composition-points="811,513;811,558.5;1489,558.5;1489,604" d="M 811 513 L 811 550.5 Q 811 558.5 819 558.5 L 1481 558.5 Q 1489 558.5 1489 566.5 L 1489 604" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="object-storage" data-edge-to="api" data-edge-key="36" data-edge-id="object-store-api" data-composition-points="1621,604;1680,604;1680,330;973,330" d="M 1621 604 L 1672 604 Q 1680 604 1680 596 L 1680 338 Q 1680 330 1672 330 L 973 330" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="workloads" data-edge-to="postgres" data-edge-key="37" data-edge-id="contexts-postgres" data-composition-points="355,492;340,492;340,604;325,604" d="M 355 492 L 347.5 492 Q 340 492 340 499.5 L 340 596.5 Q 340 604 332.5 604 L 325 604" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="artifacts" data-edge-to="object-storage" data-edge-key="38" data-edge-id="artifacts-store" data-composition-points="1555,445;1555,573" d="M 1555 445 L 1555 573" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="projects" data-edge-to="event" data-edge-key="39" data-edge-id="contexts-event" data-composition-points="595,428;826,428;826,604;1057,604" d="M 595 428 L 818 428 Q 826 428 826 436 L 826 596 Q 826 604 834 604 L 1057 604" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="inference" data-edge-to="workloads" data-edge-key="40" data-edge-id="inference-workloads" data-composition-points="841,433;664,433;664,513;487,513" d="M 841 433 L 672 433 Q 664 433 664 441 L 664 505 Q 664 513 656 513 L 487 513" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="inference" data-edge-to="fleet" data-edge-key="41" data-edge-id="inference-fleet" data-composition-points="841,419;826,419;826,499;811,499" d="M 841 419 L 833.5 419 Q 826 419 826 426.5 L 826 491.5 Q 826 499 818.5 499 L 811 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="fleet" data-edge-to="gpu-compute" data-edge-key="42" data-edge-id="fleet-gpu" data-composition-points="745,530;745,540;1680,540;1680,1004;1513,987" d="M 745 530 L 745 535 Q 745 540 750 540 L 1672 540 Q 1680 540 1680 548 L 1680 996 Q 1680 1004 1672.0411306461813 1003.1898156945215 L 1513 987" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="inference" data-edge-to="edge" data-edge-key="43" data-edge-id="inference-edge" data-composition-points="973,426;988,426;988,499;1003,499" d="M 973 426 L 980.5 426 Q 988 426 988 433.5 L 988 491.5 Q 988 499 995.5 499 L 1003 499" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="a3s-box" data-edge-to="code-tui" data-edge-key="44" data-edge-id="struct-box-hosts-code-a3s-box-code-tui" data-composition-points="1405,103;1483.5,103;1483.5,96;1562,96" d="M 1405 103 L 1480 103 Q 1483.5 103 1483.5 99.5 L 1483.5 99.5 Q 1483.5 96 1487 96 L 1562 96" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="identity" data-edge-key="45" data-edge-id="struct-boot-hosts-contexts-api-identity" data-composition-points="841,325;841,373;325,373;325,421" d="M 841 325 L 841 365 Q 841 373 833 373 L 333 373 Q 325 373 325 381 L 325 421" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="projects" data-edge-key="46" data-edge-id="struct-boot-hosts-contexts-api-projects" data-composition-points="841,330;718,330;718,414;595,414" d="M 841 330 L 726 330 Q 718 330 718 338 L 718 406 Q 718 414 710 414 L 595 414" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="inference" data-edge-key="47" data-edge-id="struct-boot-hosts-contexts-api-inference" data-composition-points="914,361;914,395" d="M 914 361 L 914 395" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="sources" data-edge-key="48" data-edge-id="struct-boot-hosts-contexts-api-sources" data-composition-points="973,330;1096,330;1096,428;1219,428" d="M 973 330 L 1088 330 Q 1096 330 1096 338 L 1096 420 Q 1096 428 1104 428 L 1219 428" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="artifacts" data-edge-key="49" data-edge-id="struct-boot-hosts-contexts-api-artifacts" data-composition-points="973,322.5;973,361.25;1489,361.25;1489,400" d="M 973 322.5 L 973 353.25 Q 973 361.25 981 361.25 L 1481 361.25 Q 1489 361.25 1489 369.25 L 1489 400" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="workloads" data-edge-key="50" data-edge-id="struct-boot-hosts-contexts-api-workloads" data-composition-points="841,345;664,345;664,499;487,499" d="M 841 345 L 672 345 Q 664 345 664 353 L 664 491 Q 664 499 656 499 L 487 499" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="fleet" data-edge-key="51" data-edge-id="struct-boot-hosts-contexts-api-fleet" data-composition-points="841,340;826,340;826,485;811,485" d="M 841 340 L 833.5 340 Q 826 340 826 347.5 L 826 477.5 Q 826 485 818.5 485 L 811 485" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="edge" data-edge-key="52" data-edge-id="struct-boot-hosts-contexts-api-edge" data-composition-points="973,337.5;988,337.5;988,485;1003,485" d="M 973 337.5 L 980.5 337.5 Q 988 337.5 988 345 L 988 477.5 Q 988 485 995.5 485 L 1003 485" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="api" data-edge-to="operations" data-edge-key="53" data-edge-id="struct-boot-hosts-contexts-api-operations" data-composition-points="973,345;1150,345;1150,492;1327,492" d="M 973 345 L 1142 345 Q 1150 345 1150 353 L 1150 484 Q 1150 492 1158 492 L 1327 492" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="gateway" data-edge-to="web" data-edge-key="54" data-edge-id="struct-gateway-routes-web-gateway-web" data-composition-points="841,226.5;691,226.5;691,96;541,96" d="M 841 226.5 L 699 226.5 Q 691 226.5 691 218.5 L 691 104 Q 691 96 683 96 L 541 96" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="node-agent" data-edge-to="runtime" data-edge-key="55" data-edge-id="struct-agent-manages-runtime-node-agent-runtime" data-composition-points="811,740;907,740;907,726;1003,726" d="M 811 740 L 900 740 Q 907 740 907 733 L 907 733 Q 907 726 914 726 L 1003 726" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="node-agent" data-edge-to="gateway" data-edge-key="56" data-edge-id="struct-agent-configures-gateway-node-agent-gateway" data-composition-points="811,722;826,722;826,249;841,249" d="M 811 722 L 818.5 722 Q 826 722 826 714.5 L 826 256.5 Q 826 249 833.5 249 L 841 249" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="runtime" data-edge-to="box-provider" data-edge-key="57" data-edge-id="struct-runtime-drives-box-provider-runtime-box-provider" data-composition-points="1003,746;1003,796.5;541,796.5;541,847" d="M 1003 746 L 1003 788.5 Q 1003 796.5 995 796.5 L 549 796.5 Q 541 796.5 541 804.5 L 541 847" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="box-provider" data-edge-to="workload-unit" data-edge-key="58" data-edge-id="struct-box-provider-hosts-workloads-box-provider-workload-unit" data-composition-points="475,825;757,796;1555,796;1339,825" d="M 475 825 L 749.041969106096 796.8183790635575 Q 757 796 765 796 L 1547 796 Q 1555 796 1547.0711418484855 797.0645226221941 L 1339 825" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="workload-unit" data-edge-to="power" data-edge-key="59" data-edge-id="struct-workload-runs-power-workload-unit-power" data-composition-points="1273,863.5;1123,863.5;1123,849;973,849" d="M 1273 863.5 L 1130.25 863.5 Q 1123 863.5 1123 856.25 L 1123 856.25 Q 1123 849 1115.75 849 L 973 849" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="cpu-compute" data-edge-to="box-provider" data-edge-key="60" data-edge-id="struct-cpu-supplies-box-provider-cpu-compute-box-provider" data-composition-points="841,994;691,994;691,865;541,865" d="M 841 994 L 699 994 Q 691 994 691 986 L 691 873 Q 691 865 683 865 L 541 865" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="gpu-compute" data-edge-to="box-provider" data-edge-key="61" data-edge-id="struct-gpu-supplies-box-provider-gpu-compute-box-provider" data-composition-points="1381,1002;1381,936.5;541,936.5;541,871" d="M 1381 1002 L 1381 944.5 Q 1381 936.5 1373 936.5 L 549 936.5 Q 541 936.5 541 928.5 L 541 871" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
         <g id="node-clients" data-node-id="clients" data-node-label="Clients &amp; SDKs" tabindex="0" role="button" aria-label="Focus Clients &amp; SDKs, Request origin, 01 · Intent · Experience &amp; Sources" aria-pressed="false" data-node-kind="external" data-node-sublabel="Request origin" data-node-tag="External · External" data-node-context="01 · Intent · Experience &amp; Sources">
@@ -4245,8 +4007,8 @@
         <text data-detail="fine" x="186" y="126" class="t-external" font-size="7" text-anchor="middle">External · External</text>
         </g>
 
-        <g id="node-web" data-node-id="web" data-node-label="Web Console" tabindex="0" role="button" aria-label="Focus Web Console, Management surface, 01 · Intent · Experience &amp; Sources" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Management surface" data-node-tag="F0 · E0 · Verified" data-node-context="01 · Intent · Experience &amp; Sources">
-          <title>Web Console · Management surface · 01 · Intent · Experience &amp; Sources · F0 · E0 · Verified</title>
+        <g id="node-web" data-node-id="web" data-node-label="Web Console" tabindex="0" role="button" aria-label="Focus Web Console, Management surface, 01 · Intent · Experience &amp; Sources" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Management surface" data-node-tag="F0 · Verified" data-node-context="01 · Intent · Experience &amp; Sources">
+          <title>Web Console · Management surface · 01 · Intent · Experience &amp; Sources · F0 · Verified</title>
           <rect x="409" y="72" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="409" y="72" width="132" height="62" rx="6" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(415 78) scale(0.6875)">
@@ -4257,7 +4019,7 @@
           </g>
           <text data-detail-anchor x="475" y="101" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Web Console</text>
         <text data-detail="context" x="475" y="117" class="t-muted" font-size="9" text-anchor="middle">Management surface</text>
-        <text data-detail="fine" x="475" y="126" class="t-frontend" font-size="7" text-anchor="middle">F0 · E0 · Verified</text>
+        <text data-detail="fine" x="475" y="126" class="t-frontend" font-size="7" text-anchor="middle">F0 · Verified</text>
         </g>
 
         <g id="node-a3s-box" data-node-id="a3s-box" data-node-label="A3S Box (Local)" tabindex="0" role="button" aria-label="Focus A3S Box (Local), Local OCI workload host, 01 · Intent · Experience &amp; Sources" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Local OCI workload host" data-node-tag="Local host · Verified" data-node-context="01 · Intent · Experience &amp; Sources">
@@ -4373,8 +4135,8 @@
         <text data-detail="fine" x="1555" y="437" class="t-backend" font-size="7" text-anchor="middle">G0 · In progress</text>
         </g>
 
-        <g id="node-workloads" data-node-id="workloads" data-node-label="Workloads" tabindex="0" role="button" aria-label="Focus Workloads, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="D0 · E0 · Verified" data-node-context="03 · Control plane · Cloud Control Domains">
-          <title>Workloads · Bounded context · 03 · Control plane · Cloud Control Domains · D0 · E0 · Verified</title>
+        <g id="node-workloads" data-node-id="workloads" data-node-label="Workloads" tabindex="0" role="button" aria-label="Focus Workloads, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="D0 · E0 · Historical" data-node-context="03 · Control plane · Cloud Control Domains">
+          <title>Workloads · Bounded context · 03 · Control plane · Cloud Control Domains · D0 · E0 · Historical</title>
           <rect x="355" y="468" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="355" y="468" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:8" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(361 474) scale(0.6875)">
@@ -4382,11 +4144,11 @@
           </g>
           <text data-detail-anchor x="421" y="497" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Workloads</text>
         <text data-detail="context" x="421" y="513" class="t-muted" font-size="9" text-anchor="middle">Bounded context</text>
-        <text data-detail="fine" x="421" y="522" class="t-backend" font-size="7" text-anchor="middle">D0 · E0 · Verified</text>
+        <text data-detail="fine" x="421" y="522" class="t-backend" font-size="7" text-anchor="middle">D0 · E0 · Historical</text>
         </g>
 
-        <g id="node-fleet" data-node-id="fleet" data-node-label="Fleet" tabindex="0" role="button" aria-label="Focus Fleet, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="N0 · E0 · Verified" data-node-context="03 · Control plane · Cloud Control Domains">
-          <title>Fleet · Bounded context · 03 · Control plane · Cloud Control Domains · N0 · E0 · Verified</title>
+        <g id="node-fleet" data-node-id="fleet" data-node-label="Fleet" tabindex="0" role="button" aria-label="Focus Fleet, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="N0 · E0 · Historical" data-node-context="03 · Control plane · Cloud Control Domains">
+          <title>Fleet · Bounded context · 03 · Control plane · Cloud Control Domains · N0 · E0 · Historical</title>
           <rect x="679" y="468" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="679" y="468" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(685 474) scale(0.6875)">
@@ -4394,11 +4156,11 @@
           </g>
           <text data-detail-anchor x="745" y="497" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Fleet</text>
         <text data-detail="context" x="745" y="513" class="t-muted" font-size="9" text-anchor="middle">Bounded context</text>
-        <text data-detail="fine" x="745" y="522" class="t-backend" font-size="7" text-anchor="middle">N0 · E0 · Verified</text>
+        <text data-detail="fine" x="745" y="522" class="t-backend" font-size="7" text-anchor="middle">N0 · E0 · Historical</text>
         </g>
 
-        <g id="node-edge" data-node-id="edge" data-node-label="Edge" tabindex="0" role="button" aria-label="Focus Edge, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="E0 · Verified" data-node-context="03 · Control plane · Cloud Control Domains">
-          <title>Edge · Bounded context · 03 · Control plane · Cloud Control Domains · E0 · Verified</title>
+        <g id="node-edge" data-node-id="edge" data-node-label="Edge" tabindex="0" role="button" aria-label="Focus Edge, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="E0 · Historical" data-node-context="03 · Control plane · Cloud Control Domains">
+          <title>Edge · Bounded context · 03 · Control plane · Cloud Control Domains · E0 · Historical</title>
           <rect x="1003" y="468" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="1003" y="468" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1009 474) scale(0.6875)">
@@ -4406,11 +4168,11 @@
           </g>
           <text data-detail-anchor x="1069" y="497" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Edge</text>
         <text data-detail="context" x="1069" y="513" class="t-muted" font-size="9" text-anchor="middle">Bounded context</text>
-        <text data-detail="fine" x="1069" y="522" class="t-backend" font-size="7" text-anchor="middle">E0 · Verified</text>
+        <text data-detail="fine" x="1069" y="522" class="t-backend" font-size="7" text-anchor="middle">E0 · Historical</text>
         </g>
 
-        <g id="node-operations" data-node-id="operations" data-node-label="Operations" tabindex="0" role="button" aria-label="Focus Operations, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="F0 · E0 · Verified" data-node-context="03 · Control plane · Cloud Control Domains">
-          <title>Operations · Bounded context · 03 · Control plane · Cloud Control Domains · F0 · E0 · Verified</title>
+        <g id="node-operations" data-node-id="operations" data-node-label="Operations" tabindex="0" role="button" aria-label="Focus Operations, Bounded context, 03 · Control plane · Cloud Control Domains" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Bounded context" data-node-tag="F0 · Verified" data-node-context="03 · Control plane · Cloud Control Domains">
+          <title>Operations · Bounded context · 03 · Control plane · Cloud Control Domains · F0 · Verified</title>
           <rect x="1327" y="468" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="1327" y="468" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1333 474) scale(0.6875)">
@@ -4418,7 +4180,7 @@
           </g>
           <text data-detail-anchor x="1393" y="497" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Operations</text>
         <text data-detail="context" x="1393" y="513" class="t-muted" font-size="9" text-anchor="middle">Bounded context</text>
-        <text data-detail="fine" x="1393" y="522" class="t-backend" font-size="7" text-anchor="middle">F0 · E0 · Verified</text>
+        <text data-detail="fine" x="1393" y="522" class="t-backend" font-size="7" text-anchor="middle">F0 · Verified</text>
         </g>
 
         <g id="node-postgres" data-node-id="postgres" data-node-label="PostgreSQL" tabindex="0" role="button" aria-label="Focus PostgreSQL, Authoritative state, 04 · Middleware · Platform Middleware &amp; State" aria-pressed="false" data-node-kind="database" data-node-sublabel="Authoritative state" data-node-tag="F0 · Verified" data-node-context="04 · Middleware · Platform Middleware &amp; State">
@@ -4434,8 +4196,8 @@
         <text data-detail="fine" x="259" y="627" class="t-database" font-size="7" text-anchor="middle">F0 · Verified</text>
         </g>
 
-        <g id="node-flow" data-node-id="flow" data-node-label="A3S Flow" tabindex="0" role="button" aria-label="Focus A3S Flow, Operation history, 04 · Middleware · Platform Middleware &amp; State" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Operation history" data-node-tag="F0 · E0 · Verified" data-node-context="04 · Middleware · Platform Middleware &amp; State">
-          <title>A3S Flow · Operation history · 04 · Middleware · Platform Middleware &amp; State · F0 · E0 · Verified</title>
+        <g id="node-flow" data-node-id="flow" data-node-label="A3S Flow" tabindex="0" role="button" aria-label="Focus A3S Flow, Operation history, 04 · Middleware · Platform Middleware &amp; State" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Operation history" data-node-tag="F0 · Verified" data-node-context="04 · Middleware · Platform Middleware &amp; State">
+          <title>A3S Flow · Operation history · 04 · Middleware · Platform Middleware &amp; State · F0 · Verified</title>
           <rect x="625" y="573" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="625" y="573" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(631 579) scale(0.6875)">
@@ -4443,7 +4205,7 @@
           </g>
           <text data-detail-anchor x="691" y="602" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Flow</text>
         <text data-detail="context" x="691" y="618" class="t-muted" font-size="9" text-anchor="middle">Operation history</text>
-        <text data-detail="fine" x="691" y="627" class="t-backend" font-size="7" text-anchor="middle">F0 · E0 · Verified</text>
+        <text data-detail="fine" x="691" y="627" class="t-backend" font-size="7" text-anchor="middle">F0 · Verified</text>
         </g>
 
         <g id="node-event" data-node-id="event" data-node-label="A3S Event" tabindex="0" role="button" aria-label="Focus A3S Event, Committed facts, 04 · Middleware · Platform Middleware &amp; State" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="Committed facts" data-node-tag="F0 · Verified" data-node-context="04 · Middleware · Platform Middleware &amp; State">
@@ -4461,8 +4223,8 @@
         <text data-detail="fine" x="1123" y="627" class="t-messagebus" font-size="7" text-anchor="middle">F0 · Verified</text>
         </g>
 
-        <g id="node-object-storage" data-node-id="object-storage" data-node-label="Artifact &amp; Log Store" tabindex="0" role="button" aria-label="Focus Artifact &amp; Log Store, Content-addressed bytes, 04 · Middleware · Platform Middleware &amp; State" aria-pressed="false" data-node-kind="database" data-node-sublabel="Content-addressed bytes" data-node-tag="E0 · G0 · Verified" data-node-context="04 · Middleware · Platform Middleware &amp; State">
-          <title>Artifact &amp; Log Store · Content-addressed bytes · 04 · Middleware · Platform Middleware &amp; State · E0 · G0 · Verified</title>
+        <g id="node-object-storage" data-node-id="object-storage" data-node-label="Artifact &amp; Log Store" tabindex="0" role="button" aria-label="Focus Artifact &amp; Log Store, Content-addressed bytes, 04 · Middleware · Platform Middleware &amp; State" aria-pressed="false" data-node-kind="database" data-node-sublabel="Content-addressed bytes" data-node-tag="G0 · In progress" data-node-context="04 · Middleware · Platform Middleware &amp; State">
+          <title>Artifact &amp; Log Store · Content-addressed bytes · 04 · Middleware · Platform Middleware &amp; State · G0 · In progress</title>
           <rect x="1489" y="573" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="1489" y="573" width="132" height="62" rx="6" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1495 579) scale(0.6875)">
@@ -4471,11 +4233,11 @@
           </g>
           <text data-detail-anchor x="1555" y="602" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Artifact &amp; Log Store</text>
         <text data-detail="context" x="1555" y="618" class="t-muted" font-size="9" text-anchor="middle">Content-addressed bytes</text>
-        <text data-detail="fine" x="1555" y="627" class="t-database" font-size="7" text-anchor="middle">E0 · G0 · Verified</text>
+        <text data-detail="fine" x="1555" y="627" class="t-database" font-size="7" text-anchor="middle">G0 · In progress</text>
         </g>
 
-        <g id="node-node-agent" data-node-id="node-agent" data-node-label="Node Agent" tabindex="0" role="button" aria-label="Focus Node Agent, Outbound control, 05 · Node execution · Managed Node Plane" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Outbound control" data-node-tag="N0 · E0 · Verified" data-node-context="05 · Node execution · Managed Node Plane">
-          <title>Node Agent · Outbound control · 05 · Node execution · Managed Node Plane · N0 · E0 · Verified</title>
+        <g id="node-node-agent" data-node-id="node-agent" data-node-label="Node Agent" tabindex="0" role="button" aria-label="Focus Node Agent, Outbound control, 05 · Node execution · Managed Node Plane" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Outbound control" data-node-tag="N0 · E0 · Historical" data-node-context="05 · Node execution · Managed Node Plane">
+          <title>Node Agent · Outbound control · 05 · Node execution · Managed Node Plane · N0 · E0 · Historical</title>
           <rect x="679" y="700" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="679" y="700" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(685 706) scale(0.6875)">
@@ -4483,11 +4245,11 @@
           </g>
           <text data-detail-anchor x="745" y="729" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Node Agent</text>
         <text data-detail="context" x="745" y="745" class="t-muted" font-size="9" text-anchor="middle">Outbound control</text>
-        <text data-detail="fine" x="745" y="754" class="t-backend" font-size="7" text-anchor="middle">N0 · E0 · Verified</text>
+        <text data-detail="fine" x="745" y="754" class="t-backend" font-size="7" text-anchor="middle">N0 · E0 · Historical</text>
         </g>
 
-        <g id="node-runtime" data-node-id="runtime" data-node-label="A3S Runtime" tabindex="0" role="button" aria-label="Focus A3S Runtime, Provider-neutral execution, 05 · Node execution · Managed Node Plane" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Provider-neutral execution" data-node-tag="R0 · Verified" data-node-context="05 · Node execution · Managed Node Plane">
-          <title>A3S Runtime · Provider-neutral execution · 05 · Node execution · Managed Node Plane · R0 · Verified</title>
+        <g id="node-runtime" data-node-id="runtime" data-node-label="A3S Runtime" tabindex="0" role="button" aria-label="Focus A3S Runtime, Provider-neutral execution, 05 · Node execution · Managed Node Plane" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Provider-neutral execution" data-node-tag="R0 · Historical" data-node-context="05 · Node execution · Managed Node Plane">
+          <title>A3S Runtime · Provider-neutral execution · 05 · Node execution · Managed Node Plane · R0 · Historical</title>
           <rect x="1003" y="700" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="1003" y="700" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1009 706) scale(0.6875)">
@@ -4495,11 +4257,11 @@
           </g>
           <text data-detail-anchor x="1069" y="729" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Runtime</text>
         <text data-detail="context" x="1069" y="745" class="t-muted" font-size="9" text-anchor="middle">Provider-neutral execution</text>
-        <text data-detail="fine" x="1069" y="754" class="t-backend" font-size="7" text-anchor="middle">R0 · Verified</text>
+        <text data-detail="fine" x="1069" y="754" class="t-backend" font-size="7" text-anchor="middle">R0 · Historical</text>
         </g>
 
-        <g id="node-gateway" data-node-id="gateway" data-node-label="A3S Gateway" tabindex="0" role="button" aria-label="Focus A3S Gateway, Public same-origin boundary, 02 · Gateway boundary · Public Access &amp; Delivery" aria-pressed="false" data-node-kind="security" data-node-sublabel="Public same-origin boundary" data-node-tag="E0 · Verified" data-node-context="02 · Gateway boundary · Public Access &amp; Delivery">
-          <title>A3S Gateway · Public same-origin boundary · 02 · Gateway boundary · Public Access &amp; Delivery · E0 · Verified</title>
+        <g id="node-gateway" data-node-id="gateway" data-node-label="A3S Gateway" tabindex="0" role="button" aria-label="Focus A3S Gateway, Public same-origin boundary, 02 · Gateway boundary · Public Access &amp; Delivery" aria-pressed="false" data-node-kind="security" data-node-sublabel="Public same-origin boundary" data-node-tag="E0 · Historical" data-node-context="02 · Gateway boundary · Public Access &amp; Delivery">
+          <title>A3S Gateway · Public same-origin boundary · 02 · Gateway boundary · Public Access &amp; Delivery · E0 · Historical</title>
           <rect x="841" y="203" width="132" height="62" rx="6" class="c-mask"/>
           <rect x="841" y="203" width="132" height="62" rx="6" class="c-security" data-animate="node" style="--step:2" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(847 209) scale(0.6875)">
@@ -4508,55 +4270,43 @@
           </g>
           <text data-detail-anchor x="907" y="232" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Gateway</text>
         <text data-detail="context" x="907" y="248" class="t-muted" font-size="9" text-anchor="middle">Public same-origin boundary</text>
-        <text data-detail="fine" x="907" y="257" class="t-security" font-size="7" text-anchor="middle">E0 · Verified</text>
+        <text data-detail="fine" x="907" y="257" class="t-security" font-size="7" text-anchor="middle">E0 · Historical</text>
         </g>
 
-        <g id="node-docker-buildkit" data-node-id="docker-buildkit" data-node-label="Docker · BuildKit" tabindex="0" role="button" aria-label="Focus Docker · BuildKit, Execution providers, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Execution providers" data-node-tag="R0 · G0 · In progress" data-node-context="06 · Providers · Provider &amp; Workload Layer">
-          <title>Docker · BuildKit · Execution providers · 06 · Providers · Provider &amp; Workload Layer · R0 · G0 · In progress</title>
-          <rect x="193" y="825" width="132" height="62" rx="6" class="c-mask"/>
-          <rect x="193" y="825" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(199 831) scale(0.6875)">
+        <g id="node-box-provider" data-node-id="box-provider" data-node-label="A3S Box Provider" tabindex="0" role="button" aria-label="Focus A3S Box Provider, Sole execution &amp; build provider, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Sole execution &amp; build provider" data-node-tag="BX0 · In progress" data-node-context="06 · Providers · Provider &amp; Workload Layer">
+          <title>A3S Box Provider · Sole execution &amp; build provider · 06 · Providers · Provider &amp; Workload Layer · BX0 · In progress</title>
+          <rect x="409" y="825" width="132" height="62" rx="6" class="c-mask"/>
+          <rect x="409" y="825" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(415 831) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="259" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Docker · BuildKit</text>
-        <text data-detail="context" x="259" y="870" class="t-muted" font-size="9" text-anchor="middle">Execution providers</text>
-        <text data-detail="fine" x="259" y="879" class="t-backend" font-size="7" text-anchor="middle">R0 · G0 · In progress</text>
+          <text data-detail-anchor x="475" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Box Provider</text>
+        <text data-detail="context" x="475" y="870" class="t-muted" font-size="9" text-anchor="middle">Sole execution &amp; build provider</text>
+        <text data-detail="fine" x="475" y="879" class="t-backend" font-size="7" text-anchor="middle">BX0 · In progress</text>
         </g>
 
-        <g id="node-box-provider" data-node-id="box-provider" data-node-label="A3S Box Provider" tabindex="0" role="button" aria-label="Focus A3S Box Provider, Cloud workload carrier, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Cloud workload carrier" data-node-tag="Provider conformance · Planned" data-node-context="06 · Providers · Provider &amp; Workload Layer">
-          <title>A3S Box Provider · Cloud workload carrier · 06 · Providers · Provider &amp; Workload Layer · Provider conformance · Planned</title>
-          <rect x="625" y="825" width="132" height="62" rx="6" class="c-mask"/>
-          <rect x="625" y="825" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(631 831) scale(0.6875)">
+        <g id="node-power" data-node-id="power" data-node-label="A3S Power" tabindex="0" role="button" aria-label="Focus A3S Power, TEE inference backend, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="backend" data-node-sublabel="TEE inference backend" data-node-tag="PW0 · I0 · Planned" data-node-context="06 · Providers · Provider &amp; Workload Layer">
+          <title>A3S Power · TEE inference backend · 06 · Providers · Provider &amp; Workload Layer · PW0 · I0 · Planned</title>
+          <rect x="841" y="825" width="132" height="62" rx="6" class="c-mask"/>
+          <rect x="841" y="825" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:11" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(847 831) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="691" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Box Provider</text>
-        <text data-detail="context" x="691" y="870" class="t-muted" font-size="9" text-anchor="middle">Cloud workload carrier</text>
-        <text data-detail="fine" x="691" y="879" class="t-backend" font-size="7" text-anchor="middle">Provider conformance · Planned</text>
+          <text data-detail-anchor x="907" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Power</text>
+        <text data-detail="context" x="907" y="870" class="t-muted" font-size="9" text-anchor="middle">TEE inference backend</text>
+        <text data-detail="fine" x="907" y="879" class="t-backend" font-size="7" text-anchor="middle">PW0 · I0 · Planned</text>
         </g>
 
-        <g id="node-power" data-node-id="power" data-node-label="A3S Power" tabindex="0" role="button" aria-label="Focus A3S Power, TEE inference backend, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="backend" data-node-sublabel="TEE inference backend" data-node-tag="I0.5 conformance · Planned" data-node-context="06 · Providers · Provider &amp; Workload Layer">
-          <title>A3S Power · TEE inference backend · 06 · Providers · Provider &amp; Workload Layer · I0.5 conformance · Planned</title>
-          <rect x="1057" y="825" width="132" height="62" rx="6" class="c-mask"/>
-          <rect x="1057" y="825" width="132" height="62" rx="6" class="c-backend" data-animate="node" style="--step:11" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1063 831) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="1123" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">A3S Power</text>
-        <text data-detail="context" x="1123" y="870" class="t-muted" font-size="9" text-anchor="middle">TEE inference backend</text>
-        <text data-detail="fine" x="1123" y="879" class="t-backend" font-size="7" text-anchor="middle">I0.5 conformance · Planned</text>
-        </g>
-
-        <g id="node-workload-unit" data-node-id="workload-unit" data-node-label="Cloud Workload Units" tabindex="0" role="button" aria-label="Focus Cloud Workload Units, Converged resources, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Converged resources" data-node-tag="D0 · E0 · Verified" data-node-context="06 · Providers · Provider &amp; Workload Layer">
-          <title>Cloud Workload Units · Converged resources · 06 · Providers · Provider &amp; Workload Layer · D0 · E0 · Verified</title>
-          <rect x="1489" y="825" width="132" height="62" rx="6" class="c-mask"/>
-          <rect x="1489" y="825" width="132" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1495 831) scale(0.6875)">
+        <g id="node-workload-unit" data-node-id="workload-unit" data-node-label="Cloud Workload Units" tabindex="0" role="button" aria-label="Focus Cloud Workload Units, Converged resources, 06 · Providers · Provider &amp; Workload Layer" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Converged resources" data-node-tag="D0 · E0 · Historical" data-node-context="06 · Providers · Provider &amp; Workload Layer">
+          <title>Cloud Workload Units · Converged resources · 06 · Providers · Provider &amp; Workload Layer · D0 · E0 · Historical</title>
+          <rect x="1273" y="825" width="132" height="62" rx="6" class="c-mask"/>
+          <rect x="1273" y="825" width="132" height="62" rx="6" class="c-cloud" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1279 831) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-detail-anchor x="1555" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cloud Workload Units</text>
-        <text data-detail="context" x="1555" y="870" class="t-muted" font-size="9" text-anchor="middle">Converged resources</text>
-        <text data-detail="fine" x="1555" y="879" class="t-cloud" font-size="7" text-anchor="middle">D0 · E0 · Verified</text>
+          <text data-detail-anchor x="1339" y="854" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cloud Workload Units</text>
+        <text data-detail="context" x="1339" y="870" class="t-muted" font-size="9" text-anchor="middle">Converged resources</text>
+        <text data-detail="fine" x="1339" y="879" class="t-cloud" font-size="7" text-anchor="middle">D0 · E0 · Historical</text>
         </g>
 
         <g id="node-registry" data-node-id="registry" data-node-label="OCI Registry" tabindex="0" role="button" aria-label="Focus OCI Registry, Published artifacts, 07 · Physical resources · Infrastructure &amp; Hardware" aria-pressed="false" data-node-kind="database" data-node-sublabel="Published artifacts" data-node-tag="G0 · In progress" data-node-context="07 · Physical resources · Infrastructure &amp; Hardware">
@@ -4599,8 +4349,6 @@
         </g>
 
         <!-- Connection labels -->
-
-
 
 
 
@@ -4782,31 +4530,12 @@
               <span id="focus-tag" data-passport="tag" hidden></span>
               <code id="focus-id" data-passport="id"></code>
             </div>
-            <div class="semantic-passport-evidence" id="focus-evidence" hidden aria-label="Verified source evidence">
-              <div class="semantic-passport-evidence-head">
-                <span class="semantic-passport-evidence-status">Verified source</span>
-                <a class="semantic-passport-repository" id="focus-repository" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"></a>
-              </div>
-              <div class="semantic-passport-evidence-links" id="focus-evidence-links"></div>
-            </div>
             <span class="relationship-lens-summary" id="focus-summary" aria-live="polite"></span>
-            <div class="semantic-passport-reach" id="focus-reach" hidden>
-              <span class="semantic-passport-reach-label">Authored reach</span>
-              <div class="semantic-passport-reach-actions" role="group" aria-label="Trace authored reachability">
-                <button id="btn-reach-upstream" type="button" aria-label="Trace upstream authored reachability" aria-pressed="false">
-                  <span>Upstream</span><strong id="focus-reach-upstream-count">0</strong>
-                </button>
-                <button id="btn-reach-downstream" type="button" aria-label="Trace downstream authored reachability" aria-pressed="false">
-                  <span>Downstream</span><strong id="focus-reach-downstream-count">0</strong>
-                </button>
-              </div>
-              <small class="semantic-passport-reach-status" id="focus-reach-status" hidden aria-live="polite"></small>
-            </div>
           </div>
           <div class="relationship-lens-actions">
-            <button id="btn-focus-clear" type="button" aria-label="Close semantic passport" title="Close">&#215;</button>
             <button id="btn-focus-copy" type="button" aria-label="Copy link to focused node">Copy link</button>
             <button id="btn-focus-relations" type="button" aria-label="Show connected relationships" aria-expanded="false" aria-controls="relationship-lens-list">Relations</button>
+            <button id="btn-focus-clear" type="button" aria-label="Clear focused node">Clear</button>
           </div>
         </div>
         <div class="relationship-lens-list" id="relationship-lens-list" aria-label="Connected relationships"></div>
@@ -5180,90 +4909,6 @@
             edgeMatches.reduce(function (count, matches) { return count + matches.length; }, 0);
       }
 
-      function applyReachSnapshot(clone, snapshot) {
-        if (!snapshot || (snapshot.direction !== 'upstream' && snapshot.direction !== 'downstream') ||
-            !snapshot.origin || typeof snapshot.origin.id !== 'string' || !snapshot.origin.id ||
-            typeof snapshot.origin.label !== 'string' || !snapshot.origin.label.trim() ||
-            !Array.isArray(snapshot.nodeIds) || snapshot.nodeIds.length < 2 ||
-            !Array.isArray(snapshot.edges) || !snapshot.edges.length ||
-            !snapshot.depths || typeof snapshot.depths !== 'object' ||
-            !Number.isInteger(snapshot.maxDepth) || snapshot.maxDepth < 1 ||
-            snapshot.nodeIds[0] !== snapshot.origin.id) return false;
-
-        clone.removeAttribute('data-animation');
-        Array.prototype.forEach.call(clone.querySelectorAll('[data-animate]'), function (element) {
-          element.removeAttribute('data-animate');
-          element.style.removeProperty('--step');
-        });
-
-        var cloneNodes = Array.prototype.slice.call(clone.querySelectorAll('[data-node-id]'));
-        var cloneEdges = Array.prototype.slice.call(clone.querySelectorAll('[data-edge-key]'));
-        var nodeIds = Object.create(null);
-        var edgeKeys = Object.create(null);
-        var nodeMatches = [];
-        var edgeMatches = [];
-        var measuredMaxDepth = 0;
-
-        for (var nodeIndex = 0; nodeIndex < snapshot.nodeIds.length; nodeIndex++) {
-          var nodeId = snapshot.nodeIds[nodeIndex];
-          var depth = snapshot.depths[nodeId];
-          if (typeof nodeId !== 'string' || !nodeId || nodeIds[nodeId] ||
-              !Number.isInteger(depth) || depth < 0 || depth > snapshot.maxDepth ||
-              (nodeId === snapshot.origin.id ? depth !== 0 : depth < 1)) return false;
-          var matchedNodes = cloneNodes.filter(function (candidate) {
-            return candidate.getAttribute('data-node-id') === nodeId;
-          });
-          if (matchedNodes.length !== 1) return false;
-          nodeIds[nodeId] = true;
-          measuredMaxDepth = Math.max(measuredMaxDepth, depth);
-          nodeMatches.push({ elements: matchedNodes, id: nodeId, depth: depth });
-        }
-        if (measuredMaxDepth !== snapshot.maxDepth) return false;
-
-        for (var edgeIndex = 0; edgeIndex < snapshot.edges.length; edgeIndex++) {
-          var edge = snapshot.edges[edgeIndex];
-          if (!edge || typeof edge.key !== 'string' || !edge.key || edgeKeys[edge.key] ||
-              !nodeIds[edge.from] || !nodeIds[edge.to] ||
-              !Number.isInteger(edge.depth) || edge.depth < 1 || edge.depth > snapshot.maxDepth ||
-              edge.depth !== Math.max(snapshot.depths[edge.from], snapshot.depths[edge.to])) return false;
-          var matchedEdges = cloneEdges.filter(function (candidate) {
-            return candidate.getAttribute('data-edge-key') === edge.key;
-          });
-          var drawableMatches = matchedEdges.filter(hasDrawableGeometry);
-          if (!matchedEdges.length || drawableMatches.length !== 1 || !matchedEdges.every(function (candidate) {
-            return candidate.getAttribute('data-edge-from') === edge.from &&
-              candidate.getAttribute('data-edge-to') === edge.to &&
-              (candidate.getAttribute('data-edge-id') || '') === (edge.id || '');
-          })) return false;
-          edgeKeys[edge.key] = true;
-          edgeMatches.push({ elements: matchedEdges, depth: edge.depth });
-        }
-
-        clone.setAttribute('data-share-reach', snapshot.direction);
-        nodeMatches.forEach(function (match) {
-          match.elements.forEach(function (element) {
-            element.setAttribute('data-share-reach-match', '');
-            element.setAttribute('data-share-reach-depth', String(match.depth));
-            if (match.id === snapshot.origin.id) element.setAttribute('data-share-reach-origin', '');
-          });
-        });
-        edgeMatches.forEach(function (match) {
-          match.elements.forEach(function (element) {
-            element.setAttribute('data-share-reach-match', '');
-            element.setAttribute('data-share-reach-depth', String(match.depth));
-          });
-        });
-
-        return clone.getAttribute('data-share-reach') === snapshot.direction &&
-          !clone.hasAttribute('data-animation') &&
-          !clone.hasAttribute('data-reach-active') &&
-          clone.querySelectorAll('[data-animate], [data-reach-match], [data-reach-origin], [data-reach-depth]').length === 0 &&
-          clone.querySelectorAll('[data-share-reach-origin]').length === 1 &&
-          clone.querySelectorAll('[data-share-reach-match]').length ===
-            nodeMatches.reduce(function (count, match) { return count + match.elements.length; }, 0) +
-            edgeMatches.reduce(function (count, match) { return count + match.elements.length; }, 0);
-      }
-
       function serializeSvg(scale, opts) {
         // scale: integer multiplier for intrinsic SVG pixel dimensions used by
         // the raster path. Defaults to 1 (natural size) for SVG download.
@@ -5278,7 +4923,6 @@
         clone.style.removeProperty('transform');
         clone.removeAttribute('data-view-scale');
         clone.removeAttribute('data-focus-active');
-        clone.removeAttribute('data-reach-active');
         clone.removeAttribute('data-lens-active');
         clone.removeAttribute('data-lens-flow-count');
         clone.removeAttribute('data-lens-flow-density');
@@ -5291,7 +4935,6 @@
         clone.removeAttribute('data-route-active');
         clone.removeAttribute('data-route-journey');
         clone.removeAttribute('data-share-route');
-        clone.removeAttribute('data-share-reach');
         clone.removeAttribute('data-story-active');
         clone.removeAttribute('data-story-playing');
         clone.removeAttribute('data-story-beat');
@@ -5351,16 +4994,6 @@
         Array.prototype.forEach.call(clone.querySelectorAll('[data-relationship-hit-overlay]'), function (el) {
           el.remove();
         });
-        Array.prototype.forEach.call(clone.querySelectorAll('[data-source-evidence-beacon]'), function (el) {
-          el.remove();
-        });
-        Array.prototype.forEach.call(clone.querySelectorAll('[data-source-evidence-count]'), function (el) {
-          var originalLabel = el.getAttribute('data-source-evidence-original-label');
-          if (originalLabel == null || originalLabel === '') el.removeAttribute('aria-label');
-          else el.setAttribute('aria-label', originalLabel);
-          el.removeAttribute('data-source-evidence-count');
-          el.removeAttribute('data-source-evidence-original-label');
-        });
         Array.prototype.forEach.call(clone.querySelectorAll('[data-story-step], [data-story-beat-state], [data-story-beat-step]'), function (el) {
           el.removeAttribute('data-story-step');
           el.removeAttribute('data-story-beat-state');
@@ -5370,11 +5003,6 @@
         Array.prototype.forEach.call(clone.querySelectorAll('[data-focus-match], [data-focus-selected]'), function (el) {
           el.removeAttribute('data-focus-match');
           el.removeAttribute('data-focus-selected');
-        });
-        Array.prototype.forEach.call(clone.querySelectorAll('[data-reach-match], [data-reach-origin], [data-reach-depth]'), function (el) {
-          el.removeAttribute('data-reach-match');
-          el.removeAttribute('data-reach-origin');
-          el.removeAttribute('data-reach-depth');
         });
         Array.prototype.forEach.call(clone.querySelectorAll('[data-lens-match], [data-lens-selected], [data-lens-peer]'), function (el) {
           el.removeAttribute('data-lens-match');
@@ -5413,11 +5041,6 @@
           el.removeAttribute('data-share-route-end');
           el.removeAttribute('data-share-route-middle');
         });
-        Array.prototype.forEach.call(clone.querySelectorAll('[data-share-reach-match], [data-share-reach-origin], [data-share-reach-depth]'), function (el) {
-          el.removeAttribute('data-share-reach-match');
-          el.removeAttribute('data-share-reach-origin');
-          el.removeAttribute('data-share-reach-depth');
-        });
         Array.prototype.forEach.call(clone.querySelectorAll('[data-detail], [data-detail-anchor]'), function (el) {
           el.removeAttribute('data-detail');
           el.removeAttribute('data-detail-anchor');
@@ -5427,7 +5050,6 @@
         });
         var canonicalStateClean = !clone.hasAttribute('data-view-scale') &&
           !clone.hasAttribute('data-focus-active') &&
-          !clone.hasAttribute('data-reach-active') &&
           !clone.hasAttribute('data-lens-active') &&
           !clone.hasAttribute('data-lens-flow-count') &&
           !clone.hasAttribute('data-lens-flow-density') &&
@@ -5439,7 +5061,6 @@
           !clone.hasAttribute('data-route-active') &&
           !clone.hasAttribute('data-route-journey') &&
           !clone.hasAttribute('data-share-route') &&
-          !clone.hasAttribute('data-share-reach') &&
           !clone.hasAttribute('data-story-active') &&
           !clone.hasAttribute('data-story-playing') &&
           !clone.hasAttribute('data-story-beat') &&
@@ -5449,16 +5070,13 @@
           !clone.hasAttribute('data-chapter-anchor') &&
           !clone.hasAttribute('data-chapter-preview') &&
           !clone.style.getPropertyValue('transform') &&
-          clone.querySelectorAll('[data-story-overlay], [data-story-carrier-overlay], [data-story-carrier-token], [data-story-step], [data-story-beat-state], [data-story-beat-step], [data-chapter-handoff-overlay], [data-chapter-role], [data-chapter-preview-role], [data-focus-match], [data-focus-selected], [data-reach-match], [data-reach-origin], [data-reach-depth], [data-semantic-lens-overlay], [data-lens-match], [data-lens-selected], [data-lens-peer], [data-legend-bridge], [data-legend-kind], [data-legend-bridge-runtime], [data-legend-count], [data-legend-zero], [data-legend-selected], [data-legend-preview-match], [data-legend-preview-selected], [data-legend-preview-peer], [data-relationship-hit-overlay], [data-relationship-pulse-overlay], [data-relationship-preview], [data-relationship-preview-node], [data-relationship-preview-source], [data-relationship-preview-target], [data-intent-trace-overlay], [data-intent-trace-match], [data-intent-trace-selected], [data-route-probe-overlay], [data-route-journey-overlay], [data-route-match], [data-route-start], [data-route-end], [data-route-step], [data-route-candidate], [data-route-journey-state], [data-route-journey-current], [data-share-route-match], [data-share-route-step], [data-share-route-start], [data-share-route-end], [data-share-route-middle], [data-share-reach-match], [data-share-reach-origin], [data-share-reach-depth], [data-source-evidence-beacon], [data-source-evidence-count], [data-source-evidence-original-label], [data-detail], [data-detail-anchor]').length === 0;
+          clone.querySelectorAll('[data-story-overlay], [data-story-carrier-overlay], [data-story-carrier-token], [data-story-step], [data-story-beat-state], [data-story-beat-step], [data-chapter-handoff-overlay], [data-chapter-role], [data-chapter-preview-role], [data-focus-match], [data-focus-selected], [data-semantic-lens-overlay], [data-lens-match], [data-lens-selected], [data-lens-peer], [data-legend-bridge], [data-legend-kind], [data-legend-bridge-runtime], [data-legend-count], [data-legend-zero], [data-legend-selected], [data-legend-preview-match], [data-legend-preview-selected], [data-legend-preview-peer], [data-relationship-hit-overlay], [data-relationship-pulse-overlay], [data-relationship-preview], [data-relationship-preview-node], [data-relationship-preview-source], [data-relationship-preview-target], [data-intent-trace-overlay], [data-intent-trace-match], [data-intent-trace-selected], [data-route-probe-overlay], [data-route-journey-overlay], [data-route-match], [data-route-start], [data-route-end], [data-route-step], [data-route-candidate], [data-route-journey-state], [data-route-journey-current], [data-share-route-match], [data-share-route-step], [data-share-route-start], [data-share-route-end], [data-share-route-middle], [data-detail], [data-detail-anchor]').length === 0;
 
         var vb = svg.viewBox.baseVal;
         var finiteSvgDimensions = Number.isFinite(vb.x) && Number.isFinite(vb.y) &&
           Number.isFinite(vb.width) && Number.isFinite(vb.height) && vb.width > 0 && vb.height > 0;
         var routeStateClean = opts.routeSnapshot
           ? canonicalStateClean && finiteSvgDimensions && applyRouteSnapshot(clone, opts.routeSnapshot)
-          : null;
-        var reachStateClean = opts.reachSnapshot
-          ? canonicalStateClean && finiteSvgDimensions && !opts.routeSnapshot && applyReachSnapshot(clone, opts.reachSnapshot)
           : null;
         // Scale width/height so the browser rasterizes the vectors at target
         // resolution directly. viewBox stays unchanged so coordinates don't
@@ -5590,14 +5208,6 @@
             "svg[data-share-route] [data-share-route-middle] > :is(rect, circle, polygon):not(.c-mask) { stroke-width: 2.2; }\n" +
             "svg[data-share-route] [data-share-route-end] > :is(rect, circle, polygon):not(.c-mask) { stroke-width: 3.4; stroke-dasharray: 1 0; }\n";
         }
-        if (opts.reachSnapshot) {
-          style.textContent += "\nsvg[data-share-reach] [data-node-id], svg[data-share-reach] [data-edge-from] { opacity: 0.14; }\n" +
-            "svg[data-share-reach] [data-share-reach-match] { opacity: 1; }\n" +
-            "svg[data-share-reach] [data-edge-from][data-share-reach-match] { stroke-width: 1.55; }\n" +
-            "svg[data-share-reach=\"upstream\"] [data-share-reach-origin] > :is(rect, circle, polygon):not(.c-mask) { stroke: var(--database-stroke); stroke-width: 3.4; stroke-dasharray: 5 3; }\n" +
-            "svg[data-share-reach=\"downstream\"] [data-share-reach-origin] > :is(rect, circle, polygon):not(.c-mask) { stroke: var(--backend-stroke); stroke-width: 3.4; stroke-dasharray: 1 0; }\n" +
-            "svg[data-preset=\"blueprint\"][data-share-reach] [data-share-reach-origin], svg[data-preset=\"blueprint\"][data-share-reach] [data-edge-from][data-share-reach-match] { filter: none; }\n";
-        }
 
         clone.insertBefore(style, clone.firstChild);
         clone.insertBefore(bgRect, style.nextSibling);
@@ -5607,8 +5217,7 @@
           width: vb.width * scale,
           height: vb.height * scale,
           canonicalStateClean: canonicalStateClean,
-          routeStateClean: routeStateClean,
-          reachStateClean: reachStateClean
+          routeStateClean: routeStateClean
         };
       }
 
@@ -5715,15 +5324,12 @@
       function renderShareCard(options) {
         options = options || {};
         var routeSnapshot = options.routeSnapshot || null;
-        var reachSnapshot = options.reachSnapshot || null;
-        if (routeSnapshot && reachSnapshot) return Promise.reject(new Error('Share Card variants cannot be combined'));
         var svg = document.querySelector('.diagram-container svg');
         var vb = svg.viewBox.baseVal;
         var sourceScale = Math.min(2, pickSafeScale(vb.width, vb.height));
-        var data = serializeSvg(sourceScale, { routeSnapshot: routeSnapshot, reachSnapshot: reachSnapshot });
+        var data = serializeSvg(sourceScale, { routeSnapshot: routeSnapshot });
         if (!data.canonicalStateClean) return Promise.reject(new Error('Share Card export could not remove temporary viewer state'));
         if (routeSnapshot && !data.routeStateClean) return Promise.reject(new Error('Route Card export could not preserve the resolved route safely'));
-        if (reachSnapshot && !data.reachStateClean) return Promise.reject(new Error('Reach Card export could not preserve authored reach safely'));
         var svgBlob = new Blob([data.svgString], { type: 'image/svg+xml;charset=utf-8' });
         var svgUrl = URL.createObjectURL(svgBlob);
 
@@ -5740,28 +5346,19 @@
               var text = computed.getPropertyValue('--text').trim() || '#ffffff';
               var muted = computed.getPropertyValue('--text-muted').trim() || '#94a3b8';
               var border = computed.getPropertyValue('--panel-border').trim() || '#334155';
-              var accentProperty = reachSnapshot
-                ? (reachSnapshot.direction === 'upstream' ? '--database-stroke' : '--backend-stroke')
-                : '--frontend-stroke';
-              var accent = computed.getPropertyValue(accentProperty).trim() || '#22d3ee';
+              var accent = computed.getPropertyValue('--frontend-stroke').trim() || '#22d3ee';
               var titleNode = document.querySelector('.header h1');
               var subtitleNode = document.querySelector('.header .subtitle');
               var title = titleNode ? titleNode.textContent : document.title;
               var subtitle = routeSnapshot
                 ? 'Route: ' + routeSnapshot.source.label + ' → ' + routeSnapshot.target.label + ' · ' + routeSnapshot.hops + ' directed hops'
-                : reachSnapshot
-                  ? 'Authored ' + reachSnapshot.direction + ' from ' + reachSnapshot.origin.label + ' · ' +
-                    (reachSnapshot.nodeIds.length - 1) + ' nodes · ' + reachSnapshot.edges.length +
-                    ' links · max ' + reachSnapshot.maxDepth + ' hops'
-                  : subtitleNode ? subtitleNode.textContent : '';
+                : subtitleNode ? subtitleNode.textContent : '';
               var preset = document.documentElement.getAttribute('data-preset') || 'classic';
               var theme = document.documentElement.getAttribute('data-theme') || 'dark';
               var presetLabel = preset === 'signal-flow' ? 'FLOW' : preset.toUpperCase();
               var cardLabel = routeSnapshot
                 ? 'ARCHIFY · ROUTE · ' + routeSnapshot.hops + ' HOPS'
-                : reachSnapshot
-                  ? 'ARCHIFY · ' + reachSnapshot.direction.toUpperCase() + ' REACH'
-                  : 'ARCHIFY · ' + presetLabel + ' · ' + theme.toUpperCase();
+                : 'ARCHIFY · ' + presetLabel + ' · ' + theme.toUpperCase();
 
               ctx.fillStyle = bg;
               ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
@@ -5818,19 +5415,10 @@
       function rasterizeShareCard(options) {
         options = options || {};
         if (!options.variant) return renderShareCard();
-        if (options.variant !== 'route' && options.variant !== 'reach') {
-          return Promise.reject(new Error('Unknown Share Card variant: ' + options.variant));
-        }
-        if (options.variant === 'route') {
-          var routeSnapshot = Archify.routeProbe && Archify.routeProbe.exportSnapshot();
-          if (!routeSnapshot) return Promise.reject(new Error('Trace a route before exporting a Route Share Card'));
-          return renderShareCard({ routeSnapshot: routeSnapshot });
-        }
-        var snapshot = Archify.focus && typeof Archify.focus.reachabilitySnapshot === 'function'
-          ? Archify.focus.reachabilitySnapshot()
-          : null;
-        if (!snapshot) return Promise.reject(new Error('Trace authored reach before exporting a Reach Share Card'));
-        return renderShareCard({ reachSnapshot: snapshot });
+        if (options.variant !== 'route') return Promise.reject(new Error('Unknown Share Card variant: ' + options.variant));
+        var snapshot = Archify.routeProbe && Archify.routeProbe.exportSnapshot();
+        if (!snapshot) return Promise.reject(new Error('Trace a route before exporting a Route Share Card'));
+        return renderShareCard({ routeSnapshot: snapshot });
       }
 
       function motionMimeType() {
@@ -6096,7 +5684,6 @@
       var menu = document.getElementById('export-menu');
       var btn = document.getElementById('btn-export');
       var routeShareItem = menu.querySelector('button[data-action="route-share-card"]');
-      var reachShareItem = menu.querySelector('button[data-action="reach-share-card"]');
       var items = function () {
         return Array.prototype.slice.call(menu.querySelectorAll('button[role="menuitem"]'));
       };
@@ -6107,15 +5694,6 @@
           : null;
         routeShareItem.hidden = !snapshot;
         routeShareItem.disabled = !snapshot;
-        return snapshot;
-      }
-
-      function syncReachShareItem() {
-        var snapshot = Archify.focus && typeof Archify.focus.reachabilitySnapshot === 'function'
-          ? Archify.focus.reachabilitySnapshot()
-          : null;
-        reachShareItem.hidden = !snapshot;
-        reachShareItem.disabled = !snapshot;
         return snapshot;
       }
 
@@ -6178,7 +5756,6 @@
         if (Archify.semanticLens && typeof Archify.semanticLens.clearPreview === 'function') Archify.semanticLens.clearPreview();
         if (Archify.semanticLens && Archify.semanticLens.isOpen()) Archify.semanticLens.close({ restoreFocus: false });
         syncRouteShareItem();
-        syncReachShareItem();
         menu.classList.add('open');
         btn.setAttribute('aria-expanded', 'true');
         var available = items().filter(function (i) { return !i.hidden && !i.disabled; });
@@ -6305,33 +5882,10 @@
         });
       }
 
-      function runReachShareCard() {
-        close(false);
-        clearExportReceipt();
-        var snapshot = Archify.focus && typeof Archify.focus.reachabilitySnapshot === 'function'
-          ? Archify.focus.reachabilitySnapshot()
-          : null;
-        var blobPromise = snapshot
-          ? renderShareCard({ reachSnapshot: snapshot })
-          : Promise.reject(new Error('Trace authored reach before exporting a Reach Share Card'));
-        return blobPromise.then(function (blob) {
-          recordExportReceipt('share-card', blob, false, { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT }, 'reach', false, true);
-          download(blob, diagramFilename() + '-' + snapshot.direction + '-reach-share-card.png');
-          toast('Downloaded Reach Share Card');
-          return blob;
-        }).catch(function (err) {
-          console.error(err);
-          var message = err && err.message ? err.message : 'share-card';
-          document.documentElement.setAttribute('data-last-export-error-format', 'share-card');
-          document.documentElement.setAttribute('data-last-export-error', message);
-          alert('Reach Share Card export failed: ' + message);
-        });
-      }
-
       // A compact, machine-readable receipt for local QA and generated proof
       // galleries. It exposes no diagram contents, only the completed format,
       // byte count, and whether temporary viewer state was excluded.
-      function recordExportReceipt(format, blob, canonical, dimensions, variant, routeStateClean, reachStateClean) {
+      function recordExportReceipt(format, blob, canonical, dimensions, variant, routeStateClean) {
         document.documentElement.setAttribute('data-last-export-format', format);
         document.documentElement.setAttribute('data-last-export-bytes', String(blob.size));
         document.documentElement.setAttribute('data-last-export-canonical', canonical ? 'true' : 'false');
@@ -6344,11 +5898,6 @@
           document.documentElement.setAttribute('data-last-export-route-state-clean', 'true');
         } else {
           document.documentElement.removeAttribute('data-last-export-route-state-clean');
-        }
-        if (reachStateClean === true) {
-          document.documentElement.setAttribute('data-last-export-reach-state-clean', 'true');
-        } else {
-          document.documentElement.removeAttribute('data-last-export-reach-state-clean');
         }
         if (dimensions) {
           document.documentElement.setAttribute('data-last-export-width', String(dimensions.width));
@@ -6367,7 +5916,6 @@
         document.documentElement.removeAttribute('data-last-export-height');
         document.documentElement.removeAttribute('data-last-export-variant');
         document.documentElement.removeAttribute('data-last-export-route-state-clean');
-        document.documentElement.removeAttribute('data-last-export-reach-state-clean');
         document.documentElement.removeAttribute('data-last-export-error-format');
         document.documentElement.removeAttribute('data-last-export-error');
       }
@@ -6427,9 +5975,6 @@
         var routeShareCardBtn = e.target.closest('button[data-action="route-share-card"]');
         if (routeShareCardBtn && !routeShareCardBtn.disabled && !routeShareCardBtn.hidden) { runRouteShareCard(); return; }
 
-        var reachShareCardBtn = e.target.closest('button[data-action="reach-share-card"]');
-        if (reachShareCardBtn && !reachShareCardBtn.disabled && !reachShareCardBtn.hidden) { runReachShareCard(); return; }
-
         var copyShareCardBtn = e.target.closest('button[data-action="copy-share-card"]');
         if (copyShareCardBtn && !copyShareCardBtn.disabled) { runCopyShareCard(); return; }
 
@@ -6448,9 +5993,7 @@
         run: runExport,
         shareCard: rasterizeShareCard,
         downloadRouteShareCard: runRouteShareCard,
-        downloadReachShareCard: runReachShareCard,
         syncRouteShare: syncRouteShareItem,
-        syncReachShare: syncReachShareItem,
         copyShareCard: runCopyShareCard
       };
 
@@ -6737,76 +6280,6 @@
       };
     })();
 
-    /* Verified repository evidence is emitted only after the renderer checks
-       the authored GitHub revision, source blobs, and optional line ranges
-       against the explicit --repo-root. It remains outside the SVG so every
-       canonical visual export stays free of repository paths. */
-    Archify.sourceEvidence = (function () {
-      var element = document.getElementById('archify-source-evidence-data');
-      var payload = null;
-      var svgNamespace = 'http://www.w3.org/2000/svg';
-      if (element) {
-        try {
-          var parsed = JSON.parse(element.textContent || 'null');
-          if (parsed && parsed.verified === true && parsed.repository && parsed.nodes) payload = parsed;
-        } catch (_) {}
-      }
-      function installBeacons() {
-        if (!payload) return 0;
-        var svg = document.querySelector('.diagram-container svg');
-        if (!svg) return 0;
-        var installed = 0;
-        Array.prototype.forEach.call(svg.querySelectorAll('[data-node-id]'), function (node) {
-          var id = node.getAttribute('data-node-id');
-          var sources = payload.nodes[id];
-          if (!Array.isArray(sources) || !sources.length || node.querySelector('[data-source-evidence-beacon]')) return;
-          var shape = node.querySelector('[data-animate="node"]') || node.querySelector('[class*="c-"]');
-          var box;
-          try { box = (shape || node).getBBox(); } catch (_) { return; }
-          if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y) || !Number.isFinite(box.width) || box.width < 36) return;
-
-          var count = sources.length;
-          var label = count + ' verified source' + (count === 1 ? '' : 's') + '; focus this node to inspect';
-          var beacon = document.createElementNS(svgNamespace, 'g');
-          beacon.classList.add('source-evidence-beacon');
-          beacon.setAttribute('data-source-evidence-beacon', '');
-          beacon.setAttribute('aria-hidden', 'true');
-          beacon.setAttribute('transform', 'translate(' + (box.x + box.width - 35) + ' ' + (box.y + 5) + ')');
-          var title = document.createElementNS(svgNamespace, 'title');
-          title.textContent = label;
-          var plate = document.createElementNS(svgNamespace, 'rect');
-          plate.setAttribute('width', '30');
-          plate.setAttribute('height', '12');
-          plate.setAttribute('rx', '6');
-          var text = document.createElementNS(svgNamespace, 'text');
-          text.setAttribute('x', '15');
-          text.setAttribute('y', '8.25');
-          text.textContent = 'SRC ' + count;
-          beacon.appendChild(title);
-          beacon.appendChild(plate);
-          beacon.appendChild(text);
-          node.appendChild(beacon);
-
-          var originalLabel = node.getAttribute('aria-label') || '';
-          node.setAttribute('data-source-evidence-count', String(count));
-          node.setAttribute('data-source-evidence-original-label', originalLabel);
-          node.setAttribute('aria-label', (originalLabel ? originalLabel + ', ' : '') + count + ' verified source reference' + (count === 1 ? '' : 's'));
-          installed += 1;
-        });
-        return installed;
-      }
-      return {
-        available: function () { return Boolean(payload); },
-        repository: function () { return payload ? payload.repository : null; },
-        node: function (id) {
-          var sources = payload && payload.nodes ? payload.nodes[id] : null;
-          return Array.isArray(sources) ? sources.slice() : [];
-        },
-        installBeacons: installBeacons
-      };
-    })();
-    Archify.sourceEvidence.installBeacons();
-
     /* ============================================================
        Explore — stable-ID neighborhood focus + dependency-free pan/zoom.
        Renderer IDs become deep-linkable semantic hooks without turning the
@@ -6823,16 +6296,7 @@
       var context = document.getElementById('focus-context');
       var tag = document.getElementById('focus-tag');
       var semanticId = document.getElementById('focus-id');
-      var evidence = document.getElementById('focus-evidence');
-      var repositoryLink = document.getElementById('focus-repository');
-      var evidenceLinks = document.getElementById('focus-evidence-links');
       var summary = document.getElementById('focus-summary');
-      var reachSection = document.getElementById('focus-reach');
-      var reachStatus = document.getElementById('focus-reach-status');
-      var upstreamBtn = document.getElementById('btn-reach-upstream');
-      var downstreamBtn = document.getElementById('btn-reach-downstream');
-      var upstreamCount = document.getElementById('focus-reach-upstream-count');
-      var downstreamCount = document.getElementById('focus-reach-downstream-count');
       var relationshipList = document.getElementById('relationship-lens-list');
       var copyBtn = document.getElementById('btn-focus-copy');
       var relationsBtn = document.getElementById('btn-focus-relations');
@@ -6846,8 +6310,6 @@
       var relationshipHitOverlay = null;
       var relationshipHitTargets = [];
       var directPreviewTimer = null;
-      var reachabilityMode = null;
-      var activeReachability = null;
       var svgNamespace = 'http://www.w3.org/2000/svg';
       var reducedMotionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
       var finePointerQuery = window.matchMedia ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
@@ -6861,317 +6323,10 @@
       function nodeLabel(node, fallback) {
         return node.getAttribute('data-node-label') || (node.getAttribute('aria-label') || fallback).replace(/^Focus\s+/, '');
       }
-      function reachabilityRelationships() {
-        var seen = Object.create(null);
-        var relationships = [];
-        edges().forEach(function (edge) {
-          var from = edge.getAttribute('data-edge-from');
-          var to = edge.getAttribute('data-edge-to');
-          var key = edge.getAttribute('data-edge-key') || (from + '\u0000' + to + '\u0000' + (edge.getAttribute('data-edge-label') || ''));
-          if (!from || !to || seen[key]) return;
-          seen[key] = true;
-          relationships.push({ key: key, from: from, to: to });
-        });
-        return relationships;
-      }
-      function computeReachability(originId, direction, relationships) {
-        if (typeof originId !== 'string' || !originId ||
-            (direction !== 'upstream' && direction !== 'downstream') ||
-            !Array.isArray(relationships)) return null;
-        var records = [];
-        var seenKeys = Object.create(null);
-        relationships.forEach(function (relationship, index) {
-          if (!relationship || typeof relationship.from !== 'string' || !relationship.from ||
-              typeof relationship.to !== 'string' || !relationship.to) return;
-          var key = typeof relationship.key === 'string' && relationship.key
-            ? relationship.key : String(index);
-          if (seenKeys[key]) return;
-          seenKeys[key] = true;
-          records.push({ key: key, from: relationship.from, to: relationship.to });
-        });
-
-        var depths = Object.create(null);
-        var order = [];
-        var queue = [originId];
-        depths[originId] = 0;
-        for (var cursor = 0; cursor < queue.length; cursor += 1) {
-          var current = queue[cursor];
-          records.forEach(function (relationship) {
-            var next = null;
-            if (direction === 'downstream' && relationship.from === current) next = relationship.to;
-            else if (direction === 'upstream' && relationship.to === current) next = relationship.from;
-            if (next == null || Object.prototype.hasOwnProperty.call(depths, next)) return;
-            depths[next] = depths[current] + 1;
-            queue.push(next);
-          });
-        }
-        queue.forEach(function (id) { order.push(id); });
-
-        var edgeKeys = [];
-        records.forEach(function (relationship) {
-          if (Object.prototype.hasOwnProperty.call(depths, relationship.from) &&
-              Object.prototype.hasOwnProperty.call(depths, relationship.to)) edgeKeys.push(relationship.key);
-        });
-        var maxDepth = order.reduce(function (maximum, id) {
-          return Math.max(maximum, depths[id]);
-        }, 0);
-        return {
-          direction: direction,
-          originId: originId,
-          nodeIds: order,
-          edgeKeys: edgeKeys,
-          depths: depths,
-          maxDepth: maxDepth
-        };
-      }
-      function reachabilityFor(id, direction) {
-        return computeReachability(id, direction, reachabilityRelationships());
-      }
-      function resetReachabilityButtons() {
-        upstreamBtn.setAttribute('aria-pressed', 'false');
-        downstreamBtn.setAttribute('aria-pressed', 'false');
-      }
-      function clearReachability(options) {
-        options = options || {};
-        reachabilityMode = null;
-        activeReachability = null;
-        svg.removeAttribute('data-reach-active');
-        chip.removeAttribute('data-reach-mode');
-        nodes().forEach(function (node) {
-          node.removeAttribute('data-reach-match');
-          node.removeAttribute('data-reach-origin');
-          node.removeAttribute('data-reach-depth');
-        });
-        edges().forEach(function (edge) {
-          edge.removeAttribute('data-reach-match');
-          edge.removeAttribute('data-reach-depth');
-        });
-        resetReachabilityButtons();
-        reachStatus.textContent = '';
-        reachStatus.hidden = true;
-        if (Archify.exportMenu && typeof Archify.exportMenu.syncReachShare === 'function') {
-          Archify.exportMenu.syncReachShare();
-        }
-        if (options.updateUrl === true && activeIds.length === 1) {
-          try {
-            history.replaceState(null, '', location.pathname + location.search + '#focus=' + encodeURIComponent(activeIds[0]));
-          } catch (_) {}
-        }
-      }
-      function renderReachabilityControls(id) {
-        var upstream = reachabilityFor(id, 'upstream');
-        var downstream = reachabilityFor(id, 'downstream');
-        var upstreamReach = upstream ? Math.max(0, upstream.nodeIds.length - 1) : 0;
-        var downstreamReach = downstream ? Math.max(0, downstream.nodeIds.length - 1) : 0;
-        upstreamCount.textContent = String(upstreamReach);
-        downstreamCount.textContent = String(downstreamReach);
-        upstreamBtn.disabled = upstreamReach === 0;
-        downstreamBtn.disabled = downstreamReach === 0;
-        upstreamBtn.setAttribute('aria-label', upstreamReach
-          ? 'Trace ' + upstreamReach + ' upstream authored node' + (upstreamReach === 1 ? '' : 's')
-          : 'No upstream authored nodes');
-        downstreamBtn.setAttribute('aria-label', downstreamReach
-          ? 'Trace ' + downstreamReach + ' downstream authored node' + (downstreamReach === 1 ? '' : 's')
-          : 'No downstream authored nodes');
-        reachSection.hidden = false;
-      }
-      function applyReachability(direction, options) {
-        options = options || {};
-        if (activeIds.length !== 1 || (direction !== 'upstream' && direction !== 'downstream')) return false;
-        if (reachabilityMode === direction && options.toggle !== false) {
-          clearReachability({ updateUrl: options.updateUrl !== false });
-          return true;
-        }
-        var result = reachabilityFor(activeIds[0], direction);
-        if (!result || result.nodeIds.length <= 1) return false;
-        if (Archify.guidedViews && typeof Archify.guidedViews.showAll === 'function') {
-          Archify.guidedViews.showAll({ clearFocus: false, updateUrl: false, resetView: false });
-        }
-        clearRelationshipPreview({ clearPin: true });
-        clearReachability({ updateUrl: false });
-        reachabilityMode = direction;
-        activeReachability = result;
-        var edgeKeySet = Object.create(null);
-        result.edgeKeys.forEach(function (key) { edgeKeySet[key] = true; });
-        svg.setAttribute('data-reach-active', direction);
-        chip.setAttribute('data-reach-mode', direction);
-        nodes().forEach(function (node) {
-          var id = node.getAttribute('data-node-id');
-          if (!Object.prototype.hasOwnProperty.call(result.depths, id)) return;
-          node.setAttribute('data-reach-match', '');
-          node.setAttribute('data-reach-depth', String(result.depths[id]));
-          if (id === result.originId) node.setAttribute('data-reach-origin', '');
-        });
-        edges().forEach(function (edge) {
-          var key = edge.getAttribute('data-edge-key') || (
-            edge.getAttribute('data-edge-from') + '\u0000' +
-            edge.getAttribute('data-edge-to') + '\u0000' +
-            (edge.getAttribute('data-edge-label') || '')
-          );
-          if (!edgeKeySet[key]) return;
-          edge.setAttribute('data-reach-match', '');
-          var fromDepth = result.depths[edge.getAttribute('data-edge-from')];
-          var toDepth = result.depths[edge.getAttribute('data-edge-to')];
-          edge.setAttribute('data-reach-depth', String(Math.max(fromDepth || 0, toDepth || 0)));
-        });
-        resetReachabilityButtons();
-        var activeButton = direction === 'upstream' ? upstreamBtn : downstreamBtn;
-        activeButton.setAttribute('aria-pressed', 'true');
-        var reachableCount = result.nodeIds.length - 1;
-        var directionLabel = direction === 'upstream' ? 'Upstream' : 'Downstream';
-        reachStatus.textContent = directionLabel + ' · ' + reachableCount + ' node' +
-          (reachableCount === 1 ? '' : 's') + ' · ' + result.edgeKeys.length + ' link' +
-          (result.edgeKeys.length === 1 ? '' : 's') + ' · max ' + result.maxDepth + ' hop' +
-          (result.maxDepth === 1 ? '' : 's');
-        reachStatus.hidden = false;
-        if (Archify.exportMenu && typeof Archify.exportMenu.syncReachShare === 'function') {
-          Archify.exportMenu.syncReachShare();
-        }
-        if (options.updateUrl !== false) {
-          try {
-            history.replaceState(null, '', location.pathname + location.search + '#focus=' +
-              encodeURIComponent(activeIds[0]) + '&reach=' + direction);
-          } catch (_) {}
-        }
-        if (options.reveal !== false && Archify.view && typeof Archify.view.reveal === 'function') {
-          Archify.view.reveal(result.nodeIds, { includeNeighbors: false, reason: 'reachability' });
-        }
-        requestLensPlacement();
-        return true;
-      }
-      function reachabilitySnapshot() {
-        if (!activeReachability || activeIds.length !== 1 ||
-            (reachabilityMode !== 'upstream' && reachabilityMode !== 'downstream') ||
-            activeReachability.direction !== reachabilityMode ||
-            activeReachability.originId !== activeIds[0] ||
-            svg.getAttribute('data-reach-active') !== reachabilityMode) return null;
-
-        var originId = activeReachability.originId;
-        var nodeIds = activeReachability.nodeIds.slice();
-        var edgeKeys = activeReachability.edgeKeys.slice();
-        if (nodeIds.length < 2 || nodeIds[0] !== originId || !edgeKeys.length ||
-            !activeReachability.depths || !Number.isInteger(activeReachability.maxDepth) ||
-            activeReachability.maxDepth < 1) return null;
-
-        var allNodes = nodes();
-        var allEdges = edges();
-        var seenNodeIds = Object.create(null);
-        var seenEdgeKeys = Object.create(null);
-        var nodeIdSet = Object.create(null);
-        var depths = Object.create(null);
-        var originNode = null;
-        var measuredMaxDepth = 0;
-
-        if (nodeIds.some(function (id) {
-          var depth = activeReachability.depths[id];
-          var matches = allNodes.filter(function (node) {
-            return node.getAttribute('data-node-id') === id;
-          });
-          if (typeof id !== 'string' || !id || seenNodeIds[id] || matches.length !== 1 ||
-              !matches[0].hasAttribute('data-reach-match') ||
-              !Number.isInteger(depth) || depth < 0 || depth > activeReachability.maxDepth ||
-              (id === originId
-                ? (!matches[0].hasAttribute('data-reach-origin') || depth !== 0)
-                : depth < 1)) return true;
-          seenNodeIds[id] = true;
-          nodeIdSet[id] = true;
-          depths[id] = depth;
-          measuredMaxDepth = Math.max(measuredMaxDepth, depth);
-          if (id === originId) originNode = matches[0];
-          return false;
-        }) || !originNode || measuredMaxDepth !== activeReachability.maxDepth ||
-            allNodes.filter(function (node) { return node.hasAttribute('data-reach-match'); }).length !== nodeIds.length) return null;
-
-        var edgeRecords = [];
-        if (edgeKeys.some(function (key) {
-          if (typeof key !== 'string' || !key || seenEdgeKeys[key]) return true;
-          var fragments = allEdges.filter(function (edge) {
-            return edge.getAttribute('data-edge-key') === key;
-          });
-          var drawableFragments = fragments.filter(hasDrawableGeometry);
-          if (!fragments.length || drawableFragments.length !== 1 ||
-              !fragments.every(function (fragment) { return fragment.hasAttribute('data-reach-match'); })) return true;
-          var first = fragments[0];
-          var from = first.getAttribute('data-edge-from');
-          var to = first.getAttribute('data-edge-to');
-          var id = first.getAttribute('data-edge-id') || '';
-          var labelValue = first.getAttribute('data-edge-label') || '';
-          if (!nodeIdSet[from] || !nodeIdSet[to] || !fragments.every(function (fragment) {
-            return fragment.getAttribute('data-edge-from') === from &&
-              fragment.getAttribute('data-edge-to') === to &&
-              (fragment.getAttribute('data-edge-id') || '') === id;
-          })) return true;
-          seenEdgeKeys[key] = true;
-          edgeRecords.push({
-            key: key,
-            id: id,
-            from: from,
-            to: to,
-            label: labelValue,
-            depth: Math.max(depths[from], depths[to])
-          });
-          return false;
-        })) return null;
-
-        var liveEdgeKeys = Object.create(null);
-        if (allEdges.some(function (edge) {
-          if (!edge.hasAttribute('data-reach-match')) return false;
-          var key = edge.getAttribute('data-edge-key');
-          if (!key || !seenEdgeKeys[key]) return true;
-          liveEdgeKeys[key] = true;
-          return false;
-        }) || Object.keys(liveEdgeKeys).length !== edgeKeys.length) return null;
-
-        return {
-          direction: reachabilityMode,
-          origin: { id: originId, label: nodeLabel(originNode, originId) },
-          nodeIds: nodeIds,
-          depths: depths,
-          maxDepth: activeReachability.maxDepth,
-          edges: edgeRecords
-        };
-      }
       function setPassportValue(element, value) {
         var normalized = value == null ? '' : String(value).trim();
         element.textContent = normalized;
         element.hidden = !normalized;
-      }
-      function renderSourceEvidence(id) {
-        evidenceLinks.textContent = '';
-        repositoryLink.removeAttribute('href');
-        repositoryLink.textContent = '';
-        var sources = Archify.sourceEvidence.node(id);
-        var repository = Archify.sourceEvidence.repository();
-        if (!repository || !sources.length) {
-          evidence.hidden = true;
-          return;
-        }
-        var slug = repository.url.replace(/^https:\/\/github\.com\//, '').replace(/\/$/, '');
-        repositoryLink.href = repository.url + '/tree/' + repository.revision;
-        repositoryLink.textContent = slug + ' @ ' + repository.shortRevision;
-        repositoryLink.setAttribute('aria-label', 'Open verified repository revision ' + repository.revision);
-        sources.forEach(function (source) {
-          var link = document.createElement('a');
-          link.className = 'semantic-passport-source';
-          link.href = source.href;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.referrerPolicy = 'no-referrer';
-          link.setAttribute('aria-label', 'Open verified source ' + source.path + ' at revision ' + repository.shortRevision);
-          var name = document.createElement('strong');
-          name.textContent = source.label || source.path.split('/').pop() || source.path;
-          var location = document.createElement('code');
-          location.textContent = source.line
-            ? 'L' + source.line + (source.endLine && source.endLine !== source.line ? '–' + source.endLine : '') + ' ↗'
-            : 'Open ↗';
-          var sourcePath = document.createElement('small');
-          sourcePath.textContent = source.path;
-          link.appendChild(name);
-          link.appendChild(location);
-          link.appendChild(sourcePath);
-          evidenceLinks.appendChild(link);
-        });
-        evidence.hidden = false;
       }
       function renderPassport(id, node) {
         setPassportValue(detail, node.getAttribute('data-node-sublabel'));
@@ -7180,7 +6335,6 @@
         setPassportValue(tag, node.getAttribute('data-node-tag'));
         semanticId.textContent = id;
         semanticId.hidden = false;
-        renderSourceEvidence(id);
       }
       function relationshipsFor(id, byId) {
         var seen = {};
@@ -7738,7 +6892,6 @@
         var counts = { out: 0, in: 0, loop: 0 };
         relationships.forEach(function (relationship) { counts[relationship.direction] += 1; });
         summary.textContent = counts.out + ' outgoing · ' + counts.in + ' incoming' + (counts.loop ? ' · ' + counts.loop + ' loop' : '');
-        renderReachabilityControls(id);
         relationshipList.textContent = '';
         if (!relationships.length) {
           var empty = document.createElement('p');
@@ -7835,10 +6988,6 @@
       }
       function clear(options) {
         options = options || {};
-        var restoreNode = options.restoreFocus === true && activeIds.length === 1
-          ? svg.querySelector('[data-node-id="' + activeIds[0] + '"]')
-          : null;
-        clearReachability({ updateUrl: false });
         if (Archify.intentTrace && typeof Archify.intentTrace.clear === 'function') {
           Archify.intentTrace.clear({ announce: false });
         }
@@ -7865,16 +7014,7 @@
         tag.hidden = true;
         semanticId.textContent = '';
         semanticId.hidden = true;
-        evidence.hidden = true;
-        evidenceLinks.textContent = '';
-        repositoryLink.removeAttribute('href');
-        repositoryLink.textContent = '';
         summary.textContent = '';
-        reachSection.hidden = true;
-        upstreamCount.textContent = '0';
-        downstreamCount.textContent = '0';
-        upstreamBtn.disabled = true;
-        downstreamBtn.disabled = true;
         relationshipList.textContent = '';
         copyBtn.textContent = 'Copy link';
         copyBtn.setAttribute('aria-label', 'Copy link to focused node');
@@ -7888,10 +7028,6 @@
         }
         if (options.updateUrl !== false) {
           try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
-        }
-        if (restoreNode) {
-          try { restoreNode.focus({ preventScroll: true }); }
-          catch (_) { try { restoreNode.focus(); } catch (_) {} }
         }
       }
 
@@ -7988,7 +7124,7 @@
         var relationId = record && record.id;
         var value = location.href.replace(/#.*$/, '') + (relationId
           ? '#relation=' + encodeURIComponent(relationId)
-          : '#focus=' + encodeURIComponent(activeIds[0]) + (reachabilityMode ? '&reach=' + reachabilityMode : ''));
+          : '#focus=' + encodeURIComponent(activeIds[0]));
         var copy = navigator.clipboard && typeof navigator.clipboard.writeText === 'function'
           ? navigator.clipboard.writeText(value).then(function () { return true; }).catch(function () { return fallbackCopy(value); })
           : Promise.resolve(fallbackCopy(value));
@@ -8026,10 +7162,8 @@
           Archify.view.reveal([id], { includeNeighbors: true, reason: 'focus' });
         }
       });
-      clearBtn.addEventListener('click', function () { clear({ restoreFocus: true }); });
+      clearBtn.addEventListener('click', function () { clear(); });
       copyBtn.addEventListener('click', copyFocusLink);
-      upstreamBtn.addEventListener('click', function () { applyReachability('upstream'); });
-      downstreamBtn.addEventListener('click', function () { applyReachability('downstream'); });
       relationsBtn.addEventListener('click', function () {
         var expanded = chip.getAttribute('data-relations-expanded') === 'true';
         if (expanded) chip.removeAttribute('data-relations-expanded');
@@ -8093,13 +7227,6 @@
         event.preventDefault();
         buttons[index].focus();
       });
-      document.addEventListener('click', function (event) {
-        var target = event.target;
-        if (chip.hidden || !target || typeof target.closest !== 'function' || chip.contains(target)) return;
-        if (container.getAttribute('data-just-panned') === 'true') return;
-        if (target.closest('[data-node-id], [data-relationship-hit-key]')) return;
-        clear();
-      }, true);
       window.addEventListener('scroll', requestLensPlacement, { passive: true });
       window.addEventListener('resize', requestLensPlacement);
       container.addEventListener('scroll', requestLensPlacement, { passive: true });
@@ -8124,17 +7251,11 @@
           var params = new URLSearchParams(location.hash.replace(/^#/, ''));
           var relation = params.get('relation');
           var initial = params.get('focus');
-          var reach = params.get('reach');
           if (relation) {
             if (html.getAttribute('data-embed') === 'true' ||
                 !inspectRelationshipById(relation, { updateUrl: false, toggle: false })) clear({ updateUrl: false });
           }
-          else if (initial) {
-            if (set(initial, { updateUrl: false, toggle: false }) &&
-                (reach === 'upstream' || reach === 'downstream')) {
-              applyReachability(reach, { updateUrl: false, toggle: false, reveal: false });
-            }
-          }
+          else if (initial) set(initial, { updateUrl: false, toggle: false });
           else if (!params.get('view')) clear({ updateUrl: false });
         } catch (_) {}
       }
@@ -8147,24 +7268,12 @@
         setMany: setMany,
         clear: clear,
         copyLink: copyFocusLink,
-        reach: applyReachability,
-        clearReach: clearReachability,
-        reachabilitySnapshot: reachabilitySnapshot,
         inspectRelationship: inspectRelationship,
         inspectRelationshipById: inspectRelationshipById,
         reposition: requestLensPlacement,
         relationship: function () {
           var record = pinnedRelationshipRecord();
           return record ? { id: record.id || null, key: record.key, from: record.from, to: record.to, label: record.label } : null;
-        },
-        reachability: function () {
-          return activeReachability ? {
-            direction: activeReachability.direction,
-            originId: activeReachability.originId,
-            nodeIds: activeReachability.nodeIds.slice(),
-            edgeKeys: activeReachability.edgeKeys.slice(),
-            maxDepth: activeReachability.maxDepth
-          } : null;
         },
         active: function () { return activeIds.length === 0 ? null : (activeIds.length === 1 ? activeIds[0] : activeIds.slice()); }
       };
@@ -10926,10 +10035,6 @@
         var context = node.getAttribute('data-node-context') || '';
         var tag = node.getAttribute('data-node-tag') || '';
         var type = semanticType(node);
-        var sources = Archify.sourceEvidence.node(id);
-        var sourceSearch = sources.map(function (source) {
-          return [source.path, source.label, source.line, source.endLine].filter(Boolean).join(' ');
-        }).join(' ');
         return {
           id: id,
           label: label,
@@ -10937,9 +10042,8 @@
           sublabel: sublabel,
           context: context,
           tag: tag,
-          sources: sources,
           links: connectionsFor(id),
-          search: (id + ' ' + label + ' ' + type + ' ' + sublabel + ' ' + context + ' ' + tag + ' ' + sourceSearch + ' ' + text).toLowerCase(),
+          search: (id + ' ' + label + ' ' + type + ' ' + sublabel + ' ' + context + ' ' + tag + ' ' + text).toLowerCase(),
           node: node
         };
       });
@@ -13061,7 +12165,7 @@
         Archify.intentTrace.clear();
       } else if (e.key === 'Escape' && Archify.focus.active()) {
         e.preventDefault();
-        Archify.focus.clear({ restoreFocus: true });
+        Archify.focus.clear();
       } else if (e.key === 'Escape' && Archify.presentation.active()) {
         e.preventDefault();
         Archify.presentation.exit();

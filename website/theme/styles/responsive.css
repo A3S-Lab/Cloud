@@ -1,0 +1,487 @@
+.cloud-home[data-effects='ready'] [data-reveal] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 620ms ease,
+    transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cloud-home[data-effects='ready'] [data-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cloud-home[data-effects='ready'] .cloud-capability-card[data-reveal] {
+  transition-delay: calc(var(--card-index) * 55ms);
+}
+
+.cloud-home[data-effects='ready'] .cloud-future-card[data-reveal] {
+  transition-delay: calc(var(--track-index) * 55ms);
+}
+
+@media (max-width: 1220px) {
+  .cloud-hero-copy {
+    padding-right: 22px;
+    padding-left: 44px;
+  }
+
+  .cloud-hero h1 {
+    font-size: clamp(48px, 5.6vw, 68px);
+  }
+
+  .cloud-section {
+    padding-right: 44px;
+    padding-left: 44px;
+  }
+
+  .cloud-topology-node {
+    min-width: 96px;
+  }
+
+  .cloud-roadmap-detail {
+    grid-template-columns: 150px minmax(170px, 0.5fr) minmax(270px, 1.5fr);
+  }
+
+  .cloud-roadmap-detail > a {
+    width: fit-content;
+    grid-column: 3;
+  }
+}
+
+@media (max-width: 1020px) {
+  .cloud-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-hero-copy {
+    padding: 96px 56px 26px;
+  }
+
+  .cloud-hero-copy > p {
+    max-width: 680px;
+  }
+
+  .cloud-hero-visual {
+    min-height: 630px;
+    padding: 0 34px 20px;
+  }
+
+  .cloud-topology {
+    width: min(100%, 760px);
+  }
+
+  .cloud-section-heading {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .cloud-section-heading > p {
+    max-width: 700px;
+  }
+
+  .cloud-convergence-stage {
+    padding: 42px;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 34px;
+  }
+
+  .cloud-capability-card,
+  .cloud-capability-card:nth-child(1),
+  .cloud-capability-card:nth-child(2),
+  .cloud-capability-card:nth-child(3),
+  .cloud-capability-card:nth-child(4) {
+    grid-column: span 6;
+  }
+
+  .cloud-future-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cloud-boundary-map {
+    min-height: 720px;
+  }
+
+  .cloud-boundary-node {
+    width: 36%;
+  }
+
+  .cloud-boundary-node.is-cloud {
+    top: 8%;
+  }
+
+  .cloud-boundary-node.is-gateway {
+    top: 8%;
+    left: auto;
+    right: 5%;
+  }
+
+  .cloud-boundary-node.is-box {
+    bottom: 8%;
+    left: 5%;
+  }
+
+  .cloud-boundary-node.is-power {
+    top: auto;
+    right: 5%;
+    bottom: 8%;
+  }
+
+  .cloud-boundary-rule {
+    width: 42%;
+  }
+
+  .cloud-roadmap-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .cloud-architecture-card {
+    grid-template-columns: minmax(0, 0.8fr) minmax(360px, 1.2fr);
+  }
+
+  .cloud-final-cta {
+    padding-right: 44px;
+    padding-left: 44px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --rp-nav-height: 64px;
+  }
+
+  .rp-nav {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .cloud-global-grid {
+    height: 760px;
+  }
+
+  .cloud-hero {
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .cloud-hero-copy {
+    padding: 76px 22px 22px;
+  }
+
+  .cloud-hero h1 {
+    margin-top: 22px;
+    font-size: clamp(43px, 13vw, 60px);
+  }
+
+  .cloud-hero-copy > p {
+    font-size: 15px;
+  }
+
+  .cloud-hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-button {
+    width: 100%;
+  }
+
+  .cloud-hero-visual {
+    min-height: 480px;
+    padding: 0 2px 12px;
+  }
+
+  .cloud-topology {
+    width: 100%;
+  }
+
+  .cloud-topology-node {
+    min-width: 82px;
+    padding: 8px;
+  }
+
+  .cloud-topology-node span {
+    font-size: 8px;
+  }
+
+  .cloud-topology-node small {
+    font-size: 6.5px;
+  }
+
+  .cloud-topology-node.is-cloud {
+    min-width: 100px;
+    padding: 12px;
+  }
+
+  .cloud-topology-node.is-cloud span {
+    font-size: 12px;
+  }
+
+  .cloud-topology-node.is-gateway {
+    left: 89%;
+  }
+
+  .cloud-topology figcaption {
+    bottom: 0;
+  }
+
+  .cloud-hero-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cloud-hero-metrics span:nth-child(2) {
+    border-right: 0;
+  }
+
+  .cloud-hero-metrics span:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--cloud-line);
+  }
+
+  .cloud-section {
+    padding: 74px 20px;
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .cloud-section-heading {
+    margin-bottom: 34px;
+  }
+
+  .cloud-section-heading h2 {
+    font-size: clamp(35px, 10vw, 48px);
+  }
+
+  .cloud-convergence-shell {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .cloud-convergence-rail {
+    overflow-x: auto;
+    width: calc(100vw - 40px);
+    border: 1px solid var(--cloud-line-strong);
+    border-radius: 12px 12px 0 0;
+    grid-template-columns: repeat(6, 132px);
+    scrollbar-width: thin;
+  }
+
+  .cloud-convergence-stage {
+    padding: 30px 20px 20px;
+    border: 1px solid var(--cloud-line-strong);
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .cloud-convergence-console-body {
+    min-height: 190px;
+    padding: 22px;
+  }
+
+  .cloud-capability-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-capability-card,
+  .cloud-capability-card:nth-child(1),
+  .cloud-capability-card:nth-child(2),
+  .cloud-capability-card:nth-child(3),
+  .cloud-capability-card:nth-child(4) {
+    min-height: 410px;
+    grid-column: 1;
+  }
+
+  .cloud-future-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-future-card {
+    min-height: 380px;
+  }
+
+  .cloud-boundary-map {
+    display: grid;
+    min-height: auto;
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .cloud-boundary-map > svg {
+    display: none;
+  }
+
+  .cloud-boundary-node,
+  .cloud-boundary-node.is-cloud,
+  .cloud-boundary-node.is-gateway,
+  .cloud-boundary-node.is-box,
+  .cloud-boundary-node.is-power {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: 100%;
+    min-height: 140px;
+  }
+
+  .cloud-boundary-rule {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    min-height: 84px;
+    border-radius: 12px;
+    transform: none;
+  }
+
+  .cloud-roadmap-toolbar {
+    overflow-x: auto;
+    align-items: center;
+  }
+
+  .cloud-roadmap-toolbar button {
+    flex: 0 0 auto;
+  }
+
+  .cloud-roadmap-map {
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .cloud-roadmap-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cloud-roadmap-detail {
+    padding: 25px 20px;
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .cloud-roadmap-detail > a {
+    grid-column: 1;
+  }
+
+  .cloud-architecture-card {
+    min-height: 720px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 380px;
+  }
+
+  .cloud-architecture-copy {
+    padding: 38px 26px 10px;
+  }
+
+  .cloud-architecture-copy h2 {
+    font-size: 42px;
+  }
+
+  .cloud-architecture-preview {
+    min-height: 380px;
+  }
+
+  .cloud-final-cta {
+    padding: 60px 22px;
+    border-right: 0;
+    border-left: 0;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cloud-final-cta > div:last-child {
+    width: 100%;
+  }
+
+  .cloud-footer {
+    padding: 30px 22px;
+    border: 0;
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .cloud-footer > div {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 460px) {
+  .cloud-hero-eyebrow {
+    align-items: flex-start;
+    line-height: 1.5;
+  }
+
+  .cloud-hero-visual {
+    min-height: 420px;
+  }
+
+  .cloud-topology-node {
+    min-width: 70px;
+    padding: 6px;
+  }
+
+  .cloud-topology-node small {
+    display: none;
+  }
+
+  .cloud-topology-node.is-cloud {
+    min-width: 82px;
+  }
+
+  .cloud-hero-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-hero-metrics span,
+  .cloud-hero-metrics span:nth-child(2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--cloud-line);
+  }
+
+  .cloud-hero-metrics span:last-child {
+    border-bottom: 0;
+  }
+
+  .cloud-capability-card {
+    padding: 19px;
+  }
+
+  .cloud-roadmap-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-roadmap-card {
+    min-height: 88px;
+  }
+
+  .cloud-architecture-card {
+    min-height: 690px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .cloud-home *,
+  .cloud-home *::before,
+  .cloud-home *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .cloud-topology-signal,
+  .cloud-future-signal b {
+    display: none;
+  }
+
+  .cloud-home[data-effects='ready'] [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+}

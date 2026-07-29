@@ -1,4 +1,4 @@
-export type ArchitectureStatus = 'verified' | 'in-progress' | 'planned' | 'external';
+export type ArchitectureStatus = 'verified' | 'in-progress' | 'planned' | 'historical' | 'external';
 
 export interface ArchitectureStatusMeta {
   label: string;
@@ -21,6 +21,11 @@ export const ARCHITECTURE_STATUS_META: Readonly<Record<ArchitectureStatus, Archi
     label: 'Planned',
     description: 'Sequenced after its required platform foundations.',
     color: '#72b7ff',
+  },
+  historical: {
+    label: 'Historical',
+    description: 'Prior evidence retained while the current A3S Box contract awaits re-certification.',
+    color: '#c6a36b',
   },
   external: {
     label: 'External',
@@ -66,7 +71,6 @@ export const ARCHITECTURE_VISUAL_KINDS = [
   'node-antenna',
   'runtime-engine',
   'traffic-gateway',
-  'buildkit-yard',
   'healthy-runtime',
   'registry-rack',
   'cpu-array',
@@ -100,7 +104,6 @@ export const ARCHITECTURE_LOGO_IDS = [
   'node-agent',
   'a3s-runtime',
   'a3s-gateway',
-  'docker-buildkit',
   'runtime-unit',
   'oci-registry',
   'cpu-compute',

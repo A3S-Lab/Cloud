@@ -100,7 +100,7 @@
       "type": "frontend",
       "label": "Web Console",
       "sublabel": "Management surface",
-      "tag": "F0 · E0 · Verified",
+      "tag": "F0 · Verified",
       "pos": [
         409,
         72
@@ -250,7 +250,7 @@
       "type": "backend",
       "label": "Workloads",
       "sublabel": "Bounded context",
-      "tag": "D0 · E0 · Verified",
+      "tag": "D0 · E0 · Historical",
       "pos": [
         355,
         468
@@ -265,7 +265,7 @@
       "type": "backend",
       "label": "Fleet",
       "sublabel": "Bounded context",
-      "tag": "N0 · E0 · Verified",
+      "tag": "N0 · E0 · Historical",
       "pos": [
         679,
         468
@@ -280,7 +280,7 @@
       "type": "backend",
       "label": "Edge",
       "sublabel": "Bounded context",
-      "tag": "E0 · Verified",
+      "tag": "E0 · Historical",
       "pos": [
         1003,
         468
@@ -295,7 +295,7 @@
       "type": "backend",
       "label": "Operations",
       "sublabel": "Bounded context",
-      "tag": "F0 · E0 · Verified",
+      "tag": "F0 · Verified",
       "pos": [
         1327,
         468
@@ -325,7 +325,7 @@
       "type": "backend",
       "label": "A3S Flow",
       "sublabel": "Operation history",
-      "tag": "F0 · E0 · Verified",
+      "tag": "F0 · Verified",
       "pos": [
         625,
         573
@@ -355,7 +355,7 @@
       "type": "database",
       "label": "Artifact & Log Store",
       "sublabel": "Content-addressed bytes",
-      "tag": "E0 · G0 · Verified",
+      "tag": "G0 · In progress",
       "pos": [
         1489,
         573
@@ -370,7 +370,7 @@
       "type": "backend",
       "label": "Node Agent",
       "sublabel": "Outbound control",
-      "tag": "N0 · E0 · Verified",
+      "tag": "N0 · E0 · Historical",
       "pos": [
         679,
         700
@@ -385,7 +385,7 @@
       "type": "backend",
       "label": "A3S Runtime",
       "sublabel": "Provider-neutral execution",
-      "tag": "R0 · Verified",
+      "tag": "R0 · Historical",
       "pos": [
         1003,
         700
@@ -400,7 +400,7 @@
       "type": "security",
       "label": "A3S Gateway",
       "sublabel": "Public same-origin boundary",
-      "tag": "E0 · Verified",
+      "tag": "E0 · Historical",
       "pos": [
         841,
         203
@@ -411,28 +411,13 @@
       ]
     },
     {
-      "id": "docker-buildkit",
-      "type": "backend",
-      "label": "Docker · BuildKit",
-      "sublabel": "Execution providers",
-      "tag": "R0 · G0 · In progress",
-      "pos": [
-        193,
-        825
-      ],
-      "size": [
-        132,
-        62
-      ]
-    },
-    {
       "id": "box-provider",
       "type": "backend",
       "label": "A3S Box Provider",
-      "sublabel": "Cloud workload carrier",
-      "tag": "Provider conformance · Planned",
+      "sublabel": "Sole execution & build provider",
+      "tag": "BX0 · In progress",
       "pos": [
-        625,
+        409,
         825
       ],
       "size": [
@@ -445,9 +430,9 @@
       "type": "backend",
       "label": "A3S Power",
       "sublabel": "TEE inference backend",
-      "tag": "I0.5 conformance · Planned",
+      "tag": "PW0 · I0 · Planned",
       "pos": [
-        1057,
+        841,
         825
       ],
       "size": [
@@ -460,9 +445,9 @@
       "type": "cloud",
       "label": "Cloud Workload Units",
       "sublabel": "Converged resources",
-      "tag": "D0 · E0 · Verified",
+      "tag": "D0 · E0 · Historical",
       "pos": [
-        1489,
+        1273,
         825
       ],
       "size": [
@@ -578,7 +563,6 @@
       "kind": "region",
       "label": "06 · Providers · Provider & Workload Layer",
       "wraps": [
-        "docker-buildkit",
         "box-provider",
         "power",
         "workload-unit"
@@ -728,12 +712,6 @@
       "variant": "default"
     },
     {
-      "id": "runtime-provider",
-      "from": "runtime",
-      "to": "docker-buildkit",
-      "variant": "default"
-    },
-    {
       "id": "runtime-box",
       "from": "runtime",
       "to": "box-provider",
@@ -758,14 +736,14 @@
       ]
     },
     {
-      "id": "runtime-cpu",
-      "from": "runtime",
+      "id": "box-cpu",
+      "from": "box-provider",
       "to": "cpu-compute",
       "variant": "default"
     },
     {
-      "id": "runtime-gpu",
-      "from": "runtime",
+      "id": "box-gpu",
+      "from": "box-provider",
       "to": "gpu-compute",
       "variant": "default"
     },
@@ -782,14 +760,8 @@
       "variant": "dashed"
     },
     {
-      "id": "buildkit-cpu",
-      "from": "docker-buildkit",
-      "to": "cpu-compute",
-      "variant": "default"
-    },
-    {
-      "id": "buildkit-registry",
-      "from": "docker-buildkit",
+      "id": "box-build-registry",
+      "from": "box-provider",
       "to": "registry",
       "variant": "default"
     },
@@ -1048,13 +1020,7 @@
       "variant": "dashed"
     },
     {
-      "id": "struct-runtime-drives-providers-runtime-docker-buildkit",
-      "from": "runtime",
-      "to": "docker-buildkit",
-      "variant": "dashed"
-    },
-    {
-      "id": "struct-runtime-drives-providers-runtime-box-provider",
+      "id": "struct-runtime-drives-box-provider-runtime-box-provider",
       "from": "runtime",
       "to": "box-provider",
       "variant": "dashed"
@@ -1086,6 +1052,12 @@
     {
       "id": "struct-cpu-supplies-box-provider-cpu-compute-box-provider",
       "from": "cpu-compute",
+      "to": "box-provider",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-gpu-supplies-box-provider-gpu-compute-box-provider",
+      "from": "gpu-compute",
       "to": "box-provider",
       "variant": "dashed"
     }

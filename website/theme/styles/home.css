@@ -1,0 +1,578 @@
+.cloud-global-grid {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 910px;
+  overflow: hidden;
+  opacity: 0.78;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+}
+
+.cloud-global-grid::after {
+  position: absolute;
+  inset: -25%;
+  background: radial-gradient(
+    circle at 70% 32%,
+    rgba(42, 145, 105, 0.15),
+    rgba(48, 86, 133, 0.08) 26%,
+    transparent 56%
+  );
+  content: '';
+}
+
+.cloud-global-grid-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.cloud-hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  max-width: var(--cloud-max);
+  min-height: 790px;
+  margin: 0 auto;
+  border-right: 1px solid var(--cloud-line);
+  border-bottom: 1px solid var(--cloud-line);
+  border-left: 1px solid var(--cloud-line);
+  grid-template-columns: minmax(0, 48%) minmax(0, 52%);
+  grid-template-rows: 1fr auto;
+}
+
+.cloud-hero-copy {
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  padding: 108px 34px 72px 68px;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.cloud-hero-eyebrow,
+.cloud-section-heading > div > span,
+.cloud-architecture-copy > span,
+.cloud-final-cta > div > span {
+  color: var(--cloud-green);
+  font-family: var(--cloud-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.cloud-hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cloud-hero-eyebrow i {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cloud-green);
+  box-shadow:
+    0 0 0 5px rgba(124, 240, 188, 0.08),
+    0 0 24px rgba(124, 240, 188, 0.7);
+}
+
+.cloud-hero h1 {
+  max-width: 730px;
+  margin: 27px 0 24px;
+  color: var(--cloud-text);
+  font-size: clamp(50px, 5.25vw, 82px);
+  font-weight: 670;
+  letter-spacing: -0.068em;
+  line-height: 0.96;
+}
+
+.cloud-hero h1 span {
+  display: block;
+  margin-top: 9px;
+  background: linear-gradient(
+    102deg,
+    var(--cloud-green) 0%,
+    #a8efd0 36%,
+    var(--cloud-blue) 72%,
+    var(--cloud-violet) 104%
+  );
+  background-clip: text;
+  color: transparent;
+}
+
+.cloud-hero-copy > p {
+  max-width: 610px;
+  margin: 0;
+  color: var(--cloud-muted);
+  font-size: 17px;
+  line-height: 1.72;
+}
+
+.cloud-hero-actions {
+  display: flex;
+  margin-top: 34px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 11px;
+}
+
+.cloud-button {
+  position: relative;
+  display: inline-flex;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid var(--cloud-line-strong);
+  border-radius: 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 670;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.cloud-button svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.7;
+  transition: transform 180ms ease;
+}
+
+.cloud-button.is-primary {
+  overflow: hidden;
+  border-color: rgba(124, 240, 188, 0.48);
+  background: linear-gradient(135deg, #8cf5c6, #66d9a4);
+  box-shadow: 0 13px 42px rgba(44, 175, 120, 0.16);
+  color: #06110c;
+}
+
+.cloud-button.is-secondary {
+  background: rgba(9, 16, 14, 0.68);
+  color: var(--cloud-text);
+  backdrop-filter: blur(14px);
+}
+
+.cloud-button:hover {
+  border-color: rgba(124, 240, 188, 0.68);
+  transform: translateY(-2px);
+}
+
+.cloud-button:hover svg {
+  transform: translateX(3px);
+}
+
+.cloud-button:focus-visible,
+.cloud-home button:focus-visible,
+.cloud-home a:focus-visible {
+  outline: 2px solid var(--cloud-green);
+  outline-offset: 3px;
+}
+
+.cloud-hero-status {
+  display: flex;
+  margin-top: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cloud-hero-visual {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  padding: 44px 25px 24px 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.cloud-hero-metrics {
+  z-index: 2;
+  display: grid;
+  border-top: 1px solid var(--cloud-line);
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.cloud-hero-metrics span {
+  display: flex;
+  min-height: 72px;
+  padding: 16px 22px;
+  border-right: 1px solid var(--cloud-line);
+  align-items: center;
+  gap: 11px;
+  color: var(--cloud-muted);
+  font-family: var(--cloud-mono);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.cloud-hero-metrics span:last-child {
+  border-right: 0;
+}
+
+.cloud-hero-metrics b {
+  color: var(--cloud-green);
+  font-size: 10px;
+}
+
+.cloud-section {
+  position: relative;
+  z-index: 1;
+  max-width: var(--cloud-max);
+  margin: 0 auto;
+  padding: 112px 68px;
+  border-right: 1px solid var(--cloud-line);
+  border-bottom: 1px solid var(--cloud-line);
+  border-left: 1px solid var(--cloud-line);
+}
+
+.cloud-section-heading {
+  display: grid;
+  margin-bottom: 50px;
+  align-items: end;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  gap: 72px;
+}
+
+.cloud-section-heading h2 {
+  max-width: 780px;
+  margin: 14px 0 0;
+  color: var(--cloud-text);
+  font-size: clamp(36px, 4vw, 58px);
+  font-weight: 630;
+  letter-spacing: -0.055em;
+  line-height: 1.04;
+}
+
+.cloud-section-heading > p {
+  max-width: 540px;
+  margin: 0;
+  color: var(--cloud-muted);
+  font-size: 15px;
+  line-height: 1.72;
+}
+
+.cloud-control-loop {
+  background: radial-gradient(
+    circle at 58% 30%,
+    rgba(47, 109, 82, 0.09),
+    transparent 48%
+  );
+}
+
+.cloud-capabilities {
+  background: linear-gradient(180deg, rgba(9, 16, 14, 0.44), transparent);
+}
+
+.cloud-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 14px;
+}
+
+.cloud-capability-card {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  min-height: 420px;
+  padding: 24px;
+  border: 1px solid var(--cloud-line);
+  border-radius: 15px;
+  background: linear-gradient(
+    145deg,
+    rgba(13, 23, 19, 0.94),
+    rgba(7, 12, 10, 0.94)
+  );
+  flex-direction: column;
+  grid-column: span 4;
+  transition:
+    border-color 220ms ease,
+    transform 220ms ease;
+}
+
+.cloud-capability-card:nth-child(1),
+.cloud-capability-card:nth-child(4) {
+  grid-column: span 5;
+}
+
+.cloud-capability-card:nth-child(2),
+.cloud-capability-card:nth-child(3) {
+  grid-column: span 7;
+}
+
+.cloud-capability-card:hover {
+  border-color: rgba(124, 240, 188, 0.34);
+  transform: translateY(-3px);
+}
+
+.cloud-capability-card-topline {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cloud-capability-card-topline > span,
+.cloud-future-card header > span {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.cloud-capability-card h3,
+.cloud-future-card h3 {
+  position: relative;
+  z-index: 2;
+  margin: 23px 0 12px;
+  color: var(--cloud-text);
+  font-size: 25px;
+  font-weight: 620;
+  letter-spacing: -0.035em;
+}
+
+.cloud-capability-card > p,
+.cloud-future-card > p {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  color: var(--cloud-muted);
+  font-size: 13px;
+  line-height: 1.68;
+}
+
+.cloud-capability-card footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  margin-top: auto;
+  padding-top: 20px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cloud-capability-card footer span {
+  padding: 5px 8px;
+  border: 1px solid var(--cloud-line);
+  border-radius: 6px;
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 9px;
+}
+
+.cloud-boundaries {
+  background: radial-gradient(
+    circle at 50% 56%,
+    rgba(69, 86, 129, 0.11),
+    transparent 44%
+  );
+}
+
+.cloud-future-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 13px;
+}
+
+.cloud-future-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 390px;
+  padding: 23px 23px 58px;
+  border: 1px solid var(--cloud-line);
+  border-radius: 14px;
+  background: rgba(7, 13, 11, 0.8);
+  transition:
+    border-color 220ms ease,
+    transform 220ms ease;
+}
+
+.cloud-future-card:hover {
+  border-color: rgba(189, 142, 255, 0.35);
+  transform: translateY(-3px);
+}
+
+.cloud-future-card header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cloud-future-card code {
+  position: absolute;
+  right: 23px;
+  bottom: 22px;
+  left: 23px;
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 9px;
+}
+
+.cloud-roadmap {
+  background: linear-gradient(180deg, rgba(13, 18, 25, 0.5), transparent);
+}
+
+.cloud-architecture-cta {
+  padding-top: 82px;
+  padding-bottom: 82px;
+}
+
+.cloud-architecture-card {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  min-height: 470px;
+  border: 1px solid var(--cloud-line-strong);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #0b1712 0%, #09111a 54%, #120f1c 100%);
+  grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+  transition:
+    border-color 220ms ease,
+    transform 220ms ease;
+}
+
+.cloud-architecture-card:hover {
+  border-color: rgba(118, 183, 255, 0.44);
+  transform: translateY(-3px);
+}
+
+.cloud-architecture-copy {
+  position: relative;
+  z-index: 2;
+  padding: 66px 24px 54px 54px;
+}
+
+.cloud-architecture-copy h2 {
+  max-width: 520px;
+  margin: 18px 0;
+  font-size: clamp(39px, 4vw, 60px);
+  font-weight: 630;
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+}
+
+.cloud-architecture-copy p {
+  max-width: 500px;
+  margin: 0;
+  color: var(--cloud-muted);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.cloud-architecture-copy strong {
+  display: inline-flex;
+  margin-top: 32px;
+  align-items: center;
+  gap: 10px;
+  color: var(--cloud-green);
+  font-size: 13px;
+}
+
+.cloud-architecture-copy strong svg {
+  width: 18px;
+}
+
+.cloud-final-cta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  max-width: var(--cloud-max);
+  min-height: 310px;
+  margin: 0 auto;
+  padding: 68px;
+  border-right: 1px solid var(--cloud-line);
+  border-bottom: 1px solid var(--cloud-line);
+  border-left: 1px solid var(--cloud-line);
+  background: radial-gradient(
+    circle at 72% 30%,
+    rgba(55, 132, 96, 0.16),
+    transparent 43%
+  );
+  align-items: center;
+  justify-content: space-between;
+  gap: 44px;
+}
+
+.cloud-final-cta h2 {
+  margin: 13px 0 8px;
+  font-size: clamp(38px, 4vw, 58px);
+  font-weight: 630;
+  letter-spacing: -0.055em;
+}
+
+.cloud-final-cta p {
+  margin: 0;
+  color: var(--cloud-muted);
+}
+
+.cloud-final-cta > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cloud-final-cta .cloud-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.cloud-final-cta .cloud-button.is-primary svg {
+  fill: currentcolor;
+  stroke: none;
+}
+
+.cloud-footer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  max-width: var(--cloud-max);
+  min-height: 112px;
+  margin: 0 auto;
+  padding: 28px 40px;
+  border-right: 1px solid var(--cloud-line);
+  border-left: 1px solid var(--cloud-line);
+  align-items: center;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 30px;
+  color: var(--cloud-faint);
+  font-size: 11px;
+}
+
+.cloud-footer > a {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 9px;
+  color: var(--cloud-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cloud-footer img {
+  width: 27px;
+  height: 27px;
+}
+
+.cloud-footer > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.cloud-footer > div a:hover {
+  color: var(--cloud-green);
+}

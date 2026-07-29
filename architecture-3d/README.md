@@ -5,7 +5,7 @@ embedded Archify 2D system map. Both views explain the A3S Cloud control plane,
 middleware, managed node plane, providers, infrastructure, and delivery
 roadmap without depending on the Cloud API or management console.
 
-Production site: <https://a3s-lab.github.io/Cloud/>
+Production site: <https://a3s-lab.github.io/Cloud/architecture/>
 
 ## Experience
 
@@ -22,9 +22,12 @@ Production site: <https://a3s-lab.github.io/Cloud/>
   open a floating HUD with its purpose, endpoints, transferred facts,
   simulations, directional semantics, and boundary rule.
 - See A3S Code as one workload hosted by a local A3S Box, while the separate
-  A3S Box Runtime provider carries general Cloud OCI workload units.
+  Cloud-facing A3S Box provider is the sole Runtime execution and source-build
+  path for general Cloud workload units.
 - Distinguish the planned Cloud Inference bounded context from A3S Power, one
-  optional TEE inference backend carried by an ordinary managed workload.
+  optional TEE inference backend carried by an ordinary Box-hosted workload.
+- Read `F0` as verified, `BX0` as in progress, and the prior `R0`, `N0`, `D0`,
+  and `E0` evidence as historical until the Box-only baseline is re-certified.
 - Inspect CPU and GPU hardware as multi-rack clusters without implying that the
   current Box provider already supports GPU passthrough.
 - Run CPU deployment, source-to-OCI, A3S Power GPU inference, live traffic, and
@@ -45,8 +48,8 @@ nodes, detailed business edges, structural placement, scenarios, and roadmap
 status. [`scripts/generate-archify-source.ts`](scripts/generate-archify-source.ts)
 projects that same graph into Archify JSON.
 Keep it aligned with the Cloud domain model, technical architecture,
-development plan, inference plan, and each provider's verified capability
-boundary.
+development plan, inference plan, and the sole provider's current capability
+boundary and roadmap state.
 
 ## Local development
 
@@ -86,16 +89,16 @@ bun run build
 
 ## GitHub Pages
 
-The
-[`architecture-3d-pages.yml`](../.github/workflows/architecture-3d-pages.yml)
-workflow validates every pull request that changes this application. A change
-merged to `main` builds with the repository path prefix, uploads `dist/` as the
-official Pages artifact, and deploys it to the `github-pages` environment.
+The [`cloud-pages.yml`](../.github/workflows/cloud-pages.yml) workflow validates
+every pull request that changes this application. A change merged to `main`
+builds the product website and architecture app, places this app under the
+`architecture/` route, uploads one combined Pages artifact, and deploys it to
+the `github-pages` environment.
 
 For a local production build that uses the same URL layout:
 
 ```bash
-A3S_ARCHITECTURE_BASE_PATH=/Cloud/ bun run build
+A3S_ARCHITECTURE_BASE_PATH=/Cloud/architecture/ bun run build
 ```
 
 The Cloud repository must use **GitHub Actions** as its Pages source. The
