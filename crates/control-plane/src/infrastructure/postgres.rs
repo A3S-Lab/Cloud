@@ -471,6 +471,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/051_hosted_assets.sql"
             )),
         ),
+        Migration::new(
+            "052",
+            "Cloud executions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/052_executions.sql"
+            )),
+        ),
     ]
 }
 

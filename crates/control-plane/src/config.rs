@@ -115,6 +115,15 @@ pub struct DeploymentsConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionsConfig {
+    pub reconcile_interval_ms: u64,
+    pub command_ttl_ms: u64,
+    pub observation_poll_ms: u64,
+    pub convergence_timeout_ms: u64,
+    pub cleanup_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildsConfig {
     pub reconcile_interval_ms: u64,
     pub builder_uri: String,
@@ -311,6 +320,7 @@ pub struct CloudConfig {
     pub events: EventsConfig,
     pub operations: OperationsConfig,
     pub deployments: DeploymentsConfig,
+    pub executions: ExecutionsConfig,
     pub builds: BuildsConfig,
     pub registry: RegistryConfig,
     pub sources: SourcesConfig,
@@ -388,6 +398,17 @@ impl CloudConfig {
                 "convergence_timeout_ms",
                 "runtime_stop_timeout_ms",
                 "cleanup_poll_ms",
+                "cleanup_timeout_ms",
+            ],
+        )?;
+        let executions = one_block(&document, "executions")?;
+        validate_block(
+            executions,
+            &[
+                "reconcile_interval_ms",
+                "command_ttl_ms",
+                "observation_poll_ms",
+                "convergence_timeout_ms",
                 "cleanup_timeout_ms",
             ],
         )?;
@@ -593,6 +614,13 @@ impl CloudConfig {
                 cleanup_poll_ms: integer(deployments, "cleanup_poll_ms")?,
                 cleanup_timeout_ms: integer(deployments, "cleanup_timeout_ms")?,
             },
+            executions: ExecutionsConfig {
+                reconcile_interval_ms: integer(executions, "reconcile_interval_ms")?,
+                command_ttl_ms: integer(executions, "command_ttl_ms")?,
+                observation_poll_ms: integer(executions, "observation_poll_ms")?,
+                convergence_timeout_ms: integer(executions, "convergence_timeout_ms")?,
+                cleanup_timeout_ms: integer(executions, "cleanup_timeout_ms")?,
+            },
             builds: BuildsConfig {
                 reconcile_interval_ms: integer(builds, "reconcile_interval_ms")?,
                 builder_uri: string(builds, "builder_uri")?,
@@ -773,6 +801,20 @@ impl CloudConfig {
         )
     }
 
+    pub(crate) fn execution_flow_config(
+        &self,
+    ) -> Result<crate::modules::executions::ExecutionFlowConfig, String> {
+        crate::modules::executions::ExecutionFlowConfig::new(
+            crate::modules::executions::ExecutionFlowConfigOptions {
+                heartbeat_timeout_ms: self.fleet.heartbeat_timeout_ms,
+                command_ttl_ms: self.executions.command_ttl_ms,
+                observation_poll_ms: self.executions.observation_poll_ms,
+                convergence_timeout_ms: self.executions.convergence_timeout_ms,
+                cleanup_timeout_ms: self.executions.cleanup_timeout_ms,
+            },
+        )
+    }
+
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.server.host.trim().is_empty() || self.server.host.len() > 255 {
             return Err(ConfigError::Invalid(
@@ -902,6 +944,15 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        if self.executions.reconcile_interval_ms == 0
+            || self.executions.reconcile_interval_ms > 3_600_000
+        {
+            return Err(ConfigError::Invalid(
+                "executions.reconcile_interval_ms must be between 1 and 3600000".into(),
+            ));
+        }
+        self.execution_flow_config()
+            .map_err(|error| ConfigError::Invalid(format!("executions is invalid: {error}")))?;
         if self.builds.reconcile_interval_ms == 0
             || self.builds.reconcile_interval_ms > 3_600_000
             || !valid_data_path(&self.builds.input_staging_dir)
@@ -1405,6 +1456,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "builds",
         "events",
         "deployments",
+        "executions",
         "edge",
         "fleet",
         "logs",
@@ -1700,6 +1752,13 @@ deployments {
   convergence_timeout_ms = 600000
   runtime_stop_timeout_ms = 60000
   cleanup_poll_ms = 1000
+  cleanup_timeout_ms = 300000
+}
+executions {
+  reconcile_interval_ms = 1000
+  command_ttl_ms = 900000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 600000
   cleanup_timeout_ms = 300000
 }
 builds {

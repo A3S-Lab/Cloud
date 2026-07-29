@@ -1476,7 +1476,7 @@ require exact snapshot parity. Stable operation IDs, explicit public or bearer
 security, mutation headers, request media types, success/error responses, and
 shared envelope schemas make the document usable without inferring behavior
 from controller code. The client default base path, document metadata, and all
-API responses pin contract `1.0.0`.
+API responses pin contract `1.1.0`.
 
 Pull requests compare the candidate with the base contract. Version 1 cannot
 remove a path, method, accepted input, response status, or response schema

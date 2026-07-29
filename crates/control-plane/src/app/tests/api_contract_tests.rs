@@ -130,6 +130,21 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .and_then(|body| body.get("content"))
         .and_then(|content| content.get("application/vnd.a3s.acl"))
         .is_some());
+    let executions = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions"];
+    assert!(executions["get"].is_object());
+    assert!(executions["post"]["requestBody"]["content"]["application/json"].is_object());
+    assert!(executions["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let execution =
+        &document["paths"]["/organizations/{organization_id}/executions/{execution_id}"];
+    assert!(execution["get"].is_object());
+    assert!(execution["delete"].is_object());
     Ok(())
 }
 

@@ -226,6 +226,72 @@ export interface BuildRunLogsPage {
   nextCursor: string | null;
 }
 
+export type ExecutionStatus =
+  | 'queued'
+  | 'scheduled'
+  | 'running'
+  | 'cancelling'
+  | 'cleanup_pending'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+
+export interface ExecutionArtifact {
+  uri: string;
+  digest: string;
+  mediaType: string;
+}
+
+export interface ExecutionProcess {
+  command: string[];
+  args: string[];
+  workingDirectory: string | null;
+  environment: Record<string, string>;
+}
+
+export interface ExecutionResources {
+  cpuMillis: number;
+  memoryBytes: number;
+  pids: number;
+  ephemeralStorageBytes: number | null;
+  timeoutMs: number;
+}
+
+export interface CreateExecutionInput {
+  artifact: ExecutionArtifact;
+  process: ExecutionProcess;
+  input: unknown;
+  resources: ExecutionResources;
+}
+
+export type ExecutionOutcome =
+  | { kind: 'succeeded'; exitCode: number }
+  | { kind: 'failed'; exitCode: number | null; reason: string }
+  | { kind: 'cancelled' };
+
+export interface Execution {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  id: string;
+  operationId: string;
+  template: CreateExecutionInput;
+  templateDigest: string;
+  status: ExecutionStatus;
+  outcome: ExecutionOutcome | null;
+  aggregateVersion: number;
+  requestedAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  cancellationRequestedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ExecutionMutationResult {
+  execution: Execution;
+  replayed: boolean;
+}
+
 export interface ServiceTemplate {
   artifact: OciArtifactReference;
   process: ServiceProcess;

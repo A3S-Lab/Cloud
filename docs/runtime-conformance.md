@@ -108,14 +108,16 @@ be empty. This is one lifecycle and observation path, not a second health
 worker, scheduler, registry, endpoint authority, or state store.
 
 The third `BX0.3` slice advances the pinned A3S Box revision to
-`9fb9bf528f6c648bbecf203de991106fc39bccdb` and requires explicit isolation at
+`d6cceb02f70bda64a2761799dfebec3245f7027f` and requires explicit isolation at
 the closed Node Agent ACL boundary. `box.isolation` accepts exactly `microvm` or
 `sandbox`; missing, `automatic`, and unknown selections fail before Runtime
 construction. The shipped product profile selects MicroVM. Hosted real-provider
 Cloud consumer tests select Sandbox explicitly. Both map directly to the sole
-shared `BoxRuntimeDriver`, with no automatic downgrade or fallback. This slice
-proves selection behavior only; full Sandbox, MicroVM, and TEE certification
-remains release-blocking.
+shared `BoxRuntimeDriver`, with no automatic downgrade or fallback. The same
+Box revision removes its retired Lambda lifecycle API; Cloud Executions now own
+the tenant, scheduling, operation, and cleanup contract while Box remains the
+node-local provider. This slice proves selection behavior only; full Sandbox,
+MicroVM, and TEE certification remains release-blocking.
 
 The following evidence remains required before `BX0` is verified:
 

@@ -59,6 +59,14 @@ deployments {
   cleanup_timeout_ms = 300000
 }
 
+executions {
+  reconcile_interval_ms = 1000
+  command_ttl_ms = 900000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 600000
+  cleanup_timeout_ms = 300000
+}
+
 builds {
   reconcile_interval_ms = 1000
   builder_uri = "oci://docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"

@@ -76,6 +76,13 @@ the required inference serving boundary and runs as an ordinary Box-hosted
 Runtime Service. Neither product adds a scheduler, node channel, queue, desired
 state store, routing authority, or usage authority to Cloud.
 
+Cloud now owns the generic finite-Task product surface as tenant-scoped
+Executions. The initial vertical slice persists replay-safe intent and
+Operations, schedules capability-matched Runtime Tasks through Fleet, supports
+cancellation, and withholds terminal state until authoritative cleanup. This is
+platform execution infrastructure; it does not implement Agent conversations,
+training, trajectories, or any Agentic RL policy.
+
 ## 3. Current roadmap
 
 | Gate | Product outcome | State |
@@ -314,7 +321,7 @@ repository currently has no configured G0 provider secrets.
   Web adds debounced keyboard search and validated contextual navigation; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
   at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.0.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  `1.1.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
   minimum sunset window; and
@@ -460,6 +467,13 @@ No migrated slice may retain Docker as a fallback. A slice lands only when its
 Box conformance and cleanup evidence passes; the final slice deletes the
 retired code and rejects new Docker/Bollard/configuration references in CI.
 
+The generic Execution slice is implemented above this boundary. It uses the
+same Flow, Fleet, Runtime, and Box path as other finite Tasks and replaces the
+retired Box-local Lambda lifecycle API. Box remains responsible only for local
+provider mechanics. The required node-local `box.isolation` field selects the
+pinned Box adapter's concrete backend. The shipped profile selects MicroVM;
+shared-kernel execution requires an explicit `sandbox` selection.
+
 ### 5.1 `G0`: external source delivery
 
 Next outcome:
@@ -532,7 +546,7 @@ bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
-public raw OpenAPI v1 snapshot, shared `1.0.0` client/response versioning,
+public raw OpenAPI v1 snapshot, shared `1.1.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real

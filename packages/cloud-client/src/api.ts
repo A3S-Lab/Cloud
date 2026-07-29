@@ -9,11 +9,14 @@ import type {
   CreateGithubRepositorySubscriptionInput,
   CreateApiTokenInput,
   CreateGatewayScopeInput,
+  CreateExecutionInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
   Environment,
   EnvironmentMutationResult,
+  Execution,
+  ExecutionMutationResult,
   GatewayCertificate,
   GatewayScope,
   GatewayScopeMutationResult,
@@ -73,7 +76,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.0.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.1.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
@@ -331,6 +334,45 @@ export class CloudApi {
   getBuildEvidence(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildEvidence> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}/evidence`,
+      signal
+    );
+  }
+
+  listExecutions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<Execution[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/executions?limit=100`,
+      signal
+    );
+  }
+
+  getExecution(organizationId: string, executionId: string, signal?: AbortSignal): Promise<Execution> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/executions/${encodeURIComponent(executionId)}`,
+      signal
+    );
+  }
+
+  createExecution(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateExecutionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ExecutionMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/executions`,
+      idempotencyKey,
+      input,
       signal
     );
   }
@@ -817,6 +859,19 @@ export class CloudApi {
   ): Promise<CancelBuildRunResult> {
     return this.delete(
       `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  cancelExecution(
+    organizationId: string,
+    executionId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ExecutionMutationResult> {
+    return this.delete(
+      `/organizations/${encodeURIComponent(organizationId)}/executions/${encodeURIComponent(executionId)}`,
       idempotencyKey,
       signal
     );

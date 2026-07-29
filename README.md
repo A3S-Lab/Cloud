@@ -77,6 +77,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
+- **Durable Ephemeral Executions**: Accept bounded digest-pinned Runtime Tasks,
+  persist tenant-scoped intent and idempotency, schedule only capability-matched
+  nodes, expose lifecycle and cancellation through REST, and reach a terminal
+  result only after authoritative Runtime removal
 - **Box-Backed Service Health**: Compile the existing A3S ACL HTTP health
   policy into A3S Runtime, consume current kind-neutral health observations
   through the Node Agent command journal, and preserve the same typed endpoint
@@ -150,7 +154,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stdin-only credentials; and search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.0.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.1.0`, and reject incompatible or invalidly deprecated contract changes
 - **Scoped Management MCP Operational Reads**: Serve stateless Streamable HTTP
   MCP through the same per-request API-token verifier, derive tenant context
   and tool visibility from the current principal, expose Project, Environment,
@@ -539,7 +543,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.0.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.1.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -727,7 +731,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.0.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.1.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record
@@ -781,6 +785,10 @@ A3S Runtime exposes two provider-neutral lifecycle classes:
 Runtime owns capability discovery and idempotent `apply`, `inspect`, `stop`, and
 `remove` mechanics. Cloud owns resource identity, desired state, placement,
 deployment workflows, release provenance, routing, and convergence decisions.
+The Box Runtime adapter maps Runtime's provider-neutral `Sandbox` requirement
+to the concrete backend selected by the required node-local `box.isolation`
+ACL field. The shipped profile selects MicroVM; shared-kernel Sandbox must be
+selected explicitly, and neither path can fall back automatically.
 
 Applications use this path today. Agent, MCP, and Skill publication has an
 implemented `A0.1` domain and PostgreSQL foundation plus the first `A0.2` local
@@ -830,6 +838,24 @@ Update and rollback use the same path. A candidate cannot replace the active
 revision until Runtime health and Gateway cutover succeed. Rollback clones a
 previously activated template into a new monotonically increasing generation;
 history is never rewritten.
+
+### Ephemeral execution
+
+An accepted Execution is a finite Task with a credential-free, digest-pinned
+OCI artifact reference.
+Cloud persists the Execution and its Operation atomically, selects a ready node
+whose advertised Runtime capabilities satisfy the complete Task shape, and
+dispatches the command through the existing outbound Fleet journal. The Task
+uses no network, mounts, Secrets, or output artifacts.
+
+Success, failure, timeout, and cancellation all enter cleanup before becoming
+terminal. Cloud records the final outcome only after an exact Runtime removal
+observation, so API replay or control-plane restart cannot leave a successful
+response hiding a live provider resource. See
+[Ephemeral Executions](docs/executions.md) for the contract and lifecycle.
+Execution input is persisted in the desired-state and idempotency records and
+must not contain credentials; Secret references are intentionally not part of
+this initial Task shape.
 
 ### Source-to-workload delivery
 
@@ -994,7 +1020,7 @@ credential values do not belong in ACL.
 | `server`, `auth`, `postgres` | API role, bootstrap, and durable state |
 | `events`, `operations` | Outbox publication and durable operation timing |
 | `node_control`, `fleet` | Outbound mTLS protocol, leases, inventories, and observations |
-| `deployments`, `builds`, `artifacts` | Workload and Box source-build execution bounds |
+| `deployments`, `executions`, `builds`, `artifacts` | Workload, finite Task, and Box source-build execution bounds |
 | `registry`, `sources` | OCI publication and GitHub delivery policy |
 | `edge`, `gateway` | Route compilation, certificates, snapshot validity, and node-local native Gateway application |
 | `logs` | Durable log object storage, paging, retention, and compaction |
@@ -1102,6 +1128,7 @@ Design and delivery references:
 - [Development Plan](docs/development-plan.md)
 - [Domain Model](docs/domain-model.md)
 - [Technical Architecture](docs/architecture.md)
+- [Ephemeral Executions](docs/executions.md)
 - [Inference Plan](docs/inference-plan.md)
 
 ## License
