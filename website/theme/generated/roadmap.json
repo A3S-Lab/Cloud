@@ -1,0 +1,110 @@
+{
+  "source": "../ROADMAP.md#3-current-roadmap",
+  "gates": [
+    {
+      "code": "BX0",
+      "name": "Box-only platform",
+      "outcome": "Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline",
+      "status": "In progress",
+      "statusKind": "in-progress"
+    },
+    {
+      "code": "PW0",
+      "name": "Power inference boundary",
+      "outcome": "ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
+      "code": "R0",
+      "name": "Universal Runtime",
+      "outcome": "General Task and Service contracts, durable identity, capability matching, and real provider conformance",
+      "status": "Historical; Box re-certification pending",
+      "statusKind": "historical"
+    },
+    {
+      "code": "F0",
+      "name": "Foundation",
+      "outcome": "Boot control plane, PostgreSQL, tenancy, identity, Flow operations, outbox, projections, API, and web shell",
+      "status": "Verified",
+      "statusKind": "verified"
+    },
+    {
+      "code": "N0",
+      "name": "Node control",
+      "outcome": "Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver",
+      "status": "Historical; Box re-certification pending",
+      "statusKind": "historical"
+    },
+    {
+      "code": "D0",
+      "name": "OCI deployment",
+      "outcome": "Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery",
+      "status": "Historical; Box re-certification pending",
+      "statusKind": "historical"
+    },
+    {
+      "code": "E0",
+      "name": "Reachable service",
+      "outcome": "Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop",
+      "status": "Historical; Box re-certification pending",
+      "statusKind": "historical"
+    },
+    {
+      "code": "G0",
+      "name": "External source delivery",
+      "outcome": "Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path",
+      "status": "In progress",
+      "statusKind": "in-progress"
+    },
+    {
+      "code": "P0",
+      "name": "Developer workflows",
+      "outcome": "Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
+      "code": "C0",
+      "name": "Control surfaces",
+      "outcome": "REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal",
+      "status": "In progress",
+      "statusKind": "in-progress"
+    },
+    {
+      "code": "A0",
+      "name": "Release catalog",
+      "outcome": "Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths",
+      "status": "In progress",
+      "statusKind": "in-progress"
+    },
+    {
+      "code": "A1",
+      "name": "Agent execution",
+      "outcome": "Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
+      "code": "S0",
+      "name": "Stateful platform",
+      "outcome": "Databases, volumes, fencing, backup, restore, retention, and stateful import mappings",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
+      "code": "H0",
+      "name": "Production scale",
+      "outcome": "Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling",
+      "status": "In progress",
+      "statusKind": "in-progress"
+    },
+    {
+      "code": "I0",
+      "name": "Inference profile",
+      "outcome": "Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service",
+      "status": "Planned",
+      "statusKind": "planned"
+    }
+  ]
+}

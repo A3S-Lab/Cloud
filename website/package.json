@@ -1,0 +1,35 @@
+{
+  "name": "@a3s/cloud-website",
+  "version": "0.1.0",
+  "description": "A3S Cloud product website and documentation shell.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspress build",
+    "check:site": "node scripts/check-built-site.mjs",
+    "check:roadmap": "node scripts/generate-roadmap-data.mjs --check",
+    "dev": "rspress dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "generate:roadmap": "node scripts/generate-roadmap-data.mjs",
+    "lint": "rslint && tsc --noEmit && npm run check:roadmap",
+    "prebuild": "npm run generate:roadmap",
+    "predev": "npm run generate:roadmap"
+  },
+  "dependencies": {
+    "@rspress/core": "^2.0.17",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@rslint/core": "^0.5.3",
+    "@types/node": "^22.8.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -11,6 +11,8 @@
 /packages/cloud-client/node_modules/
 /architecture-3d/node_modules/
 /architecture-3d/dist/
+/website/node_modules/
+/website/doc_build/
 
 # Local configuration and credentials
 .env

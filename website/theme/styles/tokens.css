@@ -1,0 +1,212 @@
+:root {
+  --rp-c-brand: #76e9b5;
+  --rp-c-brand-dark: #8df5c6;
+  --rp-c-brand-darker: #a7fbd5;
+  --rp-c-brand-light: #4fbd8d;
+  --rp-c-brand-lighter: #327b5e;
+  --rp-c-brand-tint: rgba(118, 233, 181, 0.12);
+  --rp-c-bg: #050807;
+  --rp-c-bg-soft: #09100e;
+  --rp-c-bg-mute: #0d1613;
+  --rp-c-divider: #1d2b26;
+  --rp-c-divider-light: #15201c;
+  --rp-c-text-1: #f1f8f4;
+  --rp-c-text-2: #a4b5ad;
+  --rp-c-text-3: #6d7f76;
+  --rp-nav-height: 72px;
+  --rp-content-max-width: 920px;
+  --cloud-bg: #050807;
+  --cloud-panel: #08100d;
+  --cloud-panel-raised: #0c1512;
+  --cloud-panel-blue: #0a1118;
+  --cloud-line: #1a2923;
+  --cloud-line-strong: #2a4439;
+  --cloud-text: #f1f8f4;
+  --cloud-muted: #9aada4;
+  --cloud-faint: #65786f;
+  --cloud-green: #7cf0bc;
+  --cloud-green-deep: #39a776;
+  --cloud-blue: #76b7ff;
+  --cloud-violet: #bd8eff;
+  --cloud-amber: #efc56c;
+  --cloud-max: 1440px;
+  --cloud-mono:
+    'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--cloud-bg);
+  color: var(--cloud-text);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(118, 233, 181, 0.26);
+  color: #fff;
+}
+
+.rp-nav {
+  border-bottom-color: rgba(42, 68, 57, 0.72);
+  background: rgba(5, 8, 7, 0.78);
+  padding-right: max(24px, calc((100vw - var(--cloud-max)) / 2 + 24px));
+  padding-left: max(24px, calc((100vw - var(--cloud-max)) / 2 + 24px));
+  backdrop-filter: blur(22px) saturate(145%);
+}
+
+.rp-nav::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(124, 240, 188, 0.22),
+    rgba(118, 183, 255, 0.18),
+    transparent
+  );
+  content: '';
+  pointer-events: none;
+}
+
+.rp-nav__title__link {
+  gap: 9px;
+  letter-spacing: -0.025em;
+}
+
+.rp-nav__title__logo,
+.rspress-logo {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  margin-right: 0;
+}
+
+.rp-nav__title__link > span {
+  font-size: 17px;
+  font-weight: 720;
+}
+
+.rp-nav-menu__item {
+  font-size: 13px;
+}
+
+.rp-doc-layout {
+  --rp-c-bg: var(--cloud-bg);
+}
+
+.rp-doc h1,
+.rp-doc h2,
+.rp-doc h3 {
+  letter-spacing: -0.035em;
+}
+
+.cloud-home,
+.cloud-home * {
+  box-sizing: border-box;
+}
+
+.cloud-home {
+  position: relative;
+  overflow: clip;
+  width: 100%;
+  background:
+    linear-gradient(rgba(142, 255, 206, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 255, 206, 0.018) 1px, transparent 1px),
+    var(--cloud-bg);
+  background-size: 80px 80px;
+  color: var(--cloud-text);
+}
+
+.cloud-home a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cloud-home button,
+.cloud-home a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cloud-home svg {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cloud-effects-anchor {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.cloud-gate-badge {
+  display: inline-flex;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--cloud-line-strong);
+  border-radius: 999px;
+  background: rgba(9, 16, 14, 0.76);
+  align-items: center;
+  gap: 7px;
+  color: var(--cloud-muted);
+  font-family: var(--cloud-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.cloud-gate-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 14px currentcolor;
+}
+
+.cloud-gate-badge b {
+  color: var(--cloud-text);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.cloud-gate-badge.is-compact {
+  min-height: 23px;
+  padding: 3px 7px;
+  gap: 5px;
+}
+
+.cloud-gate-badge.is-verified {
+  border-color: rgba(124, 240, 188, 0.28);
+  color: var(--cloud-green);
+}
+
+.cloud-gate-badge.is-in-progress {
+  border-color: rgba(118, 183, 255, 0.3);
+  color: var(--cloud-blue);
+}
+
+.cloud-gate-badge.is-planned {
+  border-color: rgba(189, 142, 255, 0.28);
+  color: var(--cloud-violet);
+}
+
+.cloud-gate-badge.is-historical {
+  border-color: rgba(239, 197, 108, 0.28);
+  color: var(--cloud-amber);
+}

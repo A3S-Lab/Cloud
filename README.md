@@ -925,6 +925,11 @@ inner layers.
 See [Technical Architecture](docs/architecture.md) for consistency ownership,
 the node protocol, security boundaries, and recovery behavior.
 
+The [A3S Cloud product site](https://a3s-lab.github.io/Cloud/) animates this
+control loop and projects the delivery matrix directly from `ROADMAP.md`. Its
+[interactive architecture](https://a3s-lab.github.io/Cloud/architecture/)
+preserves the deeper 3D and 2D system views under the same Pages deployment.
+
 ## Configuration
 
 Cloud and the node agent use closed, validated A3S ACL. Unknown fields and
@@ -956,6 +961,7 @@ Cloud is an application-local Rust workspace:
 
 ```text
 Cloud/
+├── architecture-3d/
 ├── ROADMAP.md
 ├── cli/
 ├── config/
@@ -975,7 +981,8 @@ Cloud/
 ├── packages/
 │   └── cloud-client/
 ├── tools/
-└── web/
+├── web/                   # authenticated operations console
+└── website/               # public product site and documentation shell
 ```
 
 ## Development
@@ -999,6 +1006,16 @@ bun run format:check
 bun run lint:check
 bun run test
 bun run build
+```
+
+Run product-site checks from `website/`:
+
+```bash
+npm ci
+npm run format:check
+npm run lint
+npm run build
+npm run check:site
 ```
 
 Run the shared-client and CLI checks from their package directories:

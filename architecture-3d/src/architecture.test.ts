@@ -63,6 +63,37 @@ describe('architecture graph', () => {
     expect(ARCHITECTURE_EDGES.some((edge) => edge.id === 'box-workload')).toBe(true);
   });
 
+  it('models A3S Box as the sole Runtime execution and source-build provider', () => {
+    const runtimeProviderEdges = ARCHITECTURE_EDGES.filter(
+      (edge) => edge.from === 'runtime' && edge.label.toLowerCase().includes('provider')
+    );
+    const sourceBuild = SIMULATION_SCENARIOS.find((scenario) => scenario.id === 'source-release');
+
+    expect(ARCHITECTURE_NODES.some((node) => node.id === 'docker-buildkit')).toBe(false);
+    expect(ARCHITECTURE_VISUAL_KINDS).not.toContain('buildkit-yard');
+    expect(ARCHITECTURE_LOGO_IDS).not.toContain('docker-buildkit');
+    expect(runtimeProviderEdges.map((edge) => edge.to)).toEqual(['box-provider']);
+    expect(ARCHITECTURE_EDGES.some((edge) => edge.id === 'box-cpu')).toBe(true);
+    expect(ARCHITECTURE_EDGES.some((edge) => edge.id === 'box-build-registry')).toBe(true);
+    expect(sourceBuild?.steps.flatMap((step) => step.nodeIds)).toContain('box-provider');
+    expect(sourceBuild?.steps.flatMap((step) => step.edgeIds)).toContain('box-cpu');
+    expect(sourceBuild?.steps.flatMap((step) => step.edgeIds)).toContain('box-build-registry');
+  });
+
+  it('publishes Box re-certification truth for the historical Runtime baseline', () => {
+    const historicalGates = new Set(['R0', 'N0', 'D0', 'E0']);
+    const baselineNodes = ARCHITECTURE_NODES.filter((node) =>
+      node.gate.split(' · ').some((gate) => historicalGates.has(gate))
+    );
+
+    expect(baselineNodes.length).toBeGreaterThan(0);
+    expect(baselineNodes.every((node) => node.status === 'historical')).toBe(true);
+    expect(ARCHITECTURE_NODES.find((node) => node.id === 'box-provider')).toMatchObject({
+      gate: 'BX0',
+      status: 'in-progress',
+    });
+  });
+
   it('places Gateway between management clients and the private Cloud API', () => {
     const web = ARCHITECTURE_NODES.find((node) => node.id === 'web');
     const code = ARCHITECTURE_NODES.find((node) => node.id === 'code-tui');
@@ -199,6 +230,7 @@ describe('architecture graph', () => {
     );
     expect(cpuExecution?.nodeIds).toContain('box-provider');
     expect(cpuExecution?.edgeIds).toContain('box-workload');
-    expect(gpuExecution?.nodeIds).not.toContain('box-provider');
+    expect(gpuExecution?.nodeIds).toContain('box-provider');
+    expect(gpuExecution?.edgeIds).toContain('box-gpu');
   });
 });

@@ -113,7 +113,7 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
           'node-runtime',
           'runtime-box',
           'box-workload',
-          'runtime-cpu',
+          'box-cpu',
           'cpu-workload',
           'runtime-workload',
         ],
@@ -136,7 +136,7 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
     label: 'Build a source release',
     shortLabel: 'Git → OCI',
     description:
-      'Resolve an immutable Git revision, run an isolated BuildKit task, and publish a verified OCI graph.',
+      'Resolve an immutable Git revision, run an isolated A3S Box build, and publish a verified OCI graph.',
     journey: 'source',
     color: '#f3c86b',
     steps: [
@@ -171,13 +171,13 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
         durationMs: 3000,
       },
       {
-        id: 'run-buildkit',
-        title: 'Run the isolated BuildKit task',
-        actor: 'Node Agent · Runtime · Docker/BuildKit · CPU',
+        id: 'run-box-build',
+        title: 'Run the isolated A3S Box build',
+        actor: 'Node Agent · Runtime · A3S Box · CPU',
         description:
-          'The leased task crosses the provider-neutral Runtime boundary and executes on CPU hardware under dual network denial.',
-        nodeIds: ['flow', 'node-agent', 'runtime', 'docker-buildkit', 'cpu-compute'],
-        edgeIds: ['flow-node-agent', 'node-runtime', 'runtime-provider', 'buildkit-cpu'],
+          'The leased typed ACL build plan crosses the Runtime boundary and A3S Box executes it on CPU hardware under the declared network policy.',
+        nodeIds: ['flow', 'node-agent', 'runtime', 'box-provider', 'cpu-compute'],
+        edgeIds: ['flow-node-agent', 'node-runtime', 'runtime-box', 'box-cpu'],
         durationMs: 3400,
       },
       {
@@ -186,8 +186,8 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
         actor: 'Artifacts · Object Store · OCI Registry',
         description:
           'Cloud captures command-bound output, verifies every descriptor, then publishes the complete digest-addressed OCI graph.',
-        nodeIds: ['artifacts', 'docker-buildkit', 'object-storage', 'registry'],
-        edgeIds: ['artifacts-store', 'buildkit-registry'],
+        nodeIds: ['artifacts', 'box-provider', 'object-storage', 'registry'],
+        edgeIds: ['artifacts-store', 'box-build-registry'],
         durationMs: 3200,
       },
       {
@@ -243,12 +243,12 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
       },
       {
         id: 'execute-gpu',
-        title: 'Start A3S Power through Runtime',
-        actor: 'Node Agent · A3S Runtime · A3S Power · GPU Compute',
+        title: 'Start A3S Power through Runtime and Box',
+        actor: 'Node Agent · A3S Runtime · A3S Box · A3S Power · GPU Compute',
         description:
-          'Node Agent applies the leased command; Runtime converges a normal workload unit in which conformant Power uses the exact GPU binding.',
-        nodeIds: ['node-agent', 'runtime', 'power', 'gpu-compute', 'workload-unit'],
-        edgeIds: ['node-runtime', 'runtime-gpu', 'power-gpu', 'gpu-workload'],
+          'Node Agent applies the leased command; Runtime uses the sole Box provider to converge a normal workload unit in which conformant Power uses the exact GPU binding.',
+        nodeIds: ['node-agent', 'runtime', 'box-provider', 'power', 'gpu-compute', 'workload-unit'],
+        edgeIds: ['node-runtime', 'runtime-box', 'box-gpu', 'box-workload', 'power-gpu', 'gpu-workload'],
         durationMs: 3200,
       },
       {

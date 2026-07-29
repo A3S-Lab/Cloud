@@ -102,11 +102,11 @@ export function App() {
         <output className='roadmap-readout' aria-label='Current product roadmap status'>
           <span>
             <i className='is-verified' />
-            R0–E0 verified
+            F0 verified
           </span>
           <span>
             <i className='is-progress' />
-            G0 in progress
+            BX0 in progress
           </span>
           <span>
             <i className='is-planned' />

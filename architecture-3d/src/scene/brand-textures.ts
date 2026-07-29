@@ -11,7 +11,6 @@ type LogoGlyph =
   | 'chip'
   | 'client'
   | 'containers'
-  | 'docker'
   | 'event'
   | 'flow'
   | 'gateway'
@@ -75,12 +74,6 @@ const BRAND_SPECS: Readonly<Record<ArchitectureLogoId, BrandSpec>> = {
   'node-agent': { label: 'Node Agent', eyebrow: 'OUTBOUND MTLS', glyph: 'antenna', accent: '#71d5c3' },
   'a3s-runtime': { label: 'A3S Runtime', eyebrow: 'EXECUTION', glyph: 'runtime', accent: '#71d5c3' },
   'a3s-gateway': { label: 'A3S Gateway', eyebrow: 'TRAFFIC', glyph: 'gateway', accent: '#72b7ff' },
-  'docker-buildkit': {
-    label: 'Docker + BuildKit',
-    eyebrow: 'BUILD PROVIDER',
-    glyph: 'docker',
-    accent: '#2496ed',
-  },
   'runtime-unit': { label: 'Runtime Unit', eyebrow: 'HEALTHY TARGET', glyph: 'health', accent: '#b8f36b' },
   'oci-registry': { label: 'OCI Registry', eyebrow: 'DIGEST ONLY', glyph: 'oci', accent: '#f7941d' },
   'cpu-compute': { label: 'CPU Compute', eyebrow: 'GENERAL PURPOSE', glyph: 'chip', accent: '#69b7ff' },
@@ -395,23 +388,6 @@ function drawGlyph(
       line(context, -18, 8, 18, 8);
       line(context, 8, -2, 18, 8);
       line(context, 18, 8, 8, 18);
-      break;
-    case 'docker':
-      for (const [boxX, boxY] of [
-        [-24, -15],
-        [-8, -15],
-        [8, -15],
-        [-8, -30],
-      ]) {
-        context.strokeRect(boxX, boxY, 13, 13);
-      }
-      context.beginPath();
-      context.moveTo(-33, 2);
-      context.lineTo(24, 2);
-      context.quadraticCurveTo(20, 27, -8, 28);
-      context.quadraticCurveTo(-29, 27, -33, 2);
-      context.stroke();
-      line(context, 24, 3, 34, -6);
       break;
     case 'health':
       circle(context, 0, 0, 32, false);

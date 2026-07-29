@@ -233,13 +233,6 @@ export function createFacilityModel(
         animate(kit, route, 'pulse', 1.25);
       }
       break;
-    case 'buildkit-yard':
-      addBox(kit.root, [0.82, 0.58, 0.74], [-0.48, 0.29, 0.1], kit.primary);
-      addBox(kit.root, [0.82, 0.58, 0.74], [0.48, 0.29, -0.12], kit.dark);
-      addCylinder(kit.root, [0.07, 0.07, 1.48, 8], [-0.86, 0.74, -0.42], kit.accent);
-      addBox(kit.root, [1.5, 0.08, 0.08], [-0.16, 1.46, -0.42], kit.accent);
-      addCylinder(kit.root, [0.025, 0.025, 0.65, 8], [0.52, 1.14, -0.42], kit.accent);
-      break;
     case 'healthy-runtime':
       addCylinder(kit.root, [0.58, 0.58, 1.12, 24], [0, 0.76, 0], kit.primary);
       addSphere(kit.root, 0.58, [0, 1.3, 0], kit.accent);

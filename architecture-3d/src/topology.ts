@@ -99,13 +99,13 @@ export const ARCHITECTURE_CARRIERS: readonly ArchitectureCarrier[] = [
   {
     id: 'provider-compute-cluster',
     label: 'Provider & Workload Runtime Layer',
-    eyebrow: 'Docker · A3S Box · healthy units',
+    eyebrow: 'A3S Box · A3S Power · healthy units',
     description:
-      'Conformant provider implementations turn Runtime plans into concrete build tasks and healthy Cloud workload units.',
+      'The sole A3S Box provider turns Runtime plans into isolated builds and healthy Cloud workload units; Power is one planned guest.',
     position: [0, 0.08, -7.2],
     size: [30.6, 2.05],
     color: '#f3c86b',
-    memberNodeIds: ['docker-buildkit', 'box-provider', 'power', 'workload-unit'],
+    memberNodeIds: ['box-provider', 'power', 'workload-unit'],
   },
   {
     id: 'infrastructure-hardware-cluster',
@@ -197,16 +197,16 @@ export const ARCHITECTURE_HOSTING_RELATIONSHIPS: readonly ArchitectureHostingRel
     color: '#71d5c3',
   },
   {
-    id: 'runtime-drives-providers',
+    id: 'runtime-drives-box-provider',
     hostNodeIds: ['runtime'],
-    guestNodeIds: ['docker-buildkit', 'box-provider'],
-    label: 'provider implementations',
+    guestNodeIds: ['box-provider'],
+    label: 'sole provider implementation',
     description:
-      'A3S Runtime drives interchangeable provider implementations through one normalized lifecycle contract.',
+      'A3S Runtime drives the sole A3S Box provider through one normalized Task, Service, and build lifecycle contract.',
     hostAction: 'drives',
     guestAction: 'implements',
     boundary:
-      'Provider-specific APIs and credentials remain behind the Runtime contract instead of leaking into Cloud domains.',
+      'Box-specific APIs and credentials stay behind Runtime; Cloud carries no fallback provider or parallel lifecycle state.',
     color: '#f3c86b',
   },
   {
@@ -245,7 +245,20 @@ export const ARCHITECTURE_HOSTING_RELATIONSHIPS: readonly ArchitectureHostingRel
     hostAction: 'supplies compute to',
     guestAction: 'runs on',
     boundary:
-      'This verified relationship covers CPU execution only; GPU passthrough for the Box provider remains a planned capability.',
+      'CPU execution is available while the complete Box-only baseline still awaits BX0 re-certification.',
+    color: '#d7b6ff',
+  },
+  {
+    id: 'gpu-supplies-box-provider',
+    hostNodeIds: ['gpu-compute'],
+    guestNodeIds: ['box-provider'],
+    label: 'planned Box GPU binding',
+    description:
+      'GPU rack capacity will be exposed through the same A3S Box provider used for every other Runtime unit.',
+    hostAction: 'supplies accelerator capacity to',
+    guestAction: 'binds through',
+    boundary:
+      'No direct Power-to-device lifecycle exists; Box GPU passthrough remains planned until BX0 and PW0 evidence passes.',
     color: '#d7b6ff',
   },
 ] as const;

@@ -51,6 +51,15 @@ vi.mock('./components/archify-scene', () => ({
 }));
 
 describe('A3S Cloud architecture application', () => {
+  it('shows the authoritative roadmap headline', () => {
+    render(<App />);
+
+    expect(screen.getByText('F0 verified')).toBeVisible();
+    expect(screen.getByText('BX0 in progress')).toBeVisible();
+    expect(screen.getByText('I0 planned')).toBeVisible();
+    expect(screen.queryByText('R0–E0 verified')).not.toBeInTheDocument();
+  });
+
   it('switches journeys and exposes the selected flow to the scene', () => {
     render(<App />);
 

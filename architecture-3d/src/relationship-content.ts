@@ -120,18 +120,15 @@ export const ARCHITECTURE_EDGE_DETAILS = {
     boundary:
       'Node Agent coordinates local work while Runtime owns provider invocation and normalized lifecycle behavior.',
   },
-  'runtime-provider': {
-    summary:
-      'A3S Runtime invokes the Docker or BuildKit implementation through a typed provider contract and normalizes its result.',
-    transfers: ['Provider task', 'Isolation and resource limits', 'Normalized status and output'],
-    boundary: 'Provider-specific flags and credentials do not leak into Cloud domain contracts.',
-  },
   'runtime-box': {
-    summary:
-      'A3S Runtime selects the A3S Box provider when a Cloud workload must run as an isolated OCI-backed Box unit.',
-    transfers: ['Box workload specification', 'OCI image digest', 'Runtime limits and mounts'],
+    summary: 'A3S Runtime invokes the sole A3S Box provider for every Task, Service, and source-build plan.',
+    transfers: [
+      'Typed Runtime specification',
+      'ACL build plan or OCI digest',
+      'Limits, mounts, and credentials',
+    ],
     boundary:
-      'The Box provider is one conformant implementation; Workloads does not depend on its private lifecycle API.',
+      'Provider details stay behind the Runtime contract; Cloud has no fallback provider or parallel lifecycle path.',
   },
   'box-workload': {
     summary:
@@ -140,19 +137,19 @@ export const ARCHITECTURE_EDGE_DETAILS = {
     boundary:
       'The provider hosts arbitrary Cloud workloads; A3S Code is only one possible product workload, not the provider itself.',
   },
-  'runtime-cpu': {
+  'box-cpu': {
     summary:
-      'Runtime resolves a provider plan onto advertised CPU capacity for general builds, services, and agent workloads.',
+      'A3S Box consumes the exact CPU and memory binding for general Tasks, Services, and isolated source builds.',
     transfers: ['CPU and memory request', 'Execution constraints', 'Runtime accounting'],
     boundary:
-      'Runtime consumes advertised capability and does not invent capacity or bypass Fleet placement decisions.',
+      'Box enforces the prepared binding but does not allocate capacity or bypass Fleet placement decisions.',
   },
-  'runtime-gpu': {
+  'box-gpu': {
     summary:
-      'Runtime applies a typed accelerator execution plan to a compatible GPU resource exposed by a conformant provider.',
+      'A3S Box will apply a typed accelerator binding to a compatible GPU resource for an ordinary Runtime Service.',
     transfers: ['GPU capability claim', 'Device and memory constraints', 'Accelerated execution status'],
     boundary:
-      'This is the provider-neutral target contract; current Box GPU passthrough remains planned until conformance evidence exists.',
+      'GPU passthrough remains planned until the Box and Power conformance gates retain exact isolation and cleanup evidence.',
   },
   'power-cpu': {
     summary:
@@ -176,16 +173,9 @@ export const ARCHITECTURE_EDGE_DETAILS = {
     boundary:
       'GPU use remains gated by Cloud claims, Runtime enforcement, and Power backend conformance; Power never selects devices directly.',
   },
-  'buildkit-cpu': {
+  'box-build-registry': {
     summary:
-      'BuildKit executes an isolated source build on CPU compute with declared limits and reproducible inputs.',
-    transfers: ['Build graph', 'Pinned source context', 'Build logs and result digest'],
-    boundary:
-      'Build execution cannot mutate Cloud desired state and receives only command-scoped credentials.',
-  },
-  'buildkit-registry': {
-    summary:
-      'A successful build publishes a validated, content-addressed OCI graph to the configured registry.',
+      'A successful Box build yields a validated, content-addressed OCI graph for publication to the configured registry.',
     transfers: ['OCI layers', 'Manifest and config', 'Immutable image digest'],
     boundary:
       'Only a verified digest crosses into release state; mutable tags are never the authoritative handoff.',
