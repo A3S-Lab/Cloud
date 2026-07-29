@@ -25,8 +25,8 @@ pub use artifact::{
 #[cfg(target_os = "linux")]
 pub use box_runtime::build_box_runtime_client;
 pub use config::{
-    ArtifactConfig, BoxRuntimeConfig, ConfigError, ControlPlaneConfig, GatewayControlConfig,
-    LogShippingConfig, NodeAgentConfig, NodeConfig,
+    ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation, ConfigError, ControlPlaneConfig,
+    GatewayControlConfig, LogShippingConfig, NodeAgentConfig, NodeConfig,
 };
 pub use control_plane::{
     GatewayCertificateSigningTransport, NodeControlClient, NodeControlClientError,

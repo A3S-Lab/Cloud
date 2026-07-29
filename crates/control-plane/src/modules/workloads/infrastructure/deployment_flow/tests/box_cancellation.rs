@@ -2,8 +2,8 @@ use super::*;
 #[cfg(target_os = "linux")]
 use a3s_cloud_node_agent::build_box_runtime_client;
 use a3s_cloud_node_agent::{
-    BoxRuntimeConfig, CommandExecutor, FileCommandJournal, NodeResourceInventoryAuthority,
-    ResourceInventoryError,
+    BoxRuntimeConfig, BoxRuntimeIsolation, CommandExecutor, FileCommandJournal,
+    NodeResourceInventoryAuthority, ResourceInventoryError,
 };
 use a3s_runtime::contract::{RuntimeInspection, RuntimeUnitState};
 #[cfg(not(target_os = "linux"))]
@@ -31,6 +31,7 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.clone(),
+            isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
         },

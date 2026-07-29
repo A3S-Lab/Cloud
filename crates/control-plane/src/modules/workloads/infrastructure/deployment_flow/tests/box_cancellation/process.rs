@@ -69,6 +69,7 @@ pub(super) async fn interrupt_after_provider_remove(
     let recovered_runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
+            isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
         },
@@ -96,6 +97,7 @@ pub(super) async fn recover_interrupted_remove(
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
+            isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
         },
@@ -136,6 +138,7 @@ async fn real_box_cleanup_crash_probe() -> BoxTestResult<()> {
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: dedicated_box_home()?,
+            isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
         },

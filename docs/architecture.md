@@ -143,6 +143,11 @@ The following decisions are fixed for the first architecture:
 - A3S Runtime is the required provider-neutral data-plane contract.
 - A3S Box is Cloud's sole local Runtime and image-build provider. Cloud never
   selects or falls back to a Docker-compatible provider.
+- Node Agent ACL must select Box isolation explicitly as `microvm` or
+  `sandbox`. The shipped product profile selects MicroVM and hosted Cloud
+  consumer validation selects Sandbox explicitly. `automatic`, missing
+  selections, and runtime downgrade are rejected; both modes use the same
+  shared Box Runtime driver.
 - A3S Power is the required local inference boundary and runs as an ordinary
   Box-hosted Runtime Service. It owns serving and attestation, not scheduling,
   device claims, routing, authorization, or usage accounting.

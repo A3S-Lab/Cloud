@@ -17,7 +17,7 @@ use a3s_cloud_contracts::{
     NodeCommandPayload, NodeCommandResult,
 };
 #[cfg(target_os = "linux")]
-use a3s_cloud_node_agent::{build_box_runtime_client, BoxRuntimeConfig};
+use a3s_cloud_node_agent::{build_box_runtime_client, BoxRuntimeConfig, BoxRuntimeIsolation};
 use a3s_cloud_node_agent::{CommandExecutor, FileCommandJournal, JournalDecision};
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -268,6 +268,7 @@ fn runtime(home: &Path, state_root: &Path) -> TestResult<Arc<dyn RuntimeClient>>
     Ok(build_box_runtime_client(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
+            isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
         },
