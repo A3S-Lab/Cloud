@@ -2,6 +2,7 @@
 
 mod api;
 mod event;
+mod mcp;
 mod node;
 mod registry_credential;
 mod resource;
@@ -9,6 +10,11 @@ mod resource;
 pub use a3s_runtime::contract::RuntimeServiceEndpoint;
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
+pub use mcp::{
+    McpCredentialProjection, McpGatewayProjection, McpGrantProjection, McpLimitsProjection,
+    McpRoutePolicyProjection, McpServiceProfileProjection, McpTargetProjection,
+    MCP_CREDENTIAL_AUDIENCE, MCP_GATEWAY_PROJECTION_SCHEMA, MCP_PROTOCOL_VERSION,
+};
 pub use node::{
     artifact_uri, validate_cloud_artifact, AppliedGatewaySnapshot, CloudSecretReference,
     GatewayAckState, GatewayCertificateRequest, GatewayCertificateSigningRequest,

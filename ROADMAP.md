@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-29.**
+**Status as of 2026-07-30.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -14,6 +14,7 @@ plans.
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
 | [Cloud development plan](docs/development-plan.md) | Detailed implementation sequence, exit criteria, provider evidence, recovery gates, and definition of done |
 | [Inference plan](docs/inference-plan.md) | Detailed `I0` domain, protocol, scheduling, Gateway, usage, and conformance contracts |
+| [Runtime roadmap](https://github.com/A3S-Lab/Runtime/blob/main/ROADMAP.md) | Runtime-local Unit lifecycle, provider certification, and `MCP0.2` substrate work |
 | [Gateway roadmap](https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md) | Gateway-local current capability truth and implementation backlog |
 
 The documents must change together when a product gate changes state. The
@@ -90,7 +91,8 @@ state store, routing authority, or usage authority to Cloud.
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
-| `A0` — Release catalog | Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths | In progress |
+| `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
+| `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | Planned |
 | `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
@@ -330,7 +332,8 @@ the current search boundary is the organization tenant guard.
 `A0.1` now provides the hosted-asset identity and persistence foundation:
 
 - exact `agent`, `mcp`, and `skill` Asset kinds and closed lifecycle states;
-- canonical SemVer, Git commit, manifest digest, and typed artifact identities;
+- canonical SemVer, Git commit, profile ACL digest, and typed artifact
+  identities;
 - organization-scoped Asset-name and per-Asset release-version uniqueness;
 - optimistic aggregate transitions, strict typed domain-event validation,
   shared idempotency records, and the existing transactional Outbox; and
@@ -362,6 +365,7 @@ shared immutable-object boundary, and pinned `.a3s/asset.acl` admission through
 | --- | --- | --- |
 | Usable service platform | `BX0` plus `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one Box-hosted stateless Service on one Linux node |
 | Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path |
+| Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service through an authorized conforming Gateway |
 | Agent execution platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases become durable, resumable, approval-governed executions with replayable trajectories |
 | Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable |
 
@@ -382,7 +386,7 @@ flowchart LR
     A01 --> A02[A0.2 repository safety]
     G0 --> A03[A0.3 release publication]
     A02 --> A03
-    A03 --> A04[A0.4 Agent MCP deployment]
+    A03 --> A04[A0.4 Agent deployment]
     A04 --> A05[A0.5 Skill and catalog]
     E0 --> C0[Control surfaces]
     A03 -->|A1.1 identity| A1[Durable Agent execution]
@@ -400,6 +404,20 @@ flowchart LR
     S0 --> H04
     H03 --> H04
     H04 --> H05[H0.5 autoscaling and hardening]
+    E0 --> MCP01[MCP0.1 contract freeze]
+    MCP01 --> MCP02[MCP0.2 Runtime substrate]
+    BX0 --> MCP02
+    A03 --> MCP03[MCP0.3 Cloud orchestration]
+    H02 --> MCP03
+    MCP01 --> MCP03
+    MCP01 --> MCP04[MCP0.4 Gateway data plane]
+    H02 --> MCP04
+    MCP02 --> MCP05[MCP0.5 single-node release]
+    MCP03 --> MCP05
+    MCP04 --> MCP05
+    MCP05 --> MCP06[MCP0.6 production scale]
+    H03 --> MCP06
+    C0 -->|C0.3 grants and audit| MCP06
     E0 --> I00[I0.0 versioned contracts]
     H01 --> I01[I0.1 accelerator substrate]
     I00 --> I01
@@ -428,6 +446,14 @@ Dependency rules:
 - `A1` extends Operations and Flow, Fleet node control, Workloads, Runtime,
   Artifacts, the transactional Outbox, and shared sequence streaming. It does
   not add another scheduler, job queue, node channel, or integration bus.
+- `MCP0.1` may freeze the cross-repository contract from the verified `E0`
+  model. `MCP0.2` consumes Box Service networking, health, and recovery;
+  `MCP0.3` consumes immutable `A0.3` releases and `H0.2` target projection;
+  `MCP0.4` consumes the same closed contract and `H0.2` managed-snapshot
+  boundary. Only their joint evidence can close `MCP0.5`.
+- `MCP0.6` consumes `H0.3` multi-node behavior and `C0.3` grants and audit.
+  Stateless protocol requests do not bypass replica, rollout, identity, or
+  authorization ownership.
 - `H0.1` through `H0.3` may first be proven by an owning profile, but the full
   `H0` product gate also requires the single-node `P0`, `C0`, `A0`, `A1`, and
   `S0` surfaces it must scale.
@@ -486,7 +512,8 @@ format never becomes a second mutable source of truth.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
-| `C0.2` | Verified | Scoped management MCP and real PostgreSQL parity over the same commands and queries |
+| `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
+| `C0.2m` | Planned | Migrate management MCP to modern per-request metadata, `server/discover`, and protocol revision `2026-07-28` without changing its application-command boundary |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
@@ -526,19 +553,22 @@ route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
 PostgreSQL, proves replay and authorization consistency, and rejects plaintext
-credentials across responses, logs, and persisted data. `C0.2` adds raw
-stateless Streamable HTTP JSON-RPC, current-token scope-derived tool discovery,
-organization context derived only from the authenticated principal, three core
-queries, two idempotent create commands, ten operational Node, Operation,
-Workload, Deployment, Route, and BuildRun queries, two bounded cursor-paginated
-log queries, one signed-evidence query, and five replay-safe operational
-commands through the existing application buses. Workload stop/rollback and
+credentials across responses, logs, and persisted data. `C0.2` adds raw,
+sessionless, initialization-based `2025-06-18` Streamable HTTP JSON-RPC,
+current-token scope-derived tool discovery, organization context derived only
+from the authenticated principal, three core queries, two idempotent create
+commands, ten operational Node, Operation, Workload, Deployment, Route, and
+BuildRun queries, two bounded cursor-paginated log queries, one signed-evidence
+query, and five replay-safe operational commands through the existing
+application buses. Workload stop/rollback and
 Deployment cancel require `workload:write`; BuildRun cancel/retry require
 `build:write`. It rejects batches, foreign origins, hidden-tool invocation,
 forged organization input, invalid arguments or cursors, and revoked tokens
 without adding business rules or a persistence path to the presentation
-surface. Its dedicated real PostgreSQL gate proves exact 23-tool administrator
-and 16-tool read-only catalogs, hidden-mutation zero-write, Project and Workload
+surface. This verified slice has no server-side session, but it is not a modern
+`2026-07-28` conformance claim. Its dedicated real PostgreSQL gate proves exact
+23-tool administrator and 16-tool read-only catalogs, hidden-mutation
+zero-write, Project and Workload
 replay through one durable record per idempotency identity, indistinguishable
 foreign and missing Project errors, operational read and command boundaries,
 next-request revocation, expected A3S ORM rows, and credential-free logs,
@@ -551,7 +581,7 @@ evidence, and database dumps. `C0.2` is verified.
 | `A0.1` | Verified | Exact Asset and AssetRelease aggregates, immutable identity rules, tenant-scoped A3S ORM persistence, optimistic transitions, shared idempotency and Outbox, and real PostgreSQL behavior evidence |
 | `A0.2` | In progress | Tenant-qualified Asset-ID bare-repository foundation is implemented; authorized Git Smart HTTP, A3S ORM-backed PostgreSQL single-writer leases and quotas, atomic backup/restore, and pinned `.a3s/asset.acl` validation remain |
 | `A0.3` | Planned | Atomic source-to-artifact publication, immutable release provenance, draft recovery, yanking, and release selection over the verified `G0` build contracts |
-| `A0.4` | Planned | Agent and MCP deployment, health, logs, update, rollback, and cleanup through the existing Workload, Flow, Fleet, Runtime, and Gateway path |
+| `A0.4` | Planned | Agent deployment, health, logs, update, rollback, and cleanup through the existing Workload, Flow, Fleet, and Runtime path; hosted MCP deployment is owned by `MCP0` |
 | `A0.5` | Planned | Immutable Skill bundle binding plus tenant-authorized release/catalog API, client, CLI, and Web surfaces without generic forge features |
 
 `A0.1` is a durable prerequisite, not a user-visible catalog. Close `A0.2` in
@@ -571,7 +601,9 @@ configuration language. `A0.3` cannot close until the exact `G0` source,
 Artifact, publication, and evidence contracts it consumes are verified. A
 published `A0.3` release is the first identity that `A1.1` may bind.
 
-Agent and MCP are asset and workload profiles, not separate schedulers.
+Agent and MCP remain immutable asset profiles, not separate schedulers.
+`A0.3` publishes their release identities. `A0.4` owns Agent deployment, while
+hosted MCP deployment and traffic conformance proceed only through `MCP0`.
 
 ### 5.5 `A1`: durable Agent execution
 
@@ -851,6 +883,82 @@ first-class backend. Hardware partitions, additional accelerator vendors,
 named external Providers, and additional APIs remain unavailable until their
 real conformance gates pass.
 
+### 5.9 `MCP0`: hosted modern MCP services
+
+`MCP0` turns an immutable `A0.3` MCP release into a reachable, authorized
+modern MCP Service without creating a second workload engine or putting Cloud
+on the request path. The protocol baseline is revision `2026-07-28`.
+
+| Sub-gate | Owner | State | Outcome |
+| --- | --- | --- | --- |
+| `MCP0.1` | Cloud with Runtime and Gateway review | Contract foundation implemented (2026-07-30); review/merge pending | Closed A3S ACL contracts, identity/digest rules, Runtime projection, Gateway snapshot, retry boundary, stable errors, and frozen cross-repository fixtures pass focused tests |
+| `MCP0.2` | Runtime and Box | Foundation in progress | Runtime consumes the frozen profile digest and generation-bound typed endpoint fixture; real Linux Box hosting, recovery, logs, and cleanup evidence remain |
+| `MCP0.3` | Cloud | Foundation in progress | Closed contract values, ordinary Runtime Service-spec projection, and deterministic canonical Gateway ACL compiler exist; persistence, reconciliation, lifecycle surfaces, recovery, and audit remain |
+| `MCP0.4` | Gateway | Foundation in progress | Closed request parsing/auth, exact healthy-target selection, one-attempt no-replay dispatch, JSON/notification/SSE/subscription forwarding, and cancellation foundations pass focused tests; reload/drain, telemetry, real-client/server, fault, and release evidence remain |
+| `MCP0.5` | Joint release gate | Planned | Prove one Box-hosted Service end to end through real Cloud, Runtime, and Gateway processes at exact revisions |
+| `MCP0.6` | Joint production gate | Planned | Prove multi-replica and multi-node rollout, loss, partition, policy expiry, load, recovery, and cleanup after the required `H0` and `C0` foundations |
+
+The ownership boundary is closed:
+
+| Concern | A3S Runtime | A3S Cloud | A3S Gateway |
+| --- | --- | --- | --- |
+| Unit lifecycle | Apply, inspect, stop, remove, logs, provider recovery, and typed endpoint evidence for one Service replica | Declare and reconcile the desired Workload and every replica | Never create, schedule, or stop a Runtime Unit |
+| Product identity | Bind an opaque semantics-profile digest | Own AssetRelease, immutable hosted MCP Service profile, and separately mutable route policy | Validate the profile digest on every target and the route policy in the complete applied snapshot |
+| Replica and rollout | Give each replica a distinct Unit ID and generation | Own count, placement, health eligibility, rollout, rollback, drain order, and sole autoscaling decisions | Select only a healthy target from the complete applied set |
+| MCP request path | No role | No synchronous role | Validate, authenticate, authorize, route, stream, cancel, and observe |
+| Server capabilities | Treat the workload as a black box | Admit and pin the server release and capability contract | Forward `server/discover`; never invent tools, resources, prompts, or server identity |
+| Durable state | Runtime receipts and observations only | Desired state, operations, grants, control-plane audit, and later retained request audit/usage | Applied snapshot/journal and bounded request-path telemetry only |
+
+The modern transport contract requires:
+
+- one POST endpoint and one JSON-RPC request or notification per HTTP request;
+- protocol version and client metadata on every request, with
+  `MCP-Protocol-Version`, `Mcp-Method`, and applicable `Mcp-Name` headers
+  validated against the body before policy uses them;
+- `server/discover` support from the hosted server;
+- an immediate JSON response or request-scoped SSE, including long-lived
+  `subscriptions/listen` streams with bounded backpressure and drain;
+- Origin validation and request-level authentication;
+- service-level authorization in `MCP0.5`: Gateway strips the client credential
+  and forwards no ad hoc user/tenant identity header to the hosted server;
+- no initialization handshake, `Mcp-Session-Id`, GET stream, DELETE session,
+  sticky routing, or `Last-Event-ID` resumption; and
+- no automatic replay after upstream dispatch begins. Statelessness removes
+  session affinity; it does not make `tools/call` or an unknown method
+  idempotent.
+
+All concurrently eligible targets for one logical hosted MCP route must bind
+the same semantics-profile digest. Cloud may mix old and new AssetRelease
+targets only during an explicit rollout whose public profile digest is
+unchanged. A release that changes the server protocol or discovery contract
+uses a new immutable profile, a separately proven target set, and an
+acknowledged cutover; Gateway must not expose a mixed contract as one logical
+service.
+
+The semantics-profile digest covers canonical hosted-server protocol behavior,
+not the artifact, AssetRelease, or mutable Gateway route policy. Cloud binds
+release identity separately in the Workload/target projection and binds route
+policy through the Gateway snapshot revision and digest. An equal profile
+digest never makes two releases interchangeable outside an explicit rollout.
+
+`C0.2m` is a separate migration of Cloud's management MCP presentation
+surface. It shares the modern wire requirements but is not an `MCP0` hosted
+asset, Runtime Workload, Gateway route, or prerequisite for `MCP0.5`.
+
+Delegated caller identity is a later `MCP0.6`/`C0.3` contract. If admitted, it
+uses a versioned, audience- and profile-bound, short-lived signed assertion
+with rotation, expiry, replay, and mixed-version evidence. Gateway never
+forwards the external bearer credential or invents unsigned identity headers.
+Durable per-request audit ingestion is likewise `MCP0.6`/`C0.3` work and must
+reuse one ordered acknowledged Gateway-to-Cloud event path; `MCP0.5` audits
+control-plane changes and retains bounded Gateway access evidence only.
+
+Protocol baseline:
+
+- [MCP 2026-07-28 versioning and compatibility](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)
+- [MCP 2026-07-28 Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+- [MCP server discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)
+
 ## 6. Near-term execution order
 
 The default portfolio priority is:
@@ -858,24 +966,31 @@ The default portfolio priority is:
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,
    `H0.1`, and `H0.2` on exact Box revisions;
-2. complete `PW0.1` and make the immutable Box-hosted Power profile the first
+2. freeze `MCP0.1` immediately as a contract-only slice while provider work
+   continues; it may not claim hosted MCP availability;
+3. execute and retain the remaining operator-owned `G0` certification, advance
+   `A0.2`, and close `A0.3` so hosted MCP can bind a published immutable
+   release;
+4. after their dependencies pass, advance Runtime `MCP0.2`, Cloud `MCP0.3`,
+   and Gateway `MCP0.4` in parallel, then close only through the joint
+   single-node `MCP0.5` gate;
+5. complete `PW0.1` and make the immutable Box-hosted Power profile the first
    `I0` backend;
-3. execute and retain the remaining operator-owned `G0` certification through
-   the implemented private-provider and signed-evidence process-death gates;
-4. preserve the verified `A1.0` shared-infrastructure regressions while
-   advancing `C0.3` and the first `S0` foundation independently when staffed;
-5. re-certify the `H0.1` real-provider Claim behavior while beginning
+6. preserve the verified `A1.0` shared-infrastructure regressions while
+   advancing `C0.3`, `C0.2m`, and the first `S0` foundation independently when
+   staffed;
+7. re-certify the `H0.1` real-provider Claim behavior while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
-6. advance `A0.2` repository safety independently, but start `P0` and `A0.3`
-   only on the verified `G0` contracts they consume;
-7. start `A1.1` after immutable published `A0.3` identities exist, add `A1.2`
-   after `A0.4` Agent deployment, add `A1.3` after `A0.5` bindings, then gate
-   `A1.4` on `C0.3` grants and audit before closing `A1.5`;
-8. re-certify the `H0.2` projection gate while advancing `H0.3`
-   multi-node placement and networking; and
-9. close full production packaging, HA, autoscaling, and inference hardening
-   through `H0.4`, `H0.5`, and `I0.5`.
+8. start `P0` only on verified `G0`; start `A1.1` after immutable published
+   `A0.3` identities exist, add `A1.2` after `A0.4` Agent deployment, add
+   `A1.3` after `A0.5` bindings, then gate `A1.4` on `C0.3` grants and audit;
+9. re-certify the `H0.2` projection gate while advancing `H0.3`
+   multi-node placement and networking;
+10. close `MCP0.6` only after its `H0.3` multi-node and `C0.3` grant/audit
+    dependencies pass; and
+11. close full production packaging, HA, autoscaling, and inference hardening
+    through `H0.4`, `H0.5`, and `I0.5`.
 
 This order expresses dependency and product risk, not equal staffing or a
 calendar promise. The next implementation is the smallest vertical slice that
@@ -890,8 +1005,9 @@ the Cloud product lanes above.
 
 | Product | Position | Owns |
 | --- | --- | --- |
+| A3S Runtime | Provider-neutral Unit lifecycle | One Task or Service identity, generation, request replay, capability admission, typed endpoint observations, provider recovery, and cleanup; it owns no product profile or request protocol |
 | A3S Cloud | Self-hosted control plane | Tenancy, identity, catalogs, Agent conversations and executions, approvals, checkpoints, Workloads, desired replicas, placement, rollout, autoscaling, complete Gateway policy, operations, usage ledger, and management surfaces |
-| A3S Gateway | AI traffic and protocol data plane | Transport, TLS, streaming, local enforcement, healthy endpoint selection, atomic snapshot application, request-path telemetry, and the planned durable usage spool; it does not own Agent execution state |
+| A3S Gateway | AI traffic and protocol data plane | Transport, TLS, streaming, local enforcement, healthy endpoint selection, modern MCP and OpenAI protocol handling, atomic snapshot application, request-path telemetry, and the planned durable usage spool; it does not own Agent execution state |
 
 Cloud never becomes the per-request proxy or synchronous authorization
 dependency. Gateway never becomes a tenant database, scheduler, production
@@ -916,6 +1032,8 @@ routes, target sets, rollout, or scaling policy.
 
 ```text
 Cloud commits desired state
+  -> Cloud compiles one generic Runtime Service per desired replica
+  -> Runtime/Box converges each Unit and publishes exact typed endpoints
   -> Cloud compiles one complete Gateway-scope ACL snapshot
   -> outbound node agent delivers identity, revision, digest, and validity
   -> Gateway natively applies, journals, and reports exact readiness
@@ -930,7 +1048,9 @@ change desired weights, create a replica, or promote a revision.
 The Cloud API, PostgreSQL, and workers stay off the request path. Authorization
 and route snapshots are complete, bounded, and expiring; policy that requires
 an unavailable or expired security snapshot fails closed. Retry and fallback
-are allowed only before the first response byte.
+are allowed only where the compiled protocol policy permits them and before the
+first response byte. For `MCP0`, Gateway may reselect before dispatch but must
+not replay a request after upstream dispatch begins.
 
 ### 7.4 Coordinated gates
 
@@ -938,11 +1058,12 @@ are allowed only before the first response byte.
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
 | `H0.2` | Logical Gateway scopes, ordered membership, exact target derivation, atomic Route-and-rollout staging, threshold activation, per-member recovery, certificate convergence, and exact rollback | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, read-only observation, and rejection of local control loops | Verified against Gateway `7a146b6`: two real members converge independently, preserve service through member loss, recover from native journals, reject cross-member trust, and replay apply-before-ack without duplicate mutation; PostgreSQL 17 proves atomic staging, threshold projection, failure retention, recovery, rollback, and typed A3S ORM persistence |
+| `MCP0` | Immutable hosted MCP profile, release binding, Runtime Service projection, replica/rollout authority, expiring authorization policy, complete Gateway ACL snapshot, operations, and audit | Modern `2026-07-28` header/body validation, local request authorization, stateless healthy-target selection, request-scoped SSE, cancellation, no post-dispatch replay, drain, and bounded telemetry | A real MCP client reaches a real Box-hosted server through exact Cloud/Runtime/Gateway revisions; discovery, denial, malformed headers, stream cancellation, process/node loss, rollout, recovery, and cleanup gates pass |
 | `I0.2b` | Inference routes, keys, grants, typed local/global limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, Redis-backed globally exact counters, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, local and shared-counter enforcement, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |
 | `I0.2d` | Same-environment credential-isolated Provider egress Workload | Route only to the internal egress target | Client and provider credentials never cross or enter traffic snapshots |
 | `C0.3` + `I0.2e` | Grants, authorized search, key lifecycle, role-focused console, diagnostics, playground, and showback | Expose bounded operational state only | Consumer, steward, and operator surfaces cannot reveal an ungranted resource |
-| `A1` + `C0` | Agent/MCP release binding, conversations, executions, approvals, checkpoints, identity, and management contracts | Remain transport-only if a future native Agent protocol is justified; do not persist conversations, schedule Harness work, grant approvals, or expose a direct client control path | No second asset, execution, identity, audit, or deployment authority appears in Gateway |
+| `A1` + `C0` | Agent release binding, conversations, executions, approvals, checkpoints, identity, and management contracts | Remain transport-only if a future native Agent protocol is justified; do not persist conversations, schedule Harness work, grant approvals, or expose a direct client control path | No second asset, execution, identity, audit, or deployment authority appears in Gateway |
 | `H0.3` through `I0.5` | Multi-node placement, Gateway HA, sole autoscaler, quotas, recovery, and provider policy | Private upstream identity, drain, exact-revision readiness, complete signals, and failure hardening | Node/Gateway loss, mixed versions, scale, backlog, and restore meet published limits |
 
 No joint gate is complete because one repository passes unit tests alone.
@@ -981,6 +1102,7 @@ The current roadmap does not include:
   node-control channel, or Redis-backed source of truth;
 - a direct client-to-Agent, client-to-Harness, or client-to-Gateway execution
   control path;
+- protocol sessions or sticky routing for modern `MCP0` requests;
 - Cloud on the live request or token-stream path;
 - a Cloud-equivalent control plane inside Gateway;
 - training, fine-tuning, or notebook lifecycle inside `I0`;

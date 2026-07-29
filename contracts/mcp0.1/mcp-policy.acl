@@ -1,0 +1,56 @@
+mcp {
+  expires_at = "2099-01-01T00:00:00+00:00"
+  profiles "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+    max_request_bytes = 1048576
+    max_response_bytes = 8388608
+    path = "/mcp"
+    protocol_versions = ["2026-07-28"]
+    request_sse = true
+    subscriptions = true
+  }
+  credentials "33333333-3333-4333-8333-333333333333" {
+    audience = "cloud-mcp"
+    environment_id = "22222222-2222-4222-8222-222222222222"
+    expires_at = "2098-12-31T23:00:00+00:00"
+    generation = 7
+    prefix = "a3s_mcp_abc12345"
+    revoked = false
+    verifier_hash = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  }
+  routes "44444444-4444-4444-8444-444444444444" {
+    allowed_origins = ["https://console.example.com"]
+    drain_timeout = "30s"
+    environment_id = "22222222-2222-4222-8222-222222222222"
+    first_response_timeout = "30s"
+    max_header_bytes = 32768
+    max_request_bytes = 524288
+    max_response_bytes = 4194304
+    policy_revision = 11
+    profile_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    router = "mcp"
+    stream_idle_timeout = "2m"
+    stream_total_timeout = "30m"
+    telemetry_names = ["weather"]
+    targets "55555555-5555-4555-8555-555555555555" {
+      asset_release_id = "77777777-7777-4777-8777-777777777777"
+      endpoint = "http://127.0.0.1:8000/"
+      generation = 3
+      node_id = "66666666-6666-4666-8666-666666666666"
+      priority = 0
+      profile_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      service = "mcp-target-1"
+      unit_id = "workload:mcp-weather:replica:1"
+      weight = 100
+    }
+    grants "33333333-3333-4333-8333-333333333333" {
+      credential_generation = 7
+      methods = ["server/discover", "tools/call", "tools/list"]
+      names = ["weather"]
+      limits {
+        max_concurrent_requests = 8
+        request_burst = 16
+        requests_per_minute = 120
+      }
+    }
+  }
+}

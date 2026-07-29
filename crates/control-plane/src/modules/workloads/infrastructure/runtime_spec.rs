@@ -7,6 +7,15 @@ use a3s_runtime::contract::{
 };
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
+    project_runtime_spec_with_semantics_profile(revision, None)
+}
+
+/// Project one ordinary Runtime Service while binding an optional immutable
+/// product semantics profile. Runtime treats the digest as opaque.
+pub fn project_runtime_spec_with_semantics_profile(
+    revision: &WorkloadRevision,
+    semantics_profile_digest: Option<&str>,
+) -> Result<RuntimeUnitSpec, String> {
     let template = revision.resolved_template()?;
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
@@ -96,7 +105,7 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
         }),
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
-        semantics_profile_digest: None,
+        semantics_profile_digest: semantics_profile_digest.map(str::to_owned),
     };
     spec.validate()?;
     Ok(spec)
@@ -191,6 +200,68 @@ mod tests {
         );
         assert_eq!(spec.secrets[1].target, SecretTarget::RegistryCredential);
         assert!(spec.mounts.is_empty());
+        assert!(spec.semantics_profile_digest.is_none());
+    }
+
+    #[test]
+    fn projects_an_opaque_semantics_profile_without_product_fields() {
+        let artifact_digest = format!("sha256:{}", "c".repeat(64));
+        let profile_digest = format!("sha256:{}", "a".repeat(64));
+        let revision = WorkloadRevision::create(
+            WorkloadRevisionId::new(),
+            WorkloadId::new(),
+            3,
+            ServiceTemplate {
+                artifact: OciArtifact {
+                    uri: format!("oci://registry.example/mcp-fixture@{artifact_digest}"),
+                    digest: artifact_digest,
+                    media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+                },
+                process: ServiceProcess {
+                    command: vec!["/app/service".into()],
+                    args: vec!["serve".into()],
+                    working_directory: Some("/app".into()),
+                    environment: BTreeMap::new(),
+                },
+                secrets: Vec::new(),
+                resources: ServiceResources {
+                    cpu_millis: 500,
+                    memory_bytes: 256 * 1024 * 1024,
+                    pids: 128,
+                    ephemeral_storage_bytes: Some(1024 * 1024 * 1024),
+                },
+                ports: vec![ServicePort {
+                    name: "mcp".into(),
+                    container_port: 8080,
+                }],
+                health: Some(HttpHealthCheck {
+                    port_name: "mcp".into(),
+                    path: "/health".into(),
+                    interval_ms: 10_000,
+                    timeout_ms: 2_000,
+                    healthy_threshold: 1,
+                    unhealthy_threshold: 3,
+                    stabilization_window_ms: 30_000,
+                }),
+            },
+            Utc::now(),
+        )
+        .expect("revision");
+
+        let spec = project_runtime_spec_with_semantics_profile(&revision, Some(&profile_digest))
+            .expect("profile-bound Runtime spec");
+        assert_eq!(
+            spec.semantics_profile_digest.as_deref(),
+            Some(profile_digest.as_str())
+        );
+        assert_eq!(spec.class, RuntimeUnitClass::Service);
+        assert_eq!(spec.network.mode, NetworkMode::Service);
+        assert_eq!(spec.network.ports[0].name, "mcp");
+
+        let invalid =
+            project_runtime_spec_with_semantics_profile(&revision, Some("sha256:not-a-digest"))
+                .expect_err("invalid digest must fail Runtime validation");
+        assert!(invalid.contains("digest"));
     }
 
     #[test]

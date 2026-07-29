@@ -146,10 +146,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
   `1.0.0`, and reject incompatible or invalidly deprecated contract changes
-- **Scoped Management MCP Operational Reads**: Serve stateless Streamable HTTP
-  MCP through the same per-request API-token verifier, derive tenant context
-  and tool visibility from the current principal, expose Project, Environment,
-  search, Node, Operation, Workload, Deployment, Route, and BuildRun queries,
+- **Scoped Management MCP Operational Reads**: Serve the sessionless,
+  initialization-based `2025-06-18` Streamable HTTP MCP through the same
+  per-request API-token verifier, derive tenant context and tool visibility
+  from the current principal, expose Project, Environment, search, Node,
+  Operation, Workload, Deployment, Route, and BuildRun queries,
   bounded cursor-paginated Workload and BuildRun logs, and signed BuildRun
   evidence plus scope-gated idempotent Project and Environment commands through
   the existing application buses, reject batching, forged tenant input,
@@ -173,7 +174,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `G0` — External source delivery | Pinned Git sources, isolated builds, trusted retry caches, OCI validation and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
-| `A0` — Release catalog | Immutable Agent and MCP releases plus Skill publication through the common delivery path | In progress |
+| `A0` — Release catalog | Immutable Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
+| `MCP0` — Hosted MCP services | Modern `2026-07-28` MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned (`A1.0` verified) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
@@ -726,15 +728,16 @@ cross-surface idempotency replay, stable conflicts, authorized search,
 cross-tenant denial, immediate token revocation, A3S ORM persistence, and zero
 plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
 verified. The [`C0.2` management MCP](docs/management-mcp.md) now provides the
-stateless protocol, scoped core-resource tools, tenant-authorized Node,
-Operation, Workload, Deployment, Route, and BuildRun reads, bounded paged
-Workload and BuildRun logs, signed BuildRun evidence, and five replay-safe
-Workload, Deployment, and BuildRun mutation tools. Its dedicated real
-PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only
-catalogs, strict arguments and annotations, operational query and command
-dispatch, hidden mutation denial, Project and Workload replay, foreign-resource
-non-disclosure, next-request revocation, A3S ORM state, and credential-free
-evidence. `C0.2` is verified.
+sessionless `2025-06-18` initialization-based protocol, scoped core-resource
+tools, tenant-authorized Node, Operation, Workload, Deployment, Route, and
+BuildRun reads, bounded paged Workload and BuildRun logs, signed BuildRun
+evidence, and five replay-safe Workload, Deployment, and BuildRun mutation
+tools. Its dedicated real PostgreSQL gate proves exact 23-tool administrator
+and 16-tool read-only catalogs, strict arguments and annotations, operational
+query and command dispatch, hidden mutation denial, Project and Workload
+replay, foreign-resource non-disclosure, next-request revocation, A3S ORM
+state, and credential-free evidence. `C0.2` is verified; the modern
+`2026-07-28` migration remains planned as `C0.2m`.
 
 ## Platform Model
 
@@ -771,8 +774,11 @@ deployment workflows, release provenance, routing, and convergence decisions.
 Applications use this path today. Agent, MCP, and Skill publication has an
 implemented `A0.1` domain and PostgreSQL foundation plus the first `A0.2` local
 bare-repository slice. Authorized Smart HTTP and the remaining repository
-safety gates, publication, deployment, binding, and catalog surfaces remain
-open `A0` work. Stateful resources remain `S0`; replicas and multi-node
+safety gates, publication, Agent deployment, Skill binding, and catalog
+surfaces remain open `A0` work. Hosted modern MCP contract/compiler and
+Gateway request-path foundations are in development under `MCP0`, but real
+Box hosting and joint product conformance remain unavailable. Stateful
+resources remain `S0`; replicas and multi-node
 placement remain `H0`; accelerator and inference capabilities remain `I0`.
 These profiles do not create separate schedulers.
 
