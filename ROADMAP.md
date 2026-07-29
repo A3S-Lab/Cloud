@@ -120,8 +120,9 @@ second deployment or reconciliation engine.
 `BX0` is the release-blocking provider migration:
 
 1. `BX0.1` pins one certified Box/Runtime pair, adds closed `box` ACL
-   configuration, and removes provider fallback. The implementation is
-   complete; the exact Linux provider gate is the remaining verification.
+   configuration, and removes provider fallback. It is verified by
+   [Cloud PR #86](https://github.com/A3S-Lab/Cloud/pull/86) and the
+   [exact Linux provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/30416879476).
 2. `BX0.2` migrates digest-pinned Task/Service lifecycle, recovery, logs,
    resources, stop/remove, cancellation, and cleanup.
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
@@ -139,6 +140,18 @@ retired provider workflows, release harness, and source-build certification
 script have been removed instead of retained as fallbacks. This does not mark
 `BX0.2` through `BX0.5` complete: the Box-owned capability work and a new
 clean-host release gate must restore the named behavioral evidence.
+
+The first `BX0.2` Cloud consumer slice is verified by the
+[dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30424869899).
+It persists the command before dispatch, applies through the shared Box driver,
+reconstructs both the Runtime client and Agent executor across the
+apply-before-journal-completion boundary, and requires the same durable Runtime
+receipt and physical Task or Service identity. The same gate replaces a running
+Service generation and proves logs, inspection, stop, removal, and empty
+provider state. Hard-resource Claim binding and release, deployment
+cancellation, and abnormal-interruption cleanup evidence remain open for
+`BX0.2`. Box remains the sole owner of execution and recovery; Cloud adds no
+provider lifecycle store.
 
 The first `BX0.3` network slice is implemented pending its Linux gates: C0
 removes static Sandbox publication and starts Box's loopback-only,

@@ -921,7 +921,7 @@ pub(super) fn capabilities() -> RuntimeCapabilities {
         provider_build: "test-runtime-1".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
-        isolation_levels: vec![IsolationLevel::Container],
+        isolation_levels: vec![IsolationLevel::Sandbox],
         network_modes: vec![NetworkMode::Service],
         mount_kinds: Vec::new(),
         health_check_kinds: vec![HealthCheckKind::Http],

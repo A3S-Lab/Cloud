@@ -178,15 +178,25 @@ the complete baseline on exact A3S Box revisions before those gates are
 published as verified again. Later gates must reuse the same deployment and
 reconciliation path.
 
-`BX0.1` now pins one A3S Runtime/A3S Box pair, starts the Node Agent with the
-shared Box Runtime driver, accepts only the closed ACL `box` configuration, and
-contains no fallback provider. Local dependencies and the C0 PostgreSQL gates
-run through checksum-pinned A3S Box runtime artifacts plus an exact-revision Box
-CLI. C0 reaches its Sandbox-hosted PostgreSQL fixture only through Box's
-generation-fenced loopback forwarder. Provider certification invokes the
-conformance suite owned by A3S Box; Cloud no longer carries a second provider
-suite. Full Box networking, mounts, Secrets, outputs, builds, and the clean-host
-release loop remain release-blocking `BX0` work.
+`BX0.1` is verified. Cloud pins one certified A3S Runtime/A3S Box pair, starts
+the Node Agent with the shared Box Runtime driver, accepts only the closed ACL
+`box` configuration, and contains no fallback provider. Local dependencies and
+the C0 PostgreSQL gates run through checksum-pinned A3S Box runtime artifacts
+plus an exact-revision Box CLI. C0 reaches its Sandbox-hosted PostgreSQL fixture
+only through Box's generation-fenced loopback forwarder. The
+[real provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/30416879476)
+passed every capability advertised by the pinned Box revision; Cloud does not
+carry a second provider conformance implementation.
+
+The first `BX0.2` consumer-recovery slice is verified by the
+[dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30424869899).
+It replays an Agent crash after Box apply but before command-journal completion,
+preserves the exact durable Runtime receipt and provider identity, replaces a
+running Service generation, and proves logs, inspection, stop, removal, and
+empty Box state. Hard-resource Claim binding and release, deployment
+cancellation, abnormal-interruption cleanup, full Box networking, health,
+mounts, Secrets, outputs, builds, and the clean-host release loop remain
+release-blocking `BX0` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
