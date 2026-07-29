@@ -19,7 +19,6 @@ use chrono::{Duration, Utc};
 
 mod attestation;
 mod flow;
-mod runtime_gate;
 mod support;
 
 #[test]

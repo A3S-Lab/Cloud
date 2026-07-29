@@ -26,39 +26,7 @@ than exposing their raw values. It contains no App key, repository URL, branch,
 or provider token.
 
 This workflow certifies only the private source-provider boundary. G0 remains
-in progress until the separate operator Vault Transit, OCI registry, process
-death, replay, and authoritative cleanup gate passes.
-
-## Vault-signed external Registry build
-
-The second manual job runs the real Runtime Task and rootless BuildKit path,
-publishes the complete OCI graph to an operator-owned HTTPS Registry, signs the
-generated SPDX/SLSA DSSE payload through an operator-owned HTTPS Vault Transit
-Ed25519 key, verifies the returned key version and signature locally, replays
-the publication, removes the Runtime unit, and scans durable BuildRun/evidence
-JSON for exact provider secrets.
-
-Configure these additional repository secrets:
-
-| Secret | Value |
-| --- | --- |
-| `G0_REGISTRY_URL` | HTTPS Registry origin with an explicit port |
-| `G0_REGISTRY_USERNAME` | Registry user with access to the gate prefix |
-| `G0_REGISTRY_PASSWORD` | Registry password or access token |
-| `G0_VAULT_ADDR` | HTTPS Vault origin trusted by the runner |
-| `G0_VAULT_TOKEN` | Bounded token allowed to sign and read the public key |
-| `G0_VAULT_TRANSIT_MOUNT` | Transit mount name |
-| `G0_VAULT_TRANSIT_KEY` | Existing Ed25519 signing key name |
-
-The uploaded evidence contains the exact Cloud revision, artifact and evidence
-digests, public signing-key identity/version, and closed pass checks. It hashes
-the Registry authority and build identity and contains neither provider secret.
-The job never creates or mutates the Vault key. Before writing that evidence,
-the same job sends real `SIGKILL` to child control-plane processes after remote
-publication and after evidence persistence, then reconstructs Flow and proves
-one publication, one verified evidence document, and authoritative cleanup.
-
-Passing this job still does not close G0 by itself. The private GitHub job and
-the complete source-to-published-Workload release evidence must pass for the
-same release candidate, and the resulting operator-owned evidence must be
-retained.
+in progress until the typed A3S Box build boundary lands and its separate
+operator-owned Registry, Vault Transit, process-death, replay, and cleanup gate
+passes. The retired build-provider script is intentionally not retained as a
+fallback.

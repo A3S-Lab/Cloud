@@ -46,6 +46,7 @@ impl OciRegistryClient {
             return Err("OCI insecure registry hosts must be explicit host[:port] values".into());
         }
         let client = Client::builder()
+            .use_rustls_tls()
             .timeout(request_timeout)
             .redirect(reqwest::redirect::Policy::none())
             .user_agent("a3s-cloud-control-plane/0.1")

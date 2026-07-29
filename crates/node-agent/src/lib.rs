@@ -4,7 +4,6 @@ mod agent;
 mod artifact;
 mod config;
 mod control_plane;
-mod docker;
 mod executor;
 mod gateway;
 mod gateway_certificate;
@@ -18,17 +17,17 @@ mod secret;
 mod state_file;
 
 pub use artifact::{
-    DownloadedNodeArtifact, NodeArtifactError, NodeArtifactManager, NodeArtifactTransport,
+    DownloadedNodeArtifact, LocalArtifactReader, NodeArtifactError, NodeArtifactManager,
+    NodeArtifactTransport,
 };
 pub use config::{
-    ArtifactConfig, ConfigError, ControlPlaneConfig, DockerConfig, GatewayControlConfig,
+    ArtifactConfig, BoxRuntimeConfig, ConfigError, ControlPlaneConfig, GatewayControlConfig,
     LogShippingConfig, NodeAgentConfig, NodeConfig,
 };
 pub use control_plane::{
     GatewayCertificateSigningTransport, NodeControlClient, NodeControlClientError,
     NodeControlTransport,
 };
-pub use docker::DockerRuntimeDriver;
 pub use executor::{CommandExecutionError, CommandExecutor};
 pub use gateway::{
     DurableGatewaySnapshotInstaller, GatewaySnapshotInstallError, GatewaySnapshotInstallOutcome,
@@ -63,6 +62,4 @@ impl NodeAgentIdentity {
         })
     }
 }
-pub use agent::{
-    run_node_agent, NodeAgentError, NodeAgentSession, NodeRuntimeBinding, NodeRuntimeProvider,
-};
+pub use agent::{run_node_agent, NodeAgentError, NodeAgentSession, NodeRuntimeProvider};

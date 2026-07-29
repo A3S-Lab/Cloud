@@ -63,8 +63,6 @@ mod github_connection_support;
 mod postgres_fixture;
 #[path = "support/resource_claims.rs"]
 mod resource_claims_support;
-#[path = "support/secret_rotation_provider_crash.rs"]
-mod secret_rotation_provider_crash_support;
 #[path = "support/secret_rotation_restart.rs"]
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
@@ -101,22 +99,6 @@ async fn activation_before_retirement_crash_probe() {
     activation_retirement_crash_support::run_activation_crash_probe()
         .await
         .expect("run activation-before-retirement crash probe");
-}
-
-#[tokio::test]
-#[ignore = "private subprocess used only by the PostgreSQL log recovery acceptance gate"]
-async fn log_object_publish_crash_probe() {
-    deployment_flow_support::run_log_object_publish_crash_probe()
-        .await
-        .expect("run log object publish crash probe");
-}
-
-#[tokio::test]
-#[ignore = "private subprocess used only by the Secret-rotation provider crash gate"]
-async fn secret_rotation_provider_crash_probe() {
-    secret_rotation_provider_crash_support::run_provider_crash_probe()
-        .await
-        .expect("run Secret-rotation provider crash probe");
 }
 
 #[test]
@@ -1862,63 +1844,6 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         );
     }
 
-    if std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() == Ok("1") {
-        let persisted_logs = app
-            .call(get_as(
-                format!(
-                    "/api/v1/organizations/{organization_id}/workloads/{workload_id}/revisions/{revision_id}/logs?limit=32"
-                ),
-                ADMIN_TOKEN,
-            ))
-            .await?;
-        assert_eq!(persisted_logs.status(), 200);
-        let persisted_logs_body = String::from_utf8_lossy(persisted_logs.body());
-        assert!(!persisted_logs_body.contains(first_secret_value));
-        assert!(!persisted_logs_body.contains(second_secret_value));
-        assert!(!persisted_logs_body.contains(third_secret_value));
-        assert!(!persisted_logs_body.contains(registry_credential_value.as_str()));
-        assert!(!persisted_logs_body.contains(registry_password.as_str()));
-        let persisted_logs_json = response_json(&persisted_logs)?;
-        let records = persisted_logs_json["data"]["records"]
-            .as_array()
-            .ok_or("persisted workload logs response omitted records")?;
-        let log_recovery = deployment_flow_fixture
-            .log_recovery
-            .as_ref()
-            .ok_or("Docker deployment fixture omitted log recovery evidence")?;
-        let corrupt_record = records
-            .iter()
-            .find(|record| record["sequence"].as_u64() == Some(log_recovery.corrupted_sequence))
-            .ok_or("workload log response omitted the corrupted object sequence")?;
-        assert_eq!(corrupt_record["kind"], "gap");
-        assert_eq!(corrupt_record["gapReason"], "corrupt");
-        assert_eq!(corrupt_record["stream"], log_recovery.corrupted_stream);
-        assert!(corrupt_record["data"].is_null());
-        assert_eq!(
-            records
-                .iter()
-                .filter(|record| record["gapReason"] == "corrupt")
-                .count(),
-            1
-        );
-        assert!(records.iter().all(|record| {
-            !record["data"]
-                .as_str()
-                .is_some_and(|data| data.contains("log-recovery-probe"))
-        }));
-        assert!(records.iter().any(|record| {
-            record["stream"] == "stdout"
-                && record["data"]
-                    .as_str()
-                    .is_some_and(|data| data.contains("env-secret=[REDACTED]"))
-        }));
-        assert!(records.iter().any(|record| {
-            record["stream"] == "stderr"
-                && record["data"]
-                    .as_str()
-                    .is_some_and(|data| data.contains("file-secret=[REDACTED]"))
-        }));
-    }
     let listed_workloads = app.call(get_as(&workload_path, ADMIN_TOKEN)).await?;
     assert_eq!(listed_workloads.status(), 200);
     let listed = &response_json(&listed_workloads)?["data"];

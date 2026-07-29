@@ -7,16 +7,14 @@ use crate::{
     EnrolledNodeIdentity, FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
     GatewaySnapshotInstaller, IdentityStoreError, LogShippingConfig, LogShippingError,
     NodeAgentConfig, NodeArtifactManager, NodeArtifactTransport, NodeControlClient,
-    NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
-    ResourceInventoryError,
+    NodeControlClientError, NodeControlTransport, NodeIdentityState, ResourceInventoryError,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
     NodeGatewayAckReceipt, NodeHeartbeatV2, NodeObservationBatchV2, RuntimeObservationReport,
 };
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeInspection, RuntimeObservation};
-use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
-use async_trait::async_trait;
+use a3s_runtime::{RuntimeClient, RuntimeError};
 use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -62,12 +60,6 @@ pub async fn run_node_agent(
             identity.response.node_id,
             certificate_transport,
         )?);
-    runtime.binding.bind_node(identity.response.node_id).await?;
-    let secret_transport: Arc<dyn NodeSecretTransport> = transport.clone();
-    runtime
-        .binding
-        .bind_secret_transport(secret_transport)
-        .await?;
     let artifact_transport: Arc<dyn NodeArtifactTransport> = transport.clone();
     let artifact_manager = Arc::new(
         NodeArtifactManager::new(
@@ -78,10 +70,6 @@ pub async fn run_node_agent(
         )
         .map_err(NodeAgentError::Invalid)?,
     );
-    runtime
-        .binding
-        .bind_artifact_manager(Arc::clone(&artifact_manager))
-        .await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(
         session_transport,
@@ -105,27 +93,13 @@ pub async fn run_node_agent(
     }
 }
 
-#[async_trait]
-pub trait NodeRuntimeBinding: Send + Sync {
-    async fn bind_node(&self, node_id: uuid::Uuid) -> RuntimeResult<()>;
-
-    async fn bind_secret_transport(
-        &self,
-        transport: Arc<dyn NodeSecretTransport>,
-    ) -> RuntimeResult<()>;
-
-    async fn bind_artifact_manager(&self, artifacts: Arc<NodeArtifactManager>)
-        -> RuntimeResult<()>;
-}
-
 pub struct NodeRuntimeProvider {
     client: Arc<dyn RuntimeClient>,
-    binding: Arc<dyn NodeRuntimeBinding>,
 }
 
 impl NodeRuntimeProvider {
-    pub fn new(client: Arc<dyn RuntimeClient>, binding: Arc<dyn NodeRuntimeBinding>) -> Self {
-        Self { client, binding }
+    pub fn new(client: Arc<dyn RuntimeClient>) -> Self {
+        Self { client }
     }
 }
 

@@ -13,7 +13,7 @@ cloud-gateway:
 
 # Stop the local PostgreSQL, NATS, and registry dependencies
 cloud-down:
-    docker compose --env-file deploy/dev/.env.example --file deploy/dev/compose.yaml down
+    a3s-box compose --file deploy/dev/compose.acl down
 
 # Run the typed Cloud CLI without persisting credentials or context
 cloud-cli *args:

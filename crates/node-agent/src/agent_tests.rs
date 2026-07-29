@@ -260,12 +260,12 @@ impl GatewaySnapshotInstaller for AppliedGatewayInstaller {
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("docker")
-            .expect("test Docker provider ID must be valid"),
-        provider_build: "docker-test".into(),
+        provider_id: a3s_runtime::ProviderId::parse("a3s-box")
+            .expect("test Box provider ID must be valid"),
+        provider_build: "a3s-box-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
-        isolation_levels: vec![IsolationLevel::Container],
+        isolation_levels: vec![IsolationLevel::Sandbox],
         network_modes: vec![NetworkMode::None, NetworkMode::Service],
         mount_kinds: vec![MountKind::Volume, MountKind::Tmpfs],
         health_check_kinds: vec![HealthCheckKind::Http, HealthCheckKind::Tcp],
@@ -294,7 +294,7 @@ fn observation() -> RuntimeObservation {
         class: RuntimeUnitClass::Service,
         state: RuntimeUnitState::Running,
         provider_resource_id: Some("container-1".into()),
-        provider_build: Some("docker-test".into()),
+        provider_build: Some("a3s-box-test".into()),
         observed_at_ms: 1,
         started_at_ms: Some(1),
         finished_at_ms: None,

@@ -55,7 +55,6 @@ zeroize.workspace = true
 
 [dev-dependencies]
 a3s-cloud-node-agent = { path = "../node-agent" }
-bollard.workspace = true
 tempfile = "3"
 
 [lints]

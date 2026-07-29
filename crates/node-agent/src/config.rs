@@ -41,11 +41,10 @@ pub struct LogShippingConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DockerConfig {
-    pub socket: String,
-    pub namespace: String,
-    pub operation_timeout_ms: u64,
-    pub secret_memory_dir: PathBuf,
+pub struct BoxRuntimeConfig {
+    pub home_dir: PathBuf,
+    pub control_timeout_ms: u64,
+    pub task_poll_interval_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +63,7 @@ pub struct NodeAgentConfig {
     pub artifacts: ArtifactConfig,
     pub node: NodeConfig,
     pub logs: LogShippingConfig,
-    pub docker: DockerConfig,
+    pub box_runtime: BoxRuntimeConfig,
     pub gateway: GatewayControlConfig,
 }
 
@@ -116,15 +115,10 @@ impl NodeAgentConfig {
             logs,
             &["poll_interval_ms", "max_batch_chunks", "max_batch_bytes"],
         )?;
-        let docker = one_block(&document, "docker")?;
+        let box_runtime = one_block(&document, "box")?;
         validate_block(
-            docker,
-            &[
-                "socket",
-                "namespace",
-                "operation_timeout_ms",
-                "secret_memory_dir",
-            ],
+            box_runtime,
+            &["home_dir", "control_timeout_ms", "task_poll_interval_ms"],
         )?;
         let gateway = one_block(&document, "gateway")?;
         validate_block(
@@ -181,11 +175,10 @@ impl NodeAgentConfig {
                 max_batch_chunks: integer(logs, "max_batch_chunks")?,
                 max_batch_bytes: integer(logs, "max_batch_bytes")?,
             },
-            docker: DockerConfig {
-                socket: string(docker, "socket")?,
-                namespace: string(docker, "namespace")?,
-                operation_timeout_ms: integer(docker, "operation_timeout_ms")?,
-                secret_memory_dir: PathBuf::from(string(docker, "secret_memory_dir")?),
+            box_runtime: BoxRuntimeConfig {
+                home_dir: PathBuf::from(string(box_runtime, "home_dir")?),
+                control_timeout_ms: integer(box_runtime, "control_timeout_ms")?,
+                task_poll_interval_ms: integer(box_runtime, "task_poll_interval_ms")?,
             },
             gateway: GatewayControlConfig {
                 management_url: endpoint(
@@ -285,37 +278,26 @@ impl NodeAgentConfig {
                 "logs polling and batch bounds are invalid".into(),
             ));
         }
-        let Some(socket_path) = self.docker.socket.strip_prefix("unix://") else {
-            return Err(ConfigError::Invalid(
-                "docker.socket must be an absolute unix:// socket path".into(),
-            ));
-        };
-        if !Path::new(socket_path).is_absolute()
-            || socket_path.len() > 4096
-            || socket_path.contains('\0')
-        {
-            return Err(ConfigError::Invalid(
-                "docker.socket must be an absolute unix:// socket path".into(),
-            ));
-        }
-        if !valid_docker_namespace(&self.docker.namespace)
-            || self.docker.operation_timeout_ms == 0
-            || self.docker.operation_timeout_ms > 900_000
-        {
-            return Err(ConfigError::Invalid(
-                "docker namespace or operation timeout is invalid".into(),
-            ));
-        }
-        validate_path("docker.secret_memory_dir", &self.docker.secret_memory_dir)?;
-        if !self.docker.secret_memory_dir.is_absolute()
+        validate_path("box.home_dir", &self.box_runtime.home_dir)?;
+        if !self.box_runtime.home_dir.is_absolute()
             || self
-                .docker
-                .secret_memory_dir
+                .box_runtime
+                .home_dir
                 .components()
                 .any(|component| matches!(component, std::path::Component::ParentDir))
         {
             return Err(ConfigError::Invalid(
-                "docker.secret_memory_dir must be an absolute normalized path".into(),
+                "box.home_dir must be an absolute normalized directory".into(),
+            ));
+        }
+        if self.box_runtime.control_timeout_ms == 0
+            || self.box_runtime.control_timeout_ms > 900_000
+            || self.box_runtime.task_poll_interval_ms == 0
+            || self.box_runtime.task_poll_interval_ms > 60_000
+            || self.box_runtime.task_poll_interval_ms > self.box_runtime.control_timeout_ms
+        {
+            return Err(ConfigError::Invalid(
+                "Box Runtime control timeout and Task poll interval are invalid".into(),
             ));
         }
         if !self
@@ -397,7 +379,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
     let allowed = [
         "artifacts",
         "control_plane",
-        "docker",
+        "box",
         "gateway",
         "logs",
         "node",
@@ -533,15 +515,6 @@ fn valid_env_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
-pub(crate) fn valid_docker_namespace(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 63
-        && !matches!(value, "." | "..")
-        && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,11 +552,10 @@ logs {
   max_batch_bytes = 16777216
 }
 
-docker {
-  socket = "unix:///var/run/docker.sock"
-  namespace = "a3s-cloud"
-  operation_timeout_ms = 120000
-  secret_memory_dir = "/dev/shm/a3s-cloud/secrets"
+box {
+  home_dir = "/var/lib/a3s-box"
+  control_timeout_ms = 120000
+  task_poll_interval_ms = 50
 }
 
 gateway {
@@ -602,7 +574,7 @@ gateway {
         assert_eq!(config.node.name, "worker-1");
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.logs.max_batch_chunks, 256);
-        assert_eq!(config.docker.namespace, "a3s-cloud");
+        assert_eq!(config.box_runtime.home_dir, Path::new("/var/lib/a3s-box"));
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
         assert_eq!(
             config.gateway.certificate_directory,
@@ -619,7 +591,7 @@ gateway {
         assert_eq!(config.node.name, "worker-1");
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.logs.poll_interval_ms, 1000);
-        assert_eq!(config.docker.namespace, "a3s-cloud");
+        assert_eq!(config.box_runtime.control_timeout_ms, 120000);
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
     }
 
@@ -637,11 +609,13 @@ gateway {
         assert!(NodeAgentConfig::parse(&insecure).is_err());
         let raw_provider = CONFIG.replace(
             "  name = \"worker-1\"",
-            "  name = \"worker-1\"\n  provider = \"docker\"",
+            "  name = \"worker-1\"\n  provider = \"a3s-box\"",
         );
         assert!(NodeAgentConfig::parse(&raw_provider).is_err());
-        let parent_namespace =
-            CONFIG.replace("  namespace = \"a3s-cloud\"", "  namespace = \"..\"");
-        assert!(NodeAgentConfig::parse(&parent_namespace).is_err());
+        let parent_home = CONFIG.replace(
+            "  home_dir = \"/var/lib/a3s-box\"",
+            "  home_dir = \"/var/lib/../a3s-box\"",
+        );
+        assert!(NodeAgentConfig::parse(&parent_home).is_err());
     }
 }

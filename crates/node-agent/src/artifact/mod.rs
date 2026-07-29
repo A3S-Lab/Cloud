@@ -12,8 +12,8 @@ mod manager;
 mod store;
 
 pub use manager::NodeArtifactManager;
-pub use store::NodeArtifactError;
-pub(crate) use store::{LocalArtifactReader, NodeArtifactCache};
+pub(crate) use store::NodeArtifactCache;
+pub use store::{LocalArtifactReader, NodeArtifactError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DownloadedNodeArtifact {

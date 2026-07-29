@@ -45,6 +45,7 @@ async fn real_registry_resolves_tags_and_preserves_digest_addressability(
     };
     let repository = format!("a3s-cloud/resolution-{}", Uuid::now_v7().simple());
     let client = Client::builder()
+        .use_rustls_tls()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
         .build()?;

@@ -158,19 +158,20 @@ fn load_tls(
             NodeControlServerError::Tls(format!("client CA certificate is invalid: {error}"))
         })?;
     }
-    let verifier = WebPkiClientVerifier::builder(Arc::new(roots))
-        .build()
-        .map_err(|error| {
-            NodeControlServerError::Tls(format!("client certificate verifier is invalid: {error}"))
-        })?;
-    let builder =
-        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .with_safe_default_protocol_versions()
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let verifier =
+        WebPkiClientVerifier::builder_with_provider(Arc::new(roots), Arc::clone(&provider))
+            .build()
             .map_err(|error| {
                 NodeControlServerError::Tls(format!(
-                    "TLS protocol configuration is invalid: {error}"
+                    "client certificate verifier is invalid: {error}"
                 ))
             })?;
+    let builder = ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|error| {
+            NodeControlServerError::Tls(format!("TLS protocol configuration is invalid: {error}"))
+        })?;
     let mut config = builder
         .with_client_cert_verifier(verifier)
         .with_single_cert(certificates, private_key)

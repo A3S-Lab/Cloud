@@ -178,6 +178,16 @@ the complete baseline on exact A3S Box revisions before those gates are
 published as verified again. Later gates must reuse the same deployment and
 reconciliation path.
 
+`BX0.1` now pins one A3S Runtime/A3S Box pair, starts the Node Agent with the
+shared Box Runtime driver, accepts only the closed ACL `box` configuration, and
+contains no fallback provider. Local dependencies and the C0 PostgreSQL gates
+run through checksum-pinned A3S Box runtime artifacts plus an exact-revision Box
+CLI. C0 reaches its Sandbox-hosted PostgreSQL fixture only through Box's
+generation-fenced loopback forwarder. Provider certification invokes the
+conformance suite owned by A3S Box; Cloud no longer carries a second provider
+suite. Full Box networking, mounts, Secrets, outputs, builds, and the clean-host
+release loop remain release-blocking `BX0` work.
+
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
 organization-scoped names and immutable versioned release identities; enforces
@@ -989,7 +999,7 @@ the README:
 
 - [`C0.1` Cross-Surface Conformance](tools/c0-conformance/README.md)
 - [Runtime Conformance](tools/runtime-conformance/README.md)
-- [Clean-Host Release Conformance](tools/release-conformance/README.md)
+- [A3S Box Provider Conformance](tools/box-conformance/README.md)
 - [Production Web Delivery](deploy/web/README.md)
 
 Design and delivery references:

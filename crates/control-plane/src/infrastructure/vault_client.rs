@@ -53,6 +53,7 @@ impl VaultClient {
         headers.insert("x-vault-token", token);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .default_headers(headers)
             .https_only(true)
             .redirect(reqwest::redirect::Policy::none())

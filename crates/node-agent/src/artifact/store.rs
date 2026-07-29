@@ -19,7 +19,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-pub(crate) type LocalArtifactReader = Pin<Box<dyn AsyncRead + Send + Unpin + 'static>>;
+pub type LocalArtifactReader = Pin<Box<dyn AsyncRead + Send + Unpin + 'static>>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum NodeArtifactError {
@@ -254,7 +254,7 @@ impl NodeArtifactCache {
     ) -> Result<RuntimeOutputArtifact, NodeArtifactError> {
         if output.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
             return Err(NodeArtifactError::Invalid(
-                "Docker Task output requires the supported directory archive media type".into(),
+                "Runtime Task output requires the supported directory archive media type".into(),
             ));
         }
         let _guard = self.mutation.lock().await;
@@ -610,7 +610,7 @@ mod cache_tests {
     use super::*;
 
     #[test]
-    fn relative_cache_roots_are_resolved_for_docker_bind_mounts() {
+    fn relative_cache_roots_are_resolved_for_runtime_mounts() {
         let cache = NodeArtifactCache::new(
             PathBuf::from(".a3s/test-node-artifacts"),
             ArtifactConfig {

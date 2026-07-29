@@ -482,7 +482,7 @@ fn succeeded_observation(
         class: RuntimeUnitClass::Task,
         state: RuntimeUnitState::Succeeded,
         provider_resource_id: Some("container-1".into()),
-        provider_build: Some("docker-test".into()),
+        provider_build: Some("a3s-box-test".into()),
         observed_at_ms: 2,
         started_at_ms: Some(1),
         finished_at_ms: Some(2),

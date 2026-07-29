@@ -94,6 +94,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
     let server_task = tokio::spawn(server.run(shutdown_receiver));
     wait_until_listening(address).await;
     let client = reqwest::Client::builder()
+        .use_rustls_tls()
         .add_root_certificate(
             reqwest::Certificate::from_pem(
                 &std::fs::read(&bundle_path).expect("node-control CA PEM"),

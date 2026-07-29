@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 
 readonly POSTGRES_IMAGE="docker.io/library/postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+readonly POSTGRES_PORT=54320
 
 cloud_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 evidence_directory="${1:-}"
@@ -37,9 +38,49 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command is unavailable: $1"
 }
 
-for command_name in bun cargo curl docker git openssl python3; do
+for command_name in bun cargo curl git openssl python3; do
   require_command "$command_name"
 done
+box_binary="${A3S_CLOUD_BOX_BIN:-$(command -v a3s-box || true)}"
+[[ -n $box_binary && -x $box_binary ]] || die "A3S Box is unavailable"
+expected_box_revision="$(<"$cloud_root/tools/box-conformance/box-revision")"
+[[ $expected_box_revision =~ ^[0-9a-f]{40}$ ]] || die "Box revision is not exact"
+box_revision="${A3S_CLOUD_BOX_REVISION:-}"
+box_revision_file="$(dirname "$box_binary")/BOX-REVISION"
+if [[ -z $box_revision && -f $box_revision_file ]]; then
+  box_revision="$(<"$box_revision_file")"
+fi
+[[ $box_revision == "$expected_box_revision" ]] ||
+  die "Box fixture does not match the pinned revision"
+if [[ ${A3S_CLOUD_BOX_RUN_AS_ROOT:-false} == true ]]; then
+  require_command sudo
+fi
+
+run_box() {
+  if [[ ${A3S_CLOUD_BOX_RUN_AS_ROOT:-false} == true ]]; then
+    sudo env \
+      A3S_HOME="$A3S_HOME" \
+      A3S_BOX_OCI_AGENT_PATH="${A3S_BOX_OCI_AGENT_PATH:-}" \
+      A3S_BOX_OCI_RUNTIME_PATH="${A3S_BOX_OCI_RUNTIME_PATH:-}" \
+      LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+      "$box_binary" "$@"
+  else
+    "$box_binary" "$@"
+  fi
+}
+
+run_box_forwarder() {
+  if [[ ${A3S_CLOUD_BOX_RUN_AS_ROOT:-false} == true ]]; then
+    exec sudo env \
+      A3S_HOME="$A3S_HOME" \
+      A3S_BOX_OCI_AGENT_PATH="${A3S_BOX_OCI_AGENT_PATH:-}" \
+      A3S_BOX_OCI_RUNTIME_PATH="${A3S_BOX_OCI_RUNTIME_PATH:-}" \
+      LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+      "$box_binary" "$@"
+  else
+    exec "$box_binary" "$@"
+  fi
+}
 
 [[ -n $evidence_directory ]] || die "an absolute evidence directory is required"
 [[ $evidence_directory == /* ]] || die "evidence directory must be absolute"
@@ -63,7 +104,7 @@ runtime_checkout="$(cd "$cloud_root/../../crates/runtime" && pwd)"
 [[ $(git -C "$runtime_checkout" rev-parse HEAD) == "$runtime_revision" ]] ||
   die "Runtime checkout does not match the pinned revision"
 
-python3 - 8080 8443 <<'PY'
+python3 - 8080 8443 "$POSTGRES_PORT" <<'PY'
 import socket
 import sys
 
@@ -81,8 +122,11 @@ PY
 
 run_directory="$(mktemp -d "${TMPDIR:-/tmp}/a3s-cloud-c0.XXXXXX")"
 [[ $run_directory == "${TMPDIR:-/tmp}"/a3s-cloud-c0.* ]] || die "temporary directory is invalid"
-postgres_container="a3s-cloud-c0-${cloud_revision:0:8}-$$"
+chmod 0711 "$run_directory"
+export A3S_HOME="$run_directory/box"
+postgres_box="a3s-cloud-c0-${cloud_revision:0:8}-$$"
 api_pid=''
+port_forward_pid=''
 
 cleanup() {
   local status=$?
@@ -91,12 +135,18 @@ cleanup() {
     kill "$api_pid" >/dev/null 2>&1 || true
     wait "$api_pid" >/dev/null 2>&1 || true
   fi
-  if docker container inspect "$postgres_container" >/dev/null 2>&1; then
-    docker logs "$postgres_container" >"$evidence_directory/postgres.log" 2>&1 || true
-    docker rm --force "$postgres_container" >/dev/null 2>&1 || true
+  if [[ -n $port_forward_pid ]]; then
+    kill "$port_forward_pid" >/dev/null 2>&1 || true
+    wait "$port_forward_pid" >/dev/null 2>&1 || true
   fi
+  run_box logs "$postgres_box" >"$evidence_directory/postgres.log" 2>&1 || true
+  run_box rm --force "$postgres_box" >/dev/null 2>&1 || true
   if [[ -d $run_directory && $run_directory == "${TMPDIR:-/tmp}"/a3s-cloud-c0.* ]]; then
-    rm -rf "$run_directory"
+    if [[ ${A3S_CLOUD_BOX_RUN_AS_ROOT:-false} == true ]]; then
+      sudo rm -rf "$run_directory"
+    else
+      rm -rf "$run_directory"
+    fi
   fi
   exit "$status"
 }
@@ -135,26 +185,30 @@ if [[ $scenario == cross-surface ]]; then
 fi
 
 postgres_password="c0_$(openssl rand -hex 16)"
-docker pull "$POSTGRES_IMAGE" >"$evidence_directory/postgres-pull.log"
-docker run --detach --name "$postgres_container" --pull=never \
-  --publish 127.0.0.1::5432 \
-  --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=1073741824 \
+run_box pull "$POSTGRES_IMAGE" >"$evidence_directory/postgres-pull.log"
+run_box run "$POSTGRES_IMAGE" \
+  --isolation sandbox \
+  --detach \
+  --name "$postgres_box" \
   --env POSTGRES_DB=a3s_cloud \
   --env "POSTGRES_PASSWORD=$postgres_password" \
   --env POSTGRES_USER=a3s_cloud \
-  "$POSTGRES_IMAGE" >"$evidence_directory/postgres.id"
+  >"$evidence_directory/postgres.id"
 
-postgres_port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$postgres_container")"
-[[ $postgres_port =~ ^[0-9]+$ ]] || die "PostgreSQL host port is invalid"
+postgres_query() {
+  run_box exec "$postgres_box" \
+    --env "PGPASSWORD=$postgres_password" \
+    -- psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
+    --command="$1"
+}
+
 # The image exposes a transient bootstrap postmaster before restarting as PID 1.
 # Bind readiness to one stable server identity so migrations never race that restart.
 postgres_ready=false
 postgres_ready_identity=''
 postgres_ready_streak=0
 for _ in $(seq 1 60); do
-  postgres_identity="$(docker exec "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command='select pg_postmaster_start_time()' 2>/dev/null || true)"
+  postgres_identity="$(postgres_query 'select pg_postmaster_start_time()' 2>/dev/null || true)"
   if [[ -n $postgres_identity ]]; then
     if [[ $postgres_identity == "$postgres_ready_identity" ]]; then
       postgres_ready_streak=$((postgres_ready_streak + 1))
@@ -173,17 +227,42 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 [[ $postgres_ready == true ]] || die "PostgreSQL did not become stably ready"
-[[ -z $(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' "$postgres_container") ]] ||
-  die "PostgreSQL unexpectedly owns an anonymous volume"
-postgres_version="$(docker exec "$postgres_container" postgres --version)"
+postgres_version="$(run_box exec "$postgres_box" -- postgres --version)"
 [[ $postgres_version == *"PostgreSQL) 17."* ]] || die "PostgreSQL major version is not 17"
 printf '%s\n' "$postgres_version" >"$evidence_directory/postgres-version.txt"
+
+run_box_forwarder port-forward "$postgres_box" \
+  --host-port "$POSTGRES_PORT" \
+  --guest-port 5432 \
+  --max-connections 64 \
+  --connect-timeout-secs 5 \
+  >"$evidence_directory/postgres-port-forward.log" 2>&1 &
+port_forward_pid=$!
+
+port_forward_ready=false
+for _ in $(seq 1 30); do
+  kill -0 "$port_forward_pid" >/dev/null 2>&1 ||
+    die "A3S Box PostgreSQL port-forward exited before readiness"
+  if python3 - "$POSTGRES_PORT" <<'PY'
+import socket
+import sys
+
+with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=1):
+    pass
+PY
+  then
+    port_forward_ready=true
+    break
+  fi
+  sleep 1
+done
+[[ $port_forward_ready == true ]] || die "A3S Box PostgreSQL port-forward did not become ready"
 
 bootstrap_token="$(openssl rand -hex 32)"
 admin_token="a3s_$(openssl rand -hex 32)"
 restricted_token="a3s_$(openssl rand -hex 32)"
 github_webhook_secret="$(openssl rand -hex 32)"
-postgres_url="postgres://a3s_cloud:$postgres_password@127.0.0.1:$postgres_port/a3s_cloud"
+postgres_url="postgres://a3s_cloud:$postgres_password@127.0.0.1:$POSTGRES_PORT/a3s_cloud"
 
 (
   cd "$run_directory"
@@ -246,51 +325,42 @@ esac
 
 admin_digest="sha256:$(printf '%s' "$admin_token" | openssl dgst -sha256 | awk '{print $NF}')"
 restricted_digest="sha256:$(printf '%s' "$restricted_token" | openssl dgst -sha256 | awk '{print $NF}')"
-stored_token_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-  psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-  --command="select count(*) from api_tokens where token_hash in ('$admin_digest', '$restricted_digest')")"
+stored_token_count="$(postgres_query \
+  "select count(*) from api_tokens where token_hash in ('$admin_digest', '$restricted_digest')")"
 [[ $stored_token_count == 2 ]] || die "PostgreSQL did not retain exactly the two expected token digests"
-revoked_token_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-  psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-  --command="select count(*) from api_tokens where token_hash = '$restricted_digest' and revoked_at is not null")"
+revoked_token_count="$(postgres_query \
+  "select count(*) from api_tokens where token_hash = '$restricted_digest' and revoked_at is not null")"
 [[ $revoked_token_count == 1 ]] || die "restricted token revocation was not durable"
 
 if [[ $scenario == management-mcp ]]; then
-  mcp_project_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from projects where name in ('MCP Conformance Project', 'MCP Foreign Project')")"
+  mcp_project_count="$(postgres_query \
+    "select count(*) from projects where name in ('MCP Conformance Project', 'MCP Foreign Project')")"
   [[ $mcp_project_count == 2 ]] || die "PostgreSQL did not retain the two expected MCP projects"
-  mcp_environment_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from environments e join projects p on p.organization_id = e.organization_id and p.id = e.project_id where p.name = 'MCP Conformance Project' and e.name = 'MCP Operational Environment'")"
+  mcp_environment_count="$(postgres_query \
+    "select count(*) from environments e join projects p on p.organization_id = e.organization_id and p.id = e.project_id where p.name = 'MCP Conformance Project' and e.name = 'MCP Operational Environment'")"
   [[ $mcp_environment_count == 1 ]] || die "PostgreSQL did not retain the expected MCP operational environment"
-  hidden_project_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
+  hidden_project_count="$(postgres_query \
+    "select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
   [[ $hidden_project_count == 0 ]] || die "hidden MCP mutation changed PostgreSQL state"
-  mcp_idempotency_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from idempotency_records where idempotency_key = 'c0:mcp:rest-project'")"
+  mcp_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key = 'c0:mcp:rest-project'")"
   [[ $mcp_idempotency_count == 1 ]] || die "REST-to-MCP replay did not preserve one idempotency record"
-  mcp_workload_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from workloads where name = 'mcp-stop' and desired_state = 'stopped'")"
+  mcp_workload_count="$(postgres_query \
+    "select count(*) from workloads where name = 'mcp-stop' and desired_state = 'stopped'")"
   [[ $mcp_workload_count == 1 ]] || die "MCP Workload stop did not persist the expected desired state"
-  mcp_workload_stop_idempotency_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from idempotency_records where idempotency_key = 'c0:mcp:workload-stop'")"
+  mcp_workload_stop_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key = 'c0:mcp:workload-stop'")"
   [[ $mcp_workload_stop_idempotency_count == 1 ]] || die "MCP Workload stop replay did not preserve one idempotency record"
-  read_only_scope_count="$(docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
-    psql --dbname=a3s_cloud --username=a3s_cloud --tuples-only --no-align \
-    --command="select count(*) from api_tokens where token_hash = '$restricted_digest' and scopes = '[\"cloud:read\"]'::jsonb and revoked_at is not null")"
+  read_only_scope_count="$(postgres_query \
+    "select count(*) from api_tokens where token_hash = '$restricted_digest' and scopes = '[\"cloud:read\"]'::jsonb and revoked_at is not null")"
   [[ $read_only_scope_count == 1 ]] || die "read-only MCP scope or revocation was not durable"
 fi
 
 database_dump="$run_directory/postgres.sql"
-docker exec --env "PGPASSWORD=$postgres_password" "$postgres_container" \
+run_box exec "$postgres_box" --env "PGPASSWORD=$postgres_password" -- \
   pg_dump --dbname=a3s_cloud --username=a3s_cloud --data-only --no-owner --no-privileges \
   >"$database_dump" 2>"$evidence_directory/postgres-dump.log"
-docker logs "$postgres_container" >"$evidence_directory/postgres.log" 2>&1
+run_box logs "$postgres_box" >"$evidence_directory/postgres.log" 2>&1
 
 for credential in \
   "$bootstrap_token" "$admin_token" "$restricted_token" "$github_webhook_secret" "$postgres_password"; do
@@ -314,11 +384,11 @@ done
 } >"$evidence_directory/persistence-check.txt"
 
 if [[ $scenario == cross-surface ]]; then
-  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s source=%s contract=1.0.0\n' \
-    "$cloud_revision" "$runtime_revision" "$source_state" \
+  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s contract=1.0.0\n' \
+    "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 else
-  printf 'A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS cloud=%s runtime=%s source=%s protocol=2025-06-18 contract=1.0.0\n' \
-    "$cloud_revision" "$runtime_revision" "$source_state" \
+  printf 'A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2025-06-18 contract=1.0.0\n' \
+    "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 fi

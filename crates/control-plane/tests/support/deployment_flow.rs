@@ -1,9 +1,8 @@
-use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
-    CloudSecretReference, DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest,
-    NodeCommandOutcome, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
-    NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit,
-    RuntimeObservationReport, RuntimeServiceEndpoint,
+    DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
+    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, NodeResourceInventory,
+    NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
+    RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::fleet::domain::entities::EnrollmentToken;
@@ -19,54 +18,38 @@ use a3s_cloud_control_plane::modules::operations::{
     PostgresOperationRepository, ReconcileOperationsHandler,
 };
 use a3s_cloud_control_plane::modules::secrets::{
-    ISecretEncryptionService, ISecretRepository, PostgresSecretRepository, ResolveSecretMaterial,
-    ResolveSecretMaterialHandler,
+    ISecretEncryptionService, ISecretRepository, PostgresSecretRepository,
 };
-use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DeploymentId, EnrollmentTokenId, IdempotencyRequest, NodeId, OperationId, OrganizationId,
     ResourceClaimId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    DeploymentCancellationRequested, DeploymentFlowConfig, DeploymentFlowDependencies,
-    DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver, IResourceClaimRepository,
-    IWorkloadRepository, IWorkloadRuntimeControl, IWorkloadRuntimeTargetRepository, OciArtifact,
-    OciArtifactReference, OciArtifactResolutionError, OciRegistryArtifactResolver,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository,
-    RequestDeploymentCancellationBundle, ResourceClaimState, WorkloadRuntimeReconciler,
-};
-use a3s_cloud_node_agent::{
-    CommandExecutor, DockerConfig, DockerRuntimeDriver, FileCommandJournal, NodeControlClientError,
-    NodeResourceInventoryAuthority, NodeRuntimeBinding, NodeSecretTransport,
-    ResourceInventoryError, SecretMaterial,
+    DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
+    IOciArtifactResolver, IResourceClaimRepository, IWorkloadRepository, IWorkloadRuntimeControl,
+    IWorkloadRuntimeTargetRepository, OciArtifact, OciArtifactReference,
+    OciArtifactResolutionError, OciRegistryArtifactResolver, PostgresResourceClaimRepository,
+    PostgresWorkloadRepository, WorkloadRuntimeReconciler,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
-    HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeActionRequest,
-    RuntimeCapabilities, RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation,
-    RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
-    TransportProtocol,
-};
-use a3s_runtime::{
-    FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeStateStore,
+    HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities,
+    RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState,
+    RuntimeInspection, RuntimeObservation, RuntimeUnitClass, RuntimeUnitState, TransportProtocol,
 };
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
 #[path = "deployment_flow/cancellation.rs"]
 mod cancellation;
-#[path = "deployment_flow/log_recovery.rs"]
-mod log_recovery;
 
-pub use cancellation::{exercise_dispatched_cancellation, exercise_pre_dispatch_cancellation};
-use log_recovery::persist_redacted_docker_logs;
-pub use log_recovery::{run_log_object_publish_crash_probe, LogRecoveryFixture};
+pub use cancellation::exercise_pre_dispatch_cancellation;
 
 #[derive(Clone)]
 pub struct DeploymentFlowFixture {
@@ -74,20 +57,6 @@ pub struct DeploymentFlowFixture {
     pub agent_instance_id: Uuid,
     pub capabilities: RuntimeCapabilities,
     pub after_sequence: u64,
-    pub log_recovery: Option<LogRecoveryFixture>,
-}
-
-struct FixedResourceInventoryAuthority {
-    inventory: NodeResourceInventory,
-}
-
-#[async_trait]
-impl NodeResourceInventoryAuthority for FixedResourceInventoryAuthority {
-    async fn current_resource_inventory(
-        &self,
-    ) -> Result<NodeResourceInventory, ResourceInventoryError> {
-        Ok(self.inventory.clone())
-    }
 }
 
 pub async fn exercise_deployment_flow(
@@ -110,7 +79,7 @@ pub async fn exercise_deployment_flow(
             .append(" and state = 'ready'"),
         )
         .await?;
-    let (node_id, agent_instance_id, capabilities, inventory) =
+    let (node_id, agent_instance_id, capabilities, _inventory) =
         ready_node(&node_repository, organization_id).await?;
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
@@ -147,53 +116,6 @@ pub async fn exercise_deployment_flow(
         Duration::from_millis(5),
         Duration::from_secs(1),
     )?;
-
-    let mut docker_runtime: Option<Arc<dyn RuntimeClient>> = None;
-    let mut docker_state_directory = None;
-    let mut docker_secret_directory = None;
-    let mut command_executor = None;
-    let mut log_recovery = None;
-    if docker_tests_enabled() {
-        let state_directory = tempfile::tempdir()?;
-        let namespace = format!("cloud-flow-{}", &Uuid::now_v7().simple().to_string()[..12]);
-        let secret_memory_dir = docker_secret_memory_dir();
-        let secret_namespace_dir = secret_memory_dir.join(&namespace);
-        let driver = Arc::new(DockerRuntimeDriver::connect(&DockerConfig {
-            socket: docker_socket(),
-            namespace,
-            operation_timeout_ms: 30_000,
-            secret_memory_dir: secret_memory_dir.clone(),
-        })?);
-        driver.bind_node(node_id.as_uuid()).await?;
-        let secret_workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
-        let secret_transport: Arc<dyn NodeSecretTransport> =
-            Arc::new(PostgresSecretTransport::new(
-                executor,
-                secret_workloads,
-                organization_id,
-                node_id,
-                security_state_dir,
-            )?);
-        driver.bind_secret_transport(secret_transport).await?;
-        let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
-            state_directory.path().join("runtime"),
-        ));
-        let runtime_driver: Arc<dyn RuntimeDriver> = driver;
-        let runtime: Arc<dyn RuntimeClient> =
-            Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
-        command_executor = Some(
-            CommandExecutor::runtime_only(
-                FileCommandJournal::new(state_directory.path().join("journal"), node_id.as_uuid())?,
-                runtime.clone(),
-            )
-            .with_resource_inventory(Arc::new(FixedResourceInventoryAuthority {
-                inventory: inventory.clone(),
-            })),
-        );
-        docker_runtime = Some(runtime);
-        docker_state_directory = Some(state_directory);
-        docker_secret_directory = Some(secret_namespace_dir);
-    }
 
     let mut reconciled_before_prepare = 0;
     for _ in 0..8 {
@@ -270,10 +192,7 @@ pub async fn exercise_deployment_flow(
             )
         })
         .ok_or("deployment resource preparation command was not leased")?;
-    let preparation_acknowledgement = match command_executor.as_ref() {
-        Some(command_executor) => command_executor.execute(preparation.clone()).await?,
-        None => resource_claim_acknowledgement(&preparation)?,
-    };
+    let preparation_acknowledgement = resource_claim_acknowledgement(&preparation)?;
     persist_command_result(
         &node_repository,
         node_id,
@@ -325,57 +244,12 @@ pub async fn exercise_deployment_flow(
     else {
         return Err("deployment command is not Runtime apply".into());
     };
-    let acknowledgement = if let Some(command_executor) = command_executor.as_ref() {
-        let serialized_command = serde_json::to_string(&command)?;
-        assert!(sensitive_plaintexts
-            .iter()
-            .all(|plaintext| !serialized_command.contains(plaintext)));
-        let acknowledgement = command_executor.execute(command.clone()).await?;
-        assert_secret_file_modes(
-            docker_secret_directory
-                .as_deref()
-                .ok_or("Docker Secret directory was not retained")?,
-            &[0o400],
-        )?;
-        assert_eq!(
-            command_executor.execute(command.clone()).await?,
-            acknowledgement
-        );
-        assert_tree_excludes_plaintext(
-            docker_state_directory
-                .as_ref()
-                .ok_or("Docker state directory was not retained")?
-                .path(),
-            sensitive_plaintexts,
-        )?;
-        match &acknowledgement.outcome {
-            a3s_cloud_contracts::NodeCommandOutcome::Succeeded { result } => {
-                match result.as_ref() {
-                    a3s_cloud_contracts::NodeCommandResult::RuntimeApplied { .. } => {}
-                    _ => return Err("Docker command returned the wrong result kind".into()),
-                }
-            }
-            outcome => return Err(format!("Docker Runtime apply failed: {outcome:?}").into()),
-        }
-        let runtime = docker_runtime
-            .as_ref()
-            .ok_or("Docker Runtime was not retained")?;
-        log_recovery = Some(
-            persist_redacted_docker_logs(
-                postgres_url,
-                executor,
-                node_id,
-                Arc::clone(runtime),
-                &request.spec,
-                security_state_dir,
-                sensitive_plaintexts,
-            )
-            .await?,
-        );
-        acknowledgement
-    } else {
-        runtime_apply_acknowledgement(&command, healthy_observation(&request.spec)?)?
-    };
+    let serialized_command = serde_json::to_string(&command)?;
+    assert!(sensitive_plaintexts
+        .iter()
+        .all(|plaintext| !serialized_command.contains(plaintext)));
+    let acknowledgement =
+        runtime_apply_acknowledgement(&command, healthy_observation(&request.spec)?)?;
     persist_command_result(
         &node_repository,
         node_id,
@@ -617,168 +491,12 @@ pub async fn exercise_deployment_flow(
             .len(),
         history_length
     );
-    if let Some(runtime) = docker_runtime {
-        runtime
-            .remove(&RuntimeActionRequest {
-                schema: RuntimeActionRequest::SCHEMA.into(),
-                request_id: format!("integration-cleanup-{}", Uuid::now_v7()),
-                unit_id: request.spec.unit_id.clone(),
-                generation: request.spec.generation,
-                deadline_at_ms: None,
-            })
-            .await?;
-    }
-    if let Some(directory) = docker_secret_directory {
-        match tokio::fs::remove_dir(directory).await {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
-    }
-    drop(docker_state_directory);
     Ok(DeploymentFlowFixture {
         node_id,
         agent_instance_id,
         capabilities,
         after_sequence: recovery_command.sequence,
-        log_recovery,
     })
-}
-
-pub(super) struct PostgresSecretTransport {
-    handler: ResolveSecretMaterialHandler,
-    organization_id: OrganizationId,
-    node_id: NodeId,
-}
-
-impl PostgresSecretTransport {
-    pub(super) fn new(
-        executor: &PostgresExecutor,
-        workloads: Arc<dyn IWorkloadRepository>,
-        organization_id: OrganizationId,
-        node_id: NodeId,
-        security_state_dir: &Path,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let secrets: Arc<dyn ISecretRepository> =
-            Arc::new(PostgresSecretRepository::new(executor.clone()));
-        let encryption: Arc<dyn ISecretEncryptionService> =
-            Arc::new(LocalKeyEncryptionService::load_or_create(
-                security_state_dir.join("key-encryption.key"),
-            )?);
-        Ok(Self {
-            handler: ResolveSecretMaterialHandler::new(workloads, secrets, encryption),
-            organization_id,
-            node_id,
-        })
-    }
-}
-
-#[async_trait]
-impl NodeSecretTransport for PostgresSecretTransport {
-    async fn resolve_secret(
-        &self,
-        reference: CloudSecretReference,
-    ) -> Result<SecretMaterial, NodeControlClientError> {
-        let plaintext = self
-            .handler
-            .execute(
-                ResolveSecretMaterial {
-                    organization_id: self.organization_id,
-                    authenticated_node_id: self.node_id,
-                    reference,
-                },
-                context(),
-            )
-            .await
-            .map_err(|_| {
-                NodeControlClientError::Transport("PostgreSQL Secret material query failed".into())
-            })?
-            .map_err(secret_application_error)?;
-        SecretMaterial::new(plaintext.as_bytes().to_vec()).map_err(NodeControlClientError::Invalid)
-    }
-}
-
-fn secret_application_error(error: ApplicationError) -> NodeControlClientError {
-    match error {
-        ApplicationError::Unavailable(_) | ApplicationError::Internal(_) => {
-            NodeControlClientError::Rejected {
-                status: 503,
-                code: "secret_material_unavailable".into(),
-                message: "Secret material is temporarily unavailable".into(),
-                retryable: true,
-            }
-        }
-        ApplicationError::Invalid(_)
-        | ApplicationError::NotFound(_)
-        | ApplicationError::Conflict(_)
-        | ApplicationError::Forbidden(_) => NodeControlClientError::Rejected {
-            status: 403,
-            code: "secret_material_forbidden".into(),
-            message: "Secret material is not authorized".into(),
-            retryable: false,
-        },
-    }
-}
-
-pub(super) fn assert_tree_excludes_plaintext(
-    root: &Path,
-    sensitive_plaintexts: &[&str],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut directories = vec![root.to_path_buf()];
-    while let Some(directory) = directories.pop() {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if file_type.is_dir() {
-                directories.push(entry.path());
-            } else if file_type.is_file() {
-                let body = std::fs::read(entry.path())?;
-                if sensitive_plaintexts.iter().any(|plaintext| {
-                    let secret = plaintext.as_bytes();
-                    !secret.is_empty() && body.windows(secret.len()).any(|window| window == secret)
-                }) {
-                    return Err(std::io::Error::other(
-                        "plaintext Secret reached durable node state",
-                    )
-                    .into());
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-pub(super) fn assert_secret_file_modes(
-    root: &Path,
-    expected: &[u32],
-) -> Result<(), Box<dyn std::error::Error>> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut directories = vec![root.to_path_buf()];
-    let mut modes = Vec::new();
-    while let Some(directory) = directories.pop() {
-        for entry in std::fs::read_dir(directory)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if file_type.is_dir() {
-                directories.push(entry.path());
-            } else if file_type.is_file() {
-                modes.push(entry.metadata()?.permissions().mode() & 0o777);
-            }
-        }
-    }
-    modes.sort_unstable();
-    assert_eq!(modes, expected);
-    Ok(())
-}
-
-#[cfg(not(unix))]
-pub(super) fn assert_secret_file_modes(
-    _root: &Path,
-    _expected: &[u32],
-) -> Result<(), Box<dyn std::error::Error>> {
-    Err("Secret file mode assertions require Unix permissions".into())
 }
 
 fn test_artifact_resolver() -> Arc<dyn IOciArtifactResolver> {
@@ -1113,8 +831,8 @@ pub(super) fn healthy_observation(
         spec_digest: spec_digest.clone(),
         class: RuntimeUnitClass::Service,
         state: RuntimeUnitState::Running,
-        provider_resource_id: Some("integration-container".into()),
-        provider_build: Some("integration-runtime-1".into()),
+        provider_resource_id: Some("box-execution-integration".into()),
+        provider_build: Some("a3s-box-integration".into()),
         observed_at_ms: now_ms,
         started_at_ms: Some(now_ms),
         finished_at_ms: None,
@@ -1126,7 +844,7 @@ pub(super) fn healthy_observation(
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {
-            provider_build: "integration-runtime-1".into(),
+            provider_build: "a3s-box-integration".into(),
             spec_digest,
             semantics_profile_digest: spec.semantics_profile_digest.clone(),
             claims: endpoint_claims,
@@ -1141,15 +859,12 @@ pub(super) fn healthy_observation(
 fn runtime_capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("integration-runtime")
-            .expect("valid integration provider ID"),
-        provider_build: "integration-runtime-1".into(),
+        provider_id: a3s_runtime::ProviderId::parse("a3s-box-integration")
+            .expect("valid Box integration provider ID"),
+        provider_build: "a3s-box-integration".into(),
         unit_classes: vec![RuntimeUnitClass::Service],
-        artifact_media_types: vec![
-            "application/vnd.oci.image.manifest.v1+json".into(),
-            "application/vnd.docker.distribution.manifest.v2+json".into(),
-        ],
-        isolation_levels: vec![IsolationLevel::Container],
+        artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
+        isolation_levels: vec![IsolationLevel::Sandbox],
         network_modes: vec![NetworkMode::Service],
         mount_kinds: Vec::new(),
         health_check_kinds: vec![HealthCheckKind::Http],
@@ -1171,23 +886,4 @@ fn field_uuid(value: &Value, field: &str) -> Result<Uuid, Box<dyn std::error::Er
     Ok(Uuid::parse_str(value[field].as_str().ok_or_else(
         || format!("workload response omitted {field}"),
     )?)?)
-}
-
-fn docker_tests_enabled() -> bool {
-    std::env::var("A3S_CLOUD_TEST_DOCKER").as_deref() == Ok("1")
-}
-
-fn docker_socket() -> String {
-    std::env::var("A3S_CLOUD_TEST_DOCKER_SOCKET")
-        .unwrap_or_else(|_| "unix:///var/run/docker.sock".into())
-}
-
-fn docker_secret_memory_dir() -> PathBuf {
-    std::env::var_os("A3S_CLOUD_TEST_SECRET_MEMORY_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/dev/shm/a3s-cloud/test-secrets"))
-}
-
-fn context() -> CqrsContext {
-    CqrsContext::new(ModuleRef::new())
 }

@@ -91,6 +91,7 @@ impl GithubInstallationTokenIssuer {
             HeaderValue::from_static(GITHUB_API_VERSION),
         );
         let client = Client::builder()
+            .use_rustls_tls()
             .timeout(timeout)
             .connect_timeout(timeout)
             .redirect(reqwest::redirect::Policy::none())
