@@ -125,10 +125,15 @@ mod tests {
         require_current_healthy_observation(&applied_runtime, "apply")?;
         let applied_endpoint =
             RuntimeServiceEndpoint::from_observation(&applied_runtime, "http").map_err(invalid)?;
-        let applied_origin = gateway_http_upstream(&applied_endpoint).map_err(invalid)?;
 
         drop(executor);
         drop(runtime);
+        // Box owns listeners in memory. Runtime's durable observation remains
+        // byte-stable for command replay, while a reconstructed driver closes
+        // the old listener and publishes a fresh endpoint on inspection. Cloud
+        // must consume that fresh typed observation instead of treating the
+        // replayed socket as a second endpoint registry.
+        require_endpoint_closed(applied_endpoint.socket_addr()).await?;
         let recovered_runtime = build_box_runtime_client(
             &BoxRuntimeConfig {
                 home_dir: home.canonicalize()?,
@@ -174,15 +179,7 @@ mod tests {
         let inspected_endpoint =
             RuntimeServiceEndpoint::from_observation(inspected_observation, "http")
                 .map_err(invalid)?;
-        if inspected_endpoint != applied_endpoint {
-            return Err(
-                invalid("Runtime health inspection changed the active Service endpoint").into(),
-            );
-        }
         let inspected_origin = gateway_http_upstream(&inspected_endpoint).map_err(invalid)?;
-        if inspected_origin != applied_origin {
-            return Err(invalid("Cloud health inspection changed the Gateway origin").into());
-        }
         let applied_health = applied_runtime
             .health
             .as_ref()

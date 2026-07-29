@@ -260,10 +260,11 @@ policy, the Node Agent journals the kind-neutral observation, and the existing
 stateless Edge adapter consumes only the typed endpoint. The dedicated real
 Box consumer gate requires `Healthy` at apply, reconstructs Runtime and the
 Agent executor, replays the exact durable observation, requires a fresh healthy
-inspection with unchanged identity and endpoint, sends HTTP through the
-compiled Gateway origin, removes the Service, observes `NotFound`, and requires
-listener closure. It adds no health worker, registry, scheduler, queue, Runtime
-driver, endpoint authority, or lifecycle store.
+inspection with unchanged Runtime identity, proves the replayed listener closes,
+consumes the freshly published typed endpoint, sends HTTP through its compiled
+Gateway origin, removes the Service, observes `NotFound`, and requires listener
+closure. It adds no health worker, registry, scheduler, queue, Runtime driver,
+endpoint authority, or lifecycle store.
 
 The rest of `BX0.3` remains open: Secret materialization,
 Artifact/Volume/tmpfs mounts, Task outputs, registry credentials, allocation
