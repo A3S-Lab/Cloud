@@ -207,8 +207,25 @@ Claim and recording terminal `Cancelled`. The
 kills the Agent after Box has durably removed the Service but before command
 completion, then proves exact receipt adoption, Claim preservation until
 acknowledgement, one release, terminal cancellation, and zero provider residue.
-Box networking, health, mounts, Secrets, outputs, builds, and the clean-host
-release loop remain release-blocking `BX0.3` through `BX0.5` work.
+
+The first `BX0.3` networking slice is implemented by
+[Runtime PR #8](https://github.com/A3S-Lab/Runtime/pull/8),
+[Box PR #185](https://github.com/A3S-Lab/Box/pull/185), and
+[Cloud PR #95](https://github.com/A3S-Lab/Cloud/pull/95). Runtime owns the
+typed, generation-bound Service endpoint contract. Box alone binds loopback
+TCP listeners, relays each connection through its existing execution connector,
+and closes or reconstructs listeners with the matching execution generation.
+Cloud deletes its former endpoint encoding and uses one stateless Edge adapter
+to compile the Runtime TCP socket into the canonical HTTP origin consumed by
+Gateway. The dedicated real-provider gate starts a Box Service, reads and
+replays the exact Runtime observation, reaches the workload through the
+compiled Gateway origin, removes the Service, and requires the listener to
+close. Cloud adds no endpoint registry, forwarding process, Runtime driver, or
+lifecycle store.
+
+HTTP/TCP/command health, mounts, Secrets, outputs, registry credentials,
+builds, isolation evidence, and the clean-host release loop remain
+release-blocking `BX0.3` through `BX0.5` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists

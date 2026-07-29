@@ -144,7 +144,7 @@ Status as of 2026-07-29:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. The final gate adopts Box removal after Agent process death, preserves the Claim until acknowledgement, releases once, and leaves empty provider state. `BX0.3` through `BX0.5` remain open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. The first `BX0.3` slice now uses Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding, and a stateless Cloud-to-Gateway origin adapter with a real connectivity and cleanup gate. Health, Secrets, mounts, outputs, credentials, isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -237,13 +237,24 @@ adopt the exact receipt, keep capacity held until acknowledgement, release the
 Claim once, and finish cancellation without provider residue. This completes
 `BX0.2`; networking and health remain `BX0.3`.
 
-The first `BX0.3` slice has one contract path: A3S Runtime owns typed endpoint
-observations, Box owns loopback forwarding through its existing
-generation-fenced execution connector, and Cloud consumes the observation for
-health and Gateway target compilation. Delete Cloud's product-specific
-endpoint evidence encoding when that contract lands. Do not start a separate
-Box CLI forwarder or introduce another endpoint registry, forwarding daemon,
-Runtime driver, or lifecycle store.
+The first `BX0.3` slice has landed through
+[Runtime PR #8](https://github.com/A3S-Lab/Runtime/pull/8),
+[Box PR #185](https://github.com/A3S-Lab/Box/pull/185), and
+[Cloud PR #95](https://github.com/A3S-Lab/Cloud/pull/95). A3S Runtime owns the
+typed endpoint observation; Box owns loopback forwarding through its existing
+generation-fenced execution connector; and Cloud consumes that type directly
+for Gateway target compilation. Cloud has no product-specific endpoint evidence
+encoding. One stateless Edge adapter accepts only a typed TCP endpoint and
+produces the canonical HTTP origin expected by Gateway. The dedicated Linux
+gate starts a real Box Service, proves the observation remains stable across
+inspection, sends HTTP through the compiled origin, removes the Service, and
+requires the listener to close. It starts no Box CLI forwarder and introduces
+no endpoint registry, forwarding daemon, Runtime driver, or lifecycle store.
+
+The rest of `BX0.3` remains open: HTTP/TCP/command health, Secret
+materialization, Artifact/Volume/tmpfs mounts, Task outputs, registry
+credentials, allocation evidence, and complete Sandbox/MicroVM/TEE isolation
+certification.
 
 #### Exit gate
 
