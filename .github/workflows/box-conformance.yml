@@ -166,7 +166,7 @@ jobs:
           set -e
           exit "$gate_status"
 
-      - name: Prove Cloud recovery, resource Claims, and cancellation through Box
+      - name: Prove Cloud recovery, Claims, cancellation, and interruption cleanup through Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
@@ -174,7 +174,9 @@ jobs:
           A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
           A3S_CLOUD_TEST_BOX: "1"
           A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
+          install -d -m 0755 "$EVIDENCE_DIR"
           cargo_bin=$(command -v cargo)
           cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
           rustup_home=$(rustup show home)
@@ -195,7 +197,8 @@ jobs:
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-node-agent --test box_lifecycle \
               real_box_recovers_journal_gaps_generation_and_resource_claims \
-              -- --ignored --exact --nocapture --test-threads=1
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/cloud-lifecycle.log"
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
@@ -213,7 +216,13 @@ jobs:
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-control-plane \
               modules::workloads::infrastructure::deployment_flow::tests::box_cancellation::real_box_deployment_cancellation_removes_runtime_before_claim_release \
-              -- --ignored --exact --nocapture --test-threads=1
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/cloud-cleanup-interruption.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_BOX_CLEANUP_PROCESS_DEATH_CERTIFIED' \
+            "$EVIDENCE_DIR/cloud-cleanup-interruption.log" \
+            >"$EVIDENCE_DIR/cleanup-process-death-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/cleanup-process-death-certification.txt")" -eq 1
 
       - name: Verify provider cleanup
         if: always()

@@ -17,6 +17,9 @@ use std::sync::Arc;
 
 type BoxTestResult<T> = Result<T, Box<dyn Error>>;
 
+#[path = "box_cancellation/process.rs"]
+mod process;
+
 #[tokio::test]
 #[ignore = "requires A3S_CLOUD_TEST_BOX=1 on the dedicated real Box provider runner"]
 async fn real_box_deployment_cancellation_removes_runtime_before_claim_release() -> BoxTestResult<()>
@@ -62,7 +65,8 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
         resource_claims.clone(),
         Duration::seconds(240),
     )?;
-    let engine = FlowEngine::in_memory(Arc::new(flow_runtime));
+    let flow_store = Arc::new(InMemoryEventStore::new());
+    let engine = FlowEngine::new(flow_store.clone(), Arc::new(flow_runtime.clone()));
     let bundle = deployment_bundle_with_template(
         Workload::create(
             WorkloadId::new(),
@@ -84,8 +88,9 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     workloads.create_deployment(bundle).await?;
 
     let journal = FileCommandJournal::new(node_state.path(), node_id.as_uuid())?;
+    let inventory_authority = Arc::new(FixedInventory(inventory));
     let executor = CommandExecutor::runtime_only(journal.clone(), runtime.clone())
-        .with_resource_inventory(Arc::new(FixedInventory(inventory)));
+        .with_resource_inventory(inventory_authority.clone());
 
     engine
         .start_with_id(
@@ -155,6 +160,21 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     if applying.status != DeploymentStatus::Applying {
         return Err(invalid("deployment advanced before cancellation was requested").into());
     }
+    let prepared_claim = resource_claims
+        .find(
+            organization_id,
+            ResourceClaimId::from_uuid(deployment.id.as_uuid()),
+        )
+        .await?;
+    if prepared_claim.state
+        != crate::modules::workloads::domain::entities::ResourceClaimState::PreparedOnAgent
+    {
+        return Err(invalid(format!(
+            "cancellation fixture expected a prepared Agent Claim, found {}",
+            prepared_claim.state.as_str()
+        ))
+        .into());
+    }
     workloads
         .mark_cancellation_requested(
             deployment.id,
@@ -180,15 +200,52 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     if !matches!(removal.payload, NodeCommandPayload::RuntimeRemove { .. }) {
         return Err(invalid("cancellation did not dispatch Runtime remove").into());
     }
-    let removal_ack = execute_and_deliver(
-        &executor,
-        &nodes,
-        agent_instance_id,
-        &registered_capabilities,
+    drop(executor);
+    let physical_removal = process::interrupt_after_provider_remove(
+        &home,
+        runtime_state.path(),
+        node_state.path(),
         &removal,
     )
     .await?;
+    let interrupted = workloads
+        .find_deployment(organization_id, deployment.id)
+        .await?;
+    if interrupted.status != DeploymentStatus::CleanupPending
+        || interrupted.cleanup_command_id != Some(NodeCommandId::from_uuid(removal.command_id))
+    {
+        return Err(
+            invalid("Agent interruption changed the durable pending-cleanup projection").into(),
+        );
+    }
+    let interrupted_claim = resource_claims
+        .find(
+            organization_id,
+            ResourceClaimId::from_uuid(deployment.id.as_uuid()),
+        )
+        .await?;
+    if interrupted_claim.state
+        != crate::modules::workloads::domain::entities::ResourceClaimState::PreparedOnAgent
+    {
+        return Err(invalid(format!(
+            "Agent interruption changed the held Claim to {} before recovery",
+            interrupted_claim.state.as_str()
+        ))
+        .into());
+    }
+
+    drop(engine);
+    let engine = FlowEngine::new(flow_store, Arc::new(flow_runtime));
+    let removal_ack = process::recover_interrupted_remove(
+        &home,
+        runtime_state.path(),
+        node_state.path(),
+        &removal,
+        &physical_removal,
+    )
+    .await?;
     expect_removed(&removal_ack, &spec.unit_id, spec.generation)?;
+    nodes.acknowledge_command(removal_ack, Utc::now()).await?;
 
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(3))
@@ -210,8 +267,13 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     ) {
         return Err(invalid("Runtime removal was not followed by resource Claim release").into());
     }
+    let recovered_executor = CommandExecutor::runtime_only(
+        FileCommandJournal::new(node_state.path(), node_id.as_uuid())?,
+        runtime.clone(),
+    )
+    .with_resource_inventory(inventory_authority);
     execute_and_deliver(
-        &executor,
+        &recovered_executor,
         &nodes,
         agent_instance_id,
         &registered_capabilities,
@@ -254,6 +316,10 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
         return Err(invalid("removed Box Service remained inspectable").into());
     }
     verify_empty_box_state_and_remove_fixture_files(&home)?;
+    println!(
+        "A3S_CLOUD_BOX_CLEANUP_PROCESS_DEATH_CERTIFIED unit={} generation={} command={}",
+        spec.unit_id, spec.generation, removal.command_id
+    );
     Ok(())
 }
 
