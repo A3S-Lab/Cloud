@@ -15,6 +15,16 @@ Docker-compatible daemon is required or contacted. It fails if the provider
 leaves a managed unit, shim, runtime owner, mount, socket, or Runtime state
 record behind.
 
+The Cloud consumer phase reuses the same exact provider and the existing Flow,
+Fleet command lease, Node Agent journal, Runtime receipt, and resource Claim
+state machines. Its cleanup interruption probe sends `SIGKILL` after Box has
+durably removed a Service but before the Agent records command completion. A
+reconstructed Agent and Flow must adopt the byte-identical removal receipt,
+keep the Claim bound until that evidence is acknowledged, release it exactly
+once, reach terminal cancellation, and leave empty Box state. The workflow
+retains the consumer logs and one machine-checkable certification marker with
+the provider evidence.
+
 Real MicroVM and TEE profiles remain hardware-qualified in A3S Box. Cloud does
 not reimplement those provider tests.
 
