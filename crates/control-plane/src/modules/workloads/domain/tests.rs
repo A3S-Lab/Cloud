@@ -33,7 +33,7 @@ fn template(digest_character: char) -> ServiceTemplate {
             name: "http".into(),
             container_port: 8080,
         }],
-        health: HttpHealthCheck {
+        health: Some(HttpHealthCheck {
             port_name: "http".into(),
             path: "/health".into(),
             interval_ms: 1_000,
@@ -41,7 +41,7 @@ fn template(digest_character: char) -> ServiceTemplate {
             healthy_threshold: 1,
             unhealthy_threshold: 3,
             stabilization_window_ms: 5_000,
-        },
+        }),
     }
 }
 
@@ -58,6 +58,25 @@ fn requested_template(uri: &str, expected_digest: Option<String>) -> RequestedSe
         ports: template.ports,
         health: template.health,
     }
+}
+
+#[test]
+fn headless_service_is_valid_without_network_or_health_policy() {
+    let mut headless = template('f');
+    headless.ports.clear();
+    headless.health = None;
+
+    headless.validate().expect("valid headless Service");
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        WorkloadId::new(),
+        1,
+        headless,
+        Utc::now(),
+    )
+    .expect("headless revision");
+    assert!(revision.request.ports.is_empty());
+    assert!(revision.request.health.is_none());
 }
 
 #[test]

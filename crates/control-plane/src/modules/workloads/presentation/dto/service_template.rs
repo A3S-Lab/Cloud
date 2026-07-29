@@ -16,8 +16,9 @@ pub struct ServiceTemplateDto {
     #[serde(default)]
     pub secrets: Vec<SecretBindingDto>,
     pub resources: ServiceResourcesDto,
+    #[serde(default)]
     pub ports: Vec<ServicePortDto>,
-    pub health: HttpHealthCheckDto,
+    pub health: Option<HttpHealthCheckDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,8 +29,9 @@ pub struct SourceWorkloadTemplateDto {
     #[serde(default)]
     pub secrets: Vec<SecretBindingDto>,
     pub resources: ServiceResourcesDto,
+    #[serde(default)]
     pub ports: Vec<ServicePortDto>,
-    pub health: HttpHealthCheckDto,
+    pub health: Option<HttpHealthCheckDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,15 +147,15 @@ impl From<ServiceTemplateDto> for RequestedServiceTemplate {
                     container_port: port.container_port,
                 })
                 .collect(),
-            health: HttpHealthCheck {
-                port_name: template.health.port_name,
-                path: template.health.path,
-                interval_ms: template.health.interval_ms,
-                timeout_ms: template.health.timeout_ms,
-                healthy_threshold: template.health.healthy_threshold,
-                unhealthy_threshold: template.health.unhealthy_threshold,
-                stabilization_window_ms: template.health.stabilization_window_ms,
-            },
+            health: template.health.map(|health| HttpHealthCheck {
+                port_name: health.port_name,
+                path: health.path,
+                interval_ms: health.interval_ms,
+                timeout_ms: health.timeout_ms,
+                healthy_threshold: health.healthy_threshold,
+                unhealthy_threshold: health.unhealthy_threshold,
+                stabilization_window_ms: health.stabilization_window_ms,
+            }),
         }
     }
 }
@@ -203,15 +205,15 @@ impl From<SourceWorkloadTemplateDto> for SourceWorkloadTemplate {
                     container_port: port.container_port,
                 })
                 .collect(),
-            health: HttpHealthCheck {
-                port_name: template.health.port_name,
-                path: template.health.path,
-                interval_ms: template.health.interval_ms,
-                timeout_ms: template.health.timeout_ms,
-                healthy_threshold: template.health.healthy_threshold,
-                unhealthy_threshold: template.health.unhealthy_threshold,
-                stabilization_window_ms: template.health.stabilization_window_ms,
-            },
+            health: template.health.map(|health| HttpHealthCheck {
+                port_name: health.port_name,
+                path: health.path,
+                interval_ms: health.interval_ms,
+                timeout_ms: health.timeout_ms,
+                healthy_threshold: health.healthy_threshold,
+                unhealthy_threshold: health.unhealthy_threshold,
+                stabilization_window_ms: health.stabilization_window_ms,
+            }),
         }
     }
 }
@@ -263,15 +265,15 @@ impl From<RequestedServiceTemplate> for ServiceTemplateDto {
                     container_port: port.container_port,
                 })
                 .collect(),
-            health: HttpHealthCheckDto {
-                port_name: template.health.port_name,
-                path: template.health.path,
-                interval_ms: template.health.interval_ms,
-                timeout_ms: template.health.timeout_ms,
-                healthy_threshold: template.health.healthy_threshold,
-                unhealthy_threshold: template.health.unhealthy_threshold,
-                stabilization_window_ms: template.health.stabilization_window_ms,
-            },
+            health: template.health.map(|health| HttpHealthCheckDto {
+                port_name: health.port_name,
+                path: health.path,
+                interval_ms: health.interval_ms,
+                timeout_ms: health.timeout_ms,
+                healthy_threshold: health.healthy_threshold,
+                unhealthy_threshold: health.unhealthy_threshold,
+                stabilization_window_ms: health.stabilization_window_ms,
+            }),
         }
     }
 }

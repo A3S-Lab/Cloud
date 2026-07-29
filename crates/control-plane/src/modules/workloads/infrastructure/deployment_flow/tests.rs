@@ -69,6 +69,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
+mod box_cancellation;
 mod routed_update;
 mod support;
 

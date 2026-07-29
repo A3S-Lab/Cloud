@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-28.**
+**Status as of 2026-07-29.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -151,10 +151,15 @@ receipt and physical Task or Service identity. The same gate replaces a running
 Service generation and proves logs, inspection, stop, removal, and empty
 provider state. It also prepares one inventory-bound CPU/memory Claim, binds the
 exact Box observation across restarts, rejects release before durable stop
-evidence, and releases only after the Runtime is fenced. Deployment cancellation
-and abnormal-interruption cleanup evidence remain open for `BX0.2`. Box remains
-the sole owner of execution and recovery; Cloud adds no provider lifecycle
-store.
+evidence, and releases only after the Runtime is fenced. The next `BX0.2`
+slice implements deployment cancellation through the existing Flow, Fleet
+command journal, Runtime driver, and Claim repository. Its exact-Box gate uses
+an explicitly headless Service, requires `RuntimeRemove` evidence before
+`ResourceClaimRelease`, and records `Cancelled` only after both complete. The
+slice remains candidate evidence until its Linux gate passes; abnormal-
+interruption cleanup remains open after it. Networked Services and Runtime
+health remain `BX0.3`. Box remains the sole owner of execution and recovery;
+Cloud adds no provider lifecycle store.
 
 The first `BX0.3` network slice is implemented pending its Linux gates: C0
 removes static Sandbox publication and starts Box's loopback-only,

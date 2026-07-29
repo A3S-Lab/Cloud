@@ -482,7 +482,7 @@ fn template(digest_character: char) -> ServiceTemplate {
             name: "http".into(),
             container_port: 8080,
         }],
-        health: HttpHealthCheck {
+        health: Some(HttpHealthCheck {
             port_name: "http".into(),
             path: "/health".into(),
             interval_ms: 1_000,
@@ -490,7 +490,7 @@ fn template(digest_character: char) -> ServiceTemplate {
             healthy_threshold: 2,
             unhealthy_threshold: 3,
             stabilization_window_ms: 5_000,
-        },
+        }),
     }
 }
 

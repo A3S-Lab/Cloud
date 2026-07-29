@@ -59,7 +59,11 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
             })
             .collect::<Result<Vec<_>, String>>()?,
         network: RuntimeNetworkSpec {
-            mode: NetworkMode::Service,
+            mode: if template.ports.is_empty() {
+                NetworkMode::None
+            } else {
+                NetworkMode::Service
+            },
             ports: template
                 .ports
                 .iter()
@@ -78,17 +82,17 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
             execution_timeout_ms: None,
         },
         isolation: IsolationLevel::Sandbox,
-        health: Some(RuntimeHealthCheck {
+        health: template.health.as_ref().map(|health| RuntimeHealthCheck {
             probe: HealthProbe::Http {
-                port: template.health.port_name.clone(),
-                path: template.health.path.clone(),
+                port: health.port_name.clone(),
+                path: health.path.clone(),
                 expected_statuses: vec![200],
             },
-            interval_ms: template.health.interval_ms,
-            timeout_ms: template.health.timeout_ms,
-            start_period_ms: template.health.stabilization_window_ms,
-            success_threshold: u32::from(template.health.healthy_threshold),
-            failure_threshold: u32::from(template.health.unhealthy_threshold),
+            interval_ms: health.interval_ms,
+            timeout_ms: health.timeout_ms,
+            start_period_ms: health.stabilization_window_ms,
+            success_threshold: u32::from(health.healthy_threshold),
+            failure_threshold: u32::from(health.unhealthy_threshold),
         }),
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
@@ -156,7 +160,7 @@ mod tests {
                     name: "http".into(),
                     container_port: 8080,
                 }],
-                health: HttpHealthCheck {
+                health: Some(HttpHealthCheck {
                     port_name: "http".into(),
                     path: "/health".into(),
                     interval_ms: 1_000,
@@ -164,7 +168,7 @@ mod tests {
                     healthy_threshold: 2,
                     unhealthy_threshold: 3,
                     stabilization_window_ms: 5_000,
-                },
+                }),
             },
             Utc::now(),
         )
@@ -187,5 +191,45 @@ mod tests {
         );
         assert_eq!(spec.secrets[1].target, SecretTarget::RegistryCredential);
         assert!(spec.mounts.is_empty());
+    }
+
+    #[test]
+    fn projects_headless_service_to_network_none_without_health() {
+        let digest = format!("sha256:{}", "b".repeat(64));
+        let revision = WorkloadRevision::create(
+            WorkloadRevisionId::new(),
+            WorkloadId::new(),
+            1,
+            ServiceTemplate {
+                artifact: OciArtifact {
+                    uri: format!("oci://registry.example/fixture@{digest}"),
+                    digest,
+                    media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+                },
+                process: ServiceProcess {
+                    command: vec!["/bin/sh".into(), "-c".into()],
+                    args: vec!["exec sleep 3600".into()],
+                    working_directory: Some("/".into()),
+                    environment: BTreeMap::new(),
+                },
+                secrets: Vec::new(),
+                resources: ServiceResources {
+                    cpu_millis: 100,
+                    memory_bytes: 32 * 1024 * 1024,
+                    pids: 32,
+                    ephemeral_storage_bytes: None,
+                },
+                ports: Vec::new(),
+                health: None,
+            },
+            Utc::now(),
+        )
+        .expect("headless revision");
+
+        let spec = project_runtime_spec(&revision).expect("headless Runtime spec");
+        assert_eq!(spec.class, RuntimeUnitClass::Service);
+        assert_eq!(spec.network.mode, NetworkMode::None);
+        assert!(spec.network.ports.is_empty());
+        assert!(spec.health.is_none());
     }
 }

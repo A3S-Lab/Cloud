@@ -73,6 +73,21 @@ fn parses_source_manifest_only_without_artifact() {
 }
 
 #[test]
+fn parses_headless_workload_without_ports_or_health() {
+    let headless = DIRECT
+        .replace("  port \"http\" {\n    container_port = 8080\n  }\n", "")
+        .replace(
+            "  health {\n    port_name = \"http\"\n    path = \"/health\"\n    interval_ms = 1000\n    timeout_ms = 500\n    healthy_threshold = 1\n    unhealthy_threshold = 3\n    stabilization_window_ms = 1000\n  }\n",
+            "",
+        );
+    let manifest =
+        parse_workload_manifest(headless.as_bytes()).expect("valid headless workload ACL");
+
+    assert!(manifest.template.ports.is_empty());
+    assert!(manifest.template.health.is_none());
+}
+
+#[test]
 fn parses_shipped_examples() {
     let direct = include_str!("../../../../../../../examples/workload.oci.example.acl");
     let source = include_str!("../../../../../../../examples/workload.source.example.acl");
