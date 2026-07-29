@@ -288,3 +288,36 @@ orm_table! {
         certificate_request: Option<serde_json::Value> => "certificate_request",
     }
 }
+
+orm_table! {
+    pub(super) struct McpServiceProfiles => "mcp_service_profiles" {
+        organization_id: Uuid => "organization_id",
+        asset_id: Uuid => "asset_id",
+        asset_release_id: Uuid => "asset_release_id",
+        profile_digest: String => "profile_digest",
+        acl: String => "acl",
+        created_at: DateTime<Utc> => "created_at",
+    }
+}
+
+orm_table! {
+    pub(super) struct McpRoutePolicies => "mcp_route_policies" {
+        id: Uuid => "id",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        gateway_scope_id: Uuid => "gateway_scope_id",
+        workload_id: Uuid => "workload_id",
+        asset_id: Uuid => "asset_id",
+        asset_release_id: Uuid => "asset_release_id",
+        profile_digest: String => "profile_digest",
+        hostname: String => "hostname",
+        path: String => "path",
+        policy_revision: u64 => "policy_revision",
+        policy_digest: String => "policy_digest",
+        acl: String => "acl",
+        expires_at: DateTime<Utc> => "expires_at",
+        created_at: DateTime<Utc> => "created_at",
+        updated_at: DateTime<Utc> => "updated_at",
+    }
+}

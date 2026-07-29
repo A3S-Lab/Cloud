@@ -122,7 +122,7 @@ pub struct McpServiceProfileProjection {
 }
 
 impl McpServiceProfileProjection {
-    fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         validate_digest("MCP service profile", &self.profile_digest)?;
         if self.protocol_versions != [MCP_PROTOCOL_VERSION] {
             return Err(format!(
@@ -387,20 +387,15 @@ pub struct McpGrantProjection {
 }
 
 impl McpGrantProjection {
-    fn validate(
-        &self,
-        route: &McpRoutePolicyProjection,
-        credentials: &[McpCredentialProjection],
-    ) -> Result<(), String> {
-        let credential = credentials
-            .iter()
-            .find(|credential| credential.credential_id == self.credential_id)
-            .ok_or_else(|| "MCP grant references an unknown credential".to_string())?;
-        if credential.environment_id != route.environment_id
-            || credential.revoked
-            || self.credential_generation != credential.generation
-        {
-            return Err("MCP grant credential scope, state, or generation is invalid".into());
+    /// Validate the durable Cloud-side grant reference before a credential
+    /// verifier is resolved into a complete Gateway snapshot.
+    pub fn validate_reference(&self) -> Result<(), String> {
+        validate_acl_integer(
+            "MCP grant credential generation",
+            self.credential_generation,
+        )?;
+        if self.credential_id.is_nil() {
+            return Err("MCP grant credential ID must not be nil".into());
         }
         if self.methods.is_empty() || self.methods.len() > 256 {
             return Err("MCP grant must contain 1 to 256 methods".into());
@@ -417,6 +412,25 @@ impl McpGrantProjection {
         validate_names("MCP grant name", &self.names, 1_000)?;
         self.limits.validate()
     }
+
+    fn validate(
+        &self,
+        route: &McpRoutePolicyProjection,
+        credentials: &[McpCredentialProjection],
+    ) -> Result<(), String> {
+        self.validate_reference()?;
+        let credential = credentials
+            .iter()
+            .find(|credential| credential.credential_id == self.credential_id)
+            .ok_or_else(|| "MCP grant references an unknown credential".to_string())?;
+        if credential.environment_id != route.environment_id
+            || credential.revoked
+            || self.credential_generation != credential.generation
+        {
+            return Err("MCP grant credential scope, state, or generation is invalid".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -428,7 +442,7 @@ pub struct McpLimitsProjection {
 }
 
 impl McpLimitsProjection {
-    fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         for (name, value) in [
             ("max concurrent requests", self.max_concurrent_requests),
             ("requests per minute", self.requests_per_minute),
@@ -444,6 +458,14 @@ impl McpLimitsProjection {
         }
         Ok(())
     }
+}
+
+pub fn validate_mcp_allowed_origins(origins: &[String]) -> Result<(), String> {
+    validate_origins(origins)
+}
+
+pub fn validate_mcp_telemetry_names(names: &[String]) -> Result<(), String> {
+    validate_names("MCP telemetry name", names, 256)
 }
 
 fn validate_digest(context: &str, digest: &str) -> Result<(), String> {

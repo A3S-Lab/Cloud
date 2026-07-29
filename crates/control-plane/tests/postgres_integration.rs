@@ -15,7 +15,9 @@ use a3s_cloud_control_plane::modules::operations::{
     PostgresOperationRepository, RebuildOperationProjectionsHandler, ReconcileOperationsHandler,
     WorkflowIdentity,
 };
-use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, OrganizationId};
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{
+    OperationId, OrganizationId, ProjectId,
+};
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
     SourceResolutionRequest,
@@ -59,6 +61,8 @@ mod gateway_replica_recovery_support;
 mod gateway_rollouts_support;
 #[path = "support/github_connection.rs"]
 mod github_connection_support;
+#[path = "support/mcp_route_policies.rs"]
+mod mcp_route_policies_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
 #[path = "support/resource_claims.rs"]
@@ -220,6 +224,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists audit_records cascade;
              drop table if exists outbox_events cascade;
              drop table if exists idempotency_records cascade;
+             drop table if exists mcp_route_policies cascade;
              drop table if exists mcp_service_profiles cascade;
              drop table if exists asset_releases cascade;
              drop table if exists assets cascade;
@@ -240,7 +245,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 52);
+    assert_eq!(applied, 53);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -763,6 +768,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "053",
+                "mutable hosted MCP route policies",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/053_mcp_route_policies.sql"
+                )),
+            ),
+            Migration::new(
+                "054",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -2058,6 +2071,19 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             candidate_generation: workload_fixture.candidate_generation,
             candidate_deployment_id: workload_fixture.candidate_deployment_id,
         },
+    )
+    .await?;
+    mcp_route_policies_support::exercise(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
+        )?)?),
+        ProjectId::from_uuid(Uuid::parse_str(&project_id)?),
+        a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
+            Uuid::parse_str(&environment_id)?,
+        ),
+        workload_fixture.workload_id,
     )
     .await?;
     let gateway_rollout_fixture = gateway_rollouts_support::GatewayRolloutFixture {

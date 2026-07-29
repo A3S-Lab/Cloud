@@ -479,6 +479,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/052_mcp_service_profiles.sql"
             )),
         ),
+        Migration::new(
+            "053",
+            "mutable hosted MCP route policies",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/053_mcp_route_policies.sql"
+            )),
+        ),
     ]
 }
 
