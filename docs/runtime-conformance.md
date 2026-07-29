@@ -70,10 +70,13 @@ Cloud release candidate.
 
 `BX0.1` is implemented: Cloud pins the Runtime/Box pair, parses only the closed
 ACL `box` block, constructs the shared Box driver directly, and has no fallback
-provider. The following evidence remains required before `BX0` is verified:
+provider. The first consumer-recovery and hard-resource Claim slices are
+verified by the
+[dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
+The following evidence remains required before `BX0` is verified:
 
-1. Task and Service lifecycle, recovery, logs, resources, stop, remove,
-   cancellation, and residue on the exact Box revision.
+1. Deployment cancellation and abnormal-interruption cleanup on the exact Box
+   revision.
 2. Private networking, typed endpoints, health, Secrets, Artifact/Volume/tmpfs
    mounts, outputs, and registry credentials.
 3. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,

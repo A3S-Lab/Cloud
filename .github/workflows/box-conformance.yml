@@ -164,7 +164,7 @@ jobs:
           set -e
           exit "$gate_status"
 
-      - name: Prove Cloud journal recovery and generation lifecycle through Box
+      - name: Prove Cloud journal, generation, and resource Claim lifecycle through Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
@@ -192,7 +192,7 @@ jobs:
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-node-agent --test box_lifecycle \
-              real_box_recovers_cloud_journal_gaps_and_generation_lifecycle \
+              real_box_recovers_journal_gaps_generation_and_resource_claims \
               -- --ignored --exact --nocapture --test-threads=1
 
       - name: Verify provider cleanup

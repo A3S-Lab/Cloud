@@ -1,5 +1,8 @@
 #![cfg(unix)]
 
+#[path = "box_lifecycle/resource_claim.rs"]
+mod resource_claim;
+
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io;
@@ -30,7 +33,7 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
 #[ignore = "requires A3S_CLOUD_TEST_BOX=1 on the dedicated real Box provider runner"]
-async fn real_box_recovers_cloud_journal_gaps_and_generation_lifecycle() -> TestResult<()> {
+async fn real_box_recovers_journal_gaps_generation_and_resource_claims() -> TestResult<()> {
     require_real_box_gate()?;
     let home = dedicated_box_home()?;
     let runtime_state = tempfile::tempdir()?;
@@ -41,7 +44,16 @@ async fn real_box_recovers_cloud_journal_gaps_and_generation_lifecycle() -> Test
 
     prove_task_apply_gap_recovery(&home, &runtime_state, &journal, node_id, artifact.clone())
         .await?;
-    prove_service_generation_lifecycle(&home, &runtime_state, &journal, node_id, artifact).await?;
+    prove_service_generation_lifecycle(&home, &runtime_state, &journal, node_id, artifact.clone())
+        .await?;
+    resource_claim::prove_resource_claim_lifecycle(
+        &home,
+        &runtime_state,
+        &journal,
+        node_id,
+        artifact,
+    )
+    .await?;
 
     verify_box_state_and_remove_fixture_files(&home)?;
     Ok(())
