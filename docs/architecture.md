@@ -321,7 +321,11 @@ consumers may certify other drivers without expanding Cloud's provider set.
 The Runtime repository must expose a conformance suite. Each provider must
 prove duplicate apply, process restart and reattachment, stale-generation
 rejection, capability mismatch, stop/remove idempotency, bounded cancellation,
-log ordering, and truthful loss reporting against a real provider.
+typed Service endpoints, every advertised health-probe kind, threshold and
+timeout behavior, current inspection, log ordering, and truthful loss reporting
+against a real provider. Cloud consumes that one provider-neutral observation
+through the existing Node Agent command journal; it does not add a probe worker
+or health registry.
 
 ## 4. Control-plane modular monolith
 
@@ -820,9 +824,10 @@ persist both logical and physical identities, while the managed snapshot
 protocol remains node-addressed and Gateway does not interpret Cloud tenancy.
 A publication may target only the workload's active immutable revision, a
 declared TCP port, and a current healthy Runtime observation whose node matches
-the bootstrap primary. Docker observations expose the selected node-local HTTP
-origin as a typed evidence claim; Docker-specific container and port-binding
-details do not cross into the Route domain.
+the bootstrap primary. Runtime observations expose the selected node-local
+socket as a typed Service endpoint; one stateless Edge adapter compiles its TCP
+socket into Gateway's canonical HTTP origin. Box execution, forwarding, probe,
+and port-binding details do not cross into the Route domain.
 
 The durable `RouteTarget` projection binds that origin to the immutable
 workload revision, deterministic
@@ -1770,11 +1775,11 @@ boundaries satisfy these requirements.
 | A3S Boot | Required | HTTP, DI, CQRS, validation, OpenAPI, lifecycle |
 | A3S ACL | Required | Typed block-structured product configuration and asset manifests |
 | A3S ORM | Required | PostgreSQL queries, transactions, migrations |
-| A3S Runtime | Required after generalization | Provider-neutral Task and Service lifecycle |
+| A3S Runtime | Required after generalization | Provider-neutral Task and Service lifecycle, endpoints, and health observations |
 | A3S Flow | Required | Durable deployment/build/backup operations |
 | A3S Event | Required | Committed integration-fact API over local or NATS providers |
 | A3S Gateway | Required for public routes | Proxy, TLS, ACME, atomic reload target |
-| A3S Box | Required | Sole node-local workload/build execution, isolation, networking, mounts, logs, snapshots, and cleanup |
+| A3S Box | Required | Sole node-local workload/build execution, isolation, networking, health probes, mounts, logs, snapshots, and cleanup |
 | A3S Observer / Sentry | Conditional | Telemetry or wire security after boundary review |
 | A3S Power | Required for I0 | Sole local inference serving and attestation boundary; never model, placement, device, route, authorization, or usage authority |
 | A3S Lane | Not initially used | Flow's PostgreSQL task leases already own durable work |

@@ -166,7 +166,7 @@ jobs:
           set -e
           exit "$gate_status"
 
-      - name: Prove Cloud recovery, endpoints, Claims, cancellation, and interruption cleanup through Box
+      - name: Prove Cloud recovery, endpoints, health, Claims, cancellation, and interruption cleanup through Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
@@ -215,14 +215,19 @@ jobs:
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-control-plane \
-              modules::edge::infrastructure::runtime_http_upstream::tests::real_box_endpoint_compiles_to_live_gateway_origin \
+              modules::edge::infrastructure::runtime_http_upstream::tests::real_box_health_replays_and_compiles_to_live_gateway_origin \
               -- --ignored --exact --nocapture --test-threads=1 \
-              2>&1 | tee "$EVIDENCE_DIR/cloud-service-endpoint.log"
+              2>&1 | tee "$EVIDENCE_DIR/cloud-service-health.log"
           grep --fixed-strings \
             'A3S_CLOUD_BOX_SERVICE_ENDPOINT_GATEWAY_ORIGIN_CERTIFIED' \
-            "$EVIDENCE_DIR/cloud-service-endpoint.log" \
+            "$EVIDENCE_DIR/cloud-service-health.log" \
             >"$EVIDENCE_DIR/service-endpoint-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/service-endpoint-certification.txt")" -eq 1
+          grep --fixed-strings \
+            'A3S_CLOUD_BOX_RUNTIME_HEALTH_CONSUMER_CERTIFIED' \
+            "$EVIDENCE_DIR/cloud-service-health.log" \
+            >"$EVIDENCE_DIR/runtime-health-consumer-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/runtime-health-consumer-certification.txt")" -eq 1
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
