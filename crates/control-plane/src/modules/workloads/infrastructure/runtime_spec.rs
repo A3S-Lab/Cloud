@@ -77,7 +77,7 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
             ephemeral_storage_bytes: template.resources.ephemeral_storage_bytes,
             execution_timeout_ms: None,
         },
-        isolation: IsolationLevel::Container,
+        isolation: IsolationLevel::Sandbox,
         health: Some(RuntimeHealthCheck {
             probe: HealthProbe::Http {
                 port: template.health.port_name.clone(),
@@ -177,6 +177,7 @@ mod tests {
         assert_eq!(spec.generation, 3);
         assert_eq!(spec.artifact.digest, digest);
         assert_eq!(spec.class, RuntimeUnitClass::Service);
+        assert_eq!(spec.isolation, IsolationLevel::Sandbox);
         assert!(spec.health.is_some());
         assert_eq!(spec.secrets.len(), 2);
         assert_eq!(

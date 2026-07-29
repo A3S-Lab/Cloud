@@ -1132,11 +1132,11 @@ fn csr() -> String {
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("docker").expect("valid Docker provider ID"),
-        provider_build: "postgres-test".into(),
+        provider_id: a3s_runtime::ProviderId::parse("box").expect("valid Box provider ID"),
+        provider_build: "box-postgres-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
-        isolation_levels: vec![IsolationLevel::Container],
+        isolation_levels: vec![IsolationLevel::Sandbox],
         network_modes: vec![NetworkMode::None, NetworkMode::Service],
         mount_kinds: Vec::new(),
         health_check_kinds: Vec::new(),
