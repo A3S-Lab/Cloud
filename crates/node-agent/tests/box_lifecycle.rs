@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "linux")]
-use a3s_box_runtime::{BoxRuntimeDriver, BoxRuntimeDriverConfig};
+use a3s_box_runtime::{BoxRuntimeDriver, BoxRuntimeDriverConfig, BoxStateStore};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
     NodeCommandPayload, NodeCommandResult,
@@ -43,9 +43,7 @@ async fn real_box_recovers_cloud_journal_gaps_and_generation_lifecycle() -> Test
         .await?;
     prove_service_generation_lifecycle(&home, &runtime_state, &journal, node_id, artifact).await?;
 
-    if home.join("boxes.json").exists() {
-        return Err(invalid("Box retained managed execution state after Cloud cleanup").into());
-    }
+    verify_box_state_and_remove_fixture_files(&home)?;
     Ok(())
 }
 
@@ -491,6 +489,70 @@ fn dedicated_box_home() -> TestResult<PathBuf> {
         return Err(invalid("dedicated Box gate A3S_HOME is not canonical").into());
     }
     Ok(configured)
+}
+
+#[cfg(target_os = "linux")]
+fn verify_box_state_and_remove_fixture_files(home: &Path) -> TestResult<()> {
+    let state_path = home.join("boxes.json");
+    let store = BoxStateStore::load_readonly(&state_path)?;
+    if !store.records().is_empty() {
+        let retained = store
+            .records()
+            .iter()
+            .map(|record| format!("{}:{}", record.id, record.status))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(invalid(format!(
+            "Box retained managed execution state after Cloud cleanup: {retained}"
+        ))
+        .into());
+    }
+
+    for path in [
+        state_path,
+        home.join("boxes.json.lock"),
+        home.join("boxes.json.tmp"),
+    ] {
+        remove_file_if_exists(&path)?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn verify_box_state_and_remove_fixture_files(_home: &Path) -> TestResult<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "real Box lifecycle validation requires Linux",
+    )
+    .into())
+}
+
+#[cfg(target_os = "linux")]
+fn remove_file_if_exists(path: &Path) -> io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn verifies_empty_box_state_before_fixture_housekeeping() -> TestResult<()> {
+    let home = tempfile::tempdir()?;
+    let state_path = home.path().join("boxes.json");
+    let lock_path = home.path().join("boxes.json.lock");
+    let temporary_path = home.path().join("boxes.json.tmp");
+    std::fs::write(&state_path, b"[]")?;
+    std::fs::write(&lock_path, b"")?;
+    std::fs::write(&temporary_path, b"")?;
+
+    verify_box_state_and_remove_fixture_files(home.path())?;
+
+    assert!(!state_path.exists());
+    assert!(!lock_path.exists());
+    assert!(!temporary_path.exists());
+    Ok(())
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {
