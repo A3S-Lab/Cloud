@@ -1569,9 +1569,11 @@ unavailable. As of 2026-07-30:
   lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
-  JSON/notification/SSE/subscription/cancellation evidence. Reload, drain,
-  telemetry, real-client/server, fault, and release evidence remain
-  `MCP0.4`.
+  JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
+  preserve old in-flight streams while routing new work to the new target, and
+  listener-first graceful drain releases backend accounting. Managed
+  stale/rejected snapshots, forced drain, exact readiness, telemetry,
+  real-client/server, fault, and release evidence remain `MCP0.4`.
 
 None of these local foundations is a joint product conformance claim.
 
