@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=520b7683f4f52aec6daa7077c7737701e43dbc20#520b7683f4f52aec6daa7077c7737701e43dbc20"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=83de68c60b04cee4f6c5c0b8fbb8a46a9be513a3#83de68c60b04cee4f6c5c0b8fbb8a46a9be513a3"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-common",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=520b7683f4f52aec6daa7077c7737701e43dbc20#520b7683f4f52aec6daa7077c7737701e43dbc20"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=83de68c60b04cee4f6c5c0b8fbb8a46a9be513a3#83de68c60b04cee4f6c5c0b8fbb8a46a9be513a3"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=520b7683f4f52aec6daa7077c7737701e43dbc20#520b7683f4f52aec6daa7077c7737701e43dbc20"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=83de68c60b04cee4f6c5c0b8fbb8a46a9be513a3#83de68c60b04cee4f6c5c0b8fbb8a46a9be513a3"
 dependencies = [
  "a3s-box-core",
  "a3s-box-netproxy",
@@ -1496,7 +1496,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2776,7 +2776,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3422,7 +3422,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3874,7 +3874,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4668,7 +4668,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
