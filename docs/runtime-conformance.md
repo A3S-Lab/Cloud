@@ -73,10 +73,17 @@ ACL `box` block, constructs the shared Box driver directly, and has no fallback
 provider. The first consumer-recovery and hard-resource Claim slices are
 verified by the
 [dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
+Deployment cancellation is verified by the
+[exact Box run](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890).
+It admits one explicit headless Service because the pinned Box revision
+currently advertises `NetworkMode::None` and no Runtime health capability.
+Cloud projects no ports and no health probe, then requires an authoritative
+`RuntimeRemove` result before the exact `ResourceClaimRelease`, terminal
+`Cancelled` transition, and empty-provider assertion. This is lifecycle
+evidence only; it does not claim `BX0.3` networking or health support.
 The following evidence remains required before `BX0` is verified:
 
-1. Deployment cancellation and abnormal-interruption cleanup on the exact Box
-   revision.
+1. Abnormal-interruption cleanup on the exact Box revision.
 2. Private networking, typed endpoints, health, Secrets, Artifact/Volume/tmpfs
    mounts, outputs, and registry credentials.
 3. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,

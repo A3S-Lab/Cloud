@@ -140,11 +140,11 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-28:
+Status as of 2026-07-29:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` pins the exact Runtime/Box pair, uses the shared Box driver and closed ACL `box` configuration, removes fallback provider code, and moves local/C0 fixtures plus provider certification to A3S Box. Linux provider evidence and `BX0.2` through `BX0.5` remain open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` plus `BX0.2` consumer recovery, hard-resource Claims, and deployment cancellation are verified on the exact Runtime/Box pair. Cancellation requires authoritative Box removal before Claim release and leaves empty provider state. Abnormal-interruption cleanup and `BX0.3` through `BX0.5` remain open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -222,6 +222,16 @@ The Node Agent is still the authenticated remote boundary. Box is node-local.
 Runtime owns provider-neutral lifecycle semantics; Box owns execution, images,
 networks, mounts, logs, snapshots, isolation, builds, and cleanup. All
 relational state remains in PostgreSQL through A3S ORM.
+
+The verified deployment-cancellation slice reuses `cloud.deployment@3`, the
+Fleet command lease, the Node Agent journal, the shared Box Runtime driver, and
+the existing resource Claim state machine. Its
+[real-provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890)
+omits `port` and `health` from the Service template, projects
+`NetworkMode::None` with no Runtime probe, and proves
+`RuntimeRemove -> ResourceClaimRelease -> Cancelled` with empty Box state.
+Abnormal-interruption cleanup remains the final `BX0.2` slice; networking and
+health remain `BX0.3`.
 
 #### Exit gate
 

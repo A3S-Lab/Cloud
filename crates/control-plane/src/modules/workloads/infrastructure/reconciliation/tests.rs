@@ -612,7 +612,7 @@ fn service_template() -> ServiceTemplate {
             name: "http".into(),
             container_port: 8080,
         }],
-        health: HttpHealthCheck {
+        health: Some(HttpHealthCheck {
             port_name: "http".into(),
             path: "/health".into(),
             interval_ms: 1_000,
@@ -620,7 +620,7 @@ fn service_template() -> ServiceTemplate {
             healthy_threshold: 1,
             unhealthy_threshold: 3,
             stabilization_window_ms: 1_000,
-        },
+        }),
     }
 }
 

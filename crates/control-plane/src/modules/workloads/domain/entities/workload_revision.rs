@@ -135,8 +135,10 @@ pub struct ServiceTemplate<A = OciArtifact> {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<SecretBinding>,
     pub resources: ServiceResources,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<ServicePort>,
-    pub health: HttpHealthCheck,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health: Option<HttpHealthCheck>,
 }
 
 pub type RequestedServiceTemplate = ServiceTemplate<OciArtifactReference>;
@@ -238,8 +240,7 @@ fn validate_template_body<A>(template: &ServiceTemplate<A>) -> Result<(), String
     {
         return Err("service resource limits are invalid".into());
     }
-    if ports.is_empty()
-        || ports.len() > 64
+    if ports.len() > 64
         || ports
             .iter()
             .any(|port| !valid_identifier(&port.name, 63) || port.container_port == 0)
@@ -251,18 +252,20 @@ fn validate_template_body<A>(template: &ServiceTemplate<A>) -> Result<(), String
     if names.windows(2).any(|pair| pair[0] == pair[1]) {
         return Err("service port names must be unique".into());
     }
-    if !ports.iter().any(|port| port.name == health.port_name)
-        || !health.path.starts_with('/')
-        || health.path.len() > 2048
-        || health.path.contains(['\0', '\r', '\n'])
-        || health.interval_ms == 0
-        || health.timeout_ms == 0
-        || health.timeout_ms > health.interval_ms
-        || health.healthy_threshold == 0
-        || health.unhealthy_threshold == 0
-        || health.stabilization_window_ms == 0
-    {
-        return Err("service HTTP health check is invalid".into());
+    if let Some(health) = health {
+        if !ports.iter().any(|port| port.name == health.port_name)
+            || !health.path.starts_with('/')
+            || health.path.len() > 2048
+            || health.path.contains(['\0', '\r', '\n'])
+            || health.interval_ms == 0
+            || health.timeout_ms == 0
+            || health.timeout_ms > health.interval_ms
+            || health.healthy_threshold == 0
+            || health.unhealthy_threshold == 0
+            || health.stabilization_window_ms == 0
+        {
+            return Err("service HTTP health check is invalid".into());
+        }
     }
     Ok(())
 }

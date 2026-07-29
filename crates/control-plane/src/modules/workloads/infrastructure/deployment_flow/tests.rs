@@ -69,6 +69,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
+mod box_cancellation;
 mod routed_update;
 mod support;
 
@@ -1293,14 +1294,13 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
 }
 
 #[tokio::test]
-async fn cancellation_after_dispatch_retries_claim_release_after_durable_stopped_evidence(
+async fn cancellation_after_dispatch_retries_claim_release_after_durable_removal_evidence(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base = Utc::now() - Duration::seconds(1);
     let organization_id = OrganizationId::new();
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let nodes = Arc::new(InMemoryNodeRepository::new());
-    let (node_id, agent_instance_id, capabilities) =
-        ready_node(&nodes, organization_id, base).await?;
+    let (node_id, agent_instance_id, _) = ready_node(&nodes, organization_id, base).await?;
     let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
     let runtime = runtime_with_resource_claims(
         &workloads,
@@ -1323,7 +1323,6 @@ async fn cancellation_after_dispatch_retries_claim_release_after_durable_stopped
         base,
         "cancel-dispatched-child",
     )?;
-    let revision = bundle.revision.clone();
     let deployment = bundle.deployment.clone();
     let operation = bundle.operation.clone();
     workloads.create_deployment(bundle).await?;
@@ -1357,7 +1356,7 @@ async fn cancellation_after_dispatch_retries_claim_release_after_durable_stopped
     assert_eq!(cleanup_lease.commands.len(), 1);
     assert!(matches!(
         cleanup_lease.commands[0].payload,
-        a3s_cloud_contracts::NodeCommandPayload::RuntimeStop { .. }
+        a3s_cloud_contracts::NodeCommandPayload::RuntimeRemove { .. }
     ));
     assert_eq!(
         workloads
@@ -1366,16 +1365,7 @@ async fn cancellation_after_dispatch_retries_claim_release_after_durable_stopped
             .status,
         DeploymentStatus::CleanupPending
     );
-    let spec = project_runtime_spec(&revision)?;
-    record_observation(
-        &nodes,
-        node_id,
-        agent_instance_id,
-        &capabilities,
-        &cleanup_lease.commands[0],
-        stopped_observation(&spec)?,
-    )
-    .await?;
+    acknowledge_runtime_removal(&nodes, &cleanup_lease.commands[0]).await?;
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(2))
         .await?;

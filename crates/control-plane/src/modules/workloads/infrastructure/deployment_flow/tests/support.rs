@@ -393,6 +393,37 @@ pub(super) async fn ready_node_with_capacity(
     ),
     Box<dyn std::error::Error>,
 > {
+    ready_node_with_capabilities(
+        nodes,
+        organization_id,
+        enrolled_at,
+        node_name,
+        digest_character,
+        cpu_millis,
+        memory_bytes,
+        capabilities(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn ready_node_with_capabilities(
+    nodes: &Arc<InMemoryNodeRepository>,
+    organization_id: OrganizationId,
+    enrolled_at: chrono::DateTime<Utc>,
+    node_name: &str,
+    digest_character: char,
+    cpu_millis: u64,
+    memory_bytes: u64,
+    runtime_capabilities: RuntimeCapabilities,
+) -> Result<
+    (
+        crate::modules::shared_kernel::domain::NodeId,
+        Uuid,
+        RuntimeCapabilities,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let secret = format!("a3sn_{}", digest_character.to_string().repeat(64));
     let credential = EnrollmentTokenCredential::from_secret(&secret)?;
     let token = EnrollmentToken::new(
@@ -410,7 +441,6 @@ pub(super) async fn ready_node_with_capacity(
             IdempotencyRequest::new("test.enrollment", node_name, node_name.as_bytes())?,
         )
         .await?;
-    let runtime_capabilities = capabilities();
     let node_capabilities = NodeCapabilities::new(
         runtime_capabilities.provider_id.to_string(),
         runtime_capabilities.provider_build.clone(),
@@ -479,11 +509,27 @@ pub(super) fn deployment_bundle(
     requested_at: chrono::DateTime<Utc>,
     idempotency_key: &str,
 ) -> Result<CreateDeploymentBundle, Box<dyn std::error::Error>> {
+    deployment_bundle_with_template(
+        workload,
+        generation,
+        template(digest_character),
+        requested_at,
+        idempotency_key,
+    )
+}
+
+pub(super) fn deployment_bundle_with_template(
+    workload: Workload,
+    generation: u64,
+    template: ServiceTemplate,
+    requested_at: chrono::DateTime<Utc>,
+    idempotency_key: &str,
+) -> Result<CreateDeploymentBundle, Box<dyn std::error::Error>> {
     let revision = WorkloadRevision::create(
         WorkloadRevisionId::new(),
         workload.id,
         generation,
-        template(digest_character),
+        template,
         requested_at,
     )?;
     let deployment = Deployment::create(
@@ -649,6 +695,26 @@ pub(super) async fn lease(
     a3s_cloud_contracts::NodeCommandLeaseResponse,
     crate::modules::shared_kernel::domain::RepositoryError,
 > {
+    lease_for(
+        nodes,
+        node_id,
+        agent_instance_id,
+        after_sequence,
+        Duration::seconds(1),
+    )
+    .await
+}
+
+pub(super) async fn lease_for(
+    nodes: &InMemoryNodeRepository,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    agent_instance_id: Uuid,
+    after_sequence: u64,
+    lease_duration: Duration,
+) -> Result<
+    a3s_cloud_contracts::NodeCommandLeaseResponse,
+    crate::modules::shared_kernel::domain::RepositoryError,
+> {
     let now = Utc::now();
     nodes
         .lease_commands(
@@ -662,7 +728,7 @@ pub(super) async fn lease(
             },
             Uuid::now_v7(),
             now,
-            now + Duration::seconds(1),
+            now + lease_duration,
         )
         .await
 }
@@ -775,6 +841,46 @@ pub(super) async fn acknowledge_resource_claim(
                 completed_at,
                 outcome: a3s_cloud_contracts::NodeCommandOutcome::Succeeded {
                     result: Box::new(result),
+                },
+            },
+            completed_at,
+        )
+        .await?;
+    Ok(())
+}
+
+pub(super) async fn acknowledge_runtime_removal(
+    nodes: &InMemoryNodeRepository,
+    command: &a3s_cloud_contracts::NodeCommandEnvelope,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let a3s_cloud_contracts::NodeCommandPayload::RuntimeRemove { request } = &command.payload
+    else {
+        return Err("node command is not a Runtime remove command".into());
+    };
+    let completed_at = Utc::now().max(command.issued_at);
+    let removed_at_ms = u64::try_from(completed_at.timestamp_millis())
+        .map_err(|_| "Runtime removal fixture predates the Unix epoch")?;
+    nodes
+        .acknowledge_command(
+            a3s_cloud_contracts::NodeCommandAck {
+                schema: a3s_cloud_contracts::NodeCommandAck::SCHEMA.into(),
+                command_id: command.command_id,
+                lease_id: command.lease_id,
+                node_id: command.node_id,
+                sequence: command.sequence,
+                payload_digest: command.payload_digest.clone(),
+                completed_at,
+                outcome: a3s_cloud_contracts::NodeCommandOutcome::Succeeded {
+                    result: Box::new(a3s_cloud_contracts::NodeCommandResult::RuntimeRemoved {
+                        removal: a3s_runtime::contract::RuntimeRemoval {
+                            schema: a3s_runtime::contract::RuntimeRemoval::SCHEMA.into(),
+                            request_id: request.request_id.clone(),
+                            unit_id: request.unit_id.clone(),
+                            generation: request.generation,
+                            removed_at_ms,
+                            already_absent: false,
+                        },
+                    }),
                 },
             },
             completed_at,
@@ -963,7 +1069,7 @@ pub(super) fn template(digest_character: char) -> ServiceTemplate {
             name: "http".into(),
             container_port: 8080,
         }],
-        health: HttpHealthCheck {
+        health: Some(HttpHealthCheck {
             port_name: "http".into(),
             path: "/health".into(),
             interval_ms: 10,
@@ -971,7 +1077,7 @@ pub(super) fn template(digest_character: char) -> ServiceTemplate {
             healthy_threshold: 1,
             unhealthy_threshold: 1,
             stabilization_window_ms: 1,
-        },
+        }),
     }
 }
 

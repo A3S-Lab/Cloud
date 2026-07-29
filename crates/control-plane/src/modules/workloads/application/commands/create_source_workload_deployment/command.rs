@@ -17,7 +17,7 @@ pub struct SourceWorkloadTemplate {
     pub secrets: Vec<SecretBinding>,
     pub resources: ServiceResources,
     pub ports: Vec<ServicePort>,
-    pub health: HttpHealthCheck,
+    pub health: Option<HttpHealthCheck>,
 }
 
 impl SourceWorkloadTemplate {

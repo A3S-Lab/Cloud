@@ -46,7 +46,7 @@ struct ParsedManifest {
     secrets: Vec<SecretBindingDto>,
     resources: ServiceResourcesDto,
     ports: Vec<ServicePortDto>,
-    health: HttpHealthCheckDto,
+    health: Option<HttpHealthCheckDto>,
 }
 
 pub(crate) fn parse_workload_manifest(source: &[u8]) -> Result<WorkloadManifest> {
@@ -117,7 +117,9 @@ fn parse_manifest(source: &[u8], artifact_policy: ArtifactPolicy) -> Result<Pars
     let secrets = parse_secrets(workload)?;
     let resources = parse_resources(one_block(workload, "resources")?)?;
     let ports = parse_ports(workload)?;
-    let health = parse_health(one_block(workload, "health")?)?;
+    let health = optional_block(workload, "health")?
+        .map(parse_health)
+        .transpose()?;
     Ok(ParsedManifest {
         name,
         artifact,
@@ -256,10 +258,9 @@ fn manifest_schema(artifact_policy: ArtifactPolicy) -> Schema {
                 "container_port",
                 AttributeSchema::required(ValueSchema::number()),
             ))
-            .occurrences(Cardinality::at_least(1))
             .labels(Cardinality::exactly(1)),
         )
-        .block("health", required_one(health))
+        .block("health", optional_one(health))
         .block(
             "secret",
             BlockSchema::new(secret).labels(Cardinality::exactly(1)),

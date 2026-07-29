@@ -929,7 +929,7 @@ fn cancel_deployment(
                         context,
                         flow_input,
                         &dispatch_step_id,
-                        "dispatch_runtime_cleanup",
+                        "dispatch_runtime_removal",
                         &CleanupDispatchStepInput {
                             resolved: resolved.clone(),
                             attempt,
@@ -1115,7 +1115,7 @@ fn observe_cleanup(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_runtime_cleanup",
+                    "observe_runtime_removal",
                     &CleanupObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),

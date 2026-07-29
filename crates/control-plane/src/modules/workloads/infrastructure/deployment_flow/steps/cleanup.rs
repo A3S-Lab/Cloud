@@ -14,9 +14,95 @@ use a3s_runtime::contract::{RuntimeActionRequest, RuntimeInspection, RuntimeUnit
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CleanupAction {
+    Stop,
+    Remove,
+}
+
+impl CleanupAction {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Stop => "stop",
+            Self::Remove => "remove",
+        }
+    }
+
+    fn command_id(
+        self,
+        deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+        attempt: u32,
+    ) -> NodeCommandId {
+        NodeCommandId::from_uuid(Uuid::new_v5(
+            &deployment_id.as_uuid(),
+            format!("runtime-{}:{attempt}", self.name()).as_bytes(),
+        ))
+    }
+
+    fn payload(
+        self,
+        deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+        attempt: u32,
+        spec: &a3s_runtime::contract::RuntimeUnitSpec,
+        deadline: DateTime<Utc>,
+    ) -> a3s_flow::Result<NodeCommandPayload> {
+        let request = RuntimeActionRequest {
+            schema: RuntimeActionRequest::SCHEMA.into(),
+            request_id: format!("deployment:{deployment_id}:{}:{attempt}", self.name()),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            deadline_at_ms: Some(timestamp_millis(deadline)?),
+        };
+        Ok(match self {
+            Self::Stop => NodeCommandPayload::RuntimeStop { request },
+            Self::Remove => NodeCommandPayload::RuntimeRemove { request },
+        })
+    }
+
+    fn result_matches(
+        self,
+        result: &a3s_cloud_contracts::NodeCommandResult,
+        spec: &a3s_runtime::contract::RuntimeUnitSpec,
+    ) -> bool {
+        match (self, result) {
+            (
+                Self::Stop,
+                a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
+                    inspection: RuntimeInspection::NotFound { .. },
+                },
+            ) => true,
+            (
+                Self::Stop,
+                a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
+                    inspection: RuntimeInspection::Found { observation, .. },
+                },
+            ) => observation.state == RuntimeUnitState::Stopped,
+            (Self::Remove, a3s_cloud_contracts::NodeCommandResult::RuntimeRemoved { removal }) => {
+                removal.unit_id == spec.unit_id && removal.generation == spec.generation
+            }
+            _ => false,
+        }
+    }
+}
+
 pub(super) async fn dispatch_cleanup(
     runtime: &DeploymentFlowRuntime,
     input: CleanupDispatchStepInput,
+) -> a3s_flow::Result<CleanupDispatchStepOutput> {
+    dispatch(runtime, input, CleanupAction::Stop).await
+}
+
+pub(super) async fn dispatch_removal(
+    runtime: &DeploymentFlowRuntime,
+    input: CleanupDispatchStepInput,
+) -> a3s_flow::Result<CleanupDispatchStepOutput> {
+    dispatch(runtime, input, CleanupAction::Remove).await
+}
+
+async fn dispatch(
+    runtime: &DeploymentFlowRuntime,
+    input: CleanupDispatchStepInput,
+    action: CleanupAction,
 ) -> a3s_flow::Result<CleanupDispatchStepOutput> {
     let mut deployment = runtime
         .workloads
@@ -66,13 +152,16 @@ pub(super) async fn dispatch_cleanup(
     let result_deadline = cleanup_deadline.min(not_after).min(runtime_deadline);
     if now >= result_deadline {
         return Ok(CleanupDispatchStepOutput::Retry {
-            reason: "cleanup attempt expired before Runtime stop dispatch".into(),
+            reason: format!(
+                "cleanup attempt expired before Runtime {} dispatch",
+                action.name()
+            ),
             next_attempt_at: now,
             deadline_at: cleanup_deadline,
         });
     }
 
-    let command_id = cleanup_command_id(deployment.id, input.attempt);
+    let command_id = action.command_id(deployment.id, input.attempt);
     if deployment.cleanup_command_id == Some(command_id) {
         let command = runtime
             .node_control
@@ -84,22 +173,19 @@ pub(super) async fn dispatch_cleanup(
             dispatched: DispatchedCleanup {
                 node_id,
                 command_id,
-                result_deadline: stop_result_deadline(&command, &input.resolved.spec)?,
+                result_deadline: action_result_deadline(action, &command, &input.resolved.spec)?,
                 cleanup_deadline,
                 attempt: input.attempt,
             },
         });
     }
 
-    let payload = NodeCommandPayload::RuntimeStop {
-        request: RuntimeActionRequest {
-            schema: RuntimeActionRequest::SCHEMA.into(),
-            request_id: format!("deployment:{}:stop:{}", deployment.id, input.attempt),
-            unit_id: input.resolved.spec.unit_id.clone(),
-            generation: input.resolved.spec.generation,
-            deadline_at_ms: Some(timestamp_millis(runtime_deadline)?),
-        },
-    };
+    let payload = action.payload(
+        deployment.id,
+        input.attempt,
+        &input.resolved.spec,
+        runtime_deadline,
+    )?;
     let command = runtime
         .node_control
         .enqueue_command(NodeCommandDraft {
@@ -150,6 +236,21 @@ pub(super) async fn observe_cleanup(
     runtime: &DeploymentFlowRuntime,
     input: CleanupObserveStepInput,
 ) -> a3s_flow::Result<CleanupObserveStepOutput> {
+    observe(runtime, input, CleanupAction::Stop).await
+}
+
+pub(super) async fn observe_removal(
+    runtime: &DeploymentFlowRuntime,
+    input: CleanupObserveStepInput,
+) -> a3s_flow::Result<CleanupObserveStepOutput> {
+    observe(runtime, input, CleanupAction::Remove).await
+}
+
+async fn observe(
+    runtime: &DeploymentFlowRuntime,
+    input: CleanupObserveStepInput,
+    action: CleanupAction,
+) -> a3s_flow::Result<CleanupObserveStepOutput> {
     let deployment = runtime
         .workloads
         .find_deployment(input.resolved.organization_id, input.resolved.deployment_id)
@@ -170,22 +271,24 @@ pub(super) async fn observe_cleanup(
         ));
     }
 
-    if let Some(record) = runtime
-        .node_control
-        .latest_runtime_observation(
-            input.dispatched.node_id,
-            &input.resolved.spec.unit_id,
-            input.resolved.spec.generation,
-        )
-        .await
-        .map_err(|error| flow_error("could not load Runtime cleanup observation", error))?
-    {
-        if record.command_id == Some(input.dispatched.command_id)
-            && record.observation.state == RuntimeUnitState::Stopped
+    if action == CleanupAction::Stop {
+        if let Some(record) = runtime
+            .node_control
+            .latest_runtime_observation(
+                input.dispatched.node_id,
+                &input.resolved.spec.unit_id,
+                input.resolved.spec.generation,
+            )
+            .await
+            .map_err(|error| flow_error("could not load Runtime cleanup observation", error))?
         {
-            return Ok(CleanupObserveStepOutput::Ready {
-                cleaned_at: record.received_at,
-            });
+            if record.command_id == Some(input.dispatched.command_id)
+                && record.observation.state == RuntimeUnitState::Stopped
+            {
+                return Ok(CleanupObserveStepOutput::Ready {
+                    cleaned_at: record.received_at,
+                });
+            }
         }
     }
 
@@ -196,27 +299,19 @@ pub(super) async fn observe_cleanup(
         .map_err(|error| flow_error("could not load Runtime cleanup result", error))?
     {
         match acknowledgement.outcome {
-            NodeCommandOutcome::Succeeded { result } => match result.as_ref() {
-                a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
-                    inspection: RuntimeInspection::NotFound { .. },
-                } => {
+            NodeCommandOutcome::Succeeded { result } => {
+                if action.result_matches(result.as_ref(), &input.resolved.spec) {
                     return Ok(CleanupObserveStepOutput::Ready {
                         cleaned_at: acknowledgement.completed_at,
-                    })
+                    });
                 }
-                a3s_cloud_contracts::NodeCommandResult::RuntimeStopped {
-                    inspection: RuntimeInspection::Found { observation, .. },
-                } if observation.state == RuntimeUnitState::Stopped => {
-                    return Ok(CleanupObserveStepOutput::Ready {
-                        cleaned_at: acknowledgement.completed_at,
-                    })
-                }
-                _ => {
-                    return Ok(CleanupObserveStepOutput::Failed {
-                        reason: "Runtime stop completed without stopped or absent evidence".into(),
-                    })
-                }
-            },
+                return Ok(CleanupObserveStepOutput::Failed {
+                    reason: format!(
+                        "Runtime {} completed without authoritative cleanup evidence",
+                        action.name()
+                    ),
+                });
+            }
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
                 let now = Utc::now();
                 if failure.retryable && now < input.dispatched.cleanup_deadline {
@@ -241,14 +336,19 @@ pub(super) async fn observe_cleanup(
     }
     if now >= input.dispatched.result_deadline {
         return Ok(CleanupObserveStepOutput::Retry {
-            reason: "Runtime stop attempt did not produce durable evidence before its deadline"
-                .into(),
+            reason: format!(
+                "Runtime {} attempt did not produce durable evidence before its deadline",
+                action.name()
+            ),
             next_attempt_at: now,
             deadline_at: input.dispatched.cleanup_deadline,
         });
     }
     Ok(CleanupObserveStepOutput::Pending {
-        reason: "waiting for stopped or absent Runtime evidence".into(),
+        reason: format!(
+            "waiting for authoritative Runtime {} evidence",
+            action.name()
+        ),
         next_poll_at: next_poll(
             now,
             runtime.config.cleanup_poll,
@@ -520,34 +620,44 @@ fn stop_result_deadline(
     command: &crate::modules::fleet::domain::entities::NodeCommand,
     expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
 ) -> a3s_flow::Result<DateTime<Utc>> {
-    let NodeCommandPayload::RuntimeStop { request } = &command.payload else {
-        return Err(FlowError::Runtime(
-            "deployment cleanup command is not a Runtime stop request".into(),
-        ));
+    action_result_deadline(CleanupAction::Stop, command, expected_spec)
+}
+
+fn action_result_deadline(
+    action: CleanupAction,
+    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
+) -> a3s_flow::Result<DateTime<Utc>> {
+    let request = match (action, &command.payload) {
+        (CleanupAction::Stop, NodeCommandPayload::RuntimeStop { request })
+        | (CleanupAction::Remove, NodeCommandPayload::RuntimeRemove { request }) => request,
+        _ => {
+            return Err(FlowError::Runtime(format!(
+                "deployment cleanup command is not a Runtime {} request",
+                action.name()
+            )))
+        }
     };
     if request.unit_id != expected_spec.unit_id || request.generation != expected_spec.generation {
         return Err(FlowError::Runtime(
             "deployment cleanup command changed its Runtime identity".into(),
         ));
     }
-    let deadline_ms = request
-        .deadline_at_ms
-        .ok_or_else(|| FlowError::Runtime("Runtime stop command omitted its deadline".into()))?;
-    let deadline_ms = i64::try_from(deadline_ms)
-        .map_err(|_| FlowError::Runtime("Runtime stop deadline exceeds supported range".into()))?;
+    let deadline_ms = request.deadline_at_ms.ok_or_else(|| {
+        FlowError::Runtime(format!(
+            "Runtime {} command omitted its deadline",
+            action.name()
+        ))
+    })?;
+    let deadline_ms = i64::try_from(deadline_ms).map_err(|_| {
+        FlowError::Runtime(format!(
+            "Runtime {} deadline exceeds supported range",
+            action.name()
+        ))
+    })?;
     DateTime::from_timestamp_millis(deadline_ms)
         .map(|deadline| deadline.min(command.not_after))
-        .ok_or_else(|| FlowError::Runtime("Runtime stop deadline is invalid".into()))
-}
-
-fn cleanup_command_id(
-    deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
-    attempt: u32,
-) -> NodeCommandId {
-    NodeCommandId::from_uuid(Uuid::new_v5(
-        &deployment_id.as_uuid(),
-        format!("runtime-stop:{attempt}").as_bytes(),
-    ))
+        .ok_or_else(|| FlowError::Runtime(format!("Runtime {} deadline is invalid", action.name())))
 }
 
 fn failed_cleanup_command_id(

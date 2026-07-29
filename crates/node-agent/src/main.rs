@@ -5,14 +5,9 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    use a3s_box_runtime::{BoxRuntimeDriver, BoxRuntimeDriverConfig};
-    use a3s_cloud_node_agent::{run_node_agent, NodeAgentConfig, NodeRuntimeProvider};
-    use a3s_runtime::{
-        FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver,
-        RuntimeStateStore,
+    use a3s_cloud_node_agent::{
+        build_box_runtime_client, run_node_agent, NodeAgentConfig, NodeRuntimeProvider,
     };
-    use std::sync::Arc;
-    use std::time::Duration;
     use tokio::sync::watch;
 
     tracing_subscriber::fmt()
@@ -24,17 +19,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .try_init()?;
     let config_path = config_path()?;
     let config = NodeAgentConfig::load(config_path)?;
-    let driver = Arc::new(BoxRuntimeDriver::new(BoxRuntimeDriverConfig {
-        home_dir: config.box_runtime.home_dir.clone(),
-        control_timeout: Duration::from_millis(config.box_runtime.control_timeout_ms),
-        task_poll_interval: Duration::from_millis(config.box_runtime.task_poll_interval_ms),
-    })?);
-    let state: Arc<dyn RuntimeStateStore> = Arc::new(FileRuntimeStateStore::new(
-        config.node.state_dir.join("runtime"),
-    ));
-    let runtime_driver: Arc<dyn RuntimeDriver> = driver;
-    let runtime: Arc<dyn RuntimeClient> =
-        Arc::new(ManagedRuntimeClient::new(state, runtime_driver));
+    let runtime =
+        build_box_runtime_client(&config.box_runtime, config.node.state_dir.join("runtime"))?;
     let provider = NodeRuntimeProvider::new(runtime);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal = tokio::spawn(async move {

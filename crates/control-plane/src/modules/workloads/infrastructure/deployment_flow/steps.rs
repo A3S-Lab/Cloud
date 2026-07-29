@@ -74,6 +74,12 @@ pub(super) async fn execute(
         "observe_runtime_cleanup" => {
             encode(cleanup::observe_cleanup(runtime, invocation.input_as()?).await?)
         }
+        "dispatch_runtime_removal" => {
+            encode(cleanup::dispatch_removal(runtime, invocation.input_as()?).await?)
+        }
+        "observe_runtime_removal" => {
+            encode(cleanup::observe_removal(runtime, invocation.input_as()?).await?)
+        }
         "dispatch_failed_runtime_cleanup" => {
             encode(cleanup::dispatch_failed(runtime, invocation.input_as()?).await?)
         }

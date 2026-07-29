@@ -196,9 +196,12 @@ running Service generation, and proves logs and inspection. The same gate
 prepares an inventory-bound CPU/memory Claim, binds it to the exact Box Service
 observation across Runtime and Agent executor restarts, rejects release before
 durable stop evidence, then releases and removes the resource with empty Box
-state. Deployment cancellation, abnormal-interruption cleanup, full Box
-networking, health, mounts, Secrets, outputs, builds, and the clean-host release
-loop remain release-blocking `BX0` work.
+state. The deployment-cancellation slice is verified by the
+[exact Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890):
+it requires an authoritative Runtime removal receipt before releasing the exact
+Claim and recording terminal `Cancelled`. Abnormal-interruption cleanup, full
+Box networking, health, mounts, Secrets, outputs, builds, and the clean-host
+release loop remain release-blocking `BX0` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
@@ -760,6 +763,13 @@ exact Claim on the assigned Agent, applies one bound Runtime Service, persists
 matching allocation evidence, waits for durable health, publishes the required
 Gateway state, and activates only after the matching edge acknowledgement.
 Replacement cleanup stops the old Runtime before releasing its Claim.
+
+Service `port` and `health` blocks are optional in the A3S ACL workload
+manifest. Omitting both defines a headless Service, which Cloud projects as a
+Runtime Service with `NetworkMode::None` and no health probe. This explicit
+health-neutral profile enables current `BX0.2` lifecycle evidence; it does not
+claim the private networking, endpoint, or health capabilities owned by
+`BX0.3`.
 
 Update and rollback use the same path. A candidate cannot replace the active
 revision until Runtime health and Gateway cutover succeed. Rollback clones a
