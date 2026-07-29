@@ -191,20 +191,24 @@ only through Box's generation-fenced loopback forwarder. The
 passed every capability advertised by the pinned Box revision; Cloud does not
 carry a second provider conformance implementation.
 
-The first `BX0.2` consumer-recovery and hard-resource Claim slices are verified
-by the [dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
-It replays an Agent crash after Box apply but before command-journal completion,
+`BX0.2` is verified on the exact pinned Runtime/Box pair. The
+[consumer-recovery and hard-resource Claim gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930)
+replays an Agent crash after Box apply but before command-journal completion,
 preserves the exact durable Runtime receipt and provider identity, replaces a
-running Service generation, and proves logs and inspection. The same gate
-prepares an inventory-bound CPU/memory Claim, binds it to the exact Box Service
+running Service generation, and proves logs and inspection. It also prepares
+an inventory-bound CPU/memory Claim, binds it to the exact Box Service
 observation across Runtime and Agent executor restarts, rejects release before
 durable stop evidence, then releases and removes the resource with empty Box
-state. The deployment-cancellation slice is verified by the
+state. Deployment cancellation is verified by the
 [exact Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890):
 it requires an authoritative Runtime removal receipt before releasing the exact
-Claim and recording terminal `Cancelled`. Abnormal-interruption cleanup, full
+Claim and recording terminal `Cancelled`. The
+[final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598)
+kills the Agent after Box has durably removed the Service but before command
+completion, then proves exact receipt adoption, Claim preservation until
+acknowledgement, one release, terminal cancellation, and zero provider residue.
 Box networking, health, mounts, Secrets, outputs, builds, and the clean-host
-release loop remain release-blocking `BX0` work.
+release loop remain release-blocking `BX0.3` through `BX0.5` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
@@ -770,9 +774,9 @@ Replacement cleanup stops the old Runtime before releasing its Claim.
 Service `port` and `health` blocks are optional in the A3S ACL workload
 manifest. Omitting both defines a headless Service, which Cloud projects as a
 Runtime Service with `NetworkMode::None` and no health probe. This explicit
-health-neutral profile enables current `BX0.2` lifecycle evidence; it does not
-claim the private networking, endpoint, or health capabilities owned by
-`BX0.3`.
+health-neutral profile supplied the verified `BX0.2` lifecycle evidence; it
+does not claim the private networking, endpoint, or health capabilities owned
+by `BX0.3`.
 
 Update and rollback use the same path. A candidate cannot replace the active
 revision until Runtime health and Gateway cutover succeed. Rollback clones a

@@ -70,8 +70,7 @@ Cloud release candidate.
 
 `BX0.1` is implemented: Cloud pins the Runtime/Box pair, parses only the closed
 ACL `box` block, constructs the shared Box driver directly, and has no fallback
-provider. The first consumer-recovery and hard-resource Claim slices are
-verified by the
+provider. `BX0.2` consumer recovery and hard-resource Claims are verified by the
 [dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
 Deployment cancellation is verified by the
 [exact Box run](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890).
@@ -81,14 +80,20 @@ Cloud projects no ports and no health probe, then requires an authoritative
 `RuntimeRemove` result before the exact `ResourceClaimRelease`, terminal
 `Cancelled` transition, and empty-provider assertion. This is lifecycle
 evidence only; it does not claim `BX0.3` networking or health support.
+The
+[final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598)
+sends `SIGKILL` after the authoritative Box removal but before Agent command
+completion. Recovery adopts the exact receipt, retains the prepared Claim until
+acknowledgement, releases it exactly once, reaches terminal cancellation, and
+leaves empty Box and process state. This completes the `BX0.2` evidence set.
+
 The following evidence remains required before `BX0` is verified:
 
-1. Abnormal-interruption cleanup on the exact Box revision.
-2. Private networking, typed endpoints, health, Secrets, Artifact/Volume/tmpfs
+1. Private networking, typed endpoints, health, Secrets, Artifact/Volume/tmpfs
    mounts, outputs, and registry credentials.
-3. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
+2. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
    publication, replay, and process-death evidence.
-4. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,
+3. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,
    observe, update, rollback, inference, stop, removal, and exact cleanup.
 
 No incomplete capability may be represented as supported. Missing host
