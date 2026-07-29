@@ -124,7 +124,9 @@ second deployment or reconciliation engine.
    [Cloud PR #86](https://github.com/A3S-Lab/Cloud/pull/86) and the
    [exact Linux provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/30416879476).
 2. `BX0.2` migrates digest-pinned Task/Service lifecycle, recovery, logs,
-   resources, stop/remove, cancellation, and cleanup.
+   resources, stop/remove, cancellation, and cleanup. It is verified by
+   [Cloud PRs #87 through #93](https://github.com/A3S-Lab/Cloud/pull/93) and the
+   [final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598).
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
    tmpfs mounts, outputs, and registry credentials through typed Box ports.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
@@ -138,11 +140,10 @@ Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
 retired provider workflows, release harness, and source-build certification
 script have been removed instead of retained as fallbacks. This does not mark
-`BX0.2` through `BX0.5` complete: the Box-owned capability work and a new
+`BX0.3` through `BX0.5` complete: the Box-owned capability work and a new
 clean-host release gate must restore the named behavioral evidence.
 
-The first `BX0.2` Cloud consumer-recovery and hard-resource Claim slices are
-verified by the
+`BX0.2` is verified. Cloud consumer recovery and hard-resource Claims pass the
 [dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
 It persists the command before dispatch, applies through the shared Box driver,
 reconstructs both the Runtime client and Agent executor across the
@@ -151,22 +152,26 @@ receipt and physical Task or Service identity. The same gate replaces a running
 Service generation and proves logs, inspection, stop, removal, and empty
 provider state. It also prepares one inventory-bound CPU/memory Claim, binds the
 exact Box observation across restarts, rejects release before durable stop
-evidence, and releases only after the Runtime is fenced. The next `BX0.2`
-slice verifies deployment cancellation through the existing Flow, Fleet
+evidence, and releases only after the Runtime is fenced. Deployment cancellation
+passes through the existing Flow, Fleet
 command journal, Runtime driver, and Claim repository in the
 [exact Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890).
 It uses an explicitly headless Service, requires `RuntimeRemove` evidence
 before `ResourceClaimRelease`, records `Cancelled` only after both complete,
-and finishes with empty provider state. Abnormal-interruption cleanup remains
-open for `BX0.2`. Networked Services and Runtime health remain `BX0.3`. Box
-remains the sole owner of execution and recovery; Cloud adds no provider
-lifecycle store.
+and finishes with empty provider state. The
+[final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598)
+sends `SIGKILL` after Box has durably removed the Service but before the Agent
+records command completion. A reconstructed Agent and Flow adopt the exact
+removal receipt, keep the prepared Claim capacity held until acknowledgement,
+release it once, reach terminal cancellation, and leave no provider residue.
 
-The first `BX0.3` network slice is implemented pending its Linux gates: C0
-removes static Sandbox publication and starts Box's loopback-only,
-generation-fenced `port-forward` command. It reuses Box's canonical execution
-connector and lifecycle record; Cloud does not own a namespace connector,
-forwarding daemon, or alternate endpoint registry.
+`BX0.3` is next. Its first slice must add one provider-neutral typed endpoint
+observation to A3S Runtime, make the shared Box driver own loopback forwarding
+through Box's existing generation-fenced `ExecutionPortConnector`, and make
+Cloud consume that contract for health and Gateway targets. Cloud must then
+delete the product-specific `a3s.cloud.service-endpoint.*` evidence encoding.
+It must not start a separate `a3s-box port-forward` process or add another
+namespace connector, forwarding daemon, lifecycle store, or endpoint registry.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and

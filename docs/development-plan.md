@@ -144,7 +144,7 @@ Status as of 2026-07-29:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` plus `BX0.2` consumer recovery, hard-resource Claims, and deployment cancellation are verified on the exact Runtime/Box pair. Cancellation requires authoritative Box removal before Claim release and leaves empty provider state. Abnormal-interruption cleanup and `BX0.3` through `BX0.5` remain open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. The final gate adopts Box removal after Agent process death, preserves the Claim until acknowledgement, releases once, and leaves empty provider state. `BX0.3` through `BX0.5` remain open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -230,8 +230,20 @@ the existing resource Claim state machine. Its
 omits `port` and `health` from the Service template, projects
 `NetworkMode::None` with no Runtime probe, and proves
 `RuntimeRemove -> ResourceClaimRelease -> Cancelled` with empty Box state.
-Abnormal-interruption cleanup remains the final `BX0.2` slice; networking and
-health remain `BX0.3`.
+The
+[final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598)
+kills the Agent after Box removal and proves a reconstructed Agent and Flow
+adopt the exact receipt, keep capacity held until acknowledgement, release the
+Claim once, and finish cancellation without provider residue. This completes
+`BX0.2`; networking and health remain `BX0.3`.
+
+The first `BX0.3` slice has one contract path: A3S Runtime owns typed endpoint
+observations, Box owns loopback forwarding through its existing
+generation-fenced execution connector, and Cloud consumes the observation for
+health and Gateway target compilation. Delete Cloud's product-specific
+endpoint evidence encoding when that contract lands. Do not start a separate
+Box CLI forwarder or introduce another endpoint registry, forwarding daemon,
+Runtime driver, or lifecycle store.
 
 #### Exit gate
 
