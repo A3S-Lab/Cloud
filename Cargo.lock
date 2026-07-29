@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=d3643210fdd6643ff6d191cf1fa76f8307712851#d3643210fdd6643ff6d191cf1fa76f8307712851"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=520b7683f4f52aec6daa7077c7737701e43dbc20#520b7683f4f52aec6daa7077c7737701e43dbc20"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-common",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=d3643210fdd6643ff6d191cf1fa76f8307712851#d3643210fdd6643ff6d191cf1fa76f8307712851"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=520b7683f4f52aec6daa7077c7737701e43dbc20#520b7683f4f52aec6daa7077c7737701e43dbc20"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=d3643210fdd6643ff6d191cf1fa76f8307712851#d3643210fdd6643ff6d191cf1fa76f8307712851"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=520b7683f4f52aec6daa7077c7737701e43dbc20#520b7683f4f52aec6daa7077c7737701e43dbc20"
 dependencies = [
  "a3s-box-core",
  "a3s-box-netproxy",
@@ -93,7 +93,7 @@ dependencies = [
  "hex",
  "libc",
  "oci-distribution",
- "oci-spec 0.6.7",
+ "oci-spec",
  "p256",
  "p384",
  "parking_lot",
@@ -294,7 +294,7 @@ dependencies = [
 [[package]]
 name = "a3s-oci-core"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=771e5e27d005ed9eb2f52e19bdc64a43a6e4ff87#771e5e27d005ed9eb2f52e19bdc64a43a6e4ff87"
+source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=e6b840b73a4e5c3bbfa72c2b5d6fd89104a60f9a#e6b840b73a4e5c3bbfa72c2b5d6fd89104a60f9a"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -303,12 +303,12 @@ dependencies = [
 [[package]]
 name = "a3s-oci-sdk"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=771e5e27d005ed9eb2f52e19bdc64a43a6e4ff87#771e5e27d005ed9eb2f52e19bdc64a43a6e4ff87"
+source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=e6b840b73a4e5c3bbfa72c2b5d6fd89104a60f9a#e6b840b73a4e5c3bbfa72c2b5d6fd89104a60f9a"
 dependencies = [
  "a3s-oci-core",
  "async-trait",
  "jsonschema",
- "oci-spec 0.10.0",
+ "oci-spec",
  "semver",
  "serde",
  "serde_ignored",
@@ -1496,7 +1496,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2776,7 +2776,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2958,21 +2958,6 @@ dependencies = [
  "tokio",
  "tracing",
  "unicase",
-]
-
-[[package]]
-name = "oci-spec"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdf88ddc01cc6bccbe1044adb6a29057333f523deadcb4953c011a73158cfa5e"
-dependencies = [
- "derive_builder",
- "getset",
- "serde",
- "serde_json",
- "strum 0.26.3",
- "strum_macros 0.26.4",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3437,7 +3422,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3889,7 +3874,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4529,12 +4514,6 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
-version = "0.26.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
-
-[[package]]
-name = "strum"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
@@ -4546,19 +4525,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
  "strum_macros 0.28.0",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.26.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.118",
 ]
 
 [[package]]
@@ -4702,7 +4668,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
