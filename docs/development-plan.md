@@ -1196,6 +1196,12 @@ packages:
   timeout, and converts malformed JSON, malformed envelopes, cancellation, and
   network failure into stable client errors without returning credentials or
   transport implementation details.
+- `web` composes that client, the existing authorized search, one operation SSE
+  stream, authoritative projection refreshes, and existing mutation handlers
+  into responsive Overview, Workloads, Delivery, and Edge workspaces.
+  Validated search results and deep links select the owning workspace. This is
+  the focused operational `C0.1` console foundation; grant-derived personas,
+  navigation, counts, and filtering remain one coordinated `C0.3` outcome.
 - `cli` builds the standalone `a3s-cloud` binary. It accepts tokens only from
   `A3S_CLOUD_TOKEN`, resolves API and organization/project/environment context
   from flags or environment without persisting a credential file, requires

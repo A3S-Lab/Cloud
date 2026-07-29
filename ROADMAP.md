@@ -456,7 +456,7 @@ format never becomes a second mutable source of truth.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
-| `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, and automation contracts |
+| `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped management MCP and real PostgreSQL parity over the same commands and queries |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
@@ -467,7 +467,11 @@ idempotency, operations, or audit.
 The verified `C0.1` slices establish the shared typed transport,
 non-persistent environment/flag context, safe output and exit-code contracts,
 read-only tenant commands, then add workload, deployment, route, BuildRun,
-signed-evidence, and bounded paged-log queries. The
+signed-evidence, and bounded paged-log queries. The Web console composes those
+same queries, operation streams, projection refreshes, and mutations into
+responsive Overview, Workloads, Delivery, and Edge workspaces. Authorized
+search and validated deep links select the owning workspace without creating a
+second client, navigation backend, or presentation-owned business state. The
 operational mutation slice adds explicit idempotent stop, rollback, cancel, and
 retry commands, while the desired-state slice adds Cloud-admitted A3S ACL for
 Workload create/update and SourceRevision deployment. The core-resource slice

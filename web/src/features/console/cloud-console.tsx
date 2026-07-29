@@ -10,24 +10,18 @@ import type {
   Project,
   Route,
   SearchResult,
-  ServiceTemplate,
   Workload,
 } from '../../types/api';
-import { BuildRunLogPanel } from '../logs/build-run-log-panel';
-import { LiveLogPanel } from '../logs/live-log-panel';
 import { useOperationStream } from '../operations/use-operation-stream';
 import { parseCloudLocation, selectionFromSearchResult, type CloudLocation } from '../search/cloud-location';
-import { BuildEvidencePanel } from './build-evidence-panel';
-import { BuildRunPanel } from './build-run-panel';
+import { ConsoleNavigation, sectionForResourceKind } from './console-navigation';
+import { DeliverySection, EdgeSection, OverviewSection, WorkloadsSection } from './console-sections';
 import { ContextBar } from './context-bar';
 import { ConsoleTopbar } from './console-topbar';
-import { DeploymentTimeline } from './deployment-timeline';
-import { EdgeStatusPanel } from './edge-status-panel';
-import { AssetCatalogCard, EnvironmentHeading, InfrastructureCard } from './environment-summary';
+import { EnvironmentHeading } from './environment-summary';
 import { OperationDrawer } from './operation-drawer';
+import { useConsoleActions } from './use-console-actions';
 import { isTerminalOperation } from './workload-view-model';
-import { WorkloadList } from './workload-list';
-import { WorkloadOverview } from './workload-overview';
 
 interface CloudConsoleProps {
   token: string;
@@ -43,6 +37,9 @@ const PROJECTION_REFRESH_MS = 5_000;
 export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudConsoleProps) {
   const api = useMemo(() => new CloudApi(token), [token]);
   const initialLocation = useMemo(() => parseCloudLocation(window.location.hash), []);
+  const [activeSection, setActiveSection] = useState(() =>
+    sectionForResourceKind(initialLocation?.resourceKind ?? null)
+  );
   const [organizations, setOrganizations] = useState(initialOrganizations);
   const [organizationId, setOrganizationId] = useState(
     () => initialLocation?.organizationId ?? sessionStorage.getItem(ORGANIZATION_KEY) ?? ''
@@ -72,10 +69,6 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cancellingDeploymentId, setCancellingDeploymentId] = useState<string | null>(null);
-  const [cancellingBuildRunId, setCancellingBuildRunId] = useState<string | null>(null);
-  const [retryingBuildRunId, setRetryingBuildRunId] = useState<string | null>(null);
-  const [stoppingWorkloadId, setStoppingWorkloadId] = useState<string | null>(null);
 
   const applyLocation = useCallback((location: CloudLocation) => {
     setOrganizationId(location.organizationId);
@@ -83,6 +76,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     setEnvironmentId(location.environmentId ?? '');
     setWorkloadId(location.resourceKind === 'workload' ? (location.resourceId ?? '') : '');
     setSelectedBuildRunId(location.resourceKind === 'build_run' ? (location.resourceId ?? '') : '');
+    setActiveSection(sectionForResourceKind(location.resourceKind));
     if (location.resourceKind === 'operation') setDrawerOpen(true);
   }, []);
 
@@ -280,95 +274,29 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const logRevision =
     selectedWorkload?.activeRevision ?? latestDeployment?.revision ?? selectedWorkload?.desiredRevision;
   const activeOperations = operations.filter((operation) => !isTerminalOperation(operation)).length;
-
-  const updateSelectedWorkload = async (template: ServiceTemplate, idempotencyKey: string) => {
-    if (!organizationId || !selectedWorkload) {
-      const cause = new Error('Choose a workload before updating it.');
-      setError(cause.message);
-      throw cause;
-    }
-    try {
-      await api.updateWorkload(organizationId, selectedWorkload.id, template, idempotencyKey);
-      await refreshAuthoritativeProjections();
-      setError(null);
-    } catch (cause) {
-      setError(messageFrom(cause));
-      throw cause;
-    }
-  };
-
-  const rollbackSelectedWorkload = async (revisionId: string, idempotencyKey: string) => {
-    if (!organizationId || !selectedWorkload) {
-      const cause = new Error('Choose a workload before rolling it back.');
-      setError(cause.message);
-      throw cause;
-    }
-    try {
-      await api.rollbackWorkload(organizationId, selectedWorkload.id, revisionId, idempotencyKey);
-      await refreshAuthoritativeProjections();
-      setError(null);
-    } catch (cause) {
-      setError(messageFrom(cause));
-      throw cause;
-    }
-  };
-
-  const cancelLatestDeployment = async () => {
-    if (!organizationId || !latestDeployment) return;
-    setCancellingDeploymentId(latestDeployment.id);
-    try {
-      await api.cancelDeployment(organizationId, latestDeployment.id, `web-cancel:${latestDeployment.id}`);
-      await refreshAuthoritativeProjections();
-      setError(null);
-    } catch (cause) {
-      setError(messageFrom(cause));
-    } finally {
-      setCancellingDeploymentId(null);
-    }
-  };
-
-  const stopSelectedWorkload = async () => {
-    if (!organizationId || !selectedWorkload) return;
-    setStoppingWorkloadId(selectedWorkload.id);
-    try {
-      await api.stopWorkload(organizationId, selectedWorkload.id, `web-stop:${selectedWorkload.id}`);
-      await refreshAuthoritativeProjections();
-      setError(null);
-    } catch (cause) {
-      setError(messageFrom(cause));
-    } finally {
-      setStoppingWorkloadId(null);
-    }
-  };
-
-  const cancelBuildRun = async (buildRunId: string) => {
-    if (!organizationId) return;
-    setCancellingBuildRunId(buildRunId);
-    try {
-      await api.cancelBuildRun(organizationId, buildRunId, `web-cancel-build:${buildRunId}`);
-      await refreshAuthoritativeProjections();
-      setError(null);
-    } catch (cause) {
-      setError(messageFrom(cause));
-    } finally {
-      setCancellingBuildRunId(null);
-    }
-  };
-
-  const retryBuildRun = async (buildRunId: string) => {
-    if (!organizationId) return;
-    setRetryingBuildRunId(buildRunId);
-    try {
-      const retry = await api.retryBuildRun(organizationId, buildRunId, `web-retry-build:${buildRunId}`);
-      await refreshAuthoritativeProjections();
-      setSelectedBuildRunId(retry.buildRunId);
-      setError(null);
-    } catch (cause) {
-      setError(messageFrom(cause));
-    } finally {
-      setRetryingBuildRunId(null);
-    }
-  };
+  const reportError = useCallback((cause: unknown) => setError(messageFrom(cause)), []);
+  const clearError = useCallback(() => setError(null), []);
+  const {
+    cancelBuildRun,
+    cancelLatestDeployment,
+    cancellingBuildRunId,
+    cancellingDeploymentId,
+    retryBuildRun,
+    retryingBuildRunId,
+    rollbackSelectedWorkload,
+    stopSelectedWorkload,
+    stoppingWorkloadId,
+    updateSelectedWorkload,
+  } = useConsoleActions({
+    api,
+    organizationId,
+    workload: selectedWorkload,
+    deployment: latestDeployment,
+    refresh: refreshAuthoritativeProjections,
+    onBuildRunSelected: setSelectedBuildRunId,
+    onError: reportError,
+    onSuccess: clearError,
+  });
 
   const dismissTerminalOperations = (operationIds: string[]) => {
     setDismissedOperationIds((current) => {
@@ -385,6 +313,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     setEnvironmentId(selection.environmentId ?? '');
     setWorkloadId(selection.workloadId ?? '');
     setSelectedBuildRunId(selection.buildRunId ?? '');
+    setActiveSection(sectionForResourceKind(result.kind));
     if (selection.openOperations) setDrawerOpen(true);
     if (selection.href) window.history.pushState(null, '', selection.href);
   }, []);
@@ -440,54 +369,75 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           workloadCount={workloads.length}
         />
 
-        <section className='dashboard-grid' aria-label='Environment status'>
-          <WorkloadOverview
+        <ConsoleNavigation
+          activeSection={activeSection}
+          counts={{
+            workloads: workloads.length,
+            delivery: buildRuns.length,
+            edge: routes.length,
+            operations: activeOperations,
+          }}
+          onSelect={setActiveSection}
+        />
+
+        {activeSection === 'overview' ? (
+          <OverviewSection
+            activeOperations={activeOperations}
+            buildRunCount={buildRuns.length}
+            deployment={latestDeployment}
+            routes={routes}
+            workloadCount={workloads.length}
+          />
+        ) : null}
+
+        {activeSection === 'workloads' ? (
+          <WorkloadsSection
+            api={api}
+            organizationId={organizationId || null}
+            environment={selectedEnvironment}
+            workloads={workloads}
             workload={selectedWorkload}
             routes={selectedRoutes}
+            operations={operations}
+            selectedWorkloadId={workloadId}
             cancelling={cancellingDeploymentId === latestDeployment?.id}
             stopping={stoppingWorkloadId === selectedWorkload?.id}
+            logRevisionId={logRevision?.id ?? null}
+            logGeneration={logRevision?.generation ?? null}
+            onSelectWorkload={setWorkloadId}
             onCancel={cancelLatestDeployment}
             onStop={stopSelectedWorkload}
             onUpdate={updateSelectedWorkload}
             onRollback={rollbackSelectedWorkload}
           />
-          <InfrastructureCard deployment={latestDeployment} routes={selectedRoutes} />
-          <AssetCatalogCard />
-        </section>
+        ) : null}
 
-        <BuildRunPanel
-          buildRuns={buildRuns}
-          selectedBuildRunId={selectedBuildRunId || null}
-          cancellingBuildRunId={cancellingBuildRunId}
-          retryingBuildRunId={retryingBuildRunId}
-          onSelect={setSelectedBuildRunId}
-          onCancel={cancelBuildRun}
-          onRetry={retryBuildRun}
-        />
+        {activeSection === 'delivery' ? (
+          <DeliverySection
+            api={api}
+            organizationId={organizationId || null}
+            buildRuns={buildRuns}
+            selectedBuildRun={selectedBuildRun}
+            selectedBuildRunId={selectedBuildRunId || null}
+            cancellingBuildRunId={cancellingBuildRunId}
+            retryingBuildRunId={retryingBuildRunId}
+            onSelect={setSelectedBuildRunId}
+            onCancel={cancelBuildRun}
+            onRetry={retryBuildRun}
+          />
+        ) : null}
 
-        <BuildEvidencePanel api={api} organizationId={organizationId || null} buildRun={selectedBuildRun} />
-
-        <BuildRunLogPanel api={api} organizationId={organizationId || null} buildRun={selectedBuildRun} />
-
-        <section className='workload-detail-grid' aria-label='Selected workload details'>
-          <DeploymentTimeline workload={selectedWorkload} operations={operations} />
-          <EdgeStatusPanel workload={selectedWorkload} routes={selectedRoutes} certificates={certificates} />
-        </section>
-
-        <LiveLogPanel
-          api={api}
-          organizationId={organizationId || null}
-          workloadId={selectedWorkload?.id ?? null}
-          revisionId={logRevision?.id ?? null}
-          generation={logRevision?.generation ?? null}
-        />
-
-        <WorkloadList
-          workloads={workloads}
-          selectedWorkloadId={workloadId}
-          environment={selectedEnvironment}
-          onSelect={setWorkloadId}
-        />
+        {activeSection === 'edge' ? (
+          <EdgeSection
+            environment={selectedEnvironment}
+            workloads={workloads}
+            workload={selectedWorkload}
+            routes={selectedRoutes}
+            certificates={certificates}
+            selectedWorkloadId={workloadId}
+            onSelectWorkload={setWorkloadId}
+          />
+        ) : null}
       </main>
 
       {drawerOpen ? (

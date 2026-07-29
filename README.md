@@ -115,8 +115,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   SemVer, immutable Git and SHA-256 identities, typed OCI or Skill artifacts,
   optimistic concurrency, replay-safe writes, and transactional outbox events
   through A3S ORM
-- **Web Operations**: Inspect deployment history, route and certificate state,
-  Runtime health, logs, BuildRuns, updates, rollback, cancellation, and retry
+- **Focused Web Operations**: Navigate responsive Overview, Workloads,
+  Delivery, and Edge workspaces; route authorized search and validated deep
+  links to the owning section; and inspect deployment history, route and
+  certificate state, Runtime health, logs, BuildRuns, updates, rollback,
+  cancellation, and retry through the shared typed client
 - **Typed Automation Slice**: Reuse one validated TypeScript client across the
   web console and `a3s-cloud` CLI, select tenant context without a credential
   file, inspect tenant and operational resources, BuildRun evidence, and paged

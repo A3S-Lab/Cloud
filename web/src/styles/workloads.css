@@ -514,6 +514,11 @@
 
   .context-bar {
     overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .context-bar::-webkit-scrollbar {
+    display: none;
   }
 
   .context-select {
