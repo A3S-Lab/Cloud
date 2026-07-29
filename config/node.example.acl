@@ -32,6 +32,7 @@ logs {
 
 box {
   home_dir = "/var/lib/a3s-box"
+  isolation = "microvm"
   control_timeout_ms = 120000
   task_poll_interval_ms = 50
 }

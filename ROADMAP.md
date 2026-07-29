@@ -129,8 +129,9 @@ second deployment or reconciliation engine.
    [final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598).
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
    tmpfs mounts, outputs, and registry credentials through typed Box ports. The
-   typed Service TCP endpoint and shared Runtime health-consumer slices are
-   implemented; the remaining capabilities and complete gate stay in progress.
+   typed Service TCP endpoint, shared Runtime health consumer, and explicit
+   isolation-selection slices are implemented; the remaining capabilities and
+   complete gate stay in progress.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
    build boundary and ACL build plans while preserving OCI validation,
    publication, cache, SPDX/SLSA evidence, and process-death recovery.
@@ -192,6 +193,16 @@ Runtime and executor reconstruction, a fresh healthy inspection with unchanged
 provider identity and endpoint, live traffic through the stateless Gateway
 origin adapter, removal, `NotFound`, and listener closure. No health worker,
 registry, scheduler, queue, endpoint authority, or lifecycle store was added.
+
+The third `BX0.3` slice pins A3S Box
+`9fb9bf528f6c648bbecf203de991106fc39bccdb` and makes isolation selection an
+explicit closed Node Agent contract. The required ACL `box.isolation` field
+accepts exactly `microvm` or `sandbox`; missing, `automatic`, and unknown values
+fail before the Runtime starts. Cloud maps the selected value directly into the
+same shared `BoxRuntimeDriver`, ships MicroVM in the product profile, and makes
+hosted Cloud consumer tests request Sandbox explicitly. There is no automatic
+downgrade, fallback provider, or parallel Runtime driver. Full provider
+certification for Sandbox, MicroVM, and TEE remains open.
 
 `BX0.3` remains in progress for Secret materialization, Artifact/Volume/tmpfs
 mounts, Task outputs, registry credentials, allocation evidence, and complete

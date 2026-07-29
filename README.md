@@ -83,8 +83,13 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   for Gateway publication; Box alone executes and certifies HTTP, TCP, and
   command probes
 - **Box-Only Execution Migration**: Converge every Task, Service, build,
-  network, mount, Secret, log, output, and cleanup operation through the shared A3S Runtime
-  contract and A3S Box, with no Docker-compatible daemon or fallback provider
+  network, mount, Secret, log, output, and cleanup operation through the shared
+  A3S Runtime contract and A3S Box, with no Docker-compatible daemon or fallback
+  provider
+- **Explicit Box Isolation**: Require every Node Agent ACL profile to select
+  exactly `microvm` or `sandbox`; the shipped product profile selects MicroVM,
+  hosted Cloud consumer validation selects Sandbox explicitly, and neither
+  path can silently downgrade or construct a second Runtime driver
 - **Planned Power-Backed Inference**: Compile the first inference profile into
   an immutable A3S Power Service hosted by A3S Box; Cloud retains placement,
   device claims, routing, authorization, and usage authority
@@ -239,6 +244,15 @@ replays the exact durable observation, obtains a fresh healthy inspection with
 the same endpoint, reaches it through the canonical Gateway origin, and proves
 removal, `NotFound`, and listener closure. Cloud adds no health worker,
 registry, scheduler, or lifecycle state.
+
+The third `BX0.3` slice pins A3S Box
+`9fb9bf528f6c648bbecf203de991106fc39bccdb` and closes isolation selection at
+the Node Agent boundary. The required `box.isolation` ACL field accepts only
+`microvm` or `sandbox`; `automatic`, missing values, and unknown values fail
+configuration parsing. The Node Agent maps that value directly into the sole
+shared `BoxRuntimeDriver`. The shipped profile selects MicroVM while Cloud
+real-provider tests on hosted runners select Sandbox explicitly. This proves
+deterministic selection, not complete Sandbox, MicroVM, or TEE certification.
 
 Mounts, Secrets, outputs, registry credentials, builds, isolation evidence,
 and the clean-host release loop remain release-blocking `BX0.3` through

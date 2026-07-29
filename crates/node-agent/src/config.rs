@@ -43,8 +43,15 @@ pub struct LogShippingConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoxRuntimeConfig {
     pub home_dir: PathBuf,
+    pub isolation: BoxRuntimeIsolation,
     pub control_timeout_ms: u64,
     pub task_poll_interval_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoxRuntimeIsolation {
+    Microvm,
+    Sandbox,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +125,12 @@ impl NodeAgentConfig {
         let box_runtime = one_block(&document, "box")?;
         validate_block(
             box_runtime,
-            &["home_dir", "control_timeout_ms", "task_poll_interval_ms"],
+            &[
+                "home_dir",
+                "isolation",
+                "control_timeout_ms",
+                "task_poll_interval_ms",
+            ],
         )?;
         let gateway = one_block(&document, "gateway")?;
         validate_block(
@@ -177,6 +189,7 @@ impl NodeAgentConfig {
             },
             box_runtime: BoxRuntimeConfig {
                 home_dir: PathBuf::from(string(box_runtime, "home_dir")?),
+                isolation: box_runtime_isolation(box_runtime)?,
                 control_timeout_ms: integer(box_runtime, "control_timeout_ms")?,
                 task_poll_interval_ms: integer(box_runtime, "task_poll_interval_ms")?,
             },
@@ -515,6 +528,16 @@ fn valid_env_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
+fn box_runtime_isolation(block: &Block) -> Result<BoxRuntimeIsolation, ConfigError> {
+    match string(block, "isolation")?.as_str() {
+        "microvm" => Ok(BoxRuntimeIsolation::Microvm),
+        "sandbox" => Ok(BoxRuntimeIsolation::Sandbox),
+        _ => Err(ConfigError::Invalid(
+            "box.isolation must be either microvm or sandbox".into(),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,6 +577,7 @@ logs {
 
 box {
   home_dir = "/var/lib/a3s-box"
+  isolation = "microvm"
   control_timeout_ms = 120000
   task_poll_interval_ms = 50
 }
@@ -575,6 +599,7 @@ gateway {
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.logs.max_batch_chunks, 256);
         assert_eq!(config.box_runtime.home_dir, Path::new("/var/lib/a3s-box"));
+        assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Microvm);
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
         assert_eq!(
             config.gateway.certificate_directory,
@@ -592,6 +617,7 @@ gateway {
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.logs.poll_interval_ms, 1000);
         assert_eq!(config.box_runtime.control_timeout_ms, 120000);
+        assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Microvm);
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
     }
 
@@ -617,5 +643,18 @@ gateway {
             "  home_dir = \"/var/lib/../a3s-box\"",
         );
         assert!(NodeAgentConfig::parse(&parent_home).is_err());
+        let implicit_fallback =
+            CONFIG.replace("  isolation = \"microvm\"", "  isolation = \"automatic\"");
+        assert!(NodeAgentConfig::parse(&implicit_fallback).is_err());
+        let missing_isolation = CONFIG.replace("  isolation = \"microvm\"\n", "");
+        assert!(NodeAgentConfig::parse(&missing_isolation).is_err());
+    }
+
+    #[test]
+    fn parses_explicit_box_sandbox_without_changing_the_default_example() {
+        let sandbox = CONFIG.replace("  isolation = \"microvm\"", "  isolation = \"sandbox\"");
+        let config = NodeAgentConfig::parse(&sandbox).expect("Sandbox node config");
+
+        assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Sandbox);
     }
 }
