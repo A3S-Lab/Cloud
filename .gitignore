@@ -13,6 +13,7 @@
 /architecture-3d/dist/
 /website/node_modules/
 /website/doc_build/
+/website/docs_build/
 
 # Local configuration and credentials
 .env

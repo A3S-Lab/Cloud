@@ -982,7 +982,7 @@ Cloud/
 │   └── cloud-client/
 ├── tools/
 ├── web/                   # authenticated operations console
-└── website/               # public product site and documentation shell
+└── website/               # public product site and versioned documentation
 ```
 
 ## Development
@@ -1008,7 +1008,7 @@ bun run test
 bun run build
 ```
 
-Run product-site checks from `website/`:
+Run product-site and documentation checks from `website/`:
 
 ```bash
 npm ci

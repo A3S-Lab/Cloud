@@ -7,7 +7,7 @@ import {
 } from '@rslint/core';
 
 export default defineConfig([
-  { ignores: ['doc_build/**'] },
+  { ignores: ['doc_build/**', 'docs_build/**'] },
   js.configs.recommended,
   ts.configs.recommended,
   reactPlugin.configs.recommended,

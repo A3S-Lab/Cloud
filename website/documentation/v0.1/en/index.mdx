@@ -1,0 +1,26 @@
+---
+title: A3S Cloud documentation
+description: English product documentation for A3S Cloud v0.1.
+---
+
+# A3S Cloud documentation
+
+This is the English documentation for **v0.1**. A3S Cloud is a self-hosted desired-state control plane: it persists business intent first, then converges workloads, delivery, reachability, and operations through a recoverable control loop.
+
+## Core boundaries
+
+- A3S ACL is the only product configuration language.
+- Business state is persisted to PostgreSQL through A3S ORM.
+- A3S Flow owns recoverable long-running operations without creating a second workflow mechanism.
+- A3S Runtime executes tasks, services, and builds only through A3S Box.
+- Gateway remains on the live traffic path while Cloud produces and publishes complete policy snapshots.
+- Inference uses A3S Power and reuses Cloud's existing scheduling and control boundaries.
+
+## Start here
+
+- Read the [repository README](https://github.com/A3S-Lab/Cloud#readme) for the current product contract and local development workflow.
+- Read the [product roadmap](https://github.com/A3S-Lab/Cloud/blob/main/ROADMAP.md) for delivery gates, dependencies, and verification evidence.
+- Open the [interactive architecture](https://a3s-lab.github.io/Cloud/architecture/) to inspect control-plane and data-plane responsibilities.
+- Review [documentation versioning](./versioning/) for stable-version, `next`, and translation-parity rules.
+
+> Capability status in the repository `ROADMAP.md` is authoritative. Neither the product site nor the architecture view can promote a capability independently.

@@ -1,0 +1,9 @@
+{
+  "defaultLanguage": "zh",
+  "languages": [
+    { "id": "zh", "label": "简体中文" },
+    { "id": "en", "label": "English" }
+  ],
+  "default": "v0.1",
+  "versions": ["v0.1", "next"]
+}

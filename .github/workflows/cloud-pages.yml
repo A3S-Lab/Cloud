@@ -96,7 +96,7 @@ jobs:
           echo "DOCS_ORIGIN=https://${GITHUB_REPOSITORY_OWNER,,}.github.io" >>"$GITHUB_ENV"
           echo "A3S_ARCHITECTURE_BASE_PATH=/${repository_name}/architecture/" >>"$GITHUB_ENV"
 
-      - name: Build product website
+      - name: Build product website and versioned documentation
         working-directory: website
         run: npm run build
 
@@ -109,7 +109,7 @@ jobs:
           mkdir -p website/doc_build/architecture
           cp -R architecture-3d/dist/. website/doc_build/architecture/
 
-      - name: Verify product routes and architecture assets
+      - name: Verify product, documentation, and architecture routes
         working-directory: website
         env:
           A3S_EXPECT_ARCHITECTURE: 1
