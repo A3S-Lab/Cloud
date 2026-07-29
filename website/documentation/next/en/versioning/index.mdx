@@ -1,0 +1,17 @@
+---
+title: Next documentation workflow
+description: Maintenance and publishing workflow for the A3S Cloud next documentation channel.
+---
+
+# Next documentation workflow
+
+`next` is a development channel, not another product branch. It reuses the same Rspress localization, search, and version-routing mechanism.
+
+## Change requirements
+
+1. A code change that affects user behavior must update both Chinese and English `next` pages.
+2. Both languages must use matching page paths, and their titles and bodies must express the same product contract.
+3. The version registry is the only source for version order and the default version; do not maintain a handwritten selector or a second status model.
+4. The build produces separate search indexes for each language and version and verifies every public route.
+
+At release time, maintainers freeze `next`, create a new version snapshot, and switch the default version to that snapshot. Older version routes remain available.
