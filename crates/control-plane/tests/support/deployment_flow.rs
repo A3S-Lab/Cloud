@@ -820,8 +820,8 @@ pub(super) fn healthy_observation(
                 .ok_or_else(|| {
                     "integration Runtime observation service port range overflowed".to_owned()
                 })?;
-            let endpoint = RuntimeServiceEndpoint::node_local_http(&port.name, host_port)?;
-            Ok((endpoint.claim_key(), endpoint.origin))
+            let endpoint = RuntimeServiceEndpoint::node_local_tcp(&port.name, host_port)?;
+            Ok((endpoint.claim_key(), endpoint.claim_value()))
         })
         .collect::<Result<BTreeMap<_, _>, String>>()?;
     let observation = RuntimeObservation {
@@ -877,6 +877,7 @@ fn runtime_capabilities() -> RuntimeCapabilities {
             RuntimeFeature::DurableIdentity,
             RuntimeFeature::Stop,
             RuntimeFeature::Remove,
+            RuntimeFeature::ServiceTcp,
             RuntimeFeature::SecretReferences,
         ],
     }

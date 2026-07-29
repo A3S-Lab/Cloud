@@ -14,6 +14,7 @@ mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 pub mod persistence;
 mod route_target_reader;
+mod runtime_http_upstream;
 mod vault_gateway_certificate_authority;
 
 #[cfg(test)]

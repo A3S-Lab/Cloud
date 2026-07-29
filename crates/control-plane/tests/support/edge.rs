@@ -188,8 +188,9 @@ pub async fn exercise_edge_api(
         .await?
         .ok_or("route fixture has no current Runtime observation")?;
     assert_eq!(persisted_target_observation, target_observation);
-    let expected_upstream =
-        RuntimeServiceEndpoint::from_observation(&target_observation.observation, "http")?.origin;
+    let endpoint =
+        RuntimeServiceEndpoint::from_observation(&target_observation.observation, "http")?;
+    let expected_upstream = format!("http://{}/", endpoint.socket_addr());
 
     let collection_path = format!(
         "/api/v1/organizations/{}/projects/{}/environments/{}/routes",

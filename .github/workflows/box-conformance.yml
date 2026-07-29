@@ -166,7 +166,7 @@ jobs:
           set -e
           exit "$gate_status"
 
-      - name: Prove Cloud recovery, Claims, cancellation, and interruption cleanup through Box
+      - name: Prove Cloud recovery, endpoints, Claims, cancellation, and interruption cleanup through Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
@@ -199,6 +199,30 @@ jobs:
               real_box_recovers_journal_gaps_generation_and_resource_claims \
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/cloud-lifecycle.log"
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane \
+              modules::edge::infrastructure::runtime_http_upstream::tests::real_box_endpoint_compiles_to_live_gateway_origin \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/cloud-service-endpoint.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_BOX_SERVICE_ENDPOINT_GATEWAY_ORIGIN_CERTIFIED' \
+            "$EVIDENCE_DIR/cloud-service-endpoint.log" \
+            >"$EVIDENCE_DIR/service-endpoint-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/service-endpoint-certification.txt")" -eq 1
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \

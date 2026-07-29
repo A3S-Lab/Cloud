@@ -179,11 +179,11 @@ mod tests {
                     agent_instance_id,
                     agent_version: "0.1.0".into(),
                     capabilities: NodeCapabilities::new(
-                        "docker",
+                        "a3s-box",
                         "gateway-observation-test",
                         serde_json::json!({
-                            "schema": "a3s.runtime.capabilities.v3",
-                            "provider_id": "docker",
+                            "schema": "a3s.runtime.capabilities.v4",
+                            "provider_id": "a3s-box",
                             "provider_build": "gateway-observation-test"
                         }),
                     )

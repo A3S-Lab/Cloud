@@ -5,7 +5,7 @@ pub(super) fn capabilities(build: &str) -> NodeCapabilities {
         "docker",
         build,
         json!({
-            "schema": "a3s.runtime.capabilities.v3",
+            "schema": "a3s.runtime.capabilities.v4",
             "provider_id": "docker",
             "provider_build": build
         }),
@@ -29,6 +29,7 @@ pub(super) fn runtime_capabilities() -> RuntimeCapabilities {
             RuntimeFeature::DurableIdentity,
             RuntimeFeature::Stop,
             RuntimeFeature::Remove,
+            RuntimeFeature::ServiceTcp,
         ],
     }
 }

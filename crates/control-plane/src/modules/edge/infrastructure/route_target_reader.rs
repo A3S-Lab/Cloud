@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::services::{
     IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
-use crate::modules::edge::domain::{RoutePortName, RouteTarget, UpstreamEndpoint};
+use crate::modules::edge::domain::{RoutePortName, RouteTarget};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadRevisionId,
@@ -17,6 +17,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeSet;
 use std::sync::Arc;
+
+use super::runtime_http_upstream::gateway_http_upstream;
 
 pub struct WorkloadRouteTargetReader {
     workloads: Arc<dyn IWorkloadRepository>,
@@ -163,7 +165,7 @@ impl WorkloadRouteTargetReader {
             context.spec.unit_id.clone(),
             context.spec.generation,
             port_name.clone(),
-            UpstreamEndpoint::parse(endpoint.origin).map_err(RepositoryError::Conflict)?,
+            gateway_http_upstream(&endpoint).map_err(RepositoryError::Conflict)?,
             observation.received_at,
         )
         .map_err(RepositoryError::Conflict)?;
