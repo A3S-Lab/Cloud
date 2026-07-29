@@ -141,17 +141,20 @@ script have been removed instead of retained as fallbacks. This does not mark
 `BX0.2` through `BX0.5` complete: the Box-owned capability work and a new
 clean-host release gate must restore the named behavioral evidence.
 
-The first `BX0.2` Cloud consumer slice is verified by the
-[dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30424869899).
+The first `BX0.2` Cloud consumer-recovery and hard-resource Claim slices are
+verified by the
+[dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
 It persists the command before dispatch, applies through the shared Box driver,
 reconstructs both the Runtime client and Agent executor across the
 apply-before-journal-completion boundary, and requires the same durable Runtime
 receipt and physical Task or Service identity. The same gate replaces a running
 Service generation and proves logs, inspection, stop, removal, and empty
-provider state. Hard-resource Claim binding and release, deployment
-cancellation, and abnormal-interruption cleanup evidence remain open for
-`BX0.2`. Box remains the sole owner of execution and recovery; Cloud adds no
-provider lifecycle store.
+provider state. It also prepares one inventory-bound CPU/memory Claim, binds the
+exact Box observation across restarts, rejects release before durable stop
+evidence, and releases only after the Runtime is fenced. Deployment cancellation
+and abnormal-interruption cleanup evidence remain open for `BX0.2`. Box remains
+the sole owner of execution and recovery; Cloud adds no provider lifecycle
+store.
 
 The first `BX0.3` network slice is implemented pending its Linux gates: C0
 removes static Sandbox publication and starts Box's loopback-only,
