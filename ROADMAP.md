@@ -152,14 +152,15 @@ Service generation and proves logs, inspection, stop, removal, and empty
 provider state. It also prepares one inventory-bound CPU/memory Claim, binds the
 exact Box observation across restarts, rejects release before durable stop
 evidence, and releases only after the Runtime is fenced. The next `BX0.2`
-slice implements deployment cancellation through the existing Flow, Fleet
-command journal, Runtime driver, and Claim repository. Its exact-Box gate uses
-an explicitly headless Service, requires `RuntimeRemove` evidence before
-`ResourceClaimRelease`, and records `Cancelled` only after both complete. The
-slice remains candidate evidence until its Linux gate passes; abnormal-
-interruption cleanup remains open after it. Networked Services and Runtime
-health remain `BX0.3`. Box remains the sole owner of execution and recovery;
-Cloud adds no provider lifecycle store.
+slice verifies deployment cancellation through the existing Flow, Fleet
+command journal, Runtime driver, and Claim repository in the
+[exact Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890).
+It uses an explicitly headless Service, requires `RuntimeRemove` evidence
+before `ResourceClaimRelease`, records `Cancelled` only after both complete,
+and finishes with empty provider state. Abnormal-interruption cleanup remains
+open for `BX0.2`. Networked Services and Runtime health remain `BX0.3`. Box
+remains the sole owner of execution and recovery; Cloud adds no provider
+lifecycle store.
 
 The first `BX0.3` network slice is implemented pending its Linux gates: C0
 removes static Sandbox publication and starts Box's loopback-only,

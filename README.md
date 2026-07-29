@@ -196,12 +196,12 @@ running Service generation, and proves logs and inspection. The same gate
 prepares an inventory-bound CPU/memory Claim, binds it to the exact Box Service
 observation across Runtime and Agent executor restarts, rejects release before
 durable stop evidence, then releases and removes the resource with empty Box
-state. The deployment-cancellation slice is implemented and registered in that
-Linux workflow: it requires an authoritative Runtime removal receipt before
-releasing the exact Claim and recording terminal `Cancelled`. Its real Box run
-remains candidate evidence until the pull-request gate passes. Abnormal-
-interruption cleanup, full Box networking, health, mounts, Secrets, outputs,
-builds, and the clean-host release loop remain release-blocking `BX0` work.
+state. The deployment-cancellation slice is verified by the
+[exact Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890):
+it requires an authoritative Runtime removal receipt before releasing the exact
+Claim and recording terminal `Cancelled`. Abnormal-interruption cleanup, full
+Box networking, health, mounts, Secrets, outputs, builds, and the clean-host
+release loop remain release-blocking `BX0` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
