@@ -77,6 +77,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Immutable Workloads**: Resolve OCI images to digests, create versioned
   workload revisions, schedule an eligible node, and activate only after
   Runtime health evidence
+- **Box-Backed Service Health**: Compile the existing A3S ACL HTTP health
+  policy into A3S Runtime, consume current kind-neutral health observations
+  through the Node Agent command journal, and preserve the same typed endpoint
+  for Gateway publication; Box alone executes and certifies HTTP, TCP, and
+  command probes
 - **Box-Only Execution Migration**: Converge every Task, Service, build,
   network, mount, Secret, log, output, and cleanup operation through the shared A3S Runtime
   contract and A3S Box, with no Docker-compatible daemon or fallback provider
@@ -223,9 +228,21 @@ compiled Gateway origin, removes the Service, and requires the listener to
 close. Cloud adds no endpoint registry, forwarding process, Runtime driver, or
 lifecycle store.
 
-HTTP/TCP/command health, mounts, Secrets, outputs, registry credentials,
-builds, isolation evidence, and the clean-host release loop remain
-release-blocking `BX0.3` through `BX0.5` work.
+The second `BX0.3` slice pins
+[Box PR #186](https://github.com/A3S-Lab/Box/pull/186). Box advertises and
+provider-certifies HTTP, TCP, and command health through generation-fenced
+ports and exec. Cloud keeps one health path: its existing Workload compiler
+emits the Runtime policy, and the Node Agent journals the resulting
+kind-neutral observation. The real consumer gate applies a health-enabled Box
+Service, receives `Healthy`, reconstructs Runtime and the Agent executor,
+replays the exact durable observation, obtains a fresh healthy inspection with
+the same endpoint, reaches it through the canonical Gateway origin, and proves
+removal, `NotFound`, and listener closure. Cloud adds no health worker,
+registry, scheduler, or lifecycle state.
+
+Mounts, Secrets, outputs, registry credentials, builds, isolation evidence,
+and the clean-host release loop remain release-blocking `BX0.3` through
+`BX0.5` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists
@@ -932,8 +949,8 @@ node agent
 | A3S ORM | Typed PostgreSQL access, transactions, and migrations |
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
-| A3S Runtime | Provider-neutral Task and Service lifecycle |
-| A3S Box | Sole node-local execution, image build, network, mount, log, snapshot, and cleanup provider |
+| A3S Runtime | Provider-neutral Task and Service lifecycle, endpoints, and health observations |
+| A3S Box | Sole node-local execution, image build, network, health-probe, mount, log, snapshot, and cleanup provider |
 | A3S Power | Required Box-hosted inference serving and attestation boundary |
 | A3S Gateway | HTTPS, routing, health, native snapshot application, and durable applied-state recovery |
 | A3S ACL | Closed product configuration and validated manifests |

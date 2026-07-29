@@ -140,11 +140,11 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-29:
+Status as of 2026-07-30:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. The first `BX0.3` slice now uses Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding, and a stateless Cloud-to-Gateway origin adapter with a real connectivity and cleanup gate. Health, Secrets, mounts, outputs, credentials, isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, and one real Cloud health consumer gate across Node Agent journal replay and fresh inspection. Secrets, mounts, outputs, credentials, isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -235,7 +235,7 @@ The
 kills the Agent after Box removal and proves a reconstructed Agent and Flow
 adopt the exact receipt, keep capacity held until acknowledgement, release the
 Claim once, and finish cancellation without provider residue. This completes
-`BX0.2`; networking and health remain `BX0.3`.
+`BX0.2`; networking and health are owned by `BX0.3`.
 
 The first `BX0.3` slice has landed through
 [Runtime PR #8](https://github.com/A3S-Lab/Runtime/pull/8),
@@ -251,10 +251,23 @@ inspection, sends HTTP through the compiled origin, removes the Service, and
 requires the listener to close. It starts no Box CLI forwarder and introduces
 no endpoint registry, forwarding daemon, Runtime driver, or lifecycle store.
 
-The rest of `BX0.3` remains open: HTTP/TCP/command health, Secret
-materialization, Artifact/Volume/tmpfs mounts, Task outputs, registry
-credentials, allocation evidence, and complete Sandbox/MicroVM/TEE isolation
-certification.
+The second `BX0.3` slice pins
+[Box PR #186](https://github.com/A3S-Lab/Box/pull/186). Box's shared Runtime
+driver advertises and provider-certifies HTTP, TCP, and command probes through
+the existing generation-fenced port and exec boundaries. Cloud keeps its one
+existing health mechanism: the A3S ACL Workload compiler emits the HTTP Runtime
+policy, the Node Agent journals the kind-neutral observation, and the existing
+stateless Edge adapter consumes only the typed endpoint. The dedicated real
+Box consumer gate requires `Healthy` at apply, reconstructs Runtime and the
+Agent executor, replays the exact durable observation, requires a fresh healthy
+inspection with unchanged identity and endpoint, sends HTTP through the
+compiled Gateway origin, removes the Service, observes `NotFound`, and requires
+listener closure. It adds no health worker, registry, scheduler, queue, Runtime
+driver, endpoint authority, or lifecycle store.
+
+The rest of `BX0.3` remains open: Secret materialization,
+Artifact/Volume/tmpfs mounts, Task outputs, registry credentials, allocation
+evidence, and complete Sandbox/MicroVM/TEE isolation certification.
 
 #### Exit gate
 

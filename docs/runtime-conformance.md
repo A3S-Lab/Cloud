@@ -41,6 +41,8 @@ Cloud tests own only Cloud behavior above Runtime:
 
 - command leasing, expiry, replay, and acknowledgement ordering;
 - durable Runtime receipts and generation fencing;
+- current Runtime health observations across apply, journal replay, and live
+  inspection without a Cloud-owned probe worker or health registry;
 - desired-state reconciliation after Agent and control-plane interruption;
 - resource-claim preparation, binding, release, and orphan fencing;
 - Artifact transfer receipts and output publication;
@@ -74,12 +76,10 @@ provider. `BX0.2` consumer recovery and hard-resource Claims are verified by the
 [dedicated Linux gate](https://github.com/A3S-Lab/Cloud/actions/runs/30425852930).
 Deployment cancellation is verified by the
 [exact Box run](https://github.com/A3S-Lab/Cloud/actions/runs/30429412890).
-It admits one explicit headless Service because the pinned Box revision
-currently advertises `NetworkMode::None` and no Runtime health capability.
-Cloud projects no ports and no health probe, then requires an authoritative
-`RuntimeRemove` result before the exact `ResourceClaimRelease`, terminal
-`Cancelled` transition, and empty-provider assertion. This is lifecycle
-evidence only; it does not claim `BX0.3` networking or health support.
+That gate intentionally admits one headless Service, projects no ports and no
+health probe, and requires an authoritative `RuntimeRemove` result before the
+exact `ResourceClaimRelease`, terminal `Cancelled` transition, and
+empty-provider assertion. It remains the health-neutral lifecycle baseline.
 The
 [final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598)
 sends `SIGKILL` after the authoritative Box removal but before Agent command
@@ -87,10 +87,31 @@ completion. Recovery adopts the exact receipt, retains the prepared Claim until
 acknowledgement, releases it exactly once, reaches terminal cancellation, and
 leaves empty Box and process state. This completes the `BX0.2` evidence set.
 
+The first `BX0.3` slice pins Runtime-owned typed Service endpoints and consumes
+them through one stateless Gateway-origin adapter. The second pins A3S Box
+`c0a3ddb927ada2bbd907c97521fa531b04440eb5`, whose provider suite advertises
+and certifies HTTP, TCP, and command health over the existing generation-fenced
+port and exec boundaries. Cloud's existing A3S ACL Workload compiler emits the
+HTTP Runtime policy; all probe kinds produce the same provider-neutral
+`RuntimeHealthObservation`, so Cloud adds no kind-specific consumer or probe
+engine.
+
+The dedicated Cloud consumer gate applies a real health-enabled Box Service
+through the Node Agent, requires a current `Healthy` result, reconstructs the
+Runtime client and Agent executor, and proves the command journal replays the
+exact observation. A new inspect command must return a fresh healthy sample
+with the same provider identity and typed endpoint. The Edge adapter must
+compile that endpoint into the same live Gateway HTTP origin. Removal must then
+return an authoritative receipt, inspection must return `NotFound`, the
+listener must close, and the workflow's final provider/process inventory must
+be empty. This is one lifecycle and observation path, not a second health
+worker, scheduler, registry, endpoint authority, or state store.
+
 The following evidence remains required before `BX0` is verified:
 
-1. Private networking, typed endpoints, health, Secrets, Artifact/Volume/tmpfs
-   mounts, outputs, and registry credentials.
+1. Secret materialization, Artifact/Volume/tmpfs mounts, Task outputs, registry
+   credentials, allocation evidence, and complete Sandbox/MicroVM/TEE
+   isolation certification.
 2. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
    publication, replay, and process-death evidence.
 3. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,
