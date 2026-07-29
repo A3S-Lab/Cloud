@@ -128,7 +128,9 @@ second deployment or reconciliation engine.
    [Cloud PRs #87 through #93](https://github.com/A3S-Lab/Cloud/pull/93) and the
    [final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598).
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
-   tmpfs mounts, outputs, and registry credentials through typed Box ports.
+   tmpfs mounts, outputs, and registry credentials through typed Box ports. The
+   typed Service TCP endpoint slice is implemented; the remaining capabilities
+   and complete gate stay in progress.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
    build boundary and ACL build plans while preserving OCI validation,
    publication, cache, SPDX/SLSA evidence, and process-death recovery.
@@ -165,13 +167,22 @@ records command completion. A reconstructed Agent and Flow adopt the exact
 removal receipt, keep the prepared Claim capacity held until acknowledgement,
 release it once, reach terminal cancellation, and leave no provider residue.
 
-`BX0.3` is next. Its first slice must add one provider-neutral typed endpoint
-observation to A3S Runtime, make the shared Box driver own loopback forwarding
-through Box's existing generation-fenced `ExecutionPortConnector`, and make
-Cloud consume that contract for health and Gateway targets. Cloud must then
-delete the product-specific `a3s.cloud.service-endpoint.*` evidence encoding.
-It must not start a separate `a3s-box port-forward` process or add another
-namespace connector, forwarding daemon, lifecycle store, or endpoint registry.
+The first `BX0.3` slice is implemented across
+[Runtime PR #8](https://github.com/A3S-Lab/Runtime/pull/8),
+[Box PR #185](https://github.com/A3S-Lab/Box/pull/185), and
+[Cloud PR #95](https://github.com/A3S-Lab/Cloud/pull/95). A3S Runtime owns one
+provider-neutral typed Service endpoint observation. The shared Box driver owns
+generation-fenced loopback listeners and relays through its existing
+`ExecutionPortConnector`. Cloud removed its product-specific endpoint contract
+and consumes the Runtime type directly, using one stateless Edge adapter to
+compile a TCP socket into Gateway's canonical HTTP origin. The real Box gate
+proves live HTTP traffic through that origin, stable observation replay, exact
+removal, and listener closure. No separate Box CLI forwarder, namespace
+connector, forwarding daemon, lifecycle store, or endpoint registry was added.
+
+`BX0.3` remains in progress for HTTP/TCP/command health, Secret materialization,
+Artifact/Volume/tmpfs mounts, Task outputs, registry credentials, allocation
+evidence, and complete Sandbox/MicroVM/TEE isolation certification.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and

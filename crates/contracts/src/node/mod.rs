@@ -6,7 +6,6 @@ mod gateway;
 mod inventory;
 mod observation;
 mod resource_claim;
-mod runtime_endpoint;
 mod secret;
 #[cfg(test)]
 mod tests;
@@ -45,7 +44,6 @@ pub use resource_claim::{
     NodeResourceClaimRelease, NodeResourceClaimReleased, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
     RUNTIME_RESOURCE_CLAIM_ID_KEY,
 };
-pub use runtime_endpoint::RuntimeServiceEndpoint;
 pub use secret::{CloudSecretReference, NodeSecretMaterialRequest, NodeSecretMaterialResponse};
 
 pub(crate) fn validate_single_line(label: &str, value: &str, max: usize) -> Result<(), String> {

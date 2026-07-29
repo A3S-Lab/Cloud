@@ -5,7 +5,7 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::services::IGatewayCommandQueue;
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
-    RouteState, RouteTarget, UpstreamEndpoint,
+    RouteState, RouteTarget,
 };
 use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
@@ -22,6 +22,8 @@ use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use uuid::Uuid;
+
+use super::runtime_http_upstream::gateway_http_upstream;
 
 pub struct EdgeDeploymentRouteUpdater {
     routes: Arc<dyn IEdgeRepository>,
@@ -230,7 +232,7 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                 request.spec.unit_id.clone(),
                 request.spec.generation,
                 route.target.port_name.clone(),
-                UpstreamEndpoint::parse(endpoint.origin).map_err(RepositoryError::Conflict)?,
+                gateway_http_upstream(&endpoint).map_err(RepositoryError::Conflict)?,
                 observation.received_at,
             )
             .map_err(RepositoryError::Conflict)?;

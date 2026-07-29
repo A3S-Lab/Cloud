@@ -6,6 +6,7 @@ mod node;
 mod registry_credential;
 mod resource;
 
+pub use a3s_runtime::contract::RuntimeServiceEndpoint;
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
 pub use node::{
@@ -25,9 +26,8 @@ pub use node::{
     NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
     NodeResourceClaimRelease, NodeResourceClaimReleased, NodeResourceInventory,
     NodeResourceInventoryReceipt, NodeResourceSlot, NodeSecretMaterialRequest,
-    NodeSecretMaterialResponse, RuntimeObservationReport, RuntimeServiceEndpoint,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
-    RUNTIME_RESOURCE_CLAIM_ID_KEY,
+    NodeSecretMaterialResponse, RuntimeObservationReport, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    RUNTIME_RESOURCE_BINDING_DIGEST_KEY, RUNTIME_RESOURCE_CLAIM_ID_KEY,
 };
 pub use registry_credential::RegistryCredentialMaterial;
 pub use resource::{

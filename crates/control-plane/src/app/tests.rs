@@ -866,7 +866,7 @@ async fn create_api_token(
 
 fn runtime_capabilities() -> Value {
     json!({
-        "schema": "a3s.runtime.capabilities.v3",
+        "schema": "a3s.runtime.capabilities.v4",
         "provider_id": "docker",
         "provider_build": "test",
         "unit_classes": ["task", "service"],
@@ -876,7 +876,7 @@ fn runtime_capabilities() -> Value {
         "mount_kinds": [],
         "health_check_kinds": [],
         "resource_controls": ["cpu", "memory", "pids", "ephemeral_storage"],
-        "features": ["durable_identity", "stop", "remove"]
+        "features": ["durable_identity", "stop", "remove", "service_tcp"]
     })
 }
 

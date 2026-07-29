@@ -15,7 +15,8 @@ use a3s_cloud_contracts::{
     NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit,
 };
 use a3s_runtime::contract::{
-    RuntimeHealthObservation, RuntimeHealthState, RuntimeObservation, RuntimeUnitClass,
+    RuntimeEvidence, RuntimeHealthObservation, RuntimeHealthState, RuntimeObservation,
+    RuntimeServiceEndpoint, RuntimeUnitClass, TransportProtocol,
 };
 use async_trait::async_trait;
 use chrono::Duration as ChronoDuration;
@@ -627,11 +628,31 @@ fn service_template() -> ServiceTemplate {
 fn running_observation(spec: &RuntimeUnitSpec) -> Result<RuntimeObservation, String> {
     let now_ms = u64::try_from(Utc::now().timestamp_millis())
         .map_err(|_| "test clock predates Unix epoch")?;
+    let spec_digest = spec.digest()?;
+    let endpoint_claims = spec
+        .network
+        .ports
+        .iter()
+        .enumerate()
+        .map(|(index, port)| {
+            if port.protocol != TransportProtocol::Tcp {
+                return Err("reconciliation fixture only exposes Service TCP ports".into());
+            }
+            let host_port = 49_152_u16
+                .checked_add(
+                    u16::try_from(index)
+                        .map_err(|_| "reconciliation fixture has too many service ports")?,
+                )
+                .ok_or("reconciliation fixture service port range overflowed")?;
+            let endpoint = RuntimeServiceEndpoint::node_local_tcp(&port.name, host_port)?;
+            Ok((endpoint.claim_key(), endpoint.claim_value()))
+        })
+        .collect::<Result<BTreeMap<_, _>, String>>()?;
     let observation = RuntimeObservation {
         schema: RuntimeObservation::SCHEMA.into(),
         unit_id: spec.unit_id.clone(),
         generation: spec.generation,
-        spec_digest: spec.digest()?,
+        spec_digest: spec_digest.clone(),
         class: RuntimeUnitClass::Service,
         state: RuntimeUnitState::Running,
         provider_resource_id: Some("provider/reconciliation-fixture".into()),
@@ -646,7 +667,12 @@ fn running_observation(spec: &RuntimeUnitSpec) -> Result<RuntimeObservation, Str
         }),
         outputs: Vec::new(),
         usage: None,
-        evidence: None,
+        evidence: Some(RuntimeEvidence {
+            provider_build: "test-runtime/1".into(),
+            spec_digest,
+            semantics_profile_digest: spec.semantics_profile_digest.clone(),
+            claims: endpoint_claims,
+        }),
         provider_attestation: None,
         failure: None,
     };

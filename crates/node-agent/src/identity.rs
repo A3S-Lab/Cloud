@@ -519,7 +519,7 @@ mod tests {
             mount_kinds: Vec::new(),
             health_check_kinds: Vec::new(),
             resource_controls: vec![ResourceControl::Cpu, ResourceControl::Memory],
-            features: vec![RuntimeFeature::DurableIdentity],
+            features: vec![RuntimeFeature::DurableIdentity, RuntimeFeature::ServiceTcp],
         }
     }
 
