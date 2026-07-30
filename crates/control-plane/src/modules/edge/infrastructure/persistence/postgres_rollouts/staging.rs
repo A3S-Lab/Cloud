@@ -22,15 +22,50 @@ use crate::modules::edge::infrastructure::persistence::postgres_schema::{
 use crate::modules::edge::infrastructure::persistence::postgres_tls::{
     insert_certificate, CertificateRow, CertificateSelection,
 };
+use crate::modules::edge::infrastructure::{
+    GatewayManagedSnapshotComposition, StageManagedGatewayRollout,
+};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_orm::{select_from, PostgresExecutor};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 pub(in super::super) async fn stage(
     executor: &PostgresExecutor,
     bundle: StageGatewayRollout,
 ) -> Result<GatewayRolloutResult, RepositoryError> {
+    stage_impl(executor, bundle, None).await
+}
+
+pub(in super::super) async fn stage_managed(
+    executor: &PostgresExecutor,
+    stage: StageManagedGatewayRollout,
+) -> Result<GatewayRolloutResult, RepositoryError> {
+    let (bundle, compositions) = stage.into_parts();
+    stage_impl(executor, bundle, Some(compositions)).await
+}
+
+async fn stage_impl(
+    executor: &PostgresExecutor,
+    bundle: StageGatewayRollout,
+    compositions: Option<
+        BTreeMap<crate::modules::shared_kernel::domain::NodeId, GatewayManagedSnapshotComposition>,
+    >,
+) -> Result<GatewayRolloutResult, RepositoryError> {
     bundle.validate().map_err(RepositoryError::Conflict)?;
+    if let Some(compositions) = &compositions {
+        for publication in &bundle.publications {
+            compositions
+                .get(&publication.node_id)
+                .ok_or_else(|| {
+                    RepositoryError::Conflict(
+                        "managed Gateway rollout omitted a member composition".into(),
+                    )
+                })?
+                .validate_for(publication)
+                .map_err(RepositoryError::Conflict)?;
+        }
+    }
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
@@ -93,7 +128,21 @@ pub(in super::super) async fn stage(
 
                 let mut physical_scopes = Vec::with_capacity(bundle.publications.len());
                 for publication in &bundle.publications {
-                    let current = lock_physical_scope(transaction, publication.node_id).await?;
+                    let current = match &compositions {
+                        Some(compositions) => {
+                            super::super::postgres_mcp_gateway_snapshots::lock_managed_composition(
+                                transaction,
+                                compositions.get(&publication.node_id).ok_or_else(|| {
+                                    RepositoryError::Conflict(
+                                        "managed Gateway rollout omitted a member composition"
+                                            .into(),
+                                    )
+                                })?,
+                            )
+                            .await?
+                        }
+                        None => lock_physical_scope(transaction, publication.node_id).await?,
+                    };
                     let expected_version = bundle
                         .expected_scope_versions
                         .get(&publication.node_id)
@@ -145,6 +194,20 @@ pub(in super::super) async fn stage(
                 }
                 for certificate in &bundle.certificates {
                     insert_certificate(transaction, certificate).await?;
+                }
+                if let Some(compositions) = &compositions {
+                    for publication in &bundle.publications {
+                        super::super::postgres_mcp_gateway_snapshots::persist_managed_composition(
+                            transaction,
+                            compositions.get(&publication.node_id).ok_or_else(|| {
+                                RepositoryError::Conflict(
+                                    "managed Gateway rollout omitted a member composition".into(),
+                                )
+                            })?,
+                            publication,
+                        )
+                        .await?;
+                    }
                 }
                 for (publication, current) in bundle.publications.iter().zip(physical_scopes.iter())
                 {

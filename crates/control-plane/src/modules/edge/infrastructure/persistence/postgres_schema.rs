@@ -302,6 +302,7 @@ orm_table! {
         desired_state_digest: String => "desired_state_digest",
         desired_gateway_scope_ids: serde_json::Value => "desired_gateway_scope_ids",
         mcp_route_count: u32 => "mcp_route_count",
+        publication_owner: String => "publication_owner",
         staged_at: DateTime<Utc> => "staged_at",
     }
 }

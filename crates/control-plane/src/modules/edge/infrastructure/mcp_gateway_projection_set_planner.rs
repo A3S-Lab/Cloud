@@ -384,16 +384,18 @@ mod tests {
         IRouteTargetReader, ResolvedMcpRouteProjectionInput, ResolvedRouteTarget,
     };
     use crate::modules::edge::domain::{
-        DomainClaim, DomainNamePattern, GatewayScopeState, McpCredential, McpRoutePolicy, Route,
-        RouteHostname, RoutePath, RoutePortName, RouteState,
+        DomainClaim, DomainNamePattern, GatewayPublication, GatewayScopeState, McpCredential,
+        McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
     };
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
         fixture, now, target, Fixture,
     };
     use crate::modules::edge::infrastructure::{
-        CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-        GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpGatewayNodeProjectionAssembler,
-        McpGatewaySnapshotAnchor, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+        CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot,
+        GatewayManagedSnapshotComposition, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+        GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, GatewaySnapshotRouteInput,
+        McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor, McpRouteProjectionPlanner,
+        McpRouteTargetProjectionCompiler, PlannedGatewayNodeDesiredState,
         PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
@@ -918,6 +920,137 @@ mod tests {
                 "app.example.com".to_owned(),
                 fixture.policy.spec().hostname.as_str().to_owned()
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn ordinary_route_publication_preserves_mcp_and_carries_one_cas_composition() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("credential");
+        let planned = planner(
+            vec![input(&fixture)],
+            Arc::new(CountingTargetReader {
+                target: Some(target(&fixture, node_id, 49152)),
+                calls: AtomicUsize::new(0),
+            }),
+            credentials,
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: scope(&fixture, node_id),
+            gateway_node_id: node_id,
+            observed_at: now(),
+        })
+        .await
+        .expect("MCP projection");
+        let expires_at = planned
+            .projection()
+            .expect("projection")
+            .projection()
+            .expires_at;
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState::empty(node_id),
+            Vec::new(),
+            node_projection(planned),
+        )
+        .expect("node desired state");
+
+        let hostname = RouteHostname::parse("app.example.com").expect("hostname");
+        let claim_id = DomainClaimId::new();
+        let mut claim = DomainClaim::create(
+            claim_id,
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            DomainNamePattern::parse(hostname.as_str()).expect("pattern"),
+            format!("a3s-cloud-verification={claim_id}"),
+            now() - Duration::minutes(1),
+        )
+        .expect("claim");
+        claim
+            .verify(now() - Duration::seconds(1))
+            .expect("verified claim");
+        let certificate_id = GatewayCertificateId::new();
+        let route = Route::create(
+            RouteId::new(),
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            fixture.policy.spec().gateway_scope_id,
+            node_id,
+            hostname,
+            RoutePath::parse("/app").expect("path"),
+            claim.id,
+            claim.pattern.clone(),
+            certificate_id,
+            fixture.policy.spec().workload_id,
+            target(&fixture, node_id, 49153).target,
+            now(),
+        )
+        .expect("pending route");
+        let compiled = snapshot_compiler()
+            .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
+                desired_state,
+                certificate_id,
+                snapshot_routes: vec![route],
+                additional_domain_claims: vec![claim],
+            })
+            .expect("managed Route snapshot");
+        assert!(compiled.snapshot().acl.contains("routers \"route-"));
+        assert!(compiled.snapshot().acl.contains("routers \"mcp-route-"));
+        assert!(compiled.snapshot().acl.contains("mcp {"));
+        assert!(compiled.active_route_versions().is_empty());
+        assert_eq!(compiled.domain_claim_versions().len(), 2);
+        assert_eq!(
+            compiled
+                .snapshot()
+                .certificate_request
+                .as_ref()
+                .expect("certificate request")
+                .dns_names,
+            vec![
+                "app.example.com".to_owned(),
+                fixture.policy.spec().hostname.as_str().to_owned(),
+            ]
+        );
+
+        let publication = GatewayPublication::stage(
+            node_id,
+            NodeCommandId::new(),
+            uuid::Uuid::now_v7(),
+            compiled.snapshot().clone(),
+            now(),
+            now() + Duration::minutes(5),
+        )
+        .expect("publication");
+        let composition = GatewayManagedSnapshotComposition::new(
+            compiled,
+            &publication,
+            GatewaySnapshotPublicationOwner::Ordinary,
+        )
+        .expect("ordinary composition");
+        assert_eq!(
+            composition.owner(),
+            GatewaySnapshotPublicationOwner::Ordinary
+        );
+        assert_eq!(
+            composition.event().payload["mcp_route_ids"]
+                .as_array()
+                .expect("MCP route IDs")
+                .len(),
+            1
+        );
+        assert_eq!(
+            composition.event().payload["ordinary_route_ids"]
+                .as_array()
+                .expect("ordinary route IDs")
+                .len(),
+            1
         );
     }
 

@@ -5,8 +5,9 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::services::{IGatewayCommandQueue, IRouteTargetReader};
 use crate::modules::edge::domain::{GatewayPublication, RouteHostname, RoutePath, RoutePortName};
 use crate::modules::edge::infrastructure::{
-    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
-    PlanGatewayRouteRollout,
+    GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner,
+    GatewaySnapshotCompiler, IMcpGatewaySnapshotRepository, PlanGatewayRouteRollout,
+    PlanManagedGatewayRouteRollout, StageManagedRoutePublication,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -20,6 +21,7 @@ pub struct PublishRouteHandler {
     routes: Arc<dyn IEdgeRepository>,
     commands: Arc<dyn IGatewayCommandQueue>,
     rollout_planner: GatewayRouteRolloutPlanner,
+    managed_snapshots: Option<Arc<dyn IMcpGatewaySnapshotRepository>>,
 }
 
 impl PublishRouteHandler {
@@ -38,6 +40,32 @@ impl PublishRouteHandler {
             routes,
             commands,
             rollout_planner,
+            managed_snapshots: None,
+        })
+    }
+
+    pub fn new_managed(
+        routes: Arc<dyn IEdgeRepository>,
+        managed_snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
+        targets: Arc<dyn IRouteTargetReader>,
+        commands: Arc<dyn IGatewayCommandQueue>,
+        compiler: GatewaySnapshotCompiler,
+        desired_state: GatewayNodeDesiredStatePlanner,
+        command_ttl: Duration,
+    ) -> Result<Self, String> {
+        let rollout_compiler =
+            GatewayRouteRolloutCompiler::new(compiler, command_ttl, Duration::hours(24))?;
+        let rollout_planner = GatewayRouteRolloutPlanner::new_managed(
+            Arc::clone(&routes),
+            targets,
+            rollout_compiler,
+            desired_state,
+        );
+        Ok(Self {
+            routes,
+            commands,
+            rollout_planner,
+            managed_snapshots: Some(managed_snapshots),
         })
     }
 }
@@ -51,6 +79,7 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
         let routes = Arc::clone(&self.routes);
         let commands = Arc::clone(&self.commands);
         let rollout_planner = self.rollout_planner.clone();
+        let managed_snapshots = self.managed_snapshots.clone();
         Box::pin(async move {
             let hostname = match RouteHostname::parse(command.hostname) {
                 Ok(value) => value,
@@ -167,32 +196,65 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                     Err(error) => return Ok(Err(error.into())),
                 }
             };
-            let planned = match rollout_planner
-                .plan(PlanGatewayRouteRollout {
-                    scope: gateway_scope.clone(),
-                    rollout_id: GatewayRolloutId::new(),
-                    generation,
-                    correlation_id: command.request_id,
-                    route_id: RouteId::new(),
-                    workload_revision_id: command.workload_revision_id,
-                    hostname,
-                    path_prefix,
-                    port_name,
-                    domain_claim_id: claim.id,
-                    domain_pattern: claim.pattern,
-                    issued_at: command.requested_at,
-                })
-                .await
-            {
+            let planned_result = match managed_snapshots.as_ref() {
+                Some(_) => {
+                    rollout_planner
+                        .plan_managed(PlanManagedGatewayRouteRollout {
+                            scope: gateway_scope.clone(),
+                            rollout_id: GatewayRolloutId::new(),
+                            generation,
+                            correlation_id: command.request_id,
+                            route_id: RouteId::new(),
+                            workload_revision_id: command.workload_revision_id,
+                            hostname,
+                            path_prefix,
+                            port_name,
+                            domain_claim: claim,
+                            issued_at: command.requested_at,
+                        })
+                        .await
+                }
+                None => {
+                    rollout_planner
+                        .plan(PlanGatewayRouteRollout {
+                            scope: gateway_scope.clone(),
+                            rollout_id: GatewayRolloutId::new(),
+                            generation,
+                            correlation_id: command.request_id,
+                            route_id: RouteId::new(),
+                            workload_revision_id: command.workload_revision_id,
+                            hostname,
+                            path_prefix,
+                            port_name,
+                            domain_claim_id: claim.id,
+                            domain_pattern: claim.pattern,
+                            issued_at: command.requested_at,
+                        })
+                        .await
+                }
+            };
+            let planned = match planned_result {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };
             if gateway_scope.member_node_ids.len() > 1 {
-                let bundle = match planned.stage_bundle(idempotency) {
-                    Ok(value) => value,
-                    Err(error) => return Err(BootError::Internal(error)),
+                let staged_result = match managed_snapshots.as_ref() {
+                    Some(repository) => {
+                        let bundle = match planned.managed_stage_bundle(idempotency) {
+                            Ok(value) => value,
+                            Err(error) => return Err(BootError::Internal(error)),
+                        };
+                        repository.stage_managed_gateway_rollout(bundle).await
+                    }
+                    None => {
+                        let bundle = match planned.stage_bundle(idempotency) {
+                            Ok(value) => value,
+                            Err(error) => return Err(BootError::Internal(error)),
+                        };
+                        routes.stage_gateway_rollout(bundle).await
+                    }
                 };
-                let staged = match routes.stage_gateway_rollout(bundle).await {
+                let staged = match staged_result {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error.into())),
                 };
@@ -248,18 +310,33 @@ impl CommandHandler<PublishRoute> for PublishRouteHandler {
                 Ok(value) => value,
                 Err(error) => return Err(BootError::Internal(error.to_string())),
             };
-            let staged = match routes
-                .stage_route_publication(StageRoutePublication {
-                    route,
-                    gateway_scope,
-                    certificate,
-                    publication,
-                    expected_scope_version,
-                    idempotency,
-                    event,
-                })
-                .await
-            {
+            let ordinary = StageRoutePublication {
+                route,
+                gateway_scope,
+                certificate,
+                publication,
+                expected_scope_version,
+                idempotency,
+                event,
+            };
+            let staged_result = match managed_snapshots.as_ref() {
+                Some(repository) => {
+                    let composition = planned
+                        .managed_compositions
+                        .get(&target_node_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            BootError::Internal(
+                                "managed Gateway rollout omitted its primary composition".into(),
+                            )
+                        })?;
+                    let bundle = StageManagedRoutePublication::new(ordinary, composition)
+                        .map_err(BootError::Internal)?;
+                    repository.stage_managed_route_publication(bundle).await
+                }
+                None => routes.stage_route_publication(ordinary).await,
+            };
+            let staged = match staged_result {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };

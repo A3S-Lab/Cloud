@@ -751,6 +751,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,
+            mcp_gateway_snapshots: None,
+            gateway_node_desired_state_planner: None,
             domain_verifier: Arc::new(LocalDomainOwnershipVerifier),
             gateway_projector,
             operations: Arc::new(InMemoryOperationRepository::new()),

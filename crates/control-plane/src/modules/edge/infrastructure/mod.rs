@@ -3,6 +3,7 @@ mod domain_ownership_verifier;
 mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
+mod gateway_node_desired_state_planner;
 mod gateway_observation_queue;
 mod gateway_replica_recovery_reconciler;
 mod gateway_rollout_reconciler;
@@ -54,6 +55,9 @@ pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciliationReport,
 };
 pub use gateway_command_queue::FleetGatewayCommandQueue;
+pub use gateway_node_desired_state_planner::{
+    GatewayNodeDesiredStatePlanner, PlanGatewayNodeDesiredState, PlannedGatewayNodeDesiredState,
+};
 pub use gateway_observation_queue::FleetGatewayObservationQueue;
 pub use gateway_replica_recovery_reconciler::{
     GatewayReplicaRecoveryReconciler, GatewayReplicaRecoveryReconciliationFailure,
@@ -72,14 +76,16 @@ pub use gateway_rollout_rollback_reconciler::{
     GatewayRolloutRollbackReconciliationReport,
 };
 pub use gateway_route_rollout_compiler::{
-    CompileGatewayRouteRollout, CompiledGatewayRouteRollout, GatewayMemberSnapshotContext,
-    GatewayRouteRolloutCompiler,
+    CompileGatewayRouteRollout, CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout,
+    GatewayMemberSnapshotContext, GatewayRouteRolloutCompiler,
 };
-pub use gateway_route_rollout_planner::{GatewayRouteRolloutPlanner, PlanGatewayRouteRollout};
+pub use gateway_route_rollout_planner::{
+    GatewayRouteRolloutPlanner, PlanGatewayRouteRollout, PlanManagedGatewayRouteRollout,
+};
 pub use gateway_snapshot_compiler::{
-    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, GatewayDomainClaimVersion,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
-    GatewaySnapshotRouteInput,
+    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot,
+    GatewayDomainClaimVersion, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
 };
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::{
@@ -104,9 +110,11 @@ pub use mcp_gateway_projection_set_planner::{
     McpRouteProjectionVersion, PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
 };
 pub use mcp_gateway_publication::{
+    GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
-    McpGatewaySnapshotStatus, StageMcpGatewaySnapshot,
+    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedRoutePublication,
+    StageMcpGatewaySnapshot,
 };
 pub use mcp_gateway_snapshot_reconciler::{
     McpGatewaySnapshotReconciler, McpGatewaySnapshotReconciliationFailure,

@@ -1,4 +1,7 @@
 use crate::modules::edge::domain::events::McpGatewaySnapshotStaged;
+use crate::modules::edge::domain::repositories::{
+    EdgeRoutePublicationResult, GatewayRolloutResult, StageGatewayRollout, StageRoutePublication,
+};
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateState, GatewayPublication, GatewayPublicationState,
     GatewayScope, GatewayScopeState,
@@ -13,14 +16,58 @@ use crate::modules::shared_kernel::domain::{
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct StageMcpGatewaySnapshot {
-    candidate: CompiledMcpGatewaySnapshot,
+    composition: GatewayManagedSnapshotComposition,
     publication: GatewayPublication,
     certificate: Option<GatewayCertificate>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GatewaySnapshotPublicationOwner {
+    McpReconciler,
+    Ordinary,
+}
+
+impl GatewaySnapshotPublicationOwner {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::McpReconciler => "mcp-reconciler",
+            Self::Ordinary => "ordinary",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "mcp-reconciler" => Ok(Self::McpReconciler),
+            "ordinary" => Ok(Self::Ordinary),
+            _ => Err("Gateway snapshot publication owner is invalid".into()),
+        }
+    }
+}
+
+/// Immutable MCP desired-state evidence attached to any complete Gateway
+/// publication, including publications initiated by ordinary Route flows.
+#[derive(Debug, Clone)]
+pub struct GatewayManagedSnapshotComposition {
+    candidate: CompiledMcpGatewaySnapshot,
+    owner: GatewaySnapshotPublicationOwner,
     event: DomainEventEnvelope,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageManagedRoutePublication {
+    ordinary: StageRoutePublication,
+    composition: GatewayManagedSnapshotComposition,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageManagedGatewayRollout {
+    ordinary: StageGatewayRollout,
+    compositions: BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -210,35 +257,26 @@ impl StageMcpGatewaySnapshot {
                 )
             })
             .transpose()?;
-        let next_physical_scope_version = candidate
-            .physical_scope()
-            .aggregate_version
-            .checked_add(1)
-            .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
-        let event = McpGatewaySnapshotStaged::envelope(
-            candidate.mcp().anchor().organization_id,
-            candidate.mcp().anchor().project_id,
-            candidate.mcp().anchor().environment_id,
-            candidate.mcp().anchor().gateway_scope_id,
-            candidate.mcp().scope_ids().to_vec(),
-            next_physical_scope_version,
+        let composition = GatewayManagedSnapshotComposition::new(
+            candidate,
             &publication,
-            ordinary_route_ids(&candidate),
-            mcp_route_ids(&candidate),
-            domain_claim_ids,
+            GatewaySnapshotPublicationOwner::McpReconciler,
         )?;
         let stage = Self {
-            candidate,
+            composition,
             publication,
             certificate,
-            event,
         };
         stage.validate()?;
         Ok(stage)
     }
 
     pub const fn candidate(&self) -> &CompiledMcpGatewaySnapshot {
-        &self.candidate
+        self.composition.candidate()
+    }
+
+    pub const fn composition(&self) -> &GatewayManagedSnapshotComposition {
+        &self.composition
     }
 
     pub const fn publication(&self) -> &GatewayPublication {
@@ -250,48 +288,24 @@ impl StageMcpGatewaySnapshot {
     }
 
     pub const fn event(&self) -> &DomainEventEnvelope {
-        &self.event
+        self.composition.event()
     }
 
     pub fn validate(&self) -> Result<(), String> {
         let snapshot = self.publication.snapshot()?;
-        let expected_scope_version = self
-            .candidate
-            .physical_scope()
-            .aggregate_version
-            .checked_add(1)
-            .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
-        let payload =
-            serde_json::from_value::<McpGatewaySnapshotStaged>(self.event.payload.clone())
-                .map_err(|error| error.to_string())?;
-        let ordinary_route_ids = ordinary_route_ids(&self.candidate);
-        let mcp_route_ids = mcp_route_ids(&self.candidate);
-        let domain_claim_ids = domain_claim_ids(&self.candidate);
-        if snapshot != *self.candidate.snapshot()
+        self.composition.validate_for(&self.publication)?;
+        let candidate = self.composition.candidate();
+        let payload = serde_json::from_value::<McpGatewaySnapshotStaged>(
+            self.composition.event().payload.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let domain_claim_ids = domain_claim_ids(candidate);
+        if snapshot != *candidate.snapshot()
             || self.publication.state != GatewayPublicationState::Pending
             || self.publication.failure.is_some()
             || self.publication.acknowledged_at.is_some()
-            || self.publication.node_id != self.candidate.physical_scope().node_id
-            || self.publication.command_issued_at != self.candidate.mcp().observed_at()
-            || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
-            || self.event.schema_version != 2
-            || self.event.organization_id != self.candidate.mcp().organization_id().as_uuid()
-            || self.event.aggregate_id != self.publication.node_id.as_uuid()
-            || self.event.aggregate_version != expected_scope_version
-            || self.event.occurred_at != self.publication.command_issued_at
-            || self.event.correlation_id != self.publication.command_correlation_id
-            || payload.organization_id != self.candidate.mcp().anchor().organization_id
-            || payload.project_id != self.candidate.mcp().anchor().project_id
-            || payload.environment_id != self.candidate.mcp().anchor().environment_id
-            || payload.gateway_scope_id != self.candidate.mcp().anchor().gateway_scope_id
-            || payload.desired_gateway_scope_ids != self.candidate.mcp().scope_ids()
-            || payload.node_id != self.publication.node_id
-            || payload.gateway_revision != self.publication.revision
-            || payload.gateway_command_id != self.publication.command_id
-            || payload.snapshot_digest != self.publication.snapshot_digest
-            || payload.ordinary_route_ids != ordinary_route_ids
-            || payload.mcp_route_ids != mcp_route_ids
-            || payload.domain_claim_ids != domain_claim_ids
+            || self.publication.node_id != candidate.physical_scope().node_id
+            || self.publication.command_issued_at != candidate.mcp().observed_at()
         {
             return Err("MCP Gateway snapshot stage bundle is inconsistent".into());
         }
@@ -301,7 +315,7 @@ impl StageMcpGatewaySnapshot {
         ) {
             (Some(request), Some(certificate))
                 if certificate.id.as_uuid() == request.certificate_id
-                    && certificate.organization_id == self.candidate.mcp().organization_id()
+                    && certificate.organization_id == candidate.mcp().organization_id()
                     && certificate.node_id == self.publication.node_id
                     && certificate.domain_claim_ids == domain_claim_ids
                     && certificate.gateway_revision == self.publication.revision
@@ -328,17 +342,188 @@ impl StageMcpGatewaySnapshot {
     pub(crate) fn into_parts(
         self,
     ) -> (
-        CompiledMcpGatewaySnapshot,
+        GatewayManagedSnapshotComposition,
         GatewayPublication,
         Option<GatewayCertificate>,
-        DomainEventEnvelope,
     ) {
-        (
-            self.candidate,
-            self.publication,
-            self.certificate,
-            self.event,
-        )
+        (self.composition, self.publication, self.certificate)
+    }
+}
+
+impl GatewayManagedSnapshotComposition {
+    pub fn new(
+        candidate: CompiledMcpGatewaySnapshot,
+        publication: &GatewayPublication,
+        owner: GatewaySnapshotPublicationOwner,
+    ) -> Result<Self, String> {
+        let next_physical_scope_version = candidate
+            .physical_scope()
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
+        let event = McpGatewaySnapshotStaged::envelope(
+            candidate.mcp().anchor().organization_id,
+            candidate.mcp().anchor().project_id,
+            candidate.mcp().anchor().environment_id,
+            candidate.mcp().anchor().gateway_scope_id,
+            candidate.mcp().scope_ids().to_vec(),
+            next_physical_scope_version,
+            publication,
+            ordinary_route_ids(&candidate),
+            mcp_route_ids(&candidate),
+            domain_claim_ids(&candidate),
+        )?;
+        let composition = Self {
+            candidate,
+            owner,
+            event,
+        };
+        composition.validate_for(publication)?;
+        Ok(composition)
+    }
+
+    pub const fn candidate(&self) -> &CompiledMcpGatewaySnapshot {
+        &self.candidate
+    }
+
+    pub const fn owner(&self) -> GatewaySnapshotPublicationOwner {
+        self.owner
+    }
+
+    pub const fn event(&self) -> &DomainEventEnvelope {
+        &self.event
+    }
+
+    pub fn validate_for(&self, publication: &GatewayPublication) -> Result<(), String> {
+        publication.snapshot()?;
+        let expected_scope_version = self
+            .candidate
+            .physical_scope()
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
+        let payload =
+            serde_json::from_value::<McpGatewaySnapshotStaged>(self.event.payload.clone())
+                .map_err(|error| error.to_string())?;
+        if publication.snapshot()? != *self.candidate.snapshot()
+            || publication.node_id != self.candidate.physical_scope().node_id
+            || publication.command_issued_at != self.candidate.mcp().observed_at()
+            || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
+            || self.event.schema_version != 2
+            || self.event.organization_id != self.candidate.mcp().organization_id().as_uuid()
+            || self.event.aggregate_id != publication.node_id.as_uuid()
+            || self.event.aggregate_version != expected_scope_version
+            || self.event.occurred_at != publication.command_issued_at
+            || self.event.correlation_id != publication.command_correlation_id
+            || payload.organization_id != self.candidate.mcp().anchor().organization_id
+            || payload.project_id != self.candidate.mcp().anchor().project_id
+            || payload.environment_id != self.candidate.mcp().anchor().environment_id
+            || payload.gateway_scope_id != self.candidate.mcp().anchor().gateway_scope_id
+            || payload.desired_gateway_scope_ids != self.candidate.mcp().scope_ids()
+            || payload.node_id != publication.node_id
+            || payload.gateway_revision != publication.revision
+            || payload.gateway_command_id != publication.command_id
+            || payload.snapshot_digest != publication.snapshot_digest
+            || payload.ordinary_route_ids != ordinary_route_ids(&self.candidate)
+            || payload.mcp_route_ids != mcp_route_ids(&self.candidate)
+            || payload.domain_claim_ids != domain_claim_ids(&self.candidate)
+        {
+            return Err("managed Gateway snapshot composition is inconsistent".into());
+        }
+        Ok(())
+    }
+}
+
+impl StageManagedRoutePublication {
+    pub fn new(
+        ordinary: StageRoutePublication,
+        composition: GatewayManagedSnapshotComposition,
+    ) -> Result<Self, String> {
+        ordinary.validate()?;
+        composition.validate_for(&ordinary.publication)?;
+        if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
+            || composition.candidate().physical_scope().node_id != ordinary.publication.node_id
+            || composition.candidate().mcp().organization_id() != ordinary.route.organization_id
+            || ordinary.certificate.domain_claim_ids != domain_claim_ids(composition.candidate())
+        {
+            return Err("managed Route publication composition is inconsistent".into());
+        }
+        Ok(Self {
+            ordinary,
+            composition,
+        })
+    }
+
+    pub const fn ordinary(&self) -> &StageRoutePublication {
+        &self.ordinary
+    }
+
+    pub const fn composition(&self) -> &GatewayManagedSnapshotComposition {
+        &self.composition
+    }
+
+    pub(crate) fn into_parts(self) -> (StageRoutePublication, GatewayManagedSnapshotComposition) {
+        (self.ordinary, self.composition)
+    }
+}
+
+impl StageManagedGatewayRollout {
+    pub fn new(
+        ordinary: StageGatewayRollout,
+        compositions: BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
+    ) -> Result<Self, String> {
+        ordinary.validate()?;
+        let publication_nodes = ordinary
+            .publications
+            .iter()
+            .map(|publication| publication.node_id)
+            .collect::<BTreeSet<_>>();
+        if compositions.keys().copied().collect::<BTreeSet<_>>() != publication_nodes {
+            return Err(
+                "managed Gateway rollout compositions do not cover exact physical membership"
+                    .into(),
+            );
+        }
+        for publication in &ordinary.publications {
+            let composition = compositions.get(&publication.node_id).ok_or_else(|| {
+                "managed Gateway rollout publication omitted its composition".to_string()
+            })?;
+            composition.validate_for(publication)?;
+            let certificate = ordinary
+                .certificates
+                .iter()
+                .find(|certificate| certificate.node_id == publication.node_id)
+                .ok_or_else(|| {
+                    "managed Gateway rollout publication omitted its certificate".to_string()
+                })?;
+            if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
+                || composition.candidate().mcp().organization_id() != ordinary.scope.organization_id
+                || certificate.domain_claim_ids != domain_claim_ids(composition.candidate())
+            {
+                return Err("managed Gateway rollout composition is inconsistent".into());
+            }
+        }
+        Ok(Self {
+            ordinary,
+            compositions,
+        })
+    }
+
+    pub const fn ordinary(&self) -> &StageGatewayRollout {
+        &self.ordinary
+    }
+
+    pub fn compositions(&self) -> &BTreeMap<NodeId, GatewayManagedSnapshotComposition> {
+        &self.compositions
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        StageGatewayRollout,
+        BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
+    ) {
+        (self.ordinary, self.compositions)
     }
 }
 
@@ -372,6 +557,24 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
         stage: StageMcpGatewaySnapshot,
     ) -> Result<McpGatewaySnapshotStageResult, RepositoryError>;
 
+    async fn stage_managed_route_publication(
+        &self,
+        _stage: StageManagedRoutePublication,
+    ) -> Result<EdgeRoutePublicationResult, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "managed Route publication staging is not implemented".into(),
+        ))
+    }
+
+    async fn stage_managed_gateway_rollout(
+        &self,
+        _stage: StageManagedGatewayRollout,
+    ) -> Result<GatewayRolloutResult, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "managed Gateway rollout staging is not implemented".into(),
+        ))
+    }
+
     async fn pending_mcp_gateway_snapshots(
         &self,
         limit: usize,
@@ -391,11 +594,7 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
 }
 
 fn ordinary_route_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<RouteId> {
-    candidate
-        .active_route_versions()
-        .iter()
-        .map(|version| version.route_id)
-        .collect()
+    candidate.ordinary_route_ids().to_vec()
 }
 
 fn mcp_route_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<RouteId> {

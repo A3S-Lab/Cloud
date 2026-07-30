@@ -686,8 +686,8 @@ pub async fn exercise(
     );
     let stored_marker = Database::new(PostgresDialect, executor.clone())
         .fetch_one_as(
-            sql_query::<(String, serde_json::Value, u32)>(
-                "select desired_state_digest, desired_gateway_scope_ids, mcp_route_count from mcp_gateway_snapshot_publications where gateway_command_id = ",
+            sql_query::<(String, serde_json::Value, u32, String)>(
+                "select desired_state_digest, desired_gateway_scope_ids, mcp_route_count, publication_owner from mcp_gateway_snapshot_publications where gateway_command_id = ",
             )
             .bind(current_stage.publication().command_id.as_uuid()),
         )
@@ -702,6 +702,7 @@ pub async fn exercise(
                 .to_owned(),
             serde_json::json!([scope.id.as_uuid()]),
             u32::try_from(current_stage.candidate().mcp().route_versions().len())?,
+            "mcp-reconciler".to_owned(),
         )
     );
     assert_eq!(
