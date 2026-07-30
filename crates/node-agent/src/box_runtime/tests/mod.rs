@@ -76,19 +76,25 @@ impl NodeSecretTransport for GateSecretTransport {
 fn config(
     isolation: BoxRuntimeIsolation,
 ) -> (tempfile::TempDir, tempfile::TempDir, BoxRuntimeConfig) {
+    use std::os::unix::fs::PermissionsExt;
+
     let home = tempfile::tempdir().expect("temporary Box home");
-    let secret_root = tempfile::Builder::new()
+    let secret_mount = tempfile::Builder::new()
         .prefix("a3s-cloud-box-secrets-")
         .tempdir_in("/dev/shm")
-        .expect("temporary Box Secret tmpfs root");
+        .expect("temporary Box Secret tmpfs mount");
+    let secret_root = secret_mount.path().join("runtime-secrets");
+    std::fs::create_dir(&secret_root).expect("create private Box Secret root");
+    std::fs::set_permissions(&secret_root, std::fs::Permissions::from_mode(0o700))
+        .expect("make Box Secret root provider-private");
     let config = BoxRuntimeConfig {
         home_dir: home.path().to_path_buf(),
-        secret_root: secret_root.path().to_path_buf(),
+        secret_root,
         isolation,
         control_timeout_ms: 60_000,
         task_poll_interval_ms: 50,
     };
-    (home, secret_root, config)
+    (home, secret_mount, config)
 }
 
 #[tokio::test]

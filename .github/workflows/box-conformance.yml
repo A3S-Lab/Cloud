@@ -39,6 +39,8 @@ jobs:
     timeout-minutes: 60
     env:
       A3S_HOME: /tmp/runtime-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+      A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
     defaults:
       run:
         shell: bash
@@ -102,7 +104,7 @@ jobs:
           A3S_DEPS_STUB: "1"
         run: |
           cargo build --manifest-path crates/box/src/Cargo.toml --locked \
-            -p a3s-box-shim -p a3s-box-runtime
+            -p a3s-box-cli -p a3s-box-shim -p a3s-box-runtime
           cargo build --manifest-path crates/box/src/Cargo.toml --locked --release \
             -p a3s-box-guest-init --target x86_64-unknown-linux-musl
           cargo build --manifest-path crates/oci-runtime/Cargo.toml --locked --release \
@@ -134,13 +136,23 @@ jobs:
             a3s-cloud-runtime-secrets "$A3S_HOME/runtime-secrets"
           mountpoint -q "$A3S_HOME/runtime-secrets"
 
+      - name: Cache the pinned public Runtime image over HTTPS
+        env:
+          A3S_DEPS_STUB: "1"
+        run: |
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            A3S_HOME="$A3S_HOME" \
+            crates/box/src/target/debug/a3s-box pull \
+              "$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE"
+
       - name: Run every advertised Box Runtime profile
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
           A3S_BOX_RUNTIME_CONFORMANCE: "1"
-          A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-          A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
           A3S_REGISTRY_PROTOCOL: http
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
@@ -180,10 +192,7 @@ jobs:
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
-          A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
-          A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
           A3S_CLOUD_TEST_BOX: "1"
-          A3S_REGISTRY_PROTOCOL: http
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
@@ -203,7 +212,6 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
@@ -223,7 +231,6 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
@@ -253,7 +260,6 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
@@ -278,7 +284,7 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
+            A3S_REGISTRY_PROTOCOL=http \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
