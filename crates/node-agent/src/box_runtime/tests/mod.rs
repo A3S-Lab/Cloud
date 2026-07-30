@@ -1,5 +1,8 @@
 use super::*;
-use crate::{NodeControlClientError, NodeSecretTransport, SecretMaterial};
+use crate::{
+    ArtifactConfig, DownloadedNodeArtifact, NodeArtifactManager, NodeArtifactTransport,
+    NodeControlClientError, NodeSecretTransport, SecretMaterial,
+};
 use a3s_box_runtime::{ImageStore, DEFAULT_IMAGE_CACHE_SIZE};
 use a3s_cloud_contracts::CloudSecretReference;
 use a3s_runtime::contract::{
@@ -12,7 +15,7 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use tokio::time::Instant;
@@ -22,6 +25,50 @@ use uuid::Uuid;
 mod artifact_storage;
 #[path = "private_registry.rs"]
 mod private_registry;
+
+struct RejectingArtifactTransport;
+
+#[async_trait]
+impl NodeArtifactTransport for RejectingArtifactTransport {
+    async fn download(
+        &self,
+        _request: &a3s_cloud_contracts::NodeArtifactDownloadRequest,
+        _destination: &Path,
+        _maximum_bytes: u64,
+    ) -> Result<DownloadedNodeArtifact, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "Artifact-free Box Secret fixture attempted a download".into(),
+        ))
+    }
+
+    async fn upload(
+        &self,
+        _request: &a3s_cloud_contracts::NodeArtifactUploadRequest,
+        _source: &Path,
+    ) -> Result<a3s_cloud_contracts::NodeArtifactUploadReceipt, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "Artifact-free Box Secret fixture attempted an upload".into(),
+        ))
+    }
+}
+
+fn artifact_manager(
+    state_root: impl AsRef<Path>,
+    node_id: Uuid,
+) -> Result<Arc<NodeArtifactManager>, String> {
+    NodeArtifactManager::new(
+        state_root,
+        ArtifactConfig {
+            max_blob_bytes: 1024 * 1024,
+            max_entries: 100,
+            max_file_bytes: 512 * 1024,
+            max_expanded_bytes: 2 * 1024 * 1024,
+        },
+        node_id,
+        Arc::new(RejectingArtifactTransport),
+    )
+    .map(Arc::new)
+}
 
 struct GateSecretTransport {
     materials: HashMap<String, Vec<u8>>,
@@ -144,6 +191,7 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         control_timeout_ms: 120_000,
         task_poll_interval_ms: 25,
     };
+    let artifacts = artifact_manager(runtime_state.path().join("node-state"), Uuid::now_v7())?;
     let provider = build_box_runtime_provider(&config, runtime_state.path())
         .map_err(|error| secret_gate_error("build initial provider", &secret_root, error))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
@@ -151,7 +199,10 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         .bind_secret_transport(binding)
         .await
         .map_err(|error| secret_gate_error("bind initial transport", &secret_root, error))?;
-    let runtime = provider.into_client();
+    let runtime = provider
+        .into_artifact_bound_client(artifacts.clone())
+        .await
+        .map_err(|error| secret_gate_error("bind initial Artifact manager", &secret_root, error))?;
     let spec = secret_service_spec(
         environment_reference,
         file_reference,
@@ -191,7 +242,12 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         .bind_secret_transport(binding)
         .await
         .map_err(|error| secret_gate_error("bind recovered transport", &secret_root, error))?;
-    let recovered = recovered_provider.into_client();
+    let recovered = recovered_provider
+        .into_artifact_bound_client(artifacts)
+        .await
+        .map_err(|error| {
+            secret_gate_error("bind recovered Artifact manager", &secret_root, error)
+        })?;
     let calls_before_inspection = (
         transport.calls(environment_reference),
         transport.calls(file_reference),
@@ -399,7 +455,12 @@ async fn exercise_private_registry(
     let provider = build_box_runtime_provider(&config, private_home.path().join("runtime-state"))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
     provider.bind_secret_transport(binding).await?;
-    let runtime = provider.into_client();
+    let runtime = provider
+        .into_artifact_bound_client(artifact_manager(
+            private_home.path().join("node-state"),
+            Uuid::now_v7(),
+        )?)
+        .await?;
     let calls_before_pull = transport.calls(registry_reference);
     let first = private_registry_service_spec(&registry, registry_reference)?;
     let running = runtime

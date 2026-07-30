@@ -66,6 +66,7 @@ pub(super) async fn interrupt_after_provider_remove(
         )
         .into());
     }
+    let artifacts = artifact::manager(node_state, command.node_id)?;
     let recovered_runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
@@ -75,7 +76,9 @@ pub(super) async fn interrupt_after_provider_remove(
             task_poll_interval_ms: 25,
         },
         runtime_state,
-    )?;
+        artifacts,
+    )
+    .await?;
     if !matches!(
         recovered_runtime.inspect(&removal.unit_id).await?,
         RuntimeInspection::NotFound { .. }
@@ -95,6 +98,7 @@ pub(super) async fn recover_interrupted_remove(
     command: &a3s_cloud_contracts::NodeCommandEnvelope,
     expected: &RuntimeRemoval,
 ) -> BoxTestResult<NodeCommandAck> {
+    let artifacts = artifact::manager(node_state, command.node_id)?;
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
@@ -104,11 +108,14 @@ pub(super) async fn recover_interrupted_remove(
             task_poll_interval_ms: 25,
         },
         runtime_state,
-    )?;
+        artifacts.clone(),
+    )
+    .await?;
     let executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(node_state, command.node_id)?,
         runtime,
-    );
+    )
+    .with_artifacts(artifacts);
     let acknowledgement = executor.execute(command.clone()).await?;
     let recovered = removal_result(&acknowledgement)?;
     if recovered != expected {
@@ -138,6 +145,7 @@ async fn real_box_cleanup_crash_probe() -> BoxTestResult<()> {
     }
 
     let home = dedicated_box_home()?;
+    let artifacts = artifact::manager(&node_state, command.node_id)?;
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.clone(),
@@ -147,7 +155,9 @@ async fn real_box_cleanup_crash_probe() -> BoxTestResult<()> {
             task_poll_interval_ms: 25,
         },
         &runtime_state,
-    )?;
+        artifacts.clone(),
+    )
+    .await?;
     let paused_runtime: Arc<dyn RuntimeClient> = Arc::new(PauseAfterRemove {
         inner: runtime,
         marker_path,
@@ -155,7 +165,8 @@ async fn real_box_cleanup_crash_probe() -> BoxTestResult<()> {
     let executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(node_state, command.node_id)?,
         paused_runtime,
-    );
+    )
+    .with_artifacts(artifacts);
     let result = executor.execute(command).await;
     Err(invalid(format!(
         "cleanup crash probe returned before process death: {result:?}"

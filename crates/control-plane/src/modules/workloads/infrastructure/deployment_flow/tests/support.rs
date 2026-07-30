@@ -401,6 +401,7 @@ pub(super) async fn ready_node_with_capacity(
         digest_character,
         cpu_millis,
         memory_bytes,
+        crate::modules::shared_kernel::domain::NodeId::new(),
         capabilities(),
     )
     .await
@@ -415,6 +416,7 @@ pub(super) async fn ready_node_with_capabilities(
     digest_character: char,
     cpu_millis: u64,
     memory_bytes: u64,
+    proposed_node_id: crate::modules::shared_kernel::domain::NodeId,
     runtime_capabilities: RuntimeCapabilities,
 ) -> Result<
     (
@@ -451,7 +453,7 @@ pub(super) async fn ready_node_with_capabilities(
         .reserve_enrollment(
             &credential,
             NodeEnrollmentDraft {
-                proposed_node_id: crate::modules::shared_kernel::domain::NodeId::new(),
+                proposed_node_id,
                 name: NodeName::new(node_name)?,
                 agent_instance_id,
                 agent_version: "0.1.0".into(),

@@ -1,6 +1,10 @@
 use crate::modules::edge::domain::UpstreamEndpoint;
 use a3s_runtime::contract::{RuntimeServiceEndpoint, TransportProtocol};
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "runtime_http_upstream/artifact_fixture.rs"]
+mod artifact_fixture;
+
 /// Compiles one provider-owned Runtime TCP socket into the HTTP origin consumed
 /// by A3S Gateway. Runtime remains the endpoint authority; this adapter adds no
 /// endpoint identity, evidence prefix, registry, or lifecycle state.
@@ -35,7 +39,7 @@ mod tests {
     };
     #[cfg(target_os = "linux")]
     use a3s_cloud_node_agent::{
-        build_box_runtime_client, BoxRuntimeConfig, BoxRuntimeIsolation, CommandExecutor,
+        build_box_runtime_provider, BoxRuntimeConfig, BoxRuntimeIsolation, CommandExecutor,
         FileCommandJournal,
     };
     #[cfg(target_os = "linux")]
@@ -97,7 +101,8 @@ mod tests {
         let node_id = uuid::Uuid::now_v7();
         let aggregate_id = uuid::Uuid::now_v7();
         let journal = FileCommandJournal::new(node_state.path(), node_id)?;
-        let runtime = build_box_runtime_client(
+        let artifacts = artifact_fixture::manager(node_state.path(), node_id).map_err(invalid)?;
+        let provider = build_box_runtime_provider(
             &BoxRuntimeConfig {
                 home_dir: home.canonicalize()?,
                 secret_root: home.join("runtime-secrets").canonicalize()?,
@@ -107,6 +112,9 @@ mod tests {
             },
             runtime_state.path(),
         )?;
+        let runtime = provider
+            .into_artifact_bound_client(artifacts.clone())
+            .await?;
         let spec = real_box_service_spec()?;
         let apply_command = command(
             node_id,
@@ -122,7 +130,8 @@ mod tests {
                 resource_claim: None,
             },
         )?;
-        let executor = CommandExecutor::runtime_only(journal, runtime.clone());
+        let executor = CommandExecutor::runtime_only(journal, runtime.clone())
+            .with_artifacts(artifacts.clone());
         let applied = executor.execute(apply_command.clone()).await?;
         let applied_runtime = applied_observation(&applied)?.clone();
         require_current_healthy_observation(&applied_runtime, "apply")?;
@@ -137,7 +146,7 @@ mod tests {
         // must consume that fresh typed observation instead of treating the
         // replayed socket as a second endpoint registry.
         require_endpoint_closed(applied_endpoint.socket_addr()).await?;
-        let recovered_runtime = build_box_runtime_client(
+        let recovered_provider = build_box_runtime_provider(
             &BoxRuntimeConfig {
                 home_dir: home.canonicalize()?,
                 secret_root: home.join("runtime-secrets").canonicalize()?,
@@ -147,9 +156,13 @@ mod tests {
             },
             runtime_state.path(),
         )?;
+        let recovered_runtime = recovered_provider
+            .into_artifact_bound_client(artifacts.clone())
+            .await?;
         let recovered_journal = FileCommandJournal::new(node_state.path(), node_id)?;
         let recovered_executor =
-            CommandExecutor::runtime_only(recovered_journal, recovered_runtime.clone());
+            CommandExecutor::runtime_only(recovered_journal, recovered_runtime.clone())
+                .with_artifacts(artifacts);
         let mut replayed_command = apply_command;
         replayed_command.lease_id = uuid::Uuid::now_v7();
         let replayed = recovered_executor.execute(replayed_command).await?;

@@ -13,17 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Builds the Node Agent's sole Runtime client from the canonical A3S Box
-/// configuration and the Agent-owned Runtime state root.
-pub fn build_box_runtime_client(
-    config: &BoxRuntimeConfig,
-    state_root: impl AsRef<Path>,
-) -> RuntimeResult<Arc<dyn RuntimeClient>> {
-    Ok(build_box_runtime_provider(config, state_root)?.into_client())
-}
-
 /// Builds the production Box Runtime composition together with the one Cloud
-/// Secret adapter that is bound after node enrollment.
+/// Secret adapter and one Artifact adapter that are bound after node enrollment.
 pub fn build_box_runtime_provider(
     config: &BoxRuntimeConfig,
     state_root: impl AsRef<Path>,

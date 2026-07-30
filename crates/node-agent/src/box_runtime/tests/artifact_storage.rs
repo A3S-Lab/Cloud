@@ -155,10 +155,9 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
     )?;
 
     let provider = build_box_runtime_provider(&config, runtime_state.path())?;
-    provider
-        .bind_artifact_manager(artifact_manager.clone())
+    let runtime = provider
+        .into_artifact_bound_client(artifact_manager.clone())
         .await?;
-    let runtime = provider.into_client();
     let journal = FileCommandJournal::new(node_state.path(), node_id)?;
     let executor = CommandExecutor::runtime_only(journal, runtime.clone())
         .with_artifacts(artifact_manager.clone());
@@ -203,10 +202,9 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
     drop(runtime);
 
     let recovered_provider = build_box_runtime_provider(&config, runtime_state.path())?;
-    recovered_provider
-        .bind_artifact_manager(artifact_manager.clone())
+    let recovered_runtime = recovered_provider
+        .into_artifact_bound_client(artifact_manager.clone())
         .await?;
-    let recovered_runtime = recovered_provider.into_client();
     let recovered_journal = FileCommandJournal::new(node_state.path(), node_id)?;
     let recovered = CommandExecutor::runtime_only(recovered_journal, recovered_runtime.clone())
         .with_artifacts(artifact_manager.clone());

@@ -1,5 +1,7 @@
 #![cfg(unix)]
 
+#[path = "box_lifecycle/artifact.rs"]
+mod artifact;
 #[path = "box_lifecycle/resource_claim.rs"]
 mod resource_claim;
 
@@ -17,8 +19,10 @@ use a3s_cloud_contracts::{
     NodeCommandPayload, NodeCommandResult,
 };
 #[cfg(target_os = "linux")]
-use a3s_cloud_node_agent::{build_box_runtime_client, BoxRuntimeConfig, BoxRuntimeIsolation};
-use a3s_cloud_node_agent::{CommandExecutor, FileCommandJournal, JournalDecision};
+use a3s_cloud_node_agent::{build_box_runtime_provider, BoxRuntimeConfig, BoxRuntimeIsolation};
+use a3s_cloud_node_agent::{
+    CommandExecutor, FileCommandJournal, JournalDecision, NodeArtifactManager,
+};
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
     RuntimeApplyRequest, RuntimeInspection, RuntimeLogQuery, RuntimeNetworkSpec,
@@ -41,17 +45,33 @@ async fn real_box_recovers_journal_gaps_generation_and_resource_claims() -> Test
     let artifact = conformance_artifact()?;
     let node_id = Uuid::now_v7();
     let journal = FileCommandJournal::new(node_state.path(), node_id)?;
+    let artifacts = artifact::manager(node_state.path(), node_id)?;
 
-    prove_task_apply_gap_recovery(&home, &runtime_state, &journal, node_id, artifact.clone())
-        .await?;
-    prove_service_generation_lifecycle(&home, &runtime_state, &journal, node_id, artifact.clone())
-        .await?;
+    prove_task_apply_gap_recovery(
+        &home,
+        &runtime_state,
+        &journal,
+        node_id,
+        artifact.clone(),
+        artifacts.clone(),
+    )
+    .await?;
+    prove_service_generation_lifecycle(
+        &home,
+        &runtime_state,
+        &journal,
+        node_id,
+        artifact.clone(),
+        artifacts.clone(),
+    )
+    .await?;
     resource_claim::prove_resource_claim_lifecycle(
         &home,
         &runtime_state,
         &journal,
         node_id,
         artifact,
+        artifacts,
     )
     .await?;
 
@@ -65,6 +85,7 @@ async fn prove_task_apply_gap_recovery(
     journal: &FileCommandJournal,
     node_id: Uuid,
     artifact: ArtifactRef,
+    artifacts: Arc<NodeArtifactManager>,
 ) -> TestResult<()> {
     let aggregate_id = Uuid::now_v7();
     let spec = runtime_spec(
@@ -93,7 +114,7 @@ async fn prove_task_apply_gap_recovery(
 
     // This is the durable crash boundary: Runtime and Box have completed the
     // apply, but the Agent has not persisted the command completion yet.
-    let first_runtime = runtime(home, runtime_state.path())?;
+    let first_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let first = first_runtime.apply(&request).await?;
     if first.state != RuntimeUnitState::Succeeded {
         return Err(invalid(format!(
@@ -104,8 +125,9 @@ async fn prove_task_apply_gap_recovery(
     }
     drop(first_runtime);
 
-    let recovered_runtime = runtime(home, runtime_state.path())?;
-    let executor = CommandExecutor::runtime_only(journal.clone(), recovered_runtime.clone());
+    let recovered_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
+    let executor = CommandExecutor::runtime_only(journal.clone(), recovered_runtime.clone())
+        .with_artifacts(artifacts);
     let mut rebound = apply;
     rebound.lease_id = Uuid::now_v7();
     let acknowledgement = executor.execute(rebound).await?;
@@ -138,6 +160,7 @@ async fn prove_service_generation_lifecycle(
     journal: &FileCommandJournal,
     node_id: Uuid,
     artifact: ArtifactRef,
+    artifacts: Arc<NodeArtifactManager>,
 ) -> TestResult<()> {
     let aggregate_id = Uuid::now_v7();
     let unit_id = format!("cloud-box-service-{}", Uuid::now_v7().simple());
@@ -164,7 +187,7 @@ async fn prove_service_generation_lifecycle(
     ) {
         return Err(invalid("new Cloud Service command did not enter execution").into());
     }
-    let first_runtime = runtime(home, runtime_state.path())?;
+    let first_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let first = first_runtime.apply(&first_request).await?;
     if first.state != RuntimeUnitState::Running {
         return Err(invalid("first Box Service generation did not become running").into());
@@ -175,9 +198,10 @@ async fn prove_service_generation_lifecycle(
         .ok_or_else(|| invalid("first Box Service generation omitted provider identity"))?;
     drop(first_runtime);
 
-    let recovered_runtime = runtime(home, runtime_state.path())?;
+    let recovered_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let recovered_executor =
-        CommandExecutor::runtime_only(journal.clone(), recovered_runtime.clone());
+        CommandExecutor::runtime_only(journal.clone(), recovered_runtime.clone())
+            .with_artifacts(artifacts);
     let mut rebound = first_command;
     rebound.lease_id = Uuid::now_v7();
     let recovered_first = recovered_executor.execute(rebound).await?;
@@ -264,8 +288,12 @@ async fn prove_service_generation_lifecycle(
 }
 
 #[cfg(target_os = "linux")]
-fn runtime(home: &Path, state_root: &Path) -> TestResult<Arc<dyn RuntimeClient>> {
-    Ok(build_box_runtime_client(
+async fn runtime(
+    home: &Path,
+    state_root: &Path,
+    artifacts: Arc<NodeArtifactManager>,
+) -> TestResult<Arc<dyn RuntimeClient>> {
+    let provider = build_box_runtime_provider(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
             secret_root: home.join("runtime-secrets"),
@@ -274,11 +302,16 @@ fn runtime(home: &Path, state_root: &Path) -> TestResult<Arc<dyn RuntimeClient>>
             task_poll_interval_ms: 25,
         },
         state_root,
-    )?)
+    )?;
+    Ok(provider.into_artifact_bound_client(artifacts).await?)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn runtime(_home: &Path, _state_root: &Path) -> TestResult<Arc<dyn RuntimeClient>> {
+async fn runtime(
+    _home: &Path,
+    _state_root: &Path,
+    _artifacts: Arc<NodeArtifactManager>,
+) -> TestResult<Arc<dyn RuntimeClient>> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
         "real Box lifecycle validation requires Linux",

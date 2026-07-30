@@ -32,7 +32,7 @@ pub async fn run_node_agent(
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), NodeAgentError> {
     let _process_lock = acquire_process_lock(&config.node.state_dir).await?;
-    let capabilities = runtime.client.capabilities().await?;
+    let capabilities = runtime.capabilities().await?;
     capabilities.validate().map_err(NodeAgentError::Invalid)?;
 
     let identity_store = FileNodeIdentityStore::new(config.node.state_dir.clone());
@@ -74,13 +74,13 @@ pub async fn run_node_agent(
         )
         .map_err(NodeAgentError::Invalid)?,
     );
-    runtime
-        .bind_artifact_manager(artifact_manager.clone())
+    let runtime = runtime
+        .into_artifact_bound_client(artifact_manager.clone())
         .await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(
         session_transport,
-        runtime.client,
+        runtime,
         gateway,
         identity,
         capabilities,
@@ -120,9 +120,9 @@ impl NodeRuntimeProvider {
         }
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn into_client(self) -> Arc<dyn RuntimeClient> {
-        self.client
+    /// Inspect the concrete Box capabilities before node enrollment.
+    pub(crate) async fn capabilities(&self) -> a3s_runtime::RuntimeResult<RuntimeCapabilities> {
+        self.client.capabilities().await
     }
 
     pub(crate) async fn bind_secret_transport(
@@ -132,11 +132,14 @@ impl NodeRuntimeProvider {
         self.secret_materializer.bind_transport(transport).await
     }
 
-    pub(crate) async fn bind_artifact_manager(
-        &self,
+    /// Bind the one enrolled Artifact manager and consume this provider into
+    /// the only Runtime client that may receive node commands.
+    pub async fn into_artifact_bound_client(
+        self,
         manager: Arc<NodeArtifactManager>,
-    ) -> a3s_runtime::RuntimeResult<()> {
-        self.artifact_port.bind_manager(manager).await
+    ) -> a3s_runtime::RuntimeResult<Arc<dyn RuntimeClient>> {
+        self.artifact_port.bind_manager(manager).await?;
+        Ok(self.client)
     }
 }
 
