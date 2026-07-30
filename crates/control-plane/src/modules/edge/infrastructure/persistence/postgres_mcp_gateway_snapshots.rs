@@ -1,22 +1,34 @@
-use super::postgres::{insert_publication, PostgresEdgeRepository, RouteRow, RouteSelection};
+use super::postgres::{
+    insert_publication, PostgresEdgeRepository, PublicationRow, PublicationSelection, RouteRow,
+    RouteSelection,
+};
 use super::postgres_rollout_routes;
 use super::postgres_schema::{
-    DomainClaims, GatewayPublications, GatewayRouteProjections, GatewayRouteScopes,
-    GatewayScopeMembers, GatewayScopes, McpCredentials, McpRoutePolicies, Nodes, Routes, Workloads,
+    DomainClaims, GatewayCertificates, GatewayPublications, GatewayRouteProjections,
+    GatewayRouteScopes, GatewayScopeMembers, GatewayScopes, McpCredentials,
+    McpGatewaySnapshotPublications, McpRoutePolicies, Nodes, Routes, Workloads,
 };
-use super::postgres_tls::insert_certificate;
+use super::postgres_tls::{
+    insert_certificate, update_certificate, CertificateRow, CertificateSelection,
+};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, store_outbox, transaction_error,
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::{GatewayPublicationState, GatewayScopeState, RouteState};
 use crate::modules::edge::infrastructure::{
-    CompiledMcpGatewaySnapshot, IMcpGatewaySnapshotRepository, McpGatewaySnapshotStageResult,
-    StageMcpGatewaySnapshot,
+    CompiledMcpGatewaySnapshot, IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget,
+    McpGatewaySnapshotStageResult, StageMcpGatewaySnapshot,
 };
-use crate::modules::shared_kernel::domain::{RepositoryError, WorkloadId, WorkloadRevisionId};
-use a3s_orm::expression::{exists, not};
-use a3s_orm::{insert_into, select_from, update_table, OrderDirection, PostgresTransaction};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
+    NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
+};
+use a3s_orm::expression::{exists, not, Selection};
+use a3s_orm::{
+    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
+    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeMap, BTreeSet};
@@ -78,6 +90,7 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
                     if let Some(certificate) = &certificate {
                         insert_certificate(transaction, certificate).await?;
                     }
+                    insert_marker(transaction, &candidate, &publication).await?;
                     advance_physical_scope(transaction, &physical_scope, &publication).await?;
                     store_outbox(transaction, &event).await?;
                     Ok(McpGatewaySnapshotStageResult {
@@ -89,6 +102,444 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
             .await
             .map_err(transaction_error)
     }
+
+    async fn pending_mcp_gateway_snapshots(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<McpGatewaySnapshotDispatchTarget>, RepositoryError> {
+        pending(&self.executor, limit).await
+    }
+
+    async fn mark_mcp_gateway_snapshot_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        gateway_scope_id: GatewayScopeId,
+        node_id: NodeId,
+        gateway_revision: u64,
+        gateway_command_id: NodeCommandId,
+        failure: &str,
+        observed_at: DateTime<Utc>,
+    ) -> Result<McpGatewaySnapshotStageResult, RepositoryError> {
+        mark_unavailable(
+            &self.executor,
+            organization_id,
+            gateway_scope_id,
+            node_id,
+            gateway_revision,
+            gateway_command_id,
+            failure,
+            observed_at,
+        )
+        .await
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct McpGatewaySnapshotMarker {
+    pub(super) organization_id: OrganizationId,
+    pub(super) project_id: ProjectId,
+    pub(super) environment_id: EnvironmentId,
+    pub(super) gateway_scope_id: GatewayScopeId,
+    pub(super) node_id: NodeId,
+    pub(super) gateway_revision: u64,
+    pub(super) gateway_command_id: NodeCommandId,
+    pub(super) snapshot_digest: String,
+    pub(super) staged_at: DateTime<Utc>,
+}
+
+impl McpGatewaySnapshotMarker {
+    pub(super) fn validate_for(
+        &self,
+        publication: &crate::modules::edge::domain::GatewayPublication,
+    ) -> Result<(), String> {
+        publication.snapshot()?;
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.gateway_scope_id.as_uuid().is_nil()
+            || self.node_id.as_uuid().is_nil()
+            || self.gateway_revision == 0
+            || self.node_id != publication.node_id
+            || self.gateway_revision != publication.revision
+            || self.gateway_command_id != publication.command_id
+            || self.snapshot_digest != publication.snapshot_digest
+            || self.staged_at != publication.command_issued_at
+        {
+            return Err("stored MCP Gateway snapshot publication identity is inconsistent".into());
+        }
+        Ok(())
+    }
+
+    fn dispatch_target(
+        &self,
+        publication: crate::modules::edge::domain::GatewayPublication,
+    ) -> Result<McpGatewaySnapshotDispatchTarget, RepositoryError> {
+        self.validate_for(&publication)
+            .map_err(RepositoryError::Storage)?;
+        let target = McpGatewaySnapshotDispatchTarget {
+            organization_id: self.organization_id,
+            project_id: self.project_id,
+            environment_id: self.environment_id,
+            gateway_scope_id: self.gateway_scope_id,
+            publication,
+        };
+        target.validate().map_err(RepositoryError::Storage)?;
+        Ok(target)
+    }
+}
+
+struct McpGatewaySnapshotMarkerRow {
+    organization_id: Uuid,
+    project_id: Uuid,
+    environment_id: Uuid,
+    gateway_scope_id: Uuid,
+    node_id: Uuid,
+    gateway_revision: u64,
+    gateway_command_id: Uuid,
+    snapshot_digest: String,
+    staged_at: DateTime<Utc>,
+}
+
+struct McpGatewaySnapshotMarkerSelection;
+
+impl Selection for McpGatewaySnapshotMarkerSelection {
+    type Output = McpGatewaySnapshotMarkerRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            McpGatewaySnapshotPublications::organization_id().expression(),
+            McpGatewaySnapshotPublications::project_id().expression(),
+            McpGatewaySnapshotPublications::environment_id().expression(),
+            McpGatewaySnapshotPublications::gateway_scope_id().expression(),
+            McpGatewaySnapshotPublications::node_id().expression(),
+            McpGatewaySnapshotPublications::gateway_revision().expression(),
+            McpGatewaySnapshotPublications::gateway_command_id().expression(),
+            McpGatewaySnapshotPublications::snapshot_digest().expression(),
+            McpGatewaySnapshotPublications::staged_at().expression(),
+        ]
+    }
+}
+
+impl FromRow for McpGatewaySnapshotMarkerRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Self::from_row_at(row, 0)
+    }
+}
+
+impl McpGatewaySnapshotMarkerRow {
+    fn from_row_at(row: &impl Row, offset: usize) -> Result<Self, DecodeError> {
+        Ok(Self {
+            organization_id: decode(row, offset)?,
+            project_id: decode(row, offset + 1)?,
+            environment_id: decode(row, offset + 2)?,
+            gateway_scope_id: decode(row, offset + 3)?,
+            node_id: decode(row, offset + 4)?,
+            gateway_revision: decode(row, offset + 5)?,
+            gateway_command_id: decode(row, offset + 6)?,
+            snapshot_digest: decode(row, offset + 7)?,
+            staged_at: decode(row, offset + 8)?,
+        })
+    }
+
+    fn marker(self) -> McpGatewaySnapshotMarker {
+        McpGatewaySnapshotMarker {
+            organization_id: OrganizationId::from_uuid(self.organization_id),
+            project_id: ProjectId::from_uuid(self.project_id),
+            environment_id: EnvironmentId::from_uuid(self.environment_id),
+            gateway_scope_id: GatewayScopeId::from_uuid(self.gateway_scope_id),
+            node_id: NodeId::from_uuid(self.node_id),
+            gateway_revision: self.gateway_revision,
+            gateway_command_id: NodeCommandId::from_uuid(self.gateway_command_id),
+            snapshot_digest: self.snapshot_digest,
+            staged_at: self.staged_at,
+        }
+    }
+}
+
+struct McpGatewaySnapshotDispatchSelection;
+
+impl Selection for McpGatewaySnapshotDispatchSelection {
+    type Output = McpGatewaySnapshotDispatchRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        let mut expressions = PublicationSelection.expressions();
+        expressions.extend(McpGatewaySnapshotMarkerSelection.expressions());
+        expressions
+    }
+}
+
+struct McpGatewaySnapshotDispatchRow {
+    publication: PublicationRow,
+    marker: McpGatewaySnapshotMarkerRow,
+}
+
+impl FromRow for McpGatewaySnapshotDispatchRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            publication: PublicationRow::from_row(row)?,
+            marker: McpGatewaySnapshotMarkerRow::from_row_at(row, 14)?,
+        })
+    }
+}
+
+async fn insert_marker(
+    transaction: &PostgresTransaction,
+    candidate: &CompiledMcpGatewaySnapshot,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+) -> Result<(), PostgresPersistenceError> {
+    let scope = candidate.mcp().scope();
+    require_one_row(
+        "MCP Gateway snapshot publication marker",
+        execute(
+            transaction,
+            insert_into::<McpGatewaySnapshotPublications>()
+                .value(
+                    McpGatewaySnapshotPublications::organization_id(),
+                    scope.organization_id.as_uuid(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::project_id(),
+                    scope.project_id.as_uuid(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::environment_id(),
+                    scope.environment_id.as_uuid(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::gateway_scope_id(),
+                    scope.id.as_uuid(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::node_id(),
+                    publication.node_id.as_uuid(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::gateway_revision(),
+                    publication.revision,
+                )
+                .value(
+                    McpGatewaySnapshotPublications::gateway_command_id(),
+                    publication.command_id.as_uuid(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::snapshot_digest(),
+                    publication.snapshot_digest.clone(),
+                )
+                .value(
+                    McpGatewaySnapshotPublications::staged_at(),
+                    publication.command_issued_at,
+                ),
+        )
+        .await?,
+    )?;
+    Ok(())
+}
+
+async fn pending(
+    executor: &PostgresExecutor,
+    limit: usize,
+) -> Result<Vec<McpGatewaySnapshotDispatchTarget>, RepositoryError> {
+    validate_dispatch_limit(limit)?;
+    let limit = u64::try_from(limit).map_err(|_| {
+        RepositoryError::Conflict("MCP Gateway snapshot dispatch limit is invalid".into())
+    })?;
+    let rows = Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(
+            select_from::<McpGatewaySnapshotPublications>()
+                .inner_join::<GatewayPublications>(
+                    McpGatewaySnapshotPublications::node_id()
+                        .eq_column(GatewayPublications::node_id())
+                        .and(
+                            McpGatewaySnapshotPublications::gateway_revision()
+                                .eq_column(GatewayPublications::revision()),
+                        )
+                        .and(
+                            McpGatewaySnapshotPublications::gateway_command_id()
+                                .eq_column(GatewayPublications::command_id()),
+                        ),
+                )
+                .select(McpGatewaySnapshotDispatchSelection)
+                .filter(GatewayPublications::state().eq("pending"))
+                .order_by(
+                    McpGatewaySnapshotPublications::staged_at(),
+                    OrderDirection::Asc,
+                )
+                .order_by(
+                    McpGatewaySnapshotPublications::node_id(),
+                    OrderDirection::Asc,
+                )
+                .limit(limit),
+        )
+        .await
+        .map_err(storage)?
+        .rows;
+    rows.into_iter()
+        .map(|row| {
+            row.marker
+                .marker()
+                .dispatch_target(row.publication.publication()?)
+        })
+        .collect()
+}
+
+pub(super) async fn lock_marker_by_gateway_identity(
+    transaction: &PostgresTransaction,
+    node_id: Uuid,
+    gateway_revision: u64,
+    gateway_command_id: Uuid,
+) -> Result<Option<McpGatewaySnapshotMarker>, PostgresPersistenceError> {
+    fetch_optional::<McpGatewaySnapshotMarkerRow, _>(
+        transaction,
+        select_from::<McpGatewaySnapshotPublications>()
+            .select(McpGatewaySnapshotMarkerSelection)
+            .filter(McpGatewaySnapshotPublications::node_id().eq(node_id))
+            .filter(McpGatewaySnapshotPublications::gateway_revision().eq(gateway_revision))
+            .filter(McpGatewaySnapshotPublications::gateway_command_id().eq(gateway_command_id))
+            .for_update(),
+    )
+    .await
+    .map(|row| row.map(McpGatewaySnapshotMarkerRow::marker))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn mark_unavailable(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    gateway_scope_id: GatewayScopeId,
+    node_id: NodeId,
+    gateway_revision: u64,
+    gateway_command_id: NodeCommandId,
+    failure: &str,
+    observed_at: DateTime<Utc>,
+) -> Result<McpGatewaySnapshotStageResult, RepositoryError> {
+    let failure = failure.to_owned();
+    let observed_at = canonical_timestamp(observed_at);
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let mut publication = fetch_optional::<PublicationRow, _>(
+                    transaction,
+                    select_from::<GatewayPublications>()
+                        .select(PublicationSelection)
+                        .filter(GatewayPublications::node_id().eq(node_id.as_uuid()))
+                        .filter(GatewayPublications::revision().eq(gateway_revision))
+                        .for_update(),
+                )
+                .await?
+                .ok_or_else(|| {
+                    PostgresPersistenceError::Invariant(
+                        "MCP Gateway snapshot publication disappeared".into(),
+                    )
+                })?
+                .publication()?;
+                let marker = lock_marker_by_gateway_identity(
+                    transaction,
+                    node_id.as_uuid(),
+                    gateway_revision,
+                    gateway_command_id.as_uuid(),
+                )
+                .await?
+                .ok_or(RepositoryError::NotFound)?;
+                if marker.organization_id != organization_id
+                    || marker.gateway_scope_id != gateway_scope_id
+                {
+                    return Err(RepositoryError::NotFound.into());
+                }
+                marker
+                    .validate_for(&publication)
+                    .map_err(PostgresPersistenceError::Invariant)?;
+                let mut certificates = fetch_all::<CertificateRow, _>(
+                    transaction,
+                    select_from::<GatewayCertificates>()
+                        .select(CertificateSelection)
+                        .filter(GatewayCertificates::node_id().eq(node_id.as_uuid()))
+                        .filter(GatewayCertificates::gateway_revision().eq(gateway_revision))
+                        .filter(
+                            GatewayCertificates::gateway_command_id()
+                                .eq(gateway_command_id.as_uuid()),
+                        )
+                        .for_update(),
+                )
+                .await?
+                .into_iter()
+                .map(CertificateRow::certificate)
+                .collect::<Result<Vec<_>, _>>()?;
+                let expected_certificate_id = publication
+                    .certificate_request
+                    .as_ref()
+                    .map(|request| GatewayCertificateId::from_uuid(request.certificate_id));
+                if certificates.len() != usize::from(expected_certificate_id.is_some())
+                    || certificates.first().map(|certificate| certificate.id)
+                        != expected_certificate_id
+                    || certificates.first().is_some_and(|certificate| {
+                        certificate.organization_id != organization_id
+                            || certificate.node_id != node_id
+                            || certificate.gateway_revision != gateway_revision
+                            || certificate.gateway_command_id != gateway_command_id
+                            || certificate.snapshot_digest != publication.snapshot_digest
+                    })
+                {
+                    return Err(PostgresPersistenceError::Invariant(
+                        "MCP Gateway snapshot certificate projection is inconsistent".into(),
+                    ));
+                }
+                let mut certificate = certificates.pop();
+                let certificate_version = certificate
+                    .as_ref()
+                    .map(|certificate| certificate.aggregate_version);
+                let publication_changed = publication
+                    .mark_unavailable(&failure, observed_at)
+                    .map_err(RepositoryError::Conflict)?;
+                let certificate_changed = match &mut certificate {
+                    Some(certificate) => certificate
+                        .mark_delivery_unavailable(&failure, observed_at)
+                        .map_err(RepositoryError::Conflict)?,
+                    None => false,
+                };
+                if publication_changed {
+                    require_one_row(
+                        "MCP Gateway snapshot unavailable publication",
+                        execute(
+                            transaction,
+                            update_table::<GatewayPublications>()
+                                .set(GatewayPublications::state(), publication.state.as_str())
+                                .set(GatewayPublications::failure(), publication.failure.clone())
+                                .set(
+                                    GatewayPublications::acknowledged_at(),
+                                    publication.acknowledged_at,
+                                )
+                                .filter(GatewayPublications::node_id().eq(node_id.as_uuid()))
+                                .filter(GatewayPublications::revision().eq(gateway_revision))
+                                .filter(GatewayPublications::state().eq("pending")),
+                        )
+                        .await?,
+                    )?;
+                }
+                if certificate_changed {
+                    update_certificate(
+                        transaction,
+                        certificate.as_ref().ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "changed MCP Gateway snapshot certificate disappeared".into(),
+                            )
+                        })?,
+                        certificate_version.ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "changed MCP Gateway snapshot certificate omitted its version"
+                                    .into(),
+                            )
+                        })?,
+                    )
+                    .await?;
+                }
+                Ok(McpGatewaySnapshotStageResult {
+                    publication,
+                    certificate,
+                })
+            })
+        })
+        .await
+        .map_err(transaction_error)
 }
 
 async fn lock_logical_scope(
@@ -562,4 +1013,24 @@ fn validate_physical_scope(scope: &GatewayScopeState) -> Result<(), PostgresPers
         ));
     }
     Ok(())
+}
+
+fn validate_dispatch_limit(limit: usize) -> Result<(), RepositoryError> {
+    if limit == 0 || limit > 10_000 {
+        return Err(RepositoryError::Conflict(
+            "MCP Gateway snapshot dispatch limit is invalid".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn storage(error: impl std::fmt::Display) -> RepositoryError {
+    RepositoryError::Storage(error.to_string())
+}
+
+fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
+    let value = row
+        .value(index)
+        .ok_or(DecodeError::MissingColumn { index })?;
+    T::from_value(value, index)
 }

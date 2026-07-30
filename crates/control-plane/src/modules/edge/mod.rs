@@ -60,6 +60,8 @@ pub use infrastructure::{
     McpCredentialIssuanceError, McpCredentialIssueRequest, McpCredentialIssuer,
     McpCredentialProjectionVersion, McpGatewayIngressRoute, McpGatewayProjectionAssembler,
     McpGatewayProjectionCompiler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotReconciler,
+    McpGatewaySnapshotReconciliationFailure, McpGatewaySnapshotReconciliationReport,
     McpGatewaySnapshotStageResult, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
     McpRouteProjectionVersion, McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
     PlanGatewayRouteRollout, PlanMcpGatewayProjectionSet, PlanMcpRouteProjection,

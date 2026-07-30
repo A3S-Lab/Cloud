@@ -18,6 +18,7 @@ mod mcp_gateway_projection_compiler;
 mod mcp_gateway_projection_planner;
 mod mcp_gateway_projection_set_planner;
 mod mcp_gateway_publication;
+mod mcp_gateway_snapshot_reconciler;
 mod mcp_route_projection_input_reader;
 mod mcp_route_projection_planner;
 mod mcp_route_target_projection_compiler;
@@ -38,6 +39,8 @@ mod gateway_rollout_rollback_compiler_tests;
 mod gateway_route_rollout_compiler_tests;
 #[cfg(test)]
 mod gateway_snapshot_compiler_tests;
+#[cfg(test)]
+mod mcp_gateway_snapshot_reconciler_tests;
 
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
@@ -90,7 +93,12 @@ pub use mcp_gateway_projection_set_planner::{
     PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
 };
 pub use mcp_gateway_publication::{
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotStageResult, StageMcpGatewaySnapshot,
+    IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotStageResult,
+    StageMcpGatewaySnapshot,
+};
+pub use mcp_gateway_snapshot_reconciler::{
+    McpGatewaySnapshotReconciler, McpGatewaySnapshotReconciliationFailure,
+    McpGatewaySnapshotReconciliationReport,
 };
 pub use mcp_route_projection_input_reader::McpRouteProjectionInputReader;
 pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRouteProjection};

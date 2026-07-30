@@ -4,7 +4,8 @@ use crate::modules::edge::domain::{
 };
 use crate::modules::edge::infrastructure::CompiledMcpGatewaySnapshot;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, GatewayCertificateId, NodeCommandId, RepositoryError, RouteId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -23,6 +24,32 @@ pub struct StageMcpGatewaySnapshot {
 pub struct McpGatewaySnapshotStageResult {
     pub publication: GatewayPublication,
     pub certificate: Option<GatewayCertificate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewaySnapshotDispatchTarget {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub gateway_scope_id: GatewayScopeId,
+    pub publication: GatewayPublication,
+}
+
+impl McpGatewaySnapshotDispatchTarget {
+    pub fn validate(&self) -> Result<(), String> {
+        self.publication.snapshot()?;
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.gateway_scope_id.as_uuid().is_nil()
+            || self.publication.state != GatewayPublicationState::Pending
+            || self.publication.failure.is_some()
+            || self.publication.acknowledged_at.is_some()
+        {
+            return Err("MCP Gateway snapshot dispatch target is inconsistent".into());
+        }
+        Ok(())
+    }
 }
 
 impl StageMcpGatewaySnapshot {
@@ -195,6 +222,23 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
     async fn stage_mcp_gateway_snapshot(
         &self,
         stage: StageMcpGatewaySnapshot,
+    ) -> Result<McpGatewaySnapshotStageResult, RepositoryError>;
+
+    async fn pending_mcp_gateway_snapshots(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<McpGatewaySnapshotDispatchTarget>, RepositoryError>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn mark_mcp_gateway_snapshot_unavailable(
+        &self,
+        organization_id: OrganizationId,
+        gateway_scope_id: GatewayScopeId,
+        node_id: NodeId,
+        gateway_revision: u64,
+        gateway_command_id: NodeCommandId,
+        failure: &str,
+        observed_at: DateTime<Utc>,
     ) -> Result<McpGatewaySnapshotStageResult, RepositoryError>;
 }
 

@@ -1,4 +1,7 @@
-use a3s_cloud_contracts::{McpGrantProjection, McpLimitsProjection, MCP_PROTOCOL_VERSION};
+use a3s_cloud_contracts::{
+    GatewayAckState, GatewayManagementProtocol, McpGrantProjection, McpLimitsProjection,
+    NodeGatewayAck, MCP_PROTOCOL_VERSION,
+};
 use a3s_cloud_control_plane::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDIA_TYPE;
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseDrafted,
@@ -9,15 +12,19 @@ use a3s_cloud_control_plane::modules::assets::{
 use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
 use a3s_cloud_control_plane::modules::edge::{
     CompileMcpGatewaySnapshot, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
-    GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialRepository,
+    FleetGatewayCommandQueue, GatewayCertificateMaterial, GatewayCertificateState,
+    GatewayPublicationState, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialRepository,
     IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
     McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpRoutePolicy, McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PlanMcpGatewayProjectionSet, PostgresEdgeRepository,
-    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
-    StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
+    McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    PlanMcpGatewayProjectionSet, PostgresEdgeRepository, ResolvedRouteTarget,
+    ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget, StageMcpGatewaySnapshot,
+    TransitionDomainClaim, UpstreamEndpoint,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
@@ -561,7 +568,7 @@ pub async fn exercise(
     let scope_before_stale_stage = edge.gateway_scope(scope.node_id).await?;
     assert_eq!(
         stage_artifact_counts(executor, &stale_stage).await?,
-        (0, 0, 0)
+        (0, 0, 0, 0)
     );
 
     let mut revised = policy.clone();
@@ -583,7 +590,7 @@ pub async fn exercise(
     );
     assert_eq!(
         stage_artifact_counts(executor, &stale_stage).await?,
-        (0, 0, 0)
+        (0, 0, 0, 0)
     );
     let mut stale = policy;
     let mut stale_spec = stale.spec().clone();
@@ -630,7 +637,7 @@ pub async fn exercise(
     );
     assert_eq!(
         stage_artifact_counts(executor, &current_stage).await?,
-        (0, 0, 0)
+        (0, 0, 0, 0)
     );
 
     let expected_publication = current_stage.publication().clone();
@@ -663,8 +670,115 @@ pub async fn exercise(
     );
     assert_eq!(
         stage_artifact_counts(executor, &current_stage).await?,
-        (1, 1, 1)
+        (1, 1, 1, 1)
     );
+
+    let snapshot_repository: Arc<dyn IMcpGatewaySnapshotRepository> = Arc::new(edge.clone());
+    let node_control: Arc<dyn INodeControlRepository> =
+        Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let commands = Arc::new(FleetGatewayCommandQueue::new(node_control.clone()));
+    let reconciler = McpGatewaySnapshotReconciler::new(
+        snapshot_repository,
+        commands,
+        std::time::Duration::from_secs(60),
+        100,
+    )?;
+    let first_dispatch = reconciler
+        .run_once(expected_publication.command_issued_at + Duration::milliseconds(1))
+        .await?;
+    assert_eq!(first_dispatch.pending_snapshots, 1);
+    assert_eq!(first_dispatch.dispatched_commands, 1);
+    assert_eq!(first_dispatch.replayed_commands, 0);
+    assert!(first_dispatch.failures.is_empty());
+    let queued_commands = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from node_commands where id = ")
+                .bind(expected_publication.command_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(queued_commands, 1);
+
+    let replayed_dispatch = reconciler
+        .run_once(expected_publication.command_issued_at + Duration::milliseconds(2))
+        .await?;
+    assert_eq!(replayed_dispatch.pending_snapshots, 1);
+    assert_eq!(replayed_dispatch.dispatched_commands, 1);
+    assert_eq!(replayed_dispatch.replayed_commands, 1);
+    assert!(replayed_dispatch.failures.is_empty());
+
+    let certificate_issued_at =
+        expected_publication.command_issued_at + Duration::milliseconds(100);
+    issue_gateway_certificate(
+        &edge,
+        &expected_certificate,
+        certificate_issued_at,
+        certificate_issued_at + Duration::days(30),
+    )
+    .await?;
+    let acknowledged_at = certificate_issued_at + Duration::milliseconds(100);
+    let acknowledgement = NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: expected_publication.command_id.as_uuid(),
+        node_id: expected_publication.node_id.as_uuid(),
+        gateway_id: expected_publication.node_id.as_uuid(),
+        revision: expected_publication.revision,
+        snapshot_digest: expected_publication.snapshot_digest.clone(),
+        expires_at: expected_publication.snapshot_expires_at,
+        state: GatewayAckState::Applied,
+        ready: true,
+        message: None,
+        acknowledged_at,
+        management_protocol: Some(GatewayManagementProtocol::advertised_v1()),
+    };
+    let received_at = acknowledged_at + Duration::milliseconds(1);
+    let fleet_receipt = node_control
+        .record_gateway_acknowledgement(acknowledgement.clone(), received_at)
+        .await?;
+    assert!(!fleet_receipt.replayed);
+    assert!(
+        edge.project_gateway_acknowledgement(&acknowledgement, received_at,)
+            .await?
+    );
+    let replayed_fleet_receipt = node_control
+        .record_gateway_acknowledgement(acknowledgement.clone(), received_at)
+        .await?;
+    assert!(replayed_fleet_receipt.replayed);
+    assert!(
+        edge.project_gateway_acknowledgement(&acknowledgement, received_at)
+            .await?
+    );
+    let ready_certificate = edge
+        .find_gateway_certificate(scope.node_id, expected_certificate.id)
+        .await?;
+    assert_eq!(ready_certificate.state, GatewayCertificateState::Ready);
+    let installed_scope = edge.gateway_scope(scope.node_id).await?;
+    assert_eq!(
+        installed_scope.installed_revision,
+        Some(expected_publication.revision)
+    );
+    assert_eq!(
+        installed_scope.aggregate_version,
+        scope_after_atomic_stage.aggregate_version + 1
+    );
+    let terminal_publication = database
+        .fetch_one_as(
+            sql_query::<String>("select state from gateway_publications where node_id = ")
+                .bind(expected_publication.node_id.as_uuid())
+                .append(" and revision = ")
+                .bind(expected_publication.revision),
+        )
+        .await?;
+    assert_eq!(
+        GatewayPublicationState::parse(&terminal_publication)?,
+        GatewayPublicationState::Applied
+    );
+    let terminal_dispatch = reconciler
+        .run_once(acknowledged_at + Duration::milliseconds(2))
+        .await?;
+    assert_eq!(terminal_dispatch.pending_snapshots, 0);
+    assert_eq!(terminal_dispatch.dispatched_commands, 0);
+    assert!(terminal_dispatch.failures.is_empty());
 
     let mut rotated = credential.clone();
     rotated.rotate(
@@ -846,7 +960,7 @@ async fn plan_gateway_snapshot(
 async fn stage_artifact_counts(
     executor: &PostgresExecutor,
     stage: &StageMcpGatewaySnapshot,
-) -> TestResult<(i64, i64, i64)> {
+) -> TestResult<(i64, i64, i64, i64)> {
     let database = Database::new(PostgresDialect, executor.clone());
     let publications = database
         .fetch_one_as(
@@ -871,7 +985,43 @@ async fn stage_artifact_counts(
                 .bind(stage.event().event_id),
         )
         .await?;
-    Ok((publications, certificates, events))
+    let markers = database
+        .fetch_one_as(
+            sql_query::<i64>(
+                "select count(*) from mcp_gateway_snapshot_publications where gateway_command_id = ",
+            )
+            .bind(stage.publication().command_id.as_uuid()),
+        )
+        .await?;
+    Ok((publications, certificates, events, markers))
+}
+
+async fn issue_gateway_certificate(
+    repository: &dyn IEdgeRepository,
+    certificate: &a3s_cloud_control_plane::modules::edge::GatewayCertificate,
+    issued_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+) -> TestResult {
+    let mut issued = certificate.clone();
+    let expected_version = issued.aggregate_version;
+    issued.record_issued(
+        format!("sha256:{}", "b".repeat(64)),
+        GatewayCertificateMaterial {
+            serial_number: issued.id.to_string(),
+            fingerprint: format!("sha256:{}", "a".repeat(64)),
+            certificate_pem: "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n"
+                .into(),
+            ca_bundle_pem: "-----BEGIN CERTIFICATE-----\ndGVzdC1jYQ==\n-----END CERTIFICATE-----\n"
+                .into(),
+            issued_at,
+            expires_at,
+        },
+        issued_at,
+    )?;
+    repository
+        .transition_gateway_certificate(issued, expected_version)
+        .await?;
+    Ok(())
 }
 
 async fn install_snapshot_outbox_failure(executor: &PostgresExecutor) -> TestResult {
