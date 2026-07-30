@@ -12,6 +12,7 @@ mod gateway_route_rollout_compiler;
 mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
+mod mcp_credential_issuer;
 mod mcp_gateway_projection_compiler;
 mod mcp_gateway_projection_planner;
 mod mcp_route_projection_planner;
@@ -68,6 +69,9 @@ pub use gateway_snapshot_compiler::{
     GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
 };
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
+pub use mcp_credential_issuer::{
+    IssuedMcpCredential, McpCredentialIssuanceError, McpCredentialIssueRequest, McpCredentialIssuer,
+};
 pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
 };

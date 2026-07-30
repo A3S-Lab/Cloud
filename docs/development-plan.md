@@ -1575,9 +1575,12 @@ unavailable. As of 2026-07-30:
   exact-generation target per desired Gateway member, resolves only the
   credential IDs named by the route within the exact tenant/environment, and
   validates a one-route complete Gateway projection whose expiry is bounded by
-  both policy and credentials. One-time credential issuance, multi-route
-  durable snapshot reconciliation/publication, the real PostgreSQL gate,
-  lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
+  both policy and credentials. An internal bounded issuer now generates one
+  zeroizing bearer value, stores only its Argon2id verifier, retries complete
+  random material after uniqueness conflicts, and exposes no serializable or
+  cloneable secret result. Public idempotent one-time delivery and rotation,
+  multi-route durable snapshot reconciliation/publication, the real PostgreSQL
+  gate, lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps

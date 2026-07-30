@@ -891,9 +891,22 @@ bounded verifier/version checks, optimistic updates, and tenant-filtered reads;
 every restored row is revalidated by the aggregate and shared Gateway
 contract. Exact route-grant resolution now uses only the requested IDs within
 the route's tenant scope and requires the persisted generation to remain
-active at projection time. One-time plaintext issuance and durable atomic
-removal or replacement of revoked grants remain unfinished; Cloud management
-credentials must never be accepted as a shortcut.
+active at projection time.
+
+The internal credential issuer obtains 64 bits of random fixed-length lookup
+prefix plus 256 bits of bearer secret and a separate 128-bit salt, derives the
+bounded Argon2id verifier on the blocking pool under a four-operation
+semaphore, and persists the aggregate before returning the bearer value. The
+result owns the secret in zeroizing memory and is neither cloneable nor
+serializable; Debug output is redacted. A uniqueness conflict discards the
+entire candidate and retries with fresh identity, prefix, secret, salt, and
+verifier at most four times. Credential lifetime is positive and capped at 365
+days. This primitive is intentionally not a public lifecycle surface yet:
+idempotent one-time delivery must recover or compensate a
+commit-before-response failure without persisting plaintext or returning a
+second secret. Rotation delivery and durable atomic removal or replacement of
+revoked grants also remain unfinished. Cloud management credentials must never
+be accepted as a shortcut.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical

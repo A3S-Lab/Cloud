@@ -153,6 +153,7 @@ dependencies = [
  "a3s-orm",
  "a3s-runtime",
  "aes-gcm",
+ "argon2",
  "async-stream",
  "async-trait",
  "axum",
