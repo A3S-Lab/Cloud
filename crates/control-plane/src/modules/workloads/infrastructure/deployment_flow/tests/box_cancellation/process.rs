@@ -69,6 +69,7 @@ pub(super) async fn interrupt_after_provider_remove(
     let recovered_runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
+            secret_root: home.join("runtime-secrets"),
             isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
@@ -97,6 +98,7 @@ pub(super) async fn recover_interrupted_remove(
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
+            secret_root: home.join("runtime-secrets"),
             isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
@@ -135,9 +137,11 @@ async fn real_box_cleanup_crash_probe() -> BoxTestResult<()> {
         return Err(invalid("cleanup crash probe requires a Runtime remove command").into());
     }
 
+    let home = dedicated_box_home()?;
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
-            home_dir: dedicated_box_home()?,
+            home_dir: home.clone(),
+            secret_root: home.join("runtime-secrets"),
             isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,

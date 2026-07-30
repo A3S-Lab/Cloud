@@ -100,6 +100,7 @@ mod tests {
         let runtime = build_box_runtime_client(
             &BoxRuntimeConfig {
                 home_dir: home.canonicalize()?,
+                secret_root: home.join("runtime-secrets").canonicalize()?,
                 isolation: BoxRuntimeIsolation::Sandbox,
                 control_timeout_ms: 120_000,
                 task_poll_interval_ms: 25,
@@ -139,6 +140,7 @@ mod tests {
         let recovered_runtime = build_box_runtime_client(
             &BoxRuntimeConfig {
                 home_dir: home.canonicalize()?,
+                secret_root: home.join("runtime-secrets").canonicalize()?,
                 isolation: BoxRuntimeIsolation::Sandbox,
                 control_timeout_ms: 120_000,
                 task_poll_interval_ms: 25,

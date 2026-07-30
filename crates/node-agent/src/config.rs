@@ -43,6 +43,7 @@ pub struct LogShippingConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoxRuntimeConfig {
     pub home_dir: PathBuf,
+    pub secret_root: PathBuf,
     pub isolation: BoxRuntimeIsolation,
     pub control_timeout_ms: u64,
     pub task_poll_interval_ms: u64,
@@ -127,6 +128,7 @@ impl NodeAgentConfig {
             box_runtime,
             &[
                 "home_dir",
+                "secret_root",
                 "isolation",
                 "control_timeout_ms",
                 "task_poll_interval_ms",
@@ -189,6 +191,7 @@ impl NodeAgentConfig {
             },
             box_runtime: BoxRuntimeConfig {
                 home_dir: PathBuf::from(string(box_runtime, "home_dir")?),
+                secret_root: PathBuf::from(string(box_runtime, "secret_root")?),
                 isolation: box_runtime_isolation(box_runtime)?,
                 control_timeout_ms: integer(box_runtime, "control_timeout_ms")?,
                 task_poll_interval_ms: integer(box_runtime, "task_poll_interval_ms")?,
@@ -301,6 +304,12 @@ impl NodeAgentConfig {
         {
             return Err(ConfigError::Invalid(
                 "box.home_dir must be an absolute normalized directory".into(),
+            ));
+        }
+        validate_path("box.secret_root", &self.box_runtime.secret_root)?;
+        if !normalized_absolute_linux_directory(&self.box_runtime.secret_root) {
+            return Err(ConfigError::Invalid(
+                "box.secret_root must be an absolute normalized non-root Linux directory".into(),
             ));
         }
         if self.box_runtime.control_timeout_ms == 0
@@ -521,6 +530,18 @@ fn validate_path(label: &str, value: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 
+fn normalized_absolute_linux_directory(value: &Path) -> bool {
+    value.to_str().is_some_and(|value| {
+        value.strip_prefix('/').is_some_and(|relative| {
+            !relative.is_empty()
+                && relative
+                    .split('/')
+                    .all(|segment| !segment.is_empty() && !matches!(segment, "." | ".."))
+        }) && !value.contains([':', '\0'])
+            && !value.bytes().any(|byte| byte.is_ascii_control())
+    })
+}
+
 fn valid_env_name(value: &str) -> bool {
     !value.is_empty()
         && value
@@ -577,6 +598,7 @@ logs {
 
 box {
   home_dir = "/var/lib/a3s-box"
+  secret_root = "/run/a3s-cloud/box-secrets"
   isolation = "microvm"
   control_timeout_ms = 120000
   task_poll_interval_ms = 50
@@ -599,6 +621,10 @@ gateway {
         assert_eq!(config.control_plane.node_control_url.scheme(), "https");
         assert_eq!(config.logs.max_batch_chunks, 256);
         assert_eq!(config.box_runtime.home_dir, Path::new("/var/lib/a3s-box"));
+        assert_eq!(
+            config.box_runtime.secret_root,
+            Path::new("/run/a3s-cloud/box-secrets")
+        );
         assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Microvm);
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
         assert_eq!(
@@ -643,11 +669,24 @@ gateway {
             "  home_dir = \"/var/lib/../a3s-box\"",
         );
         assert!(NodeAgentConfig::parse(&parent_home).is_err());
+        let non_normal_secret_root = CONFIG.replace(
+            "  secret_root = \"/run/a3s-cloud/box-secrets\"",
+            "  secret_root = \"/run/a3s-cloud/../box-secrets\"",
+        );
+        assert!(NodeAgentConfig::parse(&non_normal_secret_root).is_err());
+        let root_secret_root = CONFIG.replace(
+            "  secret_root = \"/run/a3s-cloud/box-secrets\"",
+            "  secret_root = \"/\"",
+        );
+        assert!(NodeAgentConfig::parse(&root_secret_root).is_err());
         let implicit_fallback =
             CONFIG.replace("  isolation = \"microvm\"", "  isolation = \"automatic\"");
         assert!(NodeAgentConfig::parse(&implicit_fallback).is_err());
         let missing_isolation = CONFIG.replace("  isolation = \"microvm\"\n", "");
         assert!(NodeAgentConfig::parse(&missing_isolation).is_err());
+        let missing_secret_root =
+            CONFIG.replace("  secret_root = \"/run/a3s-cloud/box-secrets\"\n", "");
+        assert!(NodeAgentConfig::parse(&missing_secret_root).is_err());
     }
 
     #[test]

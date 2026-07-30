@@ -126,6 +126,14 @@ jobs:
           find "$A3S_HOME/bin" -maxdepth 1 -type f -print -exec sha256sum {} \; \
             >"$RUNNER_TEMP/a3s-box-provider-binaries.txt"
 
+      - name: Mount private Runtime Secret tmpfs
+        run: |
+          sudo install -d -m 0700 "$A3S_HOME/runtime-secrets"
+          sudo mount -t tmpfs \
+            -o size=16m,mode=0700,nosuid,nodev,noexec \
+            a3s-cloud-runtime-secrets "$A3S_HOME/runtime-secrets"
+          mountpoint -q "$A3S_HOME/runtime-secrets"
+
       - name: Run every advertised Box Runtime profile
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
@@ -133,6 +141,7 @@ jobs:
           A3S_BOX_RUNTIME_CONFORMANCE: "1"
           A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
           A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
+          A3S_REGISTRY_PROTOCOL: http
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
@@ -155,6 +164,7 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE="$A3S_BOX_RUNTIME_CONFORMANCE" \
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path crates/box/src/Cargo.toml --locked \
@@ -173,6 +183,7 @@ jobs:
           A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
           A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
           A3S_CLOUD_TEST_BOX: "1"
+          A3S_REGISTRY_PROTOCOL: http
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
@@ -192,6 +203,7 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
@@ -211,6 +223,7 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
@@ -240,6 +253,7 @@ jobs:
             A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
             A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
             A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
@@ -252,12 +266,38 @@ jobs:
             "$EVIDENCE_DIR/cloud-cleanup-interruption.log" \
             >"$EVIDENCE_DIR/cleanup-process-death-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/cleanup-process-death-certification.txt")" -eq 1
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-node-agent --lib \
+              box_runtime::tests::real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/cloud-secret-materialization.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_BOX_SECRET_MATERIALIZATION_CERTIFIED' \
+            "$EVIDENCE_DIR/cloud-secret-materialization.log" \
+            >"$EVIDENCE_DIR/secret-materialization-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/secret-materialization-certification.txt")" -eq 1
 
       - name: Verify provider cleanup
         if: always()
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
+          cleanup_status=0
           install -d -m 0755 "$EVIDENCE_DIR"
           ps aux >"$EVIDENCE_DIR/processes-after.txt"
           find "$A3S_HOME" -maxdepth 4 -print \
@@ -265,11 +305,21 @@ jobs:
           if pgrep -fa 'a3s-box-shim|a3s-oci-agent|a3s-oci.*native-linux-service' \
             >"$EVIDENCE_DIR/leaked-processes.txt"; then
             cat "$EVIDENCE_DIR/leaked-processes.txt"
-            exit 1
+            cleanup_status=1
           fi
-          test ! -e "$A3S_HOME/boxes.json"
-          test ! -d "$A3S_HOME/runtime-state"
+          if test -e "$A3S_HOME/boxes.json" || test -d "$A3S_HOME/runtime-state"; then
+            cleanup_status=1
+          fi
+          if test -n "$(find "$A3S_HOME/runtime-secrets" -mindepth 1 -print -quit 2>/dev/null)"; then
+            find "$A3S_HOME/runtime-secrets" -mindepth 1 -maxdepth 2 -print \
+              >"$EVIDENCE_DIR/leaked-secret-paths.txt"
+            cleanup_status=1
+          fi
+          if mountpoint -q "$A3S_HOME/runtime-secrets"; then
+            sudo umount "$A3S_HOME/runtime-secrets" || cleanup_status=1
+          fi
           sudo rm -rf "$A3S_HOME"
+          exit "$cleanup_status"
 
       - name: Upload Box certification evidence
         if: always()

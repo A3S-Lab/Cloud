@@ -23,7 +23,7 @@ pub use artifact::{
     NodeArtifactTransport,
 };
 #[cfg(target_os = "linux")]
-pub use box_runtime::build_box_runtime_client;
+pub use box_runtime::{build_box_runtime_client, build_box_runtime_provider};
 pub use config::{
     ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation, ConfigError, ControlPlaneConfig,
     GatewayControlConfig, LogShippingConfig, NodeAgentConfig, NodeConfig,

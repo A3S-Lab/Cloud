@@ -268,6 +268,7 @@ fn runtime(home: &Path, state_root: &Path) -> TestResult<Arc<dyn RuntimeClient>>
     Ok(build_box_runtime_client(
         &BoxRuntimeConfig {
             home_dir: home.to_path_buf(),
+            secret_root: home.join("runtime-secrets"),
             isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,

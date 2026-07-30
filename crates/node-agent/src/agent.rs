@@ -7,7 +7,8 @@ use crate::{
     EnrolledNodeIdentity, FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
     GatewaySnapshotInstaller, IdentityStoreError, LogShippingConfig, LogShippingError,
     NodeAgentConfig, NodeArtifactManager, NodeArtifactTransport, NodeControlClient,
-    NodeControlClientError, NodeControlTransport, NodeIdentityState, ResourceInventoryError,
+    NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
+    ResourceInventoryError,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
@@ -52,6 +53,8 @@ pub async fn run_node_agent(
     else {
         return Ok(());
     };
+    let secret_transport: Arc<dyn NodeSecretTransport> = transport.clone();
+    runtime.bind_secret_transport(secret_transport).await?;
     let certificate_transport: Arc<dyn crate::GatewayCertificateSigningTransport> =
         transport.clone();
     let gateway: Arc<dyn GatewaySnapshotInstaller> =
@@ -95,11 +98,31 @@ pub async fn run_node_agent(
 
 pub struct NodeRuntimeProvider {
     client: Arc<dyn RuntimeClient>,
+    secret_materializer: Arc<crate::secret::CloudBoxSecretMaterializer>,
 }
 
 impl NodeRuntimeProvider {
-    pub fn new(client: Arc<dyn RuntimeClient>) -> Self {
-        Self { client }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn new(
+        client: Arc<dyn RuntimeClient>,
+        secret_materializer: Arc<crate::secret::CloudBoxSecretMaterializer>,
+    ) -> Self {
+        Self {
+            client,
+            secret_materializer,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn into_client(self) -> Arc<dyn RuntimeClient> {
+        self.client
+    }
+
+    pub(crate) async fn bind_secret_transport(
+        &self,
+        transport: Arc<dyn NodeSecretTransport>,
+    ) -> a3s_runtime::RuntimeResult<()> {
+        self.secret_materializer.bind_transport(transport).await
     }
 }
 
