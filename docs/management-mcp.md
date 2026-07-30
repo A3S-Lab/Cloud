@@ -18,8 +18,13 @@ handlers and REST response projections.
 
 ## Transport contract
 
-The endpoint is `POST /api/v1/mcp` and implements stateless Streamable HTTP for
-MCP protocol version `2025-06-18`.
+The endpoint is `POST /api/v1/mcp` and implements a sessionless deployment of
+the initialization-based MCP protocol version `2025-06-18`.
+
+This is the verified `C0.2` compatibility baseline. It is not a claim of
+modern `2026-07-28` MCP conformance: the modern protocol uses per-request
+metadata instead of `initialize`, requires `server/discover`, and has no
+protocol-level sessions.
 
 - Requests and immediate responses use raw JSON-RPC 2.0 with
   `Content-Type: application/json`.
@@ -36,6 +41,28 @@ MCP protocol version `2025-06-18`.
 
 The endpoint is hidden from the REST OpenAPI document because JSON-RPC and MCP
 tool schemas, rather than REST operations, define this transport contract.
+
+## Planned modern protocol migration
+
+`C0.2m` migrates this same management presentation surface to MCP revision
+`2026-07-28`:
+
+- remove the `initialize` flow;
+- require protocol version and client capabilities in every request's `_meta`;
+  validate recommended `clientInfo` when present without treating it as an
+  authenticated identity;
+- require `MCP-Protocol-Version`, `Mcp-Method`, and applicable `Mcp-Name`
+  headers and reject header/body mismatches;
+- implement `server/discover`;
+- retain one POST per JSON-RPC request, request-level authentication, Origin
+  validation, no `Mcp-Session-Id`, and `405` for GET and DELETE; and
+- rerun the exact tool visibility, authorization, revocation, idempotency,
+  PostgreSQL, malformed-request, and redaction gates.
+
+This migration does not change Cloud application commands, queries, scopes,
+tool catalogs, or persistence. It is also separate from product gate `MCP0`,
+which deploys tenant MCP AssetReleases as Runtime Services behind Gateway.
+Until `C0.2m` passes, clients must use the verified `2025-06-18` flow below.
 
 ## Authentication and authorization
 
@@ -183,8 +210,15 @@ repositories.
 
 ## Current limits
 
-`C0.2` is verified. OAuth 2.1 discovery and consent follow only after the
-token-scoped confused-deputy gate. Secret material, exec, terminal access,
-server-side sessions, live log streams, and JSON-RPC batching are not exposed
-by this slice. No additional mutation is admitted without its existing scope,
-idempotency contract, tenant boundary, and audit behavior.
+`C0.2` is verified for `2025-06-18`; `C0.2m` remains planned. OAuth 2.1
+discovery and consent follow only after the token-scoped confused-deputy gate.
+Secret material, exec, terminal access, server-side sessions, live log
+streams, and JSON-RPC batching are not exposed by this slice. No additional
+mutation is admitted without its existing scope, idempotency contract, tenant
+boundary, and audit behavior.
+
+## Protocol references
+
+- [MCP versioning and compatibility, revision 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)
+- [MCP Streamable HTTP, revision 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+- [MCP server discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)

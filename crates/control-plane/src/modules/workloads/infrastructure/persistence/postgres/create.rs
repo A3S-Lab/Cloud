@@ -110,6 +110,10 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
         .control
         .validate()
         .map_err(RepositoryError::Conflict)?;
+    request
+        .revision
+        .validate_mcp_binding_for_workload(&request.workload)
+        .map_err(RepositoryError::Conflict)?;
     let workload = &request.workload;
     let revision = &request.revision;
     let deployment = &request.deployment;
@@ -239,6 +243,7 @@ async fn insert_revision(
         .map(serde_json::to_value)
         .transpose()?;
     let external_build = revision.external_build.as_ref();
+    let mcp_binding = revision.mcp_binding();
     let result = execute(
         transaction,
         insert_into::<WorkloadRevisions>()
@@ -310,6 +315,22 @@ async fn insert_revision(
             .value(
                 WorkloadRevisions::external_build_run_id(),
                 external_build.map(|reference| reference.build_run_id.as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::mcp_organization_id(),
+                mcp_binding.map(|binding| binding.organization_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::mcp_asset_id(),
+                mcp_binding.map(|binding| binding.asset_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::mcp_asset_release_id(),
+                mcp_binding.map(|binding| binding.asset_release_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::mcp_profile_digest(),
+                mcp_binding.map(|binding| binding.profile_digest().as_str().to_owned()),
             ),
     )
     .await;

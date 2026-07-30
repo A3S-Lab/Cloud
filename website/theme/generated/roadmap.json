@@ -74,8 +74,15 @@
     {
       "code": "A0",
       "name": "Release catalog",
-      "outcome": "Agent and MCP releases plus Skill publication through the common source, artifact, and deployment paths",
+      "outcome": "Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths",
       "status": "In progress",
+      "statusKind": "in-progress"
+    },
+    {
+      "code": "MCP0",
+      "name": "Hosted MCP services",
+      "outcome": "Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence",
+      "status": "In progress; unavailable",
       "statusKind": "in-progress"
     },
     {

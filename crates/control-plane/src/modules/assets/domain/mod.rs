@@ -10,15 +10,16 @@ pub use events::{
 };
 pub use repositories::{
     AssetReleaseWrite, AssetReleaseWriteReference, AssetWrite, AssetWriteReference,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, TransitionAssetReleaseWrite,
-    TransitionAssetWrite,
+    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
+    McpServiceProfileBinding, TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 pub use services::{
     validate_asset_repository_provision, AssetGitRepository, AssetGitRepositoryError,
     AssetGitRepositoryWrite, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
 pub use value_objects::{
-    AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseVersion, SKILL_BUNDLE_MEDIA_TYPE,
+    AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseVersion, McpServiceProfile,
+    McpServiceProfileSpec, SKILL_BUNDLE_MEDIA_TYPE,
 };
 
 #[cfg(test)]

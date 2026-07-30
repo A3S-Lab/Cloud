@@ -1,3 +1,4 @@
+mod mcp_profiles;
 mod queries;
 mod rows;
 mod writes;
@@ -7,7 +8,8 @@ mod typed_orm_tests;
 
 use crate::modules::assets::domain::{
     Asset, AssetRelease, AssetReleaseWrite, AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite,
-    IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
+    IAssetRepository, IMcpServiceProfileRepository, McpServiceProfileBinding,
+    TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
@@ -83,5 +85,24 @@ impl IAssetRepository for PostgresAssetRepository {
         asset_id: AssetId,
     ) -> Result<Vec<AssetRelease>, RepositoryError> {
         queries::list_releases(&self.executor, organization_id, asset_id).await
+    }
+}
+
+#[async_trait]
+impl IMcpServiceProfileRepository for PostgresAssetRepository {
+    async fn bind_mcp_service_profile(
+        &self,
+        binding: McpServiceProfileBinding,
+    ) -> Result<McpServiceProfileBinding, RepositoryError> {
+        mcp_profiles::bind(&self.executor, binding).await
+    }
+
+    async fn find_mcp_service_profile(
+        &self,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<Option<McpServiceProfileBinding>, RepositoryError> {
+        mcp_profiles::find(&self.executor, organization_id, asset_id, asset_release_id).await
     }
 }

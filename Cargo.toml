@@ -31,6 +31,7 @@ a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "ca17ae78968370e
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "a09b4db0f55c29cff3cb7963f2d45125ed7b3936", default-features = false, features = ["postgres"] }
 a3s-runtime = { version = "=0.2.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "25caf65ffed7ff9b82cedc4e7156c79f396896f7" }
 aes-gcm = "0.10"
+argon2 = "0.5"
 async-trait = "0.1"
 async-stream = "0.3"
 axum = "0.8"

@@ -2,7 +2,8 @@ use a3s_cloud_control_plane::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDI
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetArchived, AssetCreated, AssetKind, AssetRelease, AssetReleaseArtifact,
     AssetReleaseDrafted, AssetReleasePublished, AssetReleaseVersion, AssetReleaseYanked,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, PostgresAssetRepository,
+    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
+    McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
     TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -385,7 +386,133 @@ pub async fn exercise_assets(
         1,
         "failed publication after archive must not leak an outbox event",
     );
+    exercise_mcp_service_profiles(
+        &repository,
+        organization_id,
+        other_organization_id,
+        archived.updated_at + Duration::seconds(10),
+    )
+    .await?;
 
+    Ok(())
+}
+
+async fn exercise_mcp_service_profiles(
+    repository: &PostgresAssetRepository,
+    organization_id: OrganizationId,
+    other_organization_id: OrganizationId,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> TestResult {
+    let asset = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("Weather MCP")?,
+        AssetKind::Mcp,
+        created_at,
+    )?;
+    repository
+        .create_asset(create_asset_write(
+            &asset,
+            "create-weather-mcp",
+            b"weather-mcp",
+        )?)
+        .await?;
+    let release = draft_release(
+        &asset,
+        AssetReleaseId::new(),
+        "1.0.0",
+        'a',
+        'b',
+        created_at + Duration::seconds(1),
+    )?;
+    repository
+        .create_release(create_release_write(
+            &release,
+            "draft-weather-mcp-1-0-0",
+            b"weather-mcp-1.0.0",
+        )?)
+        .await?;
+
+    let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
+        protocol_versions: vec![a3s_cloud_contracts::MCP_PROTOCOL_VERSION.into()],
+        endpoint_path: "/mcp".into(),
+        runtime_port: "mcp".into(),
+        health_path: "/health".into(),
+        request_sse: true,
+        subscriptions: true,
+        server_discover: true,
+        expected_capabilities: vec!["tools".into(), "subscriptions".into()],
+        max_request_bytes: 1_048_576,
+        max_response_bytes: 8_388_608,
+        max_stream_seconds: 3_600,
+    })?;
+    let draft_binding = McpServiceProfileBinding {
+        organization_id,
+        asset_id: asset.id,
+        asset_release_id: release.id,
+        profile: profile.clone(),
+        created_at: release.updated_at + Duration::seconds(1),
+    };
+    assert!(matches!(
+        repository.bind_mcp_service_profile(draft_binding).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let mut published = release.clone();
+    published.publish(
+        &asset,
+        AssetReleaseArtifact::oci_service(digest('c')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 4_096)?,
+        release.updated_at + Duration::seconds(2),
+    )?;
+    repository
+        .transition_release(TransitionAssetReleaseWrite {
+            event: AssetReleasePublished::envelope(&published, Uuid::now_v7())?,
+            release: published.clone(),
+            expected_aggregate_version: release.aggregate_version,
+            idempotency: idempotency(
+                organization_id,
+                format!("assets/{}/releases", asset.id),
+                "publish-weather-mcp-1-0-0",
+                b"publish-weather-mcp-1.0.0",
+            )?,
+        })
+        .await?;
+    let binding = McpServiceProfileBinding {
+        organization_id,
+        asset_id: asset.id,
+        asset_release_id: published.id,
+        profile,
+        created_at: published.updated_at + Duration::seconds(1),
+    };
+    let (left, right) = tokio::join!(
+        repository.bind_mcp_service_profile(binding.clone()),
+        repository.bind_mcp_service_profile(binding.clone()),
+    );
+    assert_eq!(left?, binding);
+    assert_eq!(right?, binding);
+    assert_eq!(
+        repository
+            .find_mcp_service_profile(organization_id, asset.id, published.id)
+            .await?,
+        Some(binding.clone())
+    );
+    assert_eq!(
+        repository
+            .find_mcp_service_profile(other_organization_id, asset.id, published.id)
+            .await?,
+        None
+    );
+
+    let mut changed_spec = binding.profile.spec().clone();
+    changed_spec.endpoint_path = "/other-mcp".into();
+    let changed = McpServiceProfileBinding {
+        profile: McpServiceProfile::from_spec(changed_spec)?,
+        ..binding
+    };
+    assert!(matches!(
+        repository.bind_mcp_service_profile(changed).await,
+        Err(RepositoryError::Conflict(_))
+    ));
     Ok(())
 }
 

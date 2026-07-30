@@ -15,6 +15,7 @@ a3s-flow.workspace = true
 a3s-orm.workspace = true
 a3s-runtime.workspace = true
 aes-gcm.workspace = true
+argon2.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
 axum.workspace = true
