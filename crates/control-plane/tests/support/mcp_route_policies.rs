@@ -10,12 +10,27 @@ use a3s_cloud_control_plane::modules::edge::{
     IEdgeRepository, IMcpRoutePolicyRepository, McpRoutePolicy, McpRoutePolicySpec,
     PostgresEdgeRepository, RouteHostname,
 };
+use a3s_cloud_control_plane::modules::operations::{
+    OperationRequest, OperationSubject, WorkflowIdentity,
+};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest, OrganizationId,
-    ProjectId, RepositoryError, ResourceName, RouteId, Sha256Digest, WorkloadId,
+    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GitCommitSha, IdempotencyRequest,
+    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, RouteId, Sha256Digest,
+    WorkloadId, WorkloadRevisionId,
+};
+use a3s_cloud_control_plane::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+};
+use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
+use a3s_cloud_control_plane::modules::workloads::{
+    CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck, IWorkloadRepository,
+    OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
+    ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision,
 };
 use a3s_orm::{select_from, Database, PostgresDialect, PostgresExecutor};
 use chrono::{Duration, Utc};
+use serde_json::json;
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
@@ -26,7 +41,6 @@ pub async fn exercise(
     other_organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
-    workload_id: WorkloadId,
 ) -> TestResult {
     let edge = PostgresEdgeRepository::new(executor.clone());
     let scope = edge
@@ -108,17 +122,148 @@ pub async fn exercise(
         max_response_bytes: 8_388_608,
         max_stream_seconds: 3_600,
     })?;
+    let profile_binding = McpServiceProfileBinding {
+        organization_id,
+        asset_id: asset.id,
+        asset_release_id: published.id,
+        profile: profile.clone(),
+        created_at: published.updated_at + Duration::milliseconds(1),
+    };
     assets
-        .bind_mcp_service_profile(McpServiceProfileBinding {
-            organization_id,
-            asset_id: asset.id,
-            asset_release_id: published.id,
-            profile: profile.clone(),
-            created_at: published.updated_at + Duration::milliseconds(1),
-        })
+        .bind_mcp_service_profile(profile_binding.clone())
         .await?;
 
-    let created_at = published.updated_at + Duration::milliseconds(2);
+    let workload_created_at = profile_binding.created_at + Duration::milliseconds(1);
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        ResourceName::parse("MCP policy runtime")?,
+        workload_created_at,
+    );
+    let mut revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        ServiceTemplate {
+            artifact: OciArtifact {
+                uri: format!(
+                    "oci://registry.integration.example/mcp/policy@{}",
+                    digest('c')?
+                ),
+                digest: digest('c')?.to_string(),
+                media_type: OCI_IMAGE_MANIFEST_MEDIA_TYPE.into(),
+            },
+            process: ServiceProcess {
+                command: vec!["/app/mcp-server".into()],
+                args: vec!["serve".into()],
+                working_directory: Some("/app".into()),
+                environment: BTreeMap::new(),
+            },
+            secrets: Vec::new(),
+            resources: ServiceResources {
+                cpu_millis: 500,
+                memory_bytes: 256 * 1024 * 1024,
+                pids: 128,
+                ephemeral_storage_bytes: Some(1024 * 1024 * 1024),
+            },
+            ports: vec![ServicePort {
+                name: "mcp".into(),
+                container_port: 8080,
+            }],
+            health: Some(HttpHealthCheck {
+                port_name: "mcp".into(),
+                path: "/health".into(),
+                interval_ms: 10_000,
+                timeout_ms: 2_000,
+                healthy_threshold: 1,
+                unhealthy_threshold: 3,
+                stabilization_window_ms: 30_000,
+            }),
+        },
+        workload_created_at,
+    )?;
+    revision.bind_mcp_release(&workload, &asset, &published, &profile_binding)?;
+    let deployment = Deployment::create(
+        DeploymentId::new(),
+        organization_id,
+        workload.id,
+        revision.id,
+        OperationId::new(),
+        workload_created_at,
+    );
+    let operation = OperationRequest::new(
+        deployment.operation_id,
+        organization_id,
+        OperationSubject::new("deployment", deployment.id.as_uuid())?,
+        WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)?,
+        json!({
+            "deploymentId": deployment.id,
+            "mcpAssetReleaseId": published.id,
+            "mcpProfileDigest": profile.digest(),
+            "revisionId": revision.id,
+            "workloadId": workload.id,
+        }),
+        workload_created_at,
+    );
+    let deployment_request = CreateDeploymentBundle {
+        workload: workload.clone(),
+        control: WorkloadControlSpec::unmanaged_single_replica(),
+        revision: revision.clone(),
+        deployment: deployment.clone(),
+        operation,
+        idempotency: idempotency(
+            organization_id,
+            "workloads",
+            "postgres-mcp-workload",
+            revision.request_digest.as_bytes(),
+        )?,
+        event: DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?,
+    };
+    let workloads = PostgresWorkloadRepository::new(executor.clone());
+    let created = workloads
+        .create_deployment(deployment_request.clone())
+        .await?;
+    let replay = workloads.create_deployment(deployment_request).await?;
+    assert!(!created.replayed);
+    assert!(replay.replayed);
+    assert_eq!(created.revision.mcp_binding(), revision.mcp_binding());
+    let stored_revision = workloads
+        .find_revision(organization_id, revision.id)
+        .await?;
+    assert_eq!(stored_revision, revision);
+    assert!(matches!(
+        workloads
+            .find_revision(other_organization_id, revision.id)
+            .await,
+        Err(RepositoryError::NotFound)
+    ));
+    let runtime_spec = project_runtime_spec(&stored_revision)?;
+    assert_eq!(
+        runtime_spec.semantics_profile_digest.as_deref(),
+        Some(profile.digest().as_str())
+    );
+    let stored_binding = Database::new(PostgresDialect, executor.clone())
+        .fetch_one_as(
+            select_from::<McpWorkloadEvidence>()
+                .select((
+                    McpWorkloadEvidence::mcp_asset_release_id(),
+                    McpWorkloadEvidence::mcp_profile_digest(),
+                ))
+                .filter(McpWorkloadEvidence::id().eq(revision.id.as_uuid())),
+        )
+        .await?;
+    assert_eq!(
+        stored_binding,
+        (
+            Some(published.id.as_uuid()),
+            Some(profile.digest().to_string())
+        )
+    );
+
+    let workload_id = workload.id;
+    let created_at = workload_created_at + Duration::milliseconds(1);
     let policy = McpRoutePolicy::create(
         McpRoutePolicySpec {
             route_id: RouteId::new(),
@@ -217,6 +362,14 @@ a3s_orm::orm_table! {
     struct McpPolicyEvidence => "mcp_route_policies" {
         id: Uuid => "id",
         acl: String => "acl",
+    }
+}
+
+a3s_orm::orm_table! {
+    struct McpWorkloadEvidence => "workload_revisions" {
+        id: Uuid => "id",
+        mcp_asset_release_id: Option<Uuid> => "mcp_asset_release_id",
+        mcp_profile_digest: Option<String> => "mcp_profile_digest",
     }
 }
 

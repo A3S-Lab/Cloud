@@ -18,13 +18,14 @@ pub use application::{
 pub use domain::entities::{
     CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, DeploymentStatus,
     EffectivePlacementPolicy, ExternalBuildReference, HttpHealthCheck, ManagedOwnerKind,
-    ManagedOwnerReference, OciArtifact, OciArtifactReference, PlacementTopology,
-    RequestedServiceTemplate, ResourceAllocation, ResourceClaim, ResourceClaimBindingEvidence,
-    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState, ResourceKind,
-    ResourceSlotBinding, ResourceSlotEvidence, ResourceSlotRequest, ResourceUnit, SecretBinding,
-    SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
-    WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica,
-    WorkloadReplicaMember, WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
+    ManagedOwnerReference, McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference,
+    PlacementTopology, RequestedServiceTemplate, ResourceAllocation, ResourceClaim,
+    ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence, ResourceClaimReservation,
+    ResourceClaimState, ResourceKind, ResourceSlotBinding, ResourceSlotEvidence,
+    ResourceSlotRequest, ResourceUnit, SecretBinding, SecretBindingTarget, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
+    WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica, WorkloadReplicaMember,
+    WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadStopRequested,

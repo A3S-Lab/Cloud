@@ -487,6 +487,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/053_mcp_route_policies.sql"
             )),
         ),
+        Migration::new(
+            "054",
+            "hosted MCP Workload revision release bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/054_mcp_workload_revision_bindings.sql"
+            )),
+        ),
     ]
 }
 

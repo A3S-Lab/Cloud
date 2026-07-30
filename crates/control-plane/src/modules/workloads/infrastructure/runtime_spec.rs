@@ -7,12 +7,17 @@ use a3s_runtime::contract::{
 };
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
-    project_runtime_spec_with_semantics_profile(revision, None)
+    project_runtime_spec_with_digest(
+        revision,
+        revision
+            .mcp_binding()
+            .map(|binding| binding.profile_digest().as_str()),
+    )
 }
 
 /// Project one ordinary Runtime Service while binding an optional immutable
 /// product semantics profile. Runtime treats the digest as opaque.
-pub fn project_runtime_spec_with_semantics_profile(
+fn project_runtime_spec_with_digest(
     revision: &WorkloadRevision,
     semantics_profile_digest: Option<&str>,
 ) -> Result<RuntimeUnitSpec, String> {
@@ -114,12 +119,21 @@ pub fn project_runtime_spec_with_semantics_profile(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::shared_kernel::domain::{SecretId, WorkloadId, WorkloadRevisionId};
+    use crate::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDIA_TYPE;
+    use crate::modules::assets::domain::{
+        Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion,
+        McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec,
+    };
+    use crate::modules::shared_kernel::domain::{
+        canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, OrganizationId,
+        ProjectId, ResourceName, SecretId, Sha256Digest, WorkloadId, WorkloadRevisionId,
+    };
     use crate::modules::workloads::domain::entities::{
         HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceProcess, ServiceResources, ServiceTemplate,
+        ServiceProcess, ServiceResources, ServiceTemplate, Workload,
     };
-    use chrono::Utc;
+    use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
+    use chrono::{Duration, Utc};
     use std::collections::BTreeMap;
 
     #[test]
@@ -206,10 +220,69 @@ mod tests {
     #[test]
     fn projects_an_opaque_semantics_profile_without_product_fields() {
         let artifact_digest = format!("sha256:{}", "c".repeat(64));
-        let profile_digest = format!("sha256:{}", "a".repeat(64));
-        let revision = WorkloadRevision::create(
-            WorkloadRevisionId::new(),
+        let created_at = canonical_timestamp(Utc::now());
+        let organization_id = OrganizationId::new();
+        let asset = Asset::create(
+            AssetId::new(),
+            organization_id,
+            ResourceName::parse("runtime-mcp").expect("asset name"),
+            AssetKind::Mcp,
+            created_at,
+        )
+        .expect("asset");
+        let mut release = AssetRelease::draft(
+            &asset,
+            AssetReleaseId::new(),
+            AssetReleaseVersion::parse("1.0.0").expect("release version"),
+            GitCommitSha::parse("b".repeat(40)).expect("commit"),
+            Sha256Digest::parse(format!("sha256:{}", "d".repeat(64))).expect("manifest digest"),
+            created_at,
+        )
+        .expect("release");
+        release
+            .publish(
+                &asset,
+                AssetReleaseArtifact::oci_service(
+                    Sha256Digest::parse(&artifact_digest).expect("artifact digest"),
+                    OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+                    4_096,
+                )
+                .expect("artifact"),
+                created_at + Duration::seconds(1),
+            )
+            .expect("publish");
+        let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
+            protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
+            endpoint_path: "/mcp".into(),
+            runtime_port: "mcp".into(),
+            health_path: "/health".into(),
+            request_sse: true,
+            subscriptions: true,
+            server_discover: true,
+            expected_capabilities: vec!["subscriptions".into(), "tools".into()],
+            max_request_bytes: 1_048_576,
+            max_response_bytes: 8_388_608,
+            max_stream_seconds: 3_600,
+        })
+        .expect("profile");
+        let profile_binding = McpServiceProfileBinding {
+            organization_id,
+            asset_id: asset.id,
+            asset_release_id: release.id,
+            profile: profile.clone(),
+            created_at: created_at + Duration::seconds(2),
+        };
+        let workload = Workload::create(
             WorkloadId::new(),
+            organization_id,
+            ProjectId::new(),
+            EnvironmentId::new(),
+            ResourceName::parse("runtime-mcp-workload").expect("workload name"),
+            created_at + Duration::seconds(3),
+        );
+        let mut revision = WorkloadRevision::create(
+            WorkloadRevisionId::new(),
+            workload.id,
             3,
             ServiceTemplate {
                 artifact: OciArtifact {
@@ -244,23 +317,24 @@ mod tests {
                     stabilization_window_ms: 30_000,
                 }),
             },
-            Utc::now(),
+            created_at + Duration::seconds(3),
         )
         .expect("revision");
+        revision
+            .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+            .expect("bind MCP release");
 
-        let spec = project_runtime_spec_with_semantics_profile(&revision, Some(&profile_digest))
-            .expect("profile-bound Runtime spec");
+        let spec = project_runtime_spec(&revision).expect("profile-bound Runtime spec");
         assert_eq!(
             spec.semantics_profile_digest.as_deref(),
-            Some(profile_digest.as_str())
+            Some(profile.digest().as_str())
         );
         assert_eq!(spec.class, RuntimeUnitClass::Service);
         assert_eq!(spec.network.mode, NetworkMode::Service);
         assert_eq!(spec.network.ports[0].name, "mcp");
 
-        let invalid =
-            project_runtime_spec_with_semantics_profile(&revision, Some("sha256:not-a-digest"))
-                .expect_err("invalid digest must fail Runtime validation");
+        let invalid = project_runtime_spec_with_digest(&revision, Some("sha256:not-a-digest"))
+            .expect_err("invalid digest must fail Runtime validation");
         assert!(invalid.contains("digest"));
     }
 

@@ -245,7 +245,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 53);
+    assert_eq!(applied, 54);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -776,6 +776,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "054",
+                "hosted MCP Workload revision release bindings",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/054_mcp_workload_revision_bindings.sql"
+                )),
+            ),
+            Migration::new(
+                "055",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -2083,7 +2091,6 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
             Uuid::parse_str(&environment_id)?,
         ),
-        workload_fixture.workload_id,
     )
     .await?;
     let gateway_rollout_fixture = gateway_rollouts_support::GatewayRolloutFixture {

@@ -1,10 +1,12 @@
+use crate::modules::assets::domain::McpServiceProfile;
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, DeploymentId, EnvironmentId, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ProjectId, RepositoryError, ResourceName, SourceRevisionId, WorkloadId, WorkloadRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId, NodeCommandId, NodeId,
+    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, Sha256Digest,
+    SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentStatus, ExternalBuildReference, RequestedServiceTemplate,
-    ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
+    Deployment, DeploymentStatus, ExternalBuildReference, McpWorkloadRevisionBinding,
+    RequestedServiceTemplate, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
@@ -12,7 +14,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::schema::{Deployments, WorkloadRevisions, Workloads};
+use super::schema::{Deployments, McpServiceProfiles, WorkloadRevisions, Workloads};
 
 pub(super) struct WorkloadSelection;
 pub(super) struct RevisionSelection;
@@ -62,6 +64,11 @@ impl Selection for RevisionSelection {
             WorkloadRevisions::external_build_environment_id().expression(),
             WorkloadRevisions::external_source_revision_id().expression(),
             WorkloadRevisions::external_build_run_id().expression(),
+            WorkloadRevisions::mcp_organization_id().expression(),
+            WorkloadRevisions::mcp_asset_id().expression(),
+            WorkloadRevisions::mcp_asset_release_id().expression(),
+            WorkloadRevisions::mcp_profile_digest().expression(),
+            McpServiceProfiles::acl().expression(),
         ]
     }
 }
@@ -126,6 +133,11 @@ pub(super) struct RevisionRow {
     external_build_environment_id: Option<Uuid>,
     external_source_revision_id: Option<Uuid>,
     external_build_run_id: Option<Uuid>,
+    mcp_organization_id: Option<Uuid>,
+    mcp_asset_id: Option<Uuid>,
+    mcp_asset_release_id: Option<Uuid>,
+    mcp_profile_digest: Option<String>,
+    mcp_profile_acl: Option<String>,
 }
 
 pub(super) struct DeploymentRow {
@@ -171,6 +183,8 @@ from_row!(RevisionRow, {
     resolved_at: 14, external_build_organization_id: 15,
     external_build_project_id: 16, external_build_environment_id: 17,
     external_source_revision_id: 18, external_build_run_id: 19,
+    mcp_organization_id: 20, mcp_asset_id: 21, mcp_asset_release_id: 22,
+    mcp_profile_digest: 23, mcp_profile_acl: 24,
 });
 from_row!(DeploymentRow, {
     id: 0, organization_id: 1, workload_id: 2, revision_id: 3, operation_id: 4,
@@ -308,6 +322,48 @@ pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryE
                     "workload revision external build reference is invalid: {error}"
                 ))
             })?;
+    }
+    match (
+        row.mcp_organization_id,
+        row.mcp_asset_id,
+        row.mcp_asset_release_id,
+        row.mcp_profile_digest,
+        row.mcp_profile_acl,
+    ) {
+        (None, None, None, None, None) => {}
+        (
+            Some(organization_id),
+            Some(asset_id),
+            Some(asset_release_id),
+            Some(profile_digest),
+            Some(profile_acl),
+        ) => {
+            let profile =
+                McpServiceProfile::restore(&profile_acl, &profile_digest).map_err(|error| {
+                    corrupt(format!("MCP Workload Service profile is invalid: {error}"))
+                })?;
+            let binding = McpWorkloadRevisionBinding::restore(
+                OrganizationId::from_uuid(organization_id),
+                AssetId::from_uuid(asset_id),
+                AssetReleaseId::from_uuid(asset_release_id),
+                Sha256Digest::parse(profile_digest).map_err(|error| {
+                    corrupt(format!("MCP Workload profile digest is invalid: {error}"))
+                })?,
+            )
+            .map_err(|error| {
+                corrupt(format!("MCP Workload release binding is invalid: {error}"))
+            })?;
+            revision
+                .restore_mcp_binding(binding, &profile)
+                .map_err(|error| {
+                    corrupt(format!("MCP Workload revision binding is invalid: {error}"))
+                })?;
+        }
+        _ => {
+            return Err(corrupt(
+                "workload revision MCP release binding or Service profile is incomplete",
+            ))
+        }
     }
     Ok(revision)
 }

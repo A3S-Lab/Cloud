@@ -1,10 +1,15 @@
 use super::entities::*;
-use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, BuildRunId, DeploymentId, EnvironmentId, NodeCommandId, NodeId,
-    OperationId, OrganizationId, ProjectId, ResourceName, SecretId, SourceRevisionId, WorkloadId,
-    WorkloadRevisionId,
+use crate::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDIA_TYPE;
+use crate::modules::assets::domain::{
+    Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, McpServiceProfile,
+    McpServiceProfileBinding, McpServiceProfileSpec,
 };
-use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId,
+    GitCommitSha, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, ResourceName,
+    SecretId, Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
+};
+use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot, MCP_PROTOCOL_VERSION};
 use chrono::{Duration, Timelike, Utc};
 use std::collections::BTreeMap;
 
@@ -636,6 +641,131 @@ fn external_build_trace_is_validated_and_preserved_by_derived_revisions() {
         created_at + Duration::seconds(4),
     )
     .is_err());
+}
+
+#[test]
+fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
+    let organization_id = OrganizationId::new();
+    let created_at = canonical_timestamp(Utc::now());
+    let asset = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("weather-mcp").expect("asset name"),
+        AssetKind::Mcp,
+        created_at,
+    )
+    .expect("asset");
+    let artifact_digest =
+        Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("artifact digest");
+    let mut release = AssetRelease::draft(
+        &asset,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse("1.0.0").expect("release version"),
+        GitCommitSha::parse("b".repeat(40)).expect("commit"),
+        Sha256Digest::parse(format!("sha256:{}", "c".repeat(64))).expect("manifest digest"),
+        created_at,
+    )
+    .expect("release");
+    release
+        .publish(
+            &asset,
+            AssetReleaseArtifact::oci_service(
+                artifact_digest.clone(),
+                OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+                4_096,
+            )
+            .expect("artifact"),
+            created_at + Duration::seconds(1),
+        )
+        .expect("publish");
+    let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
+        protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
+        endpoint_path: "/mcp".into(),
+        runtime_port: "mcp".into(),
+        health_path: "/health".into(),
+        request_sse: true,
+        subscriptions: true,
+        server_discover: true,
+        expected_capabilities: vec!["subscriptions".into(), "tools".into()],
+        max_request_bytes: 1_048_576,
+        max_response_bytes: 8_388_608,
+        max_stream_seconds: 3_600,
+    })
+    .expect("profile");
+    let profile_binding = McpServiceProfileBinding {
+        organization_id,
+        asset_id: asset.id,
+        asset_release_id: release.id,
+        profile: profile.clone(),
+        created_at: created_at + Duration::seconds(2),
+    };
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("weather-runtime").expect("workload name"),
+        created_at + Duration::seconds(3),
+    );
+    let mut service = template('a');
+    service.ports[0].name = "mcp".into();
+    service.health.as_mut().expect("health").port_name = "mcp".into();
+    let mut revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        service,
+        created_at + Duration::seconds(3),
+    )
+    .expect("revision");
+
+    assert!(revision
+        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .expect("bind"));
+    assert!(!revision
+        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .expect("idempotent bind"));
+    let binding = revision.mcp_binding().expect("MCP binding");
+    assert_eq!(binding.organization_id(), organization_id);
+    assert_eq!(binding.asset_release_id(), release.id);
+    assert_eq!(binding.profile_digest(), profile.digest());
+
+    let rollback = revision
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            2,
+            created_at + Duration::seconds(4),
+        )
+        .expect("rollback");
+    assert_eq!(rollback.mcp_binding(), revision.mcp_binding());
+
+    let mut wrong_artifact = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        3,
+        template('d'),
+        created_at + Duration::seconds(5),
+    )
+    .expect("wrong artifact revision");
+    assert!(wrong_artifact
+        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .is_err());
+
+    let mut wrong_health = template('a');
+    wrong_health.ports[0].name = "mcp".into();
+    wrong_health.health.as_mut().expect("health").port_name = "mcp".into();
+    wrong_health.health.as_mut().expect("health").path = "/ready".into();
+    let mut wrong_health = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        4,
+        wrong_health,
+        created_at + Duration::seconds(6),
+    )
+    .expect("wrong health revision");
+    assert!(wrong_health
+        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .is_err());
 }
 
 #[test]
