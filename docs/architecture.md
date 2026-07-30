@@ -877,11 +877,19 @@ The resulting projection contains one immutable profile, its one route, only
 the referenced verifier generations, and the earlier of route-policy expiry
 and credential expiry. It is validated as one complete Gateway contract before
 return. The planner returns a node-bound value that rejects any Runtime target
-whose node differs from the receiving physical Gateway. This planner
-deliberately cannot publish a managed snapshot: a durable worker must aggregate
-all active routes for that same physical Gateway, compare and swap one complete
-revision, dispatch it only to the bound node, and recover acknowledgement
-without a single-route update removing sibling routes.
+whose node differs from the receiving physical Gateway.
+
+The pure MCP projection assembler accepts one to 1,000 independently planned
+one-route fragments only when every fragment is bound to that same physical
+Gateway. It revalidates each fragment at one canonical observation time,
+requires exactly the route's profile and credentials, deduplicates only
+field-for-field-equivalent shared profiles and credential authority, rejects
+route/router ownership collisions, takes the earliest expiry, sorts the merged
+collections canonically, and validates the final complete contract. It cannot
+enumerate durable desired routes, assign a managed revision, or publish. A
+durable worker must still load all active routes for the node, compare and swap
+one complete revision, dispatch it only to the bound node, and recover
+acknowledgement without a single-route update removing sibling routes.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

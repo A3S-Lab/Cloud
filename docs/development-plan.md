@@ -1579,9 +1579,13 @@ unavailable. As of 2026-07-30:
   credentials. An internal bounded issuer now generates one
   zeroizing bearer value, stores only its Argon2id verifier, retries complete
   random material after uniqueness conflicts, and exposes no serializable or
-  cloneable secret result. Public idempotent one-time delivery and rotation,
-  multi-route durable snapshot reconciliation/publication, the real PostgreSQL
-  gate, lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
+  cloneable secret result. A pure assembler now combines only same-node
+  one-route fragments, deduplicates exact profile/credential authority, rejects
+  ownership or authority conflicts, and emits one canonical complete snapshot
+  with the earliest expiry. Public idempotent one-time delivery and rotation,
+  durable desired-route enumeration plus snapshot compare-and-swap,
+  dispatch/acknowledgement recovery, the real PostgreSQL gate, lifecycle
+  surfaces, recovery, and audit remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
@@ -1696,6 +1700,9 @@ never become its state store.
    its receiving node before aggregation or publication. The snapshot contains
    references or verifiers, never plaintext credentials. Multi-node upstream
    routing waits for the `H0.3` cluster-private endpoint contract.
+   Deterministically assemble all independently planned routes for that node,
+   deduplicating only identical shared profiles and credentials and taking the
+   earliest validity bound before managed revision assignment.
 8. Activate only after Gateway acknowledges the exact identity, revision, and
    digest. Update and rollback use immutable revisions; drain removes a target
    from acknowledged traffic before Runtime stop.
