@@ -55,7 +55,7 @@ pub use infrastructure::{
     LocalGatewayCertificateAuthority, McpCredentialIssuanceError, McpCredentialIssueRequest,
     McpCredentialIssuer, McpGatewayProjectionCompiler, McpGatewayProjectionPlanner,
     McpRouteProjectionPlanner, McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
-    PlanGatewayRouteRollout, PlanMcpRouteProjection, VaultGatewayCertificateAuthority,
-    WorkloadRouteTargetReader,
+    PlanGatewayRouteRollout, PlanMcpRouteProjection, PlannedMcpGatewayProjection,
+    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

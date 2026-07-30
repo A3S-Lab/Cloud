@@ -858,10 +858,15 @@ and desired Gateway scope have the same organization, project, environment,
 AssetRelease, Workload, and validity window before consulting Runtime state.
 It then asks the existing `IRouteTargetReader` for exactly one current healthy
 target per desired Gateway member, using the profile's declared Runtime port.
-Partial or wrong-node sets fail before projection. The initial policy assigns
-all eligible members priority zero and equal weight, and derives the router
-name from the route ID; later traffic policy must remain Cloud-owned rather
-than becoming a Runtime or Gateway scheduling decision.
+Partial or wrong-node sets fail before projection. Because the current Runtime
+contract exposes node-local loopback sockets, Cloud then selects only the
+target whose node is the physical Gateway receiving this snapshot. That local
+target has priority zero and weight one, and the router name derives from the
+route ID. A remote member's `127.0.0.1` endpoint must never be interpreted as a
+socket on the receiving Gateway; remote target routing remains unavailable
+until `H0.3` defines and proves the cluster-private endpoint contract. Later
+traffic policy remains Cloud-owned rather than becoming a Runtime or Gateway
+scheduling decision.
 
 The one-route Gateway projection planner then resolves exactly the credential
 IDs named by that route's grants. The repository query is bounded to 10,000
@@ -871,10 +876,12 @@ cross-scope identities, stale generations, expiry, and revocation fail closed.
 The resulting projection contains one immutable profile, its one route, only
 the referenced verifier generations, and the earlier of route-policy expiry
 and credential expiry. It is validated as one complete Gateway contract before
-return. This planner deliberately cannot publish a managed snapshot: a durable
-worker must aggregate all active routes for a physical Gateway, compare and
-swap one complete revision, dispatch it, and recover acknowledgement without a
-single-route update removing sibling routes.
+return. The planner returns a node-bound value that rejects any Runtime target
+whose node differs from the receiving physical Gateway. This planner
+deliberately cannot publish a managed snapshot: a durable worker must aggregate
+all active routes for that same physical Gateway, compare and swap one complete
+revision, dispatch it only to the bound node, and recover acknowledgement
+without a single-route update removing sibling routes.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

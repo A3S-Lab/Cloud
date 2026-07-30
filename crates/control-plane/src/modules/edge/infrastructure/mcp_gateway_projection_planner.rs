@@ -1,14 +1,63 @@
 use crate::modules::edge::domain::repositories::IMcpCredentialRepository;
 use crate::modules::edge::infrastructure::{McpRouteProjectionPlanner, PlanMcpRouteProjection};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, McpCredentialId, RepositoryError,
+    canonical_timestamp, McpCredentialId, NodeId, RepositoryError,
 };
 use a3s_cloud_contracts::{McpGatewayProjection, MCP_GATEWAY_PROJECTION_SCHEMA};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// A complete MCP snapshot bound to the one physical Gateway that may receive
+/// its node-local Runtime endpoints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedMcpGatewayProjection {
+    gateway_node_id: NodeId,
+    projection: McpGatewayProjection,
+}
+
+impl PlannedMcpGatewayProjection {
+    pub fn new(
+        gateway_node_id: NodeId,
+        projection: McpGatewayProjection,
+        observed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        if gateway_node_id.as_uuid().is_nil() {
+            return Err("MCP Gateway projection target node must not be nil".into());
+        }
+        projection.validate(canonical_timestamp(observed_at))?;
+        if projection
+            .routes
+            .iter()
+            .flat_map(|route| &route.targets)
+            .any(|target| target.node_id != gateway_node_id.as_uuid())
+        {
+            return Err(
+                "MCP Gateway projection contains a Runtime target from another physical node"
+                    .into(),
+            );
+        }
+        Ok(Self {
+            gateway_node_id,
+            projection,
+        })
+    }
+
+    pub const fn gateway_node_id(&self) -> NodeId {
+        self.gateway_node_id
+    }
+
+    pub const fn projection(&self) -> &McpGatewayProjection {
+        &self.projection
+    }
+
+    pub fn into_projection(self) -> McpGatewayProjection {
+        self.projection
+    }
+}
+
 /// Resolves route grants against Cloud's credential authority and assembles a
-/// complete MCP projection for one hosted route.
+/// complete node-local MCP projection for one hosted route.
 ///
 /// Multi-route snapshot aggregation and managed publication remain outside
 /// this planner so replacing one route cannot silently remove another.
@@ -32,11 +81,12 @@ impl McpGatewayProjectionPlanner {
     pub async fn plan(
         &self,
         request: PlanMcpRouteProjection,
-    ) -> Result<McpGatewayProjection, RepositoryError> {
+    ) -> Result<PlannedMcpGatewayProjection, RepositoryError> {
         let organization_id = request.policy.spec().organization_id;
         let project_id = request.policy.spec().project_id;
         let environment_id = request.policy.spec().environment_id;
         let policy_expires_at = request.policy.spec().expires_at;
+        let gateway_node_id = request.gateway_node_id;
         let observed_at = canonical_timestamp(request.observed_at);
         let profile = request.profile_binding.profile.gateway_projection();
         let route = self.routes.plan(request).await?;
@@ -90,10 +140,8 @@ impl McpGatewayProjectionPlanner {
             credentials,
             routes: vec![route],
         };
-        projection
-            .validate(observed_at)
-            .map_err(RepositoryError::Conflict)?;
-        Ok(projection)
+        PlannedMcpGatewayProjection::new(gateway_node_id, projection, observed_at)
+            .map_err(RepositoryError::Conflict)
     }
 }
 
@@ -190,6 +238,7 @@ mod tests {
             profile_binding: profile_binding(fixture),
             revision: fixture.revision.clone(),
             scope: scope(fixture, node_id),
+            gateway_node_id: node_id,
             observed_at: now(),
         }
     }
@@ -220,6 +269,8 @@ mod tests {
             .plan(request(&fixture, node_id))
             .await
             .expect("projection");
+        assert_eq!(projection.gateway_node_id(), node_id);
+        let projection = projection.projection();
 
         assert_eq!(projection.expires_at, credential.expires_at());
         assert_eq!(projection.credentials.len(), 1);
@@ -232,6 +283,27 @@ mod tests {
         assert_eq!(projection.routes[0].targets.len(), 1);
         projection.validate(now()).expect("valid projection");
         assert!(!format!("{projection:?}").contains(VERIFIER));
+    }
+
+    #[tokio::test]
+    async fn node_binding_rejects_a_projection_with_a_remote_loopback_target() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("store credential");
+        let planned = planner(&fixture, node_id, credentials)
+            .plan(request(&fixture, node_id))
+            .await
+            .expect("projection");
+        let mut remote = planned.into_projection();
+        remote.routes[0].targets[0].node_id = NodeId::new().as_uuid();
+
+        assert!(PlannedMcpGatewayProjection::new(node_id, remote, now())
+            .expect_err("remote target")
+            .contains("another physical node"));
     }
 
     #[tokio::test]

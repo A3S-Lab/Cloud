@@ -1571,11 +1571,12 @@ unavailable. As of 2026-07-30:
   OCI artifact digest/media type, and profile digest; the ordinary Runtime
   projection now inherits that opaque digest automatically. These paths use
   typed A3S ORM, and route desired state contains authorization references but
-  no Runtime endpoints or credential verifiers. Cloud now plans one healthy
-  exact-generation target per desired Gateway member, resolves only the
-  credential IDs named by the route within the exact tenant/environment, and
-  validates a one-route complete Gateway projection whose expiry is bounded by
-  both policy and credentials. An internal bounded issuer now generates one
+  no Runtime endpoints or credential verifiers. Cloud now validates one healthy
+  exact-generation target per desired Gateway member, then emits a node-bound
+  one-route projection containing only the receiving Gateway's loopback-safe
+  target. It resolves only the credential IDs named by the route within the
+  exact tenant/environment, and bounds projection expiry by both policy and
+  credentials. An internal bounded issuer now generates one
   zeroizing bearer value, stores only its Argon2id verifier, retries complete
   random material after uniqueness conflicts, and exposes no serializable or
   cloneable secret result. Public idempotent one-time delivery and rotation,
@@ -1687,11 +1688,14 @@ never become its state store.
 6. Admit a target only from a healthy exact-generation Runtime observation
    whose endpoint and semantics digest match the desired replica. Cloud never
    constructs an origin or endpoint absent from Runtime evidence.
-7. Compile one complete Gateway ACL snapshot containing the logical MCP route,
-   Service-profile digest, separately bound route policy, exact target set,
-   TLS, origin and authorization policy, request/stream bounds, method/name
-   policy, telemetry budget, expiry, and rollout weights. The snapshot contains
-   references or verifiers, never plaintext credentials.
+7. Compile one complete Gateway ACL snapshot per physical Gateway containing
+   the logical MCP route, Service-profile digest, separately bound route
+   policy, only that Gateway's node-local target under the current loopback
+   endpoint contract, TLS, origin and authorization policy, request/stream
+   bounds, method/name policy, telemetry budget, and expiry. Bind the result to
+   its receiving node before aggregation or publication. The snapshot contains
+   references or verifiers, never plaintext credentials. Multi-node upstream
+   routing waits for the `H0.3` cluster-private endpoint contract.
 8. Activate only after Gateway acknowledges the exact identity, revision, and
    digest. Update and rollback use immutable revisions; drain removes a target
    from acknowledged traffic before Runtime stop.

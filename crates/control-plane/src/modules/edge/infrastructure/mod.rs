@@ -75,7 +75,9 @@ pub use mcp_credential_issuer::{
 pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
 };
-pub use mcp_gateway_projection_planner::McpGatewayProjectionPlanner;
+pub use mcp_gateway_projection_planner::{
+    McpGatewayProjectionPlanner, PlannedMcpGatewayProjection,
+};
 pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRouteProjection};
 pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
