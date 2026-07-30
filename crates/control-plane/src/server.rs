@@ -2,8 +2,8 @@ use crate::infrastructure::FlowOperationCoordinator;
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::edge::{
     GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
-    GatewayRolloutRollbackReconciler, McpGatewayDesiredStateReconciler,
-    McpGatewaySnapshotReconciler,
+    GatewayRolloutRollbackReconciler, McpCredentialDeliveryCleanupWorker,
+    McpGatewayDesiredStateReconciler, McpGatewaySnapshotReconciler,
 };
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
@@ -29,6 +29,7 @@ pub(crate) struct ControlPlaneWorkers {
     gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
+    mcp_credential_delivery_cleanup_worker: Option<McpCredentialDeliveryCleanupWorker>,
     log_retention_worker: Option<LogRetentionWorker>,
     log_compaction_worker: Option<LogCompactionWorker>,
     outbox_relay: Option<OutboxRelay>,
@@ -49,6 +50,7 @@ impl ControlPlaneWorkers {
         gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
+        mcp_credential_delivery_cleanup_worker: Option<McpCredentialDeliveryCleanupWorker>,
         log_retention_worker: Option<LogRetentionWorker>,
         log_compaction_worker: Option<LogCompactionWorker>,
         outbox_relay: Option<OutboxRelay>,
@@ -66,6 +68,7 @@ impl ControlPlaneWorkers {
             gateway_rollout_rollback_reconciler,
             secret_rotation_restart_reconciler,
             workload_reconciler,
+            mcp_credential_delivery_cleanup_worker,
             log_retention_worker,
             log_compaction_worker,
             outbox_relay,
@@ -131,6 +134,9 @@ impl ControlPlane {
         }
         if let Some(reconciler) = self.workers.workload_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(worker) = self.workers.mcp_credential_delivery_cleanup_worker {
+            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
         }
         if let Some(worker) = self.workers.log_retention_worker {
             workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));

@@ -57,6 +57,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     }
     for status in [200, 201] {
         response_components.insert(
+            format!("SensitiveSuccess{status}"),
+            sensitive_response_component(status, "#/components/schemas/ApiSuccessResponse"),
+        );
+    }
+    for status in [200, 201] {
+        response_components.insert(
             format!("RawSuccess{status}"),
             response_component(status, ""),
         );
@@ -66,6 +72,10 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         response_components.insert(
             format!("Error{status}"),
             response_component(status, "#/components/schemas/ApiErrorResponse"),
+        );
+        response_components.insert(
+            format!("SensitiveError{status}"),
+            sensitive_response_component(status, "#/components/schemas/ApiErrorResponse"),
         );
     }
     components.insert("responses".into(), Value::Object(response_components));
@@ -90,6 +100,29 @@ fn response_component(status: u16, schema_ref: &str) -> Value {
         },
         "content": { "application/json": { "schema": schema } }
     })
+}
+
+fn sensitive_response_component(status: u16, schema_ref: &str) -> Value {
+    let mut response = response_component(status, schema_ref);
+    let headers = response
+        .get_mut("headers")
+        .and_then(Value::as_object_mut)
+        .expect("response component headers are an object");
+    headers.insert(
+        "cache-control".into(),
+        json!({
+            "description": "Credential responses must never be stored.",
+            "schema": { "type": "string", "enum": ["no-store"] }
+        }),
+    );
+    headers.insert(
+        "pragma".into(),
+        json!({
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": { "type": "string", "enum": ["no-cache"] }
+        }),
+    );
+    response
 }
 
 fn sse_response_component() -> Value {

@@ -130,6 +130,23 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .and_then(|body| body.get("content"))
         .and_then(|content| content.get("application/vnd.a3s.acl"))
         .is_some());
+    let mcp_credentials = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials"];
+    assert_eq!(mcp_credentials["post"]["tags"], json!(["Edge"]));
+    assert_eq!(
+        mcp_credentials["post"]["responses"]["201"]["$ref"],
+        "#/components/responses/SensitiveSuccess201"
+    );
+    assert_eq!(
+        document["components"]["responses"]["SensitiveSuccess201"]["headers"]["cache-control"]
+            ["schema"]["enum"],
+        json!(["no-store"])
+    );
+    assert_eq!(
+        document["components"]["responses"]["SensitiveError409"]["headers"]["pragma"]["schema"]
+            ["enum"],
+        json!(["no-cache"])
+    );
     Ok(())
 }
 

@@ -1130,12 +1130,25 @@ candidate, while a retry recovers only the winner's exact ciphertext.
 Encryption-provider failures are sanitized, and queries return an aggregate
 whose verifier remains private and Debug-redacted.
 
-This is not yet a public lifecycle claim. REST/OpenAPI/client/CLI adapters must
-consume the one-time secret into `no-store` responses without adding another
-business path, and the cleanup method still needs a registered bounded worker.
-Snapshot reconciliation already removes routes whose referenced credential is
-revoked, expired, or at another generation. Cloud management credentials must
-never be accepted as a shortcut.
+The public REST adapter now uses those exact commands and queries at the
+organization/project/environment scope. Issue and rotate consume the
+zeroizing secret directly during JSON serialization; revoke omits the field.
+The metadata DTO has no verifier, provider key ID, ciphertext, or delivery
+timestamps. Both controllers and their exception filters force
+`Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer`,
+and `X-Content-Type-Options: nosniff` on successes and failures. The committed
+OpenAPI contract advertises issue `200/201`, rotate/get/list/revoke `200`, the
+required idempotency header, and sensitive response headers.
+
+`McpCredentialDeliveryCleanupWorker` runs only in the existing `all` or
+`worker` process roles. It ticks at most once per 60 seconds, deletes at most
+256 expired ciphertext rows per transaction, canonicalizes its observation
+time, retries repository failures on a later tick, and never touches the
+durable idempotency reference. Client/CLI parity is still required before the
+complete public lifecycle is claimed. Snapshot reconciliation already removes
+routes whose referenced credential is revoked, expired, or at another
+generation. Cloud management credentials must never be accepted as a
+shortcut.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical

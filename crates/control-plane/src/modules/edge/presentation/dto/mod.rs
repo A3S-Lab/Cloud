@@ -2,10 +2,12 @@ mod request;
 mod response;
 
 pub use request::{
-    CreateDomainClaimRequest, CreateGatewayScopeRequest, PublishRouteRequest,
-    RevokeDomainClaimRequest, VerifyDomainClaimRequest,
+    CreateDomainClaimRequest, CreateGatewayScopeRequest, IssueMcpCredentialRequest,
+    PublishRouteRequest, RevokeDomainClaimRequest, RotateMcpCredentialRequest,
+    VerifyDomainClaimRequest,
 };
 pub use response::{
     DomainClaimMutationResponse, DomainClaimResponse, GatewayCertificateResponse,
-    GatewayScopeMutationResponse, GatewayScopeResponse, RoutePublicationResponse, RouteResponse,
+    GatewayScopeMutationResponse, GatewayScopeResponse, McpCredentialMutationResponse,
+    McpCredentialResponse, RoutePublicationResponse, RouteResponse,
 };

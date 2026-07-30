@@ -232,24 +232,46 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
 
 fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut responses = Map::new();
+    let sensitive = path.contains("/mcp-credentials");
     for status in success_statuses(method, path) {
         let component = if path.ends_with("/stream") {
             "SseSuccess200".to_owned()
         } else if path == "/node-control/enroll" {
             format!("RawSuccess{status}")
+        } else if sensitive {
+            format!("SensitiveSuccess{status}")
         } else {
             format!("Success{status}")
         };
         responses.insert(status.to_string(), response_ref(&component));
     }
     for status in [400, 404, 409, 422, 429, 500, 503] {
-        responses.insert(status.to_string(), response_ref(&format!("Error{status}")));
+        let component = if sensitive {
+            format!("SensitiveError{status}")
+        } else {
+            format!("Error{status}")
+        };
+        responses.insert(status.to_string(), response_ref(&component));
     }
     if !is_public || path == "/webhooks/github" {
-        responses.insert("401".into(), response_ref("Error401"));
+        responses.insert(
+            "401".into(),
+            response_ref(if sensitive {
+                "SensitiveError401"
+            } else {
+                "Error401"
+            }),
+        );
     }
     if !is_public {
-        responses.insert("403".into(), response_ref("Error403"));
+        responses.insert(
+            "403".into(),
+            response_ref(if sensitive {
+                "SensitiveError403"
+            } else {
+                "Error403"
+            }),
+        );
     }
     Value::Object(responses)
 }
@@ -332,7 +354,10 @@ fn operation_tag(path: &str) -> &'static str {
         "Sources"
     } else if path.contains("secrets") {
         "Secrets"
-    } else if path.contains("routes") || path.contains("domain-claims") || path.contains("gateway-")
+    } else if path.contains("routes")
+        || path.contains("domain-claims")
+        || path.contains("gateway-")
+        || path.contains("mcp-credentials")
     {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
@@ -386,6 +411,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")
+        || path.ends_with("/mcp-credentials")
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
         || path.ends_with("/source-revisions")

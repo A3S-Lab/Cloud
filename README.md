@@ -847,7 +847,13 @@ application commands now perform exact replay before generation, encrypt and
 atomically commit the candidate, then decrypt and Argon2id-verify only the
 committed delivery. Issue, rotate, revoke, list, and get are registered on the
 shared CQRS boundary; a failed first post-commit response can recover the exact
-same secret. REST/OpenAPI/client/CLI lifecycle surfaces, executed real
+same secret. The versioned REST/OpenAPI surface now exposes tenant-scoped
+issue, rotate, revoke, list, and get operations. Mutation responses hold the
+one-time secret in zeroizing memory only through serialization; every
+credential success and error is `no-store`/`no-cache`, while public metadata
+has no verifier, key ID, or ciphertext fields. A worker-role cleanup loop
+purges at most 256 expired deliveries every 60 seconds without deleting
+idempotency references. Shared client/CLI lifecycle parity, executed real
 PostgreSQL evidence for the new certificate and credential paths, real Box
 hosting, and joint product conformance remain unavailable. Stateful resources
 remain `S0`; replicas and multi-node placement remain `H0`; accelerator and

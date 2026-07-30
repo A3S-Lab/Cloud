@@ -1,7 +1,9 @@
 pub mod commands;
+mod mcp_credential_delivery_cleanup;
 mod mcp_credential_lifecycle;
 pub mod queries;
 
+pub use mcp_credential_delivery_cleanup::McpCredentialDeliveryCleanupWorker;
 pub use mcp_credential_lifecycle::{
     McpCredentialLifecycleService, McpCredentialMutationResult, McpCredentialSecret,
 };

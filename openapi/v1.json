@@ -267,6 +267,468 @@
           }
         }
       },
+      "SensitiveError400": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Bad Request",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError401": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Unauthorized",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError403": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Forbidden",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError404": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Not Found",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError409": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Conflict",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Unprocessable Entity",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError429": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Too Many Requests",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError500": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Internal Server Error",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveError503": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            }
+          }
+        },
+        "description": "Service Unavailable",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveSuccess200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveSuccess201": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiSuccessResponse"
+            }
+          }
+        },
+        "description": "Created",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
       "SseSuccess200": {
         "content": {
           "text/event-stream": {
@@ -3426,6 +3888,475 @@
           }
         ],
         "summary": "POST /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/gateway-scopes",
+        "tags": [
+          "Edge"
+        ],
+        "x-a3s-api-contract-version": "1.0.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_mcp_credentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SensitiveSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/SensitiveError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/SensitiveError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/SensitiveError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/SensitiveError404"
+          },
+          "409": {
+            "$ref": "#/components/responses/SensitiveError409"
+          },
+          "422": {
+            "$ref": "#/components/responses/SensitiveError422"
+          },
+          "429": {
+            "$ref": "#/components/responses/SensitiveError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/SensitiveError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/SensitiveError503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials",
+        "tags": [
+          "Edge"
+        ],
+        "x-a3s-api-contract-version": "1.0.0",
+        "x-a3s-stability": "stable"
+      },
+      "post": {
+        "operationId": "post_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_mcp_credentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SensitiveSuccess200"
+          },
+          "201": {
+            "$ref": "#/components/responses/SensitiveSuccess201"
+          },
+          "400": {
+            "$ref": "#/components/responses/SensitiveError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/SensitiveError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/SensitiveError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/SensitiveError404"
+          },
+          "409": {
+            "$ref": "#/components/responses/SensitiveError409"
+          },
+          "422": {
+            "$ref": "#/components/responses/SensitiveError422"
+          },
+          "429": {
+            "$ref": "#/components/responses/SensitiveError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/SensitiveError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/SensitiveError503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials",
+        "tags": [
+          "Edge"
+        ],
+        "x-a3s-api-contract-version": "1.0.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}": {
+      "delete": {
+        "operationId": "delete_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_mcp_credentials_by_credential_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SensitiveSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/SensitiveError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/SensitiveError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/SensitiveError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/SensitiveError404"
+          },
+          "409": {
+            "$ref": "#/components/responses/SensitiveError409"
+          },
+          "422": {
+            "$ref": "#/components/responses/SensitiveError422"
+          },
+          "429": {
+            "$ref": "#/components/responses/SensitiveError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/SensitiveError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/SensitiveError503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "DELETE /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}",
+        "tags": [
+          "Edge"
+        ],
+        "x-a3s-api-contract-version": "1.0.0",
+        "x-a3s-stability": "stable"
+      },
+      "get": {
+        "operationId": "get_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_mcp_credentials_by_credential_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SensitiveSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/SensitiveError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/SensitiveError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/SensitiveError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/SensitiveError404"
+          },
+          "409": {
+            "$ref": "#/components/responses/SensitiveError409"
+          },
+          "422": {
+            "$ref": "#/components/responses/SensitiveError422"
+          },
+          "429": {
+            "$ref": "#/components/responses/SensitiveError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/SensitiveError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/SensitiveError503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}",
+        "tags": [
+          "Edge"
+        ],
+        "x-a3s-api-contract-version": "1.0.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}/rotate": {
+      "post": {
+        "operationId": "post_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_mcp_credentials_by_credential_id_rotate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SensitiveSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/SensitiveError400"
+          },
+          "401": {
+            "$ref": "#/components/responses/SensitiveError401"
+          },
+          "403": {
+            "$ref": "#/components/responses/SensitiveError403"
+          },
+          "404": {
+            "$ref": "#/components/responses/SensitiveError404"
+          },
+          "409": {
+            "$ref": "#/components/responses/SensitiveError409"
+          },
+          "422": {
+            "$ref": "#/components/responses/SensitiveError422"
+          },
+          "429": {
+            "$ref": "#/components/responses/SensitiveError429"
+          },
+          "500": {
+            "$ref": "#/components/responses/SensitiveError500"
+          },
+          "503": {
+            "$ref": "#/components/responses/SensitiveError503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}/rotate",
         "tags": [
           "Edge"
         ],

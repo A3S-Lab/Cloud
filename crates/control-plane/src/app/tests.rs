@@ -29,6 +29,8 @@ use crate::modules::sources::{
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use chrono::Utc;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -37,6 +39,7 @@ use uuid::Uuid;
 mod api_contract_tests;
 mod build_tests;
 mod management_mcp_tests;
+mod mcp_credential_rest_tests;
 mod platform_tests;
 mod search_tests;
 mod secret_tests;
@@ -143,21 +146,51 @@ impl ISecretEncryptionService for TestSecretEncryption {
         plaintext: &[u8],
         context: &[u8],
     ) -> std::result::Result<EncryptedSecretValue, SecretEncryptionError> {
-        let mut digest = Sha256::new();
-        digest.update(context);
-        digest.update(plaintext);
-        EncryptedSecretValue::new("test:sha256", format!("v1:{:x}", digest.finalize()))
-            .map_err(SecretEncryptionError::Rejected)
+        if plaintext.is_empty() || context.is_empty() {
+            return Err(SecretEncryptionError::InvalidInput(
+                "test encryption input is empty".into(),
+            ));
+        }
+        let key = Sha256::digest(context);
+        let ciphertext = plaintext
+            .iter()
+            .enumerate()
+            .map(|(index, byte)| byte ^ key[index % key.len()])
+            .collect::<Vec<_>>();
+        EncryptedSecretValue::new(
+            "test:xor-sha256",
+            format!("v1.{}", URL_SAFE_NO_PAD.encode(ciphertext)),
+        )
+        .map_err(SecretEncryptionError::Rejected)
     }
 
     async fn decrypt(
         &self,
-        _value: &EncryptedSecretValue,
-        _context: &[u8],
+        value: &EncryptedSecretValue,
+        context: &[u8],
     ) -> std::result::Result<Vec<u8>, SecretEncryptionError> {
-        Err(SecretEncryptionError::Rejected(
-            "test encryption does not materialize values".into(),
-        ))
+        if value.key_id() != "test:xor-sha256" || context.is_empty() {
+            return Err(SecretEncryptionError::Rejected(
+                "test encryption key or context is invalid".into(),
+            ));
+        }
+        let ciphertext = value
+            .ciphertext()
+            .strip_prefix("v1.")
+            .ok_or_else(|| {
+                SecretEncryptionError::Rejected("test ciphertext version is invalid".into())
+            })
+            .and_then(|value| {
+                URL_SAFE_NO_PAD.decode(value).map_err(|_| {
+                    SecretEncryptionError::Rejected("test ciphertext payload is invalid".into())
+                })
+            })?;
+        let key = Sha256::digest(context);
+        Ok(ciphertext
+            .iter()
+            .enumerate()
+            .map(|(index, byte)| byte ^ key[index % key.len()])
+            .collect())
     }
 
     async fn health(&self) -> std::result::Result<bool, SecretEncryptionError> {

@@ -11,7 +11,7 @@ use crate::modules::artifacts::{
 };
 use crate::modules::assets::{IMcpServiceProfileRepository, PostgresAssetRepository};
 use crate::modules::edge::domain::repositories::{
-    IEdgeRepository, IMcpCredentialAuthorityRepository,
+    IEdgeRepository, IMcpCredentialAuthorityRepository, IMcpCredentialLifecycleRepository,
 };
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -26,7 +26,8 @@ use crate::modules::edge::{
     GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
     IssueMcpCredentialHandler, ListDomainClaimsHandler, ListGatewayCertificatesHandler,
     ListGatewayScopesHandler, ListMcpCredentialsHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, McpCredentialLifecycleService,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    McpCredentialDeliveryCleanupWorker, McpCredentialLifecycleService,
     McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
     McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
@@ -231,6 +232,8 @@ pub async fn build_application_with_source_resolver(
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
     let mcp_credentials: Arc<dyn IMcpCredentialAuthorityRepository> = edge_repository.clone();
+    let mcp_credential_lifecycle_repository: Arc<dyn IMcpCredentialLifecycleRepository> =
+        edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
         edge_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> =
@@ -615,6 +618,12 @@ pub async fn build_application_with_source_resolver(
     .map_err(ControlPlaneStartupError::Outbox)?;
     let run_operations = matches!(config.server.role, ProcessRole::All | ProcessRole::Worker);
     let run_relay = matches!(config.server.role, ProcessRole::All | ProcessRole::Relay);
+    let mcp_credential_delivery_cleanup_worker = McpCredentialDeliveryCleanupWorker::new(
+        mcp_credential_lifecycle_repository,
+        Duration::from_secs(60),
+        256,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let log_retention_worker = LogRetentionWorker::new(
         Arc::clone(&log_retention_repository),
         Arc::clone(&log_chunks),
@@ -706,6 +715,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(gateway_rollout_rollback_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
             run_operations.then_some(workload_reconciler),
+            run_operations.then_some(mcp_credential_delivery_cleanup_worker),
             run_operations.then_some(log_retention_worker),
             run_operations.then_some(log_compaction_worker),
             run_relay.then_some(outbox_relay),
