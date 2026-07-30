@@ -67,6 +67,16 @@ pub struct CompileManagedGatewayRetainedSnapshot {
     pub reused_certificate_request: Option<GatewayCertificateRequest>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CompileManagedGatewayCertificateConvergenceSnapshot {
+    pub metadata: GatewaySnapshotMetadata,
+    pub desired_state: PlannedGatewayNodeDesiredState,
+    pub certificate_id: Option<GatewayCertificateId>,
+    pub reused_certificate_request: Option<GatewayCertificateRequest>,
+    pub retained_routes: Vec<GatewayRouteVersion>,
+    pub rejected_routes: Vec<GatewayRouteVersion>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GatewayDomainClaimVersion {
     domain_claim_id: DomainClaimId,
@@ -412,6 +422,123 @@ impl GatewaySnapshotCompiler {
                 false,
                 Some(certificate_request),
                 content,
+            )?;
+        }
+        Ok(candidate)
+    }
+
+    /// Compiles a certificate-lifecycle transition from one exact pre-write
+    /// ordinary Route observation. Revoked-domain routes remain in the
+    /// compare-and-swap vector but are omitted from the post-transition
+    /// snapshot, while every currently desired MCP route remains composed.
+    pub fn compile_managed_certificate_convergence_snapshot(
+        &self,
+        request: CompileManagedGatewayCertificateConvergenceSnapshot,
+    ) -> Result<CompiledMcpGatewaySnapshot, String> {
+        let CompileManagedGatewayCertificateConvergenceSnapshot {
+            metadata,
+            desired_state,
+            certificate_id,
+            reused_certificate_request,
+            retained_routes,
+            rejected_routes,
+        } = request;
+        if reused_certificate_request
+            .as_ref()
+            .map(|request| GatewayCertificateId::from_uuid(request.certificate_id))
+            != reused_certificate_request.as_ref().and(certificate_id)
+        {
+            return Err("managed certificate convergence reuse identity is inconsistent".into());
+        }
+        let (physical_scope, active_routes, mcp) = desired_state.into_parts();
+        let retained = retained_routes
+            .iter()
+            .map(|version| (version.route_id, version.aggregate_version))
+            .collect::<BTreeMap<_, _>>();
+        let rejected = rejected_routes
+            .iter()
+            .map(|version| (version.route_id, version.aggregate_version))
+            .collect::<BTreeMap<_, _>>();
+        if retained.len() != retained_routes.len()
+            || rejected.len() != rejected_routes.len()
+            || retained
+                .keys()
+                .any(|route_id| rejected.contains_key(route_id))
+        {
+            return Err(
+                "managed certificate convergence Route classifications are not disjoint".into(),
+            );
+        }
+        let mut observed_versions = BTreeMap::new();
+        let mut retained_inputs = Vec::with_capacity(retained.len());
+        for input in active_routes {
+            validate_observed_active_route(&input, metadata.node_id, metadata.issued_at)?;
+            let expected_version = retained
+                .get(&input.route.id)
+                .or_else(|| rejected.get(&input.route.id))
+                .ok_or_else(|| {
+                    "managed certificate convergence did not classify every active Route"
+                        .to_string()
+                })?;
+            if *expected_version != input.route.aggregate_version
+                || observed_versions
+                    .insert(
+                        input.route.id,
+                        GatewayRouteVersion::new(input.route.id, input.route.aggregate_version)?,
+                    )
+                    .is_some()
+            {
+                return Err(
+                    "managed certificate convergence Route version evidence changed".into(),
+                );
+            }
+            if retained.contains_key(&input.route.id) {
+                validate_active_route_authority(&input, metadata.node_id, metadata.issued_at)?;
+                retained_inputs.push(input);
+            } else if input.domain_claim.state == DomainClaimState::Verified {
+                return Err(
+                    "managed certificate convergence rejected a verified Route authority".into(),
+                );
+            }
+        }
+        if observed_versions.len() != retained.len() + rejected.len() {
+            return Err(
+                "managed certificate convergence Route classifications are incomplete".into(),
+            );
+        }
+        let mut candidate = self.compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+            metadata,
+            physical_scope,
+            certificate_id,
+            active_routes: retained_inputs.clone(),
+            mcp: mcp.clone(),
+        })?;
+        candidate.active_route_versions = observed_versions.into_values().collect();
+        if let Some(certificate_request) = reused_certificate_request {
+            let routes = retained_inputs
+                .iter()
+                .map(|input| input.route.clone())
+                .collect::<Vec<_>>();
+            let content = mcp.projection().map(|planned| McpSnapshotContent {
+                ingress_routes: mcp.ingress_routes(),
+                projection: planned.projection(),
+            });
+            let reused = self.compile_snapshot(
+                metadata,
+                certificate_id,
+                &routes,
+                false,
+                Some(certificate_request),
+                content,
+            )?;
+            candidate.snapshot = GatewaySnapshot::new_with_certificate(
+                metadata.node_id.as_uuid(),
+                metadata.revision,
+                metadata.expected_revision,
+                metadata.issued_at,
+                metadata.expires_at,
+                reused.acl,
+                None,
             )?;
         }
         Ok(candidate)
@@ -1064,6 +1191,33 @@ fn validate_active_route_authority(
         return Err(
             "complete Gateway snapshot ordinary Route lacks exact verified domain authority".into(),
         );
+    }
+    Ok(())
+}
+
+fn validate_observed_active_route(
+    input: &GatewaySnapshotRouteInput,
+    node_id: NodeId,
+    observed_at: DateTime<Utc>,
+) -> Result<(), String> {
+    let route = &input.route;
+    let claim = &input.domain_claim;
+    route.validate_target_binding()?;
+    if route.gateway_node_id != node_id
+        || route.state != RouteState::Active
+        || route.aggregate_version == 0
+        || route.updated_at > observed_at
+        || route.domain_claim_id != Some(claim.id)
+        || route.domain_pattern.as_ref() != Some(&claim.pattern)
+        || claim.organization_id != route.organization_id
+        || claim.project_id != route.project_id
+        || claim.environment_id != route.environment_id
+        || claim.aggregate_version == 0
+        || claim.updated_at < claim.created_at
+        || claim.updated_at > observed_at
+        || !claim.pattern.covers(&route.hostname)
+    {
+        return Err("managed certificate convergence lacks exact active Route authority".into());
     }
     Ok(())
 }

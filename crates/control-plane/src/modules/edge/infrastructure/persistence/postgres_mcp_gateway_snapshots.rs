@@ -191,6 +191,16 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         super::postgres_cutovers::stage_managed(&self.executor, stage).await
     }
 
+    async fn stage_managed_gateway_certificate_convergence(
+        &self,
+        stage: StageManagedGatewayCertificateConvergence,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayCertificateConvergenceResult,
+        RepositoryError,
+    > {
+        super::postgres_certificate_convergence::stage_managed(&self.executor, stage).await
+    }
+
     async fn stage_managed_gateway_rollout(
         &self,
         stage: StageManagedGatewayRollout,

@@ -660,7 +660,7 @@ fn certificate_convergence_unavailability_is_terminal_and_replay_safe() {
 }
 
 #[test]
-fn complete_domain_revocation_convergence_requires_no_replacement_certificate() {
+fn complete_domain_revocation_allows_a_replacement_only_for_composed_non_route_traffic() {
     let now = Utc::now();
     let route = route(now);
     let convergence = GatewayCertificateConvergence::stage(
@@ -678,6 +678,26 @@ fn complete_domain_revocation_convergence_requires_no_replacement_certificate() 
     )
     .expect("route-less convergence");
     assert!(convergence.replacement_certificate_id.is_none());
+    let replacement_certificate_id = GatewayCertificateId::new();
+    let composed = GatewayCertificateConvergence::stage(
+        route.organization_id,
+        route.gateway_node_id,
+        2,
+        NodeCommandId::new(),
+        GatewayCertificateId::new(),
+        Some(replacement_certificate_id),
+        format!("sha256:{}", "c".repeat(64)),
+        Vec::new(),
+        vec![GatewayRouteVersion::new(route.id, route.aggregate_version).expect("route version")],
+        GatewayCertificateConvergenceReason::DomainRevocation,
+        now,
+    )
+    .expect("domain revocation retaining composed MCP traffic");
+    assert_eq!(
+        composed.replacement_certificate_id,
+        Some(replacement_certificate_id)
+    );
+    assert!(composed.active_certificate_id().is_none());
     assert!(GatewayCertificateConvergence::stage(
         route.organization_id,
         route.gateway_node_id,

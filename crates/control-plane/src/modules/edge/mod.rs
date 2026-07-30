@@ -50,11 +50,11 @@ pub use domain::{
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
-    CompileManagedGatewayRetainedSnapshot, CompileManagedGatewayRolloutRollback,
-    CompileManagedGatewayRouteRollout, CompileManagedGatewayRouteSnapshot,
-    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, DnsDomainOwnershipVerifier,
-    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue,
-    FleetGatewayObservationQueue, GatewayCertificateReconciler,
+    CompileManagedGatewayCertificateConvergenceSnapshot, CompileManagedGatewayRetainedSnapshot,
+    CompileManagedGatewayRolloutRollback, CompileManagedGatewayRouteRollout,
+    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot,
+    DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
     GatewayDomainClaimVersion, GatewayReplicaRecoveryReconciler,
     GatewayReplicaRecoveryReconciliationFailure, GatewayReplicaRecoveryReconciliationReport,

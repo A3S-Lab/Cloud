@@ -231,7 +231,7 @@ impl GatewayCertificateConvergence {
             GatewayCertificateConvergenceReason::DomainRevocation => {
                 !self.rejected_routes.is_empty()
                     && (self.retained_routes.is_empty()
-                        == self.replacement_certificate_id.is_none())
+                        || self.replacement_certificate_id.is_some())
             }
             GatewayCertificateConvergenceReason::Renewal
             | GatewayCertificateConvergenceReason::CertificateRevocation

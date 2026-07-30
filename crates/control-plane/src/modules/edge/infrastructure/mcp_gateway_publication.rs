@@ -1,8 +1,9 @@
 use crate::modules::edge::domain::events::McpGatewaySnapshotStaged;
 use crate::modules::edge::domain::repositories::{
-    EdgeRoutePublicationResult, GatewayRolloutResult, GatewayRolloutRollbackResult,
-    GatewayRouteCutoverResult, StageGatewayRollout, StageGatewayRolloutRollback,
-    StageGatewayRouteCutover, StageRoutePublication,
+    EdgeRoutePublicationResult, GatewayCertificateConvergenceResult, GatewayRolloutResult,
+    GatewayRolloutRollbackResult, GatewayRouteCutoverResult, StageGatewayCertificateConvergence,
+    StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
+    StageRoutePublication,
 };
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateState, GatewayPublication, GatewayPublicationState,
@@ -69,6 +70,13 @@ pub struct StageManagedRoutePublication {
 pub struct StageManagedGatewayRouteCutover {
     ordinary: StageGatewayRouteCutover,
     composition: GatewayManagedSnapshotComposition,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageManagedGatewayCertificateConvergence {
+    ordinary: StageGatewayCertificateConvergence,
+    composition: GatewayManagedSnapshotComposition,
+    previous_certificate: GatewayCertificate,
 }
 
 #[derive(Debug, Clone)]
@@ -629,6 +637,111 @@ impl StageManagedGatewayRouteCutover {
     }
 }
 
+impl StageManagedGatewayCertificateConvergence {
+    pub fn new(
+        ordinary: StageGatewayCertificateConvergence,
+        composition: GatewayManagedSnapshotComposition,
+        previous_certificate: GatewayCertificate,
+    ) -> Result<Self, String> {
+        ordinary.validate()?;
+        composition.validate_for(&ordinary.publication)?;
+        let convergence = &ordinary.convergence;
+        let classified_routes = convergence
+            .retained_routes
+            .iter()
+            .chain(&convergence.rejected_routes)
+            .map(|version| (version.route_id, version.aggregate_version))
+            .collect::<BTreeMap<_, _>>();
+        let observed_routes = composition
+            .candidate()
+            .active_route_versions()
+            .iter()
+            .map(|version| (version.route_id, version.aggregate_version))
+            .collect::<BTreeMap<_, _>>();
+        let retained_route_ids = convergence
+            .retained_routes
+            .iter()
+            .map(|version| version.route_id)
+            .collect::<BTreeSet<_>>();
+        let candidate_route_ids = composition
+            .candidate()
+            .ordinary_route_ids()
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let expected_claims = domain_claim_ids(composition.candidate())
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let previous_claims = previous_certificate
+            .domain_claim_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
+            || composition.candidate().physical_scope().node_id != ordinary.publication.node_id
+            || composition.candidate().mcp().organization_id()
+                != ordinary.convergence.organization_id
+            || classified_routes != observed_routes
+            || retained_route_ids != candidate_route_ids
+            || previous_certificate.id != convergence.previous_certificate_id
+            || previous_certificate.organization_id != convergence.organization_id
+            || previous_certificate.node_id != convergence.node_id
+        {
+            return Err(
+                "managed Gateway certificate convergence composition is inconsistent".into(),
+            );
+        }
+        match (
+            &ordinary.certificate,
+            convergence.replacement_certificate_id,
+        ) {
+            (Some(certificate), Some(certificate_id))
+                if certificate.id == certificate_id
+                    && certificate
+                        .domain_claim_ids
+                        .iter()
+                        .copied()
+                        .collect::<BTreeSet<_>>()
+                        == expected_claims => {}
+            (None, None)
+                if ordinary.publication.certificate_request.is_none()
+                    && expected_claims.is_subset(&previous_claims) => {}
+            _ => {
+                return Err(
+                    "managed Gateway certificate convergence authority is incomplete".into(),
+                )
+            }
+        }
+        Ok(Self {
+            ordinary,
+            composition,
+            previous_certificate,
+        })
+    }
+
+    pub const fn ordinary(&self) -> &StageGatewayCertificateConvergence {
+        &self.ordinary
+    }
+
+    pub const fn composition(&self) -> &GatewayManagedSnapshotComposition {
+        &self.composition
+    }
+
+    pub const fn previous_certificate(&self) -> &GatewayCertificate {
+        &self.previous_certificate
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        StageGatewayCertificateConvergence,
+        GatewayManagedSnapshotComposition,
+        GatewayCertificate,
+    ) {
+        (self.ordinary, self.composition, self.previous_certificate)
+    }
+}
+
 impl StageManagedGatewayRollout {
     pub fn new(
         ordinary: StageGatewayRollout,
@@ -837,6 +950,15 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
     ) -> Result<GatewayRouteCutoverResult, RepositoryError> {
         Err(RepositoryError::Storage(
             "managed Gateway Route cutover staging is not implemented".into(),
+        ))
+    }
+
+    async fn stage_managed_gateway_certificate_convergence(
+        &self,
+        _stage: StageManagedGatewayCertificateConvergence,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "managed Gateway certificate convergence staging is not implemented".into(),
         ))
     }
 
