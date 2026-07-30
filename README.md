@@ -116,6 +116,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   materialize exact environment, read-only file, and pull-only registry
   bindings at authenticated assigned-node boundaries with restart-safe
   reauthorization, log redaction, and tmpfs cleanup
+- **Box Storage Boundary**: Materialize authenticated read-only Artifact mounts
+  through the existing node cache, let Box's sole VolumeStore own persistent
+  Volumes and Task-output staging, deterministically archive quiescent output
+  directories, and publish them through the existing command-bound Artifact
+  upload path with recovery and cleanup fencing
 - **Durable Logs**: Ship bounded ordered Runtime logs, preserve explicit gaps,
   redact bound Secrets, replay one exact receipt-gated pending batch after
   restart, store immutable chunks, and expose cursor and resumable SSE queries
@@ -280,9 +285,25 @@ private-registry rejection followed by one authenticated pull, cache reuse,
 plaintext exclusion, and final tmpfs/provider cleanup. Cloud adds no second
 Secret transport, Runtime driver, credential store, or lifecycle mechanism.
 
-Artifact/Volume/tmpfs mounts, Task outputs, allocation evidence, builds,
-complete isolation evidence, and the clean-host release loop remain
-release-blocking `BX0.3` through `BX0.5` work.
+The fifth `BX0.3` slice pins A3S Box
+`7f29f6314827b1f572401cdda189bae9f34b7f9f`, merged through
+[Box PR #190](https://github.com/A3S-Lab/Box/pull/190), and is integrated by
+[Cloud PR #100](https://github.com/A3S-Lab/Cloud/pull/100). The Node Agent
+installs one `CloudBoxArtifactPort` in the existing Box driver and binds it once
+to the existing authenticated `NodeArtifactManager`. Cloud retains Artifact
+authorization, content validation, durable receipts, and upload publication;
+Box retains mount wiring, its sole VolumeStore, execution attachment fencing,
+persistent-Volume lifecycle, Task-output staging, and removal. Quiescent output
+directories are encoded as bounded deterministic regular-file archives before
+the existing upload path publishes them. The real consumer gate covers a
+read-only Artifact mount, persistent Volume reuse after driver reconstruction,
+isolated tmpfs, exact Task-output publication and journal replay, and empty Box,
+Volume, and node Artifact state after removal. No second Artifact store, output
+database, VolumeStore, Runtime driver, scheduler, or cleanup path is added.
+
+Allocation evidence, complete Sandbox/MicroVM/TEE isolation evidence, builds,
+and the clean-host release loop remain release-blocking `BX0.3` through
+`BX0.5` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists

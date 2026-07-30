@@ -376,7 +376,7 @@ impl NodeArtifactCache {
         size_bytes: u64,
     ) -> Result<RuntimeOutputArtifact, NodeArtifactError> {
         let blob = self
-            .commit_staged_blob(&staging, &digest, &output.media_type, size_bytes)
+            .commit_staged_blob(staging, &digest, &output.media_type, size_bytes)
             .await?;
         let artifact = RuntimeOutputArtifact {
             name: output.name.clone(),
@@ -393,7 +393,7 @@ impl NodeArtifactCache {
             spec_digest: spec_digest.into(),
             output: artifact.clone(),
         };
-        write_json_atomic(&receipt_path, &receipt).await?;
+        write_json_atomic(receipt_path, &receipt).await?;
         if !is_regular_file(&blob).await? {
             return Err(NodeArtifactError::Integrity(
                 "captured Task output blob disappeared".into(),

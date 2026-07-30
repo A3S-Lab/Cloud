@@ -133,10 +133,24 @@ credentials, cache reuse without credential reload, plaintext-free persistent
 state, tmpfs cleanup, and empty provider/process state. Cloud has no parallel
 Secret transport, credential store, Runtime driver, or cleanup path.
 
+The fifth `BX0.3` slice pins A3S Box
+`7f29f6314827b1f572401cdda189bae9f34b7f9f` through
+[Box PR #190](https://github.com/A3S-Lab/Box/pull/190) and
+[Cloud PR #100](https://github.com/A3S-Lab/Cloud/pull/100). The same shared Box
+driver advertises Artifact mounts and output Artifacts only because one
+Cloud-owned port is installed before enrollment. That port is bound once to
+the existing authenticated node Artifact manager. Box uses its existing
+VolumeStore for persistent Volumes and quiescent Task-output staging; Cloud
+uses its existing content-addressed cache, typed transfer contracts, and upload
+receipts. The joint gate proves read-only input, persistent reuse across driver
+reconstruction, tmpfs isolation, deterministic output publication, journal
+replay, removal, and empty Box, Volume, and node Artifact inventories. No
+second store, output database, Runtime driver, or cleanup mechanism exists.
+
 The following evidence remains required before `BX0` is verified:
 
-1. Artifact/Volume/tmpfs mounts, Task outputs, allocation evidence, and complete
-   Sandbox/MicroVM/TEE isolation certification.
+1. Allocation evidence and complete Sandbox/MicroVM/TEE isolation
+   certification.
 2. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
    publication, replay, and process-death evidence.
 3. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,

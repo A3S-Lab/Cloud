@@ -187,16 +187,18 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
     {
         return Err(invalid("Cloud did not publish the Box Task output").into());
     }
-    let uploads = transport
-        .uploads
-        .lock()
-        .map_err(|_| invalid("Artifact upload lock poisoned"))?;
-    if uploads.len() != 1
-        || uploaded_file(&uploads[0], "result.txt")?.as_deref() != Some(b"published-cloud-output")
     {
-        return Err(invalid("published Task output archive changed content").into());
+        let uploads = transport
+            .uploads
+            .lock()
+            .map_err(|_| invalid("Artifact upload lock poisoned"))?;
+        if uploads.len() != 1
+            || uploaded_file(&uploads[0], "result.txt")?.as_deref()
+                != Some(b"published-cloud-output")
+        {
+            return Err(invalid("published Task output archive changed content").into());
+        }
     }
-    drop(uploads);
     drop(executor);
     drop(runtime);
 

@@ -25,6 +25,14 @@ release it exactly once, reach terminal cancellation, and leave empty Box
 state. The workflow retains the consumer logs and one machine-checkable
 certification marker with the provider evidence.
 
+The storage consumer probe binds Box's one Artifact port to the existing node
+Artifact manager. It exercises a read-only Artifact mount, a persistent Volume
+across driver reconstruction, isolated tmpfs, deterministic Task-output capture
+and authenticated publication, exact journal replay, and final removal. The
+cleanup gate requires empty Box records, execution directories, VolumeStore
+metadata and paths, Secret tmpfs, and node Artifact inventories; retained image
+cache and audit evidence are not treated as live workload state.
+
 Real MicroVM and TEE profiles remain hardware-qualified in A3S Box. Cloud does
 not reimplement those provider tests.
 

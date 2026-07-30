@@ -140,8 +140,10 @@ second deployment or reconciliation engine.
    tmpfs mounts, outputs, and registry credentials through typed Box ports. The
    typed Service TCP endpoint, shared Runtime health consumer, and explicit
    isolation-selection slices plus Secret and registry-credential
-   materialization are implemented; the remaining capabilities and complete
-   gate stay in progress.
+   materialization are implemented. Artifact mounts, persistent Volumes, tmpfs,
+   and Task-output publication now use the same Box driver and existing Cloud
+   Artifact boundary; allocation evidence, complete isolation certification,
+   and the complete gate stay in progress.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
    build boundary and ACL build plans while preserving OCI validation,
    publication, cache, SPDX/SLSA evidence, and process-death recovery.
@@ -229,8 +231,21 @@ credential-free cache reuse, plaintext exclusion, and empty tmpfs/provider
 state after removal. No second Secret channel, credential store, Runtime
 driver, scheduler, queue, or lifecycle store is introduced.
 
-`BX0.3` remains in progress for Artifact/Volume/tmpfs mounts, Task outputs,
-allocation evidence, and complete Sandbox/MicroVM/TEE isolation certification.
+The fifth `BX0.3` slice pins A3S Box
+`7f29f6314827b1f572401cdda189bae9f34b7f9f`, merged through
+[Box PR #190](https://github.com/A3S-Lab/Box/pull/190), and is integrated by
+[Cloud PR #100](https://github.com/A3S-Lab/Cloud/pull/100). One
+`CloudBoxArtifactPort` delegates to the existing authenticated node Artifact
+manager for read-only materialization, deterministic bounded output capture,
+durable local receipts, and command-bound publication. Box's existing
+VolumeStore remains the sole authority for persistent Volumes, Task-output
+staging, live attachment fencing, recovery validation, and cleanup. The real
+consumer gate combines Artifact, Volume, tmpfs, output, journal-replay, driver
+reconstruction, and zero-residue evidence. It adds no parallel Artifact store,
+output database, VolumeStore, Runtime driver, scheduler, or lifecycle path.
+
+`BX0.3` remains in progress for allocation evidence and complete
+Sandbox/MicroVM/TEE isolation certification.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and

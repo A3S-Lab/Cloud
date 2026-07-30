@@ -161,7 +161,7 @@ Status as of 2026-07-30:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, and one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials. Mounts, outputs, allocation evidence, isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, and one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication. Allocation evidence, complete isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -313,8 +313,25 @@ scans persistent state for plaintext, removes the exact resources, and leaves
 empty Secret tmpfs and provider/process state. It introduces no second Secret
 channel, credential store, Runtime driver, scheduler, queue, or lifecycle path.
 
-The rest of `BX0.3` remains open: Artifact/Volume/tmpfs mounts, Task outputs,
-allocation evidence, and complete Sandbox/MicroVM/TEE isolation certification.
+The fifth `BX0.3` slice pins A3S Box
+`7f29f6314827b1f572401cdda189bae9f34b7f9f`, merged through
+[Box PR #190](https://github.com/A3S-Lab/Box/pull/190), and is integrated by
+[Cloud PR #100](https://github.com/A3S-Lab/Cloud/pull/100). The Node Agent
+installs one `CloudBoxArtifactPort` before enrollment and binds it exactly once
+to the existing authenticated `NodeArtifactManager`. Cloud continues to own
+Artifact authorization, transfer, hashing, durable receipts, and publication.
+Box continues to own mount wiring, its one VolumeStore, persistent-Volume
+attachments, Task-output staging, generation fencing, recovery validation, and
+cleanup. Output capture accepts only bounded plain directories and regular
+files and encodes them deterministically into the existing node-local Artifact
+flow. The real consumer gate proves read-only Artifact input, persistent Volume
+reuse across driver reconstruction, tmpfs isolation, exact output upload and
+journal replay, removal, and empty Box, Volume, and node Artifact state. No
+second Artifact store, output database, VolumeStore, Runtime driver, scheduler,
+queue, or lifecycle path is introduced.
+
+The rest of `BX0.3` remains open: allocation evidence and complete
+Sandbox/MicroVM/TEE isolation certification.
 
 #### Exit gate
 
@@ -995,11 +1012,12 @@ The current independently testable G0 slices are implemented:
   symlinks or hardlinks, devices, FIFOs, duplicate paths, non-directory
   ancestors, and configured entry/file/expanded limits. Files and directories
   are mounted read-only; planned and extracted content hashes must agree.
-- Docker advertises Artifact mounts and output Artifacts, binds exact
-  materialized inputs read-only, captures declared successful Task outputs via
-  the Docker archive API, and preserves output identity through replay,
-  reconstructed clients/drivers, and removal. The exported Docker conformance
-  fixture now exercises both capability profiles.
+- A3S Box advertises Artifact mounts and output Artifacts through one
+  caller-owned port, binds exact materialized inputs read-only, stages declared
+  successful Task outputs in its existing VolumeStore, and preserves output
+  identity through replay, reconstructed clients/drivers, and removal. Cloud
+  deterministically archives the quiescent directory into its existing node
+  Artifact cache and publishes it through the command-bound upload contract.
 - The BuildKit adapter accepts Unix or mTLS endpoints and permits
   unauthenticated TCP only through an explicit literal-loopback conformance
   constructor. It runs `buildctl` with an empty home and no credential, SSH,
