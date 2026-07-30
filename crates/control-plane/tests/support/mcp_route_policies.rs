@@ -7,16 +7,16 @@ use a3s_cloud_control_plane::modules::assets::{
     McpServiceProfileSpec, PostgresAssetRepository, TransitionAssetReleaseWrite,
 };
 use a3s_cloud_control_plane::modules::edge::{
-    IEdgeRepository, IMcpRoutePolicyRepository, McpRoutePolicy, McpRoutePolicySpec,
-    PostgresEdgeRepository, RouteHostname,
+    IEdgeRepository, IMcpCredentialRepository, IMcpRoutePolicyRepository, McpCredential,
+    McpRoutePolicy, McpRoutePolicySpec, PostgresEdgeRepository, RouteHostname,
 };
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, RouteId, Sha256Digest,
-    WorkloadId, WorkloadRevisionId,
+    McpCredentialId, OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName,
+    RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -34,6 +34,8 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const ROTATED_VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 pub async fn exercise(
     executor: &PostgresExecutor,
@@ -51,6 +53,49 @@ pub async fn exercise(
         .ok_or("MCP route policy fixture has no Gateway scope")?;
     let assets = PostgresAssetRepository::new(executor.clone());
     let now = Utc::now();
+    let credential = McpCredential::issue(
+        McpCredentialId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        "a3s_mcp_abc12345def67890",
+        VERIFIER,
+        now + Duration::days(30),
+        now,
+    )?;
+    assert_eq!(
+        edge.create_mcp_credential(credential.clone()).await?,
+        credential
+    );
+    assert_eq!(
+        edge.find_mcp_credential(organization_id, credential.id)
+            .await?,
+        Some(credential.clone())
+    );
+    assert_eq!(
+        edge.find_mcp_credential(other_organization_id, credential.id)
+            .await?,
+        None
+    );
+    assert_eq!(
+        edge.list_mcp_credentials(organization_id, project_id, environment_id)
+            .await?,
+        vec![credential.clone()]
+    );
+    let duplicate_prefix = McpCredential::issue(
+        McpCredentialId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        credential.prefix(),
+        VERIFIER,
+        now + Duration::days(30),
+        now,
+    )?;
+    assert!(matches!(
+        edge.create_mcp_credential(duplicate_prefix).await,
+        Err(RepositoryError::Conflict(_))
+    ));
     let asset = Asset::create(
         AssetId::new(),
         organization_id,
@@ -291,8 +336,8 @@ pub async fn exercise(
             audit_required: true,
             expires_at: created_at + Duration::hours(1),
             grants: vec![McpGrantProjection {
-                credential_id: Uuid::now_v7(),
-                credential_generation: 1,
+                credential_id: credential.id.as_uuid(),
+                credential_generation: credential.generation(),
                 methods: vec![
                     "server/discover".into(),
                     "tools/list".into(),
@@ -355,6 +400,37 @@ pub async fn exercise(
     assert!(!stored_acl.contains("verifier_hash"));
     assert!(!stored_acl.contains("targets "));
     assert!(!stored_acl.contains("endpoint ="));
+
+    let mut rotated = credential.clone();
+    rotated.rotate(
+        "a3s_mcp_def67890abc12345",
+        ROTATED_VERIFIER,
+        now + Duration::days(60),
+        created_at + Duration::minutes(2),
+    )?;
+    assert_eq!(
+        edge.update_mcp_credential(rotated.clone(), 1).await?,
+        rotated
+    );
+    let mut stale = credential;
+    stale.rotate(
+        "a3s_mcp_ghi12345jkl67890",
+        ROTATED_VERIFIER,
+        now + Duration::days(60),
+        created_at + Duration::minutes(3),
+    )?;
+    assert!(matches!(
+        edge.update_mcp_credential(stale, 1).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert!(rotated.revoke(created_at + Duration::minutes(4))?);
+    let revoked = edge.update_mcp_credential(rotated, 2).await?;
+    assert!(revoked.gateway_projection().revoked);
+    assert_eq!(
+        edge.list_mcp_credentials(organization_id, project_id, environment_id)
+            .await?,
+        vec![revoked]
+    );
     Ok(())
 }
 

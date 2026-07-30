@@ -202,6 +202,38 @@ impl McpCredential {
         self.revoked_at
     }
 
+    pub(crate) fn validate_transition_from(
+        &self,
+        existing: &Self,
+        expected_aggregate_version: u64,
+    ) -> Result<(), String> {
+        if existing.aggregate_version != expected_aggregate_version
+            || self.aggregate_version != expected_aggregate_version.checked_add(1).unwrap_or(0)
+            || self.id != existing.id
+            || self.organization_id != existing.organization_id
+            || self.project_id != existing.project_id
+            || self.environment_id != existing.environment_id
+            || self.created_at != existing.created_at
+            || self.updated_at < existing.updated_at
+            || existing.revoked_at.is_some()
+        {
+            return Err("MCP credential optimistic transition is invalid".into());
+        }
+        let rotated = self.generation == existing.generation.checked_add(1).unwrap_or(0)
+            && self.revoked_at.is_none()
+            && self.prefix != existing.prefix
+            && self.verifier_hash != existing.verifier_hash;
+        let revoked = self.generation == existing.generation
+            && self.revoked_at == Some(self.updated_at)
+            && self.prefix == existing.prefix
+            && self.verifier_hash == existing.verifier_hash
+            && self.expires_at == existing.expires_at;
+        if !rotated && !revoked {
+            return Err("MCP credential update must be one rotation or revocation".into());
+        }
+        self.validate()
+    }
+
     fn validate(&self) -> Result<(), String> {
         if self.id.as_uuid().is_nil()
             || self.organization_id.as_uuid().is_nil()
@@ -216,6 +248,7 @@ impl McpCredential {
             || self.expires_at != canonical_timestamp(self.expires_at)
             || self.updated_at < self.created_at
             || self.expires_at <= self.created_at
+            || self.revoked_at.is_none() && self.expires_at <= self.updated_at
         {
             return Err("MCP credential identity, version, or timestamps are invalid".into());
         }
@@ -226,7 +259,17 @@ impl McpCredential {
         }) {
             return Err("MCP credential revocation timestamp is invalid".into());
         }
-        self.gateway_projection().validate()
+        self.gateway_projection().validate()?;
+        if self
+            .prefix
+            .strip_prefix("a3s_mcp_")
+            .is_none_or(|suffix| suffix.len() != 16)
+        {
+            return Err(
+                "Cloud-issued MCP credential prefix must use a fixed 16-byte suffix".into(),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -270,7 +313,7 @@ mod tests {
             OrganizationId::new(),
             ProjectId::new(),
             EnvironmentId::new(),
-            "a3s_mcp_abc12345",
+            "a3s_mcp_abc12345def67890",
             VERIFIER,
             now() + Duration::days(30),
             now(),
@@ -287,7 +330,7 @@ mod tests {
         assert_eq!(credential.aggregate_version(), 1);
         assert!(credential.is_active_at(now()));
         assert_eq!(projection.audience, MCP_CREDENTIAL_AUDIENCE);
-        assert_eq!(projection.prefix, "a3s_mcp_abc12345");
+        assert_eq!(projection.prefix, "a3s_mcp_abc12345def67890");
         assert_eq!(projection.verifier_hash(), VERIFIER);
         assert!(!format!("{credential:?}").contains(VERIFIER));
         assert!(!format!("{projection:?}").contains(VERIFIER));
@@ -298,7 +341,7 @@ mod tests {
         let mut credential = credential();
         credential
             .rotate(
-                "a3s_mcp_def67890",
+                "a3s_mcp_def67890abc12345",
                 ROTATED_VERIFIER,
                 now() + Duration::days(60),
                 now() + Duration::minutes(1),
@@ -306,7 +349,7 @@ mod tests {
             .expect("rotate");
         assert_eq!(credential.generation(), 2);
         assert_eq!(credential.aggregate_version(), 2);
-        assert_eq!(credential.prefix(), "a3s_mcp_def67890");
+        assert_eq!(credential.prefix(), "a3s_mcp_def67890abc12345");
         assert_eq!(
             credential.gateway_projection().verifier_hash(),
             ROTATED_VERIFIER
@@ -322,7 +365,7 @@ mod tests {
         assert!(credential.gateway_projection().revoked);
         assert!(credential
             .rotate(
-                "a3s_mcp_ghi12345",
+                "a3s_mcp_ghi12345jkl67890",
                 VERIFIER,
                 now() + Duration::days(90),
                 now() + Duration::minutes(3),
@@ -338,7 +381,7 @@ mod tests {
             valid.organization_id,
             valid.project_id,
             valid.environment_id,
-            "a3s_bad_abc12345",
+            "a3s_bad_abc12345def67890",
             VERIFIER,
             now() + Duration::days(1),
             now(),
@@ -350,6 +393,17 @@ mod tests {
             valid.project_id,
             valid.environment_id,
             "a3s_mcp_abc12345",
+            VERIFIER,
+            now() + Duration::days(1),
+            now(),
+        )
+        .is_err());
+        assert!(McpCredential::issue(
+            McpCredentialId::new(),
+            valid.organization_id,
+            valid.project_id,
+            valid.environment_id,
+            "a3s_mcp_abc12345def67890",
             "sha256:not-a-verifier",
             now() + Duration::days(1),
             now(),
@@ -360,7 +414,7 @@ mod tests {
             valid.organization_id,
             valid.project_id,
             valid.environment_id,
-            "a3s_mcp_abc12345",
+            "a3s_mcp_abc12345def67890",
             VERIFIER,
             now() + Duration::days(1),
             now(),
@@ -371,7 +425,7 @@ mod tests {
             valid.organization_id,
             valid.project_id,
             valid.environment_id,
-            "a3s_mcp_abc12345",
+            "a3s_mcp_abc12345def67890",
             VERIFIER,
             now(),
             now(),

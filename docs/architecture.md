@@ -874,9 +874,13 @@ project, and environment, uses the fixed `cloud-mcp` audience and
 Rotation replaces both prefix and verifier, advances the credential generation,
 and leaves the stable credential ID unchanged. Revocation is terminal and
 advances only the aggregate version. Debug and serialized projection views
-redact the verifier. One-time plaintext issuance, durable persistence, route
-grant resolution, and atomic removal or replacement of revoked grants remain
-unfinished; Cloud management credentials must never be accepted as a shortcut.
+redact the verifier. Migration 055 stores the aggregate through typed A3S ORM
+with an exact environment foreign key, globally unique fixed-length prefixes,
+bounded verifier/version checks, optimistic updates, and tenant-filtered reads;
+every restored row is revalidated by the aggregate and shared Gateway
+contract. One-time plaintext issuance, route grant resolution, and atomic
+removal or replacement of revoked grants remain unfinished; Cloud management
+credentials must never be accepted as a shortcut.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical

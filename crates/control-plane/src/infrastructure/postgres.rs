@@ -495,6 +495,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/054_mcp_workload_revision_bindings.sql"
             )),
         ),
+        Migration::new(
+            "055",
+            "hosted MCP credential authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/055_mcp_credentials.sql"
+            )),
+        ),
     ]
 }
 
