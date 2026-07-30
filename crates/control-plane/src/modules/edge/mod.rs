@@ -21,6 +21,7 @@ pub use domain::repositories::{
     GatewayRouteCutoverResult, IEdgeRepository, IMcpCredentialRepository,
     IMcpRoutePolicyRepository, StageGatewayCertificateConvergence, StageGatewayRollout,
     StageGatewayRolloutRollback, StageGatewayRouteCutover, TransitionDomainClaim,
+    MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,

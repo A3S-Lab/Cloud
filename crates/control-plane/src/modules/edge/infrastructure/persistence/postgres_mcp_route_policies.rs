@@ -5,10 +5,13 @@ use crate::infrastructure::{
     transaction_error, PostgresPersistenceError,
 };
 use crate::modules::assets::domain::McpServiceProfile;
-use crate::modules::edge::domain::repositories::IMcpRoutePolicyRepository;
+use crate::modules::edge::domain::repositories::{
+    IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+};
 use crate::modules::edge::domain::McpRoutePolicy;
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, OrganizationId,
+    ProjectId, RepositoryError, RouteId,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{
@@ -51,6 +54,25 @@ impl IMcpRoutePolicyRepository for PostgresEdgeRepository {
         environment_id: EnvironmentId,
     ) -> Result<Vec<McpRoutePolicy>, RepositoryError> {
         list(&self.executor, organization_id, project_id, environment_id).await
+    }
+
+    async fn list_active_mcp_route_policies_for_gateway(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        gateway_scope_id: GatewayScopeId,
+        active_at: DateTime<Utc>,
+    ) -> Result<Vec<McpRoutePolicy>, RepositoryError> {
+        list_active_for_gateway(
+            &self.executor,
+            organization_id,
+            project_id,
+            environment_id,
+            gateway_scope_id,
+            active_at,
+        )
+        .await
     }
 }
 
@@ -295,6 +317,50 @@ async fn list(
     Ok(policies)
 }
 
+async fn list_active_for_gateway(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    gateway_scope_id: GatewayScopeId,
+    active_at: DateTime<Utc>,
+) -> Result<Vec<McpRoutePolicy>, RepositoryError> {
+    if organization_id.as_uuid().is_nil()
+        || project_id.as_uuid().is_nil()
+        || environment_id.as_uuid().is_nil()
+        || gateway_scope_id.as_uuid().is_nil()
+    {
+        return Err(RepositoryError::Conflict(
+            "active MCP Gateway route query identities must not be nil".into(),
+        ));
+    }
+    let active_at = canonical_timestamp(active_at);
+    let rows = Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(
+            select_from::<McpRoutePolicies>()
+                .select(McpRoutePolicyWithProfileSelection)
+                .inner_join::<McpServiceProfiles>(profile_join())
+                .filter(McpRoutePolicies::organization_id().eq(organization_id.as_uuid()))
+                .filter(McpRoutePolicies::project_id().eq(project_id.as_uuid()))
+                .filter(McpRoutePolicies::environment_id().eq(environment_id.as_uuid()))
+                .filter(McpRoutePolicies::gateway_scope_id().eq(gateway_scope_id.as_uuid()))
+                .filter(McpRoutePolicies::expires_at().gt(active_at))
+                .order_by(McpRoutePolicies::id(), OrderDirection::Asc)
+                .limit((MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY + 1) as u64),
+        )
+        .await
+        .map_err(storage)?
+        .rows;
+    if rows.len() > MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY {
+        return Err(RepositoryError::Conflict(format!(
+            "active MCP Gateway route set exceeds {MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY} routes"
+        )));
+    }
+    rows.into_iter()
+        .map(McpRoutePolicyWithProfileRow::policy)
+        .collect()
+}
+
 async fn restore_row(
     executor: &PostgresExecutor,
     row: McpRoutePolicyRow,
@@ -363,6 +429,14 @@ fn profile_query(
         .filter(McpServiceProfiles::asset_id().eq(asset_id.as_uuid()))
         .filter(McpServiceProfiles::asset_release_id().eq(asset_release_id.as_uuid()))
         .filter(McpServiceProfiles::profile_digest().eq(profile_digest))
+}
+
+fn profile_join() -> Expression {
+    McpRoutePolicies::organization_id()
+        .eq_column(McpServiceProfiles::organization_id())
+        .and(McpRoutePolicies::asset_id().eq_column(McpServiceProfiles::asset_id()))
+        .and(McpRoutePolicies::asset_release_id().eq_column(McpServiceProfiles::asset_release_id()))
+        .and(McpRoutePolicies::profile_digest().eq_column(McpServiceProfiles::profile_digest()))
 }
 
 fn validate_supplied(
@@ -434,6 +508,12 @@ struct McpRoutePolicyRow {
 }
 
 struct McpRoutePolicySelection;
+struct McpRoutePolicyWithProfileSelection;
+
+struct McpRoutePolicyWithProfileRow {
+    policy: McpRoutePolicyRow,
+    profile_acl: String,
+}
 
 impl Selection for McpRoutePolicySelection {
     type Output = McpRoutePolicyRow;
@@ -461,6 +541,16 @@ impl Selection for McpRoutePolicySelection {
     }
 }
 
+impl Selection for McpRoutePolicyWithProfileSelection {
+    type Output = McpRoutePolicyWithProfileRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        let mut expressions = McpRoutePolicySelection.expressions();
+        expressions.push(McpServiceProfiles::acl().expression());
+        expressions
+    }
+}
+
 impl FromRow for McpRoutePolicyRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
@@ -482,6 +572,23 @@ impl FromRow for McpRoutePolicyRow {
             created_at: decode(row, 15)?,
             updated_at: decode(row, 16)?,
         })
+    }
+}
+
+impl FromRow for McpRoutePolicyWithProfileRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            policy: McpRoutePolicyRow::from_row(row)?,
+            profile_acl: decode(row, 17)?,
+        })
+    }
+}
+
+impl McpRoutePolicyWithProfileRow {
+    fn policy(self) -> Result<McpRoutePolicy, RepositoryError> {
+        let profile = McpServiceProfile::restore(&self.profile_acl, &self.policy.profile_digest)
+            .map_err(stored)?;
+        self.policy.policy(&profile)
     }
 }
 

@@ -1582,10 +1582,13 @@ unavailable. As of 2026-07-30:
   cloneable secret result. A pure assembler now combines only same-node
   one-route fragments, deduplicates exact profile/credential authority, rejects
   ownership or authority conflicts, and emits one canonical complete snapshot
-  with the earliest expiry. Public idempotent one-time delivery and rotation,
-  durable desired-route enumeration plus snapshot compare-and-swap,
-  dispatch/acknowledgement recovery, the real PostgreSQL gate, lifecycle
-  surfaces, recovery, and audit remain `MCP0.3`; and
+  with the earliest expiry. One exact typed ORM query now enumerates at most
+  1,000 unexpired policies for one tenant-qualified Gateway scope, joins their
+  immutable profiles, and rejects overflow rather than truncating. Public
+  idempotent one-time delivery and rotation, active Workload/revision
+  materialization, snapshot compare-and-swap, dispatch/acknowledgement
+  recovery, the real PostgreSQL gate, lifecycle surfaces, recovery, and audit
+  remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps

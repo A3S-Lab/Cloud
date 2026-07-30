@@ -14,9 +14,9 @@ use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    McpCredentialId, OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName,
-    RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
+    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GatewayScopeId, GitCommitSha,
+    IdempotencyRequest, McpCredentialId, OperationId, OrganizationId, ProjectId, RepositoryError,
+    ResourceName, RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -399,6 +399,47 @@ pub async fn exercise(
             .await?,
         vec![policy.clone()]
     );
+    assert_eq!(
+        edge.list_active_mcp_route_policies_for_gateway(
+            organization_id,
+            project_id,
+            environment_id,
+            scope.id,
+            policy.updated_at(),
+        )
+        .await?,
+        vec![policy.clone()]
+    );
+    assert!(edge
+        .list_active_mcp_route_policies_for_gateway(
+            organization_id,
+            project_id,
+            environment_id,
+            scope.id,
+            policy.spec().expires_at,
+        )
+        .await?
+        .is_empty());
+    assert!(edge
+        .list_active_mcp_route_policies_for_gateway(
+            organization_id,
+            project_id,
+            environment_id,
+            GatewayScopeId::new(),
+            policy.updated_at(),
+        )
+        .await?
+        .is_empty());
+    assert!(edge
+        .list_active_mcp_route_policies_for_gateway(
+            other_organization_id,
+            project_id,
+            environment_id,
+            scope.id,
+            policy.updated_at(),
+        )
+        .await?
+        .is_empty());
 
     let mut revised = policy.clone();
     let mut revised_spec = revised.spec().clone();

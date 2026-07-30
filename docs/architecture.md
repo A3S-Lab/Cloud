@@ -886,9 +886,17 @@ requires exactly the route's profile and credentials, deduplicates only
 field-for-field-equivalent shared profiles and credential authority, rejects
 route/router ownership collisions, takes the earliest expiry, sorts the merged
 collections canonically, and validates the final complete contract. It cannot
-enumerate durable desired routes, assign a managed revision, or publish. A
-durable worker must still load all active routes for the node, compare and swap
-one complete revision, dispatch it only to the bound node, and recover
+assign a managed revision or publish.
+
+Durable desired-route enumeration is an exact typed A3S ORM read over one
+organization, project, environment, logical Gateway scope, and canonical
+observation time. It excludes expired policies in PostgreSQL, joins each
+immutable Service profile in the same query, sorts by route identity, and
+requests 1,001 rows so exceeding the 1,000-route snapshot bound fails instead
+of truncating. Cross-scope and cross-tenant policies are never materialized
+into the candidate set. A durable worker must still resolve every enumerated
+route to its active release-bound Workload and healthy local target, compare
+and swap one complete revision, dispatch it only to the bound node, and recover
 acknowledgement without a single-route update removing sibling routes.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
