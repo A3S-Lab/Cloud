@@ -13,6 +13,7 @@ mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 mod mcp_gateway_projection_compiler;
+mod mcp_route_target_projection_compiler;
 pub mod persistence;
 mod route_target_reader;
 mod runtime_http_upstream;
@@ -67,6 +68,9 @@ pub use gateway_snapshot_compiler::{
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
+};
+pub use mcp_route_target_projection_compiler::{
+    McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
 pub use route_target_reader::WorkloadRouteTargetReader;
 pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;

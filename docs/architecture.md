@@ -838,6 +838,20 @@ command. Routed update accepts only the candidate deployment command's
 observation at the desired healthy generation. A future, stale, mismatched, or
 forged observation cannot create a route target.
 
+Hosted MCP routes reuse that same evidence path. The MCP target compiler accepts
+only a canonical `McpRoutePolicy`, its exact immutable Service profile, a
+profile/release-bound `WorkloadRevision`, and already resolved healthy Runtime
+targets. It revalidates tenant, Workload, Asset, AssetRelease, profile digest,
+Runtime port, health path, Unit ID, generation, and node-local endpoint
+alignment. AssetRelease identity and profile digest are copied only from the
+immutable revision binding; the endpoint is copied only from `RouteTarget`.
+Callers control only priority and positive weight. Targets are sorted
+canonically and receive a stable UUIDv5 identity derived from route, node,
+Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
+non-contiguous-priority, and overflowing-weight sets fail closed. Credential
+authority resolution, the worker reconciliation loop that reads those targets,
+and complete snapshot publication remain separate unfinished `MCP0.3` work.
+
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical
 `GatewayScopeState` permits only one pending complete snapshot per node. Its

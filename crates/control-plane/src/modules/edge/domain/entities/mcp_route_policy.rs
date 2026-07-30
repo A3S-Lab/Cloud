@@ -215,7 +215,7 @@ impl McpRoutePolicy {
         self.updated_at
     }
 
-    pub fn gateway_projection(
+    pub(crate) fn gateway_projection(
         &self,
         router: impl Into<String>,
         targets: Vec<McpTargetProjection>,
