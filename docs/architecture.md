@@ -843,6 +843,229 @@ command. Routed update accepts only the candidate deployment command's
 observation at the desired healthy generation. A future, stale, mismatched, or
 forged observation cannot create a route target.
 
+Hosted MCP routes reuse that same evidence path. Each `McpRoutePolicy` also
+pins one tenant-qualified `DomainClaim`; migration 053 enforces that exact
+foreign-key binding. Publication candidates accept the hostname only while the
+claim is verified, covers it, and has not changed after the observation time.
+The Claim ID and aggregate version remain attached to the candidate so later
+revocation cannot race publication. The MCP target compiler accepts only a
+canonical policy, its exact immutable Service profile, a profile/release-bound
+`WorkloadRevision`, and already resolved healthy Runtime targets. It
+revalidates tenant, Workload, Asset, AssetRelease, profile digest, Runtime port,
+health path, Unit ID, generation, and node-local endpoint alignment.
+AssetRelease identity and profile digest are copied only from the immutable
+revision binding; the endpoint is copied only from `RouteTarget`.
+Callers control only priority and positive weight. Targets are sorted
+canonically and receive a stable UUIDv5 identity derived from route, node,
+Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
+non-contiguous-priority, and overflowing-weight sets fail closed. Credential
+authority resolution, scope-complete planning, complete snapshot composition,
+and durable staging are separate `MCP0.3` layers rather than target-compiler
+responsibilities.
+
+The MCP projection planner is the read-side orchestration boundary. It verifies
+that the mutable route policy, immutable profile binding, Workload revision,
+and desired Gateway scope have the same organization, project, environment,
+AssetRelease, Workload, and validity window before consulting Runtime state.
+It then asks the existing `IRouteTargetReader` for exactly one current healthy
+target per desired Gateway member, using the profile's declared Runtime port.
+Partial or wrong-node sets fail before projection. Because the current Runtime
+contract exposes node-local loopback sockets, Cloud then selects only the
+target whose node is the physical Gateway receiving this snapshot. That local
+target has priority zero and weight one, and the router name derives from the
+route ID. A remote member's `127.0.0.1` endpoint must never be interpreted as a
+socket on the receiving Gateway; remote target routing remains unavailable
+until `H0.3` defines and proves the cluster-private endpoint contract. Later
+traffic policy remains Cloud-owned rather than becoming a Runtime or Gateway
+scheduling decision.
+
+The one-route Gateway projection planner then resolves exactly the credential
+IDs named by that route's grants. The repository query is bounded to 10,000
+unique non-nil IDs and one exact organization/project/environment scope; it
+does not list or project unrelated environment credentials. Missing or
+cross-scope identities, stale generations, expiry, and revocation fail closed.
+The resulting projection contains one immutable profile, its one route, only
+the referenced verifier generations, and the earlier of route-policy expiry
+and credential expiry. It is validated as one complete Gateway contract before
+return. The planner returns a node-bound value that rejects any Runtime target
+whose node differs from the receiving physical Gateway.
+
+The pure MCP projection assembler accepts one to 1,000 independently planned
+one-route fragments only when every fragment is bound to that same physical
+Gateway. It revalidates each fragment at one canonical observation time,
+requires exactly the route's profile and credentials, deduplicates only
+field-for-field-equivalent shared profiles and credential authority, rejects
+route/router ownership collisions, takes the earliest expiry, sorts the merged
+collections canonically, and validates the final complete contract. It cannot
+assign a managed revision or publish.
+
+Durable desired-route enumeration is an exact typed A3S ORM read over one
+organization, project, environment, logical Gateway scope, and canonical
+observation time. It excludes expired policies in PostgreSQL, joins each
+immutable Service profile in the same query, sorts by route identity, and
+requests 1,001 rows so exceeding the 1,000-route snapshot bound fails instead
+of truncating. Cross-scope and cross-tenant policies are never materialized
+into the candidate set. A durable worker must still resolve every enumerated
+route to its active release-bound Workload and healthy local target.
+
+The projection-input reader performs that materialization with at most 16
+concurrent reads. Every policy must resolve to its immutable profile, verified
+DomainClaim, a running Workload's current active revision, and the exact
+organization, project, environment, Asset, AssetRelease, hostname coverage,
+and profile-digest binding. A missing, stopped, revoked, future, stale, or
+differently bound input aborts the complete candidate; it is never skipped.
+The complete-set planner then plans at most 16 routes concurrently for one
+receiving Gateway and feeds the entire result into the conflict-safe assembler.
+It retains canonical hostname/path/router bindings and rejects duplicate
+ingress ownership before consulting Runtime. Each accepted credential
+contributes both its grant generation and its credential aggregate version to
+the candidate. The assembler rejects fragments that observe different
+authority versions for the same credential. This matters because revocation
+advances the aggregate version without having to advance the generation. An
+empty active set is represented explicitly as no MCP projection.
+
+The pure complete-snapshot composer now joins that MCP candidate with the
+physical `GatewayScopeState` and every active ordinary `Route` plus its exact
+verified `DomainClaim`. It requires one canonical observation/issue time, the
+next physical revision, the exact installed-revision expectation, and the
+receiving node's logical-scope membership. It rejects stale or cross-tenant
+domain authority, duplicate ownership, and any ordinary `PathPrefix` that
+would cover an exact MCP path. Certificate DNS names are the canonical union
+of ordinary and MCP Claim patterns. The emitted A3S ACL is one complete
+managed document containing ordinary routers/services, exact MCP ingress
+routers, fail-closed and healthy target services, the top-level `mcp` policy,
+and management configuration. An empty MCP candidate omits the complete MCP
+surface, removing the final stale `mcp` block while preserving ordinary
+routes.
+
+The compiled value retains the physical scope state, ordinary Route versions,
+all ordinary and MCP DomainClaim versions, and the complete MCP plan; that plan
+already retains the policy/digest, Workload/revision, and credential
+generation/version evidence.
+
+Durable staging now consumes that complete value in one PostgreSQL
+transaction. It locks the physical Node, exact logical scope and ordered
+membership, physical scope, complete active ordinary Route set, complete active
+MCP policy set at the planning observation, every DomainClaim, every referenced
+Workload/active revision, and every credential generation. Policy create and
+update lock the same logical scope row before their policy row, so a concurrent
+insert cannot appear as an unobserved active-set phantom. Ordinary Route
+publication already serializes through the same Node and physical-scope
+authority. Any scope, membership, installed revision, route, policy, claim,
+Workload rollout, credential rotation, revocation, or pending-publication drift
+rejects the candidate before commit.
+
+An accepted stage writes the pending `GatewayPublication`, optional provisioning
+certificate, immutable `mcp_gateway_snapshot_publications` kind/tenant marker,
+next physical scope revision, and one secret-free
+`edge.mcp-gateway.snapshot-staged` Outbox fact atomically. The event binds the
+logical and physical identities, command, revision, snapshot digest, ordinary
+and MCP Route IDs, DomainClaim IDs, and optional certificate ID without
+including credential verifiers. Migration 057 binds the marker to the exact
+logical scope, receiving Node, publication revision, command, and digest. The
+marker is durable recovery evidence rather than another state machine:
+`GatewayPublication` remains the sole delivery-state authority, and
+acknowledgement code does not infer publication kind from Outbox retention.
+
+The bounded `McpGatewaySnapshotReconciler` scans pending marker/publication
+joins and enqueues the existing idempotent Fleet
+`GatewaySnapshotInstall` command. A queue failure leaves the publication
+pending for the next process or cycle; a repeated enqueue uses the same command
+ID and becomes Fleet replay rather than another mutation. A command that
+reaches its exact deadline becomes `unavailable` atomically with any still
+provisioning or issued certificate, without advancing the installed revision.
+Clock regression fails closed.
+
+The existing Agent CSR/signing path can issue the staged certificate after
+command delivery. The acknowledgement projector recognizes the immutable MCP
+marker before ordinary Route publication kinds, validates the exact
+node/command/revision/digest and zero-or-one certificate projection, and
+atomically records `Rejected` or `Applied`. Only Applied with valid issued
+certificate material advances certificate readiness and the physical installed
+revision; any active ordinary routes are rebound to the same complete snapshot
+identity. Terminal acknowledgement replay remains idempotent.
+
+The PostgreSQL integration fixture rejects a candidate after policy revision
+and injects failure at the final Outbox insert to verify no publication,
+certificate, marker, event, or scope advance leaks before a successful retry.
+It then compiles Fleet dispatch/replay, certificate issuance, and exact Applied
+projection. Focused in-memory tests exercise queue interruption followed by
+restart, idempotent redispatch, deadline expiry, and future-clock rejection.
+Those fixtures are compiled in the normal test gate; an environment-backed
+PostgreSQL execution is still required before claiming real database evidence.
+
+Migration 058 gives each immutable marker a second digest for logical desired
+state and an exact MCP route count. The digest canonically binds compiler
+configuration, logical scope and membership policy, semantic ordinary Route
+and DomainClaim authority, complete MCP policy/profile/target projection, and
+credential generation/version evidence. It deliberately excludes the
+physical revision, command and certificate UUIDs, observation time, mutable
+ordinary Route publication binding, and target observation timestamp. A
+successful zero-route marker is therefore durable removal evidence without
+making later ordinary-only changes MCP-owned. Existing migration-057 rows use
+a conservative non-empty sentinel and legacy snapshot digest, causing one
+safe repair publication instead of assuming their logical contents.
+
+The registered `McpGatewayDesiredStateReconciler` scans logical scopes that
+have an unexpired policy or prior MCP publication. Its ordered UUID cursor
+rotates a bounded batch so an old unchanged scope cannot starve later scopes.
+For every current member it first reads physical pending-publication and
+latest-marker state. Any pending complete snapshot defers planning. Otherwise the worker
+materializes the complete scope projection, reads the complete physical
+ordinary Route set, compiles the next candidate, and asks the same atomic
+staging repository to commit it. A first empty set is a no-op. Changed desired
+state, transition from non-empty to empty, or a non-empty applied snapshot
+displaced by another physical revision stages a replacement. Equal applied
+state is unchanged; equal rejected or unavailable state retries only after a
+bounded delay. Dispatch remains the separate durable marker worker, preserving
+commit-before-send and idempotent Fleet replay.
+
+Migration 058 also replaces the original marker-to-primary-scope foreign key
+with the logical scope's exact tenant boundary. Physical Node and publication
+foreign keys remain exact, while current secondary membership is checked
+under the staging transaction's ordered membership locks. Historical
+publication evidence therefore neither rejects secondary members nor blocks a
+later membership change.
+
+Node-wide aggregation for a physical Gateway shared by multiple active
+logical MCP scopes, unified desired-state composition by every ordinary Route
+publication path, proactive MCP-only certificate renewal, revoked-credential
+cleanup, public lifecycle surfaces, audit, an executed PostgreSQL gate, and
+joint real-process recovery remain required before this path can close
+`MCP0.3`.
+
+Hosted MCP service credentials are distinct from Cloud management API tokens.
+An API token is organization-scoped management authority with the `a3s_`
+format and a SHA-256 lookup digest; it cannot be projected into Gateway.
+The Edge-owned `McpCredential` aggregate is instead bound to one organization,
+project, and environment, uses the fixed `cloud-mcp` audience and
+`a3s_mcp_` lookup prefix, and retains only a bounded Argon2id PHC verifier.
+Rotation replaces both prefix and verifier, advances the credential generation,
+and leaves the stable credential ID unchanged. Revocation is terminal and
+advances only the aggregate version. Debug and serialized projection views
+redact the verifier. Migration 055 stores the aggregate through typed A3S ORM
+with an exact environment foreign key, globally unique fixed-length prefixes,
+bounded verifier/version checks, optimistic updates, and tenant-filtered reads;
+every restored row is revalidated by the aggregate and shared Gateway
+contract. Exact route-grant resolution now uses only the requested IDs within
+the route's tenant scope and requires the persisted generation to remain
+active at projection time.
+
+The internal credential issuer obtains 64 bits of random fixed-length lookup
+prefix plus 256 bits of bearer secret and a separate 128-bit salt, derives the
+bounded Argon2id verifier on the blocking pool under a four-operation
+semaphore, and persists the aggregate before returning the bearer value. The
+result owns the secret in zeroizing memory and is neither cloneable nor
+serializable; Debug output is redacted. A uniqueness conflict discards the
+entire candidate and retries with fresh identity, prefix, secret, salt, and
+verifier at most four times. Credential lifetime is positive and capped at 365
+days. This primitive is intentionally not a public lifecycle surface yet:
+idempotent one-time delivery must recover or compensate a
+commit-before-response failure without persisting plaintext or returning a
+second secret. Rotation delivery and durable atomic removal or replacement of
+revoked grants also remain unfinished. Cloud management credentials must never
+be accepted as a shortcut.
+
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical
 `GatewayScopeState` permits only one pending complete snapshot per node. Its

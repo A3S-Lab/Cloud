@@ -104,6 +104,17 @@ pub struct WorkloadRevisionResponse {
     pub external_source_revision_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_run_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_binding: Option<McpWorkloadRevisionBindingResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpWorkloadRevisionBindingResponse {
+    pub organization_id: Uuid,
+    pub asset_id: Uuid,
+    pub asset_release_id: Uuid,
+    pub profile_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -258,6 +269,15 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
             .external_build
             .as_ref()
             .map(|reference| reference.build_run_id.as_uuid());
+        let mcp_binding =
+            revision
+                .mcp_binding()
+                .map(|binding| McpWorkloadRevisionBindingResponse {
+                    organization_id: binding.organization_id().as_uuid(),
+                    asset_id: binding.asset_id().as_uuid(),
+                    asset_release_id: binding.asset_release_id().as_uuid(),
+                    profile_digest: binding.profile_digest().to_string(),
+                });
         let requested_template = revision.request.clone().into();
         let (artifact_uri, artifact_digest, artifact_media_type) = revision
             .template
@@ -284,6 +304,7 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
             resolved_at: revision.resolved_at,
             external_source_revision_id,
             build_run_id,
+            mcp_binding,
         }
     }
 }

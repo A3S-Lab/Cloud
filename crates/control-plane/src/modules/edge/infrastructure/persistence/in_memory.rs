@@ -9,12 +9,12 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayPublication, GatewayPublicationState, GatewayRollout, GatewayRolloutRollback,
-    GatewayRouteCutover, GatewayScope, GatewayScopeState, Route, RouteState,
+    GatewayRouteCutover, GatewayScope, GatewayScopeState, McpCredential, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
-    GatewayScopeId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, RouteId,
+    GatewayScopeId, IdempotencyRequest, IdempotentWrite, McpCredentialId, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{DomainEventEnvelope, NodeGatewayAck, NodeGatewaySnapshotObservation};
 use async_trait::async_trait;
@@ -26,6 +26,7 @@ mod acknowledgements;
 mod certificate_convergence;
 mod certificates;
 mod gateway_scopes;
+mod mcp_credentials;
 mod rollouts;
 mod validation;
 
@@ -61,6 +62,8 @@ struct State {
     rollout_publications: BTreeMap<(NodeId, u64), GatewayRolloutId>,
     rollout_route_projections: BTreeMap<(GatewayRolloutId, NodeId), Route>,
     rollout_idempotency: BTreeMap<(String, String), (String, GatewayRolloutResult)>,
+    mcp_credentials: BTreeMap<McpCredentialId, McpCredential>,
+    mcp_credential_prefixes: BTreeMap<String, McpCredentialId>,
     outbox: Vec<DomainEventEnvelope>,
 }
 

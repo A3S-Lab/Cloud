@@ -52,6 +52,20 @@ orm_table! {
         external_build_environment_id: Option<Uuid> => "external_build_environment_id",
         external_source_revision_id: Option<Uuid> => "external_source_revision_id",
         external_build_run_id: Option<Uuid> => "external_build_run_id",
+        mcp_organization_id: Option<Uuid> => "mcp_organization_id",
+        mcp_asset_id: Option<Uuid> => "mcp_asset_id",
+        mcp_asset_release_id: Option<Uuid> => "mcp_asset_release_id",
+        mcp_profile_digest: Option<String> => "mcp_profile_digest",
+    }
+}
+
+orm_table! {
+    pub(super) struct McpServiceProfiles => "mcp_service_profiles" {
+        organization_id: Uuid => "organization_id",
+        asset_id: Uuid => "asset_id",
+        asset_release_id: Uuid => "asset_release_id",
+        profile_digest: String => "profile_digest",
+        acl: String => "acl",
     }
 }
 

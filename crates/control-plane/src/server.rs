@@ -2,7 +2,8 @@ use crate::infrastructure::FlowOperationCoordinator;
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::edge::{
     GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
-    GatewayRolloutRollbackReconciler,
+    GatewayRolloutRollbackReconciler, McpGatewayDesiredStateReconciler,
+    McpGatewaySnapshotReconciler,
 };
 use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
@@ -23,6 +24,8 @@ pub(crate) struct ControlPlaneWorkers {
     github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
+    mcp_gateway_desired_state_reconciler: Option<McpGatewayDesiredStateReconciler>,
+    mcp_gateway_snapshot_reconciler: Option<McpGatewaySnapshotReconciler>,
     gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
     gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
     gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
@@ -42,6 +45,8 @@ impl ControlPlaneWorkers {
         github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
+        mcp_gateway_desired_state_reconciler: Option<McpGatewayDesiredStateReconciler>,
+        mcp_gateway_snapshot_reconciler: Option<McpGatewaySnapshotReconciler>,
         gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
         gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
         gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
@@ -58,6 +63,8 @@ impl ControlPlaneWorkers {
             github_authority_reconciler,
             operation_coordinator,
             gateway_certificate_reconciler,
+            mcp_gateway_desired_state_reconciler,
+            mcp_gateway_snapshot_reconciler,
             gateway_rollout_reconciler,
             gateway_replica_recovery_reconciler,
             gateway_rollout_rollback_reconciler,
@@ -106,6 +113,12 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.gateway_certificate_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.mcp_gateway_desired_state_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.mcp_gateway_snapshot_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.gateway_rollout_reconciler {

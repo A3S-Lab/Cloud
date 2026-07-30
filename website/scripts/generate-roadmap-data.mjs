@@ -20,6 +20,7 @@ const expectedGates = [
   'P0',
   'C0',
   'A0',
+  'MCP0',
   'A1',
   'S0',
   'H0',

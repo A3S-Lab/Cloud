@@ -2,6 +2,7 @@
 fn postgres_asset_persistence_uses_only_the_typed_a3s_orm_boundary() {
     let source = [
         include_str!("mod.rs"),
+        include_str!("mcp_profiles.rs"),
         include_str!("queries.rs"),
         include_str!("rows.rs"),
         include_str!("writes.rs"),

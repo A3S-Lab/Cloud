@@ -44,7 +44,7 @@ use super::{
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {
-    executor: PostgresExecutor,
+    pub(super) executor: PostgresExecutor,
 }
 
 impl PostgresEdgeRepository {

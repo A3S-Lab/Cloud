@@ -1,7 +1,11 @@
-use super::SecretBinding;
+use super::{SecretBinding, Workload};
+use crate::modules::assets::domain::{
+    Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, McpServiceProfile,
+    McpServiceProfileBinding,
+};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, BuildRunId, EnvironmentId, OrganizationId, ProjectId, SecretId,
-    SourceRevisionId, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId,
+    ProjectId, SecretId, Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -394,6 +398,64 @@ impl ExternalBuildReference {
     }
 }
 
+/// Immutable product identity attached to an ordinary Workload revision.
+///
+/// Runtime consumes only `profile_digest`; Cloud retains the exact release
+/// identity so equal behavior profiles never collapse distinct releases.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct McpWorkloadRevisionBinding {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    profile_digest: Sha256Digest,
+}
+
+impl McpWorkloadRevisionBinding {
+    pub const fn organization_id(&self) -> OrganizationId {
+        self.organization_id
+    }
+
+    pub const fn asset_id(&self) -> AssetId {
+        self.asset_id
+    }
+
+    pub const fn asset_release_id(&self) -> AssetReleaseId {
+        self.asset_release_id
+    }
+
+    pub const fn profile_digest(&self) -> &Sha256Digest {
+        &self.profile_digest
+    }
+
+    pub(crate) fn restore(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        profile_digest: Sha256Digest,
+    ) -> Result<Self, String> {
+        let binding = Self {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            profile_digest,
+        };
+        binding.validate_identity()?;
+        Ok(binding)
+    }
+
+    fn validate_identity(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.asset_id.as_uuid().is_nil()
+            || self.asset_release_id.as_uuid().is_nil()
+            || Sha256Digest::parse(self.profile_digest.as_str())? != self.profile_digest
+        {
+            return Err("MCP Workload release binding identity is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkloadRevision {
     pub id: WorkloadRevisionId,
@@ -407,6 +469,8 @@ pub struct WorkloadRevision {
     pub resolved_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_build: Option<ExternalBuildReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mcp_binding: Option<McpWorkloadRevisionBinding>,
 }
 
 impl WorkloadRevision {
@@ -442,6 +506,7 @@ impl WorkloadRevision {
             created_at,
             resolved_at: Some(created_at),
             external_build: None,
+            mcp_binding: None,
         })
     }
 
@@ -482,6 +547,7 @@ impl WorkloadRevision {
             created_at,
             resolved_at: None,
             external_build: None,
+            mcp_binding: None,
         })
     }
 
@@ -530,6 +596,107 @@ impl WorkloadRevision {
             .ok_or_else(|| "workload revision has not resolved its OCI artifact".into())
     }
 
+    /// Attach one published MCP release and its immutable semantics profile.
+    ///
+    /// The binding is idempotent for the same identity and otherwise
+    /// immutable. It validates the ordinary Service template instead of
+    /// introducing an MCP-specific Runtime specification.
+    pub fn bind_mcp_release(
+        &mut self,
+        workload: &Workload,
+        asset: &Asset,
+        release: &AssetRelease,
+        profile: &McpServiceProfileBinding,
+    ) -> Result<bool, String> {
+        asset.validate()?;
+        release.validate_for(asset)?;
+        profile.validate()?;
+        if self.workload_id != workload.id
+            || workload.organization_id != asset.organization_id
+            || asset.kind != AssetKind::Mcp
+            || release.organization_id != workload.organization_id
+            || release.asset_id != asset.id
+            || release.state != AssetReleaseState::Published
+            || profile.organization_id != workload.organization_id
+            || profile.asset_id != asset.id
+            || profile.asset_release_id != release.id
+            || self.created_at < release.updated_at
+            || self.created_at < profile.created_at
+        {
+            return Err(
+                "MCP Workload revision does not match its tenant, published release, or profile"
+                    .into(),
+            );
+        }
+        let release_artifact = release
+            .artifact
+            .as_ref()
+            .ok_or_else(|| "published MCP release omitted its OCI artifact".to_owned())?;
+        if release_artifact.kind() != AssetReleaseArtifactKind::OciService {
+            return Err("MCP Workload requires an OCI Service release".into());
+        }
+        let template = self.resolved_template()?;
+        if template.artifact.digest != release_artifact.digest().as_str()
+            || template.artifact.media_type != release_artifact.media_type()
+        {
+            return Err("MCP Workload artifact does not match its exact AssetRelease".into());
+        }
+        validate_mcp_template(template, &profile.profile)?;
+        let binding = McpWorkloadRevisionBinding::restore(
+            workload.organization_id,
+            asset.id,
+            release.id,
+            profile.profile.digest().clone(),
+        )?;
+        match &self.mcp_binding {
+            Some(existing) if existing == &binding => Ok(false),
+            Some(_) => Err("MCP Workload release binding is immutable".into()),
+            None => {
+                self.mcp_binding = Some(binding);
+                Ok(true)
+            }
+        }
+    }
+
+    pub const fn mcp_binding(&self) -> Option<&McpWorkloadRevisionBinding> {
+        self.mcp_binding.as_ref()
+    }
+
+    pub(crate) fn validate_mcp_binding_for_workload(
+        &self,
+        workload: &Workload,
+    ) -> Result<(), String> {
+        let Some(binding) = &self.mcp_binding else {
+            return Ok(());
+        };
+        binding.validate_identity()?;
+        if self.workload_id != workload.id
+            || binding.organization_id != workload.organization_id
+            || self.template.is_none()
+            || self.resolved_at.is_none()
+        {
+            return Err("MCP Workload release binding does not match its Workload revision".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn restore_mcp_binding(
+        &mut self,
+        binding: McpWorkloadRevisionBinding,
+        profile: &McpServiceProfile,
+    ) -> Result<(), String> {
+        binding.validate_identity()?;
+        if binding.profile_digest != *profile.digest() {
+            return Err("MCP Workload release binding and Service profile digest differ".into());
+        }
+        validate_mcp_template(self.resolved_template()?, profile)?;
+        if self.mcp_binding.is_some() {
+            return Err("MCP Workload release binding was restored more than once".into());
+        }
+        self.mcp_binding = Some(binding);
+        Ok(())
+    }
+
     pub fn rollback_as(
         &self,
         id: WorkloadRevisionId,
@@ -547,6 +714,7 @@ impl WorkloadRevision {
             created_at,
         )?;
         revision.external_build = self.external_build.clone();
+        revision.mcp_binding = self.mcp_binding.clone();
         Ok(revision)
     }
 
@@ -585,12 +753,39 @@ impl WorkloadRevision {
         }
         let mut revision = Self::create(id, self.workload_id, generation, template, created_at)?;
         revision.external_build = self.external_build.clone();
+        revision.mcp_binding = self.mcp_binding.clone();
         Ok(revision)
     }
 
     pub fn runtime_unit_id(&self) -> String {
         format!("workload:{}:revision:{}", self.workload_id, self.id)
     }
+}
+
+fn validate_mcp_template(
+    template: &ServiceTemplate,
+    profile: &McpServiceProfile,
+) -> Result<(), String> {
+    template.validate()?;
+    McpServiceProfile::restore(profile.canonical_acl(), profile.digest().as_str())?;
+    let profile = profile.spec();
+    if !template
+        .ports
+        .iter()
+        .any(|port| port.name == profile.runtime_port)
+    {
+        return Err("MCP Workload does not declare the profile Runtime port".into());
+    }
+    let health = template
+        .health
+        .as_ref()
+        .ok_or_else(|| "MCP Workload requires the profile HTTP health check".to_owned())?;
+    if health.port_name != profile.runtime_port || health.path != profile.health_path {
+        return Err(
+            "MCP Workload health check does not match its immutable Service profile".into(),
+        );
+    }
+    Ok(())
 }
 
 fn validate_sha256(value: &str) -> Result<(), String> {
