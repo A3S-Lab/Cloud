@@ -1,5 +1,8 @@
-use crate::modules::edge::infrastructure::PlannedMcpGatewayProjection;
+use crate::modules::edge::infrastructure::{
+    McpCredentialProjectionVersion, PlannedMcpGatewayProjection,
+};
 use crate::modules::shared_kernel::domain::canonical_timestamp;
+use crate::modules::shared_kernel::domain::McpCredentialId;
 use a3s_cloud_contracts::{
     McpCredentialProjection, McpGatewayProjection, McpRoutePolicyProjection,
     McpServiceProfileProjection, MCP_GATEWAY_PROJECTION_SCHEMA,
@@ -29,6 +32,8 @@ impl McpGatewayProjectionAssembler {
         let mut expires_at: Option<DateTime<Utc>> = None;
         let mut profiles = BTreeMap::<String, McpServiceProfileProjection>::new();
         let mut credentials = BTreeMap::<Uuid, McpCredentialProjection>::new();
+        let mut credential_versions =
+            BTreeMap::<McpCredentialId, McpCredentialProjectionVersion>::new();
         let mut routes = BTreeMap::<Uuid, McpRoutePolicyProjection>::new();
         let mut routers = BTreeSet::new();
 
@@ -38,7 +43,7 @@ impl McpGatewayProjectionAssembler {
                     "MCP Gateway assembly cannot mix different physical Gateway nodes".into(),
                 );
             }
-            let projection = fragment.into_projection();
+            let (_, projection, fragment_credential_versions) = fragment.into_parts();
             projection.validate(observed_at)?;
             validate_one_route_fragment(&projection)?;
             expires_at = Some(
@@ -75,6 +80,20 @@ impl McpGatewayProjectionAssembler {
                     }
                 }
             }
+            for version in fragment_credential_versions {
+                match credential_versions.get(&version.credential_id()) {
+                    Some(existing) if existing != &version => {
+                        return Err(
+                            "MCP Gateway assembly found conflicting versions for one credential"
+                                .into(),
+                        );
+                    }
+                    Some(_) => {}
+                    None => {
+                        credential_versions.insert(version.credential_id(), version);
+                    }
+                }
+            }
             for route in projection.routes {
                 if !routers.insert(route.router.clone()) {
                     return Err("MCP Gateway assembly contains a duplicate router".into());
@@ -95,6 +114,7 @@ impl McpGatewayProjectionAssembler {
                 credentials: credentials.into_values().collect(),
                 routes: routes.into_values().collect(),
             },
+            credential_versions.into_values().collect(),
             observed_at,
         )
     }
@@ -226,8 +246,18 @@ mod tests {
                 }],
             }],
         };
-        PlannedMcpGatewayProjection::new(gateway_node_id, projection, now())
-            .expect("one-route fragment")
+        PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            projection,
+            vec![McpCredentialProjectionVersion::new(
+                McpCredentialId::from_uuid(credential_id),
+                7,
+                7,
+            )
+            .expect("credential version")],
+            now(),
+        )
+        .expect("one-route fragment")
     }
 
     fn fragments(
@@ -302,23 +332,47 @@ mod tests {
         let (first, second) = fragments(gateway_node_id);
         let mut conflicting_profile = second.clone().into_projection();
         conflicting_profile.profiles[0].max_response_bytes -= 1;
-        let conflicting_profile =
-            PlannedMcpGatewayProjection::new(gateway_node_id, conflicting_profile, now())
-                .expect("valid conflicting profile fragment");
+        let conflicting_profile = PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            conflicting_profile,
+            second.credential_versions().to_vec(),
+            now(),
+        )
+        .expect("valid conflicting profile fragment");
         assert!(McpGatewayProjectionAssembler
             .assemble(vec![first.clone(), conflicting_profile], now())
             .expect_err("conflicting profile")
             .contains("conflicting definitions"));
 
-        let mut conflicting_credential = second.into_projection();
+        let credential_versions = second.credential_versions().to_vec();
+        let mut conflicting_credential = second.clone().into_projection();
         conflicting_credential.credentials[0].prefix = "a3s_mcp_def67890abc12345".into();
-        let conflicting_credential =
-            PlannedMcpGatewayProjection::new(gateway_node_id, conflicting_credential, now())
-                .expect("valid conflicting credential fragment");
+        let conflicting_credential = PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            conflicting_credential,
+            credential_versions,
+            now(),
+        )
+        .expect("valid conflicting credential fragment");
         assert!(McpGatewayProjectionAssembler
-            .assemble(vec![first, conflicting_credential], now())
+            .assemble(vec![first.clone(), conflicting_credential], now())
             .expect_err("conflicting credential")
             .contains("conflicting definitions"));
+
+        let credential_id =
+            McpCredentialId::from_uuid(second.projection().credentials[0].credential_id);
+        let conflicting_version = PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            second.into_projection(),
+            vec![McpCredentialProjectionVersion::new(credential_id, 7, 8)
+                .expect("conflicting version")],
+            now(),
+        )
+        .expect("valid newer authority fragment");
+        assert!(McpGatewayProjectionAssembler
+            .assemble(vec![first, conflicting_version], now())
+            .expect_err("conflicting credential version")
+            .contains("conflicting versions"));
     }
 
     #[test]
@@ -327,19 +381,28 @@ mod tests {
         let (first, second) = fragments(gateway_node_id);
         let mut duplicate_route = second.clone().into_projection();
         duplicate_route.routes[0].route_id = first.projection().routes[0].route_id;
-        let duplicate_route =
-            PlannedMcpGatewayProjection::new(gateway_node_id, duplicate_route, now())
-                .expect("valid duplicate route fragment");
+        let duplicate_route = PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            duplicate_route,
+            second.credential_versions().to_vec(),
+            now(),
+        )
+        .expect("valid duplicate route fragment");
         assert!(McpGatewayProjectionAssembler
             .assemble(vec![first.clone(), duplicate_route], now())
             .expect_err("duplicate route")
             .contains("duplicate route"));
 
+        let credential_versions = second.credential_versions().to_vec();
         let mut duplicate_router = second.into_projection();
         duplicate_router.routes[0].router = first.projection().routes[0].router.clone();
-        let duplicate_router =
-            PlannedMcpGatewayProjection::new(gateway_node_id, duplicate_router, now())
-                .expect("valid duplicate router fragment");
+        let duplicate_router = PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            duplicate_router,
+            credential_versions,
+            now(),
+        )
+        .expect("valid duplicate router fragment");
         assert!(McpGatewayProjectionAssembler
             .assemble(vec![first, duplicate_router], now())
             .expect_err("duplicate router")

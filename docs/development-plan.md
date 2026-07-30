@@ -1584,11 +1584,17 @@ unavailable. As of 2026-07-30:
   ownership or authority conflicts, and emits one canonical complete snapshot
   with the earliest expiry. One exact typed ORM query now enumerates at most
   1,000 unexpired policies for one tenant-qualified Gateway scope, joins their
-  immutable profiles, and rejects overflow rather than truncating. Public
-  idempotent one-time delivery and rotation, active Workload/revision
-  materialization, snapshot compare-and-swap, dispatch/acknowledgement
-  recovery, the real PostgreSQL gate, lifecycle surfaces, recovery, and audit
-  remain `MCP0.3`; and
+  immutable profiles, and rejects overflow rather than truncating. The input
+  reader now requires every route to resolve to a running Workload's exact
+  active release-bound revision; the complete-set planner uses bounded
+  concurrency, aborts on any partial or duplicate input, and represents an
+  empty active set explicitly. The candidate retains exact policy,
+  Workload/active-revision, and credential generation/aggregate-version
+  evidence so a later durable publisher can reject concurrent revocation or
+  rollout drift. Public idempotent one-time delivery and rotation, durable
+  scope/policy/Workload/credential version-vector compare-and-swap,
+  full-snapshot composition, dispatch/acknowledgement recovery, the real
+  PostgreSQL gate, lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps

@@ -895,9 +895,31 @@ immutable Service profile in the same query, sorts by route identity, and
 requests 1,001 rows so exceeding the 1,000-route snapshot bound fails instead
 of truncating. Cross-scope and cross-tenant policies are never materialized
 into the candidate set. A durable worker must still resolve every enumerated
-route to its active release-bound Workload and healthy local target, compare
-and swap one complete revision, dispatch it only to the bound node, and recover
-acknowledgement without a single-route update removing sibling routes.
+route to its active release-bound Workload and healthy local target.
+
+The projection-input reader performs that materialization with at most 16
+concurrent reads. Every policy must resolve to its immutable profile, a running
+Workload's current active revision, and the exact organization, project,
+environment, Asset, AssetRelease, and profile-digest binding. A missing,
+stopped, future, stale, or differently bound input aborts the complete
+candidate; it is never skipped. The complete-set planner then plans at most 16
+routes concurrently for one receiving Gateway and feeds the entire result into
+the conflict-safe assembler. Each accepted credential contributes both its
+grant generation and its credential aggregate version to the candidate. The
+assembler rejects fragments that observe different authority versions for the
+same credential. This matters because revocation advances the aggregate version
+without having to advance the generation. An empty active set is represented
+explicitly as no MCP projection so a later full-snapshot composer can remove the
+final MCP block instead of retaining stale authorization.
+
+These bounded reads are not a publication transaction. Staging must compare
+and swap the exact Gateway scope membership/version, policy revision/digest
+vector, Workload aggregate and active-revision identities, credential
+generation and aggregate-version vector, and prior installed Gateway revision
+before persisting one complete snapshot and Outbox command. That durable
+version-vector check, dispatch, and acknowledgement recovery remain required;
+otherwise a concurrent policy, credential, or rollout change could publish an
+obsolete but individually valid candidate.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

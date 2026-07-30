@@ -8,18 +8,63 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct McpCredentialProjectionVersion {
+    credential_id: McpCredentialId,
+    generation: u64,
+    aggregate_version: u64,
+}
+
+impl McpCredentialProjectionVersion {
+    pub fn new(
+        credential_id: McpCredentialId,
+        generation: u64,
+        aggregate_version: u64,
+    ) -> Result<Self, String> {
+        if credential_id.as_uuid().is_nil()
+            || generation == 0
+            || generation > MAX_SAFE_ACL_INTEGER
+            || aggregate_version < generation
+            || aggregate_version > MAX_SAFE_ACL_INTEGER
+        {
+            return Err("MCP credential projection version is invalid".into());
+        }
+        Ok(Self {
+            credential_id,
+            generation,
+            aggregate_version,
+        })
+    }
+
+    pub const fn credential_id(self) -> McpCredentialId {
+        self.credential_id
+    }
+
+    pub const fn generation(self) -> u64 {
+        self.generation
+    }
+
+    pub const fn aggregate_version(self) -> u64 {
+        self.aggregate_version
+    }
+}
+
 /// A complete MCP snapshot bound to the one physical Gateway that may receive
 /// its node-local Runtime endpoints.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedMcpGatewayProjection {
     gateway_node_id: NodeId,
     projection: McpGatewayProjection,
+    credential_versions: Vec<McpCredentialProjectionVersion>,
 }
 
 impl PlannedMcpGatewayProjection {
-    pub fn new(
+    pub(crate) fn new(
         gateway_node_id: NodeId,
         projection: McpGatewayProjection,
+        mut credential_versions: Vec<McpCredentialProjectionVersion>,
         observed_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         if gateway_node_id.as_uuid().is_nil() {
@@ -37,9 +82,27 @@ impl PlannedMcpGatewayProjection {
                     .into(),
             );
         }
+        credential_versions.sort_by_key(|version| version.credential_id);
+        if credential_versions.len() != projection.credentials.len()
+            || credential_versions
+                .windows(2)
+                .any(|versions| versions[0].credential_id == versions[1].credential_id)
+            || credential_versions.iter().any(|version| {
+                projection.credentials.iter().all(|credential| {
+                    credential.credential_id != version.credential_id.as_uuid()
+                        || credential.generation != version.generation
+                })
+            })
+        {
+            return Err(
+                "MCP Gateway projection credential version vector is incomplete or inconsistent"
+                    .into(),
+            );
+        }
         Ok(Self {
             gateway_node_id,
             projection,
+            credential_versions,
         })
     }
 
@@ -51,8 +114,27 @@ impl PlannedMcpGatewayProjection {
         &self.projection
     }
 
-    pub fn into_projection(self) -> McpGatewayProjection {
+    pub fn credential_versions(&self) -> &[McpCredentialProjectionVersion] {
+        &self.credential_versions
+    }
+
+    #[cfg(test)]
+    pub(crate) fn into_projection(self) -> McpGatewayProjection {
         self.projection
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        NodeId,
+        McpGatewayProjection,
+        Vec<McpCredentialProjectionVersion>,
+    ) {
+        (
+            self.gateway_node_id,
+            self.projection,
+            self.credential_versions,
+        )
     }
 }
 
@@ -110,6 +192,7 @@ impl McpGatewayProjectionPlanner {
         }
 
         let mut credentials = Vec::with_capacity(route.grants.len());
+        let mut credential_versions = Vec::with_capacity(route.grants.len());
         let mut expires_at = policy_expires_at;
         for grant in &route.grants {
             let credential_id = McpCredentialId::from_uuid(grant.credential_id);
@@ -129,6 +212,14 @@ impl McpGatewayProjectionPlanner {
                 ));
             }
             expires_at = expires_at.min(credential.expires_at());
+            credential_versions.push(
+                McpCredentialProjectionVersion::new(
+                    credential.id,
+                    credential.generation(),
+                    credential.aggregate_version(),
+                )
+                .map_err(RepositoryError::Storage)?,
+            );
             credentials.push(credential.gateway_projection());
         }
         credentials.sort_by_key(|credential| credential.credential_id);
@@ -140,8 +231,13 @@ impl McpGatewayProjectionPlanner {
             credentials,
             routes: vec![route],
         };
-        PlannedMcpGatewayProjection::new(gateway_node_id, projection, observed_at)
-            .map_err(RepositoryError::Conflict)
+        PlannedMcpGatewayProjection::new(
+            gateway_node_id,
+            projection,
+            credential_versions,
+            observed_at,
+        )
+        .map_err(RepositoryError::Conflict)
     }
 }
 
@@ -270,6 +366,15 @@ mod tests {
             .await
             .expect("projection");
         assert_eq!(projection.gateway_node_id(), node_id);
+        assert_eq!(
+            projection.credential_versions(),
+            &[McpCredentialProjectionVersion::new(
+                credential.id,
+                credential.generation(),
+                credential.aggregate_version(),
+            )
+            .expect("credential version")]
+        );
         let projection = projection.projection();
 
         assert_eq!(projection.expires_at, credential.expires_at());
@@ -301,9 +406,19 @@ mod tests {
         let mut remote = planned.into_projection();
         remote.routes[0].targets[0].node_id = NodeId::new().as_uuid();
 
-        assert!(PlannedMcpGatewayProjection::new(node_id, remote, now())
-            .expect_err("remote target")
-            .contains("another physical node"));
+        assert!(PlannedMcpGatewayProjection::new(
+            node_id,
+            remote,
+            vec![McpCredentialProjectionVersion::new(
+                McpCredentialId::from_uuid(fixture.policy.spec().grants[0].credential_id),
+                1,
+                1,
+            )
+            .expect("credential version")],
+            now(),
+        )
+        .expect_err("remote target")
+        .contains("another physical node"));
     }
 
     #[tokio::test]

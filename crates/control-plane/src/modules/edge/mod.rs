@@ -28,7 +28,8 @@ pub use domain::services::{
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayObservationCommand,
     GatewayObservationCommandOutcome, GatewayObservationDispatch, IDomainOwnershipVerifier,
     IGatewayCertificateAuthority, IGatewayCommandQueue, IGatewayObservationQueue,
-    IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet,
+    IMcpRouteProjectionInputReader, IRouteTargetReader, ResolvedMcpRouteProjectionInput,
+    ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 pub use domain::{
     DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
@@ -54,9 +55,11 @@ pub use infrastructure::{
     GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, IssuedMcpCredential, LocalDomainOwnershipVerifier,
     LocalGatewayCertificateAuthority, McpCredentialIssuanceError, McpCredentialIssueRequest,
-    McpCredentialIssuer, McpGatewayProjectionAssembler, McpGatewayProjectionCompiler,
-    McpGatewayProjectionPlanner, McpRouteProjectionPlanner, McpRouteTargetCandidate,
-    McpRouteTargetProjectionCompiler, PlanGatewayRouteRollout, PlanMcpRouteProjection,
-    PlannedMcpGatewayProjection, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    McpCredentialIssuer, McpCredentialProjectionVersion, McpGatewayProjectionAssembler,
+    McpGatewayProjectionCompiler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteProjectionVersion,
+    McpRouteTargetCandidate, McpRouteTargetProjectionCompiler, PlanGatewayRouteRollout,
+    PlanMcpGatewayProjectionSet, PlanMcpRouteProjection, PlannedMcpGatewayProjection,
+    PlannedMcpGatewayProjectionSet, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

@@ -16,6 +16,8 @@ mod mcp_credential_issuer;
 mod mcp_gateway_projection_assembler;
 mod mcp_gateway_projection_compiler;
 mod mcp_gateway_projection_planner;
+mod mcp_gateway_projection_set_planner;
+mod mcp_route_projection_input_reader;
 mod mcp_route_projection_planner;
 mod mcp_route_target_projection_compiler;
 pub mod persistence;
@@ -78,8 +80,13 @@ pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
 };
 pub use mcp_gateway_projection_planner::{
-    McpGatewayProjectionPlanner, PlannedMcpGatewayProjection,
+    McpCredentialProjectionVersion, McpGatewayProjectionPlanner, PlannedMcpGatewayProjection,
 };
+pub use mcp_gateway_projection_set_planner::{
+    McpGatewayProjectionSetPlanner, McpRouteProjectionVersion, PlanMcpGatewayProjectionSet,
+    PlannedMcpGatewayProjectionSet,
+};
+pub use mcp_route_projection_input_reader::McpRouteProjectionInputReader;
 pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRouteProjection};
 pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
