@@ -41,6 +41,52 @@ impl McpRouteProjectionPlanner {
         &self,
         request: PlanMcpRouteProjection,
     ) -> Result<McpRoutePolicyProjection, RepositoryError> {
+        Self::validate_request(&request)?;
+        let observed_at = canonical_timestamp(request.observed_at);
+        let policy_spec = request.policy.spec();
+        let profile_binding = &request.profile_binding;
+
+        let port_name = RoutePortName::parse(&profile_binding.profile.spec().runtime_port)
+            .map_err(RepositoryError::Conflict)?;
+        let target_set = self
+            .targets
+            .resolve_healthy_target_set(
+                policy_spec.organization_id,
+                policy_spec.project_id,
+                policy_spec.environment_id,
+                request.revision.id,
+                &port_name,
+                &request.scope.member_node_ids,
+                observed_at,
+            )
+            .await?;
+        let local_target = target_set
+            .for_member(request.gateway_node_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "MCP route target set does not contain the receiving Gateway member".into(),
+                )
+            })?;
+        let candidates =
+            vec![McpRouteTargetCandidate::new(local_target, 0, 1)
+                .map_err(RepositoryError::Conflict)?];
+        let router = format!("mcp-route-{}", policy_spec.route_id.as_uuid().simple());
+
+        self.compiler
+            .compile(
+                &request.policy,
+                &profile_binding.profile,
+                &request.revision,
+                router,
+                candidates,
+            )
+            .map_err(RepositoryError::Conflict)
+    }
+
+    pub(crate) fn validate_request(
+        request: &PlanMcpRouteProjection,
+    ) -> Result<(), RepositoryError> {
         request
             .scope
             .validate()
@@ -80,43 +126,7 @@ impl McpRouteProjectionPlanner {
                 "MCP route projection time is outside its desired-state validity".into(),
             ));
         }
-
-        let port_name = RoutePortName::parse(&profile_binding.profile.spec().runtime_port)
-            .map_err(RepositoryError::Conflict)?;
-        let target_set = self
-            .targets
-            .resolve_healthy_target_set(
-                policy_spec.organization_id,
-                policy_spec.project_id,
-                policy_spec.environment_id,
-                request.revision.id,
-                &port_name,
-                &request.scope.member_node_ids,
-                observed_at,
-            )
-            .await?;
-        let local_target = target_set
-            .for_member(request.gateway_node_id)
-            .cloned()
-            .ok_or_else(|| {
-                RepositoryError::Conflict(
-                    "MCP route target set does not contain the receiving Gateway member".into(),
-                )
-            })?;
-        let candidates =
-            vec![McpRouteTargetCandidate::new(local_target, 0, 1)
-                .map_err(RepositoryError::Conflict)?];
-        let router = format!("mcp-route-{}", policy_spec.route_id.as_uuid().simple());
-
-        self.compiler
-            .compile(
-                &request.policy,
-                &profile_binding.profile,
-                &request.revision,
-                router,
-                candidates,
-            )
-            .map_err(RepositoryError::Conflict)
+        Ok(())
     }
 }
 

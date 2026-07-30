@@ -1593,8 +1593,12 @@ unavailable. As of 2026-07-30:
   duplicate, or ingress-conflicting input, retains canonical ingress bindings,
   and represents an empty active set explicitly. The candidate retains exact
   policy, DomainClaim, Workload/active-revision, and credential
-  generation/aggregate-version evidence. The complete-snapshot composer joins
-  this candidate with every ordinary active Route and verified DomainClaim,
+  generation/aggregate-version evidence. Credential resolution now precedes
+  Runtime target health: revocation, expiry, or generation mismatch suppresses
+  only the affected ingress, while a separate observed-policy vector and exact
+  invalid credential state remain as transactional cleanup authority. The
+  complete-snapshot composer joins this candidate with every ordinary active
+  Route and verified DomainClaim,
   preserves ordinary traffic, rejects prefix bypass, unions certificate
   authority, emits exact MCP routers/targets, and removes stale MCP policy when
   the active set becomes empty. Durable staging then locks the physical Node,
@@ -1649,10 +1653,13 @@ unavailable. As of 2026-07-30:
   post-acknowledgement no-churn, together with stale-policy rejection,
   transaction rollback when the final Outbox insert fails, Fleet replay,
   certificate issuance, and exact Applied projection. Certificate
-  convergence/renewal still needs to consume the unified node plan. Proactive
-  MCP-only certificate renewal,
-  revoked-credential cleanup, public idempotent one-time delivery/rotation, an
-  executed real PostgreSQL gate, lifecycle surfaces, audit, and joint
+  convergence/renewal consumes the unified node plan for provider or
+  DomainClaim revocation, projection repair, validity renewal, and proactive
+  MCP-only replacement. Credential cleanup removes a revoked, expired, or
+  old-generation route without removing unrelated valid routes and locks the
+  full observed policy/Workload set plus the exact invalid credential before
+  staging. Public idempotent one-time delivery/rotation, an executed real
+  PostgreSQL gate for these newest paths, lifecycle surfaces, audit, and joint
   real-process recovery remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
@@ -1771,6 +1778,11 @@ never become its state store.
    Deterministically assemble all independently planned routes for that node,
    deduplicating only identical shared profiles and credentials and taking the
    earliest validity bound before managed revision assignment.
+   Resolve credential authority before Runtime target health. If a referenced
+   credential is revoked, expired, or at another generation, remove only that
+   route from the emitted projection while retaining its exact policy,
+   Workload, and invalid credential versions for transaction-time CAS; never
+   publish a route with an empty or weakened grant set.
 8. Activate only after Gateway acknowledges the exact identity, revision, and
    digest. Update and rollback use immutable revisions; drain removes a target
    from acknowledged traffic before Runtime stop.

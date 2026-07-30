@@ -813,6 +813,13 @@ scope set plus its membership, policies, ordinary routes, Claims, Workloads,
 credentials, and physical revision. A node removed from its last scope still
 receives one route-less cleanup snapshot; its exact Applied acknowledgement
 releases the head so historical markers do not cause permanent scans.
+Credential authority is resolved before Runtime target health. A revoked,
+expired, or generation-mismatched credential suppresses only its affected MCP
+route, while unrelated valid routes remain in the complete node projection.
+The candidate separately retains every observed active policy and the exact
+invalid credential generation, aggregate version, expiry, and revocation
+evidence; PostgreSQL locks that evidence before staging so a concurrent policy
+or credential change cannot publish stale cleanup.
 Physical revision, command, certificate identity, and observation time do not
 cause digest churn. Focused tests cover two-scope composition, one-publication
 node deduplication, membership-removal cleanup, no-op convergence, bounded
@@ -829,11 +836,12 @@ PostgreSQL fixture also compiles stored scope-set/head evidence and an automatic
 post-acknowledgement no-op check, but no database URL is available in the
 default local gate.
 
-Revoked-credential cleanup, public lifecycle surfaces, executed real
-PostgreSQL evidence for the new certificate path, real Box hosting, and joint
-product conformance remain unavailable. Stateful resources remain `S0`;
-replicas and multi-node placement remain `H0`; accelerator and inference
-capabilities remain `I0`. These profiles do not create separate schedulers.
+Public idempotent one-time credential delivery/rotation, lifecycle surfaces,
+executed real PostgreSQL evidence for the new certificate and credential
+cleanup paths, real Box hosting, and joint product conformance remain
+unavailable. Stateful resources remain `S0`; replicas and multi-node placement
+remain `H0`; accelerator and inference capabilities remain `I0`. These
+profiles do not create separate schedulers.
 
 ## Delivery Model
 

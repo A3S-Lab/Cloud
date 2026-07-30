@@ -254,20 +254,21 @@ impl McpGatewayDesiredStateReconciler {
                     .await
                 {
                     Ok(planned) => {
-                        planned_route_count =
-                            match planned_route_count.checked_add(planned.route_versions().len()) {
-                                Some(count) if count <= MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY => count,
-                                _ => {
-                                    report.failures.push(failure(
-                                        trigger_scope_id,
-                                        node_id,
-                                        "plan",
-                                        "physical Gateway exceeds the complete MCP route bound",
-                                    ));
-                                    planning_failed = true;
-                                    break;
-                                }
-                            };
+                        planned_route_count = match planned_route_count
+                            .checked_add(planned.observed_route_versions().len())
+                        {
+                            Some(count) if count <= MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY => count,
+                            _ => {
+                                report.failures.push(failure(
+                                    trigger_scope_id,
+                                    node_id,
+                                    "plan",
+                                    "physical Gateway exceeds the complete MCP route bound",
+                                ));
+                                planning_failed = true;
+                                break;
+                            }
+                        };
                         planned_scopes.push(planned);
                     }
                     Err(_) => {

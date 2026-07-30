@@ -27,8 +27,9 @@ use crate::modules::edge::infrastructure::{
     StageManagedGatewayRouteCutover, StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
-    NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
+    canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, McpCredentialId,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
+    WorkloadRevisionId,
 };
 use a3s_orm::expression::{exists, not, Selection};
 use a3s_orm::{
@@ -1475,7 +1476,7 @@ async fn lock_mcp_policies(
         .await?;
         let expected = candidate
             .mcp()
-            .route_versions()
+            .observed_route_versions()
             .iter()
             .filter(|version| version.gateway_scope_id() == scope.id)
             .collect::<Vec<_>>();
@@ -1584,7 +1585,7 @@ async fn lock_workloads(
             WorkloadRevisionId,
         ),
     >::new();
-    for version in candidate.mcp().route_versions() {
+    for version in candidate.mcp().observed_route_versions() {
         let scope = candidate
             .mcp()
             .scope(version.gateway_scope_id())
@@ -1657,13 +1658,60 @@ async fn lock_workloads(
     Ok(())
 }
 
+#[derive(Debug)]
+struct McpCredentialLockExpectation {
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    generation: u64,
+    aggregate_version: u64,
+    expires_at: DateTime<Utc>,
+    revoked_at: Option<DateTime<Utc>>,
+    requires_active: bool,
+    invalid_referenced_generations: BTreeSet<u64>,
+}
+
+impl McpCredentialLockExpectation {
+    fn same_authority(&self, other: &Self) -> bool {
+        self.organization_id == other.organization_id
+            && self.project_id == other.project_id
+            && self.environment_id == other.environment_id
+            && self.generation == other.generation
+            && self.aggregate_version == other.aggregate_version
+            && self.expires_at == other.expires_at
+            && self.revoked_at == other.revoked_at
+    }
+}
+
+fn merge_mcp_credential_lock_expectation(
+    expectations: &mut BTreeMap<McpCredentialId, McpCredentialLockExpectation>,
+    credential_id: McpCredentialId,
+    mut candidate: McpCredentialLockExpectation,
+) -> Result<(), PostgresPersistenceError> {
+    match expectations.get_mut(&credential_id) {
+        Some(existing) if !existing.same_authority(&candidate) => {
+            Err(PostgresPersistenceError::Invariant(
+                "MCP snapshot observed conflicting authority for one credential".into(),
+            ))
+        }
+        Some(existing) => {
+            existing.requires_active |= candidate.requires_active;
+            existing
+                .invalid_referenced_generations
+                .append(&mut candidate.invalid_referenced_generations);
+            Ok(())
+        }
+        None => {
+            expectations.insert(credential_id, candidate);
+            Ok(())
+        }
+    }
+}
+
 async fn lock_credentials(
     transaction: &PostgresTransaction,
     candidate: &CompiledMcpGatewaySnapshot,
 ) -> Result<(), PostgresPersistenceError> {
-    let Some(projection) = candidate.mcp().projection() else {
-        return Ok(());
-    };
     let mut tenants = BTreeMap::<EnvironmentId, (OrganizationId, ProjectId)>::new();
     for scope in candidate.mcp().scopes() {
         match tenants.get(&scope.environment_id) {
@@ -1681,24 +1729,91 @@ async fn lock_credentials(
             }
         }
     }
-    for expected in projection.credential_versions() {
-        let projected = projection
-            .projection()
-            .credentials
-            .iter()
-            .find(|credential| credential.credential_id == expected.credential_id().as_uuid())
+
+    let mut expectations = BTreeMap::<McpCredentialId, McpCredentialLockExpectation>::new();
+    if let Some(projection) = candidate.mcp().projection() {
+        for expected in projection.credential_versions() {
+            let projected = projection
+                .projection()
+                .credentials
+                .iter()
+                .find(|credential| credential.credential_id == expected.credential_id().as_uuid())
+                .ok_or_else(|| {
+                    PostgresPersistenceError::Invariant(
+                        "MCP snapshot credential version lost its projection".into(),
+                    )
+                })?;
+            let environment_id = EnvironmentId::from_uuid(projected.environment_id);
+            let (organization_id, project_id) =
+                tenants.get(&environment_id).copied().ok_or_else(|| {
+                    PostgresPersistenceError::Invariant(
+                        "MCP snapshot credential has no active-scope tenant".into(),
+                    )
+                })?;
+            merge_mcp_credential_lock_expectation(
+                &mut expectations,
+                expected.credential_id(),
+                McpCredentialLockExpectation {
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    generation: expected.generation(),
+                    aggregate_version: expected.aggregate_version(),
+                    expires_at: projected.expires_at,
+                    revoked_at: None,
+                    requires_active: true,
+                    invalid_referenced_generations: BTreeSet::new(),
+                },
+            )?;
+        }
+    }
+    for suppression in candidate.mcp().credential_suppressions() {
+        let scope = candidate
+            .mcp()
+            .scope(suppression.gateway_scope_id())
             .ok_or_else(|| {
                 PostgresPersistenceError::Invariant(
-                    "MCP snapshot credential version lost its projection".into(),
+                    "MCP credential suppression references an inactive logical scope".into(),
                 )
             })?;
-        let environment_id = EnvironmentId::from_uuid(projected.environment_id);
-        let (organization_id, project_id) =
-            tenants.get(&environment_id).copied().ok_or_else(|| {
-                PostgresPersistenceError::Invariant(
-                    "MCP snapshot credential has no active-scope tenant".into(),
-                )
-            })?;
+        if !suppression.is_invalid_at(candidate.mcp().observed_at())
+            || candidate
+                .mcp()
+                .route_versions()
+                .iter()
+                .any(|version| version.route_id() == suppression.route_id())
+            || !candidate
+                .mcp()
+                .observed_route_versions()
+                .iter()
+                .any(|version| {
+                    version.route_id() == suppression.route_id()
+                        && version.gateway_scope_id() == suppression.gateway_scope_id()
+                })
+        {
+            return Err(PostgresPersistenceError::Invariant(
+                "MCP credential suppression is not exact route-removal authority".into(),
+            ));
+        }
+        let invalid_referenced_generations = BTreeSet::from([suppression.referenced_generation()]);
+        merge_mcp_credential_lock_expectation(
+            &mut expectations,
+            suppression.credential_id(),
+            McpCredentialLockExpectation {
+                organization_id: scope.organization_id,
+                project_id: scope.project_id,
+                environment_id: scope.environment_id,
+                generation: suppression.generation(),
+                aggregate_version: suppression.aggregate_version(),
+                expires_at: suppression.expires_at(),
+                revoked_at: suppression.revoked_at(),
+                requires_active: false,
+                invalid_referenced_generations,
+            },
+        )?;
+    }
+
+    for (credential_id, expected) in expectations {
         let row = fetch_optional::<
             (
                 Uuid,
@@ -1722,7 +1837,7 @@ async fn lock_credentials(
                     McpCredentials::expires_at(),
                     McpCredentials::revoked_at(),
                 ))
-                .filter(McpCredentials::id().eq(expected.credential_id().as_uuid()))
+                .filter(McpCredentials::id().eq(credential_id.as_uuid()))
                 .for_update(),
         )
         .await?
@@ -1731,13 +1846,21 @@ async fn lock_credentials(
                 "MCP snapshot credential disappeared before Gateway staging".into(),
             )
         })?;
-        if row.0 != organization_id.as_uuid()
-            || row.1 != project_id.as_uuid()
-            || row.2 != environment_id.as_uuid()
-            || row.3 != expected.generation()
-            || row.4 != expected.aggregate_version()
-            || row.5 <= candidate.mcp().observed_at()
-            || row.6.is_some()
+        if row.0 != expected.organization_id.as_uuid()
+            || row.1 != expected.project_id.as_uuid()
+            || row.2 != expected.environment_id.as_uuid()
+            || row.3 != expected.generation
+            || row.4 != expected.aggregate_version
+            || row.5 != expected.expires_at
+            || row.6 != expected.revoked_at
+            || expected.requires_active
+                && (row.5 <= candidate.mcp().observed_at() || row.6.is_some())
+            || expected
+                .invalid_referenced_generations
+                .iter()
+                .any(|generation| {
+                    row.3 == *generation && row.5 > candidate.mcp().observed_at() && row.6.is_none()
+                })
         {
             return Err(RepositoryError::Conflict(
                 "MCP snapshot credential authority changed before Gateway staging".into(),

@@ -4,8 +4,8 @@ use crate::modules::edge::domain::{
     DomainClaimState, DomainNamePattern, GatewayScope, RouteHostname,
 };
 use crate::modules::edge::infrastructure::{
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, PlanMcpRouteProjection,
-    PlannedMcpGatewayProjection,
+    McpCredentialSuppressionVersion, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayRouteProjectionPlan, PlanMcpRouteProjection, PlannedMcpGatewayProjection,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, NodeId, RepositoryError, RouteId, Sha256Digest, WorkloadId,
@@ -118,10 +118,23 @@ pub struct PlannedMcpGatewayProjectionSet {
     scope: GatewayScope,
     gateway_node_id: NodeId,
     observed_at: DateTime<Utc>,
+    observed_route_versions: Vec<McpRouteProjectionVersion>,
     route_versions: Vec<McpRouteProjectionVersion>,
     ingress_routes: Vec<McpGatewayIngressRoute>,
+    credential_suppressions: Vec<McpCredentialSuppressionVersion>,
     projection: Option<PlannedMcpGatewayProjection>,
 }
+
+type PlannedMcpGatewayProjectionSetParts = (
+    GatewayScope,
+    NodeId,
+    DateTime<Utc>,
+    Vec<McpRouteProjectionVersion>,
+    Vec<McpRouteProjectionVersion>,
+    Vec<McpGatewayIngressRoute>,
+    Vec<McpCredentialSuppressionVersion>,
+    Option<PlannedMcpGatewayProjection>,
+);
 
 impl PlannedMcpGatewayProjectionSet {
     pub fn empty(
@@ -137,8 +150,10 @@ impl PlannedMcpGatewayProjectionSet {
             scope,
             gateway_node_id,
             observed_at: canonical_timestamp(observed_at),
+            observed_route_versions: Vec::new(),
             route_versions: Vec::new(),
             ingress_routes: Vec::new(),
+            credential_suppressions: Vec::new(),
             projection: None,
         })
     }
@@ -155,6 +170,10 @@ impl PlannedMcpGatewayProjectionSet {
         self.observed_at
     }
 
+    pub fn observed_route_versions(&self) -> &[McpRouteProjectionVersion] {
+        &self.observed_route_versions
+    }
+
     pub fn route_versions(&self) -> &[McpRouteProjectionVersion] {
         &self.route_versions
     }
@@ -163,26 +182,23 @@ impl PlannedMcpGatewayProjectionSet {
         &self.ingress_routes
     }
 
+    pub fn credential_suppressions(&self) -> &[McpCredentialSuppressionVersion] {
+        &self.credential_suppressions
+    }
+
     pub const fn projection(&self) -> Option<&PlannedMcpGatewayProjection> {
         self.projection.as_ref()
     }
 
-    pub fn into_parts(
-        self,
-    ) -> (
-        GatewayScope,
-        NodeId,
-        DateTime<Utc>,
-        Vec<McpRouteProjectionVersion>,
-        Vec<McpGatewayIngressRoute>,
-        Option<PlannedMcpGatewayProjection>,
-    ) {
+    pub(crate) fn into_parts(self) -> PlannedMcpGatewayProjectionSetParts {
         (
             self.scope,
             self.gateway_node_id,
             self.observed_at,
+            self.observed_route_versions,
             self.route_versions,
             self.ingress_routes,
+            self.credential_suppressions,
             self.projection,
         )
     }
@@ -304,7 +320,7 @@ impl McpGatewayProjectionSetPlanner {
             ));
         }
 
-        let route_versions = inputs
+        let observed_route_versions = inputs
             .iter()
             .map(|input| McpRouteProjectionVersion {
                 route_id: input.policy.spec().route_id,
@@ -318,7 +334,7 @@ impl McpGatewayProjectionSetPlanner {
                 domain_claim_aggregate_version: input.domain_claim.aggregate_version,
             })
             .collect::<Vec<_>>();
-        let ingress_routes = inputs
+        let candidate_ingress_routes = inputs
             .iter()
             .map(|input| McpGatewayIngressRoute {
                 route_id: input.policy.spec().route_id,
@@ -329,44 +345,82 @@ impl McpGatewayProjectionSetPlanner {
                 domain_pattern: input.domain_claim.pattern.clone(),
             })
             .collect::<Vec<_>>();
-        let fragments = stream::iter(inputs.into_iter().map(|input| {
-            self.routes.plan(PlanMcpRouteProjection {
-                policy: input.policy,
-                profile_binding: input.profile_binding,
-                revision: input.revision,
-                scope: request.scope.clone(),
-                gateway_node_id: request.gateway_node_id,
-                observed_at,
-            })
+        let outcomes = stream::iter(inputs.into_iter().map(|input| {
+            self.routes
+                .plan_with_credential_suppression(PlanMcpRouteProjection {
+                    policy: input.policy,
+                    profile_binding: input.profile_binding,
+                    revision: input.revision,
+                    scope: request.scope.clone(),
+                    gateway_node_id: request.gateway_node_id,
+                    observed_at,
+                })
         }))
         .buffered(ROUTE_PLANNING_CONCURRENCY)
-        .try_collect()
+        .try_collect::<Vec<_>>()
         .await?;
-        let projection = self
-            .assembler
-            .assemble(fragments, observed_at)
-            .map_err(RepositoryError::Conflict)?;
-        if projection.projection().routes.len() != ingress_routes.len()
-            || projection
-                .projection()
-                .routes
-                .iter()
-                .zip(&ingress_routes)
-                .any(|(route, ingress)| {
-                    route.route_id != ingress.route_id.as_uuid() || route.router != ingress.router
-                })
+        let mut route_versions = Vec::with_capacity(observed_route_versions.len());
+        let mut ingress_routes = Vec::with_capacity(observed_route_versions.len());
+        let mut credential_suppressions = Vec::new();
+        let mut fragments = Vec::new();
+        for ((version, ingress), outcome) in observed_route_versions
+            .iter()
+            .cloned()
+            .zip(candidate_ingress_routes)
+            .zip(outcomes)
         {
-            return Err(RepositoryError::Conflict(
-                "MCP ingress bindings differ from their assembled route projection".into(),
-            ));
+            match outcome {
+                McpGatewayRouteProjectionPlan::Included(fragment) => {
+                    route_versions.push(version);
+                    ingress_routes.push(ingress);
+                    fragments.push(fragment);
+                }
+                McpGatewayRouteProjectionPlan::Suppressed(suppression) => {
+                    if suppression.route_id() != version.route_id
+                        || suppression.gateway_scope_id() != request.scope.id
+                    {
+                        return Err(RepositoryError::Storage(
+                            "MCP credential suppression does not belong to its observed route"
+                                .into(),
+                        ));
+                    }
+                    credential_suppressions.push(suppression);
+                }
+            }
         }
+        let projection = if fragments.is_empty() {
+            None
+        } else {
+            let projection = self
+                .assembler
+                .assemble(fragments, observed_at)
+                .map_err(RepositoryError::Conflict)?;
+            if projection.projection().routes.len() != ingress_routes.len()
+                || projection
+                    .projection()
+                    .routes
+                    .iter()
+                    .zip(&ingress_routes)
+                    .any(|(route, ingress)| {
+                        route.route_id != ingress.route_id.as_uuid()
+                            || route.router != ingress.router
+                    })
+            {
+                return Err(RepositoryError::Conflict(
+                    "MCP ingress bindings differ from their assembled route projection".into(),
+                ));
+            }
+            Some(projection)
+        };
         Ok(PlannedMcpGatewayProjectionSet {
             scope: request.scope,
             gateway_node_id: request.gateway_node_id,
             observed_at,
+            observed_route_versions,
             route_versions,
             ingress_routes,
-            projection: Some(projection),
+            credential_suppressions,
+            projection,
         })
     }
 }
@@ -411,6 +465,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const ROTATED_VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     struct FixedInputReader(Vec<ResolvedMcpRouteProjectionInput>);
 
@@ -827,6 +882,194 @@ mod tests {
         .expect("route-less durable stage intent");
         assert!(stage.certificate().is_none());
         stage.validate().expect("route-less stage intent");
+    }
+
+    #[tokio::test]
+    async fn suppresses_a_revoked_credential_route_before_runtime_resolution() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let targets = Arc::new(CountingTargetReader {
+            target: None,
+            calls: AtomicUsize::new(0),
+        });
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        let mut revoked = credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("credential");
+        revoked.revoke(now()).expect("revoke credential");
+        credentials
+            .update_mcp_credential(revoked.clone(), 1)
+            .await
+            .expect("persist revocation");
+
+        let planned = planner(vec![input(&fixture)], targets.clone(), credentials)
+            .plan(PlanMcpGatewayProjectionSet {
+                scope: scope(&fixture, node_id),
+                gateway_node_id: node_id,
+                observed_at: now(),
+            })
+            .await
+            .expect("fail-closed projection set");
+
+        assert_eq!(targets.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(planned.observed_route_versions().len(), 1);
+        assert!(planned.route_versions().is_empty());
+        assert!(planned.ingress_routes().is_empty());
+        assert!(planned.projection().is_none());
+        assert_eq!(planned.credential_suppressions().len(), 1);
+        let suppression = planned.credential_suppressions()[0];
+        assert_eq!(suppression.route_id(), fixture.policy.spec().route_id);
+        assert_eq!(
+            suppression.credential_id().as_uuid(),
+            fixture.policy.spec().grants[0].credential_id
+        );
+        assert_eq!(suppression.generation(), 1);
+        assert_eq!(suppression.aggregate_version(), 2);
+        assert_eq!(suppression.revoked_at(), Some(now()));
+        assert!(suppression.is_invalid_at(now()));
+
+        let compiled = snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(
+                    node_id,
+                    1,
+                    None,
+                    now(),
+                    now() + Duration::minutes(10),
+                ),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: None,
+                active_routes: Vec::new(),
+                mcp: node_projection(planned),
+            })
+            .expect("route-removal snapshot");
+        assert!(!compiled.snapshot().acl.contains("mcp-route-"));
+        assert!(compiled.mcp().route_versions().is_empty());
+        assert_eq!(compiled.mcp().observed_route_versions().len(), 1);
+        assert_eq!(compiled.mcp().credential_suppressions().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn suppresses_an_old_generation_without_removing_an_unrelated_route() {
+        let first = fixture();
+        let mut second_spec = first.policy.spec().clone();
+        second_spec.route_id = RouteId::new();
+        second_spec.domain_claim_id = DomainClaimId::new();
+        second_spec.hostname =
+            RouteHostname::parse("rotated-credential.example.com").expect("hostname");
+        second_spec.grants[0].credential_id = McpCredentialId::new().as_uuid();
+        let second = Fixture {
+            profile: first.profile.clone(),
+            policy: McpRoutePolicy::create(second_spec, &first.profile, now())
+                .expect("second policy"),
+            revision: first.revision.clone(),
+        };
+        let node_id = NodeId::new();
+        let observed_at = now() + Duration::minutes(2);
+        let targets = Arc::new(CountingTargetReader {
+            target: Some(target(&first, node_id, 49152)),
+            calls: AtomicUsize::new(0),
+        });
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&first))
+            .await
+            .expect("active credential");
+        let second_policy = second.policy.spec();
+        let mut rotated = credentials
+            .create_mcp_credential(
+                McpCredential::issue(
+                    McpCredentialId::from_uuid(second_policy.grants[0].credential_id),
+                    second_policy.organization_id,
+                    second_policy.project_id,
+                    second_policy.environment_id,
+                    "a3s_mcp_12345678abcdef90",
+                    VERIFIER,
+                    now() + Duration::minutes(30),
+                    now(),
+                )
+                .expect("credential to rotate"),
+            )
+            .await
+            .expect("credential to rotate");
+        rotated
+            .rotate(
+                "a3s_mcp_def67890abc12345",
+                ROTATED_VERIFIER,
+                now() + Duration::hours(1),
+                now() + Duration::minutes(1),
+            )
+            .expect("rotate credential");
+        credentials
+            .update_mcp_credential(rotated.clone(), 1)
+            .await
+            .expect("persist rotation");
+
+        let planned = planner(
+            vec![input(&second), input(&first)],
+            targets.clone(),
+            credentials,
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: scope(&first, node_id),
+            gateway_node_id: node_id,
+            observed_at,
+        })
+        .await
+        .expect("partially suppressed projection set");
+
+        assert_eq!(targets.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(planned.observed_route_versions().len(), 2);
+        assert_eq!(planned.route_versions().len(), 1);
+        assert_eq!(
+            planned.route_versions()[0].route_id(),
+            first.policy.spec().route_id
+        );
+        assert_eq!(planned.ingress_routes().len(), 1);
+        assert_eq!(planned.credential_suppressions().len(), 1);
+        let suppression = planned.credential_suppressions()[0];
+        assert_eq!(suppression.route_id(), second.policy.spec().route_id);
+        assert_eq!(suppression.referenced_generation(), 1);
+        assert_eq!(suppression.generation(), 2);
+        assert_eq!(suppression.aggregate_version(), 2);
+        assert!(suppression.is_invalid_at(observed_at));
+        let projection = planned.projection().expect("retained route projection");
+        assert_eq!(projection.projection().routes.len(), 1);
+        assert_eq!(
+            projection.projection().routes[0].route_id,
+            first.policy.spec().route_id.as_uuid()
+        );
+
+        let expires_at = projection.projection().expires_at;
+        let compiled = snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 1, None, observed_at, expires_at),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: Some(GatewayCertificateId::new()),
+                active_routes: Vec::new(),
+                mcp: node_projection(planned),
+            })
+            .expect("partially retained snapshot");
+        assert!(compiled.snapshot().acl.contains(&format!(
+            "mcp-route-{}",
+            first.policy.spec().route_id.as_uuid().simple()
+        )));
+        assert!(!compiled.snapshot().acl.contains(&format!(
+            "mcp-route-{}",
+            second.policy.spec().route_id.as_uuid().simple()
+        )));
+        assert_eq!(
+            compiled
+                .snapshot()
+                .certificate_request
+                .as_ref()
+                .expect("retained route certificate")
+                .dns_names,
+            vec![first.policy.spec().hostname.as_str().to_owned()]
+        );
+        assert_eq!(compiled.mcp().observed_route_versions().len(), 2);
+        assert_eq!(compiled.mcp().route_versions().len(), 1);
     }
 
     #[tokio::test]

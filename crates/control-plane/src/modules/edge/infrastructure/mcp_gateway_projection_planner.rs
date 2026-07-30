@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::repositories::IMcpCredentialRepository;
 use crate::modules::edge::infrastructure::{McpRouteProjectionPlanner, PlanMcpRouteProjection};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, McpCredentialId, NodeId, RepositoryError,
+    canonical_timestamp, GatewayScopeId, McpCredentialId, NodeId, RepositoryError, RouteId,
 };
 use a3s_cloud_contracts::{McpGatewayProjection, MCP_GATEWAY_PROJECTION_SCHEMA};
 use chrono::{DateTime, Utc};
@@ -48,6 +48,102 @@ impl McpCredentialProjectionVersion {
 
     pub const fn aggregate_version(self) -> u64 {
         self.aggregate_version
+    }
+}
+
+/// Exact credential authority that justified removing one still-active MCP
+/// route from a complete Gateway projection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct McpCredentialSuppressionVersion {
+    route_id: RouteId,
+    gateway_scope_id: GatewayScopeId,
+    credential_id: McpCredentialId,
+    referenced_generation: u64,
+    generation: u64,
+    aggregate_version: u64,
+    expires_at: DateTime<Utc>,
+    revoked_at: Option<DateTime<Utc>>,
+}
+
+impl McpCredentialSuppressionVersion {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        route_id: RouteId,
+        gateway_scope_id: GatewayScopeId,
+        credential_id: McpCredentialId,
+        referenced_generation: u64,
+        generation: u64,
+        aggregate_version: u64,
+        expires_at: DateTime<Utc>,
+        revoked_at: Option<DateTime<Utc>>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let observed_at = canonical_timestamp(observed_at);
+        if route_id.as_uuid().is_nil()
+            || gateway_scope_id.as_uuid().is_nil()
+            || credential_id.as_uuid().is_nil()
+            || referenced_generation == 0
+            || referenced_generation > MAX_SAFE_ACL_INTEGER
+            || generation == 0
+            || generation > MAX_SAFE_ACL_INTEGER
+            || aggregate_version < generation
+            || aggregate_version > MAX_SAFE_ACL_INTEGER
+            || expires_at != canonical_timestamp(expires_at)
+            || revoked_at.is_some_and(|revoked_at| revoked_at != canonical_timestamp(revoked_at))
+            || (generation == referenced_generation
+                && expires_at > observed_at
+                && revoked_at.is_none())
+        {
+            return Err("MCP credential suppression version is invalid".into());
+        }
+        Ok(Self {
+            route_id,
+            gateway_scope_id,
+            credential_id,
+            referenced_generation,
+            generation,
+            aggregate_version,
+            expires_at,
+            revoked_at,
+        })
+    }
+
+    pub const fn route_id(self) -> RouteId {
+        self.route_id
+    }
+
+    pub const fn gateway_scope_id(self) -> GatewayScopeId {
+        self.gateway_scope_id
+    }
+
+    pub const fn credential_id(self) -> McpCredentialId {
+        self.credential_id
+    }
+
+    pub const fn referenced_generation(self) -> u64 {
+        self.referenced_generation
+    }
+
+    pub const fn generation(self) -> u64 {
+        self.generation
+    }
+
+    pub const fn aggregate_version(self) -> u64 {
+        self.aggregate_version
+    }
+
+    pub const fn expires_at(self) -> DateTime<Utc> {
+        self.expires_at
+    }
+
+    pub const fn revoked_at(self) -> Option<DateTime<Utc>> {
+        self.revoked_at
+    }
+
+    pub fn is_invalid_at(self, observed_at: DateTime<Utc>) -> bool {
+        self.generation != self.referenced_generation
+            || self.expires_at <= canonical_timestamp(observed_at)
+            || self.revoked_at.is_some()
     }
 }
 
@@ -138,6 +234,11 @@ impl PlannedMcpGatewayProjection {
     }
 }
 
+pub(crate) enum McpGatewayRouteProjectionPlan {
+    Included(PlannedMcpGatewayProjection),
+    Suppressed(McpCredentialSuppressionVersion),
+}
+
 /// Resolves route grants against Cloud's credential authority and assembles a
 /// complete node-local MCP projection for one hosted route.
 ///
@@ -164,16 +265,31 @@ impl McpGatewayProjectionPlanner {
         &self,
         request: PlanMcpRouteProjection,
     ) -> Result<PlannedMcpGatewayProjection, RepositoryError> {
+        match self.plan_with_credential_suppression(request).await? {
+            McpGatewayRouteProjectionPlan::Included(projection) => Ok(projection),
+            McpGatewayRouteProjectionPlan::Suppressed(_) => Err(RepositoryError::Conflict(
+                "MCP route grant credential generation or state is invalid".into(),
+            )),
+        }
+    }
+
+    pub(crate) async fn plan_with_credential_suppression(
+        &self,
+        request: PlanMcpRouteProjection,
+    ) -> Result<McpGatewayRouteProjectionPlan, RepositoryError> {
+        McpRouteProjectionPlanner::validate_request(&request)?;
         let organization_id = request.policy.spec().organization_id;
         let project_id = request.policy.spec().project_id;
         let environment_id = request.policy.spec().environment_id;
         let policy_expires_at = request.policy.spec().expires_at;
+        let route_id = request.policy.spec().route_id;
+        let gateway_scope_id = request.policy.spec().gateway_scope_id;
         let gateway_node_id = request.gateway_node_id;
         let observed_at = canonical_timestamp(request.observed_at);
-        let profile = request.profile_binding.profile.gateway_projection();
-        let route = self.routes.plan(request).await?;
 
-        let credential_ids = route
+        let credential_ids = request
+            .policy
+            .spec()
             .grants
             .iter()
             .map(|grant| McpCredentialId::from_uuid(grant.credential_id))
@@ -190,13 +306,55 @@ impl McpGatewayProjectionPlanner {
                 ));
             }
         }
+        if by_id.len() != credential_ids.len() {
+            return Err(RepositoryError::Conflict(
+                "MCP route grant references an unavailable environment credential".into(),
+            ));
+        }
+        for grant in &request.policy.spec().grants {
+            let credential_id = McpCredentialId::from_uuid(grant.credential_id);
+            let credential = by_id.get(&credential_id).ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "MCP route grant references an unavailable environment credential".into(),
+                )
+            })?;
+            if credential.organization_id != organization_id
+                || credential.project_id != project_id
+                || credential.environment_id != environment_id
+            {
+                return Err(RepositoryError::Conflict(
+                    "MCP route grant credential scope is invalid".into(),
+                ));
+            }
+            if credential.generation() != grant.credential_generation
+                || !credential.is_active_at(observed_at)
+            {
+                return Ok(McpGatewayRouteProjectionPlan::Suppressed(
+                    McpCredentialSuppressionVersion::new(
+                        route_id,
+                        gateway_scope_id,
+                        credential.id,
+                        grant.credential_generation,
+                        credential.generation(),
+                        credential.aggregate_version(),
+                        credential.expires_at(),
+                        credential.revoked_at(),
+                        observed_at,
+                    )
+                    .map_err(RepositoryError::Storage)?,
+                ));
+            }
+        }
+
+        let profile = request.profile_binding.profile.gateway_projection();
+        let route = self.routes.plan(request).await?;
 
         let mut credentials = Vec::with_capacity(route.grants.len());
         let mut credential_versions = Vec::with_capacity(route.grants.len());
         let mut expires_at = policy_expires_at;
         for grant in &route.grants {
             let credential_id = McpCredentialId::from_uuid(grant.credential_id);
-            let credential = by_id.remove(&credential_id).ok_or_else(|| {
+            let credential = by_id.get(&credential_id).ok_or_else(|| {
                 RepositoryError::Conflict(
                     "MCP route grant references an unavailable environment credential".into(),
                 )
@@ -231,13 +389,15 @@ impl McpGatewayProjectionPlanner {
             credentials,
             routes: vec![route],
         };
-        PlannedMcpGatewayProjection::new(
-            gateway_node_id,
-            projection,
-            credential_versions,
-            observed_at,
-        )
-        .map_err(RepositoryError::Conflict)
+        Ok(McpGatewayRouteProjectionPlan::Included(
+            PlannedMcpGatewayProjection::new(
+                gateway_node_id,
+                projection,
+                credential_versions,
+                observed_at,
+            )
+            .map_err(RepositoryError::Conflict)?,
+        ))
     }
 }
 
@@ -473,5 +633,45 @@ mod tests {
                 .await,
             Err(RepositoryError::Conflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn exposes_exact_expired_authority_for_complete_set_cleanup() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let policy = fixture.policy.spec();
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        let expired = credentials
+            .create_mcp_credential(
+                McpCredential::issue(
+                    McpCredentialId::from_uuid(policy.grants[0].credential_id),
+                    policy.organization_id,
+                    policy.project_id,
+                    policy.environment_id,
+                    "a3s_mcp_abc12345def67890",
+                    VERIFIER,
+                    now() - Duration::minutes(1),
+                    now() - Duration::hours(1),
+                )
+                .expect("expired credential"),
+            )
+            .await
+            .expect("store expired credential");
+
+        let outcome = planner(&fixture, node_id, credentials)
+            .plan_with_credential_suppression(request(&fixture, node_id))
+            .await
+            .expect("fail-closed outcome");
+        let McpGatewayRouteProjectionPlan::Suppressed(suppression) = outcome else {
+            panic!("expired credential must suppress its route");
+        };
+        assert_eq!(suppression.route_id(), policy.route_id);
+        assert_eq!(suppression.credential_id(), expired.id);
+        assert_eq!(suppression.referenced_generation(), 1);
+        assert_eq!(suppression.generation(), 1);
+        assert_eq!(suppression.aggregate_version(), 1);
+        assert_eq!(suppression.expires_at(), now() - Duration::minutes(1));
+        assert_eq!(suppression.revoked_at(), None);
+        assert!(suppression.is_invalid_at(now()));
     }
 }

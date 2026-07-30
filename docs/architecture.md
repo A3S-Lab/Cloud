@@ -1016,6 +1016,16 @@ and merges the complete projections into one node-bound projection. Cross-
 scope route, router, ingress, profile, credential, Runtime-observation, and
 tenant conflicts fail closed.
 
+Each route resolves its complete tenant-scoped credential set before asking
+for Runtime health. A revoked, expired, or generation-mismatched credential
+produces a route-suppression decision rather than a weakened grant list. The
+node candidate therefore has two vectors: emitted route evidence used for
+Gateway ACL and certificate authority, and every observed active policy used
+for concurrency control. Each suppressed route carries one deterministic
+invalid credential's exact generation, aggregate version, expiry, and
+revocation evidence. This removes only the affected ingress and lets unrelated
+valid MCP routes continue.
+
 The compiler reads the complete physical ordinary Route set and produces one
 candidate for all active scopes. Its v2 desired digest binds the ordered scope
 set and per-route scope identity but excludes the historical publication
@@ -1057,9 +1067,14 @@ under the staging transaction's ordered membership locks. Historical
 publication evidence therefore neither rejects secondary members nor blocks a
 later membership change.
 
-Certificate convergence/renewal still needs to consume the unified node plan.
-Proactive MCP-only certificate renewal, revoked-credential cleanup, public
-lifecycle surfaces, audit, an executed PostgreSQL gate, and joint real-process
+Certificate convergence and renewal consume the unified node plan. Provider or
+DomainClaim revocation, projection repair, and validity renewal preserve
+current MCP ingress while classifying ordinary routes; MCP-only nodes also
+stage proactive certificate replacement. PostgreSQL rechecks every observed
+policy and Workload plus the exact active or suppressing credential state
+under ordered locks before publication. Public idempotent credential
+delivery/rotation, lifecycle surfaces, audit, an executed PostgreSQL gate for
+the newest certificate and credential-cleanup paths, and joint real-process
 recovery remain required before this path can close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
@@ -1090,9 +1105,10 @@ verifier at most four times. Credential lifetime is positive and capped at 365
 days. This primitive is intentionally not a public lifecycle surface yet:
 idempotent one-time delivery must recover or compensate a
 commit-before-response failure without persisting plaintext or returning a
-second secret. Rotation delivery and durable atomic removal or replacement of
-revoked grants also remain unfinished. Cloud management credentials must never
-be accepted as a shortcut.
+second secret. Rotation delivery and grant replacement through a public
+lifecycle command remain unfinished; snapshot reconciliation already removes
+routes whose referenced credential is revoked, expired, or at another
+generation. Cloud management credentials must never be accepted as a shortcut.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical

@@ -1,8 +1,8 @@
 use crate::modules::edge::domain::repositories::MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY;
 use crate::modules::edge::domain::GatewayScope;
 use crate::modules::edge::infrastructure::{
-    McpGatewayIngressRoute, McpGatewayProjectionAssembler, McpRouteProjectionVersion,
-    PlannedMcpGatewayProjection, PlannedMcpGatewayProjectionSet,
+    McpCredentialSuppressionVersion, McpGatewayIngressRoute, McpGatewayProjectionAssembler,
+    McpRouteProjectionVersion, PlannedMcpGatewayProjection, PlannedMcpGatewayProjectionSet,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GatewayScopeId, NodeId, OrganizationId, ProjectId, RouteId,
@@ -57,8 +57,10 @@ pub struct PlannedMcpGatewayNodeProjection {
     observed_at: DateTime<Utc>,
     scopes: Vec<GatewayScope>,
     scope_ids: Vec<GatewayScopeId>,
+    observed_route_versions: Vec<McpRouteProjectionVersion>,
     route_versions: Vec<McpRouteProjectionVersion>,
     ingress_routes: Vec<McpGatewayIngressRoute>,
+    credential_suppressions: Vec<McpCredentialSuppressionVersion>,
     projection: Option<PlannedMcpGatewayProjection>,
 }
 
@@ -87,12 +89,20 @@ impl PlannedMcpGatewayNodeProjection {
         &self.scope_ids
     }
 
+    pub fn observed_route_versions(&self) -> &[McpRouteProjectionVersion] {
+        &self.observed_route_versions
+    }
+
     pub fn route_versions(&self) -> &[McpRouteProjectionVersion] {
         &self.route_versions
     }
 
     pub fn ingress_routes(&self) -> &[McpGatewayIngressRoute] {
         &self.ingress_routes
+    }
+
+    pub fn credential_suppressions(&self) -> &[McpCredentialSuppressionVersion] {
+        &self.credential_suppressions
     }
 
     pub const fn projection(&self) -> Option<&PlannedMcpGatewayProjection> {
@@ -142,12 +152,24 @@ impl McpGatewayNodeProjectionAssembler {
         }
 
         let mut scopes = Vec::with_capacity(sets.len());
+        let mut observed_route_versions = BTreeMap::<RouteId, McpRouteProjectionVersion>::new();
         let mut route_versions = BTreeMap::<RouteId, McpRouteProjectionVersion>::new();
         let mut ingress_routes = BTreeMap::<RouteId, McpGatewayIngressRoute>::new();
+        let mut credential_suppressions =
+            BTreeMap::<RouteId, McpCredentialSuppressionVersion>::new();
         let mut ingress_ownership = BTreeSet::new();
         let mut projections = Vec::new();
         for set in sets {
-            let (scope, node_id, set_observed_at, versions, ingress, projection) = set.into_parts();
+            let (
+                scope,
+                node_id,
+                set_observed_at,
+                observed_versions,
+                versions,
+                ingress,
+                suppressions,
+                projection,
+            ) = set.into_parts();
             scope.validate()?;
             if scope.organization_id != anchor.organization_id
                 || node_id != gateway_node_id
@@ -160,15 +182,67 @@ impl McpGatewayNodeProjectionAssembler {
                     "MCP Gateway node projection contains inconsistent per-scope evidence".into(),
                 );
             }
-            for version in versions {
-                if route_versions.len() == MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY {
-                    return Err("MCP Gateway node projection exceeds the route bound".into());
+            let set_observed_versions = observed_versions
+                .into_iter()
+                .map(|version| (version.route_id(), version))
+                .collect::<BTreeMap<_, _>>();
+            let set_route_ids = versions
+                .iter()
+                .map(McpRouteProjectionVersion::route_id)
+                .collect::<BTreeSet<_>>();
+            let set_suppression_ids = suppressions
+                .iter()
+                .map(|suppression| suppression.route_id())
+                .collect::<BTreeSet<_>>();
+            if set_observed_versions.len() != versions.len() + suppressions.len()
+                || set_route_ids.len() != versions.len()
+                || set_suppression_ids.len() != suppressions.len()
+                || !set_route_ids.is_disjoint(&set_suppression_ids)
+                || set_observed_versions
+                    .keys()
+                    .copied()
+                    .ne(set_route_ids.union(&set_suppression_ids).copied())
+                || versions
+                    .iter()
+                    .any(|version| set_observed_versions.get(&version.route_id()) != Some(version))
+                || suppressions.iter().any(|suppression| {
+                    suppression.gateway_scope_id() != scope.id
+                        || !suppression.is_invalid_at(observed_at)
+                })
+            {
+                return Err(
+                    "MCP Gateway node projection has incomplete credential suppression evidence"
+                        .into(),
+                );
+            }
+            for (route_id, version) in set_observed_versions {
+                if observed_route_versions.len() == MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY
+                    || version.gateway_scope_id() != scope.id
+                    || observed_route_versions.insert(route_id, version).is_some()
+                {
+                    return Err(
+                        "MCP Gateway node projection contains duplicate or cross-scope observed routes"
+                            .into(),
+                    );
                 }
+            }
+            for version in versions {
                 if version.gateway_scope_id() != scope.id
                     || route_versions.insert(version.route_id(), version).is_some()
                 {
                     return Err(
                         "MCP Gateway node projection contains duplicate or cross-scope routes"
+                            .into(),
+                    );
+                }
+            }
+            for suppression in suppressions {
+                if credential_suppressions
+                    .insert(suppression.route_id(), suppression)
+                    .is_some()
+                {
+                    return Err(
+                        "MCP Gateway node projection contains duplicate credential suppressions"
                             .into(),
                     );
                 }
@@ -187,7 +261,13 @@ impl McpGatewayNodeProjectionAssembler {
             }
             scopes.push(scope);
         }
-        if route_versions.len() > MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY
+        if observed_route_versions.len() > MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY
+            || observed_route_versions.len() != route_versions.len() + credential_suppressions.len()
+            || observed_route_versions.keys().copied().ne(route_versions
+                .keys()
+                .chain(credential_suppressions.keys())
+                .copied()
+                .collect::<BTreeSet<_>>())
             || route_versions.len() != ingress_routes.len()
             || route_versions.keys().ne(ingress_routes.keys())
         {
@@ -219,8 +299,10 @@ impl McpGatewayNodeProjectionAssembler {
             observed_at,
             scopes,
             scope_ids,
+            observed_route_versions: observed_route_versions.into_values().collect(),
             route_versions: route_versions.into_values().collect(),
             ingress_routes: ingress_routes.into_values().collect(),
+            credential_suppressions: credential_suppressions.into_values().collect(),
             projection,
         })
     }
