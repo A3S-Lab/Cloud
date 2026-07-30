@@ -1,12 +1,16 @@
 use super::{
-    CompileGatewayRolloutRollback, GatewayRollbackMemberSnapshotContext,
-    GatewayRolloutRollbackCompiler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
+    GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GatewaySnapshotPublicationOwner,
+    ManagedGatewayRollbackMemberSnapshotContext, McpGatewayNodeProjectionAssembler,
+    McpGatewaySnapshotAnchor, PlannedGatewayNodeDesiredState,
 };
 use crate::modules::edge::domain::{
-    DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayRollout,
+    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayRollout,
     GatewayRolloutPolicy, GatewayRolloutRollback, GatewayScope, GatewayScopeState, Route,
     RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
 };
+use crate::modules::edge::infrastructure::GatewaySnapshotRouteInput;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId, GatewayScopeId,
     NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
@@ -90,6 +94,95 @@ fn compiles_exact_member_rollback_from_observed_physical_revisions_and_reuses_va
         .expected_scope_versions
         .values()
         .all(|version| *version == 5));
+}
+
+#[test]
+fn managed_rollback_carries_one_complete_composition_for_every_member() {
+    let now = Utc::now();
+    let members = [NodeId::new(), NodeId::new()];
+    let scope = replicated_scope(members, now - Duration::minutes(30));
+    let failed = failed_rollout(&scope, now - Duration::minutes(2));
+    let rollback = GatewayRolloutRollback::required(&failed).expect("required rollback");
+    let mut contexts = Vec::new();
+    for (index, node_id) in members.into_iter().enumerate() {
+        let (route, certificate) = active_route_with_ready_certificate(
+            &scope,
+            node_id,
+            &format!("managed-retained-{index}.example.com"),
+            now - Duration::minutes(20),
+        );
+        let claim_id = route.domain_claim_id.expect("route claim");
+        let mut claim = DomainClaim::create(
+            claim_id,
+            route.organization_id,
+            route.project_id,
+            route.environment_id,
+            route.domain_pattern.clone().expect("route domain pattern"),
+            format!("a3s-cloud-verification={claim_id}"),
+            now - Duration::minutes(30),
+        )
+        .expect("claim");
+        claim
+            .verify(now - Duration::minutes(25))
+            .expect("verified claim");
+        let mcp = McpGatewayNodeProjectionAssembler::default()
+            .assemble(
+                McpGatewaySnapshotAnchor::from_scope(&scope),
+                node_id,
+                now,
+                Vec::new(),
+            )
+            .expect("empty MCP desired state");
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState {
+                node_id,
+                last_issued_revision: 2,
+                installed_revision: Some(if index == 0 { 2 } else { 1 }),
+                aggregate_version: 5,
+            },
+            vec![GatewaySnapshotRouteInput {
+                route,
+                domain_claim: claim,
+            }],
+            mcp,
+        )
+        .expect("managed member state");
+        contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
+            desired_state,
+            reusable_certificate: Some(certificate),
+        });
+    }
+
+    let compiled = rollback_compiler()
+        .compile_managed(CompileManagedGatewayRolloutRollback {
+            scope,
+            failed_rollout: failed,
+            rollback,
+            member_contexts: contexts,
+            issued_at: now,
+        })
+        .expect("managed rollback");
+    assert_eq!(compiled.publications.len(), 2);
+    assert_eq!(compiled.managed_compositions.len(), 2);
+    assert!(compiled.certificates.is_empty());
+    assert_eq!(compiled.reused_certificates.len(), 2);
+    for publication in &compiled.publications {
+        let composition = compiled
+            .managed_compositions
+            .get(&publication.node_id)
+            .expect("member composition");
+        assert_eq!(
+            composition.owner(),
+            GatewaySnapshotPublicationOwner::Ordinary
+        );
+        assert_eq!(composition.candidate().ordinary_route_ids().len(), 1);
+        composition
+            .validate_for(publication)
+            .expect("exact composition");
+    }
+    compiled
+        .managed_stage_bundle()
+        .expect("managed rollback stage bundle");
 }
 
 fn rollback_compiler() -> GatewayRolloutRollbackCompiler {

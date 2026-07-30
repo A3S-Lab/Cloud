@@ -68,8 +68,9 @@ pub use gateway_rollout_reconciler::{
     GatewayRolloutReconciliationReport,
 };
 pub use gateway_rollout_rollback_compiler::{
-    CompileGatewayRolloutRollback, CompiledGatewayRolloutRollback,
-    GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler,
+    CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
+    CompiledGatewayRolloutRollback, GatewayRollbackMemberSnapshotContext,
+    GatewayRolloutRollbackCompiler, ManagedGatewayRollbackMemberSnapshotContext,
 };
 pub use gateway_rollout_rollback_reconciler::{
     GatewayRolloutRollbackReconciler, GatewayRolloutRollbackReconciliationFailure,
@@ -83,9 +84,10 @@ pub use gateway_route_rollout_planner::{
     GatewayRouteRolloutPlanner, PlanGatewayRouteRollout, PlanManagedGatewayRouteRollout,
 };
 pub use gateway_snapshot_compiler::{
-    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot,
-    GatewayDomainClaimVersion, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
+    CompileManagedGatewayRetainedSnapshot, CompileManagedGatewayRouteSnapshot,
+    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, GatewayDomainClaimVersion,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    GatewaySnapshotRouteInput,
 };
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::McpCredentialIssuer;

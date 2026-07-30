@@ -59,6 +59,14 @@ pub struct CompileManagedGatewayRouteSnapshot {
     pub additional_domain_claims: Vec<DomainClaim>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CompileManagedGatewayRetainedSnapshot {
+    pub metadata: GatewaySnapshotMetadata,
+    pub desired_state: PlannedGatewayNodeDesiredState,
+    pub certificate_id: Option<GatewayCertificateId>,
+    pub reused_certificate_request: Option<GatewayCertificateRequest>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GatewayDomainClaimVersion {
     domain_claim_id: DomainClaimId,
@@ -354,6 +362,59 @@ impl GatewaySnapshotCompiler {
             certificate_domain_claim_ids: certificate_domain_claim_ids.into_iter().collect(),
             mcp,
         })
+    }
+
+    /// Compiles a complete node snapshot without mutating ordinary Routes.
+    /// This is used by rollback and certificate lifecycle flows which must
+    /// retain the exact active Route version vector while still refreshing MCP
+    /// desired state. A reusable certificate request is accepted only when it
+    /// covers the complete ordinary-plus-MCP authority set.
+    pub fn compile_managed_retained_snapshot(
+        &self,
+        request: CompileManagedGatewayRetainedSnapshot,
+    ) -> Result<CompiledMcpGatewaySnapshot, String> {
+        let CompileManagedGatewayRetainedSnapshot {
+            metadata,
+            desired_state,
+            certificate_id,
+            reused_certificate_request,
+        } = request;
+        if reused_certificate_request
+            .as_ref()
+            .map(|request| GatewayCertificateId::from_uuid(request.certificate_id))
+            != reused_certificate_request.as_ref().and(certificate_id)
+        {
+            return Err(
+                "managed retained snapshot certificate reuse identity is inconsistent".into(),
+            );
+        }
+        let (physical_scope, active_routes, mcp) = desired_state.into_parts();
+        let mut candidate = self.compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+            metadata,
+            physical_scope,
+            certificate_id,
+            active_routes: active_routes.clone(),
+            mcp: mcp.clone(),
+        })?;
+        if let Some(certificate_request) = reused_certificate_request {
+            let routes = active_routes
+                .iter()
+                .map(|input| input.route.clone())
+                .collect::<Vec<_>>();
+            let content = mcp.projection().map(|planned| McpSnapshotContent {
+                ingress_routes: mcp.ingress_routes(),
+                projection: planned.projection(),
+            });
+            candidate.snapshot = self.compile_snapshot(
+                metadata,
+                certificate_id,
+                &routes,
+                false,
+                Some(certificate_request),
+                content,
+            )?;
+        }
+        Ok(candidate)
     }
 
     /// Compiles a Route mutation and the currently desired MCP policy into one

@@ -24,6 +24,7 @@ use crate::modules::edge::infrastructure::persistence::postgres_tls::{
 };
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, StageManagedGatewayRollout,
+    StageManagedGatewayRolloutRollback,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_orm::{select_from, PostgresExecutor};
@@ -76,6 +77,12 @@ async fn stage_impl(
                     replay.value.replayed = true;
                     return Ok(replay.value);
                 }
+                prelock_managed_compositions(
+                    transaction,
+                    &bundle.publications,
+                    compositions.as_ref(),
+                )
+                .await?;
                 let stored_scope =
                     postgres_gateway_scopes::load_for_share(transaction, bundle.scope.id)
                         .await?
@@ -254,14 +261,77 @@ async fn stage_impl(
         .map_err(transaction_error)
 }
 
+async fn prelock_managed_compositions(
+    transaction: &a3s_orm::PostgresTransaction,
+    publications: &[crate::modules::edge::domain::GatewayPublication],
+    compositions: Option<
+        &BTreeMap<crate::modules::shared_kernel::domain::NodeId, GatewayManagedSnapshotComposition>,
+    >,
+) -> Result<(), PostgresPersistenceError> {
+    let Some(compositions) = compositions else {
+        return Ok(());
+    };
+    let mut publications = publications.iter().collect::<Vec<_>>();
+    publications.sort_by_key(|publication| publication.node_id);
+    for publication in publications {
+        super::super::postgres_mcp_gateway_snapshots::lock_managed_composition_node(
+            transaction,
+            compositions.get(&publication.node_id).ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "managed Gateway publication omitted a member composition".into(),
+                )
+            })?,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 pub(in super::super) async fn stage_rollback(
     executor: &PostgresExecutor,
     bundle: StageGatewayRolloutRollback,
 ) -> Result<GatewayRolloutRollbackResult, RepositoryError> {
+    stage_rollback_impl(executor, bundle, None).await
+}
+
+pub(in super::super) async fn stage_managed_rollback(
+    executor: &PostgresExecutor,
+    stage: StageManagedGatewayRolloutRollback,
+) -> Result<GatewayRolloutRollbackResult, RepositoryError> {
+    let (bundle, compositions) = stage.into_parts();
+    stage_rollback_impl(executor, bundle, Some(compositions)).await
+}
+
+async fn stage_rollback_impl(
+    executor: &PostgresExecutor,
+    bundle: StageGatewayRolloutRollback,
+    compositions: Option<
+        BTreeMap<crate::modules::shared_kernel::domain::NodeId, GatewayManagedSnapshotComposition>,
+    >,
+) -> Result<GatewayRolloutRollbackResult, RepositoryError> {
     bundle.validate().map_err(RepositoryError::Conflict)?;
+    if let Some(compositions) = &compositions {
+        for publication in &bundle.publications {
+            compositions
+                .get(&publication.node_id)
+                .ok_or_else(|| {
+                    RepositoryError::Conflict(
+                        "managed Gateway rollback omitted a member composition".into(),
+                    )
+                })?
+                .validate_for(publication)
+                .map_err(RepositoryError::Conflict)?;
+        }
+    }
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
+                prelock_managed_compositions(
+                    transaction,
+                    &bundle.publications,
+                    compositions.as_ref(),
+                )
+                .await?;
                 let stored_scope =
                     postgres_gateway_scopes::load_for_share(transaction, bundle.scope.id)
                         .await?
@@ -300,6 +370,21 @@ pub(in super::super) async fn stage_rollback(
                         ));
                     }
                     validate_stored_rollback_evidence(transaction, &bundle).await?;
+                    if let Some(compositions) = &compositions {
+                        for publication in &bundle.publications {
+                            super::super::postgres_mcp_gateway_snapshots::validate_stored_managed_composition(
+                                transaction,
+                                compositions.get(&publication.node_id).ok_or_else(|| {
+                                    PostgresPersistenceError::Invariant(
+                                        "managed Gateway rollback replay omitted a member composition"
+                                            .into(),
+                                    )
+                                })?,
+                                publication,
+                            )
+                            .await?;
+                        }
+                    }
                     return Ok(GatewayRolloutRollbackResult {
                         rollback: stored_rollback,
                         rollout: stored_rollout,
@@ -351,7 +436,21 @@ pub(in super::super) async fn stage_rollback(
 
                 let mut physical_scopes = Vec::with_capacity(bundle.publications.len());
                 for publication in &bundle.publications {
-                    let current = lock_physical_scope(transaction, publication.node_id).await?;
+                    let current = match &compositions {
+                        Some(compositions) => {
+                            super::super::postgres_mcp_gateway_snapshots::lock_managed_composition(
+                                transaction,
+                                compositions.get(&publication.node_id).ok_or_else(|| {
+                                    RepositoryError::Conflict(
+                                        "managed Gateway rollback omitted a member composition"
+                                            .into(),
+                                    )
+                                })?,
+                            )
+                            .await?
+                        }
+                        None => lock_physical_scope(transaction, publication.node_id).await?,
+                    };
                     if bundle
                         .expected_scope_versions
                         .get(&publication.node_id)
@@ -414,6 +513,20 @@ pub(in super::super) async fn stage_rollback(
                 }
                 for certificate in &bundle.certificates {
                     insert_certificate(transaction, certificate).await?;
+                }
+                if let Some(compositions) = &compositions {
+                    for publication in &bundle.publications {
+                        super::super::postgres_mcp_gateway_snapshots::persist_managed_composition(
+                            transaction,
+                            compositions.get(&publication.node_id).ok_or_else(|| {
+                                RepositoryError::Conflict(
+                                    "managed Gateway rollback omitted a member composition".into(),
+                                )
+                            })?,
+                            publication,
+                        )
+                        .await?;
+                    }
                 }
                 for (publication, current) in bundle.publications.iter().zip(&physical_scopes) {
                     advance_physical_scope(transaction, publication, current).await?;

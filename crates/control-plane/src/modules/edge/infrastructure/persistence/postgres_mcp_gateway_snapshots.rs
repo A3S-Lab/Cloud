@@ -199,6 +199,16 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         super::postgres_rollouts::stage_managed(&self.executor, stage).await
     }
 
+    async fn stage_managed_gateway_rollout_rollback(
+        &self,
+        stage: StageManagedGatewayRolloutRollback,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayRolloutRollbackResult,
+        RepositoryError,
+    > {
+        super::postgres_rollouts::stage_managed_rollback(&self.executor, stage).await
+    }
+
     async fn pending_mcp_gateway_snapshots(
         &self,
         limit: usize,
@@ -547,6 +557,22 @@ async fn insert_marker(
     transaction: &PostgresTransaction,
     composition: &GatewayManagedSnapshotComposition,
 ) -> Result<GatewayScopeState, PostgresPersistenceError> {
+    lock_managed_composition_node(transaction, composition).await?;
+    let candidate = composition.candidate();
+    lock_logical_scopes(transaction, candidate).await?;
+    let physical_scope = lock_physical_scope(transaction, candidate).await?;
+    lock_ordinary_routes(transaction, candidate).await?;
+    lock_mcp_policies(transaction, candidate).await?;
+    lock_domain_claims(transaction, candidate).await?;
+    lock_workloads(transaction, candidate).await?;
+    lock_credentials(transaction, candidate).await?;
+    Ok(physical_scope)
+}
+
+pub(super) async fn lock_managed_composition_node(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
+) -> Result<(), PostgresPersistenceError> {
     let candidate = composition.candidate();
     let organization_id = fetch_optional::<Uuid, _>(
         transaction,
@@ -560,14 +586,7 @@ async fn insert_marker(
     if organization_id != candidate.mcp().anchor().organization_id.as_uuid() {
         return Err(RepositoryError::NotFound.into());
     }
-    lock_logical_scopes(transaction, candidate).await?;
-    let physical_scope = lock_physical_scope(transaction, candidate).await?;
-    lock_ordinary_routes(transaction, candidate).await?;
-    lock_mcp_policies(transaction, candidate).await?;
-    lock_domain_claims(transaction, candidate).await?;
-    lock_workloads(transaction, candidate).await?;
-    lock_credentials(transaction, candidate).await?;
-    Ok(physical_scope)
+    Ok(())
 }
 
 pub(super) async fn persist_managed_composition(

@@ -536,8 +536,10 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
-    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new(
+    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new_managed(
         Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
         GatewayRolloutRollbackCompiler::new(
             deployment_route_compiler.clone(),
             chrono_duration(config.edge.command_ttl_ms)?,
