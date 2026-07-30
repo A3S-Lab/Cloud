@@ -69,7 +69,9 @@ pub use gateway_route_rollout_compiler::{
 };
 pub use gateway_route_rollout_planner::{GatewayRouteRolloutPlanner, PlanGatewayRouteRollout};
 pub use gateway_snapshot_compiler::{
+    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, GatewayDomainClaimVersion,
     GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    GatewaySnapshotRouteInput,
 };
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::{

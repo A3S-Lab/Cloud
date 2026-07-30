@@ -1,10 +1,16 @@
-use crate::modules::edge::domain::{Route, RouteState};
-use crate::modules::shared_kernel::domain::{GatewayCertificateId, NodeId};
-use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot};
+use crate::modules::edge::domain::{
+    DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState, Route, RouteState,
+};
+use crate::modules::edge::infrastructure::{
+    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedMcpGatewayProjectionSet,
+};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
+};
+use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot, McpGatewayProjection};
 use chrono::{DateTime, Utc};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
-use std::path::{Component, Path};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewaySnapshotCompilerConfig {
@@ -24,6 +30,73 @@ pub struct GatewaySnapshotMetadata {
     pub expected_revision: Option<u64>,
     pub issued_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GatewaySnapshotRouteInput {
+    pub route: Route,
+    pub domain_claim: DomainClaim,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileMcpGatewaySnapshot {
+    pub metadata: GatewaySnapshotMetadata,
+    pub physical_scope: GatewayScopeState,
+    pub certificate_id: Option<GatewayCertificateId>,
+    pub active_routes: Vec<GatewaySnapshotRouteInput>,
+    pub mcp: PlannedMcpGatewayProjectionSet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GatewayDomainClaimVersion {
+    domain_claim_id: DomainClaimId,
+    aggregate_version: u64,
+}
+
+impl GatewayDomainClaimVersion {
+    pub const fn domain_claim_id(self) -> DomainClaimId {
+        self.domain_claim_id
+    }
+
+    pub const fn aggregate_version(self) -> u64 {
+        self.aggregate_version
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledMcpGatewaySnapshot {
+    snapshot: GatewaySnapshot,
+    physical_scope: GatewayScopeState,
+    active_route_versions: Vec<GatewayRouteVersion>,
+    domain_claim_versions: Vec<GatewayDomainClaimVersion>,
+    mcp: PlannedMcpGatewayProjectionSet,
+}
+
+impl CompiledMcpGatewaySnapshot {
+    pub const fn snapshot(&self) -> &GatewaySnapshot {
+        &self.snapshot
+    }
+
+    pub const fn physical_scope(&self) -> &GatewayScopeState {
+        &self.physical_scope
+    }
+
+    pub fn active_route_versions(&self) -> &[GatewayRouteVersion] {
+        &self.active_route_versions
+    }
+
+    pub fn domain_claim_versions(&self) -> &[GatewayDomainClaimVersion] {
+        &self.domain_claim_versions
+    }
+
+    pub const fn mcp(&self) -> &PlannedMcpGatewayProjectionSet {
+        &self.mcp
+    }
+}
+
+struct McpSnapshotContent<'a> {
+    ingress_routes: &'a [McpGatewayIngressRoute],
+    projection: &'a McpGatewayProjection,
 }
 
 impl GatewaySnapshotMetadata {
@@ -74,13 +147,170 @@ impl GatewaySnapshotCompiler {
         Ok(Self { config })
     }
 
+    /// Composes one complete physical Gateway snapshot from the ordinary
+    /// active Route set and the complete hosted MCP candidate. The returned
+    /// value retains every read-side version needed by durable publication
+    /// compare-and-swap.
+    pub fn compile_mcp_reconciliation(
+        &self,
+        request: CompileMcpGatewaySnapshot,
+    ) -> Result<CompiledMcpGatewaySnapshot, String> {
+        let CompileMcpGatewaySnapshot {
+            metadata,
+            physical_scope,
+            certificate_id,
+            active_routes,
+            mcp,
+        } = request;
+        mcp.scope().validate()?;
+        let issued_at = canonical_timestamp(metadata.issued_at);
+        let expires_at = canonical_timestamp(metadata.expires_at);
+        if physical_scope.node_id.as_uuid().is_nil()
+            || physical_scope.installed_revision.is_some_and(|revision| {
+                revision == 0 || revision > physical_scope.last_issued_revision
+            })
+            || if physical_scope.last_issued_revision == 0 {
+                physical_scope.aggregate_version != 0 || physical_scope.installed_revision.is_some()
+            } else {
+                physical_scope.aggregate_version == 0
+            }
+            || metadata.issued_at != issued_at
+            || metadata.expires_at != expires_at
+            || mcp.observed_at() != issued_at
+            || metadata.node_id != physical_scope.node_id
+            || metadata.node_id != mcp.gateway_node_id()
+            || !mcp.scope().contains_member(metadata.node_id)
+            || metadata.revision != physical_scope.next_revision()?
+            || metadata.expected_revision != physical_scope.installed_revision
+        {
+            return Err(
+                "MCP Gateway snapshot metadata does not match its exact planning observation or physical scope"
+                    .into(),
+            );
+        }
+
+        let mut ownership = BTreeSet::new();
+        let mut route_versions = BTreeMap::<RouteId, GatewayRouteVersion>::new();
+        let mut claim_authority =
+            BTreeMap::<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>::new(
+            );
+        let mut routes = Vec::with_capacity(active_routes.len());
+        for input in active_routes {
+            validate_active_route_authority(&input, metadata.node_id, issued_at)?;
+            let route = input.route;
+            let domain_claim = input.domain_claim;
+            if !ownership.insert((
+                route.hostname.clone(),
+                route.path_prefix.as_str().to_owned(),
+            )) {
+                return Err(
+                    "complete Gateway snapshot contains duplicate ordinary Route ownership".into(),
+                );
+            }
+            let version = GatewayRouteVersion::new(route.id, route.aggregate_version)?;
+            if route_versions.insert(route.id, version).is_some() {
+                return Err("complete Gateway snapshot contains a duplicate Route identity".into());
+            }
+            insert_claim_authority(
+                &mut claim_authority,
+                domain_claim.id,
+                domain_claim.aggregate_version,
+                domain_claim.pattern,
+            )?;
+            routes.push(route);
+        }
+
+        let mcp_route_versions = mcp
+            .route_versions()
+            .iter()
+            .map(|version| (version.route_id(), version))
+            .collect::<BTreeMap<_, _>>();
+        if mcp_route_versions.len() != mcp.route_versions().len()
+            || mcp.ingress_routes().len() != mcp.route_versions().len()
+        {
+            return Err("MCP Gateway snapshot candidate has incomplete route evidence".into());
+        }
+        for ingress in mcp.ingress_routes() {
+            if routes.iter().any(|route| {
+                route.hostname == *ingress.hostname()
+                    && ingress.path().starts_with(route.path_prefix.as_str())
+            }) {
+                return Err(
+                    "ordinary Gateway PathPrefix would overlap an exact MCP ingress path".into(),
+                );
+            }
+            if !ownership.insert((ingress.hostname().clone(), ingress.path().to_owned())) {
+                return Err(
+                    "ordinary and MCP Gateway routes have conflicting ingress ownership".into(),
+                );
+            }
+            let version = mcp_route_versions.get(&ingress.route_id()).ok_or_else(|| {
+                "MCP Gateway ingress has no exact route version evidence".to_string()
+            })?;
+            if version.domain_claim_id() != ingress.domain_claim_id() {
+                return Err(
+                    "MCP Gateway ingress and route version reference different DomainClaims".into(),
+                );
+            }
+            insert_claim_authority(
+                &mut claim_authority,
+                ingress.domain_claim_id(),
+                version.domain_claim_aggregate_version(),
+                ingress.domain_pattern().clone(),
+            )?;
+        }
+
+        let projection = mcp.projection().map(|planned| planned.projection());
+        if projection.is_some() != !mcp.ingress_routes().is_empty() {
+            return Err(
+                "MCP Gateway snapshot candidate projection and ingress cardinality differ".into(),
+            );
+        }
+        if let Some(projection) = projection {
+            if projection.expires_at != expires_at {
+                return Err(
+                    "MCP policy expiry must exactly match the complete managed snapshot expiry"
+                        .into(),
+                );
+            }
+        }
+        if ownership.is_empty() != certificate_id.is_none() {
+            return Err(
+                "complete Gateway snapshot requires one certificate exactly when traffic routes exist"
+                    .into(),
+            );
+        }
+
+        let content = projection.map(|projection| McpSnapshotContent {
+            ingress_routes: mcp.ingress_routes(),
+            projection,
+        });
+        let snapshot =
+            self.compile_snapshot(metadata, certificate_id, &routes, false, None, content)?;
+        Ok(CompiledMcpGatewaySnapshot {
+            snapshot,
+            physical_scope,
+            active_route_versions: route_versions.into_values().collect(),
+            domain_claim_versions: claim_authority
+                .into_iter()
+                .map(
+                    |(domain_claim_id, (aggregate_version, _))| GatewayDomainClaimVersion {
+                        domain_claim_id,
+                        aggregate_version,
+                    },
+                )
+                .collect(),
+            mcp,
+        })
+    }
+
     pub fn compile(
         &self,
         metadata: GatewaySnapshotMetadata,
         certificate_id: GatewayCertificateId,
         routes: &[Route],
     ) -> Result<GatewaySnapshot, String> {
-        self.compile_snapshot(metadata, Some(certificate_id), routes, true, None)
+        self.compile_snapshot(metadata, Some(certificate_id), routes, true, None, None)
     }
 
     pub fn compile_certificate_convergence(
@@ -95,7 +325,7 @@ impl GatewaySnapshotCompiler {
                     .into(),
             );
         }
-        self.compile_snapshot(metadata, certificate_id, routes, false, None)
+        self.compile_snapshot(metadata, certificate_id, routes, false, None, None)
     }
 
     pub fn compile_certificate_reuse(
@@ -111,6 +341,7 @@ impl GatewaySnapshotCompiler {
             routes,
             false,
             Some(certificate_request),
+            None,
         )
     }
 
@@ -137,6 +368,7 @@ impl GatewaySnapshotCompiler {
         routes: &[Route],
         require_pending_route: bool,
         certificate_request_override: Option<GatewayCertificateRequest>,
+        mcp: Option<McpSnapshotContent<'_>>,
     ) -> Result<GatewaySnapshot, String> {
         let mut routes = routes.iter().collect::<Vec<_>>();
         routes.sort_by(|left, right| {
@@ -184,6 +416,11 @@ impl GatewaySnapshotCompiler {
                         "pending Gateway route does not reference the snapshot certificate".into(),
                     );
                 }
+            }
+        }
+        if let Some(mcp) = &mcp {
+            for ingress in mcp.ingress_routes {
+                dns_names.insert(ingress.domain_pattern().as_str().to_owned());
             }
         }
         if require_pending_route && pending_routes == 0 {
@@ -258,6 +495,9 @@ impl GatewaySnapshotCompiler {
                 acl_string(route.target.upstream.as_str()),
             ));
         }
+        if let Some(mcp) = mcp {
+            append_mcp_snapshot_acl(&mut acl, &mcp, metadata.issued_at)?;
+        }
         acl.push_str(&format!(
             "management {{\n  enabled = true\n  address = {}\n  path_prefix = {}\n  auth_token_env = {}\n  allowed_ips = [\"127.0.0.1\", \"::1\"]\n}}\n",
             acl_string(&self.config.management_address),
@@ -276,20 +516,144 @@ impl GatewaySnapshotCompiler {
     }
 }
 
+fn validate_active_route_authority(
+    input: &GatewaySnapshotRouteInput,
+    node_id: NodeId,
+    observed_at: DateTime<Utc>,
+) -> Result<(), String> {
+    let route = &input.route;
+    let claim = &input.domain_claim;
+    route.validate_target_binding()?;
+    if route.gateway_node_id != node_id
+        || route.state != RouteState::Active
+        || route.aggregate_version == 0
+        || route.domain_claim_id != Some(claim.id)
+        || route.domain_pattern.as_ref() != Some(&claim.pattern)
+        || claim.organization_id != route.organization_id
+        || claim.project_id != route.project_id
+        || claim.environment_id != route.environment_id
+        || claim.state != DomainClaimState::Verified
+        || claim.aggregate_version == 0
+        || claim.failure.is_some()
+        || claim
+            .verified_at
+            .is_none_or(|verified_at| verified_at > observed_at)
+        || claim.revoked_at.is_some()
+        || claim.updated_at < claim.created_at
+        || claim.updated_at > observed_at
+        || !claim.covers(&route.hostname)
+    {
+        return Err(
+            "complete Gateway snapshot ordinary Route lacks exact verified domain authority".into(),
+        );
+    }
+    Ok(())
+}
+
+fn insert_claim_authority(
+    claims: &mut BTreeMap<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>,
+    domain_claim_id: DomainClaimId,
+    aggregate_version: u64,
+    pattern: crate::modules::edge::domain::DomainNamePattern,
+) -> Result<(), String> {
+    if domain_claim_id.as_uuid().is_nil() || aggregate_version == 0 {
+        return Err("Gateway snapshot DomainClaim version is invalid".into());
+    }
+    match claims.get(&domain_claim_id) {
+        Some((existing_version, existing_pattern))
+            if *existing_version != aggregate_version || existing_pattern != &pattern =>
+        {
+            Err("Gateway snapshot observed conflicting versions of one DomainClaim".into())
+        }
+        Some(_) => Ok(()),
+        None => {
+            claims.insert(domain_claim_id, (aggregate_version, pattern));
+            Ok(())
+        }
+    }
+}
+
+fn append_mcp_snapshot_acl(
+    acl: &mut String,
+    content: &McpSnapshotContent<'_>,
+    issued_at: DateTime<Utc>,
+) -> Result<(), String> {
+    const DEFAULT_DENY_SERVICE: &str = "a3s-cloud-mcp-default-deny";
+    const DEFAULT_DENY_ENDPOINT: &str = "http://127.0.0.1:9/";
+
+    content.projection.validate(issued_at)?;
+    let mut ingress_routes = content.ingress_routes.iter().collect::<Vec<_>>();
+    ingress_routes.sort_by_key(|ingress| ingress.route_id());
+    let mut routes = content.projection.routes.iter().collect::<Vec<_>>();
+    routes.sort_by_key(|route| route.route_id);
+    if ingress_routes.len() != routes.len()
+        || ingress_routes.iter().zip(&routes).any(|(ingress, route)| {
+            ingress.route_id().as_uuid() != route.route_id || ingress.router() != route.router
+        })
+    {
+        return Err("MCP Gateway ingress does not match its complete policy projection".into());
+    }
+    if routes
+        .iter()
+        .flat_map(|route| &route.targets)
+        .any(|target| target.service == DEFAULT_DENY_SERVICE)
+    {
+        return Err("MCP target service collides with the fail-closed ingress service".into());
+    }
+
+    for ingress in &ingress_routes {
+        acl.push_str(&format!(
+            "routers {} {{\n  rule = {}\n  service = {}\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\n",
+            acl_string(ingress.router()),
+            acl_string(&format!(
+                "Host(`{}`) && Path(`{}`)",
+                ingress.hostname().as_str(),
+                ingress.path()
+            )),
+            acl_string(DEFAULT_DENY_SERVICE),
+        ));
+    }
+    acl.push_str(&format!(
+        "services {} {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = \"1s\"\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
+        acl_string(DEFAULT_DENY_SERVICE),
+        acl_string(DEFAULT_DENY_ENDPOINT),
+    ));
+    for route in routes {
+        let mut targets = route.targets.iter().collect::<Vec<_>>();
+        targets.sort_by_key(|target| (target.priority, target.target_id));
+        for target in targets {
+            acl.push_str(&format!(
+                "# MCP target route={} target={} unit={} generation={}\nservices {} {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    stream_idle_timeout = {}\n    stream_total_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
+                route.route_id,
+                target.target_id,
+                target.unit_id,
+                target.generation,
+                acl_string(&target.service),
+                acl_string(&route.first_response_timeout),
+                acl_string(&route.stream_idle_timeout),
+                acl_string(&route.stream_total_timeout),
+                acl_string(&target.endpoint),
+            ));
+        }
+    }
+    let compiled = McpGatewayProjectionCompiler.compile_at(content.projection, issued_at)?;
+    acl.push_str(compiled.acl.trim_end_matches(['\r', '\n']));
+    acl.push_str("\n\n");
+    Ok(())
+}
+
 fn managed_certificate_request(
     certificate_directory: &str,
     certificate_id: GatewayCertificateId,
     dns_names: Vec<String>,
 ) -> Result<GatewayCertificateRequest, String> {
-    let certificate_root = Path::new(certificate_directory).join(certificate_id.to_string());
-    let certificate_file = certificate_root
-        .join("certificate.pem")
-        .to_string_lossy()
-        .into_owned();
-    let private_key_file = certificate_root
-        .join("private-key.pem")
-        .to_string_lossy()
-        .into_owned();
+    let certificate_root = format!(
+        "{}/{}",
+        certificate_directory.trim_end_matches('/'),
+        certificate_id
+    );
+    let certificate_file = format!("{certificate_root}/certificate.pem");
+    let private_key_file = format!("{certificate_root}/private-key.pem");
     GatewayCertificateRequest::new(
         certificate_id.as_uuid(),
         dns_names,
@@ -328,26 +692,24 @@ fn valid_environment_name(value: &str) -> bool {
 }
 
 fn valid_certificate_directory(value: &str) -> bool {
-    let path = Path::new(value);
     !value.is_empty()
         && value.len() <= 4096
         && !value.contains(['\0', '\r', '\n'])
-        && path.is_absolute()
-        && path
-            .components()
-            .all(|component| !matches!(component, Component::ParentDir))
+        && value.starts_with('/')
+        && !value.split('/').any(|component| component == "..")
 }
 
 fn valid_absolute_file(value: &str) -> bool {
-    let path = Path::new(value);
     !value.is_empty()
         && value.len() <= 4096
         && !value.contains(['\0', '\r', '\n'])
-        && path.is_absolute()
-        && path.file_name().is_some()
-        && path
-            .components()
-            .all(|component| !matches!(component, Component::ParentDir))
+        && value.starts_with('/')
+        && !value.split('/').any(|component| component == "..")
+        && value
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .is_some_and(|component| !component.is_empty() && component != ".")
 }
 
 #[cfg(test)]

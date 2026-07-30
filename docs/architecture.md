@@ -854,8 +854,9 @@ Callers control only priority and positive weight. Targets are sorted
 canonically and receive a stable UUIDv5 identity derived from route, node,
 Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
 non-contiguous-priority, and overflowing-weight sets fail closed. Credential
-authority resolution and complete snapshot publication remain separate
-`MCP0.3` responsibilities.
+authority resolution, scope-complete planning, and physical snapshot
+publication remain later `MCP0.3` layers rather than target-compiler
+responsibilities.
 
 The MCP projection planner is the read-side orchestration boundary. It verifies
 that the mutable route policy, immutable profile binding, Workload revision,
@@ -916,19 +917,31 @@ contributes both its grant generation and its credential aggregate version to
 the candidate. The assembler rejects fragments that observe different
 authority versions for the same credential. This matters because revocation
 advances the aggregate version without having to advance the generation. An
-empty active set is represented explicitly as no MCP projection so a later
-full-snapshot composer can remove the final MCP block instead of retaining
-stale authorization.
+empty active set is represented explicitly as no MCP projection.
 
-These bounded reads are not a publication transaction. Staging must compare
-and swap the exact Gateway scope membership/version, policy revision/digest
-vector, DomainClaim identities and aggregate versions, Workload aggregate and
-active-revision identities, credential generation and aggregate-version
-vector, and prior installed Gateway revision before persisting one complete
-snapshot and Outbox command. That durable version-vector check, dispatch, and
-acknowledgement recovery remain required; otherwise a concurrent policy,
-domain revocation, credential change, or rollout could publish an obsolete but
-individually valid candidate.
+The pure complete-snapshot composer now joins that MCP candidate with the
+physical `GatewayScopeState` and every active ordinary `Route` plus its exact
+verified `DomainClaim`. It requires one canonical observation/issue time, the
+next physical revision, the exact installed-revision expectation, and the
+receiving node's logical-scope membership. It rejects stale or cross-tenant
+domain authority, duplicate ownership, and any ordinary `PathPrefix` that
+would cover an exact MCP path. Certificate DNS names are the canonical union
+of ordinary and MCP Claim patterns. The emitted A3S ACL is one complete
+managed document containing ordinary routers/services, exact MCP ingress
+routers, fail-closed and healthy target services, the top-level `mcp` policy,
+and management configuration. An empty MCP candidate omits the complete MCP
+surface, removing the final stale `mcp` block while preserving ordinary
+routes.
+
+The compiled value retains the physical scope state, ordinary Route versions,
+all ordinary and MCP DomainClaim versions, and the complete MCP plan; that plan
+already retains the policy/digest, Workload/revision, and credential
+generation/version evidence. This composition is still not a publication
+transaction. Staging must compare and swap that entire version vector and the
+prior installed Gateway revision before persisting the snapshot and one
+Outbox command. Durable staging, dispatch, and acknowledgement recovery remain
+required; otherwise a concurrent route, policy, domain revocation, credential
+change, or rollout could publish an obsolete but individually valid candidate.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

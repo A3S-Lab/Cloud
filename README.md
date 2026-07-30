@@ -775,9 +775,11 @@ Applications use this path today. Agent, MCP, and Skill publication has an
 implemented `A0.1` domain and PostgreSQL foundation plus the first `A0.2` local
 bare-repository slice. Authorized Smart HTTP and the remaining repository
 safety gates, publication, Agent deployment, Skill binding, and catalog
-surfaces remain open `A0` work. Hosted modern MCP contract/compiler and
-Gateway request-path foundations are in development under `MCP0`, but real
-Box hosting and joint product conformance remain unavailable. Stateful
+surfaces remain open `A0` work. Hosted modern MCP contract/compiler,
+scope-complete Cloud planning, pure ordinary-plus-MCP Gateway snapshot
+composition, and Gateway request-path foundations are in development under
+`MCP0`; durable snapshot publication, real Box hosting, and joint product
+conformance remain unavailable. Stateful
 resources remain `S0`; replicas and multi-node
 placement remain `H0`; accelerator and inference capabilities remain `I0`.
 These profiles do not create separate schedulers.

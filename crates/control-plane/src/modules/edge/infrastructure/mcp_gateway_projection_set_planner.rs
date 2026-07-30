@@ -342,17 +342,21 @@ mod tests {
         IRouteTargetReader, ResolvedMcpRouteProjectionInput, ResolvedRouteTarget,
     };
     use crate::modules::edge::domain::{
-        DomainClaim, DomainNamePattern, McpCredential, McpRoutePolicy, RoutePortName,
+        DomainClaim, DomainNamePattern, GatewayScopeState, McpCredential, McpRoutePolicy, Route,
+        RouteHostname, RoutePath, RoutePortName, RouteState,
     };
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
         fixture, now, target,
     };
     use crate::modules::edge::infrastructure::{
-        McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+        CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+        GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpRouteProjectionPlanner,
+        McpRouteTargetProjectionCompiler,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RouteId, WorkloadRevisionId,
+        DomainClaimId, EnvironmentId, GatewayCertificateId, McpCredentialId, OrganizationId,
+        ProjectId, RouteId, WorkloadRevisionId,
     };
     use async_trait::async_trait;
     use chrono::Duration;
@@ -475,6 +479,19 @@ mod tests {
         )
     }
 
+    fn snapshot_compiler() -> GatewaySnapshotCompiler {
+        GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+            entrypoint_address: "0.0.0.0:8081".into(),
+            management_address: "127.0.0.1:9090".into(),
+            management_path_prefix: "/api/gateway".into(),
+            management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+            upstream_request_timeout_ms: 30_000,
+            certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+            managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+        })
+        .expect("snapshot compiler")
+    }
+
     #[tokio::test]
     async fn plans_the_complete_active_set_for_one_receiving_gateway() {
         let fixture = fixture();
@@ -531,6 +548,40 @@ mod tests {
             projection.projection().routes[0].targets[0].node_id,
             node_id.as_uuid()
         );
+        let expires_at = projection.projection().expires_at;
+        let compiled = snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: Some(GatewayCertificateId::new()),
+                active_routes: Vec::new(),
+                mcp: planned,
+            })
+            .expect("complete MCP snapshot");
+        let snapshot = compiled.snapshot();
+        a3s_acl::parse_acl(&snapshot.acl).expect("complete Gateway ACL");
+        assert!(snapshot.acl.contains("mode { kind = \"cloud-managed\" }"));
+        assert!(snapshot.acl.contains("routers \"mcp-route-"));
+        assert!(snapshot
+            .acl
+            .contains("service = \"a3s-cloud-mcp-default-deny\""));
+        assert!(snapshot.acl.contains("services \"mcp-target-"));
+        assert!(snapshot.acl.contains("mcp {"));
+        assert!(snapshot.acl.contains("management {"));
+        assert_eq!(
+            snapshot
+                .certificate_request
+                .as_ref()
+                .expect("certificate")
+                .dns_names,
+            vec![fixture.policy.spec().hostname.as_str().to_owned()]
+        );
+        assert!(compiled.active_route_versions().is_empty());
+        assert_eq!(compiled.domain_claim_versions().len(), 1);
+        assert_eq!(
+            compiled.domain_claim_versions()[0].domain_claim_id(),
+            fixture.policy.spec().domain_claim_id
+        );
     }
 
     #[tokio::test]
@@ -558,6 +609,125 @@ mod tests {
         assert!(planned.route_versions().is_empty());
         assert!(planned.ingress_routes().is_empty());
         assert_eq!(targets.calls.load(Ordering::SeqCst), 0);
+        let compiled = snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(
+                    node_id,
+                    1,
+                    None,
+                    now(),
+                    now() + Duration::minutes(10),
+                ),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: None,
+                active_routes: Vec::new(),
+                mcp: planned,
+            })
+            .expect("complete empty MCP snapshot");
+        assert!(!compiled.snapshot().acl.contains("mcp {"));
+        assert!(!compiled.snapshot().acl.contains("mcp-route-"));
+        assert!(!compiled
+            .snapshot()
+            .acl
+            .contains("entrypoints \"a3s-cloud-https\""));
+        assert!(compiled.snapshot().acl.contains("management {"));
+    }
+
+    #[tokio::test]
+    async fn composes_ordinary_and_mcp_routes_with_all_cas_evidence() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let targets = Arc::new(CountingTargetReader {
+            target: Some(target(&fixture, node_id, 49152)),
+            calls: AtomicUsize::new(0),
+        });
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("credential");
+        let planned = planner(vec![input(&fixture)], targets, credentials)
+            .plan(PlanMcpGatewayProjectionSet {
+                scope: scope(&fixture, node_id),
+                gateway_node_id: node_id,
+                observed_at: now(),
+            })
+            .await
+            .expect("MCP projection");
+        let ordinary_hostname = RouteHostname::parse("app.example.com").expect("hostname");
+        let ordinary_claim_id = DomainClaimId::new();
+        let mut ordinary_claim = DomainClaim::create(
+            ordinary_claim_id,
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            DomainNamePattern::parse(ordinary_hostname.as_str()).expect("domain pattern"),
+            format!("a3s-cloud-verification={ordinary_claim_id}"),
+            now() - Duration::minutes(1),
+        )
+        .expect("domain claim");
+        ordinary_claim
+            .verify(now() - Duration::seconds(1))
+            .expect("verified claim");
+        let ordinary_id = RouteId::new();
+        let mut ordinary = Route::create(
+            ordinary_id,
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            fixture.policy.spec().gateway_scope_id,
+            node_id,
+            ordinary_hostname,
+            RoutePath::parse("/app").expect("prefix"),
+            ordinary_claim.id,
+            ordinary_claim.pattern.clone(),
+            GatewayCertificateId::new(),
+            fixture.policy.spec().workload_id,
+            target(&fixture, node_id, 49153).target,
+            now(),
+        )
+        .expect("ordinary route");
+        ordinary.state = RouteState::Active;
+        let expires_at = planned
+            .projection()
+            .expect("projection")
+            .projection()
+            .expires_at;
+
+        let compiled = snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: Some(GatewayCertificateId::new()),
+                active_routes: vec![GatewaySnapshotRouteInput {
+                    route: ordinary,
+                    domain_claim: ordinary_claim,
+                }],
+                mcp: planned,
+            })
+            .expect("mixed complete snapshot");
+
+        assert!(compiled.snapshot().acl.contains(&format!(
+            "routers \"route-{}\"",
+            ordinary_id.as_uuid().simple()
+        )));
+        assert!(compiled.snapshot().acl.contains("routers \"mcp-route-"));
+        assert!(compiled.snapshot().acl.contains("mcp {"));
+        assert_eq!(compiled.active_route_versions().len(), 1);
+        assert_eq!(compiled.active_route_versions()[0].route_id, ordinary_id);
+        assert_eq!(compiled.domain_claim_versions().len(), 2);
+        assert_eq!(
+            compiled
+                .snapshot()
+                .certificate_request
+                .as_ref()
+                .expect("certificate")
+                .dns_names,
+            vec![
+                "app.example.com".to_owned(),
+                fixture.policy.spec().hostname.as_str().to_owned()
+            ]
+        );
     }
 
     #[tokio::test]
@@ -613,5 +783,67 @@ mod tests {
 
         assert!(matches!(result, Err(RepositoryError::Storage(_))));
         assert_eq!(targets.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn complete_snapshot_rejects_an_ordinary_prefix_overlapping_mcp_ingress() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let targets = Arc::new(CountingTargetReader {
+            target: Some(target(&fixture, node_id, 49152)),
+            calls: AtomicUsize::new(0),
+        });
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("credential");
+        let resolved = input(&fixture);
+        let domain_claim = resolved.domain_claim.clone();
+        let planned = planner(vec![resolved], targets, credentials)
+            .plan(PlanMcpGatewayProjectionSet {
+                scope: scope(&fixture, node_id),
+                gateway_node_id: node_id,
+                observed_at: now(),
+            })
+            .await
+            .expect("MCP projection");
+        let mut ordinary = Route::create(
+            RouteId::new(),
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            fixture.policy.spec().gateway_scope_id,
+            node_id,
+            fixture.policy.spec().hostname.clone(),
+            RoutePath::parse("/").expect("prefix"),
+            domain_claim.id,
+            domain_claim.pattern.clone(),
+            GatewayCertificateId::new(),
+            fixture.policy.spec().workload_id,
+            target(&fixture, node_id, 49153).target,
+            now(),
+        )
+        .expect("ordinary route");
+        ordinary.state = RouteState::Active;
+        let expires_at = planned
+            .projection()
+            .expect("projection")
+            .projection()
+            .expires_at;
+
+        assert!(snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at,),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: Some(GatewayCertificateId::new()),
+                active_routes: vec![GatewaySnapshotRouteInput {
+                    route: ordinary,
+                    domain_claim,
+                }],
+                mcp: planned,
+            })
+            .expect_err("overlapping ingress")
+            .contains("PathPrefix"));
     }
 }
