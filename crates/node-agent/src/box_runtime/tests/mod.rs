@@ -140,9 +140,13 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         control_timeout_ms: 120_000,
         task_poll_interval_ms: 25,
     };
-    let provider = build_box_runtime_provider(&config, runtime_state.path())?;
+    let provider = build_box_runtime_provider(&config, runtime_state.path())
+        .map_err(|error| secret_gate_error("build initial provider", &secret_root, error))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
-    provider.bind_secret_transport(binding).await?;
+    provider
+        .bind_secret_transport(binding)
+        .await
+        .map_err(|error| secret_gate_error("bind initial transport", &secret_root, error))?;
     let runtime = provider.into_client();
     let spec = secret_service_spec(
         environment_reference,
@@ -158,7 +162,10 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         spec: spec.clone(),
     };
 
-    let running = runtime.apply(&request).await?;
+    let running = runtime
+        .apply(&request)
+        .await
+        .map_err(|error| secret_gate_error("apply initial Secret Service", &secret_root, error))?;
     if running.state != a3s_runtime::contract::RuntimeUnitState::Running {
         return Err(io::Error::other("Secret fixture Service did not reach Running").into());
     }
@@ -173,9 +180,13 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
     }
 
     drop(runtime);
-    let recovered_provider = build_box_runtime_provider(&config, runtime_state.path())?;
+    let recovered_provider = build_box_runtime_provider(&config, runtime_state.path())
+        .map_err(|error| secret_gate_error("build recovered provider", &secret_root, error))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
-    recovered_provider.bind_secret_transport(binding).await?;
+    recovered_provider
+        .bind_secret_transport(binding)
+        .await
+        .map_err(|error| secret_gate_error("bind recovered transport", &secret_root, error))?;
     let recovered = recovered_provider.into_client();
     let calls_before_inspection = (
         transport.calls(environment_reference),
@@ -183,7 +194,10 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         transport.calls(registry_reference),
     );
     if !matches!(
-        recovered.inspect(&spec.unit_id).await?,
+        recovered
+            .inspect(&spec.unit_id)
+            .await
+            .map_err(|error| secret_gate_error("inspect recovered Service", &secret_root, error))?,
         a3s_runtime::contract::RuntimeInspection::Found { .. }
     ) || calls_before_inspection
         != (
@@ -201,7 +215,9 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         transport.calls(environment_reference),
         transport.calls(file_reference),
     );
-    let chunks = wait_for_redacted_logs(recovered.as_ref(), &spec).await?;
+    let chunks = wait_for_redacted_logs(recovered.as_ref(), &spec)
+        .await
+        .map_err(|error| secret_gate_error("read redacted logs", &secret_root, error))?;
     let projected = chunks
         .iter()
         .map(|chunk| chunk.data.as_str())
@@ -238,7 +254,8 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
             timeout_ms: 10_000,
             deadline_at_ms: None,
         })
-        .await?;
+        .await
+        .map_err(|error| secret_gate_error("trigger Secret restart", &secret_root, error))?;
     if restart_trigger.exit_code != 0 {
         return Err(io::Error::other("Secret restart trigger failed").into());
     }
@@ -250,13 +267,16 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         file_reference,
         calls_before_restart,
     )
-    .await?;
+    .await
+    .map_err(|error| secret_gate_error("wait for Secret restart", &secret_root, error))?;
     if transport.calls(registry_reference) != 0 {
         return Err(
             io::Error::other("cached restart resolved an unnecessary registry credential").into(),
         );
     }
-    let restarted_logs = wait_for_redacted_logs(recovered.as_ref(), &spec).await?;
+    let restarted_logs = wait_for_redacted_logs(recovered.as_ref(), &spec)
+        .await
+        .map_err(|error| secret_gate_error("read restarted logs", &secret_root, error))?;
     if restarted_logs.iter().any(|chunk| {
         chunk.data.contains(&environment_value)
             || chunk.data.contains(&file_value)
@@ -273,7 +293,8 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
             generation: spec.generation,
             deadline_at_ms: None,
         })
-        .await?;
+        .await
+        .map_err(|error| secret_gate_error("remove Secret Service", &secret_root, error))?;
     if secret_root.read_dir()?.next().is_some() {
         return Err(io::Error::other("Box cleanup left materialized Secret files").into());
     }
@@ -285,7 +306,8 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         "cloud-registry-user",
         &registry_password,
     )
-    .await?;
+    .await
+    .map_err(|error| secret_gate_error("exercise private registry", &secret_root, error))?;
     assert_no_plaintext(
         &[home.as_path(), runtime_state.path()],
         &[&environment_value, &file_value, &registry_password],
@@ -295,6 +317,28 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         spec.unit_id, spec.generation
     );
     Ok(())
+}
+
+fn secret_gate_error(phase: &str, secret_root: &Path, error: impl std::fmt::Display) -> io::Error {
+    #[cfg(unix)]
+    let state = {
+        use std::os::unix::fs::MetadataExt;
+
+        match std::fs::symlink_metadata(secret_root) {
+            Ok(metadata) => format!(
+                "uid={} gid={} mode={:04o}",
+                metadata.uid(),
+                metadata.gid(),
+                metadata.mode() & 0o7777
+            ),
+            Err(metadata_error) => format!("metadata_error={metadata_error}"),
+        }
+    };
+    #[cfg(not(unix))]
+    let state = "unsupported-platform".to_owned();
+    io::Error::other(format!(
+        "{phase} failed: {error}; Secret root state: {state}"
+    ))
 }
 
 async fn exercise_private_registry(
