@@ -186,7 +186,9 @@ impl McpCredentialProjection {
         &self.verifier_hash
     }
 
-    fn validate(&self) -> Result<(), String> {
+    /// Validate one Cloud-owned credential before it is admitted into a
+    /// complete Gateway snapshot.
+    pub fn validate(&self) -> Result<(), String> {
         if self.credential_id.is_nil() || self.environment_id.is_nil() {
             return Err("MCP credential and environment IDs must not be nil".into());
         }

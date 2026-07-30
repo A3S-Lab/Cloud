@@ -1,4 +1,5 @@
 mod edge_repository;
+mod mcp_credential_repository;
 mod mcp_route_policy_repository;
 
 pub use edge_repository::{
@@ -10,4 +11,5 @@ pub use edge_repository::{
     StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
     StageRoutePublication, TransitionDomainClaim,
 };
+pub use mcp_credential_repository::IMcpCredentialRepository;
 pub use mcp_route_policy_repository::IMcpRoutePolicyRepository;

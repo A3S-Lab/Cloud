@@ -11,8 +11,8 @@ pub use entities::{
     GatewayPublicationState, GatewayReplicaRecovery, GatewayReplicaRecoveryState,
     GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutRollback,
     GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
-    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, McpRoutePolicy,
-    McpRoutePolicySpec, Route, RouteState,
+    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, McpCredential,
+    McpRoutePolicy, McpRoutePolicySpec, Route, RouteState,
 };
 pub use value_objects::{
     DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,

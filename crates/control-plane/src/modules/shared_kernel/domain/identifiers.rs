@@ -58,6 +58,7 @@ identifier!(GatewayRolloutId);
 identifier!(RouteId);
 identifier!(DomainClaimId);
 identifier!(GatewayCertificateId);
+identifier!(McpCredentialId);
 identifier!(SecretId);
 identifier!(SourceRevisionId);
 identifier!(SourceConnectionId);

@@ -865,6 +865,19 @@ than becoming a Runtime or Gateway scheduling decision. A durable worker,
 credential resolution, full-snapshot compare-and-swap, dispatch, and
 acknowledgement recovery are still required.
 
+Hosted MCP service credentials are distinct from Cloud management API tokens.
+An API token is organization-scoped management authority with the `a3s_`
+format and a SHA-256 lookup digest; it cannot be projected into Gateway.
+The Edge-owned `McpCredential` aggregate is instead bound to one organization,
+project, and environment, uses the fixed `cloud-mcp` audience and
+`a3s_mcp_` lookup prefix, and retains only a bounded Argon2id PHC verifier.
+Rotation replaces both prefix and verifier, advances the credential generation,
+and leaves the stable credential ID unchanged. Revocation is terminal and
+advances only the aggregate version. Debug and serialized projection views
+redact the verifier. One-time plaintext issuance, durable persistence, route
+grant resolution, and atomic removal or replacement of revoked grants remain
+unfinished; Cloud management credentials must never be accepted as a shortcut.
+
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical
 `GatewayScopeState` permits only one pending complete snapshot per node. Its
