@@ -144,9 +144,10 @@ jobs:
         run: |
           sudo install -d -m 0700 "$A3S_HOME/runtime-secrets"
           sudo mount -t tmpfs \
-            -o size=16m,mode=0700,nosuid,nodev,noexec \
+            -o size=16m,uid=0,gid=0,mode=0700,nosuid,nodev,noexec \
             a3s-cloud-runtime-secrets "$A3S_HOME/runtime-secrets"
           mountpoint -q "$A3S_HOME/runtime-secrets"
+          test "$(sudo stat -c '%u:%g:%a' "$A3S_HOME/runtime-secrets")" = "0:0:700"
 
       - name: Cache the pinned public Runtime image over HTTPS
         env:
@@ -209,6 +210,15 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
           install -d -m 0755 "$EVIDENCE_DIR"
+          # Earlier real-provider profiles share this infrastructure-owned
+          # mount. Reassert and record the exact precondition before Cloud
+          # composes its Secret boundary; never weaken Box's validation.
+          sudo chown root:root "$A3S_HOME/runtime-secrets"
+          sudo chmod 0700 "$A3S_HOME/runtime-secrets"
+          secret_root_stat=$(sudo stat -c '%u:%g:%a:%F' "$A3S_HOME/runtime-secrets")
+          test "$secret_root_stat" = "0:0:700:directory"
+          test "$(findmnt -n -o FSTYPE --target "$A3S_HOME/runtime-secrets")" = "tmpfs"
+          printf '%s\n' "$secret_root_stat" >"$EVIDENCE_DIR/secret-root.txt"
           cargo_bin=$(command -v cargo)
           cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
           rustup_home=$(rustup show home)
