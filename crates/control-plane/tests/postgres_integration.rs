@@ -53,6 +53,8 @@ mod deployment_flow_support;
 mod edge_certificate_lifecycle_support;
 #[path = "support/edge.rs"]
 mod edge_support;
+#[path = "support/executions.rs"]
+mod executions_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
 #[path = "support/gateway_replica_recovery.rs"]
@@ -196,6 +198,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
+             drop table if exists executions cascade;
              drop table if exists routes cascade;
              drop table if exists gateway_route_scopes cascade;
              drop table if exists gateway_certificates cascade;
@@ -246,7 +249,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 55);
+    assert_eq!(applied, 56);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -761,38 +764,46 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "052",
-                "immutable hosted MCP Service profiles",
+                "Cloud executions",
                 include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../../migrations/052_mcp_service_profiles.sql"
+                    "/../../migrations/052_executions.sql"
                 )),
             ),
             Migration::new(
                 "053",
-                "mutable hosted MCP route policies",
+                "immutable hosted MCP Service profiles",
                 include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../../migrations/053_mcp_route_policies.sql"
+                    "/../../migrations/053_mcp_service_profiles.sql"
                 )),
             ),
             Migration::new(
                 "054",
-                "hosted MCP Workload revision release bindings",
+                "mutable hosted MCP route policies",
                 include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../../migrations/054_mcp_workload_revision_bindings.sql"
+                    "/../../migrations/054_mcp_route_policies.sql"
                 )),
             ),
             Migration::new(
                 "055",
-                "hosted MCP credential authority",
+                "hosted MCP Workload revision release bindings",
                 include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../../migrations/055_mcp_credentials.sql"
+                    "/../../migrations/055_mcp_workload_revision_bindings.sql"
                 )),
             ),
             Migration::new(
                 "056",
+                "hosted MCP credential authority",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/056_mcp_credentials.sql"
+                )),
+            ),
+            Migration::new(
+                "057",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -2114,6 +2125,18 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await?;
     mcp_route_policies_support::exercise(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
+        )?)?),
+        ProjectId::from_uuid(Uuid::parse_str(&project_id)?),
+        a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
+            Uuid::parse_str(&environment_id)?,
+        ),
+    )
+    .await?;
+    executions_support::exercise_execution_persistence(
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
         OrganizationId::from_uuid(Uuid::parse_str(&response_id(

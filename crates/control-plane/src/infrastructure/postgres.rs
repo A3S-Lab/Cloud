@@ -473,34 +473,42 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "052",
-            "immutable hosted MCP Service profiles",
+            "Cloud executions",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/052_mcp_service_profiles.sql"
+                "/../../migrations/052_executions.sql"
             )),
         ),
         Migration::new(
             "053",
-            "mutable hosted MCP route policies",
+            "immutable hosted MCP Service profiles",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/053_mcp_route_policies.sql"
+                "/../../migrations/053_mcp_service_profiles.sql"
             )),
         ),
         Migration::new(
             "054",
-            "hosted MCP Workload revision release bindings",
+            "mutable hosted MCP route policies",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/054_mcp_workload_revision_bindings.sql"
+                "/../../migrations/054_mcp_route_policies.sql"
             )),
         ),
         Migration::new(
             "055",
+            "hosted MCP Workload revision release bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/055_mcp_workload_revision_bindings.sql"
+            )),
+        ),
+        Migration::new(
+            "056",
             "hosted MCP credential authority",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/055_mcp_credentials.sql"
+                "/../../migrations/056_mcp_credentials.sql"
             )),
         ),
     ]

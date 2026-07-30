@@ -10,10 +10,10 @@ pub use git_commit_sha::GitCommitSha;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     ApiTokenId, AssetId, AssetReleaseId, BuildRunId, DeploymentId, DomainClaimId,
-    EnrollmentTokenId, EnvironmentId, GatewayCertificateId, GatewayRolloutId, GatewayScopeId,
-    McpCredentialId, NodeCertificateId, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ProjectId, ResourceClaimId, RouteId, SecretId, SourceConnectionId, SourceRevisionId,
-    SourceSubscriptionId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    EnrollmentTokenId, EnvironmentId, ExecutionId, GatewayCertificateId, GatewayRolloutId,
+    GatewayScopeId, McpCredentialId, NodeCertificateId, NodeCommandId, NodeId, OperationId,
+    OrganizationId, ProjectId, ResourceClaimId, RouteId, SecretId, SourceConnectionId,
+    SourceRevisionId, SourceSubscriptionId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
     WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;

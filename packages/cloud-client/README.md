@@ -63,6 +63,13 @@ resource commands. `markNodeReady`, `drainNode`, and `revokeNode` additionally
 require a positive safe-integer aggregate version and preserve the server's
 optimistic-concurrency contract.
 
+`listExecutions`, `getExecution`, `createExecution`, and `cancelExecution`
+expose the finite Runtime Task lifecycle through the tenant-scoped Execution
+controllers. Create and cancel require caller-owned idempotency keys. The
+client transports the typed digest-pinned template and authoritative projection
+without inferring placement or provider state; input and process environment
+are persisted desired state and must not contain secret material.
+
 `issueEnrollmentToken` validates the fixed `a3sn_` plus 64-lowercase-hex
 credential format and RFC 3339 expiry before transport, then calls the existing
 tenant-scoped Fleet command with a caller-owned idempotency key. Cloud remains

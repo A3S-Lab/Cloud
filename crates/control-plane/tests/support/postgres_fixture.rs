@@ -235,6 +235,13 @@ pub(super) fn config() -> CloudConfig {
             cleanup_poll_ms: 10,
             cleanup_timeout_ms: 20_000,
         },
+        executions: a3s_cloud_control_plane::config::ExecutionsConfig {
+            reconcile_interval_ms: 1_000,
+            command_ttl_ms: 900_000,
+            observation_poll_ms: 10,
+            convergence_timeout_ms: 20_000,
+            cleanup_timeout_ms: 20_000,
+        },
         builds: BuildsConfig {
             reconcile_interval_ms: 1_000,
             builder_uri: format!("oci://docker.io/moby/buildkit@sha256:{}", "a".repeat(64)),

@@ -47,7 +47,7 @@ impl McpGatewaySnapshotStaged {
             .certificate_request
             .as_ref()
             .map(|request| GatewayCertificateId::from_uuid(request.certificate_id));
-        if gateway_certificate_id.is_some() != !domain_claim_ids.is_empty() {
+        if gateway_certificate_id.is_some() == domain_claim_ids.is_empty() {
             return Err(
                 "staged MCP Gateway snapshot certificate and domain evidence differ".into(),
             );

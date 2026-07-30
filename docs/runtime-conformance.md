@@ -88,8 +88,8 @@ acknowledgement, releases it exactly once, reaches terminal cancellation, and
 leaves empty Box and process state. This completes the `BX0.2` evidence set.
 
 The first `BX0.3` slice pins Runtime-owned typed Service endpoints and consumes
-them through one stateless Gateway-origin adapter. The second pins A3S Box
-`c0a3ddb927ada2bbd907c97521fa531b04440eb5`, whose provider suite advertises
+them through one stateless Gateway-origin adapter. The second is based on A3S
+Box `c0a3ddb927ada2bbd907c97521fa531b04440eb5`, whose provider suite advertises
 and certifies HTTP, TCP, and command health over the existing generation-fenced
 port and exec boundaries. Cloud's existing A3S ACL Workload compiler emits the
 HTTP Runtime policy; all probe kinds produce the same provider-neutral
@@ -106,6 +106,18 @@ return an authoritative receipt, inspection must return `NotFound`, the
 listener must close, and the workflow's final provider/process inventory must
 be empty. This is one lifecycle and observation path, not a second health
 worker, scheduler, registry, endpoint authority, or state store.
+
+The third `BX0.3` slice advances the pinned A3S Box revision to
+`d6cceb02f70bda64a2761799dfebec3245f7027f` and requires explicit isolation at
+the closed Node Agent ACL boundary. `box.isolation` accepts exactly `microvm` or
+`sandbox`; missing, `automatic`, and unknown selections fail before Runtime
+construction. The shipped product profile selects MicroVM. Hosted real-provider
+Cloud consumer tests select Sandbox explicitly. Both map directly to the sole
+shared `BoxRuntimeDriver`, with no automatic downgrade or fallback. The same
+Box revision removes its retired Lambda lifecycle API; Cloud Executions now own
+the tenant, scheduling, operation, and cleanup contract while Box remains the
+node-local provider. This slice proves selection behavior only; full Sandbox,
+MicroVM, and TEE certification remains release-blocking.
 
 The following evidence remains required before `BX0` is verified:
 

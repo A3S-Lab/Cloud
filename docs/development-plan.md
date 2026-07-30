@@ -285,6 +285,16 @@ Gateway origin, removes the Service, observes `NotFound`, and requires listener
 closure. It adds no health worker, registry, scheduler, queue, Runtime driver,
 endpoint authority, or lifecycle store.
 
+The third `BX0.3` slice pins A3S Box
+`9fb9bf528f6c648bbecf203de991106fc39bccdb` and closes the Node Agent isolation
+configuration. Every ACL profile must select exactly `microvm` or `sandbox`;
+missing, `automatic`, and unknown selections fail parsing. The shipped product
+profile chooses MicroVM, hosted real-Box tests choose Sandbox explicitly, and
+the Node Agent passes the selection into the one shared `BoxRuntimeDriver`
+without automatic downgrade, a fallback provider, or another lifecycle path.
+This completes deterministic isolation selection but not the required
+Sandbox/MicroVM/TEE provider certification.
+
 The rest of `BX0.3` remains open: Secret materialization,
 Artifact/Volume/tmpfs mounts, Task outputs, registry credentials, allocation
 evidence, and complete Sandbox/MicroVM/TEE isolation certification.
@@ -1319,7 +1329,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.0.0`. Focused tests regenerate the
+  and every API response pin contract `1.1.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic

@@ -26,6 +26,11 @@ use crate::modules::edge::{
     PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
     VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
+use crate::modules::executions::{
+    CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
+    ExecutionFlowRuntimeDependencies, ExecutionReconciler, ExecutionsModule, GetExecutionHandler,
+    IExecutionRepository, ListExecutionsHandler, PostgresExecutionRepository,
+};
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
 };
@@ -154,6 +159,8 @@ pub enum ControlPlaneStartupError {
     Sources(String),
     #[error("could not initialize build execution: {0}")]
     Build(String),
+    #[error("could not initialize finite execution: {0}")]
+    Execution(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -211,6 +218,8 @@ pub async fn build_application_with_source_resolver(
     );
     let builds: Arc<dyn IBuildRunRepository> =
         Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let executions: Arc<dyn IExecutionRepository> =
+        Arc::new(PostgresExecutionRepository::new(executor.clone()));
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let resource_claims: Arc<dyn IResourceClaimRepository> =
@@ -468,8 +477,21 @@ pub async fn build_application_with_source_resolver(
         },
         build_flow_config,
     );
-    let flow_runtime =
-        FlowRuntimeRouter::new(Arc::new(deployment_runtime), Arc::new(build_runtime));
+    let execution_runtime = ExecutionFlowRuntime::new(
+        ExecutionFlowRuntimeDependencies {
+            executions: Arc::clone(&executions),
+            nodes: Arc::clone(&nodes),
+            node_control: Arc::clone(&node_control),
+        },
+        config
+            .execution_flow_config()
+            .map_err(ControlPlaneStartupError::Execution)?,
+    );
+    let flow_runtime = FlowRuntimeRouter::new(
+        Arc::new(deployment_runtime),
+        Arc::new(build_runtime),
+        Arc::new(execution_runtime),
+    );
     let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
@@ -526,6 +548,13 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Build)?;
+    let execution_reconciler = ExecutionReconciler::with_schedule(
+        Arc::clone(&executions),
+        Arc::clone(&operation_repository),
+        Duration::from_millis(config.executions.reconcile_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Execution)?;
     let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
     let operation_reconciler = OperationReconciler::new(
         Arc::new(ReconcileOperationsHandler::new(
@@ -599,6 +628,7 @@ pub async fn build_application_with_source_resolver(
             search,
             workloads,
             builds,
+            executions,
             routes,
             secrets,
             sources,
@@ -635,6 +665,7 @@ pub async fn build_application_with_source_resolver(
         application,
         ControlPlaneWorkers::new(
             run_operations.then_some(build_run_reconciler),
+            run_operations.then_some(execution_reconciler),
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
@@ -659,6 +690,7 @@ struct ApplicationDependencies {
     search: Arc<dyn ISearchRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
+    executions: Arc<dyn IExecutionRepository>,
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
@@ -695,6 +727,7 @@ fn build_application_with_health(
         search,
         workloads,
         builds,
+        executions,
         routes,
         secrets,
         sources,
@@ -796,6 +829,11 @@ fn build_application_with_health(
     let get_build_evidence = Arc::clone(&builds);
     let get_build_logs = Arc::clone(&builds);
     let source_workload_builds = builds;
+    let execution_environments = Arc::clone(&environments);
+    let create_executions = Arc::clone(&executions);
+    let cancel_executions = Arc::clone(&executions);
+    let list_executions = Arc::clone(&executions);
+    let get_executions = executions;
     let accept_source_webhooks = source_webhooks;
     let create_source_subscriptions = Arc::clone(&source_subscriptions);
     let deactivate_source_subscriptions = Arc::clone(&source_subscriptions);
@@ -999,6 +1037,12 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::artifacts::RetryBuildRun, _>(
                     RetryBuildRunHandler::new(retry_builds),
                 )
+                .command_handler::<crate::modules::executions::CreateExecutionCommand, _>(
+                    CreateExecutionHandler::new(execution_environments, create_executions),
+                )
+                .command_handler::<crate::modules::executions::CancelExecution, _>(
+                    CancelExecutionHandler::new(cancel_executions),
+                )
                 .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
                     CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
                 )
@@ -1108,6 +1152,12 @@ fn build_application_with_health(
                         build_log_store,
                     ),
                 )
+                .query_handler::<crate::modules::executions::ListExecutions, _>(
+                    ListExecutionsHandler::new(list_executions),
+                )
+                .query_handler::<crate::modules::executions::GetExecution, _>(
+                    GetExecutionHandler::new(get_executions),
+                )
                 .query_handler::<crate::modules::workloads::ListWorkloads, _>(
                     ListWorkloadsHandler::new(
                         list_workloads,
@@ -1169,6 +1219,7 @@ fn build_application_with_health(
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
         .import(ArtifactsModule)
+        .import(ExecutionsModule)
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

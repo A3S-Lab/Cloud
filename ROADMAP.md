@@ -77,6 +77,13 @@ the required inference serving boundary and runs as an ordinary Box-hosted
 Runtime Service. Neither product adds a scheduler, node channel, queue, desired
 state store, routing authority, or usage authority to Cloud.
 
+Cloud now owns the generic finite-Task product surface as tenant-scoped
+Executions. The initial vertical slice persists replay-safe intent and
+Operations, schedules capability-matched Runtime Tasks through Fleet, supports
+cancellation, and withholds terminal state until authoritative cleanup. This is
+platform execution infrastructure; it does not implement Agent conversations,
+training, trajectories, or any Agentic RL policy.
+
 ## 3. Current roadmap
 
 | Gate | Product outcome | State |
@@ -131,8 +138,9 @@ second deployment or reconciliation engine.
    [final interruption gate](https://github.com/A3S-Lab/Cloud/actions/runs/30456965598).
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
    tmpfs mounts, outputs, and registry credentials through typed Box ports. The
-   typed Service TCP endpoint and shared Runtime health-consumer slices are
-   implemented; the remaining capabilities and complete gate stay in progress.
+   typed Service TCP endpoint, shared Runtime health consumer, and explicit
+   isolation-selection slices are implemented; the remaining capabilities and
+   complete gate stay in progress.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
    build boundary and ACL build plans while preserving OCI validation,
    publication, cache, SPDX/SLSA evidence, and process-death recovery.
@@ -194,6 +202,16 @@ Runtime and executor reconstruction, a fresh healthy inspection with unchanged
 provider identity and endpoint, live traffic through the stateless Gateway
 origin adapter, removal, `NotFound`, and listener closure. No health worker,
 registry, scheduler, queue, endpoint authority, or lifecycle store was added.
+
+The third `BX0.3` slice pins A3S Box
+`9fb9bf528f6c648bbecf203de991106fc39bccdb` and makes isolation selection an
+explicit closed Node Agent contract. The required ACL `box.isolation` field
+accepts exactly `microvm` or `sandbox`; missing, `automatic`, and unknown values
+fail before the Runtime starts. Cloud maps the selected value directly into the
+same shared `BoxRuntimeDriver`, ships MicroVM in the product profile, and makes
+hosted Cloud consumer tests request Sandbox explicitly. There is no automatic
+downgrade, fallback provider, or parallel Runtime driver. Full provider
+certification for Sandbox, MicroVM, and TEE remains open.
 
 `BX0.3` remains in progress for Secret materialization, Artifact/Volume/tmpfs
 mounts, Task outputs, registry credentials, allocation evidence, and complete
@@ -305,7 +323,7 @@ repository currently has no configured G0 provider secrets.
   Web adds debounced keyboard search and validated contextual navigation; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
   at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.0.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  `1.1.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
   minimum sunset window; and
@@ -475,6 +493,13 @@ No migrated slice may retain Docker as a fallback. A slice lands only when its
 Box conformance and cleanup evidence passes; the final slice deletes the
 retired code and rejects new Docker/Bollard/configuration references in CI.
 
+The generic Execution slice is implemented above this boundary. It uses the
+same Flow, Fleet, Runtime, and Box path as other finite Tasks and replaces the
+retired Box-local Lambda lifecycle API. Box remains responsible only for local
+provider mechanics. The required node-local `box.isolation` field selects the
+pinned Box adapter's concrete backend. The shipped profile selects MicroVM;
+shared-kernel execution requires an explicit `sandbox` selection.
+
 ### 5.1 `G0`: external source delivery
 
 Next outcome:
@@ -548,7 +573,7 @@ bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
-public raw OpenAPI v1 snapshot, shared `1.0.0` client/response versioning,
+public raw OpenAPI v1 snapshot, shared `1.1.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real

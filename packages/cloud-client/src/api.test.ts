@@ -26,7 +26,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.0.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.1.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -210,6 +210,58 @@ describe('CloudApi', () => {
         body: JSON.stringify({ name: 'Production' }),
       },
     ]);
+  });
+
+  it('uses the shared transport for finite Execution lifecycle operations', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, 202);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const input = {
+      artifact: {
+        uri: `oci://registry.example/tasks/echo@${digest}`,
+        digest,
+        mediaType: 'application/vnd.oci.image.manifest.v1+json',
+      },
+      process: {
+        command: ['/app/echo'],
+        args: [],
+        workingDirectory: null,
+        environment: {},
+      },
+      input: { message: 'hello' },
+      resources: {
+        cpuMillis: 250,
+        memoryBytes: 134_217_728,
+        pids: 64,
+        ephemeralStorageBytes: null,
+        timeoutMs: 5_000,
+      },
+    };
+
+    await api.listExecutions('organization / one', 'project', 'environment');
+    await api.getExecution('organization / one', 'execution');
+    await api.createExecution('organization / one', 'project', 'environment', input, 'execution:create');
+    await api.cancelExecution('organization / one', 'execution', 'execution:cancel');
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/executions?limit=100',
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/executions/execution', 'GET'],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/executions',
+        'POST',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/executions/execution', 'DELETE'],
+    ]);
+    expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:create');
+    expect(calls[2]?.[1]?.body).toBe(JSON.stringify(input));
+    expect((calls[3]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:cancel');
   });
 
   it('changes node lifecycle state with explicit optimistic concurrency', async () => {

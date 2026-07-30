@@ -1,6 +1,7 @@
 pub mod artifacts;
 pub mod assets;
 pub mod edge;
+pub mod executions;
 pub mod fleet;
 pub mod identity;
 pub mod integration_events;

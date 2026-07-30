@@ -64,5 +64,6 @@ identifier!(SourceRevisionId);
 identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
 identifier!(BuildRunId);
+identifier!(ExecutionId);
 identifier!(AssetId);
 identifier!(AssetReleaseId);
