@@ -1072,10 +1072,11 @@ DomainClaim revocation, projection repair, and validity renewal preserve
 current MCP ingress while classifying ordinary routes; MCP-only nodes also
 stage proactive certificate replacement. PostgreSQL rechecks every observed
 policy and Workload plus the exact active or suppressing credential state
-under ordered locks before publication. Public idempotent credential
-delivery/rotation, lifecycle surfaces, audit, an executed PostgreSQL gate for
-the newest certificate and credential-cleanup paths, and joint real-process
-recovery remain required before this path can close `MCP0.3`.
+under ordered locks before publication. The idempotent credential lifecycle
+persistence boundary now exists, but its public application and presentation
+surfaces, audit, an executed PostgreSQL gate for the newest certificate and
+credential paths, and joint real-process recovery remain required before this
+path can close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`
@@ -1094,21 +1095,38 @@ contract. Exact route-grant resolution now uses only the requested IDs within
 the route's tenant scope and requires the persisted generation to remain
 active at projection time.
 
-The internal credential issuer obtains 64 bits of random fixed-length lookup
-prefix plus 256 bits of bearer secret and a separate 128-bit salt, derives the
-bounded Argon2id verifier on the blocking pool under a four-operation
-semaphore, and persists the aggregate before returning the bearer value. The
-result owns the secret in zeroizing memory and is neither cloneable nor
-serializable; Debug output is redacted. A uniqueness conflict discards the
-entire candidate and retries with fresh identity, prefix, secret, salt, and
-verifier at most four times. Credential lifetime is positive and capped at 365
-days. This primitive is intentionally not a public lifecycle surface yet:
-idempotent one-time delivery must recover or compensate a
-commit-before-response failure without persisting plaintext or returning a
-second secret. Rotation delivery and grant replacement through a public
-lifecycle command remain unfinished; snapshot reconciliation already removes
-routes whose referenced credential is revoked, expired, or at another
-generation. Cloud management credentials must never be accepted as a shortcut.
+The credential material generator obtains 64 bits of random fixed-length
+lookup prefix plus 256 bits of bearer secret and a separate 128-bit salt, then
+derives the bounded Argon2id verifier on the blocking pool under a
+four-operation semaphore. It can prepare both issuance and rotation without
+persisting plaintext. Each result owns the secret in zeroizing memory and is
+neither cloneable nor serializable; Debug output is redacted. The legacy
+internal issuer still retries a complete fresh candidate at most four times on
+an identity collision.
+
+The lifecycle repository is the new commit-before-response boundary.
+`McpCredentialDelivery` binds organization, project, environment, stable
+credential ID, generation, and canonical creation/expiry timestamps into the
+authenticated encryption context. Migration 060 stores only the provider key
+ID and ciphertext for the current generation, capped to a one-hour recovery
+window and never beyond credential expiry. One transaction commits the
+aggregate, delivery replacement or deletion, secret-free Outbox event, and an
+idempotency reference. A replay returns that exact current ciphertext only
+while its window remains available. If the credential advanced, the delivery
+expired, or cleanup removed it, replay fails closed while the durable
+idempotency reference prevents a second secret from being minted. Rotation
+replaces prior recovery material, revocation deletes it, and bounded cleanup
+removes expired ciphertext without deleting the reference. Ordinary repository
+transitions also remove any recovery material, preventing a bypass from
+leaving stale ciphertext.
+
+This is persistence and generation infrastructure, not a public lifecycle
+claim. Application commands must still encrypt/decrypt through the selected
+Secret encryption provider, perform tenant authorization and exact replay
+before generation, and expose no-store one-time REST/OpenAPI/client/CLI
+responses. Snapshot reconciliation already removes routes whose referenced
+credential is revoked, expired, or at another generation. Cloud management
+credentials must never be accepted as a shortcut.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical

@@ -535,6 +535,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/059_gateway_snapshot_publication_owners.sql"
             )),
         ),
+        Migration::new(
+            "060",
+            "hosted MCP credential recovery deliveries",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/060_mcp_credential_deliveries.sql"
+            )),
+        ),
     ]
 }
 

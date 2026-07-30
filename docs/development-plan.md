@@ -149,6 +149,13 @@ Runtime/Box close `MCP0.2`, Cloud closes `MCP0.3`, Gateway closes `MCP0.4`, and
 their exact revisions pass `MCP0.5`. `MCP0.6` then consumes the multi-node and
 grant/audit foundations rather than inventing MCP-specific controllers.
 
+Within Cloud `MCP0.3`, credential delivery advances in dependency order:
+generation and atomic encrypted lifecycle persistence first; shared
+authorization-aware application commands second; REST/OpenAPI/client/CLI
+parity and the bounded cleanup worker third; then executed PostgreSQL and
+cross-process evidence. The first layer is implemented, but it does not make a
+public credential surface available.
+
 H0 is delivered through the numbered sub-gates below. H0.1 through H0.3 may be
 proved against an owning profile after that profile's single-node gate. I0 uses
 that rule to exercise inference-neutral replica, claim, target-set, placement,

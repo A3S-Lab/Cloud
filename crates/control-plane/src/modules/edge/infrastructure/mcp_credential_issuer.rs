@@ -60,6 +60,36 @@ pub struct IssuedMcpCredential {
     secret: Zeroizing<String>,
 }
 
+/// An unpersisted credential candidate plus its single owned bearer value.
+///
+/// The lifecycle application layer must encrypt the bearer and atomically
+/// persist the candidate, recovery delivery, outbox event, and idempotency
+/// reference before consuming this value at a presentation boundary.
+pub struct McpCredentialMaterial {
+    credential: McpCredential,
+    secret: Zeroizing<String>,
+}
+
+impl McpCredentialMaterial {
+    pub fn credential(&self) -> &McpCredential {
+        &self.credential
+    }
+
+    pub fn into_parts(self) -> (McpCredential, Zeroizing<String>) {
+        (self.credential, self.secret)
+    }
+}
+
+impl fmt::Debug for McpCredentialMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("McpCredentialMaterial")
+            .field("credential", &self.credential)
+            .field("secret", &"<redacted>")
+            .finish()
+    }
+}
+
 impl IssuedMcpCredential {
     pub fn credential(&self) -> &McpCredential {
         &self.credential
@@ -92,6 +122,107 @@ pub enum McpCredentialIssuanceError {
     Repository(RepositoryError),
 }
 
+/// Generates memory-hard hosted MCP credential material without persisting it.
+///
+/// Separating generation from persistence lets the public lifecycle boundary
+/// seal plaintext into a short-lived authenticated ciphertext and commit all
+/// durable state in one idempotent transaction.
+#[derive(Clone)]
+pub struct McpCredentialMaterialGenerator {
+    hashing_permits: Arc<Semaphore>,
+}
+
+impl Default for McpCredentialMaterialGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl McpCredentialMaterialGenerator {
+    pub fn new() -> Self {
+        Self {
+            hashing_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_HASHES)),
+        }
+    }
+
+    pub async fn issue(
+        &self,
+        request: McpCredentialIssueRequest,
+    ) -> Result<McpCredentialMaterial, McpCredentialIssuanceError> {
+        let request = request.canonicalize()?;
+        self.issue_canonical(&request).await
+    }
+
+    pub async fn rotate(
+        &self,
+        credential: &McpCredential,
+        expires_at: DateTime<Utc>,
+        rotated_at: DateTime<Utc>,
+    ) -> Result<McpCredentialMaterial, McpCredentialIssuanceError> {
+        let rotated_at = canonical_timestamp(rotated_at);
+        let expires_at = canonical_timestamp(expires_at);
+        if credential.revoked_at().is_some()
+            || rotated_at < credential.updated_at()
+            || expires_at <= rotated_at
+            || expires_at - rotated_at > Duration::days(MAX_CREDENTIAL_LIFETIME_DAYS)
+        {
+            return Err(McpCredentialIssuanceError::InvalidRequest(
+                "credential must be active and rotation lifetime must be positive and at most 365 days"
+                    .into(),
+            ));
+        }
+        let (prefix, secret, verifier_hash) = self.generate_hashed_material().await?;
+        let mut rotated = credential.clone();
+        rotated
+            .rotate(prefix, verifier_hash, expires_at, rotated_at)
+            .map_err(McpCredentialIssuanceError::InvalidRequest)?;
+        Ok(McpCredentialMaterial {
+            credential: rotated,
+            secret,
+        })
+    }
+
+    async fn issue_canonical(
+        &self,
+        request: &McpCredentialIssueRequest,
+    ) -> Result<McpCredentialMaterial, McpCredentialIssuanceError> {
+        let (prefix, secret, verifier_hash) = self.generate_hashed_material().await?;
+        let credential = McpCredential::issue(
+            McpCredentialId::new(),
+            request.organization_id,
+            request.project_id,
+            request.environment_id,
+            prefix,
+            verifier_hash,
+            request.expires_at,
+            request.issued_at,
+        )
+        .map_err(McpCredentialIssuanceError::InvalidRequest)?;
+        Ok(McpCredentialMaterial { credential, secret })
+    }
+
+    async fn generate_hashed_material(
+        &self,
+    ) -> Result<(String, Zeroizing<String>, String), McpCredentialIssuanceError> {
+        let (prefix, secret, salt) = generate_material()?;
+        let permit = Arc::clone(&self.hashing_permits)
+            .try_acquire_owned()
+            .map_err(|_| McpCredentialIssuanceError::Unavailable)?;
+        let (secret, verifier_hash) = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            let verifier_hash = Argon2::default()
+                .hash_password(secret.as_bytes(), &salt)
+                .map_err(|_| ())?
+                .to_string();
+            Ok::<_, ()>((secret, verifier_hash))
+        })
+        .await
+        .map_err(|_| McpCredentialIssuanceError::Unavailable)?
+        .map_err(|_| McpCredentialIssuanceError::Unavailable)?;
+        Ok((prefix, secret, verifier_hash))
+    }
+}
+
 /// Generates and persists one Cloud-owned hosted MCP bearer credential.
 ///
 /// The random bearer value is hashed on the blocking pool under a bounded
@@ -100,14 +231,14 @@ pub enum McpCredentialIssuanceError {
 #[derive(Clone)]
 pub struct McpCredentialIssuer {
     repository: Arc<dyn IMcpCredentialRepository>,
-    hashing_permits: Arc<Semaphore>,
+    material_generator: McpCredentialMaterialGenerator,
 }
 
 impl McpCredentialIssuer {
     pub fn new(repository: Arc<dyn IMcpCredentialRepository>) -> Self {
         Self {
             repository,
-            hashing_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_HASHES)),
+            material_generator: McpCredentialMaterialGenerator::new(),
         }
     }
 
@@ -117,32 +248,8 @@ impl McpCredentialIssuer {
     ) -> Result<IssuedMcpCredential, McpCredentialIssuanceError> {
         let request = request.canonicalize()?;
         for attempt in 0..MAX_ISSUANCE_ATTEMPTS {
-            let (prefix, secret, salt) = generate_material()?;
-            let permit = Arc::clone(&self.hashing_permits)
-                .try_acquire_owned()
-                .map_err(|_| McpCredentialIssuanceError::Unavailable)?;
-            let (secret, verifier_hash) = tokio::task::spawn_blocking(move || {
-                let _permit = permit;
-                let verifier_hash = Argon2::default()
-                    .hash_password(secret.as_bytes(), &salt)
-                    .map_err(|_| ())?
-                    .to_string();
-                Ok::<_, ()>((secret, verifier_hash))
-            })
-            .await
-            .map_err(|_| McpCredentialIssuanceError::Unavailable)?
-            .map_err(|_| McpCredentialIssuanceError::Unavailable)?;
-            let credential = McpCredential::issue(
-                McpCredentialId::new(),
-                request.organization_id,
-                request.project_id,
-                request.environment_id,
-                prefix,
-                verifier_hash,
-                request.expires_at,
-                request.issued_at,
-            )
-            .map_err(McpCredentialIssuanceError::InvalidRequest)?;
+            let material = self.material_generator.issue_canonical(&request).await?;
+            let (credential, secret) = material.into_parts();
             match self
                 .repository
                 .create_mcp_credential(credential.clone())
@@ -254,6 +361,44 @@ mod tests {
                 .expect("find"),
             Some(credential)
         );
+    }
+
+    #[tokio::test]
+    async fn prepares_unpersisted_issue_and_rotation_material_for_atomic_lifecycle_storage() {
+        let generator = McpCredentialMaterialGenerator::new();
+        let issue = generator.issue(request()).await.expect("prepare issuance");
+        let issue_debug = format!("{issue:?}");
+        let (credential, secret) = issue.into_parts();
+        assert!(!issue_debug.contains(secret.as_str()));
+        assert!(Argon2::default()
+            .verify_password(
+                secret.as_bytes(),
+                &PasswordHash::new(credential.gateway_projection().verifier_hash())
+                    .expect("issue verifier"),
+            )
+            .is_ok());
+
+        let rotation = generator
+            .rotate(
+                &credential,
+                now() + Duration::days(60),
+                now() + Duration::minutes(1),
+            )
+            .await
+            .expect("prepare rotation");
+        let (rotated, rotated_secret) = rotation.into_parts();
+        assert_eq!(credential.generation(), 1);
+        assert_eq!(rotated.generation(), 2);
+        assert_eq!(rotated.aggregate_version(), 2);
+        assert_ne!(rotated.prefix(), credential.prefix());
+        assert_ne!(rotated_secret.as_str(), secret.as_str());
+        assert!(Argon2::default()
+            .verify_password(
+                rotated_secret.as_bytes(),
+                &PasswordHash::new(rotated.gateway_projection().verifier_hash())
+                    .expect("rotation verifier"),
+            )
+            .is_ok());
     }
 
     #[tokio::test]

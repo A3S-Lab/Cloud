@@ -39,6 +39,7 @@ impl IMcpCredentialRepository for InMemoryEdgeRepository {
         state
             .mcp_credentials
             .insert(credential.id, credential.clone());
+        state.mcp_credential_deliveries.remove(&credential.id);
         Ok(credential)
     }
 

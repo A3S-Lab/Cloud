@@ -836,12 +836,18 @@ PostgreSQL fixture also compiles stored scope-set/head evidence and an automatic
 post-acknowledgement no-op check, but no database URL is available in the
 default local gate.
 
-Public idempotent one-time credential delivery/rotation, lifecycle surfaces,
-executed real PostgreSQL evidence for the new certificate and credential
-cleanup paths, real Box hosting, and joint product conformance remain
-unavailable. Stateful resources remain `S0`; replicas and multi-node placement
-remain `H0`; accelerator and inference capabilities remain `I0`. These
-profiles do not create separate schedulers.
+The credential lifecycle persistence foundation now separates unpersisted
+Argon2id material generation from one atomic issuance/rotation/revocation
+write. Migration 060 retains only authenticated ciphertext for one exact
+credential generation and a recovery window of at most one hour. Idempotency
+retains a secret-free generation reference after ciphertext expiry, so a retry
+can never mint a second secret; rotation replaces the current delivery,
+revocation removes it, and bounded cleanup deletes expired ciphertext. Public
+REST/OpenAPI/client/CLI lifecycle surfaces, executed real PostgreSQL evidence
+for the new certificate and credential paths, real Box hosting, and joint
+product conformance remain unavailable. Stateful resources remain `S0`;
+replicas and multi-node placement remain `H0`; accelerator and inference
+capabilities remain `I0`. These profiles do not create separate schedulers.
 
 ## Delivery Model
 

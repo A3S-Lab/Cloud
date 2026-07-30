@@ -3,13 +3,15 @@ use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
     GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget, GatewayRolloutResult,
     GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
-    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRolloutRollback,
-    StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
+    McpCredentialLifecycleReference, StageGatewayCertificateConvergence, StageGatewayRollout,
+    StageGatewayRolloutRollback, StageGatewayRouteCutover, StageRoutePublication,
+    TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayPublication, GatewayPublicationState, GatewayRollout, GatewayRolloutRollback,
-    GatewayRouteCutover, GatewayScope, GatewayScopeState, McpCredential, Route, RouteState,
+    GatewayRouteCutover, GatewayScope, GatewayScopeState, McpCredential, McpCredentialDelivery,
+    Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
@@ -26,6 +28,7 @@ mod acknowledgements;
 mod certificate_convergence;
 mod certificates;
 mod gateway_scopes;
+mod mcp_credential_lifecycle;
 mod mcp_credentials;
 mod rollouts;
 mod validation;
@@ -64,6 +67,9 @@ struct State {
     rollout_idempotency: BTreeMap<(String, String), (String, GatewayRolloutResult)>,
     mcp_credentials: BTreeMap<McpCredentialId, McpCredential>,
     mcp_credential_prefixes: BTreeMap<String, McpCredentialId>,
+    mcp_credential_deliveries: BTreeMap<McpCredentialId, McpCredentialDelivery>,
+    mcp_credential_lifecycle_idempotency:
+        BTreeMap<(String, String), (String, McpCredentialLifecycleReference)>,
     outbox: Vec<DomainEventEnvelope>,
 }
 

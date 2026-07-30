@@ -15,8 +15,9 @@ pub use entities::{
     McpRoutePolicy, McpRoutePolicySpec, Route, RouteState,
 };
 pub use value_objects::{
-    DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,
-    UpstreamEndpoint, MAX_GATEWAY_SCOPE_MEMBERS,
+    DomainNamePattern, GatewayRolloutPolicy, McpCredentialDelivery, RouteHostname, RoutePath,
+    RoutePortName, RouteTarget, UpstreamEndpoint, MAX_GATEWAY_SCOPE_MEMBERS,
+    MAX_MCP_CREDENTIAL_DELIVERY_TTL,
 };
 
 #[cfg(test)]

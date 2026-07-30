@@ -91,7 +91,8 @@ pub use gateway_snapshot_compiler::{
 };
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::{
-    IssuedMcpCredential, McpCredentialIssuanceError, McpCredentialIssueRequest, McpCredentialIssuer,
+    IssuedMcpCredential, McpCredentialIssuanceError, McpCredentialIssueRequest,
+    McpCredentialIssuer, McpCredentialMaterial, McpCredentialMaterialGenerator,
 };
 pub use mcp_gateway_desired_state_reconciler::{
     McpGatewayDesiredStateReconciler, McpGatewayDesiredStateReconciliationFailure,
