@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=739ec05482cfd6831de5b56cbc33ea8a4bde24f2#739ec05482cfd6831de5b56cbc33ea8a4bde24f2"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-common",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=739ec05482cfd6831de5b56cbc33ea8a4bde24f2#739ec05482cfd6831de5b56cbc33ea8a4bde24f2"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=739ec05482cfd6831de5b56cbc33ea8a4bde24f2#739ec05482cfd6831de5b56cbc33ea8a4bde24f2"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
 dependencies = [
  "a3s-box-core",
  "a3s-box-netproxy",
@@ -296,7 +296,7 @@ dependencies = [
 [[package]]
 name = "a3s-oci-core"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=0bd7929b9842184b3cf98986bfe1b6ef79ca5282#0bd7929b9842184b3cf98986bfe1b6ef79ca5282"
+source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2#6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -305,7 +305,7 @@ dependencies = [
 [[package]]
 name = "a3s-oci-sdk"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=0bd7929b9842184b3cf98986bfe1b6ef79ca5282#0bd7929b9842184b3cf98986bfe1b6ef79ca5282"
+source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2#6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2"
 dependencies = [
  "a3s-oci-core",
  "async-trait",
@@ -1498,7 +1498,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2778,7 +2778,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3424,7 +3424,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3876,7 +3876,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4670,7 +4670,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

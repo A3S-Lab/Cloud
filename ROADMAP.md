@@ -137,8 +137,9 @@ second deployment or reconciliation engine.
 3. `BX0.3` migrates networking, endpoints, health, Secrets, Artifact/Volume/
    tmpfs mounts, outputs, and registry credentials through typed Box ports. The
    typed Service TCP endpoint, shared Runtime health consumer, and explicit
-   isolation-selection slices are implemented; the remaining capabilities and
-   complete gate stay in progress.
+   isolation-selection slices plus Secret and registry-credential
+   materialization are implemented; the remaining capabilities and complete
+   gate stay in progress.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
    build boundary and ACL build plans while preserving OCI validation,
    publication, cache, SPDX/SLSA evidence, and process-death recovery.
@@ -211,9 +212,23 @@ hosted Cloud consumer tests request Sandbox explicitly. There is no automatic
 downgrade, fallback provider, or parallel Runtime driver. Full provider
 certification for Sandbox, MicroVM, and TEE remains open.
 
-`BX0.3` remains in progress for Secret materialization, Artifact/Volume/tmpfs
-mounts, Task outputs, registry credentials, allocation evidence, and complete
-Sandbox/MicroVM/TEE isolation certification.
+The fourth `BX0.3` slice pins A3S Box
+`211b6bdaa572ba0ad5d55c7988a5b4a72ca36251`, merged through
+[Box PR #187](https://github.com/A3S-Lab/Box/pull/187) after the
+[provider certification](https://github.com/A3S-Lab/Box/actions/runs/30506005198).
+Cloud contributes one
+adapter from the existing authenticated node Secret channel to Box's typed
+materialization port. Box owns process-create environment and read-only file
+projection, restart rematerialization, log redaction, transient registry
+authentication, and cleanup. The real consumer gate proves exact Secret
+authorization, `0400` file projection, driver reconstruction, restart refresh,
+redacted stdout/stderr, one uncached authenticated private-registry pull,
+credential-free cache reuse, plaintext exclusion, and empty tmpfs/provider
+state after removal. No second Secret channel, credential store, Runtime
+driver, scheduler, queue, or lifecycle store is introduced.
+
+`BX0.3` remains in progress for Artifact/Volume/tmpfs mounts, Task outputs,
+allocation evidence, and complete Sandbox/MicroVM/TEE isolation certification.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and

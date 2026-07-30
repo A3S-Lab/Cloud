@@ -686,13 +686,13 @@ tables directly. Audit records are append-only and separate from event delivery.
   scope and active Secret/version state before decryption; the artifact path
   additionally revalidates project and environment scope.
 - Node material responses are short-lived and non-cacheable. Environment
-  material exists only at Docker container creation; file material is written
-  atomically beneath a Linux tmpfs root, bind-mounted read-only at the requested
-  path, and removed when the provider resource is retired. Registry credential
-  material exists only while the control plane answers a manifest
-  authentication challenge or Docker constructs an authenticated pull for the
-  exact artifact registry, and is never projected into the container or
-  durable workflow state.
+  material exists only at the A3S Box process-create boundary; file material is
+  written atomically beneath the configured Linux tmpfs root, bind-mounted
+  read-only at the requested path, and removed when the provider generation is
+  retired. Registry credential material exists only while the authorized
+  artifact path resolves an authentication challenge or Box performs the exact
+  authenticated OCI pull, and is never projected into the workload, the Box
+  credential store, or durable workflow state.
 
 ### Workload log
 
@@ -759,7 +759,8 @@ tables directly. Audit records are append-only and separate from event delivery.
   read. An object that is absent or fails verification produces an ordered
   `missing` or `corrupt` gap; storage transport failure is not disguised as a
   gap.
-- Bound Secret material is resolved and redacted at the Docker log boundary.
+- Bound Secret material is reauthorized and redacted at the shared A3S Box
+  Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
 ### Managed database, volume, and backup
@@ -1135,7 +1136,7 @@ Gateway revision.
 | Artifact ingest attempt, immutable file manifest/digests, storage descriptor and consumed grant ID | PostgreSQL Artifacts tables |
 | Secret materialization grant identity, version, environment, attempt/Task/host/digest scope, expiry and revocation | PostgreSQL Secret tables; plaintext is process-create-only and Artifacts consumes the grant by ID |
 | Secret-rotation restart causality, derived deployment, and replay checkpoint | PostgreSQL rotation restart/reconciliation tables plus the committed outbox fact |
-| Transient Secret material | Authorized control-plane decryption and node-local Docker create boundary; file targets use Linux tmpfs only |
+| Transient Secret material | Authorized control-plane decryption and the node-local A3S Box process-create or pull boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation, with the pending upload governed by the shared typed outbound-batch/receipt primitive |
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
