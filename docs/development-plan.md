@@ -1606,14 +1606,21 @@ unavailable. As of 2026-07-30:
   concurrent active-policy insertion gap. Migration 056 binds each marker to
   its exact tenant, logical scope, receiving node, revision, command, and
   digest. Migration 057 corrects secondary-member scope binding and adds a
-  stable logical desired-state digest plus exact MCP route count. A registered
-  cursor-fair worker discovers scopes with active or previously published MCP
-  state, defers any physical pending publication, replans the complete scope,
-  rereads all ordinary Route inputs, and feeds only changed, due-retry,
-  displaced, or empty-removal candidates into the atomic stage. Physical
-  revision, command/certificate identity, ordinary acknowledgement binding,
-  and observation time cannot create churn. A successful zero-route marker
-  releases later ordinary-only changes back to their existing owner.
+  stable logical desired-state digest plus exact MCP route count. Migration 058
+  adds the canonical desired scope-set evidence and one mutable latest-MCP head
+  per physical node. A registered cursor-fair worker discovers logical scope
+  triggers with active or currently headed MCP state, deduplicates their
+  physical nodes, defers any physical pending publication, loads every active
+  scope for each node, and merges the independently planned scopes into one
+  complete node projection. It rereads all ordinary Route inputs and feeds only
+  changed, due-retry, displaced, or empty-removal candidates into the atomic
+  stage. The transaction locks and compares the complete active scope set and
+  all of its membership/policy authority before advancing the marker and head.
+  Physical revision, command/certificate identity, ordinary acknowledgement
+  binding, and observation time cannot create churn. An exact Applied
+  zero-route acknowledgement removes the mutable head while retaining
+  immutable history, so membership removal is cleaned up once and later
+  ordinary-only changes return to their existing owner.
 
   The separate bounded dispatch reconciler scans durable pending markers,
   idempotently dispatches the existing Fleet Gateway command, survives queue
@@ -1623,17 +1630,18 @@ unavailable. As of 2026-07-30:
   certificate cardinality, then atomically records Rejected or advances
   certificate readiness and installed scope on Applied. Focused tests now
   cover automatic no-op convergence, cursor fairness, pending deferral,
-  route-less expiry cleanup, terminal retry, displacement repair, stable
-  desired identity, dispatch failure/restart, replay, expiry, and clock
-  regression. A compiled PostgreSQL fixture additionally checks persisted
-  desired identity and automatic post-acknowledgement no-churn, together with
-  stale-policy rejection, transaction rollback when the final Outbox insert
-  fails, Fleet replay, certificate issuance, and exact Applied projection.
-  Node-wide aggregation for physical Gateways shared by active logical MCP
-  scopes, unified composition in every ordinary publication path, proactive
-  MCP-only certificate renewal, revoked-credential cleanup, public idempotent
-  one-time delivery/rotation, an executed real PostgreSQL gate, lifecycle
-  surfaces, audit, and joint real-process recovery remain `MCP0.3`; and
+  route-less expiry and membership-removal cleanup, terminal retry,
+  displacement repair, stable desired identity, two-scope physical-node
+  composition, one-publication node deduplication, dispatch failure/restart,
+  replay, expiry, and clock regression. A compiled PostgreSQL fixture
+  additionally checks persisted desired scope-set/head identity and automatic
+  post-acknowledgement no-churn, together with stale-policy rejection,
+  transaction rollback when the final Outbox insert fails, Fleet replay,
+  certificate issuance, and exact Applied projection. Unified composition in
+  every ordinary publication path, proactive MCP-only certificate renewal,
+  revoked-credential cleanup, public idempotent one-time delivery/rotation, an
+  executed real PostgreSQL gate, lifecycle surfaces, audit, and joint
+  real-process recovery remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps

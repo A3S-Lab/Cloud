@@ -65,6 +65,7 @@ impl McpGatewayIngressRoute {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpRouteProjectionVersion {
     route_id: RouteId,
+    gateway_scope_id: crate::modules::shared_kernel::domain::GatewayScopeId,
     policy_revision: u64,
     policy_digest: Sha256Digest,
     workload_id: WorkloadId,
@@ -77,6 +78,10 @@ pub struct McpRouteProjectionVersion {
 impl McpRouteProjectionVersion {
     pub const fn route_id(&self) -> RouteId {
         self.route_id
+    }
+
+    pub const fn gateway_scope_id(&self) -> crate::modules::shared_kernel::domain::GatewayScopeId {
+        self.gateway_scope_id
     }
 
     pub const fn policy_revision(&self) -> u64 {
@@ -303,6 +308,7 @@ impl McpGatewayProjectionSetPlanner {
             .iter()
             .map(|input| McpRouteProjectionVersion {
                 route_id: input.policy.spec().route_id,
+                gateway_scope_id: request.scope.id,
                 policy_revision: input.policy.policy_revision(),
                 policy_digest: input.policy.policy_digest().clone(),
                 workload_id: input.policy.spec().workload_id,
@@ -382,17 +388,18 @@ mod tests {
         RouteHostname, RoutePath, RoutePortName, RouteState,
     };
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
-        fixture, now, target,
+        fixture, now, target, Fixture,
     };
     use crate::modules::edge::infrastructure::{
         CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-        GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpRouteProjectionPlanner,
-        McpRouteTargetProjectionCompiler, StageMcpGatewaySnapshot,
+        GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpGatewayNodeProjectionAssembler,
+        McpGatewaySnapshotAnchor, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+        PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
         DomainClaimId, EnvironmentId, GatewayCertificateId, McpCredentialId, NodeCommandId,
-        OrganizationId, ProjectId, RouteId, WorkloadRevisionId,
+        OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use async_trait::async_trait;
     use chrono::Duration;
@@ -528,6 +535,18 @@ mod tests {
         .expect("snapshot compiler")
     }
 
+    fn node_projection(planned: PlannedMcpGatewayProjectionSet) -> PlannedMcpGatewayNodeProjection {
+        let anchor = McpGatewaySnapshotAnchor::from_scope(planned.scope());
+        McpGatewayNodeProjectionAssembler::default()
+            .assemble(
+                anchor,
+                planned.gateway_node_id(),
+                planned.observed_at(),
+                vec![planned],
+            )
+            .expect("node projection")
+    }
+
     #[tokio::test]
     async fn plans_the_complete_active_set_for_one_receiving_gateway() {
         let fixture = fixture();
@@ -591,7 +610,7 @@ mod tests {
                 physical_scope: GatewayScopeState::empty(node_id),
                 certificate_id: Some(GatewayCertificateId::new()),
                 active_routes: Vec::new(),
-                mcp: planned,
+                mcp: node_projection(planned),
             })
             .expect("complete MCP snapshot");
         let snapshot = compiled.snapshot();
@@ -631,6 +650,123 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn composes_two_logical_scopes_into_one_physical_node_snapshot() {
+        let first_fixture = fixture();
+        let mut second_spec = first_fixture.policy.spec().clone();
+        second_spec.route_id = RouteId::new();
+        second_spec.gateway_scope_id = crate::modules::shared_kernel::domain::GatewayScopeId::new();
+        second_spec.domain_claim_id = DomainClaimId::new();
+        second_spec.workload_id = WorkloadId::new();
+        second_spec.hostname =
+            RouteHostname::parse("second-mcp.example.com").expect("second hostname");
+        let mut second_revision = first_fixture.revision.clone();
+        second_revision.id = WorkloadRevisionId::new();
+        second_revision.workload_id = second_spec.workload_id;
+        second_revision.generation = 2;
+        let second_fixture = Fixture {
+            profile: first_fixture.profile.clone(),
+            policy: McpRoutePolicy::create(second_spec, &first_fixture.profile, now())
+                .expect("second policy"),
+            revision: second_revision,
+        };
+        let node_id = NodeId::new();
+        let first_scope = scope(&first_fixture, node_id);
+        let second_scope = scope(&second_fixture, node_id);
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&first_fixture))
+            .await
+            .expect("shared credential");
+        let first = planner(
+            vec![input(&first_fixture)],
+            Arc::new(CountingTargetReader {
+                target: Some(target(&first_fixture, node_id, 49152)),
+                calls: AtomicUsize::new(0),
+            }),
+            credentials.clone(),
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: first_scope.clone(),
+            gateway_node_id: node_id,
+            observed_at: now(),
+        })
+        .await
+        .expect("first scope projection");
+        let second = planner(
+            vec![input(&second_fixture)],
+            Arc::new(CountingTargetReader {
+                target: Some(target(&second_fixture, node_id, 49153)),
+                calls: AtomicUsize::new(0),
+            }),
+            credentials,
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: second_scope.clone(),
+            gateway_node_id: node_id,
+            observed_at: now(),
+        })
+        .await
+        .expect("second scope projection");
+        let anchor_scope = if first_scope.id < second_scope.id {
+            &first_scope
+        } else {
+            &second_scope
+        };
+        let planned = McpGatewayNodeProjectionAssembler::default()
+            .assemble(
+                McpGatewaySnapshotAnchor::from_scope(anchor_scope),
+                node_id,
+                now(),
+                vec![second, first],
+            )
+            .expect("node-wide projection");
+
+        assert_eq!(planned.scope_ids().len(), 2);
+        assert!(planned.scope_ids()[0] < planned.scope_ids()[1]);
+        assert_eq!(planned.route_versions().len(), 2);
+        assert_eq!(planned.ingress_routes().len(), 2);
+        let expected_scope_ids = planned.scope_ids().to_vec();
+        let projection = planned.projection().expect("combined MCP projection");
+        assert_eq!(projection.projection().routes.len(), 2);
+        assert_eq!(projection.projection().credentials.len(), 1);
+        let compiled = snapshot_compiler()
+            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                metadata: GatewaySnapshotMetadata::new(
+                    node_id,
+                    1,
+                    None,
+                    now(),
+                    projection.projection().expires_at,
+                ),
+                physical_scope: GatewayScopeState::empty(node_id),
+                certificate_id: Some(GatewayCertificateId::new()),
+                active_routes: Vec::new(),
+                mcp: planned,
+            })
+            .expect("node-wide complete snapshot");
+        assert_eq!(
+            compiled
+                .snapshot()
+                .acl
+                .matches("service = \"a3s-cloud-mcp-default-deny\"")
+                .count(),
+            2
+        );
+        let stage = StageMcpGatewaySnapshot::new(
+            compiled,
+            NodeCommandId::new(),
+            uuid::Uuid::now_v7(),
+            now() + Duration::minutes(5),
+        )
+        .expect("node-wide stage");
+        assert_eq!(stage.event().schema_version, 2);
+        assert_eq!(
+            stage.event().payload["desired_gateway_scope_ids"],
+            serde_json::to_value(expected_scope_ids).expect("scope IDs")
+        );
+    }
+
+    #[tokio::test]
     async fn represents_an_empty_active_set_without_resolving_runtime() {
         let fixture = fixture();
         let node_id = NodeId::new();
@@ -667,7 +803,7 @@ mod tests {
                 physical_scope: GatewayScopeState::empty(node_id),
                 certificate_id: None,
                 active_routes: Vec::new(),
-                mcp: planned,
+                mcp: node_projection(planned),
             })
             .expect("complete empty MCP snapshot");
         assert!(!compiled.snapshot().acl.contains("mcp {"));
@@ -758,7 +894,7 @@ mod tests {
                     route: ordinary,
                     domain_claim: ordinary_claim,
                 }],
-                mcp: planned,
+                mcp: node_projection(planned),
             })
             .expect("mixed complete snapshot");
 
@@ -896,7 +1032,7 @@ mod tests {
                     route: ordinary,
                     domain_claim,
                 }],
-                mcp: planned,
+                mcp: node_projection(planned),
             })
             .expect_err("overlapping ingress")
             .contains("PathPrefix"));

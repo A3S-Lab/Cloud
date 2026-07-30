@@ -4,9 +4,11 @@ use super::mcp_gateway_desired_state_reconciler::{
 use super::{
     CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, IMcpGatewayProjectionSetPlanner, IMcpGatewaySnapshotRepository,
-    McpGatewayDesiredStateReconciler, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
-    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
-    PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionAssembler,
+    McpGatewayReconciliationScope, McpGatewaySnapshotAnchor, McpGatewaySnapshotDispatchTarget,
+    McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
+    McpGatewaySnapshotStatus, PlanMcpGatewayProjectionSet, PlannedMcpGatewayNodeProjection,
+    PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::{
     GatewayPublication, GatewayPublicationState, GatewayScope, GatewayScopeState,
@@ -25,10 +27,11 @@ use uuid::Uuid;
 
 struct FakeDesiredStateRepository {
     scopes: Vec<GatewayScope>,
+    active_scopes: Vec<GatewayScope>,
     state: McpGatewaySnapshotReconciliationState,
     inputs: McpGatewaySnapshotInputs,
     state_reads: AtomicUsize,
-    state_scope_ids: Mutex<Vec<GatewayScopeId>>,
+    scan_scope_ids: Mutex<Vec<GatewayScopeId>>,
     input_reads: AtomicUsize,
     staged: Mutex<Vec<StageMcpGatewaySnapshot>>,
 }
@@ -47,15 +50,17 @@ impl FakeDesiredStateRepository {
         state: McpGatewaySnapshotReconciliationState,
         physical_scope: GatewayScopeState,
     ) -> Self {
+        let active_scopes = scopes.clone();
         Self {
             scopes,
+            active_scopes,
             state,
             inputs: McpGatewaySnapshotInputs {
                 physical_scope,
                 active_routes: Vec::new(),
             },
             state_reads: AtomicUsize::new(0),
-            state_scope_ids: Mutex::new(Vec::new()),
+            scan_scope_ids: Mutex::new(Vec::new()),
             input_reads: AtomicUsize::new(0),
             staged: Mutex::new(Vec::new()),
         }
@@ -73,27 +78,46 @@ impl IMcpGatewaySnapshotRepository for FakeDesiredStateRepository {
         _observed_at: DateTime<Utc>,
         after_gateway_scope_id: Option<GatewayScopeId>,
         limit: usize,
-    ) -> Result<Vec<GatewayScope>, RepositoryError> {
-        Ok(self
+    ) -> Result<Vec<McpGatewayReconciliationScope>, RepositoryError> {
+        let scopes = self
             .scopes
             .iter()
             .filter(|scope| after_gateway_scope_id.is_none_or(|cursor| scope.id > cursor))
             .take(limit)
             .cloned()
+            .collect::<Vec<_>>();
+        self.scan_scope_ids
+            .lock()
+            .expect("scan scope IDs")
+            .extend(scopes.iter().map(|scope| scope.id));
+        Ok(scopes
+            .into_iter()
+            .map(|scope| McpGatewayReconciliationScope {
+                node_ids: scope.member_node_ids.clone(),
+                scope,
+            })
             .collect())
     }
 
     async fn mcp_gateway_snapshot_reconciliation_state(
         &self,
-        gateway_scope_id: GatewayScopeId,
         _node_id: NodeId,
     ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError> {
         self.state_reads.fetch_add(1, Ordering::SeqCst);
-        self.state_scope_ids
-            .lock()
-            .expect("state scope IDs")
-            .push(gateway_scope_id);
         Ok(self.state.clone())
+    }
+
+    async fn mcp_gateway_active_scopes(
+        &self,
+        node_id: NodeId,
+        _observed_at: DateTime<Utc>,
+    ) -> Result<Vec<GatewayScope>, RepositoryError> {
+        Ok(self
+            .active_scopes
+            .iter()
+            .filter(|scope| scope.contains_member(node_id))
+            .cloned()
+            .collect())
     }
 
     async fn mcp_gateway_snapshot_inputs(
@@ -179,7 +203,7 @@ async fn first_empty_desired_state_does_not_claim_the_ordinary_snapshot_stream()
         .expect("empty desired-state reconciliation");
 
     assert_eq!(report.scopes, 1);
-    assert_eq!(report.gateway_members, 1);
+    assert_eq!(report.gateway_nodes, 1);
     assert_eq!(report.unchanged_snapshots, 1);
     assert_eq!(report.staged_snapshots, 0);
     assert!(report.failures.is_empty());
@@ -189,11 +213,11 @@ async fn first_empty_desired_state_does_not_claim_the_ordinary_snapshot_stream()
 }
 
 #[tokio::test]
-async fn changed_empty_desired_state_stages_one_route_less_removal_snapshot() {
+async fn removed_scope_membership_stages_one_route_less_node_cleanup_snapshot() {
     let now = Utc::now();
     let scope = scope(now);
     let node_id = scope.node_id;
-    let repository = Arc::new(FakeDesiredStateRepository::new(
+    let mut repository = FakeDesiredStateRepository::new(
         scope.clone(),
         McpGatewaySnapshotReconciliationState {
             pending_publication: false,
@@ -212,9 +236,11 @@ async fn changed_empty_desired_state_stages_one_route_less_removal_snapshot() {
             installed_revision: Some(1),
             aggregate_version: 1,
         },
-    ));
+    );
+    repository.active_scopes.clear();
+    let repository = Arc::new(repository);
     let planner = Arc::new(EmptyProjectionPlanner::default());
-    let report = reconciler(repository.clone(), planner)
+    let report = reconciler(repository.clone(), planner.clone())
         .run_once(now)
         .await
         .expect("empty removal reconciliation");
@@ -227,8 +253,64 @@ async fn changed_empty_desired_state_stages_one_route_less_removal_snapshot() {
     assert_eq!(staged[0].publication().revision, 2);
     assert_eq!(staged[0].publication().expected_revision, Some(1));
     assert!(staged[0].candidate().mcp().projection().is_none());
+    assert!(staged[0].candidate().mcp().scope_ids().is_empty());
     assert!(staged[0].certificate().is_none());
     assert!(!staged[0].publication().acl.contains("\nmcp {\n"));
+    assert_eq!(planner.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn multiple_scope_triggers_reconcile_one_physical_node_only_once() {
+    let now = Utc::now();
+    let node_id = NodeId::new();
+    let first = scope_for_node(now, node_id);
+    let second = GatewayScope::create(
+        GatewayScopeId::new(),
+        first.organization_id,
+        first.project_id,
+        first.environment_id,
+        node_id,
+        now,
+    )
+    .expect("second scope");
+    let mut scopes = vec![first.clone(), second];
+    scopes.sort_by_key(|scope| scope.id);
+    let mut repository = FakeDesiredStateRepository::with_scopes(
+        scopes,
+        McpGatewaySnapshotReconciliationState {
+            pending_publication: false,
+            latest_mcp_snapshot: Some(status(
+                &first,
+                digest('a'),
+                GatewayPublicationState::Applied,
+                1,
+                now - ChronoDuration::minutes(2),
+                1,
+            )),
+        },
+        GatewayScopeState {
+            node_id,
+            last_issued_revision: 1,
+            installed_revision: Some(1),
+            aggregate_version: 1,
+        },
+    );
+    repository.active_scopes.clear();
+    let repository = Arc::new(repository);
+    let planner = Arc::new(EmptyProjectionPlanner::default());
+
+    let report = reconciler(repository.clone(), planner.clone())
+        .run_once(now)
+        .await
+        .expect("node-wide reconciliation");
+
+    assert_eq!(report.scopes, 2);
+    assert_eq!(report.gateway_nodes, 1);
+    assert_eq!(report.staged_snapshots, 1);
+    assert!(report.failures.is_empty());
+    assert_eq!(repository.state_reads.load(Ordering::SeqCst), 1);
+    assert_eq!(planner.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(repository.staged().len(), 1);
 }
 
 #[tokio::test]
@@ -262,7 +344,17 @@ async fn any_pending_physical_publication_defers_planning_and_staging() {
 async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
     let now = Utc::now();
     let node_id = NodeId::new();
-    let mut scopes = vec![scope_for_node(now, node_id), scope_for_node(now, node_id)];
+    let first = scope_for_node(now, node_id);
+    let second = GatewayScope::create(
+        GatewayScopeId::new(),
+        first.organization_id,
+        first.project_id,
+        first.environment_id,
+        node_id,
+        now,
+    )
+    .expect("second Gateway scope");
+    let mut scopes = vec![first, second];
     scopes.sort_by_key(|scope| scope.id);
     let expected = vec![scopes[0].id, scopes[1].id, scopes[0].id];
     let repository = Arc::new(FakeDesiredStateRepository::with_scopes(
@@ -295,7 +387,7 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         assert!(report.failures.is_empty());
     }
     assert_eq!(
-        *repository.state_scope_ids.lock().expect("state scope IDs"),
+        *repository.scan_scope_ids.lock().expect("scan scope IDs"),
         expected
     );
 }
@@ -318,8 +410,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             physical_scope: GatewayScopeState::empty(node_id),
             certificate_id: None,
             active_routes: Vec::new(),
-            mcp: PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, now)
-                .expect("first empty projection"),
+            mcp: empty_node_projection(scope.clone(), node_id, now),
         })
         .expect("first complete snapshot");
     let second = compiler()
@@ -339,8 +430,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             },
             certificate_id: None,
             active_routes: Vec::new(),
-            mcp: PlannedMcpGatewayProjectionSet::empty(scope, node_id, later)
-                .expect("second empty projection"),
+            mcp: empty_node_projection(scope, node_id, later),
         })
         .expect("second complete snapshot");
 
@@ -349,6 +439,60 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
         first.snapshot().snapshot_digest,
         second.snapshot().snapshot_digest
     );
+}
+
+#[test]
+fn empty_node_desired_digest_excludes_the_historical_scope_anchor() {
+    let now = canonical_timestamp(Utc::now());
+    let later = now + ChronoDuration::seconds(30);
+    let node_id = NodeId::new();
+    let first_scope = scope_for_node(now, node_id);
+    let second_scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        first_scope.organization_id,
+        first_scope.project_id,
+        first_scope.environment_id,
+        node_id,
+        now,
+    )
+    .expect("second historical anchor");
+    let first = compiler()
+        .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+            metadata: GatewaySnapshotMetadata::new(
+                node_id,
+                1,
+                None,
+                now,
+                now + ChronoDuration::hours(1),
+            ),
+            physical_scope: GatewayScopeState::empty(node_id),
+            certificate_id: None,
+            active_routes: Vec::new(),
+            mcp: empty_node_cleanup_projection(&first_scope, node_id, now),
+        })
+        .expect("first cleanup snapshot");
+    let second = compiler()
+        .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+            metadata: GatewaySnapshotMetadata::new(
+                node_id,
+                2,
+                Some(1),
+                later,
+                later + ChronoDuration::hours(1),
+            ),
+            physical_scope: GatewayScopeState {
+                node_id,
+                last_issued_revision: 1,
+                installed_revision: Some(1),
+                aggregate_version: 1,
+            },
+            certificate_id: None,
+            active_routes: Vec::new(),
+            mcp: empty_node_cleanup_projection(&second_scope, node_id, later),
+        })
+        .expect("second cleanup snapshot");
+
+    assert_eq!(first.desired_state_digest(), second.desired_state_digest());
 }
 
 #[test]
@@ -511,6 +655,34 @@ fn reconciler(
     .expect("MCP Gateway desired-state reconciler")
 }
 
+fn empty_node_projection(
+    scope: GatewayScope,
+    node_id: NodeId,
+    observed_at: DateTime<Utc>,
+) -> PlannedMcpGatewayNodeProjection {
+    let anchor = McpGatewaySnapshotAnchor::from_scope(&scope);
+    let set = PlannedMcpGatewayProjectionSet::empty(scope, node_id, observed_at)
+        .expect("empty scope projection");
+    McpGatewayNodeProjectionAssembler::default()
+        .assemble(anchor, node_id, observed_at, vec![set])
+        .expect("empty node projection")
+}
+
+fn empty_node_cleanup_projection(
+    anchor_scope: &GatewayScope,
+    node_id: NodeId,
+    observed_at: DateTime<Utc>,
+) -> PlannedMcpGatewayNodeProjection {
+    McpGatewayNodeProjectionAssembler::default()
+        .assemble(
+            McpGatewaySnapshotAnchor::from_scope(anchor_scope),
+            node_id,
+            observed_at,
+            Vec::new(),
+        )
+        .expect("empty cleanup node projection")
+}
+
 fn compiler() -> GatewaySnapshotCompiler {
     GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: "0.0.0.0:8443".into(),
@@ -603,6 +775,9 @@ fn status(
         environment_id: scope.environment_id,
         gateway_scope_id: scope.id,
         desired_state_digest,
+        desired_gateway_scope_ids: (mcp_route_count > 0)
+            .then_some(vec![scope.id])
+            .unwrap_or_default(),
         mcp_route_count,
         publication,
     };

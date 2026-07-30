@@ -519,6 +519,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/057_mcp_gateway_desired_state.sql"
             )),
         ),
+        Migration::new(
+            "058",
+            "hosted MCP Gateway node snapshot composition",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/058_mcp_gateway_node_snapshots.sql"
+            )),
+        ),
     ]
 }
 

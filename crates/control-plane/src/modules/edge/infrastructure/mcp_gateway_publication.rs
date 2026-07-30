@@ -5,6 +5,7 @@ use crate::modules::edge::domain::{
 };
 use crate::modules::edge::infrastructure::CompiledMcpGatewaySnapshot;
 use crate::modules::edge::infrastructure::GatewaySnapshotRouteInput;
+use crate::modules::edge::infrastructure::McpGatewaySnapshotAnchor;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId, NodeId,
     OrganizationId, ProjectId, RepositoryError, RouteId,
@@ -44,20 +45,67 @@ pub struct McpGatewaySnapshotStatus {
     pub environment_id: EnvironmentId,
     pub gateway_scope_id: GatewayScopeId,
     pub desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
+    pub desired_gateway_scope_ids: Vec<GatewayScopeId>,
     pub mcp_route_count: u32,
     pub publication: GatewayPublication,
 }
 
 impl McpGatewaySnapshotStatus {
+    pub const fn anchor(&self) -> McpGatewaySnapshotAnchor {
+        McpGatewaySnapshotAnchor {
+            organization_id: self.organization_id,
+            project_id: self.project_id,
+            environment_id: self.environment_id,
+            gateway_scope_id: self.gateway_scope_id,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         self.publication.snapshot()?;
-        if self.organization_id.as_uuid().is_nil()
-            || self.project_id.as_uuid().is_nil()
-            || self.environment_id.as_uuid().is_nil()
-            || self.gateway_scope_id.as_uuid().is_nil()
+        self.anchor().validate()?;
+        if self
+            .desired_gateway_scope_ids
+            .iter()
+            .any(|scope_id| scope_id.as_uuid().is_nil())
+            || self
+                .desired_gateway_scope_ids
+                .windows(2)
+                .any(|scope_ids| scope_ids[0] >= scope_ids[1])
+            || self
+                .desired_gateway_scope_ids
+                .first()
+                .is_some_and(|scope_id| *scope_id != self.gateway_scope_id)
+            || self.desired_gateway_scope_ids.len() > 1_000
+            || self.mcp_route_count > 0 && self.desired_gateway_scope_ids.is_empty()
             || self.mcp_route_count > 1_000
         {
             return Err("MCP Gateway snapshot status is inconsistent".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewayReconciliationScope {
+    pub scope: GatewayScope,
+    pub node_ids: Vec<NodeId>,
+}
+
+impl McpGatewayReconciliationScope {
+    pub fn validate(&self) -> Result<(), String> {
+        self.scope.validate()?;
+        if self.node_ids.is_empty()
+            || self.node_ids.len() > 10_000
+            || self
+                .node_ids
+                .iter()
+                .any(|node_id| node_id.as_uuid().is_nil())
+            || self
+                .node_ids
+                .windows(2)
+                .any(|node_ids| node_ids[0] >= node_ids[1])
+        {
+            return Err("MCP Gateway reconciliation scope targets are invalid".into());
         }
         Ok(())
     }
@@ -151,7 +199,7 @@ impl StageMcpGatewaySnapshot {
             .map(|request| {
                 GatewayCertificate::provision(
                     GatewayCertificateId::from_uuid(request.certificate_id),
-                    candidate.mcp().scope().organization_id,
+                    candidate.mcp().organization_id(),
                     publication.node_id,
                     domain_claim_ids.clone(),
                     publication.revision,
@@ -168,7 +216,11 @@ impl StageMcpGatewaySnapshot {
             .checked_add(1)
             .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
         let event = McpGatewaySnapshotStaged::envelope(
-            candidate.mcp().scope(),
+            candidate.mcp().anchor().organization_id,
+            candidate.mcp().anchor().project_id,
+            candidate.mcp().anchor().environment_id,
+            candidate.mcp().anchor().gateway_scope_id,
+            candidate.mcp().scope_ids().to_vec(),
             next_physical_scope_version,
             &publication,
             ordinary_route_ids(&candidate),
@@ -222,16 +274,17 @@ impl StageMcpGatewaySnapshot {
             || self.publication.node_id != self.candidate.physical_scope().node_id
             || self.publication.command_issued_at != self.candidate.mcp().observed_at()
             || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
-            || self.event.schema_version != 1
-            || self.event.organization_id != self.candidate.mcp().scope().organization_id.as_uuid()
+            || self.event.schema_version != 2
+            || self.event.organization_id != self.candidate.mcp().organization_id().as_uuid()
             || self.event.aggregate_id != self.publication.node_id.as_uuid()
             || self.event.aggregate_version != expected_scope_version
             || self.event.occurred_at != self.publication.command_issued_at
             || self.event.correlation_id != self.publication.command_correlation_id
-            || payload.organization_id != self.candidate.mcp().scope().organization_id
-            || payload.project_id != self.candidate.mcp().scope().project_id
-            || payload.environment_id != self.candidate.mcp().scope().environment_id
-            || payload.gateway_scope_id != self.candidate.mcp().scope().id
+            || payload.organization_id != self.candidate.mcp().anchor().organization_id
+            || payload.project_id != self.candidate.mcp().anchor().project_id
+            || payload.environment_id != self.candidate.mcp().anchor().environment_id
+            || payload.gateway_scope_id != self.candidate.mcp().anchor().gateway_scope_id
+            || payload.desired_gateway_scope_ids != self.candidate.mcp().scope_ids()
             || payload.node_id != self.publication.node_id
             || payload.gateway_revision != self.publication.revision
             || payload.gateway_command_id != self.publication.command_id
@@ -248,8 +301,7 @@ impl StageMcpGatewaySnapshot {
         ) {
             (Some(request), Some(certificate))
                 if certificate.id.as_uuid() == request.certificate_id
-                    && certificate.organization_id
-                        == self.candidate.mcp().scope().organization_id
+                    && certificate.organization_id == self.candidate.mcp().organization_id()
                     && certificate.node_id == self.publication.node_id
                     && certificate.domain_claim_ids == domain_claim_ids
                     && certificate.gateway_revision == self.publication.revision
@@ -297,13 +349,18 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
         observed_at: DateTime<Utc>,
         after_gateway_scope_id: Option<GatewayScopeId>,
         limit: usize,
-    ) -> Result<Vec<GatewayScope>, RepositoryError>;
+    ) -> Result<Vec<McpGatewayReconciliationScope>, RepositoryError>;
 
     async fn mcp_gateway_snapshot_reconciliation_state(
         &self,
-        gateway_scope_id: GatewayScopeId,
         node_id: NodeId,
     ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError>;
+
+    async fn mcp_gateway_active_scopes(
+        &self,
+        node_id: NodeId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<Vec<GatewayScope>, RepositoryError>;
 
     async fn mcp_gateway_snapshot_inputs(
         &self,

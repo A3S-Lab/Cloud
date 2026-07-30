@@ -22,9 +22,29 @@ impl McpGatewayProjectionAssembler {
         fragments: Vec<PlannedMcpGatewayProjection>,
         observed_at: DateTime<Utc>,
     ) -> Result<PlannedMcpGatewayProjection, String> {
+        self.assemble_with_mode(fragments, observed_at, true)
+    }
+
+    /// Merges complete per-scope projections into one complete physical-node
+    /// projection. Unlike [`Self::assemble`], each input may contain multiple
+    /// routes, but every identity and authority definition must still agree.
+    pub fn assemble_complete(
+        &self,
+        fragments: Vec<PlannedMcpGatewayProjection>,
+        observed_at: DateTime<Utc>,
+    ) -> Result<PlannedMcpGatewayProjection, String> {
+        self.assemble_with_mode(fragments, observed_at, false)
+    }
+
+    fn assemble_with_mode(
+        &self,
+        fragments: Vec<PlannedMcpGatewayProjection>,
+        observed_at: DateTime<Utc>,
+        require_one_route_fragment: bool,
+    ) -> Result<PlannedMcpGatewayProjection, String> {
         if fragments.is_empty() || fragments.len() > 1_000 {
             return Err(
-                "MCP Gateway assembly requires between one and 1000 one-route fragments".into(),
+                "MCP Gateway assembly requires between one and 1000 bounded fragments".into(),
             );
         }
         let observed_at = canonical_timestamp(observed_at);
@@ -45,7 +65,9 @@ impl McpGatewayProjectionAssembler {
             }
             let (_, projection, fragment_credential_versions) = fragment.into_parts();
             projection.validate(observed_at)?;
-            validate_one_route_fragment(&projection)?;
+            if require_one_route_fragment {
+                validate_one_route_fragment(&projection)?;
+            }
             expires_at = Some(
                 expires_at
                     .map(|current| current.min(projection.expires_at))

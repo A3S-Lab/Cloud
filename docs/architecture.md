@@ -1004,16 +1004,33 @@ safe repair publication instead of assuming their logical contents.
 The registered `McpGatewayDesiredStateReconciler` scans logical scopes that
 have an unexpired policy or prior MCP publication. Its ordered UUID cursor
 rotates a bounded batch so an old unchanged scope cannot starve later scopes.
-For every current member it first reads physical pending-publication and
-latest-marker state. Any pending complete snapshot defers planning. Otherwise the worker
-materializes the complete scope projection, reads the complete physical
-ordinary Route set, compiles the next candidate, and asks the same atomic
-staging repository to commit it. A first empty set is a no-op. Changed desired
-state, transition from non-empty to empty, or a non-empty applied snapshot
-displaced by another physical revision stages a replacement. Equal applied
-state is unchanged; equal rejected or unavailable state retries only after a
-bounded delay. Dispatch remains the separate durable marker worker, preserving
-commit-before-send and idempotent Fleet replay.
+Migration 058 makes those scopes triggers rather than publication owners. Each
+immutable marker records the canonical desired logical-scope ID set, while
+`mcp_gateway_snapshot_heads` points from one physical node to exactly one
+latest MCP-owned complete snapshot. The worker unions and deduplicates target
+nodes across the scanned triggers, including a head whose node is no longer a
+current member. For each node it first reads physical pending-publication and
+head state. Any pending complete snapshot defers planning. Otherwise it loads
+every active MCP scope containing the node, plans each scope independently,
+and merges the complete projections into one node-bound projection. Cross-
+scope route, router, ingress, profile, credential, Runtime-observation, and
+tenant conflicts fail closed.
+
+The compiler reads the complete physical ordinary Route set and produces one
+candidate for all active scopes. Its v2 desired digest binds the ordered scope
+set and per-route scope identity but excludes the historical publication
+anchor. Staging locks every candidate scope and membership in canonical order,
+rechecks the node's complete active scope set, then locks all policy, ordinary
+Route, Claim, Workload, credential, and physical-scope versions before
+advancing the immutable marker and mutable head in the same transaction. A
+first empty set is a no-op. Changed desired state, transition from non-empty to
+empty, or a non-empty applied snapshot displaced by another physical revision
+stages a replacement. Equal applied state is unchanged; equal rejected or
+unavailable state retries only after a bounded delay. An exact Applied
+zero-route acknowledgement deletes only the mutable head, leaving immutable
+history for replay while ending future historical scans. Dispatch remains the
+separate durable marker worker, preserving commit-before-send and idempotent
+Fleet replay.
 
 Migration 057 also replaces the original marker-to-primary-scope foreign key
 with the logical scope's exact tenant boundary. Physical Node and publication
@@ -1022,12 +1039,10 @@ under the staging transaction's ordered membership locks. Historical
 publication evidence therefore neither rejects secondary members nor blocks a
 later membership change.
 
-Node-wide aggregation for a physical Gateway shared by multiple active
-logical MCP scopes, unified desired-state composition by every ordinary Route
-publication path, proactive MCP-only certificate renewal, revoked-credential
-cleanup, public lifecycle surfaces, audit, an executed PostgreSQL gate, and
-joint real-process recovery remain required before this path can close
-`MCP0.3`.
+Unified desired-state composition by every ordinary Route publication path,
+proactive MCP-only certificate renewal, revoked-credential cleanup, public
+lifecycle surfaces, audit, an executed PostgreSQL gate, and joint real-process
+recovery remain required before this path can close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

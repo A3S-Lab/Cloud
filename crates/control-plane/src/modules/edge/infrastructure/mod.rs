@@ -14,6 +14,7 @@ mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 mod mcp_credential_issuer;
 mod mcp_gateway_desired_state_reconciler;
+mod mcp_gateway_node_projection;
 mod mcp_gateway_projection_assembler;
 mod mcp_gateway_projection_compiler;
 mod mcp_gateway_projection_planner;
@@ -88,6 +89,9 @@ pub use mcp_gateway_desired_state_reconciler::{
     McpGatewayDesiredStateReconciler, McpGatewayDesiredStateReconciliationFailure,
     McpGatewayDesiredStateReconciliationReport,
 };
+pub use mcp_gateway_node_projection::{
+    McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor, PlannedMcpGatewayNodeProjection,
+};
 pub use mcp_gateway_projection_assembler::McpGatewayProjectionAssembler;
 pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
@@ -100,9 +104,9 @@ pub use mcp_gateway_projection_set_planner::{
     McpRouteProjectionVersion, PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
 };
 pub use mcp_gateway_publication::{
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
-    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
-    StageMcpGatewaySnapshot,
+    IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
+    McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
+    McpGatewaySnapshotStatus, StageMcpGatewaySnapshot,
 };
 pub use mcp_gateway_snapshot_reconciler::{
     McpGatewaySnapshotReconciler, McpGatewaySnapshotReconciliationFailure,

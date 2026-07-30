@@ -784,26 +784,30 @@ projection, and Gateway request-path foundations are in development under
 evidence so restart scanning and acknowledgements never infer intent from an
 ephemeral event. Migration 057 adds a stable logical desired-state digest and
 MCP route-count evidence while correcting secondary-member scope binding.
-The registered desired-state worker rotates through relevant logical scopes,
-defers every physical node with a pending complete publication, replans the
-whole scope, composes current ordinary and MCP policy, and atomically stages
-only changed, failed-due, displaced, or empty-removal snapshots. Physical
-revision, command, certificate identity, and observation time do not cause
-digest churn; an applied zero-route marker releases ordinary-only changes back
-to the existing route path. Focused tests cover no-op convergence, bounded
-cursor fairness, pending deferral, terminal retry, displaced-state repair, and
-route-less policy-expiry cleanup. The PostgreSQL fixture also compiles an
+Migration 058 records the canonical desired logical-scope set on every marker
+and maintains one mutable latest-MCP head per physical Gateway while preserving
+immutable publication history. The registered desired-state worker rotates
+through logical-scope triggers, deduplicates their physical nodes, loads every
+active MCP scope for each node, plans them independently, and merges them into
+one complete node snapshot. Staging locks and compares the complete active
+scope set plus its membership, policies, ordinary routes, Claims, Workloads,
+credentials, and physical revision. A node removed from its last scope still
+receives one route-less cleanup snapshot; its exact Applied acknowledgement
+releases the head so historical markers do not cause permanent scans.
+Physical revision, command, certificate identity, and observation time do not
+cause digest churn. Focused tests cover two-scope composition, one-publication
+node deduplication, membership-removal cleanup, no-op convergence, bounded
+cursor fairness, pending deferral, terminal retry, and displaced-state repair.
+The PostgreSQL fixture also compiles stored scope-set/head evidence and an
 automatic post-acknowledgement no-op check, but no database URL is available
 in the default local gate.
 
-Node-wide aggregation when one physical Gateway participates in multiple
-active logical MCP scopes, unified composition by every ordinary publication
-path, proactive MCP-only certificate renewal, revoked-credential cleanup,
-public lifecycle surfaces, executed real PostgreSQL evidence for the new path,
-real Box hosting, and joint product conformance remain unavailable. Stateful
-resources remain `S0`; replicas and multi-node placement remain `H0`;
-accelerator and inference capabilities remain `I0`. These profiles do not
-create separate schedulers.
+Unified composition by every ordinary publication path, proactive MCP-only
+certificate renewal, revoked-credential cleanup, public lifecycle surfaces,
+executed real PostgreSQL evidence for the new path, real Box hosting, and joint
+product conformance remain unavailable. Stateful resources remain `S0`;
+replicas and multi-node placement remain `H0`; accelerator and inference
+capabilities remain `I0`. These profiles do not create separate schedulers.
 
 ## Delivery Model
 

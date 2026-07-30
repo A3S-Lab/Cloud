@@ -16,12 +16,13 @@ use a3s_cloud_control_plane::modules::edge::{
     GatewayPublicationState, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialRepository,
     IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
-    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
-    McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PlanMcpGatewayProjectionSet, PostgresEdgeRepository,
-    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
-    StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionAssembler,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotAnchor, McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    PlanMcpGatewayProjectionSet, PostgresEdgeRepository, ResolvedRouteTarget,
+    ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget, StageMcpGatewaySnapshot,
+    TransitionDomainClaim, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -639,6 +640,17 @@ pub async fn exercise(
         stage_artifact_counts(executor, &current_stage).await?,
         (0, 0, 0, 0)
     );
+    assert_eq!(
+        Database::new(PostgresDialect, executor.clone())
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from mcp_gateway_snapshot_heads where node_id = ",
+                )
+                .bind(scope.node_id.as_uuid()),
+            )
+            .await?,
+        0
+    );
 
     let expected_publication = current_stage.publication().clone();
     let expected_certificate = current_stage
@@ -674,8 +686,8 @@ pub async fn exercise(
     );
     let stored_marker = Database::new(PostgresDialect, executor.clone())
         .fetch_one_as(
-            sql_query::<(String, u32)>(
-                "select desired_state_digest, mcp_route_count from mcp_gateway_snapshot_publications where gateway_command_id = ",
+            sql_query::<(String, serde_json::Value, u32)>(
+                "select desired_state_digest, desired_gateway_scope_ids, mcp_route_count from mcp_gateway_snapshot_publications where gateway_command_id = ",
             )
             .bind(current_stage.publication().command_id.as_uuid()),
         )
@@ -688,8 +700,20 @@ pub async fn exercise(
                 .desired_state_digest()
                 .as_str()
                 .to_owned(),
+            serde_json::json!([scope.id.as_uuid()]),
             u32::try_from(current_stage.candidate().mcp().route_versions().len())?,
         )
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<u64>(
+                    "select gateway_revision from mcp_gateway_snapshot_heads where node_id = ",
+                )
+                .bind(scope.node_id.as_uuid()),
+            )
+            .await?,
+        expected_publication.revision
     );
 
     let snapshot_repository: Arc<dyn IMcpGatewaySnapshotRepository> = Arc::new(edge.clone());
@@ -979,6 +1003,12 @@ async fn plan_gateway_snapshot(
         .ok_or("MCP PostgreSQL fixture planned no active route")?
         .projection()
         .expires_at;
+    let planned = McpGatewayNodeProjectionAssembler::default().assemble(
+        McpGatewaySnapshotAnchor::from_scope(scope),
+        scope.node_id,
+        observed_at,
+        vec![planned],
+    )?;
     let physical_scope = edge.gateway_scope(scope.node_id).await?;
     let mut active_routes = Vec::new();
     for route in edge.active_routes(scope.node_id).await? {

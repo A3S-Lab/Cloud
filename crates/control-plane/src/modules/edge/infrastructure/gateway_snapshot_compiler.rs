@@ -2,10 +2,11 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::edge::infrastructure::{
-    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedMcpGatewayProjectionSet,
+    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedMcpGatewayNodeProjection,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, NodeId,
+    OrganizationId, ProjectId, RouteId,
 };
 use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot, McpGatewayProjection};
 use chrono::{DateTime, Utc};
@@ -46,12 +47,15 @@ pub struct CompileMcpGatewaySnapshot {
     pub physical_scope: GatewayScopeState,
     pub certificate_id: Option<GatewayCertificateId>,
     pub active_routes: Vec<GatewaySnapshotRouteInput>,
-    pub mcp: PlannedMcpGatewayProjectionSet,
+    pub mcp: PlannedMcpGatewayNodeProjection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GatewayDomainClaimVersion {
     domain_claim_id: DomainClaimId,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
     aggregate_version: u64,
 }
 
@@ -63,6 +67,18 @@ impl GatewayDomainClaimVersion {
     pub const fn aggregate_version(self) -> u64 {
         self.aggregate_version
     }
+
+    pub const fn organization_id(self) -> OrganizationId {
+        self.organization_id
+    }
+
+    pub const fn project_id(self) -> ProjectId {
+        self.project_id
+    }
+
+    pub const fn environment_id(self) -> EnvironmentId {
+        self.environment_id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +88,7 @@ pub struct CompiledMcpGatewaySnapshot {
     physical_scope: GatewayScopeState,
     active_route_versions: Vec<GatewayRouteVersion>,
     domain_claim_versions: Vec<GatewayDomainClaimVersion>,
-    mcp: PlannedMcpGatewayProjectionSet,
+    mcp: PlannedMcpGatewayNodeProjection,
 }
 
 impl CompiledMcpGatewaySnapshot {
@@ -98,7 +114,7 @@ impl CompiledMcpGatewaySnapshot {
         &self.domain_claim_versions
     }
 
-    pub const fn mcp(&self) -> &PlannedMcpGatewayProjectionSet {
+    pub const fn mcp(&self) -> &PlannedMcpGatewayNodeProjection {
         &self.mcp
     }
 }
@@ -171,7 +187,7 @@ impl GatewaySnapshotCompiler {
             active_routes,
             mcp,
         } = request;
-        mcp.scope().validate()?;
+        mcp.anchor().validate()?;
         let issued_at = canonical_timestamp(metadata.issued_at);
         let expires_at = canonical_timestamp(metadata.expires_at);
         if physical_scope.node_id.as_uuid().is_nil()
@@ -188,7 +204,6 @@ impl GatewaySnapshotCompiler {
             || mcp.observed_at() != issued_at
             || metadata.node_id != physical_scope.node_id
             || metadata.node_id != mcp.gateway_node_id()
-            || !mcp.scope().contains_member(metadata.node_id)
             || metadata.revision != physical_scope.next_revision()?
             || metadata.expected_revision != physical_scope.installed_revision
         {
@@ -200,12 +215,24 @@ impl GatewaySnapshotCompiler {
 
         let mut ownership = BTreeSet::new();
         let mut route_versions = BTreeMap::<RouteId, GatewayRouteVersion>::new();
-        let mut claim_authority =
-            BTreeMap::<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>::new(
-            );
+        let mut claim_authority = BTreeMap::<
+            DomainClaimId,
+            (
+                OrganizationId,
+                ProjectId,
+                EnvironmentId,
+                u64,
+                crate::modules::edge::domain::DomainNamePattern,
+            ),
+        >::new();
         let mut routes = Vec::with_capacity(active_routes.len());
         for input in active_routes {
             validate_active_route_authority(&input, metadata.node_id, issued_at)?;
+            if input.route.organization_id != mcp.organization_id() {
+                return Err(
+                    "complete Gateway snapshot crosses the physical node organization".into(),
+                );
+            }
             let route = input.route;
             let domain_claim = input.domain_claim;
             if !ownership.insert((
@@ -223,6 +250,9 @@ impl GatewaySnapshotCompiler {
             insert_claim_authority(
                 &mut claim_authority,
                 domain_claim.id,
+                domain_claim.organization_id,
+                domain_claim.project_id,
+                domain_claim.environment_id,
                 domain_claim.aggregate_version,
                 domain_claim.pattern,
             )?;
@@ -261,9 +291,15 @@ impl GatewaySnapshotCompiler {
                     "MCP Gateway ingress and route version reference different DomainClaims".into(),
                 );
             }
+            let scope = mcp.scope(version.gateway_scope_id()).ok_or_else(|| {
+                "MCP Gateway route evidence references an inactive logical scope".to_string()
+            })?;
             insert_claim_authority(
                 &mut claim_authority,
                 ingress.domain_claim_id(),
+                scope.organization_id,
+                scope.project_id,
+                scope.environment_id,
                 version.domain_claim_aggregate_version(),
                 ingress.domain_pattern().clone(),
             )?;
@@ -306,8 +342,14 @@ impl GatewaySnapshotCompiler {
             domain_claim_versions: claim_authority
                 .into_iter()
                 .map(
-                    |(domain_claim_id, (aggregate_version, _))| GatewayDomainClaimVersion {
+                    |(
                         domain_claim_id,
+                        (organization_id, project_id, environment_id, aggregate_version, _),
+                    )| GatewayDomainClaimVersion {
+                        domain_claim_id,
+                        organization_id,
+                        project_id,
+                        environment_id,
                         aggregate_version,
                     },
                 )
@@ -531,8 +573,17 @@ impl GatewaySnapshotCompiler {
 fn desired_state_digest(
     config: &GatewaySnapshotCompilerConfig,
     routes: &[Route],
-    claims: &BTreeMap<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>,
-    mcp: &PlannedMcpGatewayProjectionSet,
+    claims: &BTreeMap<
+        DomainClaimId,
+        (
+            OrganizationId,
+            ProjectId,
+            EnvironmentId,
+            u64,
+            crate::modules::edge::domain::DomainNamePattern,
+        ),
+    >,
+    mcp: &PlannedMcpGatewayNodeProjection,
 ) -> Result<crate::modules::shared_kernel::domain::Sha256Digest, String> {
     let mut routes = routes.iter().collect::<Vec<_>>();
     routes.sort_by_key(|route| route.id);
@@ -561,13 +612,21 @@ fn desired_state_digest(
         .collect::<Vec<_>>();
     let claim_versions = claims
         .iter()
-        .map(|(claim_id, (aggregate_version, pattern))| {
-            json!({
-                "domain_claim_id": claim_id,
-                "aggregate_version": aggregate_version,
-                "pattern": pattern,
-            })
-        })
+        .map(
+            |(
+                claim_id,
+                (organization_id, project_id, environment_id, aggregate_version, pattern),
+            )| {
+                json!({
+                    "domain_claim_id": claim_id,
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "environment_id": environment_id,
+                    "aggregate_version": aggregate_version,
+                    "pattern": pattern,
+                })
+            },
+        )
         .collect::<Vec<_>>();
     let mut route_versions = mcp.route_versions().iter().collect::<Vec<_>>();
     route_versions.sort_by_key(|version| version.route_id());
@@ -576,6 +635,7 @@ fn desired_state_digest(
         .map(|version| {
             json!({
                 "route_id": version.route_id(),
+                "gateway_scope_id": version.gateway_scope_id(),
                 "policy_revision": version.policy_revision(),
                 "policy_digest": version.policy_digest(),
                 "workload_id": version.workload_id(),
@@ -616,9 +676,26 @@ fn desired_state_digest(
             })
         })
         .collect::<Vec<_>>();
-    let scope = mcp.scope();
+    let scopes = mcp
+        .scopes()
+        .iter()
+        .map(|scope| {
+            json!({
+                "id": scope.id,
+                "organization_id": scope.organization_id,
+                "project_id": scope.project_id,
+                "environment_id": scope.environment_id,
+                "primary_node_id": scope.node_id,
+                "member_node_ids": scope.member_node_ids,
+                "membership_generation": scope.membership_generation,
+                "min_ready": scope.rollout_policy.min_ready,
+                "max_unavailable": scope.rollout_policy.max_unavailable,
+                "aggregate_version": scope.aggregate_version,
+            })
+        })
+        .collect::<Vec<_>>();
     let canonical = serde_json::to_vec(&json!({
-        "schema": "a3s.cloud.mcp-gateway-desired-state.v1",
+        "schema": "a3s.cloud.mcp-gateway-desired-state.v2",
         "compiler": {
             "entrypoint_address": config.entrypoint_address,
             "management_address": config.management_address,
@@ -628,17 +705,9 @@ fn desired_state_digest(
             "certificate_directory": config.certificate_directory,
             "managed_state_file": config.managed_state_file,
         },
-        "scope": {
-            "id": scope.id,
-            "organization_id": scope.organization_id,
-            "project_id": scope.project_id,
-            "environment_id": scope.environment_id,
-            "gateway_node_id": mcp.gateway_node_id(),
-            "member_node_ids": scope.member_node_ids,
-            "membership_generation": scope.membership_generation,
-            "min_ready": scope.rollout_policy.min_ready,
-            "max_unavailable": scope.rollout_policy.max_unavailable,
-        },
+        "organization_id": mcp.organization_id(),
+        "gateway_node_id": mcp.gateway_node_id(),
+        "scopes": scopes,
         "ordinary_routes": ordinary_routes,
         "domain_claim_versions": claim_versions,
         "mcp_route_versions": route_versions,
@@ -688,23 +757,58 @@ fn validate_active_route_authority(
 }
 
 fn insert_claim_authority(
-    claims: &mut BTreeMap<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>,
+    claims: &mut BTreeMap<
+        DomainClaimId,
+        (
+            OrganizationId,
+            ProjectId,
+            EnvironmentId,
+            u64,
+            crate::modules::edge::domain::DomainNamePattern,
+        ),
+    >,
     domain_claim_id: DomainClaimId,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
     aggregate_version: u64,
     pattern: crate::modules::edge::domain::DomainNamePattern,
 ) -> Result<(), String> {
-    if domain_claim_id.as_uuid().is_nil() || aggregate_version == 0 {
+    if domain_claim_id.as_uuid().is_nil()
+        || organization_id.as_uuid().is_nil()
+        || project_id.as_uuid().is_nil()
+        || environment_id.as_uuid().is_nil()
+        || aggregate_version == 0
+    {
         return Err("Gateway snapshot DomainClaim version is invalid".into());
     }
     match claims.get(&domain_claim_id) {
-        Some((existing_version, existing_pattern))
-            if *existing_version != aggregate_version || existing_pattern != &pattern =>
+        Some((
+            existing_organization_id,
+            existing_project_id,
+            existing_environment_id,
+            existing_version,
+            existing_pattern,
+        )) if *existing_organization_id != organization_id
+            || *existing_project_id != project_id
+            || *existing_environment_id != environment_id
+            || *existing_version != aggregate_version
+            || existing_pattern != &pattern =>
         {
             Err("Gateway snapshot observed conflicting versions of one DomainClaim".into())
         }
         Some(_) => Ok(()),
         None => {
-            claims.insert(domain_claim_id, (aggregate_version, pattern));
+            claims.insert(
+                domain_claim_id,
+                (
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    aggregate_version,
+                    pattern,
+                ),
+            );
             Ok(())
         }
     }

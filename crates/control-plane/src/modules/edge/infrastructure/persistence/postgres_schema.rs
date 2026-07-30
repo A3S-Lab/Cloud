@@ -300,8 +300,18 @@ orm_table! {
         gateway_command_id: Uuid => "gateway_command_id",
         snapshot_digest: String => "snapshot_digest",
         desired_state_digest: String => "desired_state_digest",
+        desired_gateway_scope_ids: serde_json::Value => "desired_gateway_scope_ids",
         mcp_route_count: u32 => "mcp_route_count",
         staged_at: DateTime<Utc> => "staged_at",
+    }
+}
+
+orm_table! {
+    pub(super) struct McpGatewaySnapshotHeads => "mcp_gateway_snapshot_heads" {
+        organization_id: Uuid => "organization_id",
+        node_id: Uuid => "node_id",
+        gateway_revision: u64 => "gateway_revision",
+        advanced_at: DateTime<Utc> => "advanced_at",
     }
 }
 

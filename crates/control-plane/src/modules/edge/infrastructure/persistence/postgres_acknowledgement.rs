@@ -261,6 +261,13 @@ pub(super) async fn project(
                             acknowledgement.acknowledged_at,
                         )
                         .await?;
+                        if marker.mcp_route_count == 0 {
+                            postgres_mcp_gateway_snapshots::release_snapshot_head(
+                                transaction,
+                                &marker,
+                            )
+                            .await?;
+                        }
                     }
                     return Ok(true);
                 }
