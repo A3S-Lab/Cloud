@@ -13,6 +13,7 @@ mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 mod mcp_credential_issuer;
+mod mcp_gateway_desired_state_reconciler;
 mod mcp_gateway_projection_assembler;
 mod mcp_gateway_projection_compiler;
 mod mcp_gateway_projection_planner;
@@ -39,6 +40,8 @@ mod gateway_rollout_rollback_compiler_tests;
 mod gateway_route_rollout_compiler_tests;
 #[cfg(test)]
 mod gateway_snapshot_compiler_tests;
+#[cfg(test)]
+mod mcp_gateway_desired_state_reconciler_tests;
 #[cfg(test)]
 mod mcp_gateway_snapshot_reconciler_tests;
 
@@ -81,6 +84,10 @@ pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::{
     IssuedMcpCredential, McpCredentialIssuanceError, McpCredentialIssueRequest, McpCredentialIssuer,
 };
+pub use mcp_gateway_desired_state_reconciler::{
+    McpGatewayDesiredStateReconciler, McpGatewayDesiredStateReconciliationFailure,
+    McpGatewayDesiredStateReconciliationReport,
+};
 pub use mcp_gateway_projection_assembler::McpGatewayProjectionAssembler;
 pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
@@ -89,11 +96,12 @@ pub use mcp_gateway_projection_planner::{
     McpCredentialProjectionVersion, McpGatewayProjectionPlanner, PlannedMcpGatewayProjection,
 };
 pub use mcp_gateway_projection_set_planner::{
-    McpGatewayIngressRoute, McpGatewayProjectionSetPlanner, McpRouteProjectionVersion,
-    PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
+    IMcpGatewayProjectionSetPlanner, McpGatewayIngressRoute, McpGatewayProjectionSetPlanner,
+    McpRouteProjectionVersion, PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
 };
 pub use mcp_gateway_publication::{
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotStageResult,
+    IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
+    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
     StageMcpGatewaySnapshot,
 };
 pub use mcp_gateway_snapshot_reconciler::{

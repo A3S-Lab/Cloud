@@ -9,6 +9,7 @@ use crate::modules::artifacts::{
     PostgresBuildRunRepository, RetryBuildRunHandler, RuntimeBuildEvidenceGenerator,
     RuntimeBuildOutputValidator, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
+use crate::modules::assets::{IMcpServiceProfileRepository, PostgresAssetRepository};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -22,9 +23,12 @@ use crate::modules::edge::{
     GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
     ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, McpGatewaySnapshotReconciler,
-    PostgresEdgeRepository, PublishRouteHandler, RevokeDomainClaimHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -226,12 +230,15 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository.clone();
-    let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> = workload_repository;
+    let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> =
+        workload_repository.clone();
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
-        edge_repository;
+        edge_repository.clone();
+    let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> =
+        Arc::new(PostgresAssetRepository::new(executor.clone()));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
@@ -396,8 +403,34 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
+    let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
+        edge_repository.clone(),
+        Arc::clone(&routes),
+        mcp_profiles,
+        Arc::clone(&workloads),
+    ));
+    let mcp_route_planner = McpRouteProjectionPlanner::new(
+        Arc::clone(&route_targets),
+        McpRouteTargetProjectionCompiler,
+    );
+    let mcp_projection_set_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
+        mcp_projection_inputs,
+        McpGatewayProjectionPlanner::new(mcp_route_planner, edge_repository),
+        McpGatewayProjectionAssembler,
+    ));
+    let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
+        Arc::clone(&mcp_gateway_snapshots),
+        mcp_projection_set_planner,
+        deployment_route_compiler.clone(),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.command_ttl_ms)?,
+        chrono::Duration::hours(24),
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_gateway_snapshot_reconciler = McpGatewaySnapshotReconciler::new(
-        mcp_gateway_snapshots,
+        Arc::clone(&mcp_gateway_snapshots),
         Arc::clone(&route_commands),
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         100,
@@ -678,6 +711,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
+            run_operations.then_some(mcp_gateway_desired_state_reconciler),
             run_operations.then_some(mcp_gateway_snapshot_reconciler),
             run_operations.then_some(gateway_rollout_reconciler),
             run_operations.then_some(gateway_replica_recovery_reconciler),

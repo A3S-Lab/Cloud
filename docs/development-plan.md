@@ -1615,20 +1615,35 @@ unavailable. As of 2026-07-30:
   event. Policy mutations take the same logical-scope lock, closing the
   concurrent active-policy insertion gap. Migration 057 binds each marker to
   its exact tenant, logical scope, receiving node, revision, command, and
-  digest. A bounded reconciler now scans durable pending markers, idempotently
-  dispatches the existing Fleet Gateway command, survives queue interruption,
-  replays the same command after restart, and makes deadline expiry terminal
-  without advancing installed state. The acknowledgement projector recognizes
-  that marker, validates exact identity/digest and certificate cardinality,
-  then atomically records Rejected or advances certificate readiness and
-  installed scope on Applied. Focused tests cover dispatch failure/restart,
-  replay, expiry, and clock regression. A compiled PostgreSQL fixture covers
+  digest. Migration 058 corrects secondary-member scope binding and adds a
+  stable logical desired-state digest plus exact MCP route count. A registered
+  cursor-fair worker discovers scopes with active or previously published MCP
+  state, defers any physical pending publication, replans the complete scope,
+  rereads all ordinary Route inputs, and feeds only changed, due-retry,
+  displaced, or empty-removal candidates into the atomic stage. Physical
+  revision, command/certificate identity, ordinary acknowledgement binding,
+  and observation time cannot create churn. A successful zero-route marker
+  releases later ordinary-only changes back to their existing owner.
+
+  The separate bounded dispatch reconciler scans durable pending markers,
+  idempotently dispatches the existing Fleet Gateway command, survives queue
+  interruption, replays the same command after restart, and makes deadline
+  expiry terminal without advancing installed state. The acknowledgement
+  projector recognizes that marker, validates exact identity/digest and
+  certificate cardinality, then atomically records Rejected or advances
+  certificate readiness and installed scope on Applied. Focused tests now
+  cover automatic no-op convergence, cursor fairness, pending deferral,
+  route-less expiry cleanup, terminal retry, displacement repair, stable
+  desired identity, dispatch failure/restart, replay, expiry, and clock
+  regression. A compiled PostgreSQL fixture additionally checks persisted
+  desired identity and automatic post-acknowledgement no-churn, together with
   stale-policy rejection, transaction rollback when the final Outbox insert
-  fails (including zero leaked markers), Fleet replay, certificate issuance,
-  and exact Applied projection. Public idempotent one-time delivery and
-  rotation, desired-state supersession and automatic policy-expiry planning,
-  an executed real PostgreSQL gate, lifecycle surfaces, audit, and joint
-  real-process recovery remain `MCP0.3`; and
+  fails, Fleet replay, certificate issuance, and exact Applied projection.
+  Node-wide aggregation for physical Gateways shared by active logical MCP
+  scopes, unified composition in every ordinary publication path, proactive
+  MCP-only certificate renewal, revoked-credential cleanup, public idempotent
+  one-time delivery/rotation, an executed real PostgreSQL gate, lifecycle
+  surfaces, audit, and joint real-process recovery remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps

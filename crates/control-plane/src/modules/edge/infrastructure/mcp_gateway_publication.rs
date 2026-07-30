@@ -1,8 +1,10 @@
 use crate::modules::edge::domain::events::McpGatewaySnapshotStaged;
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateState, GatewayPublication, GatewayPublicationState,
+    GatewayScope, GatewayScopeState,
 };
 use crate::modules::edge::infrastructure::CompiledMcpGatewaySnapshot;
+use crate::modules::edge::infrastructure::GatewaySnapshotRouteInput;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId, NodeId,
     OrganizationId, ProjectId, RepositoryError, RouteId,
@@ -33,6 +35,77 @@ pub struct McpGatewaySnapshotDispatchTarget {
     pub environment_id: EnvironmentId,
     pub gateway_scope_id: GatewayScopeId,
     pub publication: GatewayPublication,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewaySnapshotStatus {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub gateway_scope_id: GatewayScopeId,
+    pub desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
+    pub mcp_route_count: u32,
+    pub publication: GatewayPublication,
+}
+
+impl McpGatewaySnapshotStatus {
+    pub fn validate(&self) -> Result<(), String> {
+        self.publication.snapshot()?;
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.gateway_scope_id.as_uuid().is_nil()
+            || self.mcp_route_count > 1_000
+        {
+            return Err("MCP Gateway snapshot status is inconsistent".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewaySnapshotReconciliationState {
+    pub pending_publication: bool,
+    pub latest_mcp_snapshot: Option<McpGatewaySnapshotStatus>,
+}
+
+impl McpGatewaySnapshotReconciliationState {
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(status) = &self.latest_mcp_snapshot {
+            status.validate()?;
+            if status.publication.state == GatewayPublicationState::Pending
+                && !self.pending_publication
+            {
+                return Err(
+                    "pending MCP Gateway snapshot is missing physical pending-publication evidence"
+                        .into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewaySnapshotInputs {
+    pub physical_scope: GatewayScopeState,
+    pub active_routes: Vec<GatewaySnapshotRouteInput>,
+}
+
+impl McpGatewaySnapshotInputs {
+    pub fn validate(&self, node_id: NodeId) -> Result<(), String> {
+        if self.physical_scope.node_id != node_id
+            || self
+                .active_routes
+                .iter()
+                .any(|input| input.route.gateway_node_id != node_id)
+        {
+            return Err(
+                "MCP Gateway snapshot reconciliation inputs crossed a physical node".into(),
+            );
+        }
+        Ok(())
+    }
 }
 
 impl McpGatewaySnapshotDispatchTarget {
@@ -219,6 +292,24 @@ impl StageMcpGatewaySnapshot {
 
 #[async_trait]
 pub trait IMcpGatewaySnapshotRepository: Send + Sync {
+    async fn mcp_gateway_reconciliation_scopes(
+        &self,
+        observed_at: DateTime<Utc>,
+        after_gateway_scope_id: Option<GatewayScopeId>,
+        limit: usize,
+    ) -> Result<Vec<GatewayScope>, RepositoryError>;
+
+    async fn mcp_gateway_snapshot_reconciliation_state(
+        &self,
+        gateway_scope_id: GatewayScopeId,
+        node_id: NodeId,
+    ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError>;
+
+    async fn mcp_gateway_snapshot_inputs(
+        &self,
+        node_id: NodeId,
+    ) -> Result<McpGatewaySnapshotInputs, RepositoryError>;
+
     async fn stage_mcp_gateway_snapshot(
         &self,
         stage: StageMcpGatewaySnapshot,

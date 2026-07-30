@@ -16,12 +16,12 @@ use a3s_cloud_control_plane::modules::edge::{
     GatewayPublicationState, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialRepository,
     IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
-    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-    PlanMcpGatewayProjectionSet, PostgresEdgeRepository, ResolvedRouteTarget,
-    ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget, StageMcpGatewaySnapshot,
-    TransitionDomainClaim, UpstreamEndpoint,
+    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
+    McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteTargetProjectionCompiler, PlanMcpGatewayProjectionSet, PostgresEdgeRepository,
+    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
+    StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -672,6 +672,25 @@ pub async fn exercise(
         stage_artifact_counts(executor, &current_stage).await?,
         (1, 1, 1, 1)
     );
+    let stored_marker = Database::new(PostgresDialect, executor.clone())
+        .fetch_one_as(
+            sql_query::<(String, u32)>(
+                "select desired_state_digest, mcp_route_count from mcp_gateway_snapshot_publications where gateway_command_id = ",
+            )
+            .bind(current_stage.publication().command_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(
+        stored_marker,
+        (
+            current_stage
+                .candidate()
+                .desired_state_digest()
+                .as_str()
+                .to_owned(),
+            u32::try_from(current_stage.candidate().mcp().route_versions().len())?,
+        )
+    );
 
     let snapshot_repository: Arc<dyn IMcpGatewaySnapshotRepository> = Arc::new(edge.clone());
     let node_control: Arc<dyn INodeControlRepository> =
@@ -779,6 +798,53 @@ pub async fn exercise(
     assert_eq!(terminal_dispatch.pending_snapshots, 0);
     assert_eq!(terminal_dispatch.dispatched_commands, 0);
     assert!(terminal_dispatch.failures.is_empty());
+
+    let desired_edge = Arc::new(edge.clone());
+    let desired_inputs = Arc::new(McpRouteProjectionInputReader::new(
+        desired_edge.clone(),
+        desired_edge.clone(),
+        Arc::new(assets.clone()),
+        Arc::new(workloads.clone()),
+    ));
+    let desired_route_planner = McpRouteProjectionPlanner::new(
+        Arc::new(FixtureRouteTargetReader { workload_id }),
+        McpRouteTargetProjectionCompiler,
+    );
+    let desired_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
+        desired_inputs,
+        McpGatewayProjectionPlanner::new(desired_route_planner, desired_edge.clone()),
+        McpGatewayProjectionAssembler,
+    ));
+    let desired_reconciler = McpGatewayDesiredStateReconciler::new(
+        desired_edge,
+        desired_planner,
+        fixture_gateway_snapshot_compiler()?,
+        std::time::Duration::from_secs(60),
+        Duration::minutes(5),
+        Duration::hours(1),
+        Duration::minutes(5),
+        100,
+    )?;
+    let publication_count_before = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from gateway_publications",
+        ))
+        .await?;
+    let desired_report = desired_reconciler
+        .run_once(acknowledged_at + Duration::milliseconds(3))
+        .await?;
+    assert_eq!(desired_report.scopes, 1);
+    assert_eq!(desired_report.unchanged_snapshots, 1);
+    assert_eq!(desired_report.staged_snapshots, 0);
+    assert!(desired_report.failures.is_empty());
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<i64>(
+                "select count(*) from gateway_publications",
+            ))
+            .await?,
+        publication_count_before
+    );
 
     let mut rotated = credential.clone();
     rotated.rotate(
@@ -927,7 +993,31 @@ async fn plan_gateway_snapshot(
             domain_claim,
         });
     }
-    let candidate = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+    let candidate = fixture_gateway_snapshot_compiler()?.compile_mcp_reconciliation(
+        CompileMcpGatewaySnapshot {
+            metadata: GatewaySnapshotMetadata::new(
+                scope.node_id,
+                physical_scope.next_revision()?,
+                physical_scope.installed_revision,
+                observed_at,
+                expires_at,
+            ),
+            physical_scope,
+            certificate_id: Some(GatewayCertificateId::new()),
+            active_routes,
+            mcp: planned,
+        },
+    )?;
+    Ok(StageMcpGatewaySnapshot::new(
+        candidate,
+        NodeCommandId::new(),
+        Uuid::now_v7(),
+        observed_at + Duration::minutes(5),
+    )?)
+}
+
+fn fixture_gateway_snapshot_compiler() -> Result<GatewaySnapshotCompiler, String> {
+    GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: "0.0.0.0:8081".into(),
         management_address: "127.0.0.1:9090".into(),
         management_path_prefix: "/api/gateway".into(),
@@ -935,26 +1025,7 @@ async fn plan_gateway_snapshot(
         upstream_request_timeout_ms: 30_000,
         certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
         managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
-    })?
-    .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
-        metadata: GatewaySnapshotMetadata::new(
-            scope.node_id,
-            physical_scope.next_revision()?,
-            physical_scope.installed_revision,
-            observed_at,
-            expires_at,
-        ),
-        physical_scope,
-        certificate_id: Some(GatewayCertificateId::new()),
-        active_routes,
-        mcp: planned,
-    })?;
-    Ok(StageMcpGatewaySnapshot::new(
-        candidate,
-        NodeCommandId::new(),
-        Uuid::now_v7(),
-        observed_at + Duration::minutes(5),
-    )?)
+    })
 }
 
 async fn stage_artifact_counts(
