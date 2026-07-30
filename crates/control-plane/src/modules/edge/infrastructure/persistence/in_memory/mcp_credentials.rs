@@ -1,6 +1,6 @@
 use super::InMemoryEdgeRepository;
 use crate::modules::edge::domain::repositories::{
-    validate_mcp_credential_resolution, IMcpCredentialRepository,
+    validate_mcp_credential_resolution, IMcpCredentialRepository, MCP_CREDENTIAL_IDENTITY_CONFLICT,
 };
 use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
@@ -30,7 +30,7 @@ impl IMcpCredentialRepository for InMemoryEdgeRepository {
                 .contains_key(credential.prefix())
         {
             return Err(RepositoryError::Conflict(
-                "MCP credential identity or lookup prefix is already in use".into(),
+                MCP_CREDENTIAL_IDENTITY_CONFLICT.into(),
             ));
         }
         state

@@ -6,7 +6,7 @@ use crate::infrastructure::{
     transaction_error,
 };
 use crate::modules::edge::domain::repositories::{
-    validate_mcp_credential_resolution, IMcpCredentialRepository,
+    validate_mcp_credential_resolution, IMcpCredentialRepository, MCP_CREDENTIAL_IDENTITY_CONFLICT,
 };
 use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
@@ -157,10 +157,9 @@ pub(super) async fn insert_credential(
     .await;
     match result {
         Ok(rows) => require_one_row("MCP credential", rows),
-        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
-            "MCP credential identity or lookup prefix is already in use".into(),
-        )
-        .into()),
+        Err(error) if is_unique_violation(&error) => {
+            Err(RepositoryError::Conflict(MCP_CREDENTIAL_IDENTITY_CONFLICT.into()).into())
+        }
         Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
         Err(error) => Err(error),
     }

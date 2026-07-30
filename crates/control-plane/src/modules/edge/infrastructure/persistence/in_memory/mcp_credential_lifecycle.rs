@@ -2,7 +2,7 @@ use super::{InMemoryEdgeRepository, State};
 use crate::modules::edge::domain::repositories::{
     IMcpCredentialLifecycleRepository, McpCredentialLifecycleReference,
     McpCredentialLifecycleResult, StoreMcpCredentialLifecycle,
-    MAX_MCP_CREDENTIAL_DELIVERY_PURGE_BATCH,
+    MAX_MCP_CREDENTIAL_DELIVERY_PURGE_BATCH, MCP_CREDENTIAL_IDENTITY_CONFLICT,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId,
@@ -57,7 +57,7 @@ impl IMcpCredentialLifecycleRepository for InMemoryEdgeRepository {
                         .contains_key(credential.prefix())
                 {
                     return Err(RepositoryError::Conflict(
-                        "MCP credential identity or lookup prefix is already in use".into(),
+                        MCP_CREDENTIAL_IDENTITY_CONFLICT.into(),
                     ));
                 }
             }

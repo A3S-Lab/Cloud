@@ -3,7 +3,7 @@ use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
 };
-use argon2::password_hash::{PasswordHasher, SaltString};
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use chrono::{DateTime, Duration, Utc};
 use std::fmt;
@@ -180,6 +180,37 @@ impl McpCredentialMaterialGenerator {
             credential: rotated,
             secret,
         })
+    }
+
+    pub async fn verify_secret(
+        &self,
+        credential: &McpCredential,
+        secret: Zeroizing<String>,
+    ) -> Result<Zeroizing<String>, McpCredentialIssuanceError> {
+        if secret.len() != "a3s_mcp_".len() + (PREFIX_RANDOM_BYTES + SECRET_RANDOM_BYTES) * 2
+            || !secret.starts_with(credential.prefix())
+            || !secret
+                .bytes()
+                .skip("a3s_mcp_".len())
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(McpCredentialIssuanceError::Unavailable);
+        }
+        let verifier_hash = credential.gateway_projection().verifier_hash().to_owned();
+        let permit = Arc::clone(&self.hashing_permits)
+            .try_acquire_owned()
+            .map_err(|_| McpCredentialIssuanceError::Unavailable)?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            let verifier = PasswordHash::new(&verifier_hash).map_err(|_| ())?;
+            Argon2::default()
+                .verify_password(secret.as_bytes(), &verifier)
+                .map_err(|_| ())?;
+            Ok::<_, ()>(secret)
+        })
+        .await
+        .map_err(|_| McpCredentialIssuanceError::Unavailable)?
+        .map_err(|_| McpCredentialIssuanceError::Unavailable)
     }
 
     async fn issue_canonical(

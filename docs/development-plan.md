@@ -153,8 +153,9 @@ Within Cloud `MCP0.3`, credential delivery advances in dependency order:
 generation and atomic encrypted lifecycle persistence first; shared
 authorization-aware application commands second; REST/OpenAPI/client/CLI
 parity and the bounded cleanup worker third; then executed PostgreSQL and
-cross-process evidence. The first layer is implemented, but it does not make a
-public credential surface available.
+cross-process evidence. The first two layers are implemented, including exact
+post-commit secret recovery, but they do not make a public credential surface
+available.
 
 H0 is delivered through the numbered sub-gates below. H0.1 through H0.3 may be
 proved against an owning profile after that profile's single-node gate. I0 uses

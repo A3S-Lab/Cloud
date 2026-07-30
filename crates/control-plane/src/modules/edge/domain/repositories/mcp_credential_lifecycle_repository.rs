@@ -1,3 +1,4 @@
+use super::IMcpCredentialRepository;
 use crate::modules::edge::domain::events::McpCredentialChanged;
 use crate::modules::edge::domain::{McpCredential, McpCredentialDelivery};
 use crate::modules::shared_kernel::domain::{
@@ -153,4 +154,14 @@ pub trait IMcpCredentialLifecycleRepository: Send + Sync {
         observed_at: DateTime<Utc>,
         limit: usize,
     ) -> Result<usize, RepositoryError>;
+}
+
+pub trait IMcpCredentialAuthorityRepository:
+    IMcpCredentialRepository + IMcpCredentialLifecycleRepository
+{
+}
+
+impl<T> IMcpCredentialAuthorityRepository for T where
+    T: IMcpCredentialRepository + IMcpCredentialLifecycleRepository
+{
 }

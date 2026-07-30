@@ -880,3 +880,4 @@ async fn next_publication_contains_every_active_route_in_the_scope() {
 }
 
 mod gateway_certificate_tests;
+mod mcp_credential_tests;

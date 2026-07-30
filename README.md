@@ -843,11 +843,16 @@ credential generation and a recovery window of at most one hour. Idempotency
 retains a secret-free generation reference after ciphertext expiry, so a retry
 can never mint a second secret; rotation replaces the current delivery,
 revocation removes it, and bounded cleanup deletes expired ciphertext. Public
-REST/OpenAPI/client/CLI lifecycle surfaces, executed real PostgreSQL evidence
-for the new certificate and credential paths, real Box hosting, and joint
-product conformance remain unavailable. Stateful resources remain `S0`;
-replicas and multi-node placement remain `H0`; accelerator and inference
-capabilities remain `I0`. These profiles do not create separate schedulers.
+application commands now perform exact replay before generation, encrypt and
+atomically commit the candidate, then decrypt and Argon2id-verify only the
+committed delivery. Issue, rotate, revoke, list, and get are registered on the
+shared CQRS boundary; a failed first post-commit response can recover the exact
+same secret. REST/OpenAPI/client/CLI lifecycle surfaces, executed real
+PostgreSQL evidence for the new certificate and credential paths, real Box
+hosting, and joint product conformance remain unavailable. Stateful resources
+remain `S0`; replicas and multi-node placement remain `H0`; accelerator and
+inference capabilities remain `I0`. These profiles do not create separate
+schedulers.
 
 ## Delivery Model
 

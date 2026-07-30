@@ -10,7 +10,9 @@ use crate::modules::artifacts::{
     RuntimeBuildOutputValidator, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 use crate::modules::assets::{IMcpServiceProfileRepository, PostgresAssetRepository};
-use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::repositories::{
+    IEdgeRepository, IMcpCredentialAuthorityRepository,
+};
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
     IGatewayObservationQueue, IRouteTargetReader,
@@ -21,14 +23,16 @@ use crate::modules::edge::{
     FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
     GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
     GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
+    IssueMcpCredentialHandler, ListDomainClaimsHandler, ListGatewayCertificatesHandler,
+    ListGatewayScopesHandler, ListMcpCredentialsHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority, McpCredentialLifecycleService,
     McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
     McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
-    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    PublishRouteHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
+    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    WorkloadRouteTargetReader,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeRepository,
@@ -226,6 +230,7 @@ pub async fn build_application_with_source_resolver(
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
+    let mcp_credentials: Arc<dyn IMcpCredentialAuthorityRepository> = edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
         edge_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> =
@@ -653,6 +658,7 @@ pub async fn build_application_with_source_resolver(
             workloads,
             builds,
             routes,
+            mcp_credentials,
             secrets,
             sources,
             source_webhooks,
@@ -717,6 +723,7 @@ struct ApplicationDependencies {
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     routes: Arc<dyn IEdgeRepository>,
+    mcp_credentials: Arc<dyn IMcpCredentialAuthorityRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
@@ -755,6 +762,7 @@ fn build_application_with_health(
         workloads,
         builds,
         routes,
+        mcp_credentials,
         secrets,
         sources,
         source_webhooks,
@@ -784,6 +792,7 @@ fn build_application_with_health(
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
+    let mcp_credential_environments = Arc::clone(&environments);
     let gateway_scope_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
@@ -842,6 +851,8 @@ fn build_application_with_health(
     let list_gateway_scopes = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
+    let list_mcp_credentials = Arc::clone(&mcp_credentials);
+    let get_mcp_credentials = Arc::clone(&mcp_credentials);
     let create_secrets = Arc::clone(&secrets);
     let rotate_secrets = Arc::clone(&secrets);
     let revoke_secret_versions = Arc::clone(&secrets);
@@ -881,7 +892,8 @@ fn build_application_with_health(
     );
     let subscription_source_policy = Arc::clone(&source_policy);
     let create_secret_encryption = Arc::clone(&secret_encryption);
-    let rotate_secret_encryption = secret_encryption;
+    let rotate_secret_encryption = Arc::clone(&secret_encryption);
+    let mcp_credential_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
     let build_log_store = Arc::clone(&log_chunks);
     let log_store = log_chunks;
@@ -937,6 +949,12 @@ fn build_application_with_health(
         ),
         _ => Err("managed Gateway publication dependencies are incomplete".into()),
     }
+    .map_err(BootError::Internal)?;
+    let mcp_credential_lifecycle = McpCredentialLifecycleService::new(
+        mcp_credentials,
+        mcp_credential_encryption,
+        chrono::Duration::minutes(10),
+    )
     .map_err(BootError::Internal)?;
     BootApplication::builder()
         .import(PublicHealthModule::new(
@@ -1090,6 +1108,18 @@ fn build_application_with_health(
                         create_gateway_scopes,
                     ),
                 )
+                .command_handler::<crate::modules::edge::IssueMcpCredential, _>(
+                    IssueMcpCredentialHandler::new(
+                        mcp_credential_environments,
+                        mcp_credential_lifecycle.clone(),
+                    ),
+                )
+                .command_handler::<crate::modules::edge::RotateMcpCredential, _>(
+                    RotateMcpCredentialHandler::new(mcp_credential_lifecycle.clone()),
+                )
+                .command_handler::<crate::modules::edge::RevokeMcpCredential, _>(
+                    RevokeMcpCredentialHandler::new(mcp_credential_lifecycle),
+                )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
                     IssueEnrollmentTokenHandler::new(
@@ -1236,6 +1266,12 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,
                 ))
+                .query_handler::<crate::modules::edge::ListMcpCredentials, _>(
+                    ListMcpCredentialsHandler::new(list_mcp_credentials),
+                )
+                .query_handler::<crate::modules::edge::GetMcpCredential, _>(
+                    GetMcpCredentialHandler::new(get_mcp_credentials),
+                )
                 .global(),
         )
         .import(IdentityModule::new(bootstrap_credential))

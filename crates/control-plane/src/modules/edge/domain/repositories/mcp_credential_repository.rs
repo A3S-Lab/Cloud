@@ -6,6 +6,8 @@ use async_trait::async_trait;
 use std::collections::BTreeSet;
 
 pub(crate) const MAX_MCP_CREDENTIAL_RESOLUTION_BATCH: usize = 10_000;
+pub(crate) const MCP_CREDENTIAL_IDENTITY_CONFLICT: &str =
+    "MCP credential identity or lookup prefix is already in use";
 
 pub(crate) fn validate_mcp_credential_resolution(
     credential_ids: &[McpCredentialId],

@@ -1120,13 +1120,22 @@ removes expired ciphertext without deleting the reference. Ordinary repository
 transitions also remove any recovery material, preventing a bypass from
 leaving stale ciphertext.
 
-This is persistence and generation infrastructure, not a public lifecycle
-claim. Application commands must still encrypt/decrypt through the selected
-Secret encryption provider, perform tenant authorization and exact replay
-before generation, and expose no-store one-time REST/OpenAPI/client/CLI
-responses. Snapshot reconciliation already removes routes whose referenced
-credential is revoked, expired, or at another generation. Cloud management
-credentials must never be accepted as a shortcut.
+The shared application boundary now provides issue, rotate, revoke, list, and
+get commands/queries. Mutations perform tenant-scoped exact replay before
+generation, encrypt through the selected Secret encryption provider, commit
+the lifecycle transaction, then decrypt and Argon2id-verify only the committed
+delivery. This ordering handles both an ordinary first response and a
+commit-before-response failure: a concurrent loser discards its unpersisted
+candidate, while a retry recovers only the winner's exact ciphertext.
+Encryption-provider failures are sanitized, and queries return an aggregate
+whose verifier remains private and Debug-redacted.
+
+This is not yet a public lifecycle claim. REST/OpenAPI/client/CLI adapters must
+consume the one-time secret into `no-store` responses without adding another
+business path, and the cleanup method still needs a registered bounded worker.
+Snapshot reconciliation already removes routes whose referenced credential is
+revoked, expired, or at another generation. Cloud management credentials must
+never be accepted as a shortcut.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical
