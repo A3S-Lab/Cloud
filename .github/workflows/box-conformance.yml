@@ -210,15 +210,25 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
           install -d -m 0755 "$EVIDENCE_DIR"
-          # Earlier real-provider profiles share this infrastructure-owned
-          # mount. Reassert and record the exact precondition before Cloud
-          # composes its Secret boundary; never weaken Box's validation.
-          sudo chown root:root "$A3S_HOME/runtime-secrets"
-          sudo chmod 0700 "$A3S_HOME/runtime-secrets"
-          secret_root_stat=$(sudo stat -c '%u:%g:%a:%F' "$A3S_HOME/runtime-secrets")
-          test "$secret_root_stat" = "0:0:700:directory"
-          test "$(findmnt -n -o FSTYPE --target "$A3S_HOME/runtime-secrets")" = "tmpfs"
-          printf '%s\n' "$secret_root_stat" >"$EVIDENCE_DIR/secret-root.txt"
+          normalize_secret_root() {
+            local phase=$1
+            local observed
+            observed=$(sudo stat -c '%u:%g:%a:%F' "$A3S_HOME/runtime-secrets")
+            printf '%s before %s\n' "$phase" "$observed" \
+              >>"$EVIDENCE_DIR/secret-root.txt"
+            # Independent real-provider processes share this
+            # infrastructure-owned mount. Reassert each process boundary;
+            # never weaken Box's validation inside the provider.
+            sudo chown root:root "$A3S_HOME/runtime-secrets"
+            sudo chmod 0700 "$A3S_HOME/runtime-secrets"
+            observed=$(sudo stat -c '%u:%g:%a:%F' "$A3S_HOME/runtime-secrets")
+            test "$observed" = "0:0:700:directory"
+            test "$(findmnt -n -o FSTYPE --target "$A3S_HOME/runtime-secrets")" = "tmpfs"
+            printf '%s after %s\n' "$phase" "$observed" \
+              >>"$EVIDENCE_DIR/secret-root.txt"
+          }
+          : >"$EVIDENCE_DIR/secret-root.txt"
+          normalize_secret_root cloud-suite
           cargo_bin=$(command -v cargo)
           cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
           rustup_home=$(rustup show home)
@@ -294,6 +304,7 @@ jobs:
             "$EVIDENCE_DIR/cloud-cleanup-interruption.log" \
             >"$EVIDENCE_DIR/cleanup-process-death-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/cleanup-process-death-certification.txt")" -eq 1
+          normalize_secret_root cloud-secret-materialization
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
@@ -328,7 +339,7 @@ jobs:
           cleanup_status=0
           install -d -m 0755 "$EVIDENCE_DIR"
           ps aux >"$EVIDENCE_DIR/processes-after.txt"
-          find "$A3S_HOME" -maxdepth 4 -print \
+          sudo find "$A3S_HOME" -maxdepth 4 -print \
             >"$EVIDENCE_DIR/home-after.txt" 2>&1 || true
           if pgrep -fa 'a3s-box-shim|a3s-oci-agent|a3s-oci.*native-linux-service' \
             >"$EVIDENCE_DIR/leaked-processes.txt"; then
@@ -338,8 +349,8 @@ jobs:
           if test -e "$A3S_HOME/boxes.json" || test -d "$A3S_HOME/runtime-state"; then
             cleanup_status=1
           fi
-          if test -n "$(find "$A3S_HOME/runtime-secrets" -mindepth 1 -print -quit 2>/dev/null)"; then
-            find "$A3S_HOME/runtime-secrets" -mindepth 1 -maxdepth 2 -print \
+          if test -n "$(sudo find "$A3S_HOME/runtime-secrets" -mindepth 1 -print -quit 2>/dev/null)"; then
+            sudo find "$A3S_HOME/runtime-secrets" -mindepth 1 -maxdepth 2 -print \
               >"$EVIDENCE_DIR/leaked-secret-paths.txt"
             cleanup_status=1
           fi
