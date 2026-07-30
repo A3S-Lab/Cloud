@@ -299,6 +299,8 @@ orm_table! {
         gateway_revision: u64 => "gateway_revision",
         gateway_command_id: Uuid => "gateway_command_id",
         snapshot_digest: String => "snapshot_digest",
+        desired_state_digest: String => "desired_state_digest",
+        mcp_route_count: u32 => "mcp_route_count",
         staged_at: DateTime<Utc> => "staged_at",
     }
 }

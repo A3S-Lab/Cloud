@@ -782,12 +782,28 @@ staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry
 projection, and Gateway request-path foundations are in development under
 `MCP0`. Migration 056 retains immutable MCP publication-kind and tenant
 evidence so restart scanning and acknowledgements never infer intent from an
-ephemeral event. Supersession and policy-expiry reconciliation, public
-lifecycle surfaces, executed real PostgreSQL evidence for the new path, real
-Box hosting, and joint product conformance remain unavailable. Stateful
-resources remain `S0`; replicas and multi-node
-placement remain `H0`; accelerator and inference capabilities remain `I0`.
-These profiles do not create separate schedulers.
+ephemeral event. Migration 057 adds a stable logical desired-state digest and
+MCP route-count evidence while correcting secondary-member scope binding.
+The registered desired-state worker rotates through relevant logical scopes,
+defers every physical node with a pending complete publication, replans the
+whole scope, composes current ordinary and MCP policy, and atomically stages
+only changed, failed-due, displaced, or empty-removal snapshots. Physical
+revision, command, certificate identity, and observation time do not cause
+digest churn; an applied zero-route marker releases ordinary-only changes back
+to the existing route path. Focused tests cover no-op convergence, bounded
+cursor fairness, pending deferral, terminal retry, displaced-state repair, and
+route-less policy-expiry cleanup. The PostgreSQL fixture also compiles an
+automatic post-acknowledgement no-op check, but no database URL is available
+in the default local gate.
+
+Node-wide aggregation when one physical Gateway participates in multiple
+active logical MCP scopes, unified composition by every ordinary publication
+path, proactive MCP-only certificate renewal, revoked-credential cleanup,
+public lifecycle surfaces, executed real PostgreSQL evidence for the new path,
+real Box hosting, and joint product conformance remain unavailable. Stateful
+resources remain `S0`; replicas and multi-node placement remain `H0`;
+accelerator and inference capabilities remain `I0`. These profiles do not
+create separate schedulers.
 
 ## Delivery Model
 

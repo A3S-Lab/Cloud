@@ -9,6 +9,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot, McpGatewayProjection};
 use chrono::{DateTime, Utc};
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 
@@ -32,7 +34,7 @@ pub struct GatewaySnapshotMetadata {
     pub expires_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewaySnapshotRouteInput {
     pub route: Route,
     pub domain_claim: DomainClaim,
@@ -66,6 +68,7 @@ impl GatewayDomainClaimVersion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledMcpGatewaySnapshot {
     snapshot: GatewaySnapshot,
+    desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
     physical_scope: GatewayScopeState,
     active_route_versions: Vec<GatewayRouteVersion>,
     domain_claim_versions: Vec<GatewayDomainClaimVersion>,
@@ -75,6 +78,12 @@ pub struct CompiledMcpGatewaySnapshot {
 impl CompiledMcpGatewaySnapshot {
     pub const fn snapshot(&self) -> &GatewaySnapshot {
         &self.snapshot
+    }
+
+    pub const fn desired_state_digest(
+        &self,
+    ) -> &crate::modules::shared_kernel::domain::Sha256Digest {
+        &self.desired_state_digest
     }
 
     pub const fn physical_scope(&self) -> &GatewayScopeState {
@@ -281,6 +290,8 @@ impl GatewaySnapshotCompiler {
             );
         }
 
+        let desired_state_digest =
+            desired_state_digest(&self.config, &routes, &claim_authority, &mcp)?;
         let content = projection.map(|projection| McpSnapshotContent {
             ingress_routes: mcp.ingress_routes(),
             projection,
@@ -289,6 +300,7 @@ impl GatewaySnapshotCompiler {
             self.compile_snapshot(metadata, certificate_id, &routes, false, None, content)?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,
+            desired_state_digest,
             physical_scope,
             active_route_versions: route_versions.into_values().collect(),
             domain_claim_versions: claim_authority
@@ -514,6 +526,131 @@ impl GatewaySnapshotCompiler {
             certificate_request,
         )
     }
+}
+
+fn desired_state_digest(
+    config: &GatewaySnapshotCompilerConfig,
+    routes: &[Route],
+    claims: &BTreeMap<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>,
+    mcp: &PlannedMcpGatewayProjectionSet,
+) -> Result<crate::modules::shared_kernel::domain::Sha256Digest, String> {
+    let mut routes = routes.iter().collect::<Vec<_>>();
+    routes.sort_by_key(|route| route.id);
+    let ordinary_routes = routes
+        .into_iter()
+        .map(|route| {
+            json!({
+                "id": route.id,
+                "organization_id": route.organization_id,
+                "project_id": route.project_id,
+                "environment_id": route.environment_id,
+                "gateway_scope_id": route.gateway_scope_id,
+                "gateway_node_id": route.gateway_node_id,
+                "hostname": route.hostname,
+                "path_prefix": route.path_prefix,
+                "domain_claim_id": route.domain_claim_id,
+                "domain_pattern": route.domain_pattern,
+                "workload_id": route.workload_id,
+                "workload_revision_id": route.target.workload_revision_id,
+                "runtime_unit_id": route.target.runtime_unit_id,
+                "runtime_generation": route.target.runtime_generation,
+                "port_name": route.target.port_name,
+                "upstream": route.target.upstream,
+            })
+        })
+        .collect::<Vec<_>>();
+    let claim_versions = claims
+        .iter()
+        .map(|(claim_id, (aggregate_version, pattern))| {
+            json!({
+                "domain_claim_id": claim_id,
+                "aggregate_version": aggregate_version,
+                "pattern": pattern,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut route_versions = mcp.route_versions().iter().collect::<Vec<_>>();
+    route_versions.sort_by_key(|version| version.route_id());
+    let route_versions = route_versions
+        .into_iter()
+        .map(|version| {
+            json!({
+                "route_id": version.route_id(),
+                "policy_revision": version.policy_revision(),
+                "policy_digest": version.policy_digest(),
+                "workload_id": version.workload_id(),
+                "workload_aggregate_version": version.workload_aggregate_version(),
+                "active_revision_id": version.active_revision_id(),
+                "domain_claim_id": version.domain_claim_id(),
+                "domain_claim_aggregate_version": version.domain_claim_aggregate_version(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut ingress_routes = mcp.ingress_routes().iter().collect::<Vec<_>>();
+    ingress_routes.sort_by_key(|ingress| ingress.route_id());
+    let ingress_routes = ingress_routes
+        .into_iter()
+        .map(|ingress| {
+            json!({
+                "route_id": ingress.route_id(),
+                "router": ingress.router(),
+                "hostname": ingress.hostname(),
+                "path": ingress.path(),
+                "domain_claim_id": ingress.domain_claim_id(),
+                "domain_pattern": ingress.domain_pattern(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut credential_versions = mcp
+        .projection()
+        .map(|projection| projection.credential_versions().iter().collect::<Vec<_>>())
+        .unwrap_or_default();
+    credential_versions.sort_by_key(|version| version.credential_id());
+    let credential_versions = credential_versions
+        .into_iter()
+        .map(|version| {
+            json!({
+                "credential_id": version.credential_id(),
+                "generation": version.generation(),
+                "aggregate_version": version.aggregate_version(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let scope = mcp.scope();
+    let canonical = serde_json::to_vec(&json!({
+        "schema": "a3s.cloud.mcp-gateway-desired-state.v1",
+        "compiler": {
+            "entrypoint_address": config.entrypoint_address,
+            "management_address": config.management_address,
+            "management_path_prefix": config.management_path_prefix,
+            "management_auth_token_env": config.management_auth_token_env,
+            "upstream_request_timeout_ms": config.upstream_request_timeout_ms,
+            "certificate_directory": config.certificate_directory,
+            "managed_state_file": config.managed_state_file,
+        },
+        "scope": {
+            "id": scope.id,
+            "organization_id": scope.organization_id,
+            "project_id": scope.project_id,
+            "environment_id": scope.environment_id,
+            "gateway_node_id": mcp.gateway_node_id(),
+            "member_node_ids": scope.member_node_ids,
+            "membership_generation": scope.membership_generation,
+            "min_ready": scope.rollout_policy.min_ready,
+            "max_unavailable": scope.rollout_policy.max_unavailable,
+        },
+        "ordinary_routes": ordinary_routes,
+        "domain_claim_versions": claim_versions,
+        "mcp_route_versions": route_versions,
+        "mcp_ingress_routes": ingress_routes,
+        "mcp_projection": mcp.projection().map(|projection| projection.projection()),
+        "credential_versions": credential_versions,
+    }))
+    .map_err(|error| format!("could not encode MCP Gateway desired state: {error}"))?;
+    crate::modules::shared_kernel::domain::Sha256Digest::parse(format!(
+        "sha256:{:x}",
+        Sha256::digest(canonical)
+    ))
 }
 
 fn validate_active_route_authority(

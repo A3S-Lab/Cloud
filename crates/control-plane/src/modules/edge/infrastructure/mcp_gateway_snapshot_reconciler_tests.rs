@@ -1,5 +1,6 @@
 use super::{
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotReconciler,
+    IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
+    McpGatewaySnapshotReconciler, McpGatewaySnapshotReconciliationState,
     McpGatewaySnapshotStageResult, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::services::{GatewayCommandDispatch, IGatewayCommandQueue};
@@ -36,6 +37,34 @@ impl FakeMcpGatewaySnapshotRepository {
 
 #[async_trait]
 impl IMcpGatewaySnapshotRepository for FakeMcpGatewaySnapshotRepository {
+    async fn mcp_gateway_reconciliation_scopes(
+        &self,
+        _observed_at: chrono::DateTime<Utc>,
+        _after_gateway_scope_id: Option<GatewayScopeId>,
+        _limit: usize,
+    ) -> Result<Vec<crate::modules::edge::domain::GatewayScope>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn mcp_gateway_snapshot_reconciliation_state(
+        &self,
+        _gateway_scope_id: GatewayScopeId,
+        _node_id: NodeId,
+    ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "unit fake does not read MCP Gateway desired state".into(),
+        ))
+    }
+
+    async fn mcp_gateway_snapshot_inputs(
+        &self,
+        _node_id: NodeId,
+    ) -> Result<McpGatewaySnapshotInputs, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "unit fake does not read MCP Gateway inputs".into(),
+        ))
+    }
+
     async fn stage_mcp_gateway_snapshot(
         &self,
         _stage: StageMcpGatewaySnapshot,

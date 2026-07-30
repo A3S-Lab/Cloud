@@ -988,9 +988,46 @@ projection. Focused in-memory tests exercise queue interruption followed by
 restart, idempotent redispatch, deadline expiry, and future-clock rejection.
 Those fixtures are compiled in the normal test gate; an environment-backed
 PostgreSQL execution is still required before claiming real database evidence.
-Desired-state supersession, automatic policy-expiry planning, public lifecycle
-surfaces, audit, and joint real-process recovery remain required before this
-path can close `MCP0.3`.
+
+Migration 057 gives each immutable marker a second digest for logical desired
+state and an exact MCP route count. The digest canonically binds compiler
+configuration, logical scope and membership policy, semantic ordinary Route
+and DomainClaim authority, complete MCP policy/profile/target projection, and
+credential generation/version evidence. It deliberately excludes the
+physical revision, command and certificate UUIDs, observation time, mutable
+ordinary Route publication binding, and target observation timestamp. A
+successful zero-route marker is therefore durable removal evidence without
+making later ordinary-only changes MCP-owned. Existing migration-056 rows use
+a conservative non-empty sentinel and legacy snapshot digest, causing one
+safe repair publication instead of assuming their logical contents.
+
+The registered `McpGatewayDesiredStateReconciler` scans logical scopes that
+have an unexpired policy or prior MCP publication. Its ordered UUID cursor
+rotates a bounded batch so an old unchanged scope cannot starve later scopes.
+For every current member it first reads physical pending-publication and
+latest-marker state. Any pending complete snapshot defers planning. Otherwise the worker
+materializes the complete scope projection, reads the complete physical
+ordinary Route set, compiles the next candidate, and asks the same atomic
+staging repository to commit it. A first empty set is a no-op. Changed desired
+state, transition from non-empty to empty, or a non-empty applied snapshot
+displaced by another physical revision stages a replacement. Equal applied
+state is unchanged; equal rejected or unavailable state retries only after a
+bounded delay. Dispatch remains the separate durable marker worker, preserving
+commit-before-send and idempotent Fleet replay.
+
+Migration 057 also replaces the original marker-to-primary-scope foreign key
+with the logical scope's exact tenant boundary. Physical Node and publication
+foreign keys remain exact, while current secondary membership is checked
+under the staging transaction's ordered membership locks. Historical
+publication evidence therefore neither rejects secondary members nor blocks a
+later membership change.
+
+Node-wide aggregation for a physical Gateway shared by multiple active
+logical MCP scopes, unified desired-state composition by every ordinary Route
+publication path, proactive MCP-only certificate renewal, revoked-credential
+cleanup, public lifecycle surfaces, audit, an executed PostgreSQL gate, and
+joint real-process recovery remain required before this path can close
+`MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

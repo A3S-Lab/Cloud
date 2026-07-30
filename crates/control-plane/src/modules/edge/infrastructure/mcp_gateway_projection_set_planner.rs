@@ -11,6 +11,7 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, NodeId, RepositoryError, RouteId, Sha256Digest, WorkloadId,
     WorkloadRevisionId,
 };
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use std::collections::BTreeSet;
@@ -118,6 +119,25 @@ pub struct PlannedMcpGatewayProjectionSet {
 }
 
 impl PlannedMcpGatewayProjectionSet {
+    pub fn empty(
+        scope: GatewayScope,
+        gateway_node_id: NodeId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        scope.validate()?;
+        if !scope.contains_member(gateway_node_id) {
+            return Err("empty MCP projection receiving Gateway is not a scope member".into());
+        }
+        Ok(Self {
+            scope,
+            gateway_node_id,
+            observed_at: canonical_timestamp(observed_at),
+            route_versions: Vec::new(),
+            ingress_routes: Vec::new(),
+            projection: None,
+        })
+    }
+
     pub const fn scope(&self) -> &GatewayScope {
         &self.scope
     }
@@ -165,11 +185,29 @@ impl PlannedMcpGatewayProjectionSet {
 
 /// Plans every active hosted MCP route for one physical Gateway and assembles
 /// one complete node-bound projection.
+#[async_trait]
+pub trait IMcpGatewayProjectionSetPlanner: Send + Sync {
+    async fn plan(
+        &self,
+        request: PlanMcpGatewayProjectionSet,
+    ) -> Result<PlannedMcpGatewayProjectionSet, RepositoryError>;
+}
+
 #[derive(Clone)]
 pub struct McpGatewayProjectionSetPlanner {
     inputs: Arc<dyn IMcpRouteProjectionInputReader>,
     routes: McpGatewayProjectionPlanner,
     assembler: McpGatewayProjectionAssembler,
+}
+
+#[async_trait]
+impl IMcpGatewayProjectionSetPlanner for McpGatewayProjectionSetPlanner {
+    async fn plan(
+        &self,
+        request: PlanMcpGatewayProjectionSet,
+    ) -> Result<PlannedMcpGatewayProjectionSet, RepositoryError> {
+        McpGatewayProjectionSetPlanner::plan(self, request).await
+    }
 }
 
 impl McpGatewayProjectionSetPlanner {
@@ -209,14 +247,12 @@ impl McpGatewayProjectionSetPlanner {
             ));
         }
         if inputs.is_empty() {
-            return Ok(PlannedMcpGatewayProjectionSet {
-                scope: request.scope,
-                gateway_node_id: request.gateway_node_id,
+            return PlannedMcpGatewayProjectionSet::empty(
+                request.scope,
+                request.gateway_node_id,
                 observed_at,
-                route_versions: Vec::new(),
-                ingress_routes: Vec::new(),
-                projection: None,
-            });
+            )
+            .map_err(RepositoryError::Conflict);
         }
         inputs.sort_by_key(|input| input.policy.spec().route_id);
         if inputs
