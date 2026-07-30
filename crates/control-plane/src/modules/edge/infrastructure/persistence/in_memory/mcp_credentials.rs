@@ -1,5 +1,7 @@
 use super::InMemoryEdgeRepository;
-use crate::modules::edge::domain::repositories::IMcpCredentialRepository;
+use crate::modules::edge::domain::repositories::{
+    validate_mcp_credential_resolution, IMcpCredentialRepository,
+};
 use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
@@ -111,6 +113,29 @@ impl IMcpCredentialRepository for InMemoryEdgeRepository {
         credentials.sort_by_key(|credential| (credential.created_at(), credential.id));
         Ok(credentials)
     }
+
+    async fn resolve_mcp_credentials(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        credential_ids: &[McpCredentialId],
+    ) -> Result<Vec<McpCredential>, RepositoryError> {
+        validate_mcp_credential_resolution(credential_ids)?;
+        let state = self.state.read().await;
+        let mut credentials = credential_ids
+            .iter()
+            .filter_map(|credential_id| state.mcp_credentials.get(credential_id))
+            .filter(|credential| {
+                credential.organization_id == organization_id
+                    && credential.project_id == project_id
+                    && credential.environment_id == environment_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        credentials.sort_by_key(|credential| credential.id);
+        Ok(credentials)
+    }
 }
 
 #[cfg(test)]
@@ -204,6 +229,65 @@ mod tests {
                 .expect("list"),
             vec![stored]
         );
+    }
+
+    #[tokio::test]
+    async fn resolves_only_exact_unique_environment_credentials() {
+        let repository = InMemoryEdgeRepository::new();
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let requested = credential(
+            McpCredentialId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            "a3s_mcp_abc12345def67890",
+        );
+        let other = credential(
+            McpCredentialId::new(),
+            organization_id,
+            project_id,
+            EnvironmentId::new(),
+            "a3s_mcp_def67890abc12345",
+        );
+        repository
+            .create_mcp_credential(requested.clone())
+            .await
+            .expect("requested");
+        repository
+            .create_mcp_credential(other.clone())
+            .await
+            .expect("other environment");
+
+        assert_eq!(
+            repository
+                .resolve_mcp_credentials(
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    &[McpCredentialId::new(), requested.id],
+                )
+                .await
+                .expect("resolve"),
+            vec![requested.clone()]
+        );
+        assert!(matches!(
+            repository
+                .resolve_mcp_credentials(
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    &[requested.id, requested.id],
+                )
+                .await,
+            Err(RepositoryError::Conflict(_))
+        ));
+        assert!(repository
+            .resolve_mcp_credentials(organization_id, project_id, environment_id, &[other.id],)
+            .await
+            .expect("cross-environment non-disclosure")
+            .is_empty());
     }
 
     #[tokio::test]

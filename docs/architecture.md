@@ -850,7 +850,7 @@ canonically and receive a stable UUIDv5 identity derived from route, node,
 Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
 non-contiguous-priority, and overflowing-weight sets fail closed. Credential
 authority resolution and complete snapshot publication remain separate
-unfinished `MCP0.3` work.
+`MCP0.3` responsibilities.
 
 The MCP projection planner is the read-side orchestration boundary. It verifies
 that the mutable route policy, immutable profile binding, Workload revision,
@@ -861,9 +861,20 @@ target per desired Gateway member, using the profile's declared Runtime port.
 Partial or wrong-node sets fail before projection. The initial policy assigns
 all eligible members priority zero and equal weight, and derives the router
 name from the route ID; later traffic policy must remain Cloud-owned rather
-than becoming a Runtime or Gateway scheduling decision. A durable worker,
-credential resolution, full-snapshot compare-and-swap, dispatch, and
-acknowledgement recovery are still required.
+than becoming a Runtime or Gateway scheduling decision.
+
+The one-route Gateway projection planner then resolves exactly the credential
+IDs named by that route's grants. The repository query is bounded to 10,000
+unique non-nil IDs and one exact organization/project/environment scope; it
+does not list or project unrelated environment credentials. Missing or
+cross-scope identities, stale generations, expiry, and revocation fail closed.
+The resulting projection contains one immutable profile, its one route, only
+the referenced verifier generations, and the earlier of route-policy expiry
+and credential expiry. It is validated as one complete Gateway contract before
+return. This planner deliberately cannot publish a managed snapshot: a durable
+worker must aggregate all active routes for a physical Gateway, compare and
+swap one complete revision, dispatch it, and recover acknowledgement without a
+single-route update removing sibling routes.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`
@@ -878,7 +889,9 @@ redact the verifier. Migration 055 stores the aggregate through typed A3S ORM
 with an exact environment foreign key, globally unique fixed-length prefixes,
 bounded verifier/version checks, optimistic updates, and tenant-filtered reads;
 every restored row is revalidated by the aggregate and shared Gateway
-contract. One-time plaintext issuance, route grant resolution, and atomic
+contract. Exact route-grant resolution now uses only the requested IDs within
+the route's tenant scope and requires the persisted generation to remain
+active at projection time. One-time plaintext issuance and durable atomic
 removal or replacement of revoked grants remain unfinished; Cloud management
 credentials must never be accepted as a shortcut.
 

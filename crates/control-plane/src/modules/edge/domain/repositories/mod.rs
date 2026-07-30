@@ -11,5 +11,6 @@ pub use edge_repository::{
     StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
     StageRoutePublication, TransitionDomainClaim,
 };
+pub(crate) use mcp_credential_repository::validate_mcp_credential_resolution;
 pub use mcp_credential_repository::IMcpCredentialRepository;
 pub use mcp_route_policy_repository::IMcpRoutePolicyRepository;

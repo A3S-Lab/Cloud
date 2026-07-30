@@ -13,6 +13,7 @@ mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
 mod local_gateway_certificate_authority;
 mod mcp_gateway_projection_compiler;
+mod mcp_gateway_projection_planner;
 mod mcp_route_projection_planner;
 mod mcp_route_target_projection_compiler;
 pub mod persistence;
@@ -70,6 +71,7 @@ pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
 };
+pub use mcp_gateway_projection_planner::McpGatewayProjectionPlanner;
 pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRouteProjection};
 pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,

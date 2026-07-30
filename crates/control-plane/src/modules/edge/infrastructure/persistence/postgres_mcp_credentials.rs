@@ -4,7 +4,9 @@ use crate::infrastructure::{
     execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
     transaction_error,
 };
-use crate::modules::edge::domain::repositories::IMcpCredentialRepository;
+use crate::modules::edge::domain::repositories::{
+    validate_mcp_credential_resolution, IMcpCredentialRepository,
+};
 use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
@@ -50,6 +52,23 @@ impl IMcpCredentialRepository for PostgresEdgeRepository {
         environment_id: EnvironmentId,
     ) -> Result<Vec<McpCredential>, RepositoryError> {
         list(&self.executor, organization_id, project_id, environment_id).await
+    }
+
+    async fn resolve_mcp_credentials(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        credential_ids: &[McpCredentialId],
+    ) -> Result<Vec<McpCredential>, RepositoryError> {
+        resolve(
+            &self.executor,
+            organization_id,
+            project_id,
+            environment_id,
+            credential_ids,
+        )
+        .await
     }
 }
 
@@ -223,6 +242,52 @@ async fn list(
         .collect()
 }
 
+async fn resolve(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    credential_ids: &[McpCredentialId],
+) -> Result<Vec<McpCredential>, RepositoryError> {
+    validate_mcp_credential_resolution(credential_ids)?;
+    if credential_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(resolve_query(
+            organization_id,
+            project_id,
+            environment_id,
+            credential_ids,
+        ))
+        .await
+        .map_err(storage)?
+        .rows
+        .into_iter()
+        .map(McpCredentialRow::credential)
+        .collect()
+}
+
+fn resolve_query(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    credential_ids: &[McpCredentialId],
+) -> a3s_orm::query::SelectQuery<McpCredentials, McpCredentialRow> {
+    let identity_filter = credential_ids
+        .iter()
+        .map(|credential_id| McpCredentials::id().eq(credential_id.as_uuid()))
+        .reduce(Expression::or)
+        .expect("credential resolution query requires at least one identity");
+    select_from::<McpCredentials>()
+        .select(McpCredentialSelection)
+        .filter(McpCredentials::organization_id().eq(organization_id.as_uuid()))
+        .filter(McpCredentials::project_id().eq(project_id.as_uuid()))
+        .filter(McpCredentials::environment_id().eq(environment_id.as_uuid()))
+        .filter(identity_filter)
+        .order_by(McpCredentials::id(), OrderDirection::Asc)
+}
+
 fn credential_query(
     organization_id: OrganizationId,
     credential_id: McpCredentialId,
@@ -324,4 +389,33 @@ fn stored(error: String) -> RepositoryError {
 
 fn storage(error: impl std::fmt::Display) -> RepositoryError {
     RepositoryError::Storage(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use a3s_orm::Query;
+
+    #[test]
+    fn exact_resolution_compiles_as_one_typed_scoped_query() {
+        let first = McpCredentialId::new();
+        let second = McpCredentialId::new();
+        let compiled = resolve_query(
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+            &[second, first],
+        )
+        .compile(&PostgresDialect)
+        .expect("compile");
+
+        assert_eq!(compiled.parameters.len(), 5);
+        assert!(compiled.sql.contains("\"organization_id\" = $1"));
+        assert!(compiled.sql.contains("\"project_id\" = $2"));
+        assert!(compiled.sql.contains("\"environment_id\" = $3"));
+        assert!(compiled.sql.contains("\"id\" = $4)"), "{}", compiled.sql);
+        assert!(compiled.sql.contains(" or ("), "{}", compiled.sql);
+        assert!(compiled.sql.contains("\"id\" = $5"), "{}", compiled.sql);
+        assert!(compiled.sql.ends_with("\"id\" asc"));
+    }
 }

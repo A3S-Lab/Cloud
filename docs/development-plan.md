@@ -1571,8 +1571,12 @@ unavailable. As of 2026-07-30:
   OCI artifact digest/media type, and profile digest; the ordinary Runtime
   projection now inherits that opaque digest automatically. These paths use
   typed A3S ORM, and route desired state contains authorization references but
-  no Runtime endpoints or credential verifiers. Credential authority
-  resolution, healthy target reconciliation, the real PostgreSQL gate,
+  no Runtime endpoints or credential verifiers. Cloud now plans one healthy
+  exact-generation target per desired Gateway member, resolves only the
+  credential IDs named by the route within the exact tenant/environment, and
+  validates a one-route complete Gateway projection whose expiry is bounded by
+  both policy and credentials. One-time credential issuance, multi-route
+  durable snapshot reconciliation/publication, the real PostgreSQL gate,
   lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused

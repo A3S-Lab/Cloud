@@ -366,7 +366,7 @@ pub(super) mod tests {
                 expires_at: now() + Duration::hours(1),
                 grants: vec![McpGrantProjection {
                     credential_id: uuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
-                    credential_generation: 3,
+                    credential_generation: 1,
                     methods: vec![
                         "server/discover".into(),
                         "tools/call".into(),

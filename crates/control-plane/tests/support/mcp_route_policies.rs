@@ -82,6 +82,35 @@ pub async fn exercise(
             .await?,
         vec![credential.clone()]
     );
+    assert_eq!(
+        edge.resolve_mcp_credentials(
+            organization_id,
+            project_id,
+            environment_id,
+            &[McpCredentialId::new(), credential.id],
+        )
+        .await?,
+        vec![credential.clone()]
+    );
+    assert!(edge
+        .resolve_mcp_credentials(
+            other_organization_id,
+            project_id,
+            environment_id,
+            &[credential.id],
+        )
+        .await?
+        .is_empty());
+    assert!(matches!(
+        edge.resolve_mcp_credentials(
+            organization_id,
+            project_id,
+            environment_id,
+            &[credential.id, credential.id],
+        )
+        .await,
+        Err(RepositoryError::Conflict(_))
+    ));
     let duplicate_prefix = McpCredential::issue(
         McpCredentialId::new(),
         organization_id,
