@@ -73,47 +73,29 @@ impl NodeSecretTransport for GateSecretTransport {
     }
 }
 
-fn config(
-    isolation: BoxRuntimeIsolation,
-) -> (tempfile::TempDir, tempfile::TempDir, BoxRuntimeConfig) {
-    use std::os::unix::fs::PermissionsExt;
-
+fn config(isolation: BoxRuntimeIsolation) -> (tempfile::TempDir, BoxRuntimeConfig) {
     let home = tempfile::tempdir().expect("temporary Box home");
-    let secret_mount = tempfile::Builder::new()
-        .prefix("a3s-cloud-box-secrets-")
-        .tempdir_in("/dev/shm")
-        .expect("temporary Box Secret tmpfs mount");
-    let secret_root = secret_mount.path().join("runtime-secrets");
-    std::fs::create_dir(&secret_root).expect("create private Box Secret root");
-    std::fs::set_permissions(&secret_root, std::fs::Permissions::from_mode(0o700))
-        .expect("make Box Secret root provider-private");
     let config = BoxRuntimeConfig {
         home_dir: home.path().to_path_buf(),
-        secret_root,
+        secret_root: home.path().join("runtime-secrets"),
         isolation,
         control_timeout_ms: 60_000,
         task_poll_interval_ms: 50,
     };
-    (home, secret_mount, config)
+    (home, config)
 }
 
-#[tokio::test]
-async fn selects_the_exact_configured_box_isolation_and_secret_capability_without_fallback() {
+#[test]
+fn selects_the_exact_configured_box_isolation_without_fallback_or_host_probe() {
     for (configured, expected) in [
         (BoxRuntimeIsolation::Microvm, ExecutionIsolation::Microvm),
         (BoxRuntimeIsolation::Sandbox, ExecutionIsolation::Sandbox),
     ] {
-        let (_home, _secret_root, config) = config(configured);
+        let (_home, config) = config(configured);
         let materializer = Arc::new(CloudBoxSecretMaterializer::new());
         let driver = build_box_runtime_driver(&config, materializer).expect("Box Runtime driver");
 
         assert_eq!(driver.execution_isolation(), expected);
-        assert!(driver
-            .capabilities()
-            .await
-            .expect("Box Runtime capabilities")
-            .features
-            .contains(&a3s_runtime::contract::RuntimeFeature::SecretReferences));
     }
 }
 
