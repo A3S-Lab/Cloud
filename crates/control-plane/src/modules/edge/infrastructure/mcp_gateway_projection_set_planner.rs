@@ -351,12 +351,12 @@ mod tests {
     use crate::modules::edge::infrastructure::{
         CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
         GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpRouteProjectionPlanner,
-        McpRouteTargetProjectionCompiler,
+        McpRouteTargetProjectionCompiler, StageMcpGatewaySnapshot,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
-        DomainClaimId, EnvironmentId, GatewayCertificateId, McpCredentialId, OrganizationId,
-        ProjectId, RouteId, WorkloadRevisionId,
+        DomainClaimId, EnvironmentId, GatewayCertificateId, McpCredentialId, NodeCommandId,
+        OrganizationId, ProjectId, RouteId, WorkloadRevisionId,
     };
     use async_trait::async_trait;
     use chrono::Duration;
@@ -582,6 +582,16 @@ mod tests {
             compiled.domain_claim_versions()[0].domain_claim_id(),
             fixture.policy.spec().domain_claim_id
         );
+        let stage = StageMcpGatewaySnapshot::new(
+            compiled,
+            NodeCommandId::new(),
+            uuid::Uuid::now_v7(),
+            now() + Duration::minutes(5),
+        )
+        .expect("durable stage intent");
+        assert!(stage.certificate().is_some());
+        assert_eq!(stage.event().event_key, "edge.mcp-gateway.snapshot-staged");
+        stage.validate().expect("stage intent");
     }
 
     #[tokio::test]
@@ -631,6 +641,15 @@ mod tests {
             .acl
             .contains("entrypoints \"a3s-cloud-https\""));
         assert!(compiled.snapshot().acl.contains("management {"));
+        let stage = StageMcpGatewaySnapshot::new(
+            compiled,
+            NodeCommandId::new(),
+            uuid::Uuid::now_v7(),
+            now() + Duration::minutes(5),
+        )
+        .expect("route-less durable stage intent");
+        assert!(stage.certificate().is_none());
+        stage.validate().expect("route-less stage intent");
     }
 
     #[tokio::test]

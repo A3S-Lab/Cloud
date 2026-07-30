@@ -776,10 +776,12 @@ implemented `A0.1` domain and PostgreSQL foundation plus the first `A0.2` local
 bare-repository slice. Authorized Smart HTTP and the remaining repository
 safety gates, publication, Agent deployment, Skill binding, and catalog
 surfaces remain open `A0` work. Hosted modern MCP contract/compiler,
-scope-complete Cloud planning, pure ordinary-plus-MCP Gateway snapshot
-composition, and Gateway request-path foundations are in development under
-`MCP0`; durable snapshot publication, real Box hosting, and joint product
-conformance remain unavailable. Stateful
+scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
+complete version-vector CAS, atomic publication/certificate/scope/Outbox
+staging, and Gateway request-path foundations are in development under `MCP0`;
+Fleet dispatch and exact acknowledgement/restart convergence, executed real
+PostgreSQL evidence for the new staging path, real Box hosting, and joint
+product conformance remain unavailable. Stateful
 resources remain `S0`; replicas and multi-node
 placement remain `H0`; accelerator and inference capabilities remain `I0`.
 These profiles do not create separate schedulers.

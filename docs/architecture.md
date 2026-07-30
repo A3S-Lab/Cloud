@@ -854,8 +854,8 @@ Callers control only priority and positive weight. Targets are sorted
 canonically and receive a stable UUIDv5 identity derived from route, node,
 Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
 non-contiguous-priority, and overflowing-weight sets fail closed. Credential
-authority resolution, scope-complete planning, and physical snapshot
-publication remain later `MCP0.3` layers rather than target-compiler
+authority resolution, scope-complete planning, complete snapshot composition,
+and durable staging are separate `MCP0.3` layers rather than target-compiler
 responsibilities.
 
 The MCP projection planner is the read-side orchestration boundary. It verifies
@@ -936,12 +936,36 @@ routes.
 The compiled value retains the physical scope state, ordinary Route versions,
 all ordinary and MCP DomainClaim versions, and the complete MCP plan; that plan
 already retains the policy/digest, Workload/revision, and credential
-generation/version evidence. This composition is still not a publication
-transaction. Staging must compare and swap that entire version vector and the
-prior installed Gateway revision before persisting the snapshot and one
-Outbox command. Durable staging, dispatch, and acknowledgement recovery remain
-required; otherwise a concurrent route, policy, domain revocation, credential
-change, or rollout could publish an obsolete but individually valid candidate.
+generation/version evidence.
+
+Durable staging now consumes that complete value in one PostgreSQL
+transaction. It locks the physical Node, exact logical scope and ordered
+membership, physical scope, complete active ordinary Route set, complete active
+MCP policy set at the planning observation, every DomainClaim, every referenced
+Workload/active revision, and every credential generation. Policy create and
+update lock the same logical scope row before their policy row, so a concurrent
+insert cannot appear as an unobserved active-set phantom. Ordinary Route
+publication already serializes through the same Node and physical-scope
+authority. Any scope, membership, installed revision, route, policy, claim,
+Workload rollout, credential rotation, revocation, or pending-publication drift
+rejects the candidate before commit.
+
+An accepted stage writes the pending `GatewayPublication`, optional provisioning
+certificate, next physical scope revision, and one secret-free
+`edge.mcp-gateway.snapshot-staged` Outbox fact atomically. The event binds the
+logical and physical identities, command, revision, snapshot digest, ordinary
+and MCP Route IDs, DomainClaim IDs, and optional certificate ID without
+including credential verifiers. The PostgreSQL integration fixture rejects a
+candidate after policy revision and injects failure at the final Outbox insert
+to verify no publication, certificate, event, or scope advance leaks before a
+successful retry. That fixture is compiled in the normal test gate; an
+environment-backed PostgreSQL execution is still required before claiming real
+database evidence.
+
+Staging is not dispatch or convergence. Fleet command creation/redelivery,
+certificate issuance, exact Gateway acknowledgement projection, supersession,
+expiry, and restart recovery remain required before this path can activate
+traffic or close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

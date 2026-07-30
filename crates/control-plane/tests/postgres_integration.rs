@@ -2090,18 +2090,6 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         },
     )
     .await?;
-    mcp_route_policies_support::exercise(
-        &executor,
-        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
-        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
-            &installation_conflict_organization,
-        )?)?),
-        ProjectId::from_uuid(Uuid::parse_str(&project_id)?),
-        a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
-            Uuid::parse_str(&environment_id)?,
-        ),
-    )
-    .await?;
     let gateway_rollout_fixture = gateway_rollouts_support::GatewayRolloutFixture {
         organization_id: OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
         project_id: a3s_cloud_control_plane::modules::shared_kernel::domain::ProjectId::from_uuid(
@@ -2123,6 +2111,18 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     gateway_rollouts_support::exercise_replicated_gateway_rollout(
         &executor,
         gateway_rollout_fixture,
+    )
+    .await?;
+    mcp_route_policies_support::exercise(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
+        )?)?),
+        ProjectId::from_uuid(Uuid::parse_str(&project_id)?),
+        a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
+            Uuid::parse_str(&environment_id)?,
+        ),
     )
     .await?;
 

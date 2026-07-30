@@ -8,17 +8,24 @@ use a3s_cloud_control_plane::modules::assets::{
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
 use a3s_cloud_control_plane::modules::edge::{
-    CreateDomainClaimWrite, DomainClaim, DomainNamePattern, IEdgeRepository,
-    IMcpCredentialRepository, IMcpRoutePolicyRepository, McpCredential, McpRoutePolicy,
-    McpRoutePolicySpec, PostgresEdgeRepository, RouteHostname, TransitionDomainClaim,
+    CompileMcpGatewaySnapshot, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialRepository,
+    IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpRoutePolicy, McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteTargetProjectionCompiler, PlanMcpGatewayProjectionSet, PostgresEdgeRepository,
+    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
+    StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayScopeId,
-    GitCommitSha, IdempotencyRequest, McpCredentialId, OperationId, OrganizationId, ProjectId,
-    RepositoryError, ResourceName, RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
+    AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
+    GatewayScopeId, GitCommitSha, IdempotencyRequest, McpCredentialId, NodeCommandId, NodeId,
+    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, RouteId, Sha256Digest,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -29,10 +36,12 @@ use a3s_cloud_control_plane::modules::workloads::{
     OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
     ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision,
 };
-use a3s_orm::{select_from, Database, PostgresDialect, PostgresExecutor};
-use chrono::{Duration, Utc};
+use a3s_orm::{select_from, sql_query, Database, PostgresDialect, PostgresExecutor};
+use async_trait::async_trait;
+use chrono::{DateTime, Duration, Utc};
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
@@ -47,12 +56,25 @@ pub async fn exercise(
     environment_id: EnvironmentId,
 ) -> TestResult {
     let edge = PostgresEdgeRepository::new(executor.clone());
-    let scope = edge
+    let database = Database::new(PostgresDialect, executor.clone());
+    let mut scope = None;
+    for candidate in edge
         .list_gateway_scopes(organization_id, project_id, environment_id)
         .await?
-        .into_iter()
-        .next()
-        .ok_or("MCP route policy fixture has no Gateway scope")?;
+    {
+        let pending_publications = database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from gateway_publications where node_id = ")
+                    .bind(candidate.node_id.as_uuid())
+                    .append(" and state = 'pending'"),
+            )
+            .await?;
+        if pending_publications == 0 && edge.active_routes(candidate.node_id).await?.is_empty() {
+            scope = Some(candidate);
+            break;
+        }
+    }
+    let scope = scope.ok_or("MCP route policy fixture has no route-less Gateway scope")?;
     let assets = PostgresAssetRepository::new(executor.clone());
     let now = Utc::now();
     let credential = McpCredential::issue(
@@ -337,6 +359,45 @@ pub async fn exercise(
             Some(profile.digest().to_string())
         )
     );
+    let resolving = workloads
+        .mark_resolving(
+            deployment.id,
+            deployment.aggregate_version,
+            workload_created_at + Duration::milliseconds(1),
+        )
+        .await?;
+    let scheduled = workloads
+        .assign_node(
+            deployment.id,
+            resolving.aggregate_version,
+            scope.node_id,
+            workload_created_at + Duration::milliseconds(2),
+        )
+        .await?;
+    let applying = workloads
+        .mark_dispatched(
+            deployment.id,
+            scheduled.aggregate_version,
+            NodeCommandId::new(),
+            workload_created_at + Duration::milliseconds(3),
+        )
+        .await?;
+    let verifying = workloads
+        .mark_verifying(
+            deployment.id,
+            applying.aggregate_version,
+            workload_created_at + Duration::milliseconds(4),
+        )
+        .await?;
+    let (active_workload, _) = workloads
+        .activate(
+            deployment.id,
+            verifying.aggregate_version,
+            false,
+            workload_created_at + Duration::milliseconds(5),
+        )
+        .await?;
+    assert_eq!(active_workload.active_revision_id, Some(revision.id));
 
     let workload_id = workload.id;
     let created_at = workload_created_at + Duration::milliseconds(1);
@@ -488,6 +549,21 @@ pub async fn exercise(
         .await?
         .is_empty());
 
+    let stale_stage = plan_gateway_snapshot(
+        &edge,
+        &assets,
+        &workloads,
+        &scope,
+        workload_id,
+        created_at + Duration::milliseconds(10),
+    )
+    .await?;
+    let scope_before_stale_stage = edge.gateway_scope(scope.node_id).await?;
+    assert_eq!(
+        stage_artifact_counts(executor, &stale_stage).await?,
+        (0, 0, 0)
+    );
+
     let mut revised = policy.clone();
     let mut revised_spec = revised.spec().clone();
     revised_spec.max_request_bytes /= 2;
@@ -496,6 +572,18 @@ pub async fn exercise(
     assert_eq!(
         edge.update_mcp_route_policy(revised.clone(), 1).await?,
         revised
+    );
+    assert!(matches!(
+        edge.stage_mcp_gateway_snapshot(stale_stage.clone()).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        edge.gateway_scope(scope.node_id).await?,
+        scope_before_stale_stage
+    );
+    assert_eq!(
+        stage_artifact_counts(executor, &stale_stage).await?,
+        (0, 0, 0)
     );
     let mut stale = policy;
     let mut stale_spec = stale.spec().clone();
@@ -521,6 +609,62 @@ pub async fn exercise(
     assert!(!stored_acl.contains("verifier_hash"));
     assert!(!stored_acl.contains("targets "));
     assert!(!stored_acl.contains("endpoint ="));
+
+    let current_stage = plan_gateway_snapshot(
+        &edge,
+        &assets,
+        &workloads,
+        &scope,
+        workload_id,
+        created_at + Duration::minutes(1) + Duration::milliseconds(1),
+    )
+    .await?;
+    let scope_before_atomic_stage = edge.gateway_scope(scope.node_id).await?;
+    install_snapshot_outbox_failure(executor).await?;
+    let injected_failure = edge.stage_mcp_gateway_snapshot(current_stage.clone()).await;
+    remove_snapshot_outbox_failure(executor).await?;
+    assert!(injected_failure.is_err());
+    assert_eq!(
+        edge.gateway_scope(scope.node_id).await?,
+        scope_before_atomic_stage
+    );
+    assert_eq!(
+        stage_artifact_counts(executor, &current_stage).await?,
+        (0, 0, 0)
+    );
+
+    let expected_publication = current_stage.publication().clone();
+    let expected_certificate = current_stage
+        .certificate()
+        .cloned()
+        .ok_or("hosted MCP snapshot did not request a Gateway certificate")?;
+    let staged = edge
+        .stage_mcp_gateway_snapshot(current_stage.clone())
+        .await?;
+    assert_eq!(staged.publication, expected_publication);
+    assert_eq!(staged.certificate, Some(expected_certificate.clone()));
+    assert_eq!(
+        edge.find_gateway_certificate(scope.node_id, expected_certificate.id)
+            .await?,
+        expected_certificate
+    );
+    let scope_after_atomic_stage = edge.gateway_scope(scope.node_id).await?;
+    assert_eq!(
+        scope_after_atomic_stage.last_issued_revision,
+        scope_before_atomic_stage.next_revision()?
+    );
+    assert_eq!(
+        scope_after_atomic_stage.installed_revision,
+        scope_before_atomic_stage.installed_revision
+    );
+    assert_eq!(
+        scope_after_atomic_stage.aggregate_version,
+        scope_before_atomic_stage.aggregate_version + 1
+    );
+    assert_eq!(
+        stage_artifact_counts(executor, &current_stage).await?,
+        (1, 1, 1)
+    );
 
     let mut rotated = credential.clone();
     rotated.rotate(
@@ -552,6 +696,215 @@ pub async fn exercise(
             .await?,
         vec![revoked]
     );
+    Ok(())
+}
+
+struct FixtureRouteTargetReader {
+    workload_id: WorkloadId,
+}
+
+#[async_trait]
+impl IRouteTargetReader for FixtureRouteTargetReader {
+    async fn resolve_healthy_target(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _revision_id: WorkloadRevisionId,
+        _port_name: &RoutePortName,
+        _now: DateTime<Utc>,
+    ) -> Result<ResolvedRouteTarget, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "MCP PostgreSQL fixture requires complete member target resolution".into(),
+        ))
+    }
+
+    async fn resolve_healthy_target_set(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        revision_id: WorkloadRevisionId,
+        port_name: &RoutePortName,
+        member_node_ids: &[NodeId],
+        now: DateTime<Utc>,
+    ) -> Result<ResolvedRouteTargetSet, RepositoryError> {
+        let targets = member_node_ids
+            .iter()
+            .enumerate()
+            .map(|(index, node_id)| {
+                let port = 49_200_u16
+                    .checked_add(u16::try_from(index).map_err(|_| {
+                        RepositoryError::Conflict(
+                            "Gateway member index exceeds fixture range".into(),
+                        )
+                    })?)
+                    .ok_or_else(|| {
+                        RepositoryError::Conflict("Gateway fixture port range overflowed".into())
+                    })?;
+                Ok(ResolvedRouteTarget {
+                    workload_id: self.workload_id,
+                    node_id: *node_id,
+                    target: RouteTarget::new(
+                        self.workload_id,
+                        revision_id,
+                        format!("workload:{}:revision:{revision_id}", self.workload_id),
+                        1,
+                        port_name.clone(),
+                        UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}"))
+                            .map_err(RepositoryError::Conflict)?,
+                        now,
+                    )
+                    .map_err(RepositoryError::Conflict)?,
+                })
+            })
+            .collect::<Result<Vec<_>, RepositoryError>>()?;
+        ResolvedRouteTargetSet::new(member_node_ids, targets).map_err(RepositoryError::Conflict)
+    }
+}
+
+async fn plan_gateway_snapshot(
+    edge: &PostgresEdgeRepository,
+    assets: &PostgresAssetRepository,
+    workloads: &PostgresWorkloadRepository,
+    scope: &a3s_cloud_control_plane::modules::edge::GatewayScope,
+    workload_id: WorkloadId,
+    observed_at: DateTime<Utc>,
+) -> TestResult<StageMcpGatewaySnapshot> {
+    let shared_edge = Arc::new(edge.clone());
+    let input_reader = Arc::new(McpRouteProjectionInputReader::new(
+        shared_edge.clone(),
+        shared_edge.clone(),
+        Arc::new(assets.clone()),
+        Arc::new(workloads.clone()),
+    ));
+    let route_planner = McpRouteProjectionPlanner::new(
+        Arc::new(FixtureRouteTargetReader { workload_id }),
+        McpRouteTargetProjectionCompiler,
+    );
+    let planner = McpGatewayProjectionSetPlanner::new(
+        input_reader,
+        McpGatewayProjectionPlanner::new(route_planner, shared_edge),
+        McpGatewayProjectionAssembler,
+    );
+    let planned = planner
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: scope.clone(),
+            gateway_node_id: scope.node_id,
+            observed_at,
+        })
+        .await?;
+    let expires_at = planned
+        .projection()
+        .ok_or("MCP PostgreSQL fixture planned no active route")?
+        .projection()
+        .expires_at;
+    let physical_scope = edge.gateway_scope(scope.node_id).await?;
+    let mut active_routes = Vec::new();
+    for route in edge.active_routes(scope.node_id).await? {
+        let claim_id = route
+            .domain_claim_id
+            .ok_or("active ordinary Gateway route lost its DomainClaim")?;
+        let domain_claim = edge
+            .find_domain_claim(route.organization_id, claim_id)
+            .await?;
+        active_routes.push(GatewaySnapshotRouteInput {
+            route,
+            domain_claim,
+        });
+    }
+    let candidate = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: "0.0.0.0:8081".into(),
+        management_address: "127.0.0.1:9090".into(),
+        management_path_prefix: "/api/gateway".into(),
+        management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+        upstream_request_timeout_ms: 30_000,
+        certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+    })?
+    .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+        metadata: GatewaySnapshotMetadata::new(
+            scope.node_id,
+            physical_scope.next_revision()?,
+            physical_scope.installed_revision,
+            observed_at,
+            expires_at,
+        ),
+        physical_scope,
+        certificate_id: Some(GatewayCertificateId::new()),
+        active_routes,
+        mcp: planned,
+    })?;
+    Ok(StageMcpGatewaySnapshot::new(
+        candidate,
+        NodeCommandId::new(),
+        Uuid::now_v7(),
+        observed_at + Duration::minutes(5),
+    )?)
+}
+
+async fn stage_artifact_counts(
+    executor: &PostgresExecutor,
+    stage: &StageMcpGatewaySnapshot,
+) -> TestResult<(i64, i64, i64)> {
+    let database = Database::new(PostgresDialect, executor.clone());
+    let publications = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from gateway_publications where command_id = ")
+                .bind(stage.publication().command_id.as_uuid()),
+        )
+        .await?;
+    let certificates = match stage.certificate() {
+        Some(certificate) => {
+            database
+                .fetch_one_as(
+                    sql_query::<i64>("select count(*) from gateway_certificates where id = ")
+                        .bind(certificate.id.as_uuid()),
+                )
+                .await?
+        }
+        None => 0,
+    };
+    let events = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from outbox_events where event_id = ")
+                .bind(stage.event().event_id),
+        )
+        .await?;
+    Ok((publications, certificates, events))
+}
+
+async fn install_snapshot_outbox_failure(executor: &PostgresExecutor) -> TestResult {
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "create function reject_mcp_gateway_snapshot_outbox() returns trigger language plpgsql as $$
+               begin
+                 if new.event_key = 'edge.mcp-gateway.snapshot-staged' then
+                   raise exception 'injected MCP Gateway snapshot outbox failure';
+                 end if;
+                 return new;
+               end
+             $$;
+             create trigger reject_mcp_gateway_snapshot_outbox before insert on outbox_events
+               for each row execute function reject_mcp_gateway_snapshot_outbox();",
+        )
+        .await?;
+    Ok(())
+}
+
+async fn remove_snapshot_outbox_failure(executor: &PostgresExecutor) -> TestResult {
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "drop trigger reject_mcp_gateway_snapshot_outbox on outbox_events;
+             drop function reject_mcp_gateway_snapshot_outbox();",
+        )
+        .await?;
     Ok(())
 }
 

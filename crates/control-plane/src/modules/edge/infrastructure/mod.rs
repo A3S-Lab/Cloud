@@ -17,6 +17,7 @@ mod mcp_gateway_projection_assembler;
 mod mcp_gateway_projection_compiler;
 mod mcp_gateway_projection_planner;
 mod mcp_gateway_projection_set_planner;
+mod mcp_gateway_publication;
 mod mcp_route_projection_input_reader;
 mod mcp_route_projection_planner;
 mod mcp_route_target_projection_compiler;
@@ -87,6 +88,9 @@ pub use mcp_gateway_projection_planner::{
 pub use mcp_gateway_projection_set_planner::{
     McpGatewayIngressRoute, McpGatewayProjectionSetPlanner, McpRouteProjectionVersion,
     PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
+};
+pub use mcp_gateway_publication::{
+    IMcpGatewaySnapshotRepository, McpGatewaySnapshotStageResult, StageMcpGatewaySnapshot,
 };
 pub use mcp_route_projection_input_reader::McpRouteProjectionInputReader;
 pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRouteProjection};

@@ -339,3 +339,15 @@ orm_table! {
         revoked_at: Option<DateTime<Utc>> => "revoked_at",
     }
 }
+
+orm_table! {
+    pub(super) struct Workloads => "workloads" {
+        id: Uuid => "id",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        desired_state: String => "desired_state",
+        active_revision_id: Option<Uuid> => "active_revision_id",
+        aggregate_version: u64 => "aggregate_version",
+    }
+}

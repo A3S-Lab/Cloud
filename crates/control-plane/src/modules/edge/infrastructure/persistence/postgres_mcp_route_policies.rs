@@ -1,5 +1,5 @@
 use super::postgres::PostgresEdgeRepository;
-use super::postgres_schema::{McpRoutePolicies, McpServiceProfiles};
+use super::postgres_schema::{GatewayRouteScopes, McpRoutePolicies, McpServiceProfiles};
 use crate::infrastructure::{
     execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
     transaction_error, PostgresPersistenceError,
@@ -88,6 +88,7 @@ async fn create(
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
+                lock_policy_scope(transaction, &policy).await?;
                 let profile = load_profile(
                     transaction,
                     policy.spec().organization_id,
@@ -192,6 +193,7 @@ async fn update(
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
+                lock_policy_scope(transaction, &policy).await?;
                 let row = fetch_optional::<McpRoutePolicyRow, _>(
                     transaction,
                     policy_query(policy.spec().organization_id, policy.spec().route_id)
@@ -282,6 +284,36 @@ async fn update(
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn lock_policy_scope(
+    transaction: &PostgresTransaction,
+    policy: &McpRoutePolicy,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = policy.spec();
+    let owner = fetch_optional::<(Uuid, Uuid, Uuid), _>(
+        transaction,
+        select_from::<GatewayRouteScopes>()
+            .select((
+                GatewayRouteScopes::organization_id(),
+                GatewayRouteScopes::project_id(),
+                GatewayRouteScopes::environment_id(),
+            ))
+            .filter(GatewayRouteScopes::id().eq(spec.gateway_scope_id.as_uuid()))
+            .for_update(),
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    if owner
+        != (
+            spec.organization_id.as_uuid(),
+            spec.project_id.as_uuid(),
+            spec.environment_id.as_uuid(),
+        )
+    {
+        return Err(RepositoryError::NotFound.into());
+    }
+    Ok(())
 }
 
 async fn find(
