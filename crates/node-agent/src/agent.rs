@@ -1,3 +1,4 @@
+use crate::artifact::CloudBoxArtifactPort;
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
 use crate::log_shipper::LogShipper;
 use crate::resource_inventory::ResourceInventoryManager;
@@ -73,6 +74,9 @@ pub async fn run_node_agent(
         )
         .map_err(NodeAgentError::Invalid)?,
     );
+    runtime
+        .bind_artifact_manager(artifact_manager.clone())
+        .await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(
         session_transport,
@@ -99,6 +103,7 @@ pub async fn run_node_agent(
 pub struct NodeRuntimeProvider {
     client: Arc<dyn RuntimeClient>,
     secret_materializer: Arc<crate::secret::CloudBoxSecretMaterializer>,
+    artifact_port: Arc<CloudBoxArtifactPort>,
 }
 
 impl NodeRuntimeProvider {
@@ -106,10 +111,12 @@ impl NodeRuntimeProvider {
     pub(crate) fn new(
         client: Arc<dyn RuntimeClient>,
         secret_materializer: Arc<crate::secret::CloudBoxSecretMaterializer>,
+        artifact_port: Arc<CloudBoxArtifactPort>,
     ) -> Self {
         Self {
             client,
             secret_materializer,
+            artifact_port,
         }
     }
 
@@ -123,6 +130,13 @@ impl NodeRuntimeProvider {
         transport: Arc<dyn NodeSecretTransport>,
     ) -> a3s_runtime::RuntimeResult<()> {
         self.secret_materializer.bind_transport(transport).await
+    }
+
+    pub(crate) async fn bind_artifact_manager(
+        &self,
+        manager: Arc<NodeArtifactManager>,
+    ) -> a3s_runtime::RuntimeResult<()> {
+        self.artifact_port.bind_manager(manager).await
     }
 }
 

@@ -147,6 +147,20 @@ impl NodeArtifactManager {
             .await
     }
 
+    #[cfg(any(target_os = "linux", test))]
+    pub(crate) async fn capture_output_directory(
+        &self,
+        spec: &RuntimeUnitSpec,
+        output: &RuntimeOutputSpec,
+        source: &Path,
+    ) -> Result<RuntimeOutputArtifact, NodeArtifactError> {
+        validate_output_spec(output)?;
+        let spec_digest = spec.digest().map_err(NodeArtifactError::Invalid)?;
+        self.cache
+            .capture_output_directory(&spec_digest, output, source)
+            .await
+    }
+
     pub async fn cleanup_spec(&self, spec_digest: &str) -> Result<(), NodeArtifactError> {
         self.cache.cleanup_spec(spec_digest).await
     }

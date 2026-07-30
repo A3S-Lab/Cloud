@@ -330,6 +330,31 @@ jobs:
             "$EVIDENCE_DIR/cloud-secret-materialization.log" \
             >"$EVIDENCE_DIR/secret-materialization-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/secret-materialization-certification.txt")" -eq 1
+          normalize_secret_root cloud-artifact-volume-output
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-node-agent --lib \
+              box_runtime::tests::artifact_storage::real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/cloud-artifact-volume-output.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_BOX_ARTIFACT_VOLUME_OUTPUT_CERTIFIED' \
+            "$EVIDENCE_DIR/cloud-artifact-volume-output.log" \
+            >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
 
       - name: Verify provider cleanup
         if: always()

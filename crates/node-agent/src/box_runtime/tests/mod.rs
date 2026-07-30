@@ -18,6 +18,8 @@ use std::sync::Mutex;
 use tokio::time::Instant;
 use uuid::Uuid;
 
+#[path = "artifact_storage.rs"]
+mod artifact_storage;
 #[path = "private_registry.rs"]
 mod private_registry;
 
@@ -93,7 +95,9 @@ fn selects_the_exact_configured_box_isolation_without_fallback_or_host_probe() {
     ] {
         let (_home, config) = config(configured);
         let materializer = Arc::new(CloudBoxSecretMaterializer::new());
-        let driver = build_box_runtime_driver(&config, materializer).expect("Box Runtime driver");
+        let artifact_port = Arc::new(CloudBoxArtifactPort::new());
+        let driver = build_box_runtime_driver(&config, materializer, artifact_port)
+            .expect("Box Runtime driver");
 
         assert_eq!(driver.execution_isolation(), expected);
     }

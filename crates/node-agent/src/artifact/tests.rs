@@ -248,6 +248,110 @@ async fn task_output_identity_survives_restart_and_publishes_exactly() {
 }
 
 #[tokio::test]
+async fn task_output_directory_is_archived_once_and_publishes_exactly() {
+    let directory = tempfile::tempdir().expect("artifact state");
+    let source = directory.path().join("runtime-output");
+    tokio::fs::create_dir_all(source.join("export/oci/blobs/sha256"))
+        .await
+        .expect("output directories");
+    tokio::fs::write(source.join("export/buildkit-metadata.json"), b"{}")
+        .await
+        .expect("output metadata");
+    tokio::fs::write(source.join("export/oci/index.json"), b"{\"manifests\":[]}")
+        .await
+        .expect("OCI index");
+
+    let node_id = Uuid::now_v7();
+    let transport = Arc::new(FakeTransport {
+        archive: Vec::new(),
+        downloads: AtomicUsize::new(0),
+        uploads: Mutex::new(Vec::new()),
+    });
+    let spec = task_spec(None, true);
+    let command = command(node_id, spec.clone());
+    let output_spec = spec.outputs.first().expect("output spec");
+    let manager = build_manager(directory.path(), node_id, transport.clone());
+
+    let captured = manager
+        .capture_output_directory(&spec, output_spec, &source)
+        .await
+        .expect("capture output directory");
+    let digest = captured
+        .artifact
+        .digest
+        .strip_prefix("sha256:")
+        .expect("SHA-256 output digest");
+    let blob = directory.path().join("artifacts/blobs/sha256").join(digest);
+    let entries = archive_paths(&blob);
+    assert_eq!(
+        entries,
+        vec![
+            "export/",
+            "export/buildkit-metadata.json",
+            "export/oci/",
+            "export/oci/blobs/",
+            "export/oci/blobs/sha256/",
+            "export/oci/index.json",
+        ]
+    );
+
+    tokio::fs::write(
+        source.join("export/oci/index.json"),
+        b"changed after capture",
+    )
+    .await
+    .expect("mutate quiescent fixture");
+    let replayed = manager
+        .capture_output_directory(&spec, output_spec, &source)
+        .await
+        .expect("replay captured directory");
+    assert_eq!(replayed, captured);
+
+    let observation = succeeded_observation(&spec, captured);
+    let published = manager
+        .publish_command_outputs(&command, &observation)
+        .await
+        .expect("publish directory output");
+    assert_eq!(published.outputs.len(), 1);
+    assert!(published.outputs[0]
+        .artifact
+        .uri
+        .starts_with("a3s-cloud-artifact://sha256/"));
+    assert_eq!(transport.uploads.lock().expect("uploads").len(), 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn task_output_directory_rejects_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let directory = tempfile::tempdir().expect("artifact state");
+    let source = directory.path().join("runtime-output");
+    tokio::fs::create_dir_all(&source)
+        .await
+        .expect("output directory");
+    symlink("/etc/passwd", source.join("escaped")).expect("output symlink");
+    let node_id = Uuid::now_v7();
+    let manager = build_manager(
+        directory.path(),
+        node_id,
+        Arc::new(FakeTransport {
+            archive: Vec::new(),
+            downloads: AtomicUsize::new(0),
+            uploads: Mutex::new(Vec::new()),
+        }),
+    );
+    let spec = task_spec(None, true);
+
+    assert!(matches!(
+        manager
+            .capture_output_directory(&spec, &spec.outputs[0], &source)
+            .await,
+        Err(NodeArtifactError::Invalid(message)) if message.contains("plain directories and regular files")
+    ));
+}
+
+#[tokio::test]
 async fn downloaded_bytes_are_verified_independently_of_the_transport() {
     let directory = tempfile::tempdir().expect("artifact state");
     let expected = directory_archive(&[("source/expected", b"expected", 0o644)]);
@@ -379,6 +483,23 @@ fn directory_archive(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
     }
     builder.finish().expect("finish archive");
     builder.into_inner().expect("archive bytes")
+}
+
+fn archive_paths(path: &Path) -> Vec<String> {
+    let file = std::fs::File::open(path).expect("open captured archive");
+    tar::Archive::new(file)
+        .entries()
+        .expect("archive entries")
+        .map(|entry| {
+            entry
+                .expect("archive entry")
+                .path()
+                .expect("archive path")
+                .into_owned()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
 }
 
 async fn directory_is_empty(path: &Path) -> bool {

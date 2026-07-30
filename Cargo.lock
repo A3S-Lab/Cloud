@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=7f29f6314827b1f572401cdda189bae9f34b7f9f#7f29f6314827b1f572401cdda189bae9f34b7f9f"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-common",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=7f29f6314827b1f572401cdda189bae9f34b7f9f#7f29f6314827b1f572401cdda189bae9f34b7f9f"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=7f29f6314827b1f572401cdda189bae9f34b7f9f#7f29f6314827b1f572401cdda189bae9f34b7f9f"
 dependencies = [
  "a3s-box-core",
  "a3s-box-netproxy",
@@ -2079,7 +2079,7 @@ version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4705,7 +4705,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
