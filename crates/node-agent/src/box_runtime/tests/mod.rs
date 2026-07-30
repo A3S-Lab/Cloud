@@ -382,12 +382,12 @@ async fn exercise_private_registry(
     let private_home = tempfile::Builder::new()
         .prefix("a3s-cloud-private-registry-")
         .tempdir_in(parent)?;
-    let private_secret_root = tempfile::Builder::new()
-        .prefix("private-registry-")
-        .tempdir_in(shared_secret_root)?;
     let config = BoxRuntimeConfig {
         home_dir: private_home.path().to_path_buf(),
-        secret_root: private_secret_root.path().to_path_buf(),
+        // A node owns one pre-mounted Secret tmpfs. Runtime specification
+        // digests isolate material below that root; a second provider client
+        // must not invent a nested ownership boundary.
+        secret_root: shared_secret_root.to_path_buf(),
         isolation: BoxRuntimeIsolation::Sandbox,
         control_timeout_ms: 120_000,
         task_poll_interval_ms: 25,
@@ -459,13 +459,13 @@ async fn exercise_private_registry(
             deadline_at_ms: None,
         })
         .await?;
-    if private_secret_root.path().read_dir()?.next().is_some() {
+    if shared_secret_root.read_dir()?.next().is_some() {
         return Err(
             io::Error::other("private-registry cleanup left transient Secret material").into(),
         );
     }
     assert_no_plaintext(
-        &[private_home.path(), private_secret_root.path()],
+        &[private_home.path(), shared_secret_root],
         &[registry_username, registry_password],
     )?;
     Ok(())
