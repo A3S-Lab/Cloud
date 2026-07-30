@@ -371,7 +371,19 @@ jobs:
             cat "$EVIDENCE_DIR/leaked-processes.txt"
             cleanup_status=1
           fi
-          if test -e "$A3S_HOME/boxes.json" || test -d "$A3S_HOME/runtime-state"; then
+          if test -e "$A3S_HOME/boxes.json"; then
+            sudo cp "$A3S_HOME/boxes.json" "$EVIDENCE_DIR/boxes-after.json"
+            if ! jq -e 'type == "array" and length == 0' \
+              "$EVIDENCE_DIR/boxes-after.json" >/dev/null; then
+              cleanup_status=1
+            fi
+          fi
+          if test -n "$(sudo find "$A3S_HOME/boxes" -mindepth 1 -print -quit 2>/dev/null)"; then
+            sudo find "$A3S_HOME/boxes" -mindepth 1 -maxdepth 2 -print \
+              >"$EVIDENCE_DIR/leaked-box-paths.txt"
+            cleanup_status=1
+          fi
+          if test -d "$A3S_HOME/runtime-state"; then
             cleanup_status=1
           fi
           if test -n "$(sudo find "$A3S_HOME/runtime-secrets" -mindepth 1 -print -quit 2>/dev/null)"; then
