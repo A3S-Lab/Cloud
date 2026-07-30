@@ -142,7 +142,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   or errors; and inspect tokenless platform, liveness, and readiness
   diagnostics with a stable unhealthy exit status; manage API-token metadata,
   credential lifecycle, and one-time node bootstrap without rendering
-  stdin-only credentials; and search bounded organization-authorized resource
+  stdin-only credentials; manage tenant-scoped hosted-MCP credentials with
+  fail-closed response validation, metadata-only list/get/revoke output, and
+  explicit one-time issue/rotate delivery; and search bounded
+  organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
   `1.0.0`, and reject incompatible or invalidly deprecated contract changes
@@ -853,9 +856,14 @@ one-time secret in zeroizing memory only through serialization; every
 credential success and error is `no-store`/`no-cache`, while public metadata
 has no verifier, key ID, or ciphertext fields. A worker-role cleanup loop
 purges at most 256 expired deliveries every 60 seconds without deleting
-idempotency references. Shared client/CLI lifecycle parity, executed real
-PostgreSQL evidence for the new certificate and credential paths, real Box
-hosting, and joint product conformance remain unavailable. Stateful resources
+idempotency references. The shared TypeScript client and compiled CLI now
+cover the complete lifecycle. They require no-store response protections,
+reconstruct only allowlisted fields, reject secret or internal material on
+metadata surfaces, and show the issue/rotate secret only as an explicit
+one-time delivery. The OpenAPI snapshot binds the same request, metadata,
+mutation, and delivery schemas. Executed real PostgreSQL evidence for the new
+certificate and credential paths, control-plane audit, real Box hosting, and
+joint product conformance remain unavailable. Stateful resources
 remain `S0`; replicas and multi-node placement remain `H0`; accelerator and
 inference capabilities remain `I0`. These profiles do not create separate
 schedulers.

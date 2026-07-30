@@ -1,4 +1,5 @@
 import type { CreateApiTokenInput } from './identity';
+import type { McpCredentialExpiryInput } from './edge';
 import type { IssueEnrollmentTokenInput } from './node';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
@@ -49,6 +50,19 @@ export function validateEnrollmentTokenInput(input: IssueEnrollmentTokenInput): 
 export function validateExpectedNodeVersion(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new RangeError('expected node version must be a positive safe integer');
+  }
+}
+
+export function validateMcpCredentialExpiryInput(input: McpCredentialExpiryInput): void {
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    Object.keys(input).length !== 1 ||
+    !Object.hasOwn(input, 'expiresAt') ||
+    typeof input.expiresAt !== 'string' ||
+    !isRfc3339Timestamp(input.expiresAt)
+  ) {
+    throw new TypeError('MCP credential expiry must be an RFC 3339 timestamp');
   }
 }
 

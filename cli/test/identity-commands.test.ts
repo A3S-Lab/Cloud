@@ -270,7 +270,7 @@ describe('a3s-cloud identity commands', () => {
       },
       {
         argv: ['organizations', 'list', '--scopes=project:write'],
-        message: '--scopes and --expires-at are valid only for API token creation',
+        message: '--scopes is valid only for API token creation',
       },
     ];
 

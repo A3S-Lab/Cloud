@@ -1,4 +1,4 @@
-import type { CloudApi } from '@a3s/cloud-client';
+import { CloudApiError, type CloudApi } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
@@ -14,6 +14,12 @@ import type { CloudContext } from './context';
 import { requireEnvironment, requireOrganization, requireProject } from './context';
 import { usageError } from './errors';
 import {
+  mcpCredentialDeliveryResult,
+  mcpCredentialMutationResult,
+  mcpCredentialResult,
+  mcpCredentialsResult,
+} from './mcp-credential-results';
+import {
   domainClaimMutationResult,
   domainClaimResult,
   domainClaimsResult,
@@ -22,6 +28,7 @@ import {
   routePublicationResult,
   type CommandResult,
 } from './results';
+import { parseRfc3339Timestamp } from './timestamp';
 
 const MAX_GATEWAY_SCOPE_MEMBERS = 100;
 const MAX_U32 = 4_294_967_295;
@@ -34,6 +41,79 @@ export async function executeEdgeCommand(
 ): Promise<CommandResult | undefined> {
   const { positionals } = arguments_;
   switch (command) {
+    case 'mcp-credentials list': {
+      requireListCommand(arguments_);
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialsResult(
+        await cloudApi().listMcpCredentials(scope.organizationId, scope.projectId, scope.environmentId)
+      );
+    }
+    case 'mcp-credentials get': {
+      requireReadCommand(arguments_, 'mcp-credentials get <credential-id>');
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialResult(
+        await cloudApi().getMcpCredential(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          positionalUuid(positionals, 2, 'MCP credential ID')
+        )
+      );
+    }
+    case 'mcp-credentials issue': {
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        2,
+        'mcp-credentials issue --expires-at <timestamp>'
+      );
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialDeliveryResult(
+        await safeMcpCredentialMutation(() =>
+          cloudApi().issueMcpCredential(
+            scope.organizationId,
+            scope.projectId,
+            scope.environmentId,
+            { expiresAt: parseRfc3339Timestamp(arguments_.expiresAt, 'MCP credential') },
+            idempotencyKey
+          )
+        )
+      );
+    }
+    case 'mcp-credentials rotate': {
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        3,
+        'mcp-credentials rotate <credential-id> --expires-at <timestamp>'
+      );
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialDeliveryResult(
+        await safeMcpCredentialMutation(() =>
+          cloudApi().rotateMcpCredential(
+            scope.organizationId,
+            scope.projectId,
+            scope.environmentId,
+            positionalUuid(positionals, 2, 'MCP credential ID'),
+            { expiresAt: parseRfc3339Timestamp(arguments_.expiresAt, 'MCP credential') },
+            idempotencyKey
+          )
+        )
+      );
+    }
+    case 'mcp-credentials revoke': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'mcp-credentials revoke <credential-id>');
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialMutationResult(
+        await safeMcpCredentialMutation(() =>
+          cloudApi().revokeMcpCredential(
+            scope.organizationId,
+            scope.projectId,
+            scope.environmentId,
+            positionalUuid(positionals, 2, 'MCP credential ID'),
+            idempotencyKey
+          )
+        )
+      );
+    }
     case 'domain-claims list': {
       requireListCommand(arguments_);
       const scope = requireEnvironmentScope(context);
@@ -142,6 +222,22 @@ export async function executeEdgeCommand(
     }
     default:
       return undefined;
+  }
+}
+
+async function safeMcpCredentialMutation<Result>(operation: () => Promise<Result>): Promise<Result> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof CloudApiError) {
+      throw new CloudApiError(
+        error.status,
+        'MCP credential mutation failed',
+        error.statusCode,
+        error.requestId
+      );
+    }
+    throw error;
   }
 }
 

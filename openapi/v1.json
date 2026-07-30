@@ -645,11 +645,11 @@
           }
         }
       },
-      "SensitiveSuccess200": {
+      "SensitiveMcpCredentialDeliverySuccess200": {
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/ApiSuccessResponse"
+              "$ref": "#/components/schemas/McpCredentialDeliverySuccessResponse"
             }
           }
         },
@@ -687,15 +687,141 @@
           }
         }
       },
-      "SensitiveSuccess201": {
+      "SensitiveMcpCredentialDeliverySuccess201": {
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/ApiSuccessResponse"
+              "$ref": "#/components/schemas/McpCredentialDeliverySuccessResponse"
             }
           }
         },
         "description": "Created",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveMcpCredentialListSuccess200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/McpCredentialListSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveMcpCredentialMutationSuccess200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/McpCredentialMutationSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "cache-control": {
+            "description": "Credential responses must never be stored.",
+            "schema": {
+              "enum": [
+                "no-store"
+              ],
+              "type": "string"
+            }
+          },
+          "pragma": {
+            "description": "HTTP/1.0 cache compatibility directive.",
+            "schema": {
+              "enum": [
+                "no-cache"
+              ],
+              "type": "string"
+            }
+          },
+          "x-a3s-api-contract-version": {
+            "schema": {
+              "example": "1.0.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SensitiveMcpCredentialSuccess200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/McpCredentialSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
         "headers": {
           "cache-control": {
             "description": "Credential responses must never be stored.",
@@ -897,6 +1023,363 @@
             "type": "integer"
           },
           "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "McpCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregateVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "environmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "prefix": {
+            "pattern": "^a3s_mcp_[0-9a-f]{16}$",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "projectId",
+          "environmentId",
+          "prefix",
+          "generation",
+          "aggregateVersion",
+          "expiresAt",
+          "createdAt",
+          "updatedAt",
+          "revokedAt"
+        ],
+        "type": "object"
+      },
+      "McpCredentialDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregateVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "environmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "prefix": {
+            "pattern": "^a3s_mcp_[0-9a-f]{16}$",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "secret": {
+            "description": "One-time credential material returned only for issuance or rotation.",
+            "pattern": "^a3s_mcp_[0-9a-f]{80}$",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "projectId",
+          "environmentId",
+          "prefix",
+          "generation",
+          "aggregateVersion",
+          "expiresAt",
+          "createdAt",
+          "updatedAt",
+          "revokedAt",
+          "replayed",
+          "secret"
+        ],
+        "type": "object"
+      },
+      "McpCredentialDeliverySuccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/McpCredentialDelivery"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "McpCredentialExpiryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "McpCredentialListSuccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/McpCredential"
+            },
+            "type": "array"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "McpCredentialMutation": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregateVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "environmentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "prefix": {
+            "pattern": "^a3s_mcp_[0-9a-f]{16}$",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "projectId",
+          "environmentId",
+          "prefix",
+          "generation",
+          "aggregateVersion",
+          "expiresAt",
+          "createdAt",
+          "updatedAt",
+          "revokedAt",
+          "replayed"
+        ],
+        "type": "object"
+      },
+      "McpCredentialMutationSuccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/McpCredentialMutation"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "McpCredentialSuccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/McpCredential"
+          },
           "message": {
             "type": "string"
           },
@@ -3929,7 +4412,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/SensitiveSuccess200"
+            "$ref": "#/components/responses/SensitiveMcpCredentialListSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/SensitiveError400"
@@ -4018,8 +4501,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/McpCredentialExpiryRequest"
               }
             }
           },
@@ -4027,10 +4509,10 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/SensitiveSuccess200"
+            "$ref": "#/components/responses/SensitiveMcpCredentialDeliverySuccess200"
           },
           "201": {
-            "$ref": "#/components/responses/SensitiveSuccess201"
+            "$ref": "#/components/responses/SensitiveMcpCredentialDeliverySuccess201"
           },
           "400": {
             "$ref": "#/components/responses/SensitiveError400"
@@ -4128,7 +4610,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/SensitiveSuccess200"
+            "$ref": "#/components/responses/SensitiveMcpCredentialMutationSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/SensitiveError400"
@@ -4212,7 +4694,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/SensitiveSuccess200"
+            "$ref": "#/components/responses/SensitiveMcpCredentialSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/SensitiveError400"
@@ -4312,8 +4794,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/McpCredentialExpiryRequest"
               }
             }
           },
@@ -4321,7 +4802,7 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/SensitiveSuccess200"
+            "$ref": "#/components/responses/SensitiveMcpCredentialDeliverySuccess200"
           },
           "400": {
             "$ref": "#/components/responses/SensitiveError400"

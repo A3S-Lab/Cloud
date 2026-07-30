@@ -22,6 +22,12 @@ import { readBoundedUtf8Stdin, type ReadStdin } from './standard-input';
 import { parseRfc3339Timestamp } from './timestamp';
 
 const API_TOKEN_CREATE_COMMAND = 'api-tokens create';
+const CREDENTIAL_EXPIRY_COMMANDS = new Set([
+  API_TOKEN_CREATE_COMMAND,
+  'nodes bootstrap',
+  'mcp-credentials issue',
+  'mcp-credentials rotate',
+]);
 
 export interface IdentityCommandDependencies {
   readStdin?: ReadStdin;
@@ -32,14 +38,12 @@ export function rejectMisplacedIdentityOptions(command: string, arguments_: Pars
     throw usageError('--token-stdin is valid only for API token creation');
   }
   if (arguments_.scopes !== undefined && command !== API_TOKEN_CREATE_COMMAND) {
-    throw usageError('--scopes and --expires-at are valid only for API token creation');
+    throw usageError('--scopes is valid only for API token creation');
   }
-  if (
-    arguments_.expiresAt !== undefined &&
-    command !== API_TOKEN_CREATE_COMMAND &&
-    command !== 'nodes bootstrap'
-  ) {
-    throw usageError('--expires-at is valid only for API token creation or nodes bootstrap');
+  if (arguments_.expiresAt !== undefined && !CREDENTIAL_EXPIRY_COMMANDS.has(command)) {
+    throw usageError(
+      '--expires-at is valid only for API token creation, nodes bootstrap, or MCP credential issue/rotation'
+    );
   }
 }
 

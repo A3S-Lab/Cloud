@@ -90,6 +90,22 @@ state, and Gateway-command replay state. The client transports these commands;
 Cloud application services and A3S ORM-backed repositories remain
 authoritative for validation, tenancy, and persistence.
 
+`listMcpCredentials`, `getMcpCredential`, `issueMcpCredential`,
+`rotateMcpCredential`, and `revokeMcpCredential` cover the complete
+environment-scoped hosted-MCP credential lifecycle. Issue and rotate require
+an RFC 3339 expiry and caller-owned idempotency key; revoke also requires an
+idempotency key. All five calls send `Cache-Control: no-store` and
+`Pragma: no-cache` and reject the response before body parsing unless both
+protections are present.
+
+Credential responses are validated and rebuilt from an explicit public-field
+allowlist. The client rejects invalid IDs, prefixes, secrets, versions, or
+timestamps and any verifier, key ID, ciphertext, or delivery-internal field.
+List, get, and revoke also reject a `secret` field. Issue and rotate return the
+full one-time secret only when it matches the returned prefix and fixed
+`a3s_mcp_` format. Callers must deliver that value directly to an approved
+secret sink and must not log or cache it.
+
 `listSourceRevisions` and `resolveSourceRevision` expose the closed GitHub
 repository, branch/tag/commit, and `a3s.cloud.build-recipe.v1` Dockerfile
 contracts. `getGithubConnection` and `beginGithubConnection` expose

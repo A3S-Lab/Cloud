@@ -96,6 +96,36 @@ export interface GatewayScopeMutationResult extends GatewayScope {
   replayed: boolean;
 }
 
+export interface McpCredential {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  prefix: string;
+  generation: number;
+  aggregateVersion: number;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface McpCredentialMutationResult extends McpCredential {
+  replayed: boolean;
+}
+
+/**
+ * Issuance/rotation response whose secret is recoverable only during the
+ * server's bounded idempotency window. Callers must not persist it in logs.
+ */
+export interface McpCredentialDeliveryResult extends McpCredentialMutationResult {
+  secret: string;
+}
+
+export interface McpCredentialExpiryInput {
+  expiresAt: string;
+}
+
 export interface CreateGatewayScopeInput {
   nodeIds: string[];
   minReady: number;

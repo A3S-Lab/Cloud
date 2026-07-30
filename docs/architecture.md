@@ -1073,10 +1073,10 @@ current MCP ingress while classifying ordinary routes; MCP-only nodes also
 stage proactive certificate replacement. PostgreSQL rechecks every observed
 policy and Workload plus the exact active or suppressing credential state
 under ordered locks before publication. The idempotent credential lifecycle
-persistence boundary now exists, but its public application and presentation
-surfaces, audit, an executed PostgreSQL gate for the newest certificate and
-credential paths, and joint real-process recovery remain required before this
-path can close `MCP0.3`.
+persistence boundary, public application commands, REST/OpenAPI contract,
+shared client, and CLI now exist. Control-plane audit, an executed PostgreSQL
+gate for the newest certificate and credential paths, and joint real-process
+recovery remain required before this path can close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`
@@ -1138,14 +1138,24 @@ timestamps. Both controllers and their exception filters force
 `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer`,
 and `X-Content-Type-Options: nosniff` on successes and failures. The committed
 OpenAPI contract advertises issue `200/201`, rotate/get/list/revoke `200`, the
-required idempotency header, and sensitive response headers.
+required idempotency header, sensitive response headers, and closed request,
+metadata, mutation, and one-time-delivery schemas.
+
+The shared TypeScript client sends `no-store` and `no-cache` on every
+credential request and requires both directives on the response before
+parsing its body. It validates tenant identifiers, prefix and secret formats,
+safe versions, and timestamps, then reconstructs only public fields. List,
+get, and revoke fail closed if any secret appears; every surface rejects
+verifier, key, ciphertext, or delivery-internal fields. The CLI reuses that
+client. List/get/revoke render metadata only, while issue/rotate render the
+complete secret under an explicit `ONE-TIME SECRET` field in table mode or
+`secret` in JSON; sanitized failures cannot echo upstream credential material.
 
 `McpCredentialDeliveryCleanupWorker` runs only in the existing `all` or
 `worker` process roles. It ticks at most once per 60 seconds, deletes at most
 256 expired ciphertext rows per transaction, canonicalizes its observation
 time, retries repository failures on a later tick, and never touches the
-durable idempotency reference. Client/CLI parity is still required before the
-complete public lifecycle is claimed. Snapshot reconciliation already removes
+durable idempotency reference. Snapshot reconciliation already removes
 routes whose referenced credential is revoked, expired, or at another
 generation. Cloud management credentials must never be accepted as a
 shortcut.

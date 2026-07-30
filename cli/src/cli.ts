@@ -62,6 +62,11 @@ Commands:
   domain-claims revoke ID REASON Revoke one domain ownership claim idempotently
   gateway-scopes list    List logical Gateway scopes in the selected environment
   gateway-scopes create NODE... Create a replicated Gateway scope idempotently
+  mcp-credentials list   List MCP service credential metadata in the selected environment
+  mcp-credentials get ID Get one MCP service credential metadata record
+  mcp-credentials issue  Issue an MCP service credential and print its one-time secret
+  mcp-credentials rotate ID Rotate an MCP service credential and print its one-time secret
+  mcp-credentials revoke ID Revoke an MCP service credential idempotently
   routes list           List routes in the selected environment
   routes get ID         Get one route
   routes publish SCOPE REV CLAIM HOST PATH PORT Publish one managed route idempotently

@@ -23,6 +23,10 @@ import type {
   GithubRepositorySubscriptionMutationResult,
   EnrollmentToken,
   IssueEnrollmentTokenInput,
+  McpCredential,
+  McpCredentialDeliveryResult,
+  McpCredentialExpiryInput,
+  McpCredentialMutationResult,
   Node,
   Operation,
   Organization,
@@ -57,8 +61,10 @@ import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
   validateExpectedNodeVersion,
+  validateMcpCredentialExpiryInput,
   validateSecretValue,
   validateWorkloadAcl,
+  isRfc3339Timestamp,
 } from './validation';
 
 export { CloudApiError } from './error';
@@ -521,6 +527,102 @@ export class CloudApi {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/gateway-certificates`, signal);
   }
 
+  async listMcpCredentials(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<McpCredential[]> {
+    const credentials = await this.getNoStore<unknown>(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-credentials`,
+      signal
+    );
+    if (!Array.isArray(credentials)) {
+      throw invalidMcpCredentialResponse();
+    }
+    return credentials.map((credential) => requireMcpCredential(credential, []));
+  }
+
+  async getMcpCredential(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    credentialId: string,
+    signal?: AbortSignal
+  ): Promise<McpCredential> {
+    const credential = await this.getNoStore<unknown>(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/mcp-credentials/${encodeURIComponent(credentialId)}`,
+      signal
+    );
+    return requireMcpCredential(credential, []);
+  }
+
+  async issueMcpCredential(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: McpCredentialExpiryInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpCredentialDeliveryResult> {
+    validateMcpCredentialExpiryInput(input);
+    const result = await this.postJsonNoStore<unknown>(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-credentials`,
+      idempotencyKey,
+      input,
+      signal
+    );
+    return requireMcpCredentialDeliveryResult(result);
+  }
+
+  async rotateMcpCredential(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    credentialId: string,
+    input: McpCredentialExpiryInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpCredentialDeliveryResult> {
+    validateMcpCredentialExpiryInput(input);
+    const result = await this.postJsonNoStore<unknown>(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/mcp-credentials/${encodeURIComponent(credentialId)}/rotate`,
+      idempotencyKey,
+      input,
+      signal
+    );
+    return requireMcpCredentialDeliveryResult(result);
+  }
+
+  async revokeMcpCredential(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    credentialId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpCredentialMutationResult> {
+    const result = await this.deleteNoStore<unknown>(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/mcp-credentials/${encodeURIComponent(credentialId)}`,
+      idempotencyKey,
+      signal
+    );
+    return requireMcpCredentialMutationResult(result, false);
+  }
+
   listSecrets(
     organizationId: string,
     projectId: string,
@@ -892,6 +994,10 @@ export class CloudApi {
     return this.request('GET', path, { signal });
   }
 
+  private getNoStore<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.request('GET', path, { noStore: true, signal });
+  }
+
   private getHealth<T>(path: string, signal?: AbortSignal): Promise<T> {
     return this.request('GET', path, { healthResponse: true, signal });
   }
@@ -918,6 +1024,10 @@ export class CloudApi {
     return this.request('DELETE', path, { idempotencyKey, signal });
   }
 
+  private deleteNoStore<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
+    return this.request('DELETE', path, { idempotencyKey, noStore: true, signal });
+  }
+
   private post<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
     return this.request('POST', path, { idempotencyKey, signal });
   }
@@ -927,6 +1037,21 @@ export class CloudApi {
       body: JSON.stringify(body),
       contentType: 'application/json',
       idempotencyKey,
+      signal,
+    });
+  }
+
+  private postJsonNoStore<T>(
+    path: string,
+    idempotencyKey: string,
+    body: unknown,
+    signal?: AbortSignal
+  ): Promise<T> {
+    return this.request('POST', path, {
+      body: JSON.stringify(body),
+      contentType: 'application/json',
+      idempotencyKey,
+      noStore: true,
       signal,
     });
   }
@@ -954,6 +1079,7 @@ export class CloudApi {
       contentType?: string;
       healthResponse?: boolean;
       idempotencyKey?: string;
+      noStore?: boolean;
       signal?: AbortSignal;
     }
   ): Promise<T> {
@@ -985,6 +1111,10 @@ export class CloudApi {
     if (options.body !== undefined) {
       headers['Content-Type'] = options.contentType as string;
     }
+    if (options.noStore) {
+      headers['Cache-Control'] = 'no-store';
+      headers.Pragma = 'no-cache';
+    }
 
     try {
       const response = await this.fetcher(`${this.baseUrl}${path}`, {
@@ -993,6 +1123,9 @@ export class CloudApi {
         body: options.body,
         signal: controller.signal,
       });
+      if (options.noStore) {
+        requireNoStoreResponse(response);
+      }
       return options.healthResponse ? await readHealthResponse<T>(response) : await readResponse<T>(response);
     } catch (error) {
       if (error instanceof CloudApiError) {
@@ -1010,4 +1143,135 @@ export class CloudApi {
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
   }
+}
+
+function requireNoStoreResponse(response: Response): void {
+  const cacheControl = response.headers
+    .get('cache-control')
+    ?.split(',')
+    .map((directive) => directive.trim().toLowerCase());
+  const pragma = response.headers
+    .get('pragma')
+    ?.split(',')
+    .map((directive) => directive.trim().toLowerCase());
+  if (!cacheControl?.includes('no-store') || !pragma?.includes('no-cache')) {
+    throw new CloudApiError(
+      response.status,
+      'Cloud API credential response is missing no-store protections',
+      'INVALID_RESPONSE'
+    );
+  }
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MCP_CREDENTIAL_PREFIX_PATTERN = /^a3s_mcp_[0-9a-f]{16}$/;
+const MCP_CREDENTIAL_SECRET_PATTERN = /^a3s_mcp_[0-9a-f]{80}$/;
+const MCP_CREDENTIAL_FIELDS = [
+  'id',
+  'organizationId',
+  'projectId',
+  'environmentId',
+  'prefix',
+  'generation',
+  'aggregateVersion',
+  'expiresAt',
+  'createdAt',
+  'updatedAt',
+  'revokedAt',
+] as const;
+
+function requireMcpCredential(value: unknown, additionalFields: readonly string[]): McpCredential {
+  if (!isRecord(value)) {
+    throw invalidMcpCredentialResponse();
+  }
+  const allowedFields = new Set<string>([...MCP_CREDENTIAL_FIELDS, ...additionalFields]);
+  if (Object.keys(value).some((field) => !allowedFields.has(field))) {
+    throw invalidMcpCredentialResponse();
+  }
+  const {
+    id,
+    organizationId,
+    projectId,
+    environmentId,
+    prefix,
+    generation,
+    aggregateVersion,
+    expiresAt,
+    createdAt,
+    updatedAt,
+    revokedAt,
+  } = value;
+  if (
+    !isUuid(id) ||
+    !isUuid(organizationId) ||
+    !isUuid(projectId) ||
+    !isUuid(environmentId) ||
+    typeof prefix !== 'string' ||
+    !MCP_CREDENTIAL_PREFIX_PATTERN.test(prefix) ||
+    !isPositiveSafeInteger(generation) ||
+    !isPositiveSafeInteger(aggregateVersion) ||
+    !isTimestamp(expiresAt) ||
+    !isTimestamp(createdAt) ||
+    !isTimestamp(updatedAt) ||
+    (revokedAt !== null && !isTimestamp(revokedAt))
+  ) {
+    throw invalidMcpCredentialResponse();
+  }
+  return {
+    id,
+    organizationId,
+    projectId,
+    environmentId,
+    prefix,
+    generation,
+    aggregateVersion,
+    expiresAt,
+    createdAt,
+    updatedAt,
+    revokedAt,
+  };
+}
+
+function requireMcpCredentialMutationResult(
+  value: unknown,
+  allowSecret: boolean
+): McpCredentialMutationResult {
+  const credential = requireMcpCredential(value, allowSecret ? ['replayed', 'secret'] : ['replayed']);
+  if (!isRecord(value) || typeof value.replayed !== 'boolean') {
+    throw invalidMcpCredentialResponse();
+  }
+  return { ...credential, replayed: value.replayed };
+}
+
+function requireMcpCredentialDeliveryResult(value: unknown): McpCredentialDeliveryResult {
+  const mutation = requireMcpCredentialMutationResult(value, true);
+  if (
+    !isRecord(value) ||
+    typeof value.secret !== 'string' ||
+    !MCP_CREDENTIAL_SECRET_PATTERN.test(value.secret) ||
+    !value.secret.startsWith(mutation.prefix)
+  ) {
+    throw invalidMcpCredentialResponse();
+  }
+  return { ...mutation, secret: value.secret };
+}
+
+function invalidMcpCredentialResponse(): CloudApiError {
+  return new CloudApiError(0, 'Cloud API returned an invalid MCP credential response', 'INVALID_RESPONSE');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && isRfc3339Timestamp(value);
 }

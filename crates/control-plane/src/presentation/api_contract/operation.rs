@@ -211,10 +211,14 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    content.insert(
-        "application/json".into(),
-        json!({ "schema": { "type": "object", "additionalProperties": true } }),
-    );
+    let json_schema = if path.contains("/mcp-credentials")
+        && (path.ends_with("/mcp-credentials") || path.ends_with("/rotate"))
+    {
+        json!({ "$ref": "#/components/schemas/McpCredentialExpiryRequest" })
+    } else {
+        json!({ "type": "object", "additionalProperties": true })
+    };
+    content.insert("application/json".into(), json!({ "schema": json_schema }));
     if accepts_acl(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
@@ -239,7 +243,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         } else if path == "/node-control/enroll" {
             format!("RawSuccess{status}")
         } else if sensitive {
-            format!("SensitiveSuccess{status}")
+            mcp_credential_success_component(method, path, status)
         } else {
             format!("Success{status}")
         };
@@ -274,6 +278,19 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         );
     }
     Value::Object(responses)
+}
+
+fn mcp_credential_success_component(method: &str, path: &str, status: u16) -> String {
+    if method == "get" && path.ends_with("/mcp-credentials") {
+        return "SensitiveMcpCredentialListSuccess200".into();
+    }
+    if method == "get" {
+        return "SensitiveMcpCredentialSuccess200".into();
+    }
+    if method == "delete" {
+        return "SensitiveMcpCredentialMutationSuccess200".into();
+    }
+    format!("SensitiveMcpCredentialDeliverySuccess{status}")
 }
 
 fn success_statuses(method: &str, path: &str) -> Vec<u16> {

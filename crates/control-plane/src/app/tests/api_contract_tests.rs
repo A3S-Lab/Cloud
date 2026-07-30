@@ -135,11 +135,52 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert_eq!(mcp_credentials["post"]["tags"], json!(["Edge"]));
     assert_eq!(
         mcp_credentials["post"]["responses"]["201"]["$ref"],
-        "#/components/responses/SensitiveSuccess201"
+        "#/components/responses/SensitiveMcpCredentialDeliverySuccess201"
     );
     assert_eq!(
-        document["components"]["responses"]["SensitiveSuccess201"]["headers"]["cache-control"]
-            ["schema"]["enum"],
+        mcp_credentials["post"]["responses"]["200"]["$ref"],
+        "#/components/responses/SensitiveMcpCredentialDeliverySuccess200"
+    );
+    assert_eq!(
+        mcp_credentials["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/SensitiveMcpCredentialListSuccess200"
+    );
+    assert_eq!(
+        mcp_credentials["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/McpCredentialExpiryRequest"
+    );
+    let mcp_credential = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}"];
+    assert_eq!(
+        mcp_credential["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/SensitiveMcpCredentialSuccess200"
+    );
+    assert_eq!(
+        mcp_credential["delete"]["responses"]["200"]["$ref"],
+        "#/components/responses/SensitiveMcpCredentialMutationSuccess200"
+    );
+    let mcp_rotate = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials/{credential_id}/rotate"];
+    assert_eq!(
+        mcp_rotate["post"]["responses"]["200"]["$ref"],
+        "#/components/responses/SensitiveMcpCredentialDeliverySuccess200"
+    );
+    assert_eq!(
+        mcp_rotate["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/McpCredentialExpiryRequest"
+    );
+    let mcp_schema = &document["components"]["schemas"]["McpCredential"];
+    assert_eq!(mcp_schema["additionalProperties"], false);
+    assert!(mcp_schema["properties"].get("secret").is_none());
+    assert!(mcp_schema["properties"].get("verifier").is_none());
+    assert_eq!(
+        document["components"]["schemas"]["McpCredentialDelivery"]["properties"]["secret"]
+            ["readOnly"],
+        true
+    );
+    assert_eq!(
+        document["components"]["responses"]["SensitiveMcpCredentialDeliverySuccess201"]["headers"]
+            ["cache-control"]["schema"]["enum"],
         json!(["no-store"])
     );
     assert_eq!(
