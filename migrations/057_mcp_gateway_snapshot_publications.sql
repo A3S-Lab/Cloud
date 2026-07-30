@@ -22,13 +22,14 @@ create table mcp_gateway_snapshot_publications (
     staged_at timestamptz not null,
     primary key (node_id, gateway_revision),
     unique (node_id, gateway_command_id),
-    foreign key (
-        gateway_scope_id,
-        organization_id,
-        project_id,
-        environment_id,
-        node_id
-    )
+    constraint mcp_gateway_snapshot_publications_scope_node_fk
+        foreign key (
+            gateway_scope_id,
+            organization_id,
+            project_id,
+            environment_id,
+            node_id
+        )
         references gateway_route_scopes (
             id,
             organization_id,

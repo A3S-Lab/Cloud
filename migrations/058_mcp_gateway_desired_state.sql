@@ -1,5 +1,5 @@
 alter table mcp_gateway_snapshot_publications
-    drop constraint mcp_gateway_snapshot_publications_gateway_scope_id_fkey,
+    drop constraint mcp_gateway_snapshot_publications_scope_node_fk,
     add constraint mcp_gateway_snapshot_publications_scope_tenant_fk
         foreign key (
             gateway_scope_id,
