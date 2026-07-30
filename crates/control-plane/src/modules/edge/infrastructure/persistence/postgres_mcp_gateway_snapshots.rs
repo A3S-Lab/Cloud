@@ -181,6 +181,16 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         super::postgres::stage_managed_route_publication(&self.executor, stage).await
     }
 
+    async fn stage_managed_gateway_route_cutover(
+        &self,
+        stage: StageManagedGatewayRouteCutover,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayRouteCutoverResult,
+        RepositoryError,
+    > {
+        super::postgres_cutovers::stage_managed(&self.executor, stage).await
+    }
+
     async fn stage_managed_gateway_rollout(
         &self,
         stage: StageManagedGatewayRollout,

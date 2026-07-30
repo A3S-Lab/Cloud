@@ -12,6 +12,9 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{
     GatewayRouteCutover, GatewayRouteCutoverState, GatewayScopeState, Route, RouteState,
 };
+use crate::modules::edge::infrastructure::{
+    GatewayManagedSnapshotComposition, StageManagedGatewayRouteCutover,
+};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId, RepositoryError,
     WorkloadId, WorkloadRevisionId,
@@ -161,7 +164,28 @@ pub(super) async fn stage(
     executor: &PostgresExecutor,
     bundle: StageGatewayRouteCutover,
 ) -> Result<GatewayRouteCutoverResult, RepositoryError> {
+    stage_impl(executor, bundle, None).await
+}
+
+pub(super) async fn stage_managed(
+    executor: &PostgresExecutor,
+    stage: StageManagedGatewayRouteCutover,
+) -> Result<GatewayRouteCutoverResult, RepositoryError> {
+    let (bundle, composition) = stage.into_parts();
+    stage_impl(executor, bundle, Some(composition)).await
+}
+
+async fn stage_impl(
+    executor: &PostgresExecutor,
+    bundle: StageGatewayRouteCutover,
+    composition: Option<GatewayManagedSnapshotComposition>,
+) -> Result<GatewayRouteCutoverResult, RepositoryError> {
     bundle.validate().map_err(RepositoryError::Conflict)?;
+    if let Some(composition) = &composition {
+        composition
+            .validate_for(&bundle.publication)
+            .map_err(RepositoryError::Conflict)?;
+    }
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
@@ -179,41 +203,55 @@ pub(super) async fn stage(
                     &bundle.cutover.routes,
                 )
                 .await?;
-                let organization_id = fetch_optional::<Uuid, _>(
-                    transaction,
-                    select_from::<Nodes>()
-                        .select(Nodes::organization_id())
-                        .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
-                        .for_update(),
-                )
-                .await?
-                .ok_or(RepositoryError::NotFound)?;
-                if organization_id != bundle.cutover.organization_id.as_uuid() {
-                    return Err(RepositoryError::NotFound.into());
-                }
-                let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
-                    transaction,
-                    select_from::<GatewayScopes>()
-                        .select((
-                            GatewayScopes::last_issued_revision(),
-                            GatewayScopes::installed_revision(),
-                            GatewayScopes::aggregate_version(),
-                        ))
-                        .filter(GatewayScopes::node_id().eq(bundle.publication.node_id.as_uuid()))
-                        .for_update(),
-                )
-                .await?;
-                let current = match scope {
-                    Some((last, installed, version)) => {
-                        validate_scope(last, installed, version)?;
-                        GatewayScopeState {
-                            node_id: bundle.publication.node_id,
-                            last_issued_revision: last,
-                            installed_revision: installed,
-                            aggregate_version: version,
+                let current = match &composition {
+                    Some(composition) => {
+                        super::postgres_mcp_gateway_snapshots::lock_managed_composition(
+                            transaction,
+                            composition,
+                        )
+                        .await?
+                    }
+                    None => {
+                        let organization_id = fetch_optional::<Uuid, _>(
+                            transaction,
+                            select_from::<Nodes>()
+                                .select(Nodes::organization_id())
+                                .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
+                                .for_update(),
+                        )
+                        .await?
+                        .ok_or(RepositoryError::NotFound)?;
+                        if organization_id != bundle.cutover.organization_id.as_uuid() {
+                            return Err(RepositoryError::NotFound.into());
+                        }
+                        let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
+                            transaction,
+                            select_from::<GatewayScopes>()
+                                .select((
+                                    GatewayScopes::last_issued_revision(),
+                                    GatewayScopes::installed_revision(),
+                                    GatewayScopes::aggregate_version(),
+                                ))
+                                .filter(
+                                    GatewayScopes::node_id()
+                                        .eq(bundle.publication.node_id.as_uuid()),
+                                )
+                                .for_update(),
+                        )
+                        .await?;
+                        match scope {
+                            Some((last, installed, version)) => {
+                                validate_scope(last, installed, version)?;
+                                GatewayScopeState {
+                                    node_id: bundle.publication.node_id,
+                                    last_issued_revision: last,
+                                    installed_revision: installed,
+                                    aggregate_version: version,
+                                }
+                            }
+                            None => GatewayScopeState::empty(bundle.publication.node_id),
                         }
                     }
-                    None => GatewayScopeState::empty(bundle.publication.node_id),
                 };
                 if current.aggregate_version != bundle.expected_scope_version {
                     return Err(RepositoryError::Conflict(
@@ -270,6 +308,14 @@ pub(super) async fn stage(
                 insert_publication(transaction, &bundle.publication).await?;
                 insert_certificate(transaction, &bundle.certificate).await?;
                 insert_cutover(transaction, &bundle.cutover).await?;
+                if let Some(composition) = &composition {
+                    super::postgres_mcp_gateway_snapshots::persist_managed_composition(
+                        transaction,
+                        composition,
+                        &bundle.publication,
+                    )
+                    .await?;
+                }
                 if current.aggregate_version == 0 {
                     require_one_row(
                         "Gateway scope",
