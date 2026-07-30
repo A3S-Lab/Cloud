@@ -2,6 +2,10 @@ alter table gateway_route_scopes
     add constraint gateway_route_scopes_id_tenant_environment_unique
     unique (id, organization_id, project_id, environment_id);
 
+alter table domain_claims
+    add constraint domain_claims_id_tenant_environment_unique
+    unique (id, organization_id, project_id, environment_id);
+
 alter table workloads
     add constraint workloads_tenant_environment_id_unique
     unique (organization_id, project_id, environment_id, id);
@@ -12,6 +16,7 @@ create table mcp_route_policies (
     project_id uuid not null,
     environment_id uuid not null,
     gateway_scope_id uuid not null,
+    domain_claim_id uuid not null,
     workload_id uuid not null,
     asset_id uuid not null,
     asset_release_id uuid not null,
@@ -39,6 +44,18 @@ create table mcp_route_policies (
         environment_id
     )
         references gateway_route_scopes (
+            id,
+            organization_id,
+            project_id,
+            environment_id
+        ),
+    foreign key (
+        domain_claim_id,
+        organization_id,
+        project_id,
+        environment_id
+    )
+        references domain_claims (
             id,
             organization_id,
             project_id,
@@ -85,4 +102,4 @@ create index mcp_route_policies_expiry_idx
     on mcp_route_policies (expires_at, id);
 
 comment on table mcp_route_policies is
-    'Mutable hosted MCP Edge desired state; Runtime targets and credential verifiers are resolved only into complete Gateway snapshots';
+    'Mutable hosted MCP Edge desired state bound to exact tenant domain authority; Runtime targets and credential verifiers are resolved only into complete Gateway snapshots';

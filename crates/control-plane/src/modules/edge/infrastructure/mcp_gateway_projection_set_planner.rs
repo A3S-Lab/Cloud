@@ -1,16 +1,19 @@
 use crate::modules::edge::domain::repositories::MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY;
 use crate::modules::edge::domain::services::IMcpRouteProjectionInputReader;
-use crate::modules::edge::domain::GatewayScope;
+use crate::modules::edge::domain::{
+    DomainClaimState, DomainNamePattern, GatewayScope, RouteHostname,
+};
 use crate::modules::edge::infrastructure::{
     McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, PlanMcpRouteProjection,
     PlannedMcpGatewayProjection,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, NodeId, RepositoryError, RouteId, Sha256Digest, WorkloadId,
+    canonical_timestamp, DomainClaimId, NodeId, RepositoryError, RouteId, Sha256Digest, WorkloadId,
     WorkloadRevisionId,
 };
 use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt, TryStreamExt};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 const ROUTE_PLANNING_CONCURRENCY: usize = 16;
@@ -23,6 +26,42 @@ pub struct PlanMcpGatewayProjectionSet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewayIngressRoute {
+    route_id: RouteId,
+    router: String,
+    hostname: RouteHostname,
+    path: String,
+    domain_claim_id: DomainClaimId,
+    domain_pattern: DomainNamePattern,
+}
+
+impl McpGatewayIngressRoute {
+    pub const fn route_id(&self) -> RouteId {
+        self.route_id
+    }
+
+    pub fn router(&self) -> &str {
+        &self.router
+    }
+
+    pub const fn hostname(&self) -> &RouteHostname {
+        &self.hostname
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub const fn domain_claim_id(&self) -> DomainClaimId {
+        self.domain_claim_id
+    }
+
+    pub const fn domain_pattern(&self) -> &DomainNamePattern {
+        &self.domain_pattern
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpRouteProjectionVersion {
     route_id: RouteId,
     policy_revision: u64,
@@ -30,6 +69,8 @@ pub struct McpRouteProjectionVersion {
     workload_id: WorkloadId,
     workload_aggregate_version: u64,
     active_revision_id: WorkloadRevisionId,
+    domain_claim_id: DomainClaimId,
+    domain_claim_aggregate_version: u64,
 }
 
 impl McpRouteProjectionVersion {
@@ -56,6 +97,14 @@ impl McpRouteProjectionVersion {
     pub const fn active_revision_id(&self) -> WorkloadRevisionId {
         self.active_revision_id
     }
+
+    pub const fn domain_claim_id(&self) -> DomainClaimId {
+        self.domain_claim_id
+    }
+
+    pub const fn domain_claim_aggregate_version(&self) -> u64 {
+        self.domain_claim_aggregate_version
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +113,7 @@ pub struct PlannedMcpGatewayProjectionSet {
     gateway_node_id: NodeId,
     observed_at: DateTime<Utc>,
     route_versions: Vec<McpRouteProjectionVersion>,
+    ingress_routes: Vec<McpGatewayIngressRoute>,
     projection: Option<PlannedMcpGatewayProjection>,
 }
 
@@ -84,6 +134,10 @@ impl PlannedMcpGatewayProjectionSet {
         &self.route_versions
     }
 
+    pub fn ingress_routes(&self) -> &[McpGatewayIngressRoute] {
+        &self.ingress_routes
+    }
+
     pub const fn projection(&self) -> Option<&PlannedMcpGatewayProjection> {
         self.projection.as_ref()
     }
@@ -95,6 +149,7 @@ impl PlannedMcpGatewayProjectionSet {
         NodeId,
         DateTime<Utc>,
         Vec<McpRouteProjectionVersion>,
+        Vec<McpGatewayIngressRoute>,
         Option<PlannedMcpGatewayProjection>,
     ) {
         (
@@ -102,6 +157,7 @@ impl PlannedMcpGatewayProjectionSet {
             self.gateway_node_id,
             self.observed_at,
             self.route_versions,
+            self.ingress_routes,
             self.projection,
         )
     }
@@ -158,6 +214,7 @@ impl McpGatewayProjectionSetPlanner {
                 gateway_node_id: request.gateway_node_id,
                 observed_at,
                 route_versions: Vec::new(),
+                ingress_routes: Vec::new(),
                 projection: None,
             });
         }
@@ -173,11 +230,36 @@ impl McpGatewayProjectionSetPlanner {
                     || spec.gateway_scope_id != request.scope.id
                     || spec.expires_at <= observed_at
                     || input.workload_aggregate_version == 0
+                    || input.domain_claim.id != spec.domain_claim_id
+                    || input.domain_claim.organization_id != spec.organization_id
+                    || input.domain_claim.project_id != spec.project_id
+                    || input.domain_claim.environment_id != spec.environment_id
+                    || input.domain_claim.state != DomainClaimState::Verified
+                    || input.domain_claim.aggregate_version == 0
+                    || input.domain_claim.failure.is_some()
+                    || input.domain_claim.verified_at.is_none()
+                    || input.domain_claim.revoked_at.is_some()
+                    || input.domain_claim.updated_at > observed_at
+                    || !input.domain_claim.covers(&spec.hostname)
             })
         {
             return Err(RepositoryError::Storage(
                 "MCP projection input reader returned a partial, duplicate, or cross-scope set"
                     .into(),
+            ));
+        }
+        let ingress_ownership = inputs
+            .iter()
+            .map(|input| {
+                (
+                    input.policy.spec().hostname.clone(),
+                    input.policy.spec().path.clone(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        if ingress_ownership.len() != inputs.len() {
+            return Err(RepositoryError::Storage(
+                "MCP projection input reader returned duplicate ingress ownership".into(),
             ));
         }
 
@@ -190,8 +272,21 @@ impl McpGatewayProjectionSetPlanner {
                 workload_id: input.policy.spec().workload_id,
                 workload_aggregate_version: input.workload_aggregate_version,
                 active_revision_id: input.revision.id,
+                domain_claim_id: input.domain_claim.id,
+                domain_claim_aggregate_version: input.domain_claim.aggregate_version,
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let ingress_routes = inputs
+            .iter()
+            .map(|input| McpGatewayIngressRoute {
+                route_id: input.policy.spec().route_id,
+                router: mcp_router_name(input.policy.spec().route_id),
+                hostname: input.policy.spec().hostname.clone(),
+                path: input.policy.spec().path.clone(),
+                domain_claim_id: input.domain_claim.id,
+                domain_pattern: input.domain_claim.pattern.clone(),
+            })
+            .collect::<Vec<_>>();
         let fragments = stream::iter(inputs.into_iter().map(|input| {
             self.routes.plan(PlanMcpRouteProjection {
                 policy: input.policy,
@@ -209,14 +304,33 @@ impl McpGatewayProjectionSetPlanner {
             .assembler
             .assemble(fragments, observed_at)
             .map_err(RepositoryError::Conflict)?;
+        if projection.projection().routes.len() != ingress_routes.len()
+            || projection
+                .projection()
+                .routes
+                .iter()
+                .zip(&ingress_routes)
+                .any(|(route, ingress)| {
+                    route.route_id != ingress.route_id.as_uuid() || route.router != ingress.router
+                })
+        {
+            return Err(RepositoryError::Conflict(
+                "MCP ingress bindings differ from their assembled route projection".into(),
+            ));
+        }
         Ok(PlannedMcpGatewayProjectionSet {
             scope: request.scope,
             gateway_node_id: request.gateway_node_id,
             observed_at,
             route_versions,
+            ingress_routes,
             projection: Some(projection),
         })
     }
+}
+
+fn mcp_router_name(route_id: RouteId) -> String {
+    format!("mcp-route-{}", route_id.as_uuid().simple())
 }
 
 #[cfg(test)]
@@ -227,7 +341,9 @@ mod tests {
     use crate::modules::edge::domain::services::{
         IRouteTargetReader, ResolvedMcpRouteProjectionInput, ResolvedRouteTarget,
     };
-    use crate::modules::edge::domain::{McpCredential, RoutePortName};
+    use crate::modules::edge::domain::{
+        DomainClaim, DomainNamePattern, McpCredential, McpRoutePolicy, RoutePortName,
+    };
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
         fixture, now, target,
     };
@@ -236,7 +352,7 @@ mod tests {
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, McpCredentialId, OrganizationId, ProjectId, WorkloadRevisionId,
+        EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RouteId, WorkloadRevisionId,
     };
     use async_trait::async_trait;
     use chrono::Duration;
@@ -300,8 +416,22 @@ mod tests {
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
     ) -> ResolvedMcpRouteProjectionInput {
         let spec = fixture.policy.spec();
+        let mut domain_claim = DomainClaim::create(
+            spec.domain_claim_id,
+            spec.organization_id,
+            spec.project_id,
+            spec.environment_id,
+            DomainNamePattern::parse(spec.hostname.as_str()).expect("domain pattern"),
+            format!("a3s-cloud-verification={}", spec.domain_claim_id),
+            now() - Duration::minutes(1),
+        )
+        .expect("domain claim");
+        domain_claim
+            .verify(now() - Duration::seconds(1))
+            .expect("verify domain claim");
         ResolvedMcpRouteProjectionInput {
             policy: fixture.policy.clone(),
+            domain_claim,
             profile_binding: McpServiceProfileBinding {
                 organization_id: spec.organization_id,
                 asset_id: spec.asset_id,
@@ -375,6 +505,26 @@ mod tests {
             fixture.policy.spec().route_id
         );
         assert_eq!(planned.route_versions()[0].workload_aggregate_version(), 2);
+        assert_eq!(
+            planned.route_versions()[0].domain_claim_id(),
+            fixture.policy.spec().domain_claim_id
+        );
+        assert_eq!(
+            planned.route_versions()[0].domain_claim_aggregate_version(),
+            2
+        );
+        assert_eq!(planned.ingress_routes().len(), 1);
+        assert_eq!(
+            planned.ingress_routes()[0].router(),
+            format!(
+                "mcp-route-{}",
+                fixture.policy.spec().route_id.as_uuid().simple()
+            )
+        );
+        assert_eq!(
+            planned.ingress_routes()[0].hostname(),
+            &fixture.policy.spec().hostname
+        );
         let projection = planned.projection().expect("non-empty projection");
         assert_eq!(projection.projection().routes.len(), 1);
         assert_eq!(
@@ -406,6 +556,7 @@ mod tests {
 
         assert!(planned.projection().is_none());
         assert!(planned.route_versions().is_empty());
+        assert!(planned.ingress_routes().is_empty());
         assert_eq!(targets.calls.load(Ordering::SeqCst), 0);
     }
 
@@ -420,6 +571,36 @@ mod tests {
         let duplicate = input(&fixture);
         let result = planner(
             vec![duplicate.clone(), duplicate],
+            targets.clone(),
+            Arc::new(InMemoryEdgeRepository::new()),
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: scope(&fixture, node_id),
+            gateway_node_id: node_id,
+            observed_at: now(),
+        })
+        .await;
+
+        assert!(matches!(result, Err(RepositoryError::Storage(_))));
+        assert_eq!(targets.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn rejects_duplicate_ingress_ownership_before_resolving_runtime() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let targets = Arc::new(CountingTargetReader {
+            target: None,
+            calls: AtomicUsize::new(0),
+        });
+        let first = input(&fixture);
+        let mut second = first.clone();
+        let mut second_spec = second.policy.spec().clone();
+        second_spec.route_id = RouteId::new();
+        second.policy = McpRoutePolicy::create(second_spec, &second.profile_binding.profile, now())
+            .expect("second policy");
+        let result = planner(
+            vec![first, second],
             targets.clone(),
             Arc::new(InMemoryEdgeRepository::new()),
         )

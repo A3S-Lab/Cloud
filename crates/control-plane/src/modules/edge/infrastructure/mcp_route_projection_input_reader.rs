@@ -1,12 +1,12 @@
 use crate::modules::assets::domain::repositories::IMcpServiceProfileRepository;
 use crate::modules::assets::domain::McpServiceProfileBinding;
 use crate::modules::edge::domain::repositories::{
-    IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    IEdgeRepository, IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
 use crate::modules::edge::domain::services::{
     IMcpRouteProjectionInputReader, ResolvedMcpRouteProjectionInput,
 };
-use crate::modules::edge::domain::{GatewayScope, McpRoutePolicy};
+use crate::modules::edge::domain::{DomainClaim, DomainClaimState, GatewayScope, McpRoutePolicy};
 use crate::modules::shared_kernel::domain::{canonical_timestamp, RepositoryError};
 use crate::modules::workloads::domain::entities::{
     Workload, WorkloadDesiredState, WorkloadRevision,
@@ -22,6 +22,7 @@ const MATERIALIZATION_CONCURRENCY: usize = 16;
 #[derive(Clone)]
 pub struct McpRouteProjectionInputReader {
     policies: Arc<dyn IMcpRoutePolicyRepository>,
+    edge: Arc<dyn IEdgeRepository>,
     profiles: Arc<dyn IMcpServiceProfileRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
 }
@@ -29,11 +30,13 @@ pub struct McpRouteProjectionInputReader {
 impl McpRouteProjectionInputReader {
     pub fn new(
         policies: Arc<dyn IMcpRoutePolicyRepository>,
+        edge: Arc<dyn IEdgeRepository>,
         profiles: Arc<dyn IMcpServiceProfileRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
     ) -> Self {
         Self {
             policies,
+            edge,
             profiles,
             workloads,
         }
@@ -46,6 +49,16 @@ impl McpRouteProjectionInputReader {
         observed_at: DateTime<Utc>,
     ) -> Result<ResolvedMcpRouteProjectionInput, RepositoryError> {
         let spec = policy.spec();
+        let domain_claim = self
+            .edge
+            .find_domain_claim(spec.organization_id, spec.domain_claim_id)
+            .await
+            .map_err(|error| {
+                missing_as_storage(
+                    error,
+                    "active MCP route policy lost its referenced DomainClaim",
+                )
+            })?;
         let profile_binding = self
             .profiles
             .find_mcp_service_profile(spec.organization_id, spec.asset_id, spec.asset_release_id)
@@ -80,6 +93,7 @@ impl McpRouteProjectionInputReader {
         validate_materialized_input(
             scope,
             &policy,
+            &domain_claim,
             &profile_binding,
             &workload,
             &revision,
@@ -87,6 +101,7 @@ impl McpRouteProjectionInputReader {
         )?;
         Ok(ResolvedMcpRouteProjectionInput {
             policy,
+            domain_claim,
             profile_binding,
             revision,
             workload_aggregate_version: workload.aggregate_version,
@@ -137,6 +152,7 @@ impl IMcpRouteProjectionInputReader for McpRouteProjectionInputReader {
 fn validate_materialized_input(
     scope: &GatewayScope,
     policy: &McpRoutePolicy,
+    domain_claim: &DomainClaim,
     profile_binding: &McpServiceProfileBinding,
     workload: &Workload,
     revision: &WorkloadRevision,
@@ -158,12 +174,28 @@ fn validate_materialized_input(
         ));
     }
     if policy.updated_at() > observed_at
+        || domain_claim.updated_at > observed_at
         || profile_binding.created_at > observed_at
         || workload.updated_at > observed_at
         || revision.created_at > observed_at
     {
         return Err(RepositoryError::Conflict(
             "MCP projection materialization predates its desired state".into(),
+        ));
+    }
+    if domain_claim.id != spec.domain_claim_id
+        || domain_claim.organization_id != spec.organization_id
+        || domain_claim.project_id != spec.project_id
+        || domain_claim.environment_id != spec.environment_id
+        || domain_claim.state != DomainClaimState::Verified
+        || domain_claim.aggregate_version == 0
+        || domain_claim.failure.is_some()
+        || domain_claim.verified_at.is_none()
+        || domain_claim.revoked_at.is_some()
+        || !domain_claim.covers(&spec.hostname)
+    {
+        return Err(RepositoryError::Conflict(
+            "active MCP route does not have exact verified domain authority".into(),
         ));
     }
     if workload.id != spec.workload_id
@@ -214,6 +246,9 @@ mod tests {
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
         fixture, now,
     };
+    use crate::modules::edge::DomainNamePattern;
+    use crate::modules::shared_kernel::domain::DomainClaimId;
+    use chrono::Duration;
 
     fn scope(
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
@@ -243,6 +278,26 @@ mod tests {
         }
     }
 
+    fn domain_claim(
+        fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
+    ) -> DomainClaim {
+        let spec = fixture.policy.spec();
+        let mut claim = DomainClaim::create(
+            spec.domain_claim_id,
+            spec.organization_id,
+            spec.project_id,
+            spec.environment_id,
+            DomainNamePattern::parse(spec.hostname.as_str()).expect("domain pattern"),
+            format!("a3s-cloud-verification={}", DomainClaimId::new()),
+            now() - Duration::minutes(1),
+        )
+        .expect("claim");
+        claim
+            .verify(now() - Duration::seconds(1))
+            .expect("verify claim");
+        claim
+    }
+
     fn workload(
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
     ) -> Workload {
@@ -268,6 +323,7 @@ mod tests {
         validate_materialized_input(
             &scope(&fixture),
             &fixture.policy,
+            &domain_claim(&fixture),
             &profile_binding(&fixture),
             &workload(&fixture),
             &fixture.revision,
@@ -280,6 +336,7 @@ mod tests {
     fn rejects_stopped_or_different_active_workload_state() {
         let fixture = fixture();
         let scope = scope(&fixture);
+        let claim = domain_claim(&fixture);
         let profile = profile_binding(&fixture);
         let mut stopped = workload(&fixture);
         stopped.request_stop(now()).expect("stop");
@@ -287,6 +344,7 @@ mod tests {
             validate_materialized_input(
                 &scope,
                 &fixture.policy,
+                &claim,
                 &profile,
                 &stopped,
                 &fixture.revision,
@@ -306,8 +364,46 @@ mod tests {
             validate_materialized_input(
                 &scope,
                 &fixture.policy,
+                &claim,
                 &profile,
                 &different,
+                &fixture.revision,
+                now(),
+            ),
+            Err(RepositoryError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_revoked_or_cross_tenant_domain_authority() {
+        let fixture = fixture();
+        let scope = scope(&fixture);
+        let profile = profile_binding(&fixture);
+        let workload = workload(&fixture);
+        let mut revoked = domain_claim(&fixture);
+        revoked.revoke("revoked", now()).expect("revoke claim");
+        assert!(matches!(
+            validate_materialized_input(
+                &scope,
+                &fixture.policy,
+                &revoked,
+                &profile,
+                &workload,
+                &fixture.revision,
+                now(),
+            ),
+            Err(RepositoryError::Conflict(_))
+        ));
+
+        let mut foreign = domain_claim(&fixture);
+        foreign.organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+        assert!(matches!(
+            validate_materialized_input(
+                &scope,
+                &fixture.policy,
+                &foreign,
+                &profile,
+                &workload,
                 &fixture.revision,
                 now(),
             ),

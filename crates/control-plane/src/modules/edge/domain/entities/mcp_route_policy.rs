@@ -1,8 +1,8 @@
 use crate::modules::assets::domain::McpServiceProfile;
 use crate::modules::edge::domain::RouteHostname;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, OrganizationId,
-    ProjectId, RouteId, Sha256Digest, WorkloadId,
+    canonical_timestamp, AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId,
+    OrganizationId, ProjectId, RouteId, Sha256Digest, WorkloadId,
 };
 use a3s_acl::builder::{boolean, integer, list, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
@@ -22,11 +22,12 @@ const MAX_POLICY_ACL_BYTES: usize = 512 * 1024;
 const MAX_HEADER_BYTES: u64 = 128 * 1024;
 const MAX_TELEMETRY_EVENTS_PER_MINUTE: u64 = 10_000_000;
 const MAX_POLICY_LIFETIME_HOURS: i64 = 24;
-const POLICY_ATTRIBUTES: [&str; 24] = [
+const POLICY_ATTRIBUTES: [&str; 25] = [
     "allowed_origins",
     "asset_id",
     "asset_release_id",
     "audit_required",
+    "domain_claim_id",
     "drain_timeout_seconds",
     "environment_id",
     "expires_at",
@@ -57,6 +58,7 @@ pub struct McpRoutePolicySpec {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub gateway_scope_id: GatewayScopeId,
+    pub domain_claim_id: DomainClaimId,
     pub workload_id: WorkloadId,
     pub asset_id: AssetId,
     pub asset_release_id: AssetReleaseId,
@@ -275,6 +277,7 @@ fn validate_spec(
         || spec.project_id.as_uuid().is_nil()
         || spec.environment_id.as_uuid().is_nil()
         || spec.gateway_scope_id.as_uuid().is_nil()
+        || spec.domain_claim_id.as_uuid().is_nil()
         || spec.workload_id.as_uuid().is_nil()
         || spec.asset_id.as_uuid().is_nil()
         || spec.asset_release_id.as_uuid().is_nil()
@@ -367,6 +370,7 @@ fn policy_document(spec: &McpRoutePolicySpec, policy_revision: u64) -> Result<Do
             "gateway_scope_id",
             string(&spec.gateway_scope_id.to_string()),
         )
+        .attr("domain_claim_id", string(&spec.domain_claim_id.to_string()))
         .attr("workload_id", string(&spec.workload_id.to_string()))
         .attr("asset_id", string(&spec.asset_id.to_string()))
         .attr(
@@ -491,6 +495,7 @@ fn parse_policy_document(document: &Document) -> Result<(McpRoutePolicySpec, u64
         project_id: ProjectId::from_uuid(required_uuid(block, "project_id")?),
         environment_id: EnvironmentId::from_uuid(required_uuid(block, "environment_id")?),
         gateway_scope_id: GatewayScopeId::from_uuid(required_uuid(block, "gateway_scope_id")?),
+        domain_claim_id: DomainClaimId::from_uuid(required_uuid(block, "domain_claim_id")?),
         workload_id: WorkloadId::from_uuid(required_uuid(block, "workload_id")?),
         asset_id: AssetId::from_uuid(required_uuid(block, "asset_id")?),
         asset_release_id: AssetReleaseId::from_uuid(required_uuid(block, "asset_release_id")?),
@@ -698,6 +703,7 @@ mod tests {
             project_id: ProjectId::new(),
             environment_id: EnvironmentId::new(),
             gateway_scope_id: GatewayScopeId::new(),
+            domain_claim_id: DomainClaimId::new(),
             workload_id: WorkloadId::new(),
             asset_id: AssetId::new(),
             asset_release_id: AssetReleaseId::new(),
@@ -796,6 +802,10 @@ mod tests {
     #[test]
     fn profile_bounds_exact_path_tls_origins_and_discovery_fail_closed() {
         let profile = profile();
+        let mut candidate = spec(&profile);
+        candidate.domain_claim_id = DomainClaimId::from_uuid(Uuid::nil());
+        assert!(McpRoutePolicy::create(candidate, &profile, now()).is_err());
+
         let mut candidate = spec(&profile);
         candidate.max_request_bytes = profile.spec().max_request_bytes + 1;
         assert!(McpRoutePolicy::create(candidate, &profile, now()).is_err());

@@ -838,13 +838,18 @@ command. Routed update accepts only the candidate deployment command's
 observation at the desired healthy generation. A future, stale, mismatched, or
 forged observation cannot create a route target.
 
-Hosted MCP routes reuse that same evidence path. The MCP target compiler accepts
-only a canonical `McpRoutePolicy`, its exact immutable Service profile, a
-profile/release-bound `WorkloadRevision`, and already resolved healthy Runtime
-targets. It revalidates tenant, Workload, Asset, AssetRelease, profile digest,
-Runtime port, health path, Unit ID, generation, and node-local endpoint
-alignment. AssetRelease identity and profile digest are copied only from the
-immutable revision binding; the endpoint is copied only from `RouteTarget`.
+Hosted MCP routes reuse that same evidence path. Each `McpRoutePolicy` also
+pins one tenant-qualified `DomainClaim`; migration 053 enforces that exact
+foreign-key binding. Publication candidates accept the hostname only while the
+claim is verified, covers it, and has not changed after the observation time.
+The Claim ID and aggregate version remain attached to the candidate so later
+revocation cannot race publication. The MCP target compiler accepts only a
+canonical policy, its exact immutable Service profile, a profile/release-bound
+`WorkloadRevision`, and already resolved healthy Runtime targets. It
+revalidates tenant, Workload, Asset, AssetRelease, profile digest, Runtime port,
+health path, Unit ID, generation, and node-local endpoint alignment.
+AssetRelease identity and profile digest are copied only from the immutable
+revision binding; the endpoint is copied only from `RouteTarget`.
 Callers control only priority and positive weight. Targets are sorted
 canonically and receive a stable UUIDv5 identity derived from route, node,
 Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
@@ -898,28 +903,32 @@ into the candidate set. A durable worker must still resolve every enumerated
 route to its active release-bound Workload and healthy local target.
 
 The projection-input reader performs that materialization with at most 16
-concurrent reads. Every policy must resolve to its immutable profile, a running
-Workload's current active revision, and the exact organization, project,
-environment, Asset, AssetRelease, and profile-digest binding. A missing,
-stopped, future, stale, or differently bound input aborts the complete
-candidate; it is never skipped. The complete-set planner then plans at most 16
-routes concurrently for one receiving Gateway and feeds the entire result into
-the conflict-safe assembler. Each accepted credential contributes both its
-grant generation and its credential aggregate version to the candidate. The
-assembler rejects fragments that observe different authority versions for the
-same credential. This matters because revocation advances the aggregate version
-without having to advance the generation. An empty active set is represented
-explicitly as no MCP projection so a later full-snapshot composer can remove the
-final MCP block instead of retaining stale authorization.
+concurrent reads. Every policy must resolve to its immutable profile, verified
+DomainClaim, a running Workload's current active revision, and the exact
+organization, project, environment, Asset, AssetRelease, hostname coverage,
+and profile-digest binding. A missing, stopped, revoked, future, stale, or
+differently bound input aborts the complete candidate; it is never skipped.
+The complete-set planner then plans at most 16 routes concurrently for one
+receiving Gateway and feeds the entire result into the conflict-safe assembler.
+It retains canonical hostname/path/router bindings and rejects duplicate
+ingress ownership before consulting Runtime. Each accepted credential
+contributes both its grant generation and its credential aggregate version to
+the candidate. The assembler rejects fragments that observe different
+authority versions for the same credential. This matters because revocation
+advances the aggregate version without having to advance the generation. An
+empty active set is represented explicitly as no MCP projection so a later
+full-snapshot composer can remove the final MCP block instead of retaining
+stale authorization.
 
 These bounded reads are not a publication transaction. Staging must compare
 and swap the exact Gateway scope membership/version, policy revision/digest
-vector, Workload aggregate and active-revision identities, credential
-generation and aggregate-version vector, and prior installed Gateway revision
-before persisting one complete snapshot and Outbox command. That durable
-version-vector check, dispatch, and acknowledgement recovery remain required;
-otherwise a concurrent policy, credential, or rollout change could publish an
-obsolete but individually valid candidate.
+vector, DomainClaim identities and aggregate versions, Workload aggregate and
+active-revision identities, credential generation and aggregate-version
+vector, and prior installed Gateway revision before persisting one complete
+snapshot and Outbox command. That durable version-vector check, dispatch, and
+acknowledgement recovery remain required; otherwise a concurrent policy,
+domain revocation, credential change, or rollout could publish an obsolete but
+individually valid candidate.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

@@ -55,11 +55,12 @@ pub use infrastructure::{
     GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, IssuedMcpCredential, LocalDomainOwnershipVerifier,
     LocalGatewayCertificateAuthority, McpCredentialIssuanceError, McpCredentialIssueRequest,
-    McpCredentialIssuer, McpCredentialProjectionVersion, McpGatewayProjectionAssembler,
-    McpGatewayProjectionCompiler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteProjectionVersion,
-    McpRouteTargetCandidate, McpRouteTargetProjectionCompiler, PlanGatewayRouteRollout,
-    PlanMcpGatewayProjectionSet, PlanMcpRouteProjection, PlannedMcpGatewayProjection,
-    PlannedMcpGatewayProjectionSet, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    McpCredentialIssuer, McpCredentialProjectionVersion, McpGatewayIngressRoute,
+    McpGatewayProjectionAssembler, McpGatewayProjectionCompiler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteProjectionVersion, McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
+    PlanGatewayRouteRollout, PlanMcpGatewayProjectionSet, PlanMcpRouteProjection,
+    PlannedMcpGatewayProjection, PlannedMcpGatewayProjectionSet, VaultGatewayCertificateAuthority,
+    WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

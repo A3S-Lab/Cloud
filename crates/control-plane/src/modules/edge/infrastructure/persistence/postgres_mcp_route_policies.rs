@@ -119,6 +119,10 @@ async fn create(
                             policy.spec().gateway_scope_id.as_uuid(),
                         )
                         .value(
+                            McpRoutePolicies::domain_claim_id(),
+                            policy.spec().domain_claim_id.as_uuid(),
+                        )
+                        .value(
                             McpRoutePolicies::workload_id(),
                             policy.spec().workload_id.as_uuid(),
                         )
@@ -231,6 +235,10 @@ async fn update(
                         .set(
                             McpRoutePolicies::profile_digest(),
                             policy.spec().profile_digest.as_str(),
+                        )
+                        .set(
+                            McpRoutePolicies::domain_claim_id(),
+                            policy.spec().domain_claim_id.as_uuid(),
                         )
                         .set(
                             McpRoutePolicies::hostname(),
@@ -493,6 +501,7 @@ struct McpRoutePolicyRow {
     project_id: Uuid,
     environment_id: Uuid,
     gateway_scope_id: Uuid,
+    domain_claim_id: Uuid,
     workload_id: Uuid,
     asset_id: Uuid,
     asset_release_id: Uuid,
@@ -525,6 +534,7 @@ impl Selection for McpRoutePolicySelection {
             McpRoutePolicies::project_id().expression(),
             McpRoutePolicies::environment_id().expression(),
             McpRoutePolicies::gateway_scope_id().expression(),
+            McpRoutePolicies::domain_claim_id().expression(),
             McpRoutePolicies::workload_id().expression(),
             McpRoutePolicies::asset_id().expression(),
             McpRoutePolicies::asset_release_id().expression(),
@@ -559,18 +569,19 @@ impl FromRow for McpRoutePolicyRow {
             project_id: decode(row, 2)?,
             environment_id: decode(row, 3)?,
             gateway_scope_id: decode(row, 4)?,
-            workload_id: decode(row, 5)?,
-            asset_id: decode(row, 6)?,
-            asset_release_id: decode(row, 7)?,
-            profile_digest: decode(row, 8)?,
-            hostname: decode(row, 9)?,
-            path: decode(row, 10)?,
-            policy_revision: decode(row, 11)?,
-            policy_digest: decode(row, 12)?,
-            acl: decode(row, 13)?,
-            expires_at: decode(row, 14)?,
-            created_at: decode(row, 15)?,
-            updated_at: decode(row, 16)?,
+            domain_claim_id: decode(row, 5)?,
+            workload_id: decode(row, 6)?,
+            asset_id: decode(row, 7)?,
+            asset_release_id: decode(row, 8)?,
+            profile_digest: decode(row, 9)?,
+            hostname: decode(row, 10)?,
+            path: decode(row, 11)?,
+            policy_revision: decode(row, 12)?,
+            policy_digest: decode(row, 13)?,
+            acl: decode(row, 14)?,
+            expires_at: decode(row, 15)?,
+            created_at: decode(row, 16)?,
+            updated_at: decode(row, 17)?,
         })
     }
 }
@@ -579,7 +590,7 @@ impl FromRow for McpRoutePolicyWithProfileRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
             policy: McpRoutePolicyRow::from_row(row)?,
-            profile_acl: decode(row, 17)?,
+            profile_acl: decode(row, 18)?,
         })
     }
 }
@@ -608,6 +619,7 @@ impl McpRoutePolicyRow {
             || spec.project_id.as_uuid() != self.project_id
             || spec.environment_id.as_uuid() != self.environment_id
             || spec.gateway_scope_id.as_uuid() != self.gateway_scope_id
+            || spec.domain_claim_id.as_uuid() != self.domain_claim_id
             || spec.workload_id.as_uuid() != self.workload_id
             || spec.asset_id.as_uuid() != self.asset_id
             || spec.asset_release_id.as_uuid() != self.asset_release_id

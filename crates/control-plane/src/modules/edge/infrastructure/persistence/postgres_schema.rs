@@ -307,6 +307,7 @@ orm_table! {
         project_id: Uuid => "project_id",
         environment_id: Uuid => "environment_id",
         gateway_scope_id: Uuid => "gateway_scope_id",
+        domain_claim_id: Uuid => "domain_claim_id",
         workload_id: Uuid => "workload_id",
         asset_id: Uuid => "asset_id",
         asset_release_id: Uuid => "asset_release_id",

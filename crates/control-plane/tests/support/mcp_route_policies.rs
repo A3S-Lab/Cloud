@@ -6,17 +6,19 @@ use a3s_cloud_control_plane::modules::assets::{
     IAssetRepository, IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
     McpServiceProfileSpec, PostgresAssetRepository, TransitionAssetReleaseWrite,
 };
+use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
 use a3s_cloud_control_plane::modules::edge::{
-    IEdgeRepository, IMcpCredentialRepository, IMcpRoutePolicyRepository, McpCredential,
-    McpRoutePolicy, McpRoutePolicySpec, PostgresEdgeRepository, RouteHostname,
+    CreateDomainClaimWrite, DomainClaim, DomainNamePattern, IEdgeRepository,
+    IMcpCredentialRepository, IMcpRoutePolicyRepository, McpCredential, McpRoutePolicy,
+    McpRoutePolicySpec, PostgresEdgeRepository, RouteHostname, TransitionDomainClaim,
 };
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GatewayScopeId, GitCommitSha,
-    IdempotencyRequest, McpCredentialId, OperationId, OrganizationId, ProjectId, RepositoryError,
-    ResourceName, RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
+    AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayScopeId,
+    GitCommitSha, IdempotencyRequest, McpCredentialId, OperationId, OrganizationId, ProjectId,
+    RepositoryError, ResourceName, RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -338,6 +340,41 @@ pub async fn exercise(
 
     let workload_id = workload.id;
     let created_at = workload_created_at + Duration::milliseconds(1);
+    let hostname = RouteHostname::parse("mcp-policy.integration.example")?;
+    let mut domain_claim = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse(hostname.as_str())?,
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        created_at - Duration::milliseconds(2),
+    )?;
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: domain_claim.clone(),
+        idempotency: idempotency(
+            organization_id,
+            "domain-claims",
+            "postgres-mcp-domain-claim",
+            hostname.as_str().as_bytes(),
+        )?,
+        event: DomainClaimChanged::envelope(&domain_claim, Uuid::now_v7())?,
+    })
+    .await?;
+    let expected_claim_version = domain_claim.aggregate_version;
+    domain_claim.verify(created_at - Duration::milliseconds(1))?;
+    edge.transition_domain_claim(TransitionDomainClaim {
+        claim: domain_claim.clone(),
+        expected_version: expected_claim_version,
+        idempotency: idempotency(
+            organization_id,
+            format!("domain-claims/{}", domain_claim.id),
+            "postgres-mcp-domain-verification",
+            b"verified",
+        )?,
+        event: DomainClaimChanged::envelope(&domain_claim, Uuid::now_v7())?,
+    })
+    .await?;
     let policy = McpRoutePolicy::create(
         McpRoutePolicySpec {
             route_id: RouteId::new(),
@@ -345,11 +382,12 @@ pub async fn exercise(
             project_id,
             environment_id,
             gateway_scope_id: scope.id,
+            domain_claim_id: domain_claim.id,
             workload_id,
             asset_id: asset.id,
             asset_release_id: published.id,
             profile_digest: profile.digest().clone(),
-            hostname: RouteHostname::parse("mcp-policy.integration.example")?,
+            hostname,
             path: "/mcp".into(),
             tls_required: true,
             allowed_origins: vec!["https://console.integration.example".into()],
@@ -383,6 +421,15 @@ pub async fn exercise(
         &profile,
         created_at,
     )?;
+    let mut unowned_spec = policy.spec().clone();
+    unowned_spec.route_id = RouteId::new();
+    unowned_spec.domain_claim_id = DomainClaimId::new();
+    unowned_spec.hostname = RouteHostname::parse("unowned-mcp.integration.example")?;
+    let unowned = McpRoutePolicy::create(unowned_spec, &profile, created_at)?;
+    assert!(matches!(
+        edge.create_mcp_route_policy(unowned).await,
+        Err(RepositoryError::NotFound)
+    ));
     assert_eq!(edge.create_mcp_route_policy(policy.clone()).await?, policy);
     assert_eq!(
         edge.find_mcp_route_policy(organization_id, policy.spec().route_id)
@@ -460,13 +507,17 @@ pub async fn exercise(
         Err(RepositoryError::Conflict(_))
     ));
 
-    let stored_acl = Database::new(PostgresDialect, executor.clone())
+    let (stored_claim_id, stored_acl) = Database::new(PostgresDialect, executor.clone())
         .fetch_one_as(
             select_from::<McpPolicyEvidence>()
-                .select(McpPolicyEvidence::acl())
+                .select((
+                    McpPolicyEvidence::domain_claim_id(),
+                    McpPolicyEvidence::acl(),
+                ))
                 .filter(McpPolicyEvidence::id().eq(revised.spec().route_id.as_uuid())),
         )
         .await?;
+    assert_eq!(stored_claim_id, domain_claim.id.as_uuid());
     assert!(!stored_acl.contains("verifier_hash"));
     assert!(!stored_acl.contains("targets "));
     assert!(!stored_acl.contains("endpoint ="));
@@ -507,6 +558,7 @@ pub async fn exercise(
 a3s_orm::orm_table! {
     struct McpPolicyEvidence => "mcp_route_policies" {
         id: Uuid => "id",
+        domain_claim_id: Uuid => "domain_claim_id",
         acl: String => "acl",
     }
 }

@@ -83,8 +83,8 @@ pub use mcp_gateway_projection_planner::{
     McpCredentialProjectionVersion, McpGatewayProjectionPlanner, PlannedMcpGatewayProjection,
 };
 pub use mcp_gateway_projection_set_planner::{
-    McpGatewayProjectionSetPlanner, McpRouteProjectionVersion, PlanMcpGatewayProjectionSet,
-    PlannedMcpGatewayProjectionSet,
+    McpGatewayIngressRoute, McpGatewayProjectionSetPlanner, McpRouteProjectionVersion,
+    PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet,
 };
 pub use mcp_route_projection_input_reader::McpRouteProjectionInputReader;
 pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRouteProjection};

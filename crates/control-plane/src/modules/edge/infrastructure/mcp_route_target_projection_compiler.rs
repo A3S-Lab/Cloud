@@ -231,8 +231,8 @@ pub(super) mod tests {
         McpRoutePolicySpec, RouteHostname, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
     use crate::modules::shared_kernel::domain::{
-        AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, NodeId, OrganizationId, ProjectId,
-        RouteId, WorkloadId, WorkloadRevisionId,
+        AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId, NodeId,
+        OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
         HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact, ServicePort, ServiceProcess,
@@ -344,6 +344,9 @@ pub(super) mod tests {
                 )),
                 gateway_scope_id: GatewayScopeId::from_uuid(uuid(
                     "99999999-9999-4999-8999-999999999999",
+                )),
+                domain_claim_id: DomainClaimId::from_uuid(uuid(
+                    "99999999-9999-4999-8999-999999999998",
                 )),
                 workload_id,
                 asset_id,

@@ -1566,12 +1566,14 @@ unavailable. As of 2026-07-30:
   `MCP0.2` gate;
 - Cloud admits one canonical immutable Service-profile ACL, binds it to a
   published MCP AssetRelease through migration 052, and stores a separately
-  revisioned, expiring Edge route-policy ACL through migration 053. Migration
-  054 binds an ordinary WorkloadRevision to the exact tenant, AssetRelease,
-  OCI artifact digest/media type, and profile digest; the ordinary Runtime
-  projection now inherits that opaque digest automatically. These paths use
-  typed A3S ORM, and route desired state contains authorization references but
-  no Runtime endpoints or credential verifiers. Cloud now validates one healthy
+  revisioned, expiring Edge route-policy ACL through migration 053. Each policy
+  now pins an exact tenant-qualified DomainClaim; candidates require its
+  verified hostname coverage and retain its aggregate version for publication
+  CAS. Migration 054 binds an ordinary WorkloadRevision to the exact tenant,
+  AssetRelease, OCI artifact digest/media type, and profile digest; the ordinary
+  Runtime projection now inherits that opaque digest automatically. These paths
+  use typed A3S ORM, and route desired state contains authorization references
+  but no Runtime endpoints or credential verifiers. Cloud now validates one healthy
   exact-generation target per desired Gateway member, then emits a node-bound
   one-route projection containing only the receiving Gateway's loopback-safe
   target. It resolves only the credential IDs named by the route within the
@@ -1585,14 +1587,16 @@ unavailable. As of 2026-07-30:
   with the earliest expiry. One exact typed ORM query now enumerates at most
   1,000 unexpired policies for one tenant-qualified Gateway scope, joins their
   immutable profiles, and rejects overflow rather than truncating. The input
-  reader now requires every route to resolve to a running Workload's exact
-  active release-bound revision; the complete-set planner uses bounded
-  concurrency, aborts on any partial or duplicate input, and represents an
-  empty active set explicitly. The candidate retains exact policy,
-  Workload/active-revision, and credential generation/aggregate-version
-  evidence so a later durable publisher can reject concurrent revocation or
-  rollout drift. Public idempotent one-time delivery and rotation, durable
-  scope/policy/Workload/credential version-vector compare-and-swap,
+  reader now requires every route to resolve to a verified covering
+  DomainClaim and a running Workload's exact active release-bound revision; the
+  complete-set planner uses bounded concurrency, aborts on any partial,
+  duplicate, or ingress-conflicting input, retains canonical ingress bindings,
+  and represents an empty active set explicitly. The candidate retains exact
+  policy, DomainClaim, Workload/active-revision, and credential
+  generation/aggregate-version evidence so a later durable publisher can
+  reject concurrent revocation or rollout drift. Public idempotent one-time
+  delivery and rotation, durable scope/policy/DomainClaim/Workload/credential
+  version-vector compare-and-swap,
   full-snapshot composition, dispatch/acknowledgement recovery, the real
   PostgreSQL gate, lifecycle surfaces, recovery, and audit remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
