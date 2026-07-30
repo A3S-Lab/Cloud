@@ -52,7 +52,8 @@ pub use infrastructure::{
     GatewayRolloutRollbackReconciliationFailure, GatewayRolloutRollbackReconciliationReport,
     GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    McpGatewayProjectionCompiler, McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
-    PlanGatewayRouteRollout, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    McpGatewayProjectionCompiler, McpRouteProjectionPlanner, McpRouteTargetCandidate,
+    McpRouteTargetProjectionCompiler, PlanGatewayRouteRollout, PlanMcpRouteProjection,
+    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

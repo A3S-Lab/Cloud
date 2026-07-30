@@ -223,7 +223,7 @@ fn deterministic_target_id(route_id: Uuid, node_id: Uuid, unit_id: &str, generat
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::modules::assets::domain::{McpServiceProfile, McpServiceProfileSpec};
     use crate::modules::edge::domain::services::ResolvedRouteTarget;
@@ -242,23 +242,23 @@ mod tests {
     use chrono::{DateTime, Duration, TimeZone, Utc};
     use std::collections::BTreeMap;
 
-    struct Fixture {
-        profile: McpServiceProfile,
-        policy: McpRoutePolicy,
-        revision: WorkloadRevision,
+    pub(in crate::modules::edge::infrastructure) struct Fixture {
+        pub(in crate::modules::edge::infrastructure) profile: McpServiceProfile,
+        pub(in crate::modules::edge::infrastructure) policy: McpRoutePolicy,
+        pub(in crate::modules::edge::infrastructure) revision: WorkloadRevision,
     }
 
     fn uuid(value: &str) -> Uuid {
         Uuid::parse_str(value).expect("UUID")
     }
 
-    fn now() -> DateTime<Utc> {
+    pub(in crate::modules::edge::infrastructure) fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 7, 30, 12, 0, 0)
             .single()
             .expect("time")
     }
 
-    fn fixture() -> Fixture {
+    pub(in crate::modules::edge::infrastructure) fn fixture() -> Fixture {
         let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
             protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
             endpoint_path: "/mcp".into(),
@@ -391,7 +391,11 @@ mod tests {
         }
     }
 
-    fn target(fixture: &Fixture, node_id: NodeId, port: u16) -> ResolvedRouteTarget {
+    pub(in crate::modules::edge::infrastructure) fn target(
+        fixture: &Fixture,
+        node_id: NodeId,
+        port: u16,
+    ) -> ResolvedRouteTarget {
         ResolvedRouteTarget {
             workload_id: fixture.revision.workload_id,
             node_id,

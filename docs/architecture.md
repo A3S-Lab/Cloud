@@ -849,8 +849,21 @@ Callers control only priority and positive weight. Targets are sorted
 canonically and receive a stable UUIDv5 identity derived from route, node,
 Runtime Unit, and generation. Empty, duplicate-node, mixed-revision,
 non-contiguous-priority, and overflowing-weight sets fail closed. Credential
-authority resolution, the worker reconciliation loop that reads those targets,
-and complete snapshot publication remain separate unfinished `MCP0.3` work.
+authority resolution and complete snapshot publication remain separate
+unfinished `MCP0.3` work.
+
+The MCP projection planner is the read-side orchestration boundary. It verifies
+that the mutable route policy, immutable profile binding, Workload revision,
+and desired Gateway scope have the same organization, project, environment,
+AssetRelease, Workload, and validity window before consulting Runtime state.
+It then asks the existing `IRouteTargetReader` for exactly one current healthy
+target per desired Gateway member, using the profile's declared Runtime port.
+Partial or wrong-node sets fail before projection. The initial policy assigns
+all eligible members priority zero and equal weight, and derives the router
+name from the route ID; later traffic policy must remain Cloud-owned rather
+than becoming a Runtime or Gateway scheduling decision. A durable worker,
+credential resolution, full-snapshot compare-and-swap, dispatch, and
+acknowledgement recovery are still required.
 
 The compiler sorts every active route plus the proposed route for the physical
 node and emits one deterministic, versioned ACL snapshot. Physical
