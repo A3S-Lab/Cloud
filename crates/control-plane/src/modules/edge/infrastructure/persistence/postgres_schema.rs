@@ -290,6 +290,20 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct McpGatewaySnapshotPublications => "mcp_gateway_snapshot_publications" {
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        gateway_scope_id: Uuid => "gateway_scope_id",
+        node_id: Uuid => "node_id",
+        gateway_revision: u64 => "gateway_revision",
+        gateway_command_id: Uuid => "gateway_command_id",
+        snapshot_digest: String => "snapshot_digest",
+        staged_at: DateTime<Utc> => "staged_at",
+    }
+}
+
+orm_table! {
     pub(super) struct McpServiceProfiles => "mcp_service_profiles" {
         organization_id: Uuid => "organization_id",
         asset_id: Uuid => "asset_id",

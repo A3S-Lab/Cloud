@@ -1,6 +1,7 @@
 use super::postgres::{PublicationRow, PublicationSelection, RouteRow, RouteSelection};
 use super::postgres_certificate_convergence;
 use super::postgres_cutovers;
+use super::postgres_mcp_gateway_snapshots;
 use super::postgres_rollout_routes;
 use super::postgres_rollouts;
 use super::postgres_schema::{
@@ -151,6 +152,109 @@ pub(super) async fn project(
                     )
                     .await?;
                     if acknowledgement.state == GatewayAckState::Applied {
+                        persist_installed_scope_revision(
+                            transaction,
+                            &publication,
+                            acknowledgement.acknowledged_at,
+                        )
+                        .await?;
+                    }
+                    return Ok(true);
+                }
+                if let Some(marker) =
+                    postgres_mcp_gateway_snapshots::lock_marker_by_gateway_identity(
+                        transaction,
+                        acknowledgement.node_id,
+                        acknowledgement.revision,
+                        acknowledgement.command_id,
+                    )
+                    .await?
+                {
+                    marker.validate_for(&publication).map_err(|error| {
+                        PostgresPersistenceError::Invariant(format!(
+                            "MCP Gateway acknowledgement identity is invalid: {error}"
+                        ))
+                    })?;
+                    let certificate_rows = fetch_all::<CertificateRow, _>(
+                        transaction,
+                        select_from::<GatewayCertificates>()
+                            .select(CertificateSelection)
+                            .filter(GatewayCertificates::node_id().eq(acknowledgement.node_id))
+                            .filter(
+                                GatewayCertificates::gateway_revision()
+                                    .eq(acknowledgement.revision),
+                            )
+                            .filter(
+                                GatewayCertificates::gateway_command_id()
+                                    .eq(acknowledgement.command_id),
+                            )
+                            .for_update(),
+                    )
+                    .await?;
+                    let mut certificates = certificate_rows
+                        .into_iter()
+                        .map(CertificateRow::certificate)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let expected_certificate_id =
+                        publication.certificate_request.as_ref().map(|request| {
+                            crate::modules::shared_kernel::domain::GatewayCertificateId::from_uuid(
+                                request.certificate_id,
+                            )
+                        });
+                    if certificates.len() != usize::from(expected_certificate_id.is_some())
+                        || certificates.first().map(|certificate| certificate.id)
+                            != expected_certificate_id
+                        || certificates.first().is_some_and(|certificate| {
+                            certificate.organization_id != marker.organization_id
+                                || certificate.node_id != marker.node_id
+                                || certificate.gateway_revision != marker.gateway_revision
+                                || certificate.gateway_command_id != marker.gateway_command_id
+                                || certificate.snapshot_digest != marker.snapshot_digest
+                        })
+                    {
+                        return Err(PostgresPersistenceError::Invariant(
+                            "MCP Gateway acknowledgement certificate projection is inconsistent"
+                                .into(),
+                        ));
+                    }
+                    let mut certificate = certificates.pop();
+                    let certificate_version = certificate
+                        .as_ref()
+                        .map(|certificate| certificate.aggregate_version);
+                    if let Some(certificate) = &mut certificate {
+                        certificate
+                            .apply_gateway_acknowledgement(&acknowledgement)
+                            .map_err(RepositoryError::Conflict)?;
+                    }
+                    persist_publication_acknowledgement(transaction, &publication).await?;
+                    if let (Some(certificate), Some(certificate_version)) =
+                        (&certificate, certificate_version)
+                    {
+                        update_certificate(transaction, certificate, certificate_version).await?;
+                    }
+                    if acknowledgement.state == GatewayAckState::Applied {
+                        if let Some(certificate_id) = expected_certificate_id {
+                            postgres_certificate_convergence::bind_active_routes_to_certificate(
+                                transaction,
+                                NodeId::from_uuid(acknowledgement.node_id),
+                                acknowledgement.revision,
+                                NodeCommandId::from_uuid(acknowledgement.command_id),
+                                &acknowledgement.snapshot_digest,
+                                certificate_id,
+                                acknowledgement.acknowledged_at,
+                            )
+                            .await?;
+                        } else if has_active_routes(
+                            transaction,
+                            NodeId::from_uuid(acknowledgement.node_id),
+                        )
+                        .await?
+                        {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "certificate-free MCP Gateway snapshot retained active routes"
+                                    .into(),
+                            ));
+                        }
                         persist_installed_scope_revision(
                             transaction,
                             &publication,

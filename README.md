@@ -778,10 +778,13 @@ safety gates, publication, Agent deployment, Skill binding, and catalog
 surfaces remain open `A0` work. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
 complete version-vector CAS, atomic publication/certificate/scope/Outbox
-staging, and Gateway request-path foundations are in development under `MCP0`;
-Fleet dispatch and exact acknowledgement/restart convergence, executed real
-PostgreSQL evidence for the new staging path, real Box hosting, and joint
-product conformance remain unavailable. Stateful
+staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry
+projection, and Gateway request-path foundations are in development under
+`MCP0`. Migration 056 retains immutable MCP publication-kind and tenant
+evidence so restart scanning and acknowledgements never infer intent from an
+ephemeral event. Supersession and policy-expiry reconciliation, public
+lifecycle surfaces, executed real PostgreSQL evidence for the new path, real
+Box hosting, and joint product conformance remain unavailable. Stateful
 resources remain `S0`; replicas and multi-node
 placement remain `H0`; accelerator and inference capabilities remain `I0`.
 These profiles do not create separate schedulers.

@@ -951,21 +951,46 @@ Workload rollout, credential rotation, revocation, or pending-publication drift
 rejects the candidate before commit.
 
 An accepted stage writes the pending `GatewayPublication`, optional provisioning
-certificate, next physical scope revision, and one secret-free
+certificate, immutable `mcp_gateway_snapshot_publications` kind/tenant marker,
+next physical scope revision, and one secret-free
 `edge.mcp-gateway.snapshot-staged` Outbox fact atomically. The event binds the
 logical and physical identities, command, revision, snapshot digest, ordinary
 and MCP Route IDs, DomainClaim IDs, and optional certificate ID without
-including credential verifiers. The PostgreSQL integration fixture rejects a
-candidate after policy revision and injects failure at the final Outbox insert
-to verify no publication, certificate, event, or scope advance leaks before a
-successful retry. That fixture is compiled in the normal test gate; an
-environment-backed PostgreSQL execution is still required before claiming real
-database evidence.
+including credential verifiers. Migration 056 binds the marker to the exact
+logical scope, receiving Node, publication revision, command, and digest. The
+marker is durable recovery evidence rather than another state machine:
+`GatewayPublication` remains the sole delivery-state authority, and
+acknowledgement code does not infer publication kind from Outbox retention.
 
-Staging is not dispatch or convergence. Fleet command creation/redelivery,
-certificate issuance, exact Gateway acknowledgement projection, supersession,
-expiry, and restart recovery remain required before this path can activate
-traffic or close `MCP0.3`.
+The bounded `McpGatewaySnapshotReconciler` scans pending marker/publication
+joins and enqueues the existing idempotent Fleet
+`GatewaySnapshotInstall` command. A queue failure leaves the publication
+pending for the next process or cycle; a repeated enqueue uses the same command
+ID and becomes Fleet replay rather than another mutation. A command that
+reaches its exact deadline becomes `unavailable` atomically with any still
+provisioning or issued certificate, without advancing the installed revision.
+Clock regression fails closed.
+
+The existing Agent CSR/signing path can issue the staged certificate after
+command delivery. The acknowledgement projector recognizes the immutable MCP
+marker before ordinary Route publication kinds, validates the exact
+node/command/revision/digest and zero-or-one certificate projection, and
+atomically records `Rejected` or `Applied`. Only Applied with valid issued
+certificate material advances certificate readiness and the physical installed
+revision; any active ordinary routes are rebound to the same complete snapshot
+identity. Terminal acknowledgement replay remains idempotent.
+
+The PostgreSQL integration fixture rejects a candidate after policy revision
+and injects failure at the final Outbox insert to verify no publication,
+certificate, marker, event, or scope advance leaks before a successful retry.
+It then compiles Fleet dispatch/replay, certificate issuance, and exact Applied
+projection. Focused in-memory tests exercise queue interruption followed by
+restart, idempotent redispatch, deadline expiry, and future-clock rejection.
+Those fixtures are compiled in the normal test gate; an environment-backed
+PostgreSQL execution is still required before claiming real database evidence.
+Desired-state supersession, automatic policy-expiry planning, public lifecycle
+surfaces, audit, and joint real-process recovery remain required before this
+path can close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

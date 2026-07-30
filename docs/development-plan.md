@@ -1601,13 +1601,24 @@ unavailable. As of 2026-07-30:
   exact logical membership, physical scope, complete ordinary and MCP route
   sets, every Claim, Workload revision, and credential generation before
   atomically writing the pending publication, optional certificate, scope
-  advance, and one secret-free Outbox event. Policy mutations take the same
-  logical-scope lock, closing the concurrent active-policy insertion gap. A
-  compiled PostgreSQL fixture covers stale-policy rejection plus transaction
-  rollback when the final Outbox insert fails. Public idempotent one-time
-  delivery and rotation, Fleet dispatch/redelivery, certificate issuance,
-  exact acknowledgement and supersession/expiry/restart recovery, an executed
-  real PostgreSQL gate, lifecycle surfaces, and audit remain `MCP0.3`; and
+  advance, immutable MCP publication-kind marker, and one secret-free Outbox
+  event. Policy mutations take the same logical-scope lock, closing the
+  concurrent active-policy insertion gap. Migration 056 binds each marker to
+  its exact tenant, logical scope, receiving node, revision, command, and
+  digest. A bounded reconciler now scans durable pending markers, idempotently
+  dispatches the existing Fleet Gateway command, survives queue interruption,
+  replays the same command after restart, and makes deadline expiry terminal
+  without advancing installed state. The acknowledgement projector recognizes
+  that marker, validates exact identity/digest and certificate cardinality,
+  then atomically records Rejected or advances certificate readiness and
+  installed scope on Applied. Focused tests cover dispatch failure/restart,
+  replay, expiry, and clock regression. A compiled PostgreSQL fixture covers
+  stale-policy rejection, transaction rollback when the final Outbox insert
+  fails (including zero leaked markers), Fleet replay, certificate issuance,
+  and exact Applied projection. Public idempotent one-time delivery and
+  rotation, desired-state supersession and automatic policy-expiry planning,
+  an executed real PostgreSQL gate, lifecycle surfaces, audit, and joint
+  real-process recovery remain `MCP0.3`; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
