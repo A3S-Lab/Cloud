@@ -112,8 +112,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   native Gateway state
 - **Encrypted Secrets**: Store tenant-scoped immutable Secret versions,
   manage metadata and version lifecycle through the shared client and CLI
-  without rendering plaintext, and materialize exact bindings only at
-  authenticated registry or assigned-node boundaries
+  without rendering plaintext, and use the sole Cloud-to-Box adapter to
+  materialize exact environment, read-only file, and pull-only registry
+  bindings at authenticated assigned-node boundaries with restart-safe
+  reauthorization, log redaction, and tmpfs cleanup
 - **Durable Logs**: Ship bounded ordered Runtime logs, preserve explicit gaps,
   redact bound Secrets, replay one exact receipt-gated pending batch after
   restart, store immutable chunks, and expose cursor and resumable SSE queries
@@ -260,9 +262,27 @@ shared `BoxRuntimeDriver`. The shipped profile selects MicroVM while Cloud
 real-provider tests on hosted runners select Sandbox explicitly. This proves
 deterministic selection, not complete Sandbox, MicroVM, or TEE certification.
 
-Mounts, Secrets, outputs, registry credentials, builds, isolation evidence,
-and the clean-host release loop remain release-blocking `BX0.3` through
-`BX0.5` work.
+The fourth `BX0.3` slice pins A3S Box
+`211b6bdaa572ba0ad5d55c7988a5b4a72ca36251`, merged through
+[Box PR #187](https://github.com/A3S-Lab/Box/pull/187) after the
+[provider certification](https://github.com/A3S-Lab/Box/actions/runs/30506005198).
+The Node Agent installs
+one `CloudBoxSecretMaterializer` in the existing shared `BoxRuntimeDriver` and
+binds it once to the authenticated node Secret transport. A3S Box resolves
+environment and read-only file bindings only at process creation, refreshes
+them on restart, reauthorizes exact values before log redaction, and removes
+its node-tmpfs material with the generation. Registry credentials are parsed
+through the same adapter and exist only for an uncached authenticated OCI pull;
+they never enter the workload or Box credential store. The retained real
+consumer gate proves `0400` file projection, driver reconstruction without live
+rematerialization, restart refresh, stdout/stderr redaction, an anonymous
+private-registry rejection followed by one authenticated pull, cache reuse,
+plaintext exclusion, and final tmpfs/provider cleanup. Cloud adds no second
+Secret transport, Runtime driver, credential store, or lifecycle mechanism.
+
+Artifact/Volume/tmpfs mounts, Task outputs, allocation evidence, builds,
+complete isolation evidence, and the clean-host release loop remain
+release-blocking `BX0.3` through `BX0.5` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists

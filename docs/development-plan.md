@@ -161,7 +161,7 @@ Status as of 2026-07-30:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, and one real Cloud health consumer gate across Node Agent journal replay and fresh inspection. Secrets, mounts, outputs, credentials, isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, and one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials. Mounts, outputs, allocation evidence, isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -295,9 +295,26 @@ without automatic downgrade, a fallback provider, or another lifecycle path.
 This completes deterministic isolation selection but not the required
 Sandbox/MicroVM/TEE provider certification.
 
-The rest of `BX0.3` remains open: Secret materialization,
-Artifact/Volume/tmpfs mounts, Task outputs, registry credentials, allocation
-evidence, and complete Sandbox/MicroVM/TEE isolation certification.
+The fourth `BX0.3` slice pins A3S Box
+`211b6bdaa572ba0ad5d55c7988a5b4a72ca36251`, merged through
+[Box PR #187](https://github.com/A3S-Lab/Box/pull/187) after the
+[provider certification](https://github.com/A3S-Lab/Box/actions/runs/30506005198).
+The Node Agent installs
+one `CloudBoxSecretMaterializer` in the same `BoxRuntimeDriver` before
+enrollment, then binds it exactly once to the existing reloadable authenticated
+node Secret transport. Box owns process-create environment and read-only file
+materialization, restart refresh, log-value reauthorization and redaction,
+pull-only registry authentication, and node-tmpfs cleanup. The real consumer
+gate reconstructs the driver without rematerializing a live generation,
+requires refreshed material after restart, proves `0400` file projection and
+redacted stdout/stderr, rejects anonymous private-registry access, performs one
+authenticated uncached pull, reuses the cache without resolving credentials,
+scans persistent state for plaintext, removes the exact resources, and leaves
+empty Secret tmpfs and provider/process state. It introduces no second Secret
+channel, credential store, Runtime driver, scheduler, queue, or lifecycle path.
+
+The rest of `BX0.3` remains open: Artifact/Volume/tmpfs mounts, Task outputs,
+allocation evidence, and complete Sandbox/MicroVM/TEE isolation certification.
 
 #### Exit gate
 

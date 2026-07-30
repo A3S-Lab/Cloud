@@ -1,5 +1,8 @@
-use crate::{BoxRuntimeConfig, BoxRuntimeIsolation};
-use a3s_box_runtime::{BoxRuntimeDriver, BoxRuntimeDriverConfig, ExecutionIsolation};
+use crate::secret::CloudBoxSecretMaterializer;
+use crate::{BoxRuntimeConfig, BoxRuntimeIsolation, NodeRuntimeProvider};
+use a3s_box_runtime::{
+    BoxRuntimeDriver, BoxRuntimeDriverConfig, BoxSecretMaterializer, ExecutionIsolation,
+};
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeResult,
     RuntimeStateStore,
@@ -14,17 +17,32 @@ pub fn build_box_runtime_client(
     config: &BoxRuntimeConfig,
     state_root: impl AsRef<Path>,
 ) -> RuntimeResult<Arc<dyn RuntimeClient>> {
-    let driver = Arc::new(build_box_runtime_driver(config)?);
+    Ok(build_box_runtime_provider(config, state_root)?.into_client())
+}
+
+/// Builds the production Box Runtime composition together with the one Cloud
+/// Secret adapter that is bound after node enrollment.
+pub fn build_box_runtime_provider(
+    config: &BoxRuntimeConfig,
+    state_root: impl AsRef<Path>,
+) -> RuntimeResult<NodeRuntimeProvider> {
+    let materializer = Arc::new(CloudBoxSecretMaterializer::new());
+    let driver = Arc::new(build_box_runtime_driver(config, materializer.clone())?);
     let state: Arc<dyn RuntimeStateStore> =
         Arc::new(FileRuntimeStateStore::new(state_root.as_ref()));
     let driver: Arc<dyn RuntimeDriver> = driver;
-    Ok(Arc::new(ManagedRuntimeClient::new(state, driver)))
+    let client: Arc<dyn RuntimeClient> = Arc::new(ManagedRuntimeClient::new(state, driver));
+    Ok(NodeRuntimeProvider::new(client, materializer))
 }
 
-fn build_box_runtime_driver(config: &BoxRuntimeConfig) -> RuntimeResult<BoxRuntimeDriver> {
-    BoxRuntimeDriver::new_with_isolation(
+fn build_box_runtime_driver(
+    config: &BoxRuntimeConfig,
+    materializer: Arc<CloudBoxSecretMaterializer>,
+) -> RuntimeResult<BoxRuntimeDriver> {
+    let driver = BoxRuntimeDriver::new_with_isolation(
         BoxRuntimeDriverConfig {
             home_dir: config.home_dir.clone(),
+            secret_root: config.secret_root.clone(),
             control_timeout: Duration::from_millis(config.control_timeout_ms),
             task_poll_interval: Duration::from_millis(config.task_poll_interval_ms),
         },
@@ -32,34 +50,10 @@ fn build_box_runtime_driver(config: &BoxRuntimeConfig) -> RuntimeResult<BoxRunti
             BoxRuntimeIsolation::Microvm => ExecutionIsolation::Microvm,
             BoxRuntimeIsolation::Sandbox => ExecutionIsolation::Sandbox,
         },
-    )
+    )?;
+    let materializer: Arc<dyn BoxSecretMaterializer> = materializer;
+    Ok(driver.with_secret_materializer(materializer))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn config(isolation: BoxRuntimeIsolation) -> (tempfile::TempDir, BoxRuntimeConfig) {
-        let home = tempfile::tempdir().expect("temporary Box home");
-        let config = BoxRuntimeConfig {
-            home_dir: home.path().to_path_buf(),
-            isolation,
-            control_timeout_ms: 60_000,
-            task_poll_interval_ms: 50,
-        };
-        (home, config)
-    }
-
-    #[test]
-    fn selects_the_exact_configured_box_isolation_without_fallback() {
-        for (configured, expected) in [
-            (BoxRuntimeIsolation::Microvm, ExecutionIsolation::Microvm),
-            (BoxRuntimeIsolation::Sandbox, ExecutionIsolation::Sandbox),
-        ] {
-            let (_home, config) = config(configured);
-            let driver = build_box_runtime_driver(&config).expect("Box Runtime driver");
-
-            assert_eq!(driver.execution_isolation(), expected);
-        }
-    }
-}
+mod tests;

@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=d6cceb02f70bda64a2761799dfebec3245f7027f#d6cceb02f70bda64a2761799dfebec3245f7027f"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-common",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=d6cceb02f70bda64a2761799dfebec3245f7027f#d6cceb02f70bda64a2761799dfebec3245f7027f"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=d6cceb02f70bda64a2761799dfebec3245f7027f#d6cceb02f70bda64a2761799dfebec3245f7027f"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=211b6bdaa572ba0ad5d55c7988a5b4a72ca36251#211b6bdaa572ba0ad5d55c7988a5b4a72ca36251"
 dependencies = [
  "a3s-box-core",
  "a3s-box-netproxy",
@@ -121,6 +121,7 @@ dependencies = [
  "x509-cert",
  "xattr",
  "xz2",
+ "zeroize",
  "zstd",
 ]
 
@@ -203,6 +204,8 @@ dependencies = [
  "a3s-cloud-contracts",
  "a3s-runtime",
  "async-trait",
+ "axum",
+ "base64 0.22.1",
  "chrono",
  "fs2",
  "futures-util",
@@ -296,7 +299,7 @@ dependencies = [
 [[package]]
 name = "a3s-oci-core"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=0bd7929b9842184b3cf98986bfe1b6ef79ca5282#0bd7929b9842184b3cf98986bfe1b6ef79ca5282"
+source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2#6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -305,7 +308,7 @@ dependencies = [
 [[package]]
 name = "a3s-oci-sdk"
 version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=0bd7929b9842184b3cf98986bfe1b6ef79ca5282#0bd7929b9842184b3cf98986bfe1b6ef79ca5282"
+source = "git+https://github.com/A3S-Lab/OCI-Runtime.git?rev=6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2#6b9e0cf2137f1ab9da52e71f566267c97fd9cfa2"
 dependencies = [
  "a3s-oci-core",
  "async-trait",

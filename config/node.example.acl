@@ -32,6 +32,7 @@ logs {
 
 box {
   home_dir = "/var/lib/a3s-box"
+  secret_root = "/run/a3s-cloud/box-secrets"
   isolation = "microvm"
   control_timeout_ms = 120000
   task_poll_interval_ms = 50

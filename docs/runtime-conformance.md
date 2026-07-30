@@ -119,11 +119,24 @@ the tenant, scheduling, operation, and cleanup contract while Box remains the
 node-local provider. This slice proves selection behavior only; full Sandbox,
 MicroVM, and TEE certification remains release-blocking.
 
+The fourth `BX0.3` slice pins A3S Box
+`211b6bdaa572ba0ad5d55c7988a5b4a72ca36251`, merged through
+[Box PR #187](https://github.com/A3S-Lab/Box/pull/187) after the
+[provider certification](https://github.com/A3S-Lab/Box/actions/runs/30506005198).
+The Node Agent installs
+one Cloud-to-Box Secret materializer in the same shared Runtime driver and
+binds it once to the existing authenticated node-control transport. The
+provider gate and Cloud consumer gate jointly require environment and `0400`
+read-only file materialization, restart refresh, reconstruction without live
+rematerialization, reauthorized log redaction, pull-only private-registry
+credentials, cache reuse without credential reload, plaintext-free persistent
+state, tmpfs cleanup, and empty provider/process state. Cloud has no parallel
+Secret transport, credential store, Runtime driver, or cleanup path.
+
 The following evidence remains required before `BX0` is verified:
 
-1. Secret materialization, Artifact/Volume/tmpfs mounts, Task outputs, registry
-   credentials, allocation evidence, and complete Sandbox/MicroVM/TEE
-   isolation certification.
+1. Artifact/Volume/tmpfs mounts, Task outputs, allocation evidence, and complete
+   Sandbox/MicroVM/TEE isolation certification.
 2. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
    publication, replay, and process-death evidence.
 3. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,

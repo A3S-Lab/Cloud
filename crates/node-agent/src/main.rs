@@ -5,9 +5,7 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    use a3s_cloud_node_agent::{
-        build_box_runtime_client, run_node_agent, NodeAgentConfig, NodeRuntimeProvider,
-    };
+    use a3s_cloud_node_agent::{build_box_runtime_provider, run_node_agent, NodeAgentConfig};
     use tokio::sync::watch;
 
     tracing_subscriber::fmt()
@@ -19,9 +17,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .try_init()?;
     let config_path = config_path()?;
     let config = NodeAgentConfig::load(config_path)?;
-    let runtime =
-        build_box_runtime_client(&config.box_runtime, config.node.state_dir.join("runtime"))?;
-    let provider = NodeRuntimeProvider::new(runtime);
+    let provider =
+        build_box_runtime_provider(&config.box_runtime, config.node.state_dir.join("runtime"))?;
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal = tokio::spawn(async move {
         wait_for_shutdown_signal().await;
