@@ -798,7 +798,14 @@ stages the ordinary Route, rollout, cutover, or rollback. Rollback retains the
 observed physical ordinary Route state while composing current MCP desired
 state; a ready certificate is reused only if it covers the complete joint
 authority, otherwise a deterministic replacement is staged. The
-registered desired-state worker rotates
+certificate-convergence worker now consumes that same node plan for renewal,
+provider revocation, DomainClaim revocation, projection repair, and
+snapshot-validity renewal. It retains all current MCP routes while classifying
+every pre-write ordinary Route, records the ordinary and MCP composition
+evidence atomically, and reuses the installed certificate for a validity-only
+renewal only when its request and stored Claim set cover the complete joint
+authority. Otherwise it stages a deterministic replacement. The registered
+desired-state worker rotates
 through logical-scope triggers, deduplicates their physical nodes, loads every
 active MCP scope for each node, plans them independently, and merges them into
 one complete node snapshot. Staging locks and compares the complete active
@@ -812,16 +819,19 @@ node deduplication, membership-removal cleanup, no-op convergence, bounded
 cursor fairness, pending deferral, terminal retry, and displaced-state repair.
 Focused coverage additionally proves that ordinary Route, deployment cutover,
 and rollback snapshots keep their MCP router, policy block, joint certificate
-names, ordinary pre-write CAS evidence, and ordinary/MCP event identities. The
+names, ordinary pre-write CAS evidence, and ordinary/MCP event identities.
+The worker also reads the certificate installed by the latest MCP-owned
+snapshot and stages a fresh complete snapshot when that certificate is revoked
+or enters the configured renewal window. This covers MCP-only nodes; their
+superseded Ready certificate becomes eligible for the existing provider
+revocation cleanup only after the replacement revision is installed. The
 PostgreSQL fixture also compiles stored scope-set/head evidence and an automatic
 post-acknowledgement no-op check, but no database URL is available in the
 default local gate.
 
-Certificate-convergence/renewal still needs to consume the same unified node
-plan. Proactive MCP-only certificate renewal, revoked-credential cleanup,
-public lifecycle surfaces, executed real PostgreSQL evidence for the new path,
-real Box hosting, and joint product conformance remain unavailable. Stateful
-resources remain `S0`;
+Revoked-credential cleanup, public lifecycle surfaces, executed real
+PostgreSQL evidence for the new certificate path, real Box hosting, and joint
+product conformance remain unavailable. Stateful resources remain `S0`;
 replicas and multi-node placement remain `H0`; accelerator and inference
 capabilities remain `I0`. These profiles do not create separate schedulers.
 

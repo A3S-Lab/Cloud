@@ -22,7 +22,8 @@ use crate::modules::edge::infrastructure::{
     CompiledMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
-    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
+    McpGatewaySnapshotStatus, StageManagedGatewayCertificateConvergence,
+    StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
     StageManagedGatewayRouteCutover, StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 use crate::modules::shared_kernel::domain::{
@@ -56,6 +57,13 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         node_id: NodeId,
     ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError> {
         reconciliation_state(&self.executor, node_id).await
+    }
+
+    async fn mcp_gateway_installed_certificate(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Option<crate::modules::edge::domain::GatewayCertificate>, RepositoryError> {
+        installed_certificate(&self.executor, node_id).await
     }
 
     async fn mcp_gateway_active_scopes(
@@ -161,6 +169,16 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         RepositoryError,
     > {
         super::postgres_cutovers::stage_managed(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_certificate_convergence(
+        &self,
+        stage: StageManagedGatewayCertificateConvergence,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayCertificateConvergenceResult,
+        RepositoryError,
+    > {
+        super::postgres_certificate_convergence::stage_managed(&self.executor, stage).await
     }
 
     async fn stage_managed_gateway_rollout(
@@ -620,6 +638,34 @@ async fn reconciliation_state(
     };
     state.validate().map_err(RepositoryError::Storage)?;
     Ok(state)
+}
+
+async fn installed_certificate(
+    executor: &PostgresExecutor,
+    node_id: NodeId,
+) -> Result<Option<crate::modules::edge::domain::GatewayCertificate>, RepositoryError> {
+    let state = reconciliation_state(executor, node_id).await?;
+    let Some(status) = state.latest_mcp_snapshot else {
+        return Ok(None);
+    };
+    if status.publication.state != GatewayPublicationState::Applied {
+        return Ok(None);
+    }
+    let Some(request) = status.publication.certificate_request.as_ref() else {
+        return Ok(None);
+    };
+    let certificate_id = GatewayCertificateId::from_uuid(request.certificate_id);
+    let certificate =
+        super::postgres_tls::find_gateway_certificate(executor, node_id, certificate_id).await?;
+    if certificate.node_id != node_id
+        || certificate.organization_id != status.organization_id
+        || certificate.request != *request
+    {
+        return Err(RepositoryError::Storage(
+            "installed MCP Gateway certificate projection is inconsistent".into(),
+        ));
+    }
+    Ok(Some(certificate))
 }
 
 async fn active_scopes(

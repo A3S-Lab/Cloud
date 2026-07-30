@@ -1238,14 +1238,33 @@ provider-certificate revocation, revoked domain ownership, projection drift,
 and snapshot validity renewal stage a separate
 `GatewayCertificateConvergence` record with a deterministic node/revision
 command identity. Staging does not mutate active route rows. Snapshot renewal
-copies the exact installed ACL bytes, retains the digest and active certificate,
-omits certificate intent, and advances the validity window to 24 hours. A
+replans the complete physical node, including every current MCP scope, and
+reuses the active certificate without new certificate intent only when its
+request and stored Claim set cover the complete ordinary-plus-MCP authority.
+If that authority is incomplete, a deterministic replacement is staged as a
+projection repair. Domain revocation removes only the rejected ordinary Route
+set while preserving current MCP ingress and policy. The immutable composition
+marker, mutable node head, publication, optional replacement certificate,
+convergence record, scope revision, and both secret-free Outbox facts are
+committed under one transaction and one exact version-vector CAS. A
 matching rejected acknowledgement preserves the previous installed certificate
 and routes. A matching applied acknowledgement atomically binds every retained
 route to either the replacement or retained certificate, rejects revoked-claim
 routes, and advances the installed scope revision. When no verified routes
-remain, the complete management-only snapshot intentionally carries no
-certificate request.
+remain but MCP ingress does, the complete snapshot and replacement certificate
+retain MCP reachability; only a traffic-free node emits a management-only
+snapshot without certificate intent.
+
+The MCP desired-state worker also resolves the certificate installed by the
+latest MCP-owned publication. A Ready certificate inside
+`certificate_renewal_window_ms`, or a revoked installed certificate, makes an
+otherwise unchanged MCP desired state publish a new complete node snapshot.
+This gives MCP-only nodes proactive rotation without adding an ordinary Route
+or a second certificate controller. Applied MCP-owned acknowledgements already
+bind any active ordinary Routes to the replacement certificate. Once the newer
+revision is installed, the shared obsolete-certificate phase revokes the
+superseded provider serial and projection, including certificates that were
+used only by MCP ingress.
 
 Provider revocation is a later retryable phase. A ready certificate is selected
 only after a newer revision is installed and no active route references it.

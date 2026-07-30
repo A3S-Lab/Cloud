@@ -44,11 +44,11 @@ pub use domain::{
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
-    CompileManagedGatewayRetainedSnapshot, CompileManagedGatewayRolloutRollback,
-    CompileManagedGatewayRouteRollout, CompileManagedGatewayRouteSnapshot,
-    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, DnsDomainOwnershipVerifier,
-    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue,
-    FleetGatewayObservationQueue, GatewayCertificateReconciler,
+    CompileManagedGatewayCertificateConvergenceSnapshot, CompileManagedGatewayRetainedSnapshot,
+    CompileManagedGatewayRolloutRollback, CompileManagedGatewayRouteRollout,
+    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot,
+    DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
     GatewayDomainClaimVersion, GatewayManagedSnapshotComposition, GatewayNodeDesiredStatePlanner,
     GatewayReplicaRecoveryReconciler, GatewayReplicaRecoveryReconciliationFailure,
@@ -74,7 +74,8 @@ pub use infrastructure::{
     McpRouteTargetProjectionCompiler, PlanGatewayNodeDesiredState, PlanGatewayRouteRollout,
     PlanManagedGatewayRouteRollout, PlanMcpGatewayProjectionSet, PlanMcpRouteProjection,
     PlannedGatewayNodeDesiredState, PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjection,
-    PlannedMcpGatewayProjectionSet, StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
+    PlannedMcpGatewayProjectionSet, StageManagedGatewayCertificateConvergence,
+    StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
     StageManagedGatewayRouteCutover, StageManagedRoutePublication, StageMcpGatewaySnapshot,
     VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };

@@ -84,10 +84,10 @@ pub use gateway_route_rollout_planner::{
     GatewayRouteRolloutPlanner, PlanGatewayRouteRollout, PlanManagedGatewayRouteRollout,
 };
 pub use gateway_snapshot_compiler::{
-    CompileManagedGatewayRetainedSnapshot, CompileManagedGatewayRouteSnapshot,
-    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, GatewayDomainClaimVersion,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
-    GatewaySnapshotRouteInput,
+    CompileManagedGatewayCertificateConvergenceSnapshot, CompileManagedGatewayRetainedSnapshot,
+    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot,
+    GatewayDomainClaimVersion, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
 };
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::{
@@ -115,7 +115,8 @@ pub use mcp_gateway_publication::{
     GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
-    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
+    McpGatewaySnapshotStatus, StageManagedGatewayCertificateConvergence,
+    StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
     StageManagedGatewayRouteCutover, StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 pub use mcp_gateway_snapshot_reconciler::{

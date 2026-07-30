@@ -384,19 +384,21 @@ mod tests {
         IRouteTargetReader, ResolvedMcpRouteProjectionInput, ResolvedRouteTarget,
     };
     use crate::modules::edge::domain::{
-        DomainClaim, DomainNamePattern, GatewayPublication, GatewayScopeState, McpCredential,
-        McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+        DomainClaim, DomainNamePattern, GatewayPublication, GatewayRouteVersion, GatewayScopeState,
+        McpCredential, McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+        RouteTarget,
     };
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
         fixture, now, target, Fixture,
     };
     use crate::modules::edge::infrastructure::{
-        CompileManagedGatewayRetainedSnapshot, CompileManagedGatewayRouteSnapshot,
-        CompileMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotCompiler,
-        GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
-        GatewaySnapshotRouteInput, McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor,
-        McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-        PlannedGatewayNodeDesiredState, PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
+        CompileManagedGatewayCertificateConvergenceSnapshot, CompileManagedGatewayRetainedSnapshot,
+        CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot,
+        GatewayManagedSnapshotComposition, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+        GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, GatewaySnapshotRouteInput,
+        McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor, McpRouteProjectionPlanner,
+        McpRouteTargetProjectionCompiler, PlannedGatewayNodeDesiredState,
+        PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
@@ -882,6 +884,8 @@ mod tests {
         )
         .expect("ordinary route");
         ordinary.state = RouteState::Active;
+        let ordinary_version =
+            GatewayRouteVersion::new(ordinary.id, ordinary.aggregate_version).expect("version");
         let expires_at = planned
             .projection()
             .expect("projection")
@@ -927,7 +931,7 @@ mod tests {
         let compiled = compiler
             .compile_managed_retained_snapshot(CompileManagedGatewayRetainedSnapshot {
                 metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
-                desired_state,
+                desired_state: desired_state.clone(),
                 certificate_id: Some(certificate_id),
                 reused_certificate_request: Some(certificate_request.clone()),
             })
@@ -957,6 +961,130 @@ mod tests {
                 "app.example.com".to_owned(),
                 fixture.policy.spec().hostname.as_str().to_owned()
             ]
+        );
+        let renewed = compiler
+            .compile_managed_certificate_convergence_snapshot(
+                CompileManagedGatewayCertificateConvergenceSnapshot {
+                    metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
+                    desired_state,
+                    certificate_id: Some(certificate_id),
+                    reused_certificate_request: Some(certificate_request),
+                    retained_routes: vec![ordinary_version],
+                    rejected_routes: Vec::new(),
+                },
+            )
+            .expect("managed snapshot validity renewal");
+        assert!(renewed.snapshot().certificate_request.is_none());
+        assert!(renewed.snapshot().acl.contains("routers \"route-"));
+        assert!(renewed.snapshot().acl.contains("routers \"mcp-route-"));
+        assert_eq!(renewed.active_route_versions(), &[ordinary_version]);
+        assert_eq!(renewed.domain_claim_versions().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn managed_domain_revocation_removes_only_ordinary_route_and_preserves_mcp() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("credential");
+        let planned = planner(
+            vec![input(&fixture)],
+            Arc::new(CountingTargetReader {
+                target: Some(target(&fixture, node_id, 49152)),
+                calls: AtomicUsize::new(0),
+            }),
+            credentials,
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: scope(&fixture, node_id),
+            gateway_node_id: node_id,
+            observed_at: now(),
+        })
+        .await
+        .expect("MCP projection");
+        let expires_at = planned
+            .projection()
+            .expect("projection")
+            .projection()
+            .expires_at;
+        let hostname = RouteHostname::parse("revoked.example.com").expect("hostname");
+        let claim_id = DomainClaimId::new();
+        let mut claim = DomainClaim::create(
+            claim_id,
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            DomainNamePattern::parse(hostname.as_str()).expect("pattern"),
+            format!("a3s-cloud-verification={claim_id}"),
+            now() - Duration::minutes(2),
+        )
+        .expect("claim");
+        claim
+            .verify(now() - Duration::minutes(1))
+            .expect("verified claim");
+        claim
+            .revoke("test revocation", now())
+            .expect("revoked claim");
+        let mut ordinary = Route::create(
+            RouteId::new(),
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            fixture.policy.spec().gateway_scope_id,
+            node_id,
+            hostname,
+            RoutePath::parse("/app").expect("path"),
+            claim.id,
+            claim.pattern.clone(),
+            GatewayCertificateId::new(),
+            fixture.policy.spec().workload_id,
+            target(&fixture, node_id, 49153).target,
+            now(),
+        )
+        .expect("ordinary route");
+        ordinary.state = RouteState::Active;
+        let rejected =
+            GatewayRouteVersion::new(ordinary.id, ordinary.aggregate_version).expect("version");
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState::empty(node_id),
+            vec![GatewaySnapshotRouteInput {
+                route: ordinary.clone(),
+                domain_claim: claim,
+            }],
+            node_projection(planned),
+        )
+        .expect("node desired state");
+        let certificate_id = GatewayCertificateId::new();
+        let compiled = snapshot_compiler()
+            .compile_managed_certificate_convergence_snapshot(
+                CompileManagedGatewayCertificateConvergenceSnapshot {
+                    metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
+                    desired_state,
+                    certificate_id: Some(certificate_id),
+                    reused_certificate_request: None,
+                    retained_routes: Vec::new(),
+                    rejected_routes: vec![rejected],
+                },
+            )
+            .expect("managed domain revocation");
+
+        assert!(!compiled.snapshot().acl.contains("revoked.example.com"));
+        assert!(compiled.snapshot().acl.contains("routers \"mcp-route-"));
+        assert!(compiled.snapshot().acl.contains("mcp {"));
+        assert!(compiled.ordinary_route_ids().is_empty());
+        assert_eq!(compiled.active_route_versions(), &[rejected]);
+        assert_eq!(compiled.domain_claim_versions().len(), 1);
+        assert_eq!(
+            compiled
+                .snapshot()
+                .certificate_request
+                .as_ref()
+                .expect("MCP certificate")
+                .dns_names,
+            vec![fixture.policy.spec().hostname.as_str().to_owned()]
         );
     }
 

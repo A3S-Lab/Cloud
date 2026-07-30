@@ -5,7 +5,9 @@ use super::{
     McpGatewaySnapshotReconciliationState, PlanMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::repositories::MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY;
-use crate::modules::edge::domain::GatewayPublicationState;
+use crate::modules::edge::domain::{
+    GatewayCertificate, GatewayCertificateState, GatewayPublicationState,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayScopeId, NodeCommandId, NodeId, RepositoryError,
 };
@@ -42,6 +44,7 @@ pub struct McpGatewayDesiredStateReconciler {
     compiler: GatewaySnapshotCompiler,
     interval: Duration,
     command_ttl: ChronoDuration,
+    certificate_renewal_window: ChronoDuration,
     empty_snapshot_ttl: ChronoDuration,
     retry_delay: ChronoDuration,
     batch_size: usize,
@@ -56,12 +59,15 @@ impl McpGatewayDesiredStateReconciler {
         compiler: GatewaySnapshotCompiler,
         interval: Duration,
         command_ttl: ChronoDuration,
+        certificate_renewal_window: ChronoDuration,
         empty_snapshot_ttl: ChronoDuration,
         retry_delay: ChronoDuration,
         batch_size: usize,
     ) -> Result<Self, String> {
         if interval.is_zero()
             || command_ttl <= ChronoDuration::zero()
+            || certificate_renewal_window <= ChronoDuration::zero()
+            || certificate_renewal_window > ChronoDuration::days(30)
             || empty_snapshot_ttl <= command_ttl
             || empty_snapshot_ttl > ChronoDuration::days(7)
             || retry_delay <= ChronoDuration::zero()
@@ -81,6 +87,7 @@ impl McpGatewayDesiredStateReconciler {
             compiler,
             interval,
             command_ttl,
+            certificate_renewal_window,
             empty_snapshot_ttl,
             retry_delay,
             batch_size,
@@ -93,6 +100,13 @@ impl McpGatewayDesiredStateReconciler {
         now: DateTime<Utc>,
     ) -> Result<McpGatewayDesiredStateReconciliationReport, RepositoryError> {
         let now = canonical_timestamp(now);
+        let certificate_renew_before = now
+            .checked_add_signed(self.certificate_renewal_window)
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "MCP Gateway certificate renewal window exceeds supported time".into(),
+                )
+            })?;
         let after_gateway_scope_id = *self
             .scope_cursor
             .lock()
@@ -168,6 +182,38 @@ impl McpGatewayDesiredStateReconciler {
                 report.pending_publications += 1;
                 continue;
             }
+            let certificate_requires_replacement = match self
+                .repository
+                .mcp_gateway_installed_certificate(node_id)
+                .await
+            {
+                Ok(certificate) => {
+                    match certificate_requires_replacement(
+                        certificate.as_ref(),
+                        certificate_renew_before,
+                    ) {
+                        Ok(requires_replacement) => requires_replacement,
+                        Err(_) => {
+                            report.failures.push(failure(
+                                trigger_scope_id,
+                                node_id,
+                                "validate-certificate",
+                                "installed MCP Gateway certificate is inconsistent",
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                Err(_) => {
+                    report.failures.push(failure(
+                        trigger_scope_id,
+                        node_id,
+                        "read-certificate",
+                        "installed MCP Gateway certificate read failed",
+                    ));
+                    continue;
+                }
+            };
             let active_scopes = match self
                 .repository
                 .mcp_gateway_active_scopes(node_id, now)
@@ -343,6 +389,7 @@ impl McpGatewayDesiredStateReconciler {
                 candidate.desired_state_digest(),
                 has_mcp_routes,
                 installed_revision,
+                certificate_requires_replacement,
                 now,
                 self.retry_delay,
             );
@@ -473,6 +520,7 @@ pub(super) fn reconciliation_decision(
     desired_state_digest: &crate::modules::shared_kernel::domain::Sha256Digest,
     has_mcp_routes: bool,
     installed_revision: Option<u64>,
+    certificate_requires_replacement: bool,
     now: DateTime<Utc>,
     retry_delay: ChronoDuration,
 ) -> ReconciliationDecision {
@@ -501,6 +549,9 @@ pub(super) fn reconciliation_decision(
     if &latest.desired_state_digest != desired_state_digest {
         return ReconciliationDecision::Stage;
     }
+    if has_mcp_routes && certificate_requires_replacement {
+        return ReconciliationDecision::Stage;
+    }
     match latest.publication.state {
         GatewayPublicationState::Pending => ReconciliationDecision::Pending,
         GatewayPublicationState::Applied => {
@@ -512,6 +563,28 @@ pub(super) fn reconciliation_decision(
         }
         GatewayPublicationState::Rejected | GatewayPublicationState::Unavailable => {
             retry_decision(latest, now, retry_delay)
+        }
+    }
+}
+
+fn certificate_requires_replacement(
+    certificate: Option<&GatewayCertificate>,
+    renew_before: DateTime<Utc>,
+) -> Result<bool, String> {
+    let Some(certificate) = certificate else {
+        return Ok(false);
+    };
+    match certificate.state {
+        GatewayCertificateState::Revoked => Ok(true),
+        GatewayCertificateState::Ready => certificate
+            .material
+            .as_ref()
+            .map(|material| material.expires_at <= renew_before)
+            .ok_or_else(|| "ready MCP Gateway certificate omitted material".to_string()),
+        GatewayCertificateState::Provisioning
+        | GatewayCertificateState::Issued
+        | GatewayCertificateState::Failed => {
+            Err("installed MCP Gateway certificate is not ready".into())
         }
     }
 }

@@ -382,18 +382,6 @@ pub async fn build_application_with_source_resolver(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
-    let gateway_certificate_reconciler = GatewayCertificateReconciler::new(
-        Arc::clone(&routes),
-        Arc::clone(&route_commands),
-        Arc::clone(&gateway_certificate_authority),
-        deployment_route_compiler.clone(),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        chrono_duration(config.edge.certificate_renewal_window_ms)?,
-        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
-        chrono_duration(config.edge.command_ttl_ms)?,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         edge_repository.clone(),
         Arc::clone(&routes),
@@ -413,12 +401,27 @@ pub async fn build_application_with_source_resolver(
         Arc::clone(&mcp_gateway_snapshots),
         mcp_projection_set_planner.clone(),
     );
+    let gateway_certificate_reconciler = GatewayCertificateReconciler::new_managed(
+        Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
+        Arc::clone(&route_commands),
+        Arc::clone(&gateway_certificate_authority),
+        deployment_route_compiler.clone(),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
         Arc::clone(&mcp_gateway_snapshots),
         mcp_projection_set_planner,
         deployment_route_compiler.clone(),
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         chrono_duration(config.edge.command_ttl_ms)?,
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
         chrono::Duration::hours(24),
         chrono_duration(config.edge.command_ttl_ms)?,
         100,
