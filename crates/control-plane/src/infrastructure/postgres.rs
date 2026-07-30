@@ -651,6 +651,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/072_mcp_gateway_node_scope_evidence.sql"
             )),
         ),
+        Migration::new(
+            "059",
+            "unified Gateway snapshot publication ownership",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/059_gateway_snapshot_publication_owners.sql"
+            )),
+        ),
     ]
 }
 

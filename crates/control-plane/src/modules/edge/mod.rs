@@ -50,6 +50,7 @@ pub use domain::{
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
+    CompileManagedGatewayRouteRollout, CompileManagedGatewayRouteSnapshot,
     CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, DnsDomainOwnershipVerifier,
     EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue,
     FleetGatewayObservationQueue, GatewayCertificateReconciler,

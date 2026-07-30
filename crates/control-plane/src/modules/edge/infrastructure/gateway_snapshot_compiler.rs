@@ -2,7 +2,8 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::edge::infrastructure::{
-    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedMcpGatewayNodeProjection,
+    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedGatewayNodeDesiredState,
+    PlannedMcpGatewayNodeProjection,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
@@ -49,6 +50,15 @@ pub struct CompileMcpGatewaySnapshot {
     pub mcp: PlannedMcpGatewayNodeProjection,
 }
 
+#[derive(Debug, Clone)]
+pub struct CompileManagedGatewayRouteSnapshot {
+    pub metadata: GatewaySnapshotMetadata,
+    pub desired_state: PlannedGatewayNodeDesiredState,
+    pub certificate_id: GatewayCertificateId,
+    pub snapshot_routes: Vec<Route>,
+    pub additional_domain_claims: Vec<DomainClaim>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GatewayDomainClaimVersion {
     domain_claim_id: DomainClaimId,
@@ -70,6 +80,7 @@ pub struct CompiledMcpGatewaySnapshot {
     snapshot: GatewaySnapshot,
     desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
     physical_scope: GatewayScopeState,
+    ordinary_route_ids: Vec<RouteId>,
     active_route_versions: Vec<GatewayRouteVersion>,
     domain_claim_versions: Vec<GatewayDomainClaimVersion>,
     certificate_domain_claim_ids: Vec<DomainClaimId>,
@@ -93,6 +104,10 @@ impl CompiledMcpGatewaySnapshot {
 
     pub fn active_route_versions(&self) -> &[GatewayRouteVersion] {
         &self.active_route_versions
+    }
+
+    pub fn ordinary_route_ids(&self) -> &[RouteId] {
+        &self.ordinary_route_ids
     }
 
     pub fn domain_claim_versions(&self) -> &[GatewayDomainClaimVersion] {
@@ -311,6 +326,8 @@ impl GatewaySnapshotCompiler {
             );
         }
 
+        let mut ordinary_route_ids = routes.iter().map(|route| route.id).collect::<Vec<_>>();
+        ordinary_route_ids.sort();
         let desired_state_digest =
             desired_state_digest(&self.config, &routes, &claim_authority, &mcp)?;
         let content = projection.map(|projection| McpSnapshotContent {
@@ -323,6 +340,7 @@ impl GatewaySnapshotCompiler {
             snapshot,
             desired_state_digest,
             physical_scope,
+            ordinary_route_ids,
             active_route_versions: route_versions.into_values().collect(),
             domain_claim_versions: claim_authority
                 .into_iter()
@@ -334,6 +352,273 @@ impl GatewaySnapshotCompiler {
                 )
                 .collect(),
             certificate_domain_claim_ids: certificate_domain_claim_ids.into_iter().collect(),
+            mcp,
+        })
+    }
+
+    /// Compiles a Route mutation and the currently desired MCP policy into one
+    /// complete physical-node snapshot. `desired_state.active_routes` is the
+    /// pre-write CAS observation; `snapshot_routes` is the post-mutation
+    /// candidate that will be sent to Gateway.
+    pub fn compile_managed_route_snapshot(
+        &self,
+        request: CompileManagedGatewayRouteSnapshot,
+    ) -> Result<CompiledMcpGatewaySnapshot, String> {
+        let CompileManagedGatewayRouteSnapshot {
+            metadata,
+            desired_state,
+            certificate_id,
+            snapshot_routes,
+            additional_domain_claims,
+        } = request;
+        let (physical_scope, active_routes, mcp) = desired_state.into_parts();
+        mcp.anchor().validate()?;
+        let issued_at = canonical_timestamp(metadata.issued_at);
+        let expires_at = canonical_timestamp(metadata.expires_at);
+        if physical_scope.node_id.as_uuid().is_nil()
+            || physical_scope.installed_revision.is_some_and(|revision| {
+                revision == 0 || revision > physical_scope.last_issued_revision
+            })
+            || if physical_scope.last_issued_revision == 0 {
+                physical_scope.aggregate_version != 0 || physical_scope.installed_revision.is_some()
+            } else {
+                physical_scope.aggregate_version == 0
+            }
+            || metadata.issued_at != issued_at
+            || metadata.expires_at != expires_at
+            || mcp.observed_at() != issued_at
+            || metadata.node_id != physical_scope.node_id
+            || metadata.node_id != mcp.gateway_node_id()
+            || metadata.revision != physical_scope.next_revision()?
+            || metadata.expected_revision != physical_scope.installed_revision
+        {
+            return Err(
+                "managed Gateway Route snapshot metadata does not match its exact planning observation or physical scope"
+                    .into(),
+            );
+        }
+
+        let mut active_route_versions = BTreeMap::<RouteId, GatewayRouteVersion>::new();
+        let mut active_route_authority = BTreeMap::<RouteId, DomainClaim>::new();
+        let mut claims = BTreeMap::<DomainClaimId, DomainClaim>::new();
+        for input in active_routes {
+            validate_active_route_authority(&input, metadata.node_id, issued_at)?;
+            if input.route.organization_id != mcp.organization_id() {
+                return Err(
+                    "complete Gateway snapshot crosses the physical node organization".into(),
+                );
+            }
+            let route_id = input.route.id;
+            if active_route_versions
+                .insert(
+                    route_id,
+                    GatewayRouteVersion::new(route_id, input.route.aggregate_version)?,
+                )
+                .is_some()
+                || active_route_authority
+                    .insert(route_id, input.domain_claim.clone())
+                    .is_some()
+            {
+                return Err(
+                    "managed Gateway Route snapshot contains duplicate active Route evidence"
+                        .into(),
+                );
+            }
+            insert_domain_claim(&mut claims, input.domain_claim)?;
+        }
+        for claim in additional_domain_claims {
+            validate_verified_domain_claim(&claim, issued_at)?;
+            if claim.organization_id != mcp.organization_id() {
+                return Err(
+                    "managed Gateway Route snapshot additional DomainClaim crosses the node organization"
+                        .into(),
+                );
+            }
+            insert_domain_claim(&mut claims, claim)?;
+        }
+
+        let mut snapshot_route_ids = BTreeSet::new();
+        let mut ownership = BTreeSet::new();
+        for route in &snapshot_routes {
+            route.validate_target_binding()?;
+            if route.gateway_node_id != metadata.node_id
+                || route.organization_id != mcp.organization_id()
+                || !matches!(route.state, RouteState::Pending | RouteState::Active)
+                || route.aggregate_version == 0
+            {
+                return Err(
+                    "managed Gateway Route snapshot contains an ineligible candidate Route".into(),
+                );
+            }
+            if !snapshot_route_ids.insert(route.id)
+                || !ownership.insert((
+                    route.hostname.clone(),
+                    route.path_prefix.as_str().to_owned(),
+                ))
+            {
+                return Err(
+                    "managed Gateway Route snapshot contains duplicate Route ownership".into(),
+                );
+            }
+            let claim_id = route.domain_claim_id.ok_or_else(|| {
+                "managed Gateway Route snapshot candidate omitted its DomainClaim".to_string()
+            })?;
+            let claim = claims.get(&claim_id).ok_or_else(|| {
+                "managed Gateway Route snapshot candidate has no exact DomainClaim observation"
+                    .to_string()
+            })?;
+            validate_route_domain_authority(route, claim, metadata.node_id, issued_at)?;
+            match active_route_authority.get(&route.id) {
+                Some(active_claim)
+                    if active_claim.id == claim.id
+                        && active_claim.organization_id == claim.organization_id
+                        && active_claim.project_id == claim.project_id
+                        && active_claim.environment_id == claim.environment_id
+                        && active_claim.pattern == claim.pattern => {}
+                Some(_) => {
+                    return Err(
+                        "managed Gateway Route mutation changed active Route domain authority"
+                            .into(),
+                    )
+                }
+                None if route.state == RouteState::Pending => {}
+                None => {
+                    return Err(
+                        "managed Gateway Route snapshot introduced an unobserved active Route"
+                            .into(),
+                    )
+                }
+            }
+        }
+        if active_route_versions
+            .keys()
+            .any(|route_id| !snapshot_route_ids.contains(route_id))
+            || !snapshot_routes
+                .iter()
+                .any(|route| route.state == RouteState::Pending)
+        {
+            return Err(
+                "managed Gateway Route mutation must retain every observed active Route and include a pending candidate"
+                    .into(),
+            );
+        }
+
+        let mut claim_authority = claims
+            .iter()
+            .map(|(id, claim)| {
+                (
+                    *id,
+                    (
+                        claim.organization_id,
+                        claim.project_id,
+                        claim.environment_id,
+                        claim.aggregate_version,
+                        claim.pattern.clone(),
+                    ),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mcp_route_versions = mcp
+            .route_versions()
+            .iter()
+            .map(|version| (version.route_id(), version))
+            .collect::<BTreeMap<_, _>>();
+        if mcp_route_versions.len() != mcp.route_versions().len()
+            || mcp.ingress_routes().len() != mcp.route_versions().len()
+        {
+            return Err("MCP Gateway snapshot candidate has incomplete route evidence".into());
+        }
+        for ingress in mcp.ingress_routes() {
+            if snapshot_routes.iter().any(|route| {
+                route.hostname == *ingress.hostname()
+                    && ingress.path().starts_with(route.path_prefix.as_str())
+            }) {
+                return Err(
+                    "ordinary Gateway PathPrefix would overlap an exact MCP ingress path".into(),
+                );
+            }
+            if !ownership.insert((ingress.hostname().clone(), ingress.path().to_owned())) {
+                return Err(
+                    "ordinary and MCP Gateway routes have conflicting ingress ownership".into(),
+                );
+            }
+            let version = mcp_route_versions.get(&ingress.route_id()).ok_or_else(|| {
+                "MCP Gateway ingress has no exact route version evidence".to_string()
+            })?;
+            if version.domain_claim_id() != ingress.domain_claim_id() {
+                return Err(
+                    "MCP Gateway ingress and route version reference different DomainClaims".into(),
+                );
+            }
+            let scope = mcp.scope(version.gateway_scope_id()).ok_or_else(|| {
+                "MCP Gateway route evidence references an inactive logical scope".to_string()
+            })?;
+            insert_claim_authority(
+                &mut claim_authority,
+                ingress.domain_claim_id(),
+                scope.organization_id,
+                scope.project_id,
+                scope.environment_id,
+                version.domain_claim_aggregate_version(),
+                ingress.domain_pattern().clone(),
+            )?;
+        }
+
+        let projection = mcp.projection().map(|planned| planned.projection());
+        if projection.is_some() != !mcp.ingress_routes().is_empty() {
+            return Err(
+                "MCP Gateway snapshot candidate projection and ingress cardinality differ".into(),
+            );
+        }
+        if let Some(projection) = projection {
+            if projection.expires_at != expires_at {
+                return Err(
+                    "MCP policy expiry must exactly match the complete managed snapshot expiry"
+                        .into(),
+                );
+            }
+        }
+
+        let mut ordinary_route_ids = snapshot_routes
+            .iter()
+            .map(|route| route.id)
+            .collect::<Vec<_>>();
+        ordinary_route_ids.sort();
+        let desired_state_digest =
+            desired_state_digest(&self.config, &snapshot_routes, &claim_authority, &mcp)?;
+        let content = projection.map(|projection| McpSnapshotContent {
+            ingress_routes: mcp.ingress_routes(),
+            projection,
+        });
+        let snapshot = self.compile_snapshot(
+            metadata,
+            Some(certificate_id),
+            &snapshot_routes,
+            true,
+            None,
+            content,
+        )?;
+        Ok(CompiledMcpGatewaySnapshot {
+            snapshot,
+            desired_state_digest,
+            physical_scope,
+            ordinary_route_ids,
+            active_route_versions: active_route_versions.into_values().collect(),
+            domain_claim_versions: claim_authority
+                .into_iter()
+                .map(
+                    |(
+                        domain_claim_id,
+                        (organization_id, project_id, environment_id, aggregate_version, _),
+                    )| GatewayDomainClaimVersion {
+                        domain_claim_id,
+                        organization_id,
+                        project_id,
+                        environment_id,
+                        aggregate_version,
+                    },
+                )
+                .collect(),
             mcp,
         })
     }
@@ -720,6 +1005,67 @@ fn validate_active_route_authority(
         );
     }
     Ok(())
+}
+
+fn validate_verified_domain_claim(
+    claim: &DomainClaim,
+    observed_at: DateTime<Utc>,
+) -> Result<(), String> {
+    if claim.id.as_uuid().is_nil()
+        || claim.organization_id.as_uuid().is_nil()
+        || claim.project_id.as_uuid().is_nil()
+        || claim.environment_id.as_uuid().is_nil()
+        || claim.state != DomainClaimState::Verified
+        || claim.aggregate_version == 0
+        || claim.failure.is_some()
+        || claim
+            .verified_at
+            .is_none_or(|verified_at| verified_at > observed_at)
+        || claim.revoked_at.is_some()
+        || claim.updated_at < claim.created_at
+        || claim.updated_at > observed_at
+    {
+        return Err("managed Gateway snapshot DomainClaim lacks exact verified authority".into());
+    }
+    Ok(())
+}
+
+fn validate_route_domain_authority(
+    route: &Route,
+    claim: &DomainClaim,
+    node_id: NodeId,
+    observed_at: DateTime<Utc>,
+) -> Result<(), String> {
+    validate_verified_domain_claim(claim, observed_at)?;
+    if route.gateway_node_id != node_id
+        || route.domain_claim_id != Some(claim.id)
+        || route.domain_pattern.as_ref() != Some(&claim.pattern)
+        || route.organization_id != claim.organization_id
+        || route.project_id != claim.project_id
+        || route.environment_id != claim.environment_id
+        || !claim.covers(&route.hostname)
+    {
+        return Err(
+            "managed Gateway snapshot Route does not match its exact DomainClaim authority".into(),
+        );
+    }
+    Ok(())
+}
+
+fn insert_domain_claim(
+    claims: &mut BTreeMap<DomainClaimId, DomainClaim>,
+    claim: DomainClaim,
+) -> Result<(), String> {
+    match claims.get(&claim.id) {
+        Some(existing) if existing != &claim => {
+            Err("managed Gateway snapshot observed conflicting versions of one DomainClaim".into())
+        }
+        Some(_) => Ok(()),
+        None => {
+            claims.insert(claim.id, claim);
+            Ok(())
+        }
+    }
 }
 
 fn insert_claim_authority(

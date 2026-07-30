@@ -753,6 +753,7 @@ pub async fn exercise(
                 .as_str()
                 .to_owned(),
             u32::try_from(current_stage.candidate().mcp().route_versions().len())?,
+            "mcp-reconciler".to_owned(),
         )
     );
 

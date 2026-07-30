@@ -793,6 +793,8 @@ pub async fn build_application_with_source_resolver(
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
+            mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
+            gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
             domain_verifier,
             gateway_projector,
             operations: operation_repository,
@@ -864,6 +866,8 @@ struct ApplicationDependencies {
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
+    mcp_gateway_snapshots: Option<Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository>>,
+    gateway_node_desired_state_planner: Option<GatewayNodeDesiredStatePlanner>,
     domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
@@ -906,6 +910,8 @@ fn build_application_with_health(
         secret_encryption,
         route_targets,
         route_commands,
+        mcp_gateway_snapshots,
+        gateway_node_desired_state_planner,
         domain_verifier,
         gateway_projector,
         operations,
@@ -1101,13 +1107,27 @@ fn build_application_with_health(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(BootError::Internal)?;
-    let publish_route_handler = PublishRouteHandler::new(
-        publish_routes,
-        route_targets,
-        route_commands,
-        route_compiler,
-        chrono_duration(config.edge.command_ttl_ms)?,
-    )
+    let publish_route_handler = match (mcp_gateway_snapshots, gateway_node_desired_state_planner) {
+        (Some(mcp_gateway_snapshots), Some(gateway_node_desired_state_planner)) => {
+            PublishRouteHandler::new_managed(
+                publish_routes,
+                mcp_gateway_snapshots,
+                route_targets,
+                route_commands,
+                route_compiler,
+                gateway_node_desired_state_planner,
+                chrono_duration(config.edge.command_ttl_ms)?,
+            )
+        }
+        (None, None) => PublishRouteHandler::new(
+            publish_routes,
+            route_targets,
+            route_commands,
+            route_compiler,
+            chrono_duration(config.edge.command_ttl_ms)?,
+        ),
+        _ => Err("managed Gateway publication dependencies are incomplete".into()),
+    }
     .map_err(BootError::Internal)?;
     BootApplication::builder()
         .import(PublicHealthModule::new(
