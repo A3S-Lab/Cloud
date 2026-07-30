@@ -78,6 +78,18 @@ jobs:
           ref: ${{ steps.revisions.outputs.oci_runtime }}
           path: crates/oci-runtime
 
+      - name: Verify exact provider dependency closure
+        env:
+          BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          OCI_RUNTIME_REVISION: ${{ steps.revisions.outputs.oci_runtime }}
+        run: |
+          test "$(git -C crates/box rev-parse HEAD)" = "$BOX_REVISION"
+          test "$(git -C crates/oci-runtime rev-parse HEAD)" = "$OCI_RUNTIME_REVISION"
+          grep --fixed-strings \
+            "rev = \"$OCI_RUNTIME_REVISION\"" crates/box/src/Cargo.toml
+          grep --fixed-strings \
+            "?rev=$OCI_RUNTIME_REVISION#$OCI_RUNTIME_REVISION" crates/box/src/Cargo.lock
+
       - name: Install stable Rust and build dependencies
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
