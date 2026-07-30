@@ -385,7 +385,7 @@ mod tests {
     };
     use crate::modules::edge::domain::{
         DomainClaim, DomainNamePattern, GatewayPublication, GatewayScopeState, McpCredential,
-        McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+        McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
     };
     use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
         fixture, now, target, Fixture,
@@ -1051,6 +1051,140 @@ mod tests {
                 .expect("ordinary route IDs")
                 .len(),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn managed_cutover_replaces_the_ordinary_target_without_dropping_mcp() {
+        let fixture = fixture();
+        let node_id = NodeId::new();
+        let credentials = Arc::new(InMemoryEdgeRepository::new());
+        credentials
+            .create_mcp_credential(credential(&fixture))
+            .await
+            .expect("credential");
+        let planned = planner(
+            vec![input(&fixture)],
+            Arc::new(CountingTargetReader {
+                target: Some(target(&fixture, node_id, 49152)),
+                calls: AtomicUsize::new(0),
+            }),
+            credentials,
+        )
+        .plan(PlanMcpGatewayProjectionSet {
+            scope: scope(&fixture, node_id),
+            gateway_node_id: node_id,
+            observed_at: now(),
+        })
+        .await
+        .expect("MCP projection");
+        let expires_at = planned
+            .projection()
+            .expect("projection")
+            .projection()
+            .expires_at;
+
+        let hostname = RouteHostname::parse("app.example.com").expect("hostname");
+        let claim_id = DomainClaimId::new();
+        let mut claim = DomainClaim::create(
+            claim_id,
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            DomainNamePattern::parse(hostname.as_str()).expect("pattern"),
+            format!("a3s-cloud-verification={claim_id}"),
+            now() - Duration::minutes(1),
+        )
+        .expect("claim");
+        claim
+            .verify(now() - Duration::seconds(1))
+            .expect("verified claim");
+        let old_target = target(&fixture, node_id, 49153).target;
+        let mut active = Route::create(
+            RouteId::new(),
+            fixture.policy.spec().organization_id,
+            fixture.policy.spec().project_id,
+            fixture.policy.spec().environment_id,
+            fixture.policy.spec().gateway_scope_id,
+            node_id,
+            hostname,
+            RoutePath::parse("/app").expect("path"),
+            claim.id,
+            claim.pattern.clone(),
+            GatewayCertificateId::new(),
+            fixture.policy.spec().workload_id,
+            old_target.clone(),
+            now(),
+        )
+        .expect("ordinary route");
+        active.state = RouteState::Active;
+        active.gateway_revision = Some(1);
+        active.gateway_command_id = Some(NodeCommandId::new());
+        active.snapshot_digest = Some("a".repeat(64));
+        active.activated_at = Some(now());
+        let next_revision_id = WorkloadRevisionId::new();
+        let next_target = RouteTarget::new(
+            fixture.policy.spec().workload_id,
+            next_revision_id,
+            format!(
+                "workload:{}:revision:{next_revision_id}",
+                fixture.policy.spec().workload_id
+            ),
+            old_target.runtime_generation + 1,
+            old_target.port_name,
+            old_target.upstream,
+            now(),
+        )
+        .expect("next target");
+        let certificate_id = GatewayCertificateId::new();
+        let candidate = active
+            .prepare_cutover(next_target, certificate_id, now())
+            .expect("cutover candidate");
+        let active_version = active.aggregate_version;
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState {
+                node_id,
+                last_issued_revision: 1,
+                installed_revision: Some(1),
+                aggregate_version: 1,
+            },
+            vec![GatewaySnapshotRouteInput {
+                route: active,
+                domain_claim: claim,
+            }],
+            node_projection(planned),
+        )
+        .expect("node desired state");
+        let compiled = snapshot_compiler()
+            .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 2, Some(1), now(), expires_at),
+                desired_state,
+                certificate_id,
+                snapshot_routes: vec![candidate],
+                additional_domain_claims: Vec::new(),
+            })
+            .expect("managed cutover snapshot");
+
+        assert!(compiled.snapshot().acl.contains("routers \"route-"));
+        assert!(compiled.snapshot().acl.contains("routers \"mcp-route-"));
+        assert!(compiled.snapshot().acl.contains("mcp {"));
+        assert_eq!(compiled.active_route_versions().len(), 1);
+        assert_eq!(
+            compiled.active_route_versions()[0].aggregate_version,
+            active_version
+        );
+        assert_eq!(compiled.domain_claim_versions().len(), 2);
+        assert_eq!(
+            compiled
+                .snapshot()
+                .certificate_request
+                .as_ref()
+                .expect("certificate request")
+                .dns_names,
+            vec![
+                "app.example.com".to_owned(),
+                fixture.policy.spec().hostname.as_str().to_owned(),
+            ]
         );
     }
 

@@ -1,6 +1,7 @@
 use crate::modules::edge::domain::events::McpGatewaySnapshotStaged;
 use crate::modules::edge::domain::repositories::{
-    EdgeRoutePublicationResult, GatewayRolloutResult, StageGatewayRollout, StageRoutePublication,
+    EdgeRoutePublicationResult, GatewayRolloutResult, GatewayRouteCutoverResult,
+    StageGatewayRollout, StageGatewayRouteCutover, StageRoutePublication,
 };
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateState, GatewayPublication, GatewayPublicationState,
@@ -61,6 +62,12 @@ pub struct GatewayManagedSnapshotComposition {
 #[derive(Debug, Clone)]
 pub struct StageManagedRoutePublication {
     ordinary: StageRoutePublication,
+    composition: GatewayManagedSnapshotComposition,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageManagedGatewayRouteCutover {
+    ordinary: StageGatewayRouteCutover,
     composition: GatewayManagedSnapshotComposition,
 }
 
@@ -467,6 +474,52 @@ impl StageManagedRoutePublication {
     }
 }
 
+impl StageManagedGatewayRouteCutover {
+    pub fn new(
+        ordinary: StageGatewayRouteCutover,
+        composition: GatewayManagedSnapshotComposition,
+    ) -> Result<Self, String> {
+        ordinary.validate()?;
+        composition.validate_for(&ordinary.publication)?;
+        let ordinary_route_ids = composition
+            .candidate()
+            .ordinary_route_ids()
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
+            || composition.candidate().physical_scope().node_id != ordinary.publication.node_id
+            || composition.candidate().mcp().organization_id() != ordinary.cutover.organization_id
+            || ordinary.certificate.domain_claim_ids != domain_claim_ids(composition.candidate())
+            || ordinary
+                .cutover
+                .routes
+                .iter()
+                .any(|route| !ordinary_route_ids.contains(&route.id))
+        {
+            return Err("managed Gateway Route cutover composition is inconsistent".into());
+        }
+        Ok(Self {
+            ordinary,
+            composition,
+        })
+    }
+
+    pub const fn ordinary(&self) -> &StageGatewayRouteCutover {
+        &self.ordinary
+    }
+
+    pub const fn composition(&self) -> &GatewayManagedSnapshotComposition {
+        &self.composition
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (StageGatewayRouteCutover, GatewayManagedSnapshotComposition) {
+        (self.ordinary, self.composition)
+    }
+}
+
 impl StageManagedGatewayRollout {
     pub fn new(
         ordinary: StageGatewayRollout,
@@ -563,6 +616,15 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
     ) -> Result<EdgeRoutePublicationResult, RepositoryError> {
         Err(RepositoryError::Storage(
             "managed Route publication staging is not implemented".into(),
+        ))
+    }
+
+    async fn stage_managed_gateway_route_cutover(
+        &self,
+        _stage: StageManagedGatewayRouteCutover,
+    ) -> Result<GatewayRouteCutoverResult, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "managed Gateway Route cutover staging is not implemented".into(),
         ))
     }
 

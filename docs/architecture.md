@@ -1033,17 +1033,18 @@ separate durable marker worker, preserving commit-before-send and idempotent
 Fleet replay.
 
 Migration 059 makes marker ownership explicit. MCP-originated snapshots remain
-owned by the MCP dispatch reconciler. A single-member or replicated ordinary
-Route publication instead uses `GatewayNodeDesiredStatePlanner` to observe the
-physical scope, all active ordinary Route/DomainClaim authority, and every
-active MCP logical scope at one timestamp. The Route compiler produces the
-post-mutation complete snapshot but retains the pre-write version vector.
-PostgreSQL locks that full vector before atomically staging the ordinary
-Route/rollout publication, certificate, MCP marker/head, and both secret-free
-events. The ordinary dispatcher and acknowledgement projector remain
-authoritative for Route/rollout lifecycle; the marker is projected
-orthogonally so an Applied zero-MCP publication releases its head and a
-non-empty MCP publication remains current.
+owned by the MCP dispatch reconciler. A single-member, replicated, or
+deployment-cutover ordinary Route publication instead uses
+`GatewayNodeDesiredStatePlanner` to observe the physical scope, all active
+ordinary Route/DomainClaim authority, and every active MCP logical scope at one
+timestamp. The Route compiler produces the post-mutation complete snapshot but
+retains the pre-write version vector. PostgreSQL locks that full vector before
+atomically staging the ordinary Route/rollout/cutover publication,
+certificate, MCP marker/head, and both secret-free events. The ordinary
+dispatcher and acknowledgement projector remain authoritative for
+Route/rollout/cutover lifecycle; the marker is projected orthogonally so an
+Applied zero-MCP publication releases its head and a non-empty MCP publication
+remains current.
 
 Migration 057 also replaces the original marker-to-primary-scope foreign key
 with the logical scope's exact tenant boundary. Physical Node and publication
@@ -1052,11 +1053,11 @@ under the staging transaction's ordered membership locks. Historical
 publication evidence therefore neither rejects secondary members nor blocks a
 later membership change.
 
-Deployment cutover, exact rollback, and certificate convergence/renewal still
-need to consume the unified node plan. Proactive MCP-only certificate renewal,
-revoked-credential cleanup, public lifecycle surfaces, audit, an executed
-PostgreSQL gate, and joint real-process recovery remain required before this
-path can close `MCP0.3`.
+Exact rollback and certificate convergence/renewal still need to consume the
+unified node plan. Proactive MCP-only certificate renewal, revoked-credential
+cleanup, public lifecycle surfaces, audit, an executed PostgreSQL gate, and
+joint real-process recovery remain required before this path can close
+`MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

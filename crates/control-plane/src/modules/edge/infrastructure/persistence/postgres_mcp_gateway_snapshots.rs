@@ -22,8 +22,8 @@ use crate::modules::edge::infrastructure::{
     CompiledMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
-    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedRoutePublication,
-    StageMcpGatewaySnapshot,
+    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedGatewayRouteCutover,
+    StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
@@ -151,6 +151,16 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         RepositoryError,
     > {
         super::postgres::stage_managed_route_publication(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_route_cutover(
+        &self,
+        stage: StageManagedGatewayRouteCutover,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayRouteCutoverResult,
+        RepositoryError,
+    > {
+        super::postgres_cutovers::stage_managed(&self.executor, stage).await
     }
 
     async fn stage_managed_gateway_rollout(

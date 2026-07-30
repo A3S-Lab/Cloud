@@ -73,7 +73,7 @@ pub use infrastructure::{
     PlanGatewayRouteRollout, PlanManagedGatewayRouteRollout, PlanMcpGatewayProjectionSet,
     PlanMcpRouteProjection, PlannedGatewayNodeDesiredState, PlannedMcpGatewayNodeProjection,
     PlannedMcpGatewayProjection, PlannedMcpGatewayProjectionSet, StageManagedGatewayRollout,
-    StageManagedRoutePublication, StageMcpGatewaySnapshot, VaultGatewayCertificateAuthority,
-    WorkloadRouteTargetReader,
+    StageManagedGatewayRouteCutover, StageManagedRoutePublication, StageMcpGatewaySnapshot,
+    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

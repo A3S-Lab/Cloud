@@ -459,11 +459,13 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::Edge)?;
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
-        EdgeDeploymentRouteUpdater::new(
+        EdgeDeploymentRouteUpdater::new_managed(
             Arc::clone(&routes),
+            Arc::clone(&mcp_gateway_snapshots),
             Arc::clone(&node_control),
             Arc::clone(&route_commands),
             deployment_route_compiler,
+            gateway_node_desired_state_planner.clone(),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
