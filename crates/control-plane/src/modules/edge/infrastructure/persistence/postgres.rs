@@ -555,20 +555,24 @@ async fn stage_route_publication_impl(
                     replay.value.replayed = true;
                     return Ok(replay.value);
                 }
+                let managed_scope = match &composition {
+                    Some(composition) => Some(
+                        super::postgres_mcp_gateway_snapshots::lock_managed_composition(
+                            transaction,
+                            composition,
+                        )
+                        .await?,
+                    ),
+                    None => None,
+                };
                 postgres_gateway_scopes::validate_route_binding(
                     transaction,
                     &bundle.gateway_scope,
                     &bundle.route,
                 )
                 .await?;
-                let current = match &composition {
-                    Some(composition) => {
-                        super::postgres_mcp_gateway_snapshots::lock_managed_composition(
-                            transaction,
-                            composition,
-                        )
-                        .await?
-                    }
+                let current = match managed_scope {
+                    Some(current) => current,
                     None => {
                         let organization_id = fetch_optional::<Uuid, _>(
                             transaction,

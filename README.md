@@ -789,12 +789,15 @@ and maintains one mutable latest-MCP head per physical Gateway while preserving
 immutable publication history. Migration 059 adds an explicit publication
 owner so MCP reconciliation and ordinary Route/rollout workers can share the
 same marker/head evidence without competing for dispatch or acknowledgement.
-The production single-member, replicated, and deployment-cutover Route
-publication paths now use a shared node desired-state planner: they load every
-active MCP scope together with the exact ordinary Route/DomainClaim
-observation, compile one combined snapshot, and validate the complete MCP
-policy/version vector in the same PostgreSQL transaction that stages the
-ordinary Route, rollout, or cutover. The
+The production single-member, replicated, deployment-cutover, and exact
+rollout-rollback Route publication paths now use a shared node desired-state
+planner: they load every active MCP scope together with the exact ordinary
+Route/DomainClaim observation, compile one combined snapshot, and validate the
+complete MCP policy/version vector in the same PostgreSQL transaction that
+stages the ordinary Route, rollout, cutover, or rollback. Rollback retains the
+observed physical ordinary Route state while composing current MCP desired
+state; a ready certificate is reused only if it covers the complete joint
+authority, otherwise a deterministic replacement is staged. The
 registered desired-state worker rotates
 through logical-scope triggers, deduplicates their physical nodes, loads every
 active MCP scope for each node, plans them independently, and merges them into
@@ -807,18 +810,18 @@ Physical revision, command, certificate identity, and observation time do not
 cause digest churn. Focused tests cover two-scope composition, one-publication
 node deduplication, membership-removal cleanup, no-op convergence, bounded
 cursor fairness, pending deferral, terminal retry, and displaced-state repair.
-Focused coverage additionally proves that new ordinary Route and deployment
-cutover snapshots keep their MCP router, policy block, joint certificate
+Focused coverage additionally proves that ordinary Route, deployment cutover,
+and rollback snapshots keep their MCP router, policy block, joint certificate
 names, ordinary pre-write CAS evidence, and ordinary/MCP event identities. The
 PostgreSQL fixture also compiles stored scope-set/head evidence and an automatic
 post-acknowledgement no-op check, but no database URL is available in the
 default local gate.
 
-Exact rollback and certificate-convergence/renewal still need to consume the
-same unified node plan. Proactive MCP-only certificate renewal,
-revoked-credential cleanup, public lifecycle surfaces, executed real PostgreSQL
-evidence for the new path, real Box hosting, and joint product conformance
-remain unavailable. Stateful resources remain `S0`;
+Certificate-convergence/renewal still needs to consume the same unified node
+plan. Proactive MCP-only certificate renewal, revoked-credential cleanup,
+public lifecycle surfaces, executed real PostgreSQL evidence for the new path,
+real Box hosting, and joint product conformance remain unavailable. Stateful
+resources remain `S0`;
 replicas and multi-node placement remain `H0`; accelerator and inference
 capabilities remain `I0`. These profiles do not create separate schedulers.
 

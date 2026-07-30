@@ -391,18 +391,19 @@ mod tests {
         fixture, now, target, Fixture,
     };
     use crate::modules::edge::infrastructure::{
-        CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot,
-        GatewayManagedSnapshotComposition, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-        GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, GatewaySnapshotRouteInput,
-        McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor, McpRouteProjectionPlanner,
-        McpRouteTargetProjectionCompiler, PlannedGatewayNodeDesiredState,
-        PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
+        CompileManagedGatewayRetainedSnapshot, CompileManagedGatewayRouteSnapshot,
+        CompileMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotCompiler,
+        GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
+        GatewaySnapshotRouteInput, McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor,
+        McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+        PlannedGatewayNodeDesiredState, PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
         DomainClaimId, EnvironmentId, GatewayCertificateId, McpCredentialId, NodeCommandId,
         OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
     };
+    use a3s_cloud_contracts::GatewayCertificateRequest;
     use async_trait::async_trait;
     use chrono::Duration;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -827,7 +828,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn composes_ordinary_and_mcp_routes_with_all_cas_evidence() {
+    async fn managed_retained_snapshot_reuses_only_complete_ordinary_and_mcp_authority() {
         let fixture = fixture();
         let node_id = NodeId::new();
         let targets = Arc::new(CountingTargetReader {
@@ -887,18 +888,50 @@ mod tests {
             .projection()
             .expires_at;
 
-        let compiled = snapshot_compiler()
-            .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+        let certificate_id = GatewayCertificateId::new();
+        let certificate_request = GatewayCertificateRequest::new(
+            certificate_id.as_uuid(),
+            vec![
+                "app.example.com".to_owned(),
+                fixture.policy.spec().hostname.as_str().to_owned(),
+            ],
+            format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+            format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+        )
+        .expect("reusable request");
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState::empty(node_id),
+            vec![GatewaySnapshotRouteInput {
+                route: ordinary,
+                domain_claim: ordinary_claim,
+            }],
+            node_projection(planned),
+        )
+        .expect("node desired state");
+        let incomplete_request = GatewayCertificateRequest::new(
+            certificate_id.as_uuid(),
+            vec!["app.example.com".to_owned()],
+            format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/certificate.pem"),
+            format!("/var/lib/a3s-cloud/gateway/certificates/{certificate_id}/private-key.pem"),
+        )
+        .expect("incomplete reusable request");
+        let compiler = snapshot_compiler();
+        assert!(compiler
+            .compile_managed_retained_snapshot(CompileManagedGatewayRetainedSnapshot {
                 metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
-                physical_scope: GatewayScopeState::empty(node_id),
-                certificate_id: Some(GatewayCertificateId::new()),
-                active_routes: vec![GatewaySnapshotRouteInput {
-                    route: ordinary,
-                    domain_claim: ordinary_claim,
-                }],
-                mcp: node_projection(planned),
+                desired_state: desired_state.clone(),
+                certificate_id: Some(certificate_id),
+                reused_certificate_request: Some(incomplete_request),
             })
-            .expect("mixed complete snapshot");
+            .is_err());
+        let compiled = compiler
+            .compile_managed_retained_snapshot(CompileManagedGatewayRetainedSnapshot {
+                metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
+                desired_state,
+                certificate_id: Some(certificate_id),
+                reused_certificate_request: Some(certificate_request.clone()),
+            })
+            .expect("mixed retained snapshot");
 
         assert!(compiled.snapshot().acl.contains(&format!(
             "routers \"route-{}\"",
@@ -909,6 +942,10 @@ mod tests {
         assert_eq!(compiled.active_route_versions().len(), 1);
         assert_eq!(compiled.active_route_versions()[0].route_id, ordinary_id);
         assert_eq!(compiled.domain_claim_versions().len(), 2);
+        assert_eq!(
+            compiled.snapshot().certificate_request.as_ref(),
+            Some(&certificate_request)
+        );
         assert_eq!(
             compiled
                 .snapshot()

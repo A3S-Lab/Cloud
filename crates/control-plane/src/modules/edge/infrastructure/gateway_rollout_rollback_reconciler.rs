@@ -1,9 +1,14 @@
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::infrastructure::{
-    CompileGatewayRolloutRollback, GatewayRollbackMemberSnapshotContext,
-    GatewayRolloutRollbackCompiler,
+    CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
+    GatewayNodeDesiredStatePlanner, GatewayRollbackMemberSnapshotContext,
+    GatewayRolloutRollbackCompiler, IMcpGatewaySnapshotRepository,
+    ManagedGatewayRollbackMemberSnapshotContext, McpGatewaySnapshotAnchor,
+    PlanGatewayNodeDesiredState,
 };
-use crate::modules::shared_kernel::domain::{GatewayRolloutId, NodeId, RepositoryError};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, GatewayRolloutId, NodeId, RepositoryError,
+};
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -32,6 +37,12 @@ pub struct GatewayRolloutRollbackReconciler {
     compiler: GatewayRolloutRollbackCompiler,
     interval: Duration,
     batch_size: usize,
+    managed: Option<ManagedGatewayRollback>,
+}
+
+struct ManagedGatewayRollback {
+    snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
+    desired_state: GatewayNodeDesiredStatePlanner,
 }
 
 impl GatewayRolloutRollbackReconciler {
@@ -52,6 +63,33 @@ impl GatewayRolloutRollbackReconciler {
             compiler,
             interval,
             batch_size,
+            managed: None,
+        })
+    }
+
+    pub fn new_managed(
+        repository: Arc<dyn IEdgeRepository>,
+        snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
+        desired_state: GatewayNodeDesiredStatePlanner,
+        compiler: GatewayRolloutRollbackCompiler,
+        interval: Duration,
+        batch_size: usize,
+    ) -> Result<Self, String> {
+        if interval.is_zero() || batch_size == 0 || batch_size > 10_000 {
+            return Err(
+                "Gateway rollback reconciliation requires a positive interval and bounded batch"
+                    .into(),
+            );
+        }
+        Ok(Self {
+            repository,
+            compiler,
+            interval,
+            batch_size,
+            managed: Some(ManagedGatewayRollback {
+                snapshots,
+                desired_state,
+            }),
         })
     }
 
@@ -59,6 +97,7 @@ impl GatewayRolloutRollbackReconciler {
         &self,
         now: DateTime<Utc>,
     ) -> Result<GatewayRolloutRollbackReconciliationReport, RepositoryError> {
+        let now = canonical_timestamp(now);
         let targets = self
             .repository
             .pending_gateway_rollout_rollbacks(self.batch_size)
@@ -69,22 +108,55 @@ impl GatewayRolloutRollbackReconciler {
         };
         for target in targets {
             let failed_rollout_id = target.failed_rollout.id;
-            let member_contexts = match self.member_contexts(&target.scope).await {
-                Ok(contexts) => contexts,
-                Err((node_id, operation, error)) => {
-                    report
-                        .failures
-                        .push(failure(failed_rollout_id, node_id, operation, error));
-                    continue;
+            let compiled = match &self.managed {
+                Some(managed) => {
+                    let member_contexts = match self
+                        .managed_member_contexts(managed, &target.scope, now)
+                        .await
+                    {
+                        Ok(contexts) => contexts,
+                        Err((node_id, operation, error)) => {
+                            report.failures.push(failure(
+                                failed_rollout_id,
+                                node_id,
+                                operation,
+                                error,
+                            ));
+                            continue;
+                        }
+                    };
+                    self.compiler
+                        .compile_managed(CompileManagedGatewayRolloutRollback {
+                            scope: target.scope,
+                            failed_rollout: target.failed_rollout,
+                            rollback: target.rollback,
+                            member_contexts,
+                            issued_at: now,
+                        })
+                }
+                None => {
+                    let member_contexts = match self.member_contexts(&target.scope).await {
+                        Ok(contexts) => contexts,
+                        Err((node_id, operation, error)) => {
+                            report.failures.push(failure(
+                                failed_rollout_id,
+                                node_id,
+                                operation,
+                                error,
+                            ));
+                            continue;
+                        }
+                    };
+                    self.compiler.compile(CompileGatewayRolloutRollback {
+                        scope: target.scope,
+                        failed_rollout: target.failed_rollout,
+                        rollback: target.rollback,
+                        member_contexts,
+                        issued_at: now,
+                    })
                 }
             };
-            let compiled = match self.compiler.compile(CompileGatewayRolloutRollback {
-                scope: target.scope,
-                failed_rollout: target.failed_rollout,
-                rollback: target.rollback,
-                member_contexts,
-                issued_at: now,
-            }) {
+            let compiled = match compiled {
                 Ok(compiled) => compiled,
                 Err(_) => {
                     report.failures.push(failure(
@@ -96,19 +168,38 @@ impl GatewayRolloutRollbackReconciler {
                     continue;
                 }
             };
-            let bundle = match compiled.stage_bundle() {
-                Ok(bundle) => bundle,
-                Err(_) => {
-                    report.failures.push(failure(
-                        failed_rollout_id,
-                        None,
-                        "validate",
-                        "Gateway exact rollback stage bundle is invalid",
-                    ));
-                    continue;
-                }
+            let staged = match &self.managed {
+                Some(managed) => match compiled.managed_stage_bundle() {
+                    Ok(bundle) => {
+                        managed
+                            .snapshots
+                            .stage_managed_gateway_rollout_rollback(bundle)
+                            .await
+                    }
+                    Err(_) => {
+                        report.failures.push(failure(
+                            failed_rollout_id,
+                            None,
+                            "validate",
+                            "Gateway exact rollback stage bundle is invalid",
+                        ));
+                        continue;
+                    }
+                },
+                None => match compiled.stage_bundle() {
+                    Ok(bundle) => self.repository.stage_gateway_rollout_rollback(bundle).await,
+                    Err(_) => {
+                        report.failures.push(failure(
+                            failed_rollout_id,
+                            None,
+                            "validate",
+                            "Gateway exact rollback stage bundle is invalid",
+                        ));
+                        continue;
+                    }
+                },
             };
-            match self.repository.stage_gateway_rollout_rollback(bundle).await {
+            match staged {
                 Ok(result) => {
                     report.staged_rollbacks += 1;
                     report.replayed_rollbacks += usize::from(result.replayed);
@@ -225,6 +316,83 @@ impl GatewayRolloutRollbackReconciler {
             contexts.push(GatewayRollbackMemberSnapshotContext {
                 scope: physical_scope,
                 active_routes,
+                reusable_certificate,
+            });
+        }
+        Ok(contexts)
+    }
+
+    async fn managed_member_contexts(
+        &self,
+        managed: &ManagedGatewayRollback,
+        scope: &crate::modules::edge::domain::GatewayScope,
+        observed_at: DateTime<Utc>,
+    ) -> Result<
+        Vec<ManagedGatewayRollbackMemberSnapshotContext>,
+        (Option<NodeId>, &'static str, &'static str),
+    > {
+        let fallback_anchor = McpGatewaySnapshotAnchor::from_scope(scope);
+        let mut contexts = Vec::with_capacity(scope.member_node_ids.len());
+        for node_id in &scope.member_node_ids {
+            let desired_state = managed
+                .desired_state
+                .plan(PlanGatewayNodeDesiredState {
+                    gateway_node_id: *node_id,
+                    fallback_anchor,
+                    observed_at,
+                })
+                .await
+                .map_err(|_| {
+                    (
+                        Some(*node_id),
+                        "restore",
+                        "managed Gateway desired-state restoration failed",
+                    )
+                })?;
+            let required_observation = desired_state
+                .active_routes()
+                .iter()
+                .map(|input| input.route.updated_at)
+                .fold(observed_at, DateTime::<Utc>::max);
+            if required_observation > observed_at
+                || desired_state.mcp().observed_at() != observed_at
+            {
+                return Err((
+                    Some(*node_id),
+                    "restore",
+                    "managed Gateway rollback observation boundary changed",
+                ));
+            }
+            let certificate_ids = desired_state
+                .active_routes()
+                .iter()
+                .filter_map(|input| input.route.gateway_certificate_id)
+                .collect::<BTreeSet<_>>();
+            let reusable_certificate = match certificate_ids.len() {
+                0 => None,
+                1 => {
+                    let certificate_id = *certificate_ids.iter().next().ok_or((
+                        Some(*node_id),
+                        "restore",
+                        "active managed Gateway certificate identity disappeared",
+                    ))?;
+                    Some(
+                        self.repository
+                            .find_gateway_certificate(*node_id, certificate_id)
+                            .await
+                            .map_err(|_| {
+                                (
+                                    Some(*node_id),
+                                    "restore",
+                                    "active managed Gateway certificate restoration failed",
+                                )
+                            })?,
+                    )
+                }
+                _ => None,
+            };
+            contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
+                desired_state,
                 reusable_certificate,
             });
         }

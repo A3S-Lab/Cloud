@@ -1609,13 +1609,16 @@ unavailable. As of 2026-07-30:
   stable logical desired-state digest plus exact MCP route count. Migration 058
   adds the canonical desired scope-set evidence and one mutable latest-MCP head
   per physical node. Migration 059 adds a closed publication-owner value. The
-  production single-member, replicated, and deployment-cutover ordinary Route
-  paths now call one shared node desired-state planner, compile their
-  post-mutation Route candidate with every active MCP scope, and carry the
-  pre-write ordinary/MCP version vector into one PostgreSQL staging
-  transaction. Owner-aware dispatch and acknowledgement leave
-  Route/rollout/cutover activation with its original projector while advancing
-  or releasing the same MCP head. A registered cursor-fair
+  production single-member, replicated, deployment-cutover, and exact rollback
+  ordinary Route paths now call one shared node desired-state planner, compile
+  their post-mutation or retained Route candidate with every active MCP scope,
+  and carry the pre-write ordinary/MCP version vector into one PostgreSQL
+  staging transaction. Rollback retains each member's observed ordinary state
+  while composing current MCP desired state, and reuses a certificate only
+  when its request and Claim set cover that full projection. Owner-aware
+  dispatch and acknowledgement leave Route/rollout/cutover/rollback activation
+  with its original projector while advancing or releasing the same MCP head.
+  A registered cursor-fair
   worker discovers logical scope
   triggers with active or currently headed MCP state, deduplicates their
   physical nodes, defers any physical pending publication, loads every active
@@ -1645,9 +1648,9 @@ unavailable. As of 2026-07-30:
   additionally checks persisted desired scope-set/head identity and automatic
   post-acknowledgement no-churn, together with stale-policy rejection,
   transaction rollback when the final Outbox insert fails, Fleet replay,
-  certificate issuance, and exact Applied projection. Exact rollback and
-  certificate convergence/renewal still need to consume the unified node plan.
-  Proactive MCP-only certificate renewal,
+  certificate issuance, and exact Applied projection. Certificate
+  convergence/renewal still needs to consume the unified node plan. Proactive
+  MCP-only certificate renewal,
   revoked-credential cleanup, public idempotent one-time delivery/rotation, an
   executed real PostgreSQL gate, lifecycle surfaces, audit, and joint
   real-process recovery remain `MCP0.3`; and

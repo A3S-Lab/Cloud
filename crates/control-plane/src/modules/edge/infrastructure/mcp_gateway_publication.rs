@@ -1,7 +1,8 @@
 use crate::modules::edge::domain::events::McpGatewaySnapshotStaged;
 use crate::modules::edge::domain::repositories::{
-    EdgeRoutePublicationResult, GatewayRolloutResult, GatewayRouteCutoverResult,
-    StageGatewayRollout, StageGatewayRouteCutover, StageRoutePublication,
+    EdgeRoutePublicationResult, GatewayRolloutResult, GatewayRolloutRollbackResult,
+    GatewayRouteCutoverResult, StageGatewayRollout, StageGatewayRolloutRollback,
+    StageGatewayRouteCutover, StageRoutePublication,
 };
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateState, GatewayPublication, GatewayPublicationState,
@@ -74,6 +75,12 @@ pub struct StageManagedGatewayRouteCutover {
 #[derive(Debug, Clone)]
 pub struct StageManagedGatewayRollout {
     ordinary: StageGatewayRollout,
+    compositions: BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StageManagedGatewayRolloutRollback {
+    ordinary: StageGatewayRolloutRollback,
     compositions: BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
 }
 
@@ -580,6 +587,109 @@ impl StageManagedGatewayRollout {
     }
 }
 
+impl StageManagedGatewayRolloutRollback {
+    pub fn new(
+        ordinary: StageGatewayRolloutRollback,
+        compositions: BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
+    ) -> Result<Self, String> {
+        ordinary.validate()?;
+        let publication_nodes = ordinary
+            .publications
+            .iter()
+            .map(|publication| publication.node_id)
+            .collect::<BTreeSet<_>>();
+        if compositions.keys().copied().collect::<BTreeSet<_>>() != publication_nodes {
+            return Err(
+                "managed Gateway rollback compositions do not cover exact physical membership"
+                    .into(),
+            );
+        }
+        for publication in &ordinary.publications {
+            let composition = compositions.get(&publication.node_id).ok_or_else(|| {
+                "managed Gateway rollback publication omitted its composition".to_string()
+            })?;
+            composition.validate_for(publication)?;
+            if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
+                || composition.candidate().mcp().organization_id() != ordinary.scope.organization_id
+            {
+                return Err("managed Gateway rollback composition is inconsistent".into());
+            }
+            let expected_claims = domain_claim_ids(composition.candidate())
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+            match &publication.certificate_request {
+                Some(request) => {
+                    let certificate_id =
+                        crate::modules::shared_kernel::domain::GatewayCertificateId::from_uuid(
+                            request.certificate_id,
+                        );
+                    let replacement = ordinary
+                        .certificates
+                        .iter()
+                        .find(|certificate| certificate.id == certificate_id);
+                    let reused = ordinary
+                        .reused_certificates
+                        .iter()
+                        .find(|certificate| certificate.id == certificate_id);
+                    match (replacement, reused) {
+                        (Some(certificate), None)
+                            if certificate.node_id == publication.node_id
+                                && certificate
+                                    .domain_claim_ids
+                                    .iter()
+                                    .copied()
+                                    .collect::<BTreeSet<_>>()
+                                    == expected_claims => {}
+                        (None, Some(certificate))
+                            if certificate.node_id == publication.node_id
+                                && expected_claims.is_subset(
+                                    &certificate
+                                        .domain_claim_ids
+                                        .iter()
+                                        .copied()
+                                        .collect::<BTreeSet<_>>(),
+                                ) => {}
+                        _ => {
+                            return Err(
+                                "managed Gateway rollback certificate authority is incomplete"
+                                    .into(),
+                            )
+                        }
+                    }
+                }
+                None if expected_claims.is_empty() => {}
+                None => {
+                    return Err(
+                        "managed Gateway rollback omitted its complete certificate authority"
+                            .into(),
+                    )
+                }
+            }
+        }
+        Ok(Self {
+            ordinary,
+            compositions,
+        })
+    }
+
+    pub const fn ordinary(&self) -> &StageGatewayRolloutRollback {
+        &self.ordinary
+    }
+
+    pub fn compositions(&self) -> &BTreeMap<NodeId, GatewayManagedSnapshotComposition> {
+        &self.compositions
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        StageGatewayRolloutRollback,
+        BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
+    ) {
+        (self.ordinary, self.compositions)
+    }
+}
+
 #[async_trait]
 pub trait IMcpGatewaySnapshotRepository: Send + Sync {
     async fn mcp_gateway_reconciliation_scopes(
@@ -634,6 +744,15 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
     ) -> Result<GatewayRolloutResult, RepositoryError> {
         Err(RepositoryError::Storage(
             "managed Gateway rollout staging is not implemented".into(),
+        ))
+    }
+
+    async fn stage_managed_gateway_rollout_rollback(
+        &self,
+        _stage: StageManagedGatewayRolloutRollback,
+    ) -> Result<GatewayRolloutRollbackResult, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "managed Gateway rollout rollback staging is not implemented".into(),
         ))
     }
 

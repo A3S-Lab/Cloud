@@ -22,8 +22,8 @@ use crate::modules::edge::infrastructure::{
     CompiledMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
-    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedGatewayRouteCutover,
-    StageManagedRoutePublication, StageMcpGatewaySnapshot,
+    McpGatewaySnapshotStatus, StageManagedGatewayRollout, StageManagedGatewayRolloutRollback,
+    StageManagedGatewayRouteCutover, StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
@@ -169,6 +169,16 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
     ) -> Result<crate::modules::edge::domain::repositories::GatewayRolloutResult, RepositoryError>
     {
         super::postgres_rollouts::stage_managed(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_rollout_rollback(
+        &self,
+        stage: StageManagedGatewayRolloutRollback,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayRolloutRollbackResult,
+        RepositoryError,
+    > {
+        super::postgres_rollouts::stage_managed_rollback(&self.executor, stage).await
     }
 
     async fn pending_mcp_gateway_snapshots(
@@ -680,6 +690,22 @@ pub(super) async fn lock_managed_composition(
     transaction: &PostgresTransaction,
     composition: &GatewayManagedSnapshotComposition,
 ) -> Result<GatewayScopeState, PostgresPersistenceError> {
+    lock_managed_composition_node(transaction, composition).await?;
+    let candidate = composition.candidate();
+    lock_logical_scopes(transaction, candidate).await?;
+    let physical_scope = lock_physical_scope(transaction, candidate).await?;
+    lock_ordinary_routes(transaction, candidate).await?;
+    lock_mcp_policies(transaction, candidate).await?;
+    lock_domain_claims(transaction, candidate).await?;
+    lock_workloads(transaction, candidate).await?;
+    lock_credentials(transaction, candidate).await?;
+    Ok(physical_scope)
+}
+
+pub(super) async fn lock_managed_composition_node(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
+) -> Result<(), PostgresPersistenceError> {
     let candidate = composition.candidate();
     let organization_id = fetch_optional::<Uuid, _>(
         transaction,
@@ -693,14 +719,7 @@ pub(super) async fn lock_managed_composition(
     if organization_id != candidate.mcp().anchor().organization_id.as_uuid() {
         return Err(RepositoryError::NotFound.into());
     }
-    lock_logical_scopes(transaction, candidate).await?;
-    let physical_scope = lock_physical_scope(transaction, candidate).await?;
-    lock_ordinary_routes(transaction, candidate).await?;
-    lock_mcp_policies(transaction, candidate).await?;
-    lock_domain_claims(transaction, candidate).await?;
-    lock_workloads(transaction, candidate).await?;
-    lock_credentials(transaction, candidate).await?;
-    Ok(physical_scope)
+    Ok(())
 }
 
 pub(super) async fn persist_managed_composition(
@@ -942,6 +961,52 @@ pub(super) async fn lock_marker_by_gateway_identity(
     row.map(McpGatewaySnapshotMarkerRow::marker)
         .transpose()
         .map_err(PostgresPersistenceError::from)
+}
+
+pub(super) async fn validate_stored_managed_composition(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+) -> Result<(), PostgresPersistenceError> {
+    composition
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let marker = lock_marker_by_gateway_identity(
+        transaction,
+        publication.node_id.as_uuid(),
+        publication.revision,
+        publication.command_id.as_uuid(),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "managed Gateway publication lost its immutable composition marker".into(),
+        )
+    })?;
+    marker
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let candidate = composition.candidate();
+    let expected_route_count =
+        u32::try_from(candidate.mcp().route_versions().len()).map_err(|_| {
+            PostgresPersistenceError::Invariant(
+                "managed Gateway composition route count exceeds durable bounds".into(),
+            )
+        })?;
+    if marker.organization_id != candidate.mcp().anchor().organization_id
+        || marker.project_id != candidate.mcp().anchor().project_id
+        || marker.environment_id != candidate.mcp().anchor().environment_id
+        || marker.gateway_scope_id != candidate.mcp().anchor().gateway_scope_id
+        || marker.desired_state_digest != *candidate.desired_state_digest()
+        || marker.desired_gateway_scope_ids != candidate.mcp().scope_ids()
+        || marker.mcp_route_count != expected_route_count
+        || marker.publication_owner != composition.owner()
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored managed Gateway composition changed".into(),
+        ));
+    }
+    Ok(())
 }
 
 pub(super) async fn release_snapshot_head(
