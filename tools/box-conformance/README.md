@@ -25,6 +25,14 @@ release it exactly once, reach terminal cancellation, and leave empty Box
 state. The workflow retains the consumer logs and one machine-checkable
 certification marker with the provider evidence.
 
+The allocation consumer probe requires Box to advertise CPU, memory, PID, and
+execution-timeout controls after the provider phase has passed every profile
+derived from those capabilities. It then carries one inventory-bound Claim
+through prepare, exact Runtime binding, reconstructed inspection, pre-fence
+release rejection, durable stop, release, removal, and cleanup. The uploaded
+artifact contains both the advertised-profile result and the allocation
+certification marker.
+
 The storage consumer probe binds Box's one Artifact port to the existing node
 Artifact manager. It exercises a read-only Artifact mount, a persistent Volume
 across driver reconstruction, isolated tmpfs, deterministic Task-output capture

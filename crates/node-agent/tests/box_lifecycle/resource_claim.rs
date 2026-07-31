@@ -12,7 +12,9 @@ use a3s_cloud_node_agent::{
     CommandExecutor, FileCommandJournal, NodeArtifactManager, NodeResourceInventoryAuthority,
     ResourceInventoryError,
 };
-use a3s_runtime::contract::{ArtifactRef, RuntimeInspection, RuntimeUnitClass, RuntimeUnitState};
+use a3s_runtime::contract::{
+    ArtifactRef, ResourceControl, RuntimeInspection, RuntimeUnitClass, RuntimeUnitState,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use sha2::{Digest, Sha256};
@@ -20,6 +22,13 @@ use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 use uuid::Uuid;
+
+const REQUIRED_ALLOCATION_CONTROLS: [ResourceControl; 4] = [
+    ResourceControl::Cpu,
+    ResourceControl::Memory,
+    ResourceControl::Pids,
+    ResourceControl::ExecutionTimeout,
+];
 
 pub(super) async fn prove_resource_claim_lifecycle(
     home: &Path,
@@ -51,6 +60,8 @@ pub(super) async fn prove_resource_claim_lifecycle(
     prepare.validate().map_err(invalid)?;
 
     let preparing_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
+    let capabilities = preparing_runtime.capabilities().await?;
+    require_allocation_controls(&capabilities.resource_controls)?;
     let preparing_executor = CommandExecutor::runtime_only(journal.clone(), preparing_runtime)
         .with_artifacts(artifacts.clone())
         .with_resource_inventory(authority.clone());
@@ -179,6 +190,10 @@ pub(super) async fn prove_resource_claim_lifecycle(
         .await?;
     expect_removed(&removed)?;
     expect_not_found(&*releasing_runtime, &spec.unit_id).await?;
+    println!(
+        "A3S_CLOUD_BOX_ALLOCATION_EVIDENCE_CERTIFIED claim_id={claim_id} unit={} generation={}",
+        spec.unit_id, spec.generation
+    );
     Ok(())
 }
 
@@ -322,6 +337,21 @@ fn digest(value: &str) -> String {
     format!("sha256:{:x}", Sha256::digest(value.as_bytes()))
 }
 
+fn require_allocation_controls(controls: &[ResourceControl]) -> TestResult<()> {
+    let missing = REQUIRED_ALLOCATION_CONTROLS
+        .into_iter()
+        .filter(|control| !controls.contains(control))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(invalid(format!(
+            "Box allocation certification omitted Runtime resource controls: {missing:?}"
+        ))
+        .into())
+    }
+}
+
 #[derive(Debug, Clone)]
 struct GateResourceInventory {
     inventory: NodeResourceInventory,
@@ -342,5 +372,25 @@ impl NodeResourceInventoryAuthority for GateResourceInventory {
         &self,
     ) -> Result<NodeResourceInventory, ResourceInventoryError> {
         Ok(self.inventory.clone())
+    }
+}
+
+#[test]
+fn allocation_certification_requires_every_box_resource_control() {
+    require_allocation_controls(&REQUIRED_ALLOCATION_CONTROLS)
+        .expect("complete allocation controls");
+
+    for missing in REQUIRED_ALLOCATION_CONTROLS {
+        let incomplete = REQUIRED_ALLOCATION_CONTROLS
+            .iter()
+            .copied()
+            .filter(|candidate| *candidate != missing)
+            .collect::<Vec<_>>();
+        let error = require_allocation_controls(&incomplete)
+            .expect_err("missing allocation control must fail closed");
+        assert!(
+            error.to_string().contains(&format!("{missing:?}")),
+            "missing control error omitted {missing:?}: {error}"
+        );
     }
 }

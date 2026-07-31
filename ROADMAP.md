@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-30.**
+**Status as of 2026-07-31.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -142,8 +142,9 @@ second deployment or reconciliation engine.
    isolation-selection slices plus Secret and registry-credential
    materialization are implemented. Artifact mounts, persistent Volumes, tmpfs,
    and Task-output publication now use the same Box driver and existing Cloud
-   Artifact boundary; allocation evidence, complete isolation certification,
-   and the complete gate stay in progress.
+   Artifact boundary. The composite provider/Cloud Claim gate closes allocation
+   evidence; complete Sandbox/MicroVM/TEE isolation certification keeps the
+   gate in progress.
 4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
    build boundary and ACL build plans while preserving OCI validation,
    publication, cache, SPDX/SLSA evidence, and process-death recovery.
@@ -244,8 +245,17 @@ consumer gate combines Artifact, Volume, tmpfs, output, journal-replay, driver
 reconstruction, and zero-residue evidence. It adds no parallel Artifact store,
 output database, VolumeStore, Runtime driver, scheduler, or lifecycle path.
 
-`BX0.3` remains in progress for allocation evidence and complete
-Sandbox/MicroVM/TEE isolation certification.
+The sixth `BX0.3` slice closes allocation evidence through one composite gate.
+The exact Box phase executes every advertised Runtime profile, including the
+Resources behavior derived from CPU, memory, PID, and execution-timeout
+controls. The Cloud phase requires those controls and proves the existing
+inventory-bound Claim across prepare, Runtime apply, exact binding-digest
+inspection, pre-fence release rejection, durable stop, release, removal, and
+cleanup. Both machine-checkable results are retained in one revision-bound
+artifact; Cloud adds no provider resource model or second Claim mechanism.
+
+`BX0.3` remains in progress only for complete Sandbox/MicroVM/TEE isolation
+certification.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and
