@@ -89,44 +89,6 @@ jobs:
           -InstallDir "${{ runner.temp }}/a3s-workflow/bin"
           -SkillDir "${{ runner.temp }}/a3s-workflow/skill"
 
-  e2e:
-    name: A3S Test end to end
-    needs: [rust, studio]
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: workflow
-          POSTGRES_USER: workflow
-          POSTGRES_PASSWORD: workflow
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U workflow -d workflow"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88
-      - uses: Swatinem/rust-cache@v2
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Install Studio dependencies
-        working-directory: web
-        run: bun install --frozen-lockfile
-      - name: Install official A3S Test and compatible browser
-        run: |
-          cargo install --git https://github.com/A3S-Lab/Test --tag v0.4.3 --locked a3s-test-cli
-          bun add --global agent-browser@0.26.0
-          agent-browser install
-      - name: Run Runtime-backed workflow
-        env:
-          A3S_WORKFLOW_DATABASE_URL: postgres://workflow:workflow@127.0.0.1:5432/workflow
-        run: scripts/ci-e2e.sh
-
   containers:
     name: Container builds
     needs: [rust, studio]

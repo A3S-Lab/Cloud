@@ -1,6 +1,6 @@
 ---
 name: a3s-workflow
-description: Author, deploy, run, monitor, and debug A3S Workflow AI-native workflow graphs through the a3s-workflow coding-agent CLI. Use when an agent needs to create or update workflow JSON, choose per-node A3S Runtime provider and pool placement, start or wait for runs, inspect Runtime evidence, resume approvals, diagnose PostgreSQL-backed execution, or install and deploy A3S Workflow.
+description: Author, deploy, run, monitor, debug, and locally verify A3S Workflow AI-native workflow graphs through the a3s-workflow coding-agent CLI and A3S Test. Use when an agent needs to create or update workflow JSON, choose per-node A3S Runtime provider and pool placement, start or wait for runs, inspect Runtime evidence, resume approvals, diagnose PostgreSQL-backed execution, run local end-to-end acceptance, or install and deploy A3S Workflow.
 ---
 
 # A3S Workflow
@@ -77,5 +77,15 @@ Approval resume is another Runtime execution; require fresh evidence for it.
 3. Distinguish graph validation, provider selection, Runtime protocol, node execution, and output digest failures.
 4. Fix the workflow or provider configuration, apply a new workflow version, and start a new run.
 5. Do not mutate durable run history or retry a node outside A3S Flow.
+
+## Verify observable changes locally
+
+A3S Test is a coding-agent-local acceptance tool. Do not add it to CI and do
+not upload `.a3s-test` browser diagnostics.
+
+With the local PostgreSQL, Runtime provider, API, worker, and Studio running,
+execute `scripts/e2e.sh` on macOS/Linux or `scripts/e2e.ps1` on Windows. Treat a
+non-zero A3S Test exit code as a failed task. Inspect `.a3s-test/runs/` locally
+when diagnosing browser, console, accessibility, or Runtime-evidence failures.
 
 Use `--compact` for one-line JSON in scripts. Preserve full JSON evidence in automated reports.

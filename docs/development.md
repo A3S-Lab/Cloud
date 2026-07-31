@@ -85,8 +85,10 @@ this value; local test runs without it skip only those database-backed cases.
 
 ## End-to-end test
 
-With the four processes running, set `A3S_TEST_BROWSER` if the compatible
-browser executable is not on `PATH`, then run:
+A3S Test is a local acceptance tool for Codex and other coding agents; it does
+not run in GitHub Actions. With the four processes running, set
+`A3S_TEST_BROWSER` if the compatible browser executable is not on `PATH`, then
+run:
 
 ```bash
 scripts/e2e.sh
@@ -102,4 +104,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\e2e.ps1 `
 The manifest drives the Studio, saves the graph, submits a run, and asserts
 that all three sample nodes report Runtime evidence before checking the typed
 output. Screenshots, accessibility data, console output, and page errors are
-written under `.a3s-test/runs/`.
+written under `.a3s-test/runs/` for local diagnosis and are not uploaded by CI.

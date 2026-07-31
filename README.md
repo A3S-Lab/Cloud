@@ -209,11 +209,11 @@ PowerShell path.
 
 ## End-to-end proof
 
-The merge gate uses the official
-[A3S Test](https://github.com/A3S-Lab/Test) engine. It drives the Studio through
-semantic browser targets, changes the input, saves the graph, starts the run,
-and waits for the typed output. It then asserts `3/3` Runtime units and captures
-a screenshot, accessibility tree, console messages, and page errors.
+Codex and other coding agents use the official
+[A3S Test](https://github.com/A3S-Lab/Test) engine locally. It drives the Studio
+through semantic browser targets, changes the input, saves the graph, starts
+the run, and waits for the typed output. It then asserts `3/3` Runtime units and
+captures a screenshot, accessibility tree, console messages, and page errors.
 
 With the local stack running:
 
@@ -226,8 +226,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\e2e.ps1 `
   -BrowserExecutable C:\path\to\agent-browser.exe
 ```
 
-CI pins A3S Test `0.4.3` and the admitted browser protocol. Evidence is stored
-under `.a3s-test/runs/` and uploaded for every CI run.
+A3S Test is intentionally outside CI: its browser session and diagnostics stay
+under the agent's local `.a3s-test/runs/` directory and are never uploaded by
+the project workflow.
 
 ## Technology stack
 
@@ -266,9 +267,10 @@ make verify
 ```
 
 This runs Rust formatting, Clippy, workspace tests, Bun type checking, frontend
-tests, and the production Studio build. `make e2e` runs the browser merge gate
-against an already running local stack. CI also rejects Rust line coverage below
-55%; the Studio API and graph adapters have their own Bun coverage report.
+tests, and the production Studio build. `make e2e` lets a coding agent run local
+browser acceptance against an already running stack. CI rejects Rust line
+coverage below 55%; the Studio API and graph adapters have their own Bun
+coverage report.
 
 ## License
 
