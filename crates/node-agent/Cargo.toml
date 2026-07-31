@@ -34,6 +34,7 @@ uuid.workspace = true
 zeroize.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+a3s-box-core.workspace = true
 a3s-box-runtime.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]

@@ -1,3 +1,4 @@
+use crate::box_build::{NodeBoxBuildError, NodeBoxBuildExecutor};
 use crate::resource_claim::{self, ResourceClaimExecutionError};
 use crate::{
     CommandJournalError, FileCommandJournal, GatewaySnapshotInstallError,
@@ -19,6 +20,7 @@ pub struct CommandExecutor {
     runtime: Arc<dyn RuntimeClient>,
     gateway: Arc<dyn GatewaySnapshotInstaller>,
     artifacts: Option<Arc<NodeArtifactManager>>,
+    box_build: Option<Arc<dyn NodeBoxBuildExecutor>>,
     resource_inventory: Option<Arc<dyn NodeResourceInventoryAuthority>>,
 }
 
@@ -37,12 +39,19 @@ impl CommandExecutor {
             runtime,
             gateway,
             artifacts: None,
+            box_build: None,
             resource_inventory: None,
         }
     }
 
     pub fn with_artifacts(mut self, artifacts: Arc<NodeArtifactManager>) -> Self {
         self.artifacts = Some(artifacts);
+        self
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn with_box_build(mut self, box_build: Arc<dyn NodeBoxBuildExecutor>) -> Self {
+        self.box_build = Some(box_build);
         self
     }
 
@@ -185,6 +194,24 @@ impl CommandExecutor {
                 let removal = self.runtime.remove(request).await?;
                 Ok(NodeCommandResult::RuntimeRemoved { removal })
             }
+            NodeCommandPayload::BoxBuildStart { request } => {
+                let started = self.box_build()?.start(envelope, request).await?;
+                Ok(NodeCommandResult::BoxBuildStarted { started })
+            }
+            NodeCommandPayload::BoxBuildInspect { request } => {
+                let inspection = self.box_build()?.inspect(envelope, request).await?;
+                Ok(NodeCommandResult::BoxBuildInspected {
+                    inspection: Box::new(inspection),
+                })
+            }
+            NodeCommandPayload::BoxBuildCancel { request } => {
+                let cancelled = self.box_build()?.cancel(envelope, request).await?;
+                Ok(NodeCommandResult::BoxBuildCancelled { cancelled })
+            }
+            NodeCommandPayload::BoxBuildRemove { request } => {
+                let removed = self.box_build()?.remove(envelope, request).await?;
+                Ok(NodeCommandResult::BoxBuildRemoved { removed })
+            }
             NodeCommandPayload::ResourceClaimRelease { request } => {
                 self.journal
                     .validate_resource_claim_release(request.as_ref().clone())
@@ -262,6 +289,14 @@ impl CommandExecutor {
             .await
             .map_err(Into::into)
     }
+
+    fn box_build(&self) -> Result<&Arc<dyn NodeBoxBuildExecutor>, NodeBoxBuildError> {
+        self.box_build.as_ref().ok_or_else(|| {
+            NodeBoxBuildError::State(
+                "the sole Box build command adapter is not configured on this node".into(),
+            )
+        })
+    }
 }
 
 fn command_timestamp(envelope: &NodeCommandEnvelope) -> DateTime<Utc> {
@@ -285,7 +320,11 @@ fn completion_timestamp(
             NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
-            | NodeCommandResult::RuntimeRemoved { .. } => None,
+            | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::BoxBuildStarted { .. }
+            | NodeCommandResult::BoxBuildInspected { .. }
+            | NodeCommandResult::BoxBuildCancelled { .. }
+            | NodeCommandResult::BoxBuildRemoved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     };
@@ -314,6 +353,7 @@ enum DispatchError {
     Gateway(GatewaySnapshotInstallError),
     Artifact(NodeArtifactError),
     ResourceClaim(ResourceClaimExecutionError),
+    BoxBuild(NodeBoxBuildError),
 }
 
 impl From<RuntimeError> for DispatchError {
@@ -337,6 +377,12 @@ impl From<NodeArtifactError> for DispatchError {
 impl From<ResourceClaimExecutionError> for DispatchError {
     fn from(error: ResourceClaimExecutionError) -> Self {
         Self::ResourceClaim(error)
+    }
+}
+
+impl From<NodeBoxBuildError> for DispatchError {
+    fn from(error: NodeBoxBuildError) -> Self {
+        Self::BoxBuild(error)
     }
 }
 
@@ -418,6 +464,18 @@ fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
         }
         DispatchError::Artifact(error) => artifact_failure(error),
         DispatchError::ResourceClaim(error) => {
+            let failure = NodeCommandFailure {
+                code: error.code().into(),
+                message: sanitize_error(&error.to_string()),
+                retryable: error.retryable(),
+            };
+            if error.retryable() {
+                NodeCommandOutcome::Failed { failure }
+            } else {
+                NodeCommandOutcome::Rejected { failure }
+            }
+        }
+        DispatchError::BoxBuild(error) => {
             let failure = NodeCommandFailure {
                 code: error.code().into(),
                 message: sanitize_error(&error.to_string()),

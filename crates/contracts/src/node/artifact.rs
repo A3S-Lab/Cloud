@@ -2,7 +2,7 @@ use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{validate_single_line, validate_uuid};
+use super::{validate_lower_sha256, validate_single_line, validate_uuid};
 
 pub const NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.a3s.directory.v1+tar";
 const ARTIFACT_URI_PREFIX: &str = "a3s-cloud-artifact://sha256/";
@@ -205,20 +205,6 @@ fn validate_supported_media_type(value: &str) -> Result<(), String> {
         return Err("node artifact transport does not support this media type".into());
     }
     Ok(())
-}
-
-fn validate_lower_sha256(label: &str, value: &str) -> Result<(), String> {
-    let valid = value.strip_prefix("sha256:").is_some_and(|hex| {
-        hex.len() == 64
-            && hex
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    });
-    if valid {
-        Ok(())
-    } else {
-        Err(format!("{label} must be a lowercase SHA-256 digest"))
-    }
 }
 
 #[cfg(test)]

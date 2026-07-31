@@ -2,6 +2,7 @@
 
 mod agent;
 mod artifact;
+mod box_build;
 #[cfg(target_os = "linux")]
 mod box_runtime;
 mod config;
