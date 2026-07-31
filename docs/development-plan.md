@@ -989,10 +989,16 @@ The current independently testable G0 slices are implemented:
   ignored test composes real GitHub token issuance, authenticated resolution,
   checkout, and replay from operator-supplied environment values; no external
   private-repository pass is claimed because those credentials are unavailable.
-- The Artifacts context owns a provider-neutral `IBuildService`. Its request
-  binds an immutable build ID, absolute materialized source directory, checkout
-  content digest, and accepted recipe without exposing BuildKit semantics to
-  Sources or Runtime.
+- `cloud.build@3` and the Runtime command journal are the sole build-execution
+  and replay authorities. The unused direct `IBuildService`/BuildKit path was
+  removed rather than retained as a fallback. Artifacts owns one
+  output-validation port; a narrow BuildKit metadata adapter feeds the shared
+  provider-neutral OCI graph validator used by validation, publication, and
+  evidence.
+- Execution-engine migrations must replace the active Runtime Task path and
+  delete the superseded adapter in the same compatibility transition. Cloud
+  must not add a parallel queue, scheduler, lifecycle store, build receipt,
+  cache authority, publisher, or relational persistence mechanism.
 - One deterministic tenant-owned initial `BuildRun` is reserved for every
   accepted source revision. A failed or cancelled run may create one
   deterministic child attempt with a fresh BuildRun and Operation ID while

@@ -2,6 +2,7 @@ mod build_artifact;
 mod build_cache;
 mod build_evidence;
 mod build_run;
+mod oci_descriptor;
 mod oci_publication;
 
 pub use build_artifact::{BuildArtifact, ValidatedOciBuildOutput};
@@ -17,5 +18,8 @@ pub use build_evidence::{
     SPDX_VERSION,
 };
 pub use build_run::{BuildRun, BuildRunStatus};
+pub use oci_descriptor::{
+    OciDescriptor, OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+};
 pub(crate) use oci_publication::{validate_registry, validate_repository_prefix};
 pub use oci_publication::{OciPublicationRequest, OciPublicationTarget, PublishedOciArtifact};

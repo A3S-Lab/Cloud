@@ -1,4 +1,4 @@
-use super::buildkit_build_service::OciLayoutBlob;
+use super::oci_layout::{OciLayoutBlob, ValidatedOciOutput};
 use super::runtime_build_output_validator::RuntimeBuildOutputValidator;
 use crate::infrastructure::{required_registry_header, OciRegistryClient, OciRegistryClientError};
 use crate::modules::artifacts::domain::entities::{validate_registry, validate_repository_prefix};
@@ -98,7 +98,7 @@ impl OciRegistryArtifactPublisher {
     async fn find_validated(
         &self,
         request: &OciPublicationRequest,
-        validated: &super::buildkit_build_service::ValidatedBuildkitOutput,
+        validated: &ValidatedOciOutput,
         credential: Option<&RegistryCredentialMaterial>,
     ) -> Result<Option<PublishedOciArtifact>, BuildArtifactPublicationError> {
         let root = validated
@@ -308,7 +308,7 @@ impl OciRegistryArtifactPublisher {
     async fn publish_validated(
         &self,
         request: &OciPublicationRequest,
-        validated: &super::buildkit_build_service::ValidatedBuildkitOutput,
+        validated: &ValidatedOciOutput,
         credential: Option<&RegistryCredentialMaterial>,
     ) -> Result<PublishedOciArtifact, BuildArtifactPublicationError> {
         if let Some(published) = self.find_validated(request, validated, credential).await? {

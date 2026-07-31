@@ -1,8 +1,9 @@
 use super::build_cache_validator::{validate_exported_cache, ValidatedCacheLayout};
-use super::buildkit_build_service::{validate_exported_output, ValidatedBuildkitOutput};
+use super::buildkit_output::validate_exported_output;
+use super::oci_layout::ValidatedOciOutput;
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildOutputValidationError, BuildServiceError, IBuildOutputValidator,
-    INodeArtifactStore, NodeArtifactStoreError, ValidatedBuildCache, ValidatedOciBuildOutput,
+    BuildArtifact, BuildOutputValidationError, IBuildOutputValidator, INodeArtifactStore,
+    NodeArtifactStoreError, ValidatedBuildCache, ValidatedOciBuildOutput,
     ValidatedRuntimeBuildOutput,
 };
 use crate::modules::sources::domain::BuildPlatform;
@@ -34,7 +35,7 @@ pub struct RuntimeBuildOutputValidator {
 
 pub(super) struct MaterializedRuntimeBuildOutput {
     staging_directory: PathBuf,
-    pub(super) validated: ValidatedBuildkitOutput,
+    pub(super) validated: ValidatedOciOutput,
     cache: Option<ValidatedCacheLayout>,
 }
 
@@ -209,8 +210,7 @@ impl RuntimeBuildOutputValidator {
                 self.max_blobs,
                 self.max_oci_bytes,
             )
-            .await
-            .map_err(map_build_error)?;
+            .await?;
             Ok((validated, cache))
         }
         .await;
@@ -284,7 +284,7 @@ impl IBuildOutputValidator for RuntimeBuildOutputValidator {
 
 fn validated_output(
     artifact: &BuildArtifact,
-    output: &ValidatedBuildkitOutput,
+    output: &ValidatedOciOutput,
 ) -> ValidatedOciBuildOutput {
     ValidatedOciBuildOutput {
         artifact: artifact.clone(),
@@ -542,21 +542,6 @@ fn map_artifact_error(error: NodeArtifactStoreError) -> BuildOutputValidationErr
             BuildOutputValidationError::Integrity(message)
         }
         NodeArtifactStoreError::Storage(message) => BuildOutputValidationError::Storage(message),
-    }
-}
-
-fn map_build_error(error: BuildServiceError) -> BuildOutputValidationError {
-    match error {
-        BuildServiceError::Invalid(message) => BuildOutputValidationError::Invalid(message),
-        BuildServiceError::Unavailable(message) => BuildOutputValidationError::Unavailable(message),
-        BuildServiceError::Storage(message) => BuildOutputValidationError::Storage(message),
-        BuildServiceError::Conflict => BuildOutputValidationError::Integrity(
-            "Runtime OCI output conflicts with its build identity".into(),
-        ),
-        BuildServiceError::BuildFailed => BuildOutputValidationError::Integrity(
-            "Runtime OCI output contains a failed BuildKit result".into(),
-        ),
-        BuildServiceError::Integrity(message) => BuildOutputValidationError::Integrity(message),
     }
 }
 
