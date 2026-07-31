@@ -43,11 +43,13 @@ jobs:
       - run: cargo install cargo-llvm-cov --version 0.8.7 --locked
       - run: cargo llvm-cov --workspace --all-targets --locked --fail-under-lines 55 --lcov --output-path lcov.info
       - name: Upload Rust coverage
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: rust-lcov
           path: lcov.info
           if-no-files-found: error
+          retention-days: 1
 
   studio:
     name: React Studio
@@ -126,12 +128,14 @@ jobs:
         run: scripts/ci-e2e.sh
       - name: Upload A3S Test evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: a3s-test-evidence
           path: .a3s-test
           include-hidden-files: true
           if-no-files-found: warn
+          retention-days: 1
 
   containers:
     name: Container builds
