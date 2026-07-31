@@ -9,7 +9,8 @@ use a3s_cloud_contracts::{
     ResourceUnit,
 };
 use a3s_cloud_node_agent::{
-    CommandExecutor, FileCommandJournal, NodeResourceInventoryAuthority, ResourceInventoryError,
+    CommandExecutor, FileCommandJournal, NodeArtifactManager, NodeResourceInventoryAuthority,
+    ResourceInventoryError,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeInspection, RuntimeUnitClass, RuntimeUnitState};
 use async_trait::async_trait;
@@ -26,6 +27,7 @@ pub(super) async fn prove_resource_claim_lifecycle(
     journal: &FileCommandJournal,
     node_id: Uuid,
     artifact: ArtifactRef,
+    artifacts: Arc<NodeArtifactManager>,
 ) -> TestResult<()> {
     let claim_id = Uuid::now_v7();
     let workload_id = Uuid::now_v7();
@@ -48,8 +50,9 @@ pub(super) async fn prove_resource_claim_lifecycle(
     };
     prepare.validate().map_err(invalid)?;
 
-    let preparing_runtime = runtime(home, runtime_state.path())?;
+    let preparing_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let preparing_executor = CommandExecutor::runtime_only(journal.clone(), preparing_runtime)
+        .with_artifacts(artifacts.clone())
         .with_resource_inventory(authority.clone());
     let prepared = preparing_executor
         .execute(command(
@@ -64,9 +67,10 @@ pub(super) async fn prove_resource_claim_lifecycle(
     expect_prepared(&prepared, &prepare)?;
     drop(preparing_executor);
 
-    let applying_runtime = runtime(home, runtime_state.path())?;
+    let applying_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let applying_executor =
         CommandExecutor::runtime_only(journal.clone(), applying_runtime.clone())
+            .with_artifacts(artifacts.clone())
             .with_resource_inventory(authority.clone());
     let applied = applying_executor
         .execute(command(
@@ -90,9 +94,10 @@ pub(super) async fn prove_resource_claim_lifecycle(
     drop(applying_executor);
     drop(applying_runtime);
 
-    let inspecting_runtime = runtime(home, runtime_state.path())?;
+    let inspecting_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let inspecting_executor =
         CommandExecutor::runtime_only(journal.clone(), inspecting_runtime.clone())
+            .with_artifacts(artifacts.clone())
             .with_resource_inventory(authority.clone());
     let inspected = inspecting_executor
         .execute(command(
@@ -139,9 +144,10 @@ pub(super) async fn prove_resource_claim_lifecycle(
     drop(inspecting_executor);
     drop(inspecting_runtime);
 
-    let releasing_runtime = runtime(home, runtime_state.path())?;
+    let releasing_runtime = runtime(home, runtime_state.path(), artifacts.clone()).await?;
     let releasing_executor =
         CommandExecutor::runtime_only(journal.clone(), releasing_runtime.clone())
+            .with_artifacts(artifacts)
             .with_resource_inventory(authority);
     let release_request = NodeResourceClaimRelease {
         schema: NodeResourceClaimRelease::SCHEMA.into(),

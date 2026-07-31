@@ -8,6 +8,8 @@ use super::cache_io::{
     validate_local_artifact, verify_file, write_json_atomic, BlobReceipt, MountReceipt,
     OutputReceipt, BLOB_RECEIPT_SCHEMA, MOUNT_RECEIPT_SCHEMA, OUTPUT_RECEIPT_SCHEMA,
 };
+#[cfg(any(target_os = "linux", test))]
+use super::directory_archive::{encode_directory_archive, DirectoryArchiveError};
 use crate::{ArtifactConfig, NodeArtifactTransport, NodeControlClientError};
 use a3s_cloud_contracts::{NodeArtifactDownloadRequest, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
 use a3s_runtime::contract::{ArtifactRef, RuntimeMount, RuntimeOutputArtifact, RuntimeOutputSpec};
@@ -260,32 +262,121 @@ impl NodeArtifactCache {
         let _guard = self.mutation.lock().await;
         self.ensure_roots().await?;
         let receipt_path = self.output_receipt_path(spec_digest, &output.name)?;
-        if let Some(receipt) = read_optional_json::<OutputReceipt>(&receipt_path).await? {
-            if receipt.schema == OUTPUT_RECEIPT_SCHEMA
-                && receipt.spec_digest == spec_digest
-                && receipt.output.name == output.name
-                && receipt.output.artifact.media_type == output.media_type
-                && receipt.output.size_bytes <= output.max_bytes
-            {
-                validate_local_artifact(&receipt.output.artifact)?;
-                self.verify_blob(
-                    &receipt.output.artifact.digest,
-                    &receipt.output.artifact.media_type,
-                    receipt.output.size_bytes,
-                )
-                .await?;
-                return Ok(receipt.output);
-            }
-            return Err(NodeArtifactError::Integrity(
-                "Task output receipt changed its durable identity".into(),
-            ));
+        if let Some(output) = self
+            .replay_output(spec_digest, output, &receipt_path)
+            .await?
+        {
+            return Ok(output);
         }
         let staging = self.staging_path("output");
         let (digest, size_bytes) = self
             .stage_unidentified_blob(reader, &staging, output.max_bytes)
             .await?;
+        self.commit_output(
+            spec_digest,
+            output,
+            &receipt_path,
+            &staging,
+            digest,
+            size_bytes,
+        )
+        .await
+    }
+
+    #[cfg(any(target_os = "linux", test))]
+    pub(super) async fn capture_output_directory(
+        &self,
+        spec_digest: &str,
+        output: &RuntimeOutputSpec,
+        source: &Path,
+    ) -> Result<RuntimeOutputArtifact, NodeArtifactError> {
+        if output.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
+            || output.max_bytes == 0
+            || output.max_bytes > self.config.max_blob_bytes
+        {
+            return Err(NodeArtifactError::Invalid(
+                "Runtime Task output requires a supported bounded directory archive".into(),
+            ));
+        }
+        let _guard = self.mutation.lock().await;
+        self.ensure_roots().await?;
+        let receipt_path = self.output_receipt_path(spec_digest, &output.name)?;
+        if let Some(output) = self
+            .replay_output(spec_digest, output, &receipt_path)
+            .await?
+        {
+            return Ok(output);
+        }
+        let staging = self.staging_path("output-directory");
+        let source = source.to_owned();
+        let staging_for_task = staging.clone();
+        let limits = self.archive_limits();
+        let maximum_bytes = output.max_bytes;
+        let encoded = match tokio::task::spawn_blocking(move || {
+            encode_directory_archive(&source, &staging_for_task, limits, maximum_bytes)
+        })
+        .await
+        {
+            Ok(Ok(encoded)) => encoded,
+            Ok(Err(error)) => return Err(directory_archive_error(error)),
+            Err(error) => {
+                let _ = tokio::fs::remove_file(&staging).await;
+                return Err(NodeArtifactError::Storage(format!(
+                    "Task output archive task failed: {error}"
+                )));
+            }
+        };
+        self.commit_output(
+            spec_digest,
+            output,
+            &receipt_path,
+            &staging,
+            encoded.digest,
+            encoded.size_bytes,
+        )
+        .await
+    }
+
+    async fn replay_output(
+        &self,
+        spec_digest: &str,
+        output: &RuntimeOutputSpec,
+        receipt_path: &Path,
+    ) -> Result<Option<RuntimeOutputArtifact>, NodeArtifactError> {
+        let Some(receipt) = read_optional_json::<OutputReceipt>(receipt_path).await? else {
+            return Ok(None);
+        };
+        if receipt.schema == OUTPUT_RECEIPT_SCHEMA
+            && receipt.spec_digest == spec_digest
+            && receipt.output.name == output.name
+            && receipt.output.artifact.media_type == output.media_type
+            && receipt.output.size_bytes <= output.max_bytes
+        {
+            validate_local_artifact(&receipt.output.artifact)?;
+            self.verify_blob(
+                &receipt.output.artifact.digest,
+                &receipt.output.artifact.media_type,
+                receipt.output.size_bytes,
+            )
+            .await?;
+            return Ok(Some(receipt.output));
+        }
+        Err(NodeArtifactError::Integrity(
+            "Task output receipt changed its durable identity".into(),
+        ))
+    }
+
+    async fn commit_output(
+        &self,
+        spec_digest: &str,
+        output: &RuntimeOutputSpec,
+        receipt_path: &Path,
+        staging: &Path,
+        digest: String,
+        size_bytes: u64,
+    ) -> Result<RuntimeOutputArtifact, NodeArtifactError> {
         let blob = self
-            .commit_staged_blob(&staging, &digest, &output.media_type, size_bytes)
+            .commit_staged_blob(staging, &digest, &output.media_type, size_bytes)
             .await?;
         let artifact = RuntimeOutputArtifact {
             name: output.name.clone(),
@@ -302,7 +393,7 @@ impl NodeArtifactCache {
             spec_digest: spec_digest.into(),
             output: artifact.clone(),
         };
-        write_json_atomic(&receipt_path, &receipt).await?;
+        write_json_atomic(receipt_path, &receipt).await?;
         if !is_regular_file(&blob).await? {
             return Err(NodeArtifactError::Integrity(
                 "captured Task output blob disappeared".into(),
@@ -602,6 +693,14 @@ impl NodeArtifactCache {
             max_file_bytes: self.config.max_file_bytes,
             max_expanded_bytes: self.config.max_expanded_bytes,
         }
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn directory_archive_error(error: DirectoryArchiveError) -> NodeArtifactError {
+    match error {
+        DirectoryArchiveError::Invalid(message) => NodeArtifactError::Invalid(message),
+        DirectoryArchiveError::Storage(message) => NodeArtifactError::Storage(message),
     }
 }
 

@@ -6,11 +6,15 @@ use async_trait::async_trait;
 use std::path::Path;
 
 mod archive;
+mod box_port;
 mod cache_gc;
 mod cache_io;
+#[cfg(any(target_os = "linux", test))]
+mod directory_archive;
 mod manager;
 mod store;
 
+pub(crate) use box_port::CloudBoxArtifactPort;
 pub use manager::NodeArtifactManager;
 pub(crate) use store::NodeArtifactCache;
 pub use store::{LocalArtifactReader, NodeArtifactError};

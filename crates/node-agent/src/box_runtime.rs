@@ -1,7 +1,9 @@
+use crate::artifact::CloudBoxArtifactPort;
 use crate::secret::CloudBoxSecretMaterializer;
 use crate::{BoxRuntimeConfig, BoxRuntimeIsolation, NodeRuntimeProvider};
 use a3s_box_runtime::{
-    BoxRuntimeDriver, BoxRuntimeDriverConfig, BoxSecretMaterializer, ExecutionIsolation,
+    BoxArtifactPort, BoxRuntimeDriver, BoxRuntimeDriverConfig, BoxSecretMaterializer,
+    ExecutionIsolation,
 };
 use a3s_runtime::{
     FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeResult,
@@ -11,33 +13,34 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Builds the Node Agent's sole Runtime client from the canonical A3S Box
-/// configuration and the Agent-owned Runtime state root.
-pub fn build_box_runtime_client(
-    config: &BoxRuntimeConfig,
-    state_root: impl AsRef<Path>,
-) -> RuntimeResult<Arc<dyn RuntimeClient>> {
-    Ok(build_box_runtime_provider(config, state_root)?.into_client())
-}
-
 /// Builds the production Box Runtime composition together with the one Cloud
-/// Secret adapter that is bound after node enrollment.
+/// Secret adapter and one Artifact adapter that are bound after node enrollment.
 pub fn build_box_runtime_provider(
     config: &BoxRuntimeConfig,
     state_root: impl AsRef<Path>,
 ) -> RuntimeResult<NodeRuntimeProvider> {
     let materializer = Arc::new(CloudBoxSecretMaterializer::new());
-    let driver = Arc::new(build_box_runtime_driver(config, materializer.clone())?);
+    let artifact_port = Arc::new(CloudBoxArtifactPort::new());
+    let driver = Arc::new(build_box_runtime_driver(
+        config,
+        materializer.clone(),
+        artifact_port.clone(),
+    )?);
     let state: Arc<dyn RuntimeStateStore> =
         Arc::new(FileRuntimeStateStore::new(state_root.as_ref()));
     let driver: Arc<dyn RuntimeDriver> = driver;
     let client: Arc<dyn RuntimeClient> = Arc::new(ManagedRuntimeClient::new(state, driver));
-    Ok(NodeRuntimeProvider::new(client, materializer))
+    Ok(NodeRuntimeProvider::new(
+        client,
+        materializer,
+        artifact_port,
+    ))
 }
 
 fn build_box_runtime_driver(
     config: &BoxRuntimeConfig,
     materializer: Arc<CloudBoxSecretMaterializer>,
+    artifact_port: Arc<CloudBoxArtifactPort>,
 ) -> RuntimeResult<BoxRuntimeDriver> {
     let driver = BoxRuntimeDriver::new_with_isolation(
         BoxRuntimeDriverConfig {
@@ -52,7 +55,10 @@ fn build_box_runtime_driver(
         },
     )?;
     let materializer: Arc<dyn BoxSecretMaterializer> = materializer;
-    Ok(driver.with_secret_materializer(materializer))
+    let artifact_port: Arc<dyn BoxArtifactPort> = artifact_port;
+    Ok(driver
+        .with_secret_materializer(materializer)
+        .with_artifact_port(artifact_port))
 }
 
 #[cfg(test)]

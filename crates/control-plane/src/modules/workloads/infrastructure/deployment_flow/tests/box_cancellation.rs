@@ -1,9 +1,9 @@
 use super::*;
 #[cfg(target_os = "linux")]
-use a3s_cloud_node_agent::build_box_runtime_client;
+use a3s_cloud_node_agent::build_box_runtime_provider;
 use a3s_cloud_node_agent::{
     BoxRuntimeConfig, BoxRuntimeIsolation, CommandExecutor, FileCommandJournal,
-    NodeResourceInventoryAuthority, ResourceInventoryError,
+    NodeArtifactManager, NodeResourceInventoryAuthority, ResourceInventoryError,
 };
 use a3s_runtime::contract::{RuntimeInspection, RuntimeUnitState};
 #[cfg(not(target_os = "linux"))]
@@ -17,6 +17,8 @@ use std::sync::Arc;
 
 type BoxTestResult<T> = Result<T, Box<dyn Error>>;
 
+#[path = "box_cancellation/artifact.rs"]
+mod artifact;
 #[path = "box_cancellation/process.rs"]
 mod process;
 
@@ -28,6 +30,8 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     let home = dedicated_box_home()?;
     let runtime_state = tempfile::tempdir()?;
     let node_state = tempfile::tempdir()?;
+    let fixture_node_id = NodeId::new();
+    let artifacts = artifact::manager(node_state.path(), fixture_node_id.as_uuid())?;
     let runtime = build_test_box_runtime(
         &BoxRuntimeConfig {
             home_dir: home.clone(),
@@ -37,7 +41,9 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
             task_poll_interval_ms: 25,
         },
         runtime_state.path(),
-    )?;
+        artifacts.clone(),
+    )
+    .await?;
     let capabilities = runtime.capabilities().await?;
 
     let base = Utc::now() - Duration::seconds(1);
@@ -52,6 +58,7 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
         'b',
         500,
         128 * 1024 * 1024,
+        fixture_node_id,
         capabilities,
     )
     .await?;
@@ -92,6 +99,7 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     let journal = FileCommandJournal::new(node_state.path(), node_id.as_uuid())?;
     let inventory_authority = Arc::new(FixedInventory(inventory));
     let executor = CommandExecutor::runtime_only(journal.clone(), runtime.clone())
+        .with_artifacts(artifacts.clone())
         .with_resource_inventory(inventory_authority.clone());
 
     engine
@@ -273,6 +281,7 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
         FileCommandJournal::new(node_state.path(), node_id.as_uuid())?,
         runtime.clone(),
     )
+    .with_artifacts(artifacts)
     .with_resource_inventory(inventory_authority);
     execute_and_deliver(
         &recovered_executor,
@@ -326,17 +335,20 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
 }
 
 #[cfg(target_os = "linux")]
-fn build_test_box_runtime(
+async fn build_test_box_runtime(
     config: &BoxRuntimeConfig,
     state_root: &Path,
+    artifacts: Arc<NodeArtifactManager>,
 ) -> RuntimeResult<Arc<dyn RuntimeClient>> {
-    build_box_runtime_client(config, state_root)
+    let provider = build_box_runtime_provider(config, state_root)?;
+    provider.into_artifact_bound_client(artifacts).await
 }
 
 #[cfg(not(target_os = "linux"))]
-fn build_test_box_runtime(
+async fn build_test_box_runtime(
     _config: &BoxRuntimeConfig,
     _state_root: &Path,
+    _artifacts: Arc<NodeArtifactManager>,
 ) -> RuntimeResult<Arc<dyn RuntimeClient>> {
     Err(RuntimeError::ProviderUnavailable(
         "real Box deployment cancellation validation requires Linux".into(),

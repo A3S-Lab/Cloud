@@ -944,6 +944,14 @@ receipt reference. These cache objects carry no tenant authority by
 themselves—the persisted command is the transfer authorization source of
 truth.
 
+The Box storage adapter does not create another Artifact or Volume model. It
+delegates input lookup, output admission, receipts, and upload to this same node
+Artifact manager. Box owns the one persistent VolumeStore, execution
+attachments, tmpfs mounts, quiescent Task-output directories, and removal
+ordering. Successful Task output is archived deterministically from regular
+files and plain directories, then enters the same node-local blob and
+command-bound upload flow described above.
+
 ## 6. State models
 
 ### Build run state
