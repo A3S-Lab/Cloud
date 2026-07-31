@@ -1,0 +1,4 @@
+interface:
+  display_name: "A3S Workflow"
+  short_description: "Author and operate Runtime-backed AI workflows"
+  default_prompt: "Use $a3s-workflow to author, run, and inspect an A3S Runtime-backed coding workflow."

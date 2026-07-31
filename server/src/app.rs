@@ -19,8 +19,6 @@ use crate::modules::workflow::presentation::{MemoryModule, WorkflowModule};
 
 pub struct ApplicationServices {
     pub application: BootApplication,
-    pub workflow_service: Arc<WorkflowService>,
-    pub event_bus: Arc<EventBus>,
     pub engine: FlowEngine,
     pub queue: Arc<PostgresFlowTaskQueue>,
 }
@@ -132,8 +130,6 @@ pub async fn build_application(config: AppConfig) -> anyhow::Result<ApplicationS
 
     Ok(ApplicationServices {
         application,
-        workflow_service,
-        event_bus,
         engine,
         queue,
     })

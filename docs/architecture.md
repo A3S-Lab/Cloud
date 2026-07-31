@@ -5,9 +5,9 @@ plane decides what should run; an A3S Runtime provider decides where and how a
 node runs. There is no in-process node execution path.
 
 ```text
-React Studio (Bun + Rsbuild)
-              |
-              v
+React Studio       Coding-agent CLI + Skill
+           \         /
+            v       v
        A3S Boot API  <--------- runtime evidence
               |                         ^
               v                         |
@@ -39,7 +39,7 @@ truth or recovery state.
 
 ## Runtime boundary
 
-Every graph node, including input, router, approval, and output, becomes a
+Every graph node, including start, router, approval, and output, becomes a
 content-addressed A3S Runtime task. The control plane writes a typed invocation
 artifact and submits a `RuntimeSpec` containing:
 
@@ -67,7 +67,7 @@ The node runner implements a stable protocol for:
 
 | Kind | Runtime behavior |
 | --- | --- |
-| Input | Supplies the typed workflow input |
+| Start | Supplies the typed workflow input |
 | Template | Produces JSON with typed token substitution |
 | LLM | Calls an OpenAI-compatible gateway |
 | Agent | Runs a bounded model/tool loop |
@@ -82,11 +82,12 @@ references. They are not ambient capabilities of the Flow worker.
 
 ## Independent scaling
 
-The API, Flow workers, and Runtime providers scale independently. Stateless
-nodes can select a provider pool such as `cpu`, `gpu`, or `sandbox`; provider
-implementations may then create as many immutable Runtime units as capacity
-allows. Scale workers with `docker compose up --scale worker=3` without moving
-node execution into those workers.
+The API, Flow workers, and Runtime providers scale independently. Every node
+kind can select a provider and pool; stateless node units can be spread across
+replicas in pools such as `cpu`, `gpu`, or `sandbox`. Provider implementations
+may create as many immutable Runtime units as capacity allows. Scale workers
+with `docker compose up --scale worker=3` without moving node execution into
+those workers.
 
 Stateful behavior is externalized before scaling:
 

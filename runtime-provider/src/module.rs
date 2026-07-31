@@ -208,3 +208,87 @@ fn map_runtime_error(error: RuntimeError) -> BootError {
         RuntimeError::Protocol(message) => BootError::BadGateway(message),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use a3s_boot::HttpMethod;
+
+    use super::*;
+
+    #[test]
+    fn authorization_is_optional_but_exact_when_configured() {
+        let request = BootRequest::new(HttpMethod::Get, "/v1/capabilities");
+        authorize(&request, "").expect("empty token disables authorization");
+        assert!(matches!(
+            authorize(&request, "secret"),
+            Err(BootError::Unauthorized(_))
+        ));
+
+        let request = request.with_header("authorization", "Bearer secret");
+        authorize(&request, "secret").expect("matching bearer token");
+    }
+
+    #[test]
+    fn runtime_errors_map_to_stable_http_error_classes() {
+        assert!(matches!(
+            map_runtime_error(RuntimeError::InvalidRequest("bad".to_string())),
+            BootError::BadRequest(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::NotFound {
+                unit_id: "unit".to_string()
+            }),
+            BootError::NotFound(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::RequestConflict {
+                request_id: "request".to_string()
+            }),
+            BootError::Conflict(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::RequestNotFound {
+                unit_id: "unit".to_string(),
+                request_id: "request".to_string()
+            }),
+            BootError::Conflict(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::StaleGeneration {
+                unit_id: "unit".to_string(),
+                requested: 1,
+                current: 2
+            }),
+            BootError::Conflict(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::GenerationConflict {
+                unit_id: "unit".to_string(),
+                generation: 1
+            }),
+            BootError::Conflict(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::DeadlineExceeded("late".to_string())),
+            BootError::RequestTimeout(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::UnsupportedCapabilities(vec![
+                "feature".to_string()
+            ])),
+            BootError::UnprocessableEntity(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::ProviderUnavailable("down".to_string())),
+            BootError::ServiceUnavailable(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::Transport("down".to_string())),
+            BootError::ServiceUnavailable(_)
+        ));
+        assert!(matches!(
+            map_runtime_error(RuntimeError::Protocol("invalid".to_string())),
+            BootError::BadGateway(_)
+        ));
+    }
+}

@@ -237,27 +237,37 @@ mod tests {
         }
     }
 
+    fn edge(id: &str, source: &str, target: &str) -> WorkflowEdge {
+        WorkflowEdge {
+            id: id.to_string(),
+            source: source.to_string(),
+            target: target.to_string(),
+            source_handle: None,
+        }
+    }
+
+    fn valid_graph() -> (Vec<WorkflowNode>, Vec<WorkflowEdge>) {
+        (
+            vec![
+                node("start", NodeKind::Start),
+                node("render", NodeKind::Template),
+                node("output", NodeKind::Output),
+            ],
+            vec![edge("a", "start", "render"), edge("b", "render", "output")],
+        )
+    }
+
+    fn assert_invalid(nodes: &[WorkflowNode], edges: &[WorkflowEdge], message: &str) {
+        let error = topological_order(nodes, edges).expect_err("graph must fail");
+        assert!(
+            error.to_string().contains(message),
+            "expected {error} to contain {message:?}"
+        );
+    }
+
     #[test]
     fn orders_a_valid_graph() {
-        let nodes = vec![
-            node("start", NodeKind::Start),
-            node("render", NodeKind::Template),
-            node("output", NodeKind::Output),
-        ];
-        let edges = vec![
-            WorkflowEdge {
-                id: "a".into(),
-                source: "start".into(),
-                target: "render".into(),
-                source_handle: None,
-            },
-            WorkflowEdge {
-                id: "b".into(),
-                source: "render".into(),
-                target: "output".into(),
-                source_handle: None,
-            },
-        ];
+        let (nodes, edges) = valid_graph();
 
         assert_eq!(
             topological_order(&nodes, &edges).expect("valid graph"),
@@ -302,5 +312,172 @@ mod tests {
 
         let error = topological_order(&nodes, &edges).expect_err("cycle must fail");
         assert!(error.to_string().contains("acyclic"));
+    }
+
+    #[test]
+    fn rejects_empty_graph_and_wrong_boundary_counts() {
+        assert_invalid(&[], &[], "must contain nodes");
+
+        assert_invalid(
+            &[
+                node("render", NodeKind::Template),
+                node("output", NodeKind::Output),
+            ],
+            &[],
+            "exactly one start node, found 0",
+        );
+        assert_invalid(
+            &[
+                node("start-a", NodeKind::Start),
+                node("start-b", NodeKind::Start),
+                node("output", NodeKind::Output),
+            ],
+            &[],
+            "exactly one start node, found 2",
+        );
+        assert_invalid(
+            &[
+                node("start", NodeKind::Start),
+                node("render", NodeKind::Template),
+            ],
+            &[],
+            "exactly one output node, found 0",
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_duplicate_or_unlabelled_nodes() {
+        let (mut nodes, edges) = valid_graph();
+        nodes[1].id = "contains space".to_string();
+        assert_invalid(&nodes, &edges, "must use 1-96 ASCII");
+
+        let (mut nodes, edges) = valid_graph();
+        nodes[1].data.label = "  ".to_string();
+        assert_invalid(&nodes, &edges, "must have a label");
+
+        let (mut nodes, edges) = valid_graph();
+        nodes[1].id = "start".to_string();
+        assert_invalid(&nodes, &edges, "duplicate node id start");
+    }
+
+    #[test]
+    fn rejects_invalid_duplicate_self_or_dangling_edges() {
+        let (nodes, mut edges) = valid_graph();
+        edges[0].id = "bad edge".to_string();
+        assert_invalid(&nodes, &edges, "must use 1-96 ASCII");
+
+        let (nodes, mut edges) = valid_graph();
+        edges[1].id = "a".to_string();
+        assert_invalid(&nodes, &edges, "duplicate edge id a");
+
+        let (nodes, mut edges) = valid_graph();
+        edges[0].target = "start".to_string();
+        assert_invalid(&nodes, &edges, "cannot connect a node to itself");
+
+        let (nodes, mut edges) = valid_graph();
+        edges[0].source = "missing".to_string();
+        assert_invalid(&nodes, &edges, "references missing source missing");
+
+        let (nodes, mut edges) = valid_graph();
+        edges[1].target = "missing".to_string();
+        assert_invalid(&nodes, &edges, "references missing target missing");
+    }
+
+    #[test]
+    fn router_edges_require_unique_named_handles() {
+        let nodes = vec![
+            node("start", NodeKind::Start),
+            node("router", NodeKind::Router),
+            node("output", NodeKind::Output),
+        ];
+        let mut edges = vec![edge("a", "start", "router"), edge("b", "router", "output")];
+        assert_invalid(&nodes, &edges, "requires sourceHandle");
+
+        edges[1].source_handle = Some("selected".to_string());
+        topological_order(&nodes, &edges).expect("named router edge");
+
+        edges.push(WorkflowEdge {
+            id: "c".to_string(),
+            source: "router".to_string(),
+            target: "output".to_string(),
+            source_handle: Some("selected".to_string()),
+        });
+        assert_invalid(&nodes, &edges, "duplicate sourceHandle values");
+    }
+
+    #[test]
+    fn enforces_start_and_output_edge_boundaries() {
+        let nodes = vec![
+            node("start", NodeKind::Start),
+            node("output", NodeKind::Output),
+        ];
+        assert_invalid(
+            &nodes,
+            &[edge("a", "start", "output"), edge("b", "output", "start")],
+            "start node cannot have incoming edges",
+        );
+
+        let nodes = vec![
+            node("start", NodeKind::Start),
+            node("render", NodeKind::Template),
+            node("output", NodeKind::Output),
+        ];
+        assert_invalid(
+            &nodes,
+            &[
+                edge("a", "start", "output"),
+                edge("b", "output", "render"),
+                edge("c", "render", "output"),
+            ],
+            "output node cannot have outgoing edges",
+        );
+    }
+
+    #[test]
+    fn rejects_nodes_without_an_upstream_or_output_path() {
+        let nodes = vec![
+            node("start", NodeKind::Start),
+            node("orphan", NodeKind::Template),
+            node("output", NodeKind::Output),
+        ];
+        assert_invalid(
+            &nodes,
+            &[edge("a", "start", "output"), edge("b", "orphan", "output")],
+            "orphan is not connected to an upstream node",
+        );
+        assert_invalid(
+            &nodes,
+            &[edge("a", "start", "orphan"), edge("b", "start", "output")],
+            "orphan does not lead to the output node",
+        );
+    }
+
+    #[test]
+    fn rejects_disconnected_components_and_branches_that_never_reach_output() {
+        let nodes = vec![
+            node("start", NodeKind::Start),
+            node("first", NodeKind::Template),
+            node("second", NodeKind::Template),
+            node("output", NodeKind::Output),
+        ];
+        assert_invalid(
+            &nodes,
+            &[
+                edge("a", "start", "output"),
+                edge("b", "first", "second"),
+                edge("c", "second", "first"),
+            ],
+            "every node must be reachable from the start node",
+        );
+        assert_invalid(
+            &nodes,
+            &[
+                edge("a", "start", "output"),
+                edge("b", "start", "first"),
+                edge("c", "first", "second"),
+                edge("d", "second", "first"),
+            ],
+            "every node must lead to the output node",
+        );
     }
 }

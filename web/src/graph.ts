@@ -45,14 +45,9 @@ export function mergeCanvas(
   nodes: StudioNode[],
   edges: Edge[],
 ): Workflow {
-  const sourceById = new Map(workflow.nodes.map((node) => [node.id, node]));
   return {
     ...workflow,
     nodes: nodes.map((node) => {
-      const source = sourceById.get(node.id);
-      if (!source) {
-        throw new Error(`Canvas contains unknown node ${node.id}`);
-      }
       return {
         id: node.id,
         type: node.data.kind,

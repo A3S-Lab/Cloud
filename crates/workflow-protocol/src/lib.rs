@@ -268,18 +268,19 @@ fn empty_object() -> Value {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
-    #[test]
-    fn protocol_rejects_resume_without_payload() {
-        let invocation = NodeInvocation {
+    fn invocation() -> NodeInvocation {
+        NodeInvocation {
             schema: NODE_INVOCATION_SCHEMA.to_string(),
             run_id: "run-1".to_string(),
-            step_id: "node:start:resume".to_string(),
+            step_id: "node:start:execute".to_string(),
             attempt: 1,
             workflow_id: "workflow-1".to_string(),
             workflow_version: 1,
-            phase: NodeExecutionPhase::Resume,
+            phase: NodeExecutionPhase::Execute,
             node: WorkflowNode {
                 id: "start".to_string(),
                 kind: NodeKind::Start,
@@ -300,8 +301,155 @@ mod tests {
                 http_allowed_hosts: Vec::new(),
                 max_http_response_bytes: 1024,
             },
-        };
+        }
+    }
 
-        assert!(invocation.validate().is_err());
+    fn assert_invalid(invocation: &NodeInvocation, message: &str) {
+        let error = invocation.validate().expect_err("invocation must fail");
+        assert!(
+            error.contains(message),
+            "expected {error:?} to contain {message:?}"
+        );
+    }
+
+    #[test]
+    fn node_kind_names_and_network_requirements_are_stable() {
+        let cases = [
+            (NodeKind::Start, "start", false),
+            (NodeKind::Template, "template", false),
+            (NodeKind::Llm, "llm", true),
+            (NodeKind::Agent, "agent", true),
+            (NodeKind::Tool, "tool", true),
+            (NodeKind::Router, "router", false),
+            (NodeKind::Memory, "memory", true),
+            (NodeKind::Http, "http", true),
+            (NodeKind::Approval, "approval", false),
+            (NodeKind::Output, "output", false),
+        ];
+
+        for (kind, name, outbound) in cases {
+            assert_eq!(kind.as_str(), name);
+            assert_eq!(kind.requires_outbound_network(), outbound);
+            assert_eq!(
+                serde_json::to_value(kind).expect("serialize kind"),
+                json!(name)
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_policy_matches_the_documented_wire_contract() {
+        let source = json!({
+            "provider": "production",
+            "pool": "gpu-a100",
+            "cpuMillis": 2000,
+            "memoryBytes": 4294967296_u64,
+            "pids": 256,
+            "timeoutMs": 120000,
+            "isolation": "container",
+            "network": "outbound",
+            "secrets": [{
+                "name": "openai-api-key",
+                "reference": "env://OPENAI_API_KEY",
+                "target": {
+                    "kind": "environment",
+                    "variable": "OPENAI_API_KEY"
+                }
+            }]
+        });
+        let policy: NodeRuntimePolicy =
+            serde_json::from_value(source.clone()).expect("deserialize runtime policy");
+
+        assert_eq!(policy.provider.as_deref(), Some("production"));
+        assert_eq!(policy.pool.as_deref(), Some("gpu-a100"));
+        assert_eq!(policy.isolation, Some(NodeIsolation::Container));
+        assert_eq!(policy.network, Some(NodeNetworkMode::Outbound));
+        assert_eq!(
+            serde_json::to_value(policy).expect("serialize runtime policy"),
+            source
+        );
+    }
+
+    #[test]
+    fn node_data_defaults_to_object_config_and_empty_runtime_policy() {
+        let data: NodeData = serde_json::from_value(json!({ "label": "Start" }))
+            .expect("deserialize node data defaults");
+
+        assert_eq!(data.config, json!({}));
+        assert_eq!(data.runtime, NodeRuntimePolicy::default());
+    }
+
+    #[test]
+    fn invocation_accepts_execute_and_resume_with_payload() {
+        let execute = invocation();
+        execute.validate().expect("execute invocation");
+
+        let mut resume = invocation();
+        resume.phase = NodeExecutionPhase::Resume;
+        resume.resume_payload = Some(json!({ "approved": true }));
+        resume.validate().expect("resume invocation");
+    }
+
+    #[test]
+    fn invocation_rejects_unknown_schema_and_unbounded_identity() {
+        let mut value = invocation();
+        value.schema = "unknown".to_string();
+        assert_invalid(&value, "unsupported node invocation schema");
+
+        for field in ["run_id", "step_id", "workflow_id", "node_id"] {
+            let mut value = invocation();
+            match field {
+                "run_id" => value.run_id = "   ".to_string(),
+                "step_id" => value.step_id = "x".repeat(513),
+                "workflow_id" => value.workflow_id.clear(),
+                "node_id" => value.node.id.clear(),
+                _ => unreachable!(),
+            }
+            assert_invalid(&value, field);
+        }
+    }
+
+    #[test]
+    fn invocation_rejects_zero_version_attempt_and_missing_resume_payload() {
+        let mut value = invocation();
+        value.workflow_version = 0;
+        assert_invalid(&value, "workflow_version must be positive");
+
+        let mut value = invocation();
+        value.attempt = 0;
+        assert_invalid(&value, "attempt must be positive");
+
+        let mut value = invocation();
+        value.phase = NodeExecutionPhase::Resume;
+        assert_invalid(&value, "resume phase requires resume_payload");
+    }
+
+    #[test]
+    fn completed_result_is_valid_and_uses_protocol_defaults() {
+        let result = NodeExecutionResult::completed(json!({ "ok": true }));
+
+        result.validate().expect("completed result");
+        assert_eq!(result.schema, NODE_RESULT_SCHEMA);
+        assert_eq!(result.output, json!({ "ok": true }));
+        assert!(result.route.is_none());
+        assert!(result.suspension.is_none());
+        assert!(result.metadata.is_empty());
+    }
+
+    #[test]
+    fn result_rejects_unknown_schema_and_blank_route() {
+        let mut result = NodeExecutionResult::completed(Value::Null);
+        result.schema = "unknown".to_string();
+        assert!(result
+            .validate()
+            .expect_err("schema must fail")
+            .contains("unsupported node result schema"));
+
+        let mut result = NodeExecutionResult::completed(Value::Null);
+        result.route = Some("  ".to_string());
+        assert!(result
+            .validate()
+            .expect_err("blank route must fail")
+            .contains("route must be non-empty"));
     }
 }

@@ -178,3 +178,118 @@ impl WorkflowRepository for PostgresWorkflowRepository {
         Ok(result.rows_affected > 0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::modules::workflow::domain::{
+        NodeData, NodeKind, NodeRuntimePolicy, Position, WorkflowEdge, WorkflowNode,
+    };
+
+    fn test_database_url() -> Option<String> {
+        std::env::var("A3S_WORKFLOW_TEST_DATABASE_URL").ok()
+    }
+
+    fn definition(id: String) -> WorkflowDefinition {
+        let now = Utc::now();
+        WorkflowDefinition {
+            id,
+            name: "PostgreSQL repository test".to_string(),
+            description: "durable workflow".to_string(),
+            version: 1,
+            nodes: vec![
+                WorkflowNode {
+                    id: "start".to_string(),
+                    kind: NodeKind::Start,
+                    position: Position { x: 0.0, y: 0.0 },
+                    data: NodeData {
+                        label: "Start".to_string(),
+                        config: json!({}),
+                        runtime: NodeRuntimePolicy::default(),
+                    },
+                },
+                WorkflowNode {
+                    id: "output".to_string(),
+                    kind: NodeKind::Output,
+                    position: Position { x: 240.0, y: 0.0 },
+                    data: NodeData {
+                        label: "Output".to_string(),
+                        config: json!({}),
+                        runtime: NodeRuntimePolicy::default(),
+                    },
+                },
+            ],
+            edges: vec![WorkflowEdge {
+                id: "start-output".to_string(),
+                source: "start".to_string(),
+                target: "output".to_string(),
+                source_handle: None,
+            }],
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn persists_versions_and_enforces_optimistic_updates() {
+        let Some(database_url) = test_database_url() else {
+            return;
+        };
+        let repository = PostgresWorkflowRepository::connect(&database_url, 2)
+            .await
+            .expect("connect repository");
+        repository.health_check().await.expect("database health");
+
+        let id = format!("repository-test-{}", Uuid::new_v4());
+        repository.delete(&id).await.expect("initial cleanup");
+        assert_eq!(repository.find(&id).await.expect("missing lookup"), None);
+
+        let original = definition(id.clone());
+        repository.create(&original).await.expect("create workflow");
+        assert_eq!(
+            repository.find(&id).await.expect("stored lookup"),
+            Some(original.clone())
+        );
+        assert!(repository
+            .list()
+            .await
+            .expect("list workflows")
+            .iter()
+            .any(|workflow| workflow.id == id));
+        assert!(matches!(
+            repository.create(&original).await,
+            Err(WorkflowError::Persistence(_))
+        ));
+
+        let mut updated = original.clone();
+        updated.name = "Updated workflow".to_string();
+        updated.version = 2;
+        updated.updated_at = Utc::now();
+        repository
+            .update(&updated, 1)
+            .await
+            .expect("matching version update");
+        assert_eq!(
+            repository
+                .find(&id)
+                .await
+                .expect("updated lookup")
+                .expect("updated workflow")
+                .version,
+            2
+        );
+
+        let mut stale = updated;
+        stale.version = 3;
+        assert!(matches!(
+            repository.update(&stale, 1).await,
+            Err(WorkflowError::Conflict(_))
+        ));
+        assert!(repository.delete(&id).await.expect("delete workflow"));
+        assert!(!repository.delete(&id).await.expect("repeat delete"));
+    }
+}

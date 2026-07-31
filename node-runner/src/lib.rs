@@ -630,11 +630,105 @@ fn scalar_text(value: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use a3s_workflow_protocol::{
         NodeData, NodeRuntimePolicy, NodeServiceContext, Position, WorkflowNode,
         NODE_INVOCATION_SCHEMA,
     };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::task::JoinHandle;
+
+    use super::*;
+
+    struct MockResponse {
+        status: u16,
+        content_type: &'static str,
+        body: String,
+    }
+
+    impl MockResponse {
+        fn json(status: u16, body: Value) -> Self {
+            Self {
+                status,
+                content_type: "application/json",
+                body: body.to_string(),
+            }
+        }
+
+        fn text(status: u16, body: &str) -> Self {
+            Self {
+                status,
+                content_type: "text/plain; charset=utf-8",
+                body: body.to_string(),
+            }
+        }
+    }
+
+    async fn spawn_server(responses: Vec<MockResponse>) -> (String, JoinHandle<Vec<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock server");
+        let address = listener.local_addr().expect("mock server address");
+        let task = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for response in responses {
+                let (mut socket, _) = listener.accept().await.expect("accept mock request");
+                let mut request = Vec::new();
+                let mut buffer = [0_u8; 2048];
+                loop {
+                    let read = socket.read(&mut buffer).await.expect("read mock request");
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..read]);
+                    if request_length(&request).is_some_and(|length| request.len() >= length) {
+                        break;
+                    }
+                }
+                requests.push(String::from_utf8_lossy(&request).into_owned());
+                let reason = match response.status {
+                    200 => "OK",
+                    201 => "Created",
+                    400 => "Bad Request",
+                    500 => "Internal Server Error",
+                    _ => "Response",
+                };
+                let head = format!(
+                    "HTTP/1.1 {} {}\r\ncontent-type: {}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    response.status,
+                    reason,
+                    response.content_type,
+                    response.body.len()
+                );
+                socket
+                    .write_all(head.as_bytes())
+                    .await
+                    .expect("write mock response head");
+                socket
+                    .write_all(response.body.as_bytes())
+                    .await
+                    .expect("write mock response body");
+                socket.shutdown().await.expect("close mock response");
+            }
+            requests
+        });
+        (format!("http://{address}"), task)
+    }
+
+    fn request_length(request: &[u8]) -> Option<usize> {
+        let source = String::from_utf8_lossy(request);
+        let header_end = source.find("\r\n\r\n")? + 4;
+        let content_length = source[..header_end]
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or_default();
+        Some(header_end + content_length)
+    }
 
     fn invocation(kind: NodeKind, config: Value) -> NodeInvocation {
         NodeInvocation {
@@ -713,5 +807,474 @@ mod tests {
         let result = executor.execute(&resumed).await.expect("approval resume");
         assert_eq!(result.output, json!({ "approved": true }));
         assert!(result.suspension.is_none());
+    }
+
+    #[tokio::test]
+    async fn start_and_output_nodes_preserve_typed_values() {
+        let executor = NodeExecutor::default();
+        let start = executor
+            .execute(&invocation(NodeKind::Start, json!({})))
+            .await
+            .expect("start node");
+        assert_eq!(start.output, json!({ "name": "Ada" }));
+        assert_eq!(start.metadata.get("nodeKind"), Some(&json!("start")));
+
+        let mut output = invocation(NodeKind::Output, json!({}));
+        output.dependencies.clear();
+        assert_eq!(
+            executor
+                .execute(&output)
+                .await
+                .expect("input output")
+                .output,
+            output.workflow_input
+        );
+
+        output.dependencies = BTreeMap::from([("only".to_string(), json!([1, 2, 3]))]);
+        assert_eq!(
+            executor
+                .execute(&output)
+                .await
+                .expect("single dependency output")
+                .output,
+            json!([1, 2, 3])
+        );
+
+        output
+            .dependencies
+            .insert("second".to_string(), json!(true));
+        assert_eq!(
+            executor
+                .execute(&output)
+                .await
+                .expect("multiple dependency output")
+                .output,
+            json!({ "only": [1, 2, 3], "second": true })
+        );
+
+        output.node.data.config = json!({ "value": { "explicit": 42 } });
+        assert_eq!(
+            executor
+                .execute(&output)
+                .await
+                .expect("explicit output")
+                .output,
+            json!({ "explicit": 42 })
+        );
+    }
+
+    #[tokio::test]
+    async fn template_interpolates_scalars_and_rejects_invalid_tokens() {
+        let executor = NodeExecutor::default();
+        let rendered = executor
+            .execute(&invocation(
+                NodeKind::Template,
+                json!({ "template": "Hello {{ input.name }} #{{steps.draft.id}}" }),
+            ))
+            .await
+            .expect("rendered template");
+        assert_eq!(rendered.output, json!({ "text": "Hello Ada #7" }));
+
+        for (template, message) in [
+            ("{{input.missing}}", "was not found"),
+            ("{{steps.unknown.id}}", "dependency unknown is unavailable"),
+            ("{{unknown.value}}", "unsupported template token"),
+            ("prefix {{input.name", "unclosed token"),
+        ] {
+            let error = executor
+                .execute(&invocation(
+                    NodeKind::Template,
+                    json!({ "template": template }),
+                ))
+                .await
+                .expect_err("invalid template must fail");
+            assert!(
+                error.to_string().contains(message),
+                "expected {error} to contain {message:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn router_uses_default_route_and_requires_route_configuration() {
+        let executor = NodeExecutor::default();
+        let defaulted = executor
+            .execute(&invocation(
+                NodeKind::Router,
+                json!({
+                    "routes": [{ "when": { "value": false }, "route": "yes" }],
+                    "default": "no"
+                }),
+            ))
+            .await
+            .expect("default route");
+        assert_eq!(defaulted.route.as_deref(), Some("no"));
+        assert_eq!(defaulted.output, json!({ "id": 7 }));
+
+        let error = executor
+            .execute(&invocation(NodeKind::Router, json!({ "default": "no" })))
+            .await
+            .expect_err("missing routes must fail");
+        assert!(error.to_string().contains("requires config.routes"));
+    }
+
+    #[tokio::test]
+    async fn approval_uses_label_details_and_rejects_blank_message() {
+        let executor = NodeExecutor::default();
+        let mut request = invocation(NodeKind::Approval, json!({ "details": { "risk": "high" } }));
+        request.node.data.label = "Review deployment".to_string();
+        let result = executor.execute(&request).await.expect("approval");
+        assert_eq!(
+            result.suspension,
+            Some(NodeSuspension::HumanApproval {
+                message: "Review deployment".to_string(),
+                details: json!({ "risk": "high" })
+            })
+        );
+
+        request.node.data.label = "  ".to_string();
+        let error = executor
+            .execute(&request)
+            .await
+            .expect_err("blank approval message");
+        assert!(error.to_string().contains("must not be empty"));
+    }
+
+    #[test]
+    fn model_tool_and_host_helpers_enforce_safe_defaults() {
+        let request = invocation(NodeKind::Llm, json!({}));
+        assert_eq!(
+            model_for(&json!({ "model": "explicit" }), &request).expect("explicit model"),
+            "explicit"
+        );
+        assert_eq!(
+            model_for(&json!({}), &request).expect("default model"),
+            "test-model"
+        );
+        let mut no_model = request;
+        no_model.services.default_model.clear();
+        assert!(model_for(&json!({}), &no_model).is_err());
+
+        assert_eq!(
+            public_tool_definition(&json!({
+                "function": {
+                    "name": "lookup",
+                    "description": "Looks up a value",
+                    "parameters": { "type": "object" }
+                },
+                "endpoint": "https://tools.test/lookup"
+            }))
+            .expect("public tool"),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "lookup",
+                    "description": "Looks up a value",
+                    "parameters": { "type": "object" }
+                }
+            })
+        );
+        assert!(public_tool_definition(&json!({})).is_err());
+
+        let allowed = BTreeSet::from([
+            "api.example.test".to_string(),
+            "*.tools.example.test".to_string(),
+        ]);
+        assert!(host_is_allowed("API.EXAMPLE.TEST", &allowed));
+        assert!(host_is_allowed("worker.tools.example.test", &allowed));
+        assert!(!host_is_allowed("tools.example.test", &allowed));
+        assert!(!host_is_allowed("evil-example.test", &allowed));
+    }
+
+    #[tokio::test]
+    async fn http_and_tool_nodes_handle_json_text_and_request_metadata() {
+        let (base_url, server) = spawn_server(vec![
+            MockResponse::json(200, json!({ "saved": true })),
+            MockResponse::text(200, "plain response"),
+        ])
+        .await;
+        let executor = NodeExecutor::default();
+        let mut http = invocation(
+            NodeKind::Http,
+            json!({
+                "url": format!("{base_url}/items"),
+                "method": "POST",
+                "headers": { "x-test": "yes" },
+                "body": { "id": 7 }
+            }),
+        );
+        http.services.http_allowed_hosts = vec!["127.0.0.1".to_string()];
+        assert_eq!(
+            executor.execute(&http).await.expect("HTTP node").output,
+            json!({ "status": 200, "body": { "saved": true } })
+        );
+
+        let mut tool = invocation(
+            NodeKind::Tool,
+            json!({ "endpoint": format!("{base_url}/plain") }),
+        );
+        tool.services.http_allowed_hosts = vec!["127.0.0.1".to_string()];
+        assert_eq!(
+            executor.execute(&tool).await.expect("tool node").output,
+            json!({ "status": 200, "body": "plain response" })
+        );
+
+        let requests = server.await.expect("mock server");
+        assert!(requests[0].starts_with("POST /items HTTP/1.1"));
+        assert!(requests[0].to_ascii_lowercase().contains("x-test: yes"));
+        assert!(requests[0].contains("{\"id\":7}"));
+        assert!(requests[1].starts_with("GET /plain HTTP/1.1"));
+    }
+
+    #[tokio::test]
+    async fn http_nodes_reject_unsafe_targets_methods_statuses_and_large_responses() {
+        let executor = NodeExecutor::default();
+        let blocked = invocation(
+            NodeKind::Http,
+            json!({ "url": "https://blocked.example.test" }),
+        );
+        assert!(executor
+            .execute(&blocked)
+            .await
+            .expect_err("blocked host")
+            .to_string()
+            .contains("not allow-listed"));
+
+        let mut invalid_scheme = invocation(NodeKind::Http, json!({ "url": "file:///etc/passwd" }));
+        invalid_scheme.services.http_allowed_hosts = vec!["localhost".to_string()];
+        assert!(executor
+            .execute(&invalid_scheme)
+            .await
+            .expect_err("invalid scheme")
+            .to_string()
+            .contains("only support http:// and https://"));
+
+        let (base_url, server) = spawn_server(vec![
+            MockResponse::json(500, json!({ "error": "failed" })),
+            MockResponse::text(200, "too large"),
+        ])
+        .await;
+        let mut failed = invocation(
+            NodeKind::Http,
+            json!({ "url": format!("{base_url}/failed"), "method": "GET" }),
+        );
+        failed.services.http_allowed_hosts = vec!["127.0.0.1".to_string()];
+        assert!(executor
+            .execute(&failed)
+            .await
+            .expect_err("failed status")
+            .to_string()
+            .contains("500 Internal Server Error"));
+
+        failed.node.data.config = json!({ "url": format!("{base_url}/large"), "method": "GET" });
+        failed.services.max_http_response_bytes = 4;
+        assert!(executor
+            .execute(&failed)
+            .await
+            .expect_err("large response")
+            .to_string()
+            .contains("exceeds configured limit"));
+        server.await.expect("mock server");
+
+        let mut invalid_method = invocation(
+            NodeKind::Http,
+            json!({ "url": "http://127.0.0.1", "method": "NOT A METHOD" }),
+        );
+        invalid_method.services.http_allowed_hosts = vec!["127.0.0.1".to_string()];
+        assert!(executor
+            .execute(&invalid_method)
+            .await
+            .expect_err("invalid method")
+            .to_string()
+            .contains("invalid HTTP method"));
+    }
+
+    #[tokio::test]
+    async fn llm_node_calls_gateway_and_preserves_model_usage() {
+        let (base_url, server) = spawn_server(vec![MockResponse::json(
+            200,
+            json!({
+                "choices": [{ "message": { "content": { "answer": 42 } } }],
+                "usage": { "total_tokens": 9 }
+            }),
+        )])
+        .await;
+        let mut request = invocation(
+            NodeKind::Llm,
+            json!({
+                "prompt": "Answer {{input.name}}",
+                "system": "Be concise",
+                "temperature": 0.2
+            }),
+        );
+        request.services.gateway_base_url = format!("{base_url}/v1");
+
+        let output = NodeExecutor::default()
+            .execute(&request)
+            .await
+            .expect("LLM node")
+            .output;
+        assert_eq!(output["content"], json!({ "answer": 42 }));
+        assert_eq!(output["model"], "test-model");
+        assert_eq!(output["usage"], json!({ "total_tokens": 9 }));
+
+        let requests = server.await.expect("gateway server");
+        assert!(requests[0].starts_with("POST /v1/chat/completions HTTP/1.1"));
+        assert!(requests[0].contains("\"temperature\":0.2"));
+        assert!(requests[0].contains("Answer Ada"));
+    }
+
+    #[tokio::test]
+    async fn llm_and_agent_reject_invalid_gateway_or_iteration_contracts() {
+        let (base_url, server) =
+            spawn_server(vec![MockResponse::json(200, json!({ "choices": [] }))]).await;
+        let mut llm = invocation(NodeKind::Llm, json!({ "prompt": "hello" }));
+        llm.services.gateway_base_url = base_url;
+        assert!(NodeExecutor::default()
+            .execute(&llm)
+            .await
+            .expect_err("missing gateway content")
+            .to_string()
+            .contains("missing choices[0].message.content"));
+        server.await.expect("gateway server");
+
+        let agent = invocation(
+            NodeKind::Agent,
+            json!({ "prompt": "hello", "maxIterations": 17 }),
+        );
+        assert!(NodeExecutor::default()
+            .execute(&agent)
+            .await
+            .expect_err("invalid max iterations")
+            .to_string()
+            .contains("between 1 and 16"));
+    }
+
+    #[tokio::test]
+    async fn agent_completes_a_tool_loop_with_bounded_iterations() {
+        let (tool_url, tool_server) =
+            spawn_server(vec![MockResponse::json(200, json!({ "temperature": 21 }))]).await;
+        let (gateway_url, gateway_server) = spawn_server(vec![
+            MockResponse::json(
+                200,
+                json!({
+                    "choices": [{
+                        "message": {
+                            "role": "assistant",
+                            "content": null,
+                            "tool_calls": [{
+                                "id": "call-1",
+                                "function": {
+                                    "name": "weather",
+                                    "arguments": "{\"city\":\"Shanghai\"}"
+                                }
+                            }]
+                        }
+                    }]
+                }),
+            ),
+            MockResponse::json(
+                200,
+                json!({
+                    "choices": [{
+                        "message": { "role": "assistant", "content": "21 C" }
+                    }],
+                    "usage": { "total_tokens": 12 }
+                }),
+            ),
+        ])
+        .await;
+        let mut agent = invocation(
+            NodeKind::Agent,
+            json!({
+                "prompt": "Weather?",
+                "maxIterations": 2,
+                "tools": [{
+                    "function": {
+                        "name": "weather",
+                        "description": "Get weather",
+                        "parameters": {
+                            "type": "object",
+                            "properties": { "city": { "type": "string" } }
+                        }
+                    },
+                    "endpoint": format!("{tool_url}/weather"),
+                    "method": "POST"
+                }]
+            }),
+        );
+        agent.services.gateway_base_url = gateway_url;
+        agent.services.http_allowed_hosts = vec!["127.0.0.1".to_string()];
+
+        let output = NodeExecutor::default()
+            .execute(&agent)
+            .await
+            .expect("agent tool loop")
+            .output;
+        assert_eq!(output["content"], "21 C");
+        assert_eq!(output["iterations"], 2);
+        assert_eq!(output["toolResults"][0]["name"], "weather");
+        assert_eq!(output["toolResults"][0]["output"]["status"], 200);
+
+        let tool_requests = tool_server.await.expect("tool server");
+        assert!(tool_requests[0].starts_with("POST /weather HTTP/1.1"));
+        assert!(tool_requests[0].contains("Shanghai"));
+        let gateway_requests = gateway_server.await.expect("gateway server");
+        assert_eq!(gateway_requests.len(), 2);
+        assert!(gateway_requests[1].contains("tool_call_id"));
+    }
+
+    #[tokio::test]
+    async fn memory_node_supports_store_retrieve_and_rejects_invalid_operations() {
+        let (base_url, server) = spawn_server(vec![
+            MockResponse::json(201, json!({ "id": "memory-1" })),
+            MockResponse::json(200, json!({ "id": "memory-1", "text": "hello" })),
+        ])
+        .await;
+        let executor = NodeExecutor::default();
+        let mut store = invocation(
+            NodeKind::Memory,
+            json!({ "operation": "store", "text": "hello" }),
+        );
+        store.services.memory_base_url = Some(format!("{base_url}/api/v1"));
+        assert_eq!(
+            executor.execute(&store).await.expect("store memory").output,
+            json!({ "id": "memory-1" })
+        );
+
+        let mut retrieve = invocation(
+            NodeKind::Memory,
+            json!({ "operation": "retrieve", "id": "memory-1" }),
+        );
+        retrieve.services.memory_base_url = store.services.memory_base_url.clone();
+        assert_eq!(
+            executor
+                .execute(&retrieve)
+                .await
+                .expect("retrieve memory")
+                .output,
+            json!({ "id": "memory-1", "text": "hello" })
+        );
+        let requests = server.await.expect("memory server");
+        assert!(requests[0].starts_with("POST /api/v1/memories:store HTTP/1.1"));
+        assert!(requests[1].starts_with("GET /api/v1/memories/memory-1 HTTP/1.1"));
+
+        let missing_service = invocation(NodeKind::Memory, json!({ "operation": "search" }));
+        assert!(executor
+            .execute(&missing_service)
+            .await
+            .expect_err("missing memory URL")
+            .to_string()
+            .contains("requires services.memoryBaseUrl"));
+
+        let mut invalid = missing_service;
+        invalid.services.memory_base_url = Some("http://memory.test".to_string());
+        invalid.node.data.config = json!({ "operation": "truncate" });
+        assert!(executor
+            .execute(&invalid)
+            .await
+            .expect_err("invalid memory operation")
+            .to_string()
+            .contains("unsupported memory operation"));
     }
 }

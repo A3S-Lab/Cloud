@@ -113,6 +113,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "a3s-workflow-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "a3s-workflow-node-runner"
 version = "0.1.0"
 dependencies = [

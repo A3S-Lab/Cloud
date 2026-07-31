@@ -1,4 +1,4 @@
-.PHONY: fmt lint test web-install web-check web-test web-build verify e2e
+.PHONY: fmt lint test coverage web-install web-check web-test web-build verify e2e
 
 fmt:
 	cargo fmt --all
@@ -9,6 +9,9 @@ lint:
 
 test:
 	cargo test --workspace --all-targets
+
+coverage:
+	cargo llvm-cov --workspace --all-targets --locked --fail-under-lines 55
 
 web-install:
 	cd web && bun install --frozen-lockfile

@@ -2,6 +2,7 @@ FROM rust:1.88-bookworm AS builder
 
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
+COPY cli ./cli
 COPY crates ./crates
 COPY node-runner ./node-runner
 COPY runtime-provider ./runtime-provider

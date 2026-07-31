@@ -256,3 +256,115 @@ fn escape_like(value: &str) -> String {
 fn limit_value(limit: usize) -> i64 {
     i64::try_from(limit.clamp(1, 500)).unwrap_or(500)
 }
+
+#[cfg(test)]
+mod tests {
+    use a3s_memory::{MemoryItem, MemoryStore, MemoryType};
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn test_database_url() -> Option<String> {
+        std::env::var("A3S_WORKFLOW_TEST_DATABASE_URL").ok()
+    }
+
+    #[test]
+    fn escapes_like_patterns_and_bounds_query_limits() {
+        assert_eq!(escape_like(r"100%_safe\path"), r"100\%\_safe\\path");
+        assert_eq!(limit_value(0), 1);
+        assert_eq!(limit_value(42), 42);
+        assert_eq!(limit_value(usize::MAX), 500);
+    }
+
+    #[tokio::test]
+    async fn stores_searches_updates_and_deletes_durable_memory() {
+        let Some(database_url) = test_database_url() else {
+            return;
+        };
+        let store = PostgresMemoryStore::connect(&database_url, 2)
+            .await
+            .expect("connect memory store");
+        let initial_count = store.count().await.expect("initial count");
+        let marker = Uuid::new_v4().to_string();
+
+        let mut primary = MemoryItem::new(format!("release 100%_safe {marker}"))
+            .with_importance(0.95)
+            .with_tags(vec![marker.clone(), "release".to_string()])
+            .with_type(MemoryType::Semantic)
+            .with_metadata("source", "postgres-test");
+        let primary_id = primary.id.clone();
+        let secondary = MemoryItem::new(format!("secondary {marker}"))
+            .with_importance(0.2)
+            .with_tag(marker.clone())
+            .with_type(MemoryType::Episodic);
+        let secondary_id = secondary.id.clone();
+
+        store.store(primary.clone()).await.expect("store primary");
+        store
+            .store(secondary.clone())
+            .await
+            .expect("store secondary");
+        assert_eq!(
+            store.count().await.expect("count after insert"),
+            initial_count + 2
+        );
+        assert!(store
+            .retrieve("missing-memory-id")
+            .await
+            .expect("missing retrieve")
+            .is_none());
+
+        let retrieved = store
+            .retrieve(&primary_id)
+            .await
+            .expect("retrieve primary")
+            .expect("stored primary");
+        assert_eq!(retrieved.access_count, 1);
+        assert!(retrieved.last_accessed.is_some());
+        assert_eq!(retrieved.memory_type, MemoryType::Semantic);
+        assert_eq!(
+            retrieved.metadata.get("source"),
+            Some(&"postgres-test".to_string())
+        );
+
+        let literal_matches = store
+            .search("100%_safe", 10)
+            .await
+            .expect("literal wildcard search");
+        assert_eq!(literal_matches.len(), 1);
+        assert_eq!(literal_matches[0].id, primary_id);
+        let tagged = store
+            .search_by_tags(std::slice::from_ref(&marker), 10)
+            .await
+            .expect("tag search");
+        assert_eq!(tagged.len(), 2);
+        assert!(store
+            .get_recent(500)
+            .await
+            .expect("recent memories")
+            .iter()
+            .any(|item| item.id == secondary_id));
+        assert!(store
+            .get_important(0.9, 500)
+            .await
+            .expect("important memories")
+            .iter()
+            .any(|item| item.id == primary_id));
+
+        primary.content = format!("updated {marker}");
+        primary.content_lower = primary.content.to_lowercase();
+        primary.access_count = 4;
+        store.store(primary).await.expect("upsert primary");
+        let updated = store
+            .retrieve(&primary_id)
+            .await
+            .expect("retrieve updated")
+            .expect("updated primary");
+        assert_eq!(updated.content, format!("updated {marker}"));
+        assert_eq!(updated.access_count, 5);
+
+        store.delete(&primary_id).await.expect("delete primary");
+        store.delete(&secondary_id).await.expect("delete secondary");
+        assert_eq!(store.count().await.expect("final count"), initial_count);
+    }
+}

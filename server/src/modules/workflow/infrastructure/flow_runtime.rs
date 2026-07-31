@@ -110,16 +110,7 @@ impl GraphRuntime {
     }
 
     fn provider_selector(&self, node: &WorkflowNode) -> String {
-        let provider = node
-            .data
-            .runtime
-            .provider
-            .as_deref()
-            .unwrap_or(&self.config.runtime.default_provider);
-        match node.data.runtime.pool.as_deref() {
-            Some(pool) => format!("{provider}-{pool}"),
-            None => provider.to_string(),
-        }
+        runtime_selector(&self.config.runtime.default_provider, node)
     }
 
     fn incoming(definition: &WorkflowDefinition) -> BTreeMap<&str, Vec<&WorkflowEdge>> {
@@ -699,6 +690,19 @@ fn phase_name(phase: NodeExecutionPhase) -> &'static str {
     }
 }
 
+fn runtime_selector(default_provider: &str, node: &WorkflowNode) -> String {
+    let provider = node
+        .data
+        .runtime
+        .provider
+        .as_deref()
+        .unwrap_or(default_provider);
+    match node.data.runtime.pool.as_deref() {
+        Some(pool) => format!("{provider}-{pool}"),
+        None => provider.to_string(),
+    }
+}
+
 fn network_mode(invocation: &NodeInvocation) -> NetworkMode {
     match invocation.node.data.runtime.network {
         Some(NodeNetworkMode::None) => NetworkMode::None,
@@ -779,13 +783,177 @@ fn workflow_execution_error(error: WorkflowError) -> FlowError {
 
 #[cfg(test)]
 mod tests {
+    use a3s_workflow_protocol::{NodeData, NodeRuntimePolicy, Position, NODE_RESULT_SCHEMA};
+    use serde_json::{json, Map};
+
     use super::*;
+
+    fn invocation(kind: NodeKind) -> NodeInvocation {
+        NodeInvocation {
+            schema: NODE_INVOCATION_SCHEMA.to_string(),
+            run_id: "run".to_string(),
+            step_id: format!("node:{}:execute", kind.as_str()),
+            attempt: 1,
+            workflow_id: "workflow".to_string(),
+            workflow_version: 1,
+            phase: NodeExecutionPhase::Execute,
+            node: WorkflowNode {
+                id: kind.as_str().to_string(),
+                kind,
+                position: Position { x: 0.0, y: 0.0 },
+                data: NodeData {
+                    label: kind.as_str().to_string(),
+                    config: json!({}),
+                    runtime: NodeRuntimePolicy::default(),
+                },
+            },
+            workflow_input: Value::Null,
+            dependencies: BTreeMap::new(),
+            resume_payload: None,
+            services: NodeServiceContext {
+                gateway_base_url: "http://gateway.test/v1".to_string(),
+                default_model: "test".to_string(),
+                memory_base_url: None,
+                http_allowed_hosts: Vec::new(),
+                max_http_response_bytes: 1024,
+            },
+        }
+    }
+
+    fn result(route: Option<&str>) -> NodeExecutionResult {
+        NodeExecutionResult {
+            schema: NODE_RESULT_SCHEMA.to_string(),
+            output: Value::Null,
+            route: route.map(str::to_string),
+            suspension: None,
+            metadata: Map::new(),
+        }
+    }
 
     #[test]
     fn semantics_profile_binds_protocol_and_runner_artifact() {
-        assert_ne!(
-            semantics_digest(&format!("sha256:{}", "a".repeat(64))),
-            semantics_digest(&format!("sha256:{}", "b".repeat(64)))
-        );
+        let first = semantics_digest(&format!("sha256:{}", "a".repeat(64)));
+        let second = semantics_digest(&format!("sha256:{}", "b".repeat(64)));
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("sha256:"));
+        assert_eq!(first.len(), 71);
+    }
+
+    #[test]
+    fn phase_names_are_stable() {
+        assert_eq!(phase_name(NodeExecutionPhase::Execute), "execute");
+        assert_eq!(phase_name(NodeExecutionPhase::Resume), "resume");
+    }
+
+    #[test]
+    fn every_node_kind_is_addressable_to_an_independently_scalable_runtime_pool() {
+        for kind in [
+            NodeKind::Start,
+            NodeKind::Template,
+            NodeKind::Llm,
+            NodeKind::Agent,
+            NodeKind::Tool,
+            NodeKind::Router,
+            NodeKind::Memory,
+            NodeKind::Http,
+            NodeKind::Approval,
+            NodeKind::Output,
+        ] {
+            let mut node = invocation(kind).node;
+            assert_eq!(runtime_selector("local", &node), "local");
+
+            node.data.runtime.provider = Some("production".to_string());
+            node.data.runtime.pool = Some(format!("{}-pool", kind.as_str()));
+            assert_eq!(
+                runtime_selector("local", &node),
+                format!("production-{}-pool", kind.as_str())
+            );
+        }
+
+        let mut node = invocation(NodeKind::Template).node;
+        node.data.runtime.pool = Some("cpu".to_string());
+        assert_eq!(runtime_selector("local", &node), "local-cpu");
+    }
+
+    #[test]
+    fn network_defaults_follow_node_capabilities_and_allow_overrides() {
+        for kind in [
+            NodeKind::Start,
+            NodeKind::Template,
+            NodeKind::Router,
+            NodeKind::Approval,
+            NodeKind::Output,
+        ] {
+            assert_eq!(network_mode(&invocation(kind)), NetworkMode::None);
+        }
+        for kind in [
+            NodeKind::Llm,
+            NodeKind::Agent,
+            NodeKind::Tool,
+            NodeKind::Memory,
+            NodeKind::Http,
+        ] {
+            assert_eq!(network_mode(&invocation(kind)), NetworkMode::Outbound);
+        }
+
+        let mut value = invocation(NodeKind::Http);
+        value.node.data.runtime.network = Some(NodeNetworkMode::None);
+        assert_eq!(network_mode(&value), NetworkMode::None);
+
+        let mut value = invocation(NodeKind::Start);
+        value.node.data.runtime.network = Some(NodeNetworkMode::Outbound);
+        assert_eq!(network_mode(&value), NetworkMode::Outbound);
+    }
+
+    #[test]
+    fn isolation_defaults_to_process_and_maps_every_policy() {
+        let mut value = invocation(NodeKind::Template);
+        assert_eq!(isolation_level(&value), IsolationLevel::Process);
+
+        for (policy, expected) in [
+            (NodeIsolation::Process, IsolationLevel::Process),
+            (NodeIsolation::Container, IsolationLevel::Container),
+            (NodeIsolation::Sandbox, IsolationLevel::Sandbox),
+            (NodeIsolation::Confidential, IsolationLevel::Confidential),
+        ] {
+            value.node.data.runtime.isolation = Some(policy);
+            assert_eq!(isolation_level(&value), expected);
+        }
+    }
+
+    #[test]
+    fn non_pending_nodes_cannot_return_suspensions() {
+        let node = invocation(NodeKind::Template).node;
+        ensure_no_suspension(&node, &result(None)).expect("completed node");
+
+        let mut suspended = result(None);
+        suspended.suspension = Some(NodeSuspension::HumanApproval {
+            message: "wait".to_string(),
+            details: Value::Null,
+        });
+        let error = ensure_no_suspension(&node, &suspended).expect_err("suspension must fail");
+        assert!(error.to_string().contains("unexpected suspension"));
+    }
+
+    #[test]
+    fn router_result_must_select_a_configured_outgoing_handle() {
+        let node = invocation(NodeKind::Router).node;
+        let edges = vec![WorkflowEdge {
+            id: "route".to_string(),
+            source: node.id.clone(),
+            target: "output".to_string(),
+            source_handle: Some("selected".to_string()),
+        }];
+
+        validate_route(&node, &result(Some("selected")), &edges).expect("known route");
+        assert!(validate_route(&node, &result(None), &edges)
+            .expect_err("missing route")
+            .to_string()
+            .contains("returned no route"));
+        assert!(validate_route(&node, &result(Some("unknown")), &edges)
+            .expect_err("unknown route")
+            .to_string()
+            .contains("selected unknown route"));
     }
 }
