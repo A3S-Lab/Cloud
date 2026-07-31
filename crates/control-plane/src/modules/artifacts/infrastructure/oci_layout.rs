@@ -1,17 +1,17 @@
 mod filesystem;
 
 use self::filesystem::{
-    read_regular_file, remove_empty_ingest_directory, require_owned_directory,
-    validate_blob_inventory, validate_root_entries,
+    read_regular_file, require_owned_directory, validate_blob_inventory, validate_root_entries,
 };
 use crate::modules::artifacts::domain::{
-    BuildServiceError, OciDescriptor, OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+    BuildOutputValidationError, OciDescriptor, OCI_IMAGE_INDEX_MEDIA_TYPE,
+    OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
 use crate::modules::sources::domain::BuildPlatform;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
 
 const OCI_CONFIG_MEDIA_TYPE: &str = "application/vnd.oci.image.config.v1+json";
@@ -34,10 +34,15 @@ pub(super) struct OciLayoutLimits {
 }
 
 impl OciLayoutLimits {
-    pub(super) fn new(max_blobs: usize, max_bytes: u64) -> Result<Self, String> {
+    pub(super) fn new(
+        max_blobs: usize,
+        max_bytes: u64,
+    ) -> Result<Self, BuildOutputValidationError> {
         if max_blobs == 0 || max_blobs > 1_000_000 || max_bytes == 0 || max_bytes > MAX_OUTPUT_BYTES
         {
-            return Err("OCI layout limits are invalid".into());
+            return Err(BuildOutputValidationError::Invalid(
+                "OCI layout limits are invalid".into(),
+            ));
         }
         Ok(Self {
             max_blobs,
@@ -47,10 +52,12 @@ impl OciLayoutLimits {
 }
 
 #[derive(Debug)]
-pub(super) struct ValidatedOciLayout {
+pub(super) struct ValidatedOciOutput {
+    pub(super) descriptor: OciDescriptor,
     pub(super) platforms: Vec<BuildPlatform>,
     pub(super) content_bytes: u64,
     pub(super) blob_count: usize,
+    pub(super) layout_directory: PathBuf,
     pub(super) blobs: Vec<OciLayoutBlob>,
 }
 
@@ -142,7 +149,7 @@ pub(super) async fn validate_oci_layout(
     expected_root: &OciDescriptor,
     expected_platforms: &[BuildPlatform],
     limits: OciLayoutLimits,
-) -> Result<ValidatedOciLayout, BuildServiceError> {
+) -> Result<ValidatedOciOutput, BuildOutputValidationError> {
     require_owned_directory(layout, "OCI layout directory").await?;
     validate_root_entries(layout).await?;
     let marker = read_regular_file(&layout.join("oci-layout"), 4096).await?;
@@ -327,10 +334,12 @@ pub(super) async fn validate_oci_layout(
         });
     }
     blobs.sort_by(|left, right| left.digest.cmp(&right.digest));
-    Ok(ValidatedOciLayout {
+    Ok(ValidatedOciOutput {
+        descriptor: expected_root.clone(),
         platforms: state.platforms.into_iter().collect(),
         content_bytes: state.content_bytes,
         blob_count: state.seen.len(),
+        layout_directory: layout.to_owned(),
         blobs,
     })
 }
@@ -338,7 +347,7 @@ pub(super) async fn validate_oci_layout(
 pub(super) fn descriptor_depths(
     root: &str,
     dependencies: &HashMap<String, Vec<String>>,
-) -> Result<HashMap<String, usize>, BuildServiceError> {
+) -> Result<HashMap<String, usize>, BuildOutputValidationError> {
     let mut depths = HashMap::from([(root.to_owned(), 0_usize)]);
     let mut pending = VecDeque::from([root.to_owned()]);
     while let Some(parent) = pending.pop_front() {
@@ -360,12 +369,8 @@ pub(super) fn descriptor_depths(
     Ok(depths)
 }
 
-pub(super) async fn normalize_buildctl_layout(layout: &Path) -> Result<(), BuildServiceError> {
-    remove_empty_ingest_directory(layout).await
-}
-
 impl ValidationState {
-    fn add_bytes(&mut self, count: u64) -> Result<(), BuildServiceError> {
+    fn add_bytes(&mut self, count: u64) -> Result<(), BuildOutputValidationError> {
         self.content_bytes = self
             .content_bytes
             .checked_add(count)
@@ -382,7 +387,7 @@ async fn read_verified_blob(
     descriptor: &RawDescriptor,
     collect: bool,
     state: &mut ValidationState,
-) -> Result<Vec<u8>, BuildServiceError> {
+) -> Result<Vec<u8>, BuildOutputValidationError> {
     if collect && descriptor.size > MAX_JSON_BYTES {
         return Err(integrity("OCI JSON blob exceeds its bound"));
     }
@@ -430,7 +435,7 @@ async fn read_verified_blob(
     Ok(content)
 }
 
-fn validate_descriptor(descriptor: &RawDescriptor) -> Result<(), BuildServiceError> {
+fn validate_descriptor(descriptor: &RawDescriptor) -> Result<(), BuildOutputValidationError> {
     if descriptor.size == 0
         || !descriptor
             .digest
@@ -452,7 +457,7 @@ fn validate_descriptor(descriptor: &RawDescriptor) -> Result<(), BuildServiceErr
 fn validate_platform_hint(
     hint: Option<&RawPlatform>,
     actual: &BuildPlatform,
-) -> Result<(), BuildServiceError> {
+) -> Result<(), BuildOutputValidationError> {
     if let Some(hint) = hint {
         let hint = parse_platform(&hint.os, &hint.architecture, hint.variant.as_deref())?;
         if &hint != actual {
@@ -468,7 +473,7 @@ fn parse_platform(
     os: &str,
     architecture: &str,
     variant: Option<&str>,
-) -> Result<BuildPlatform, BuildServiceError> {
+) -> Result<BuildPlatform, BuildOutputValidationError> {
     let valid_variant = matches!(
         (architecture, variant),
         ("amd64", None | Some("")) | ("arm64", None | Some("") | Some("v8"))
@@ -486,10 +491,34 @@ fn valid_hex_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn integrity(message: impl Into<String>) -> BuildServiceError {
-    BuildServiceError::Integrity(message.into())
+fn integrity(message: impl Into<String>) -> BuildOutputValidationError {
+    BuildOutputValidationError::Integrity(message.into())
 }
 
-fn storage(message: impl Into<String>) -> BuildServiceError {
-    BuildServiceError::Storage(message.into())
+fn storage(message: impl Into<String>) -> BuildOutputValidationError {
+    BuildOutputValidationError::Storage(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::descriptor_depths;
+    use std::collections::HashMap;
+
+    #[test]
+    fn publication_depths_follow_the_longest_shared_manifest_path() {
+        let dependencies = HashMap::from([
+            (
+                "root".to_owned(),
+                vec!["shared".to_owned(), "branch".to_owned()],
+            ),
+            ("branch".to_owned(), vec!["shared".to_owned()]),
+            ("shared".to_owned(), vec!["child".to_owned()]),
+        ]);
+
+        let depths = descriptor_depths("root", &dependencies).expect("descriptor depths");
+        assert_eq!(depths["root"], 0);
+        assert_eq!(depths["branch"], 1);
+        assert_eq!(depths["shared"], 2);
+        assert_eq!(depths["child"], 3);
+    }
 }

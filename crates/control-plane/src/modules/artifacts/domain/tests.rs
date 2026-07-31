@@ -1,65 +1,16 @@
 use super::test_support::evidence_for;
 use super::{
-    BuildArtifact, BuildRun, BuildRunStatus, OciBuildRequest, OciDescriptor, OciPublicationTarget,
+    BuildArtifact, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
     PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
-use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
+use crate::modules::sources::domain::BuildPlatform;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{Duration, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
-use std::path::PathBuf;
-use uuid::Uuid;
-
-#[test]
-fn oci_build_request_requires_an_immutable_identity_and_canonical_recipe() {
-    let recipe = BuildRecipe::dockerfile(
-        BuildRecipe::SCHEMA,
-        BuildRecipe::DOCKERFILE_KIND,
-        ".",
-        "Dockerfile",
-        None,
-        vec!["linux/amd64".into()],
-    )
-    .expect("build recipe");
-
-    let request = OciBuildRequest::new(
-        Uuid::now_v7(),
-        PathBuf::from("/tmp/a3s-cloud-source"),
-        format!("sha256:{}", "a".repeat(64)),
-        recipe,
-    )
-    .expect("OCI build request");
-    assert_eq!(
-        request.source_content_digest(),
-        format!("sha256:{}", "a".repeat(64))
-    );
-
-    assert!(OciBuildRequest::new(
-        Uuid::nil(),
-        PathBuf::from("/tmp/a3s-cloud-source"),
-        format!("sha256:{}", "a".repeat(64)),
-        request.recipe().clone(),
-    )
-    .is_err());
-    assert!(OciBuildRequest::new(
-        Uuid::now_v7(),
-        PathBuf::from("relative/source"),
-        format!("sha256:{}", "a".repeat(64)),
-        request.recipe().clone(),
-    )
-    .is_err());
-    assert!(OciBuildRequest::new(
-        Uuid::now_v7(),
-        PathBuf::from("/tmp/a3s-cloud-source"),
-        format!("sha256:{}", "A".repeat(64)),
-        request.recipe().clone(),
-    )
-    .is_err());
-}
 
 #[test]
 fn oci_descriptor_accepts_only_content_addressed_image_roots() {

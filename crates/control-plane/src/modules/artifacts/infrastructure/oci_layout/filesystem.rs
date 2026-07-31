@@ -1,5 +1,5 @@
 use super::{integrity, storage, valid_hex_digest};
-use crate::modules::artifacts::domain::BuildServiceError;
+use crate::modules::artifacts::domain::BuildOutputValidationError;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tokio::io::AsyncReadExt;
@@ -7,7 +7,7 @@ use tokio::io::AsyncReadExt;
 pub(super) async fn read_regular_file(
     path: &Path,
     maximum: u64,
-) -> Result<Vec<u8>, BuildServiceError> {
+) -> Result<Vec<u8>, BuildOutputValidationError> {
     let metadata = tokio::fs::symlink_metadata(path)
         .await
         .map_err(|_| integrity("OCI layout file is unavailable"))?;
@@ -28,7 +28,7 @@ pub(super) async fn read_regular_file(
     Ok(content)
 }
 
-pub(super) async fn validate_root_entries(layout: &Path) -> Result<(), BuildServiceError> {
+pub(super) async fn validate_root_entries(layout: &Path) -> Result<(), BuildOutputValidationError> {
     let mut entries = tokio::fs::read_dir(layout)
         .await
         .map_err(|_| storage("could not inspect OCI layout directory"))?;
@@ -73,38 +73,10 @@ pub(super) async fn validate_root_entries(layout: &Path) -> Result<(), BuildServ
     require_owned_directory(&algorithm.path(), "OCI SHA-256 blobs directory").await
 }
 
-pub(super) async fn remove_empty_ingest_directory(layout: &Path) -> Result<(), BuildServiceError> {
-    let ingest = layout.join("ingest");
-    let metadata = match tokio::fs::symlink_metadata(&ingest).await {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(_) => return Err(storage("could not inspect BuildKit ingest directory")),
-    };
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(integrity("BuildKit ingest path is not an owned directory"));
-    }
-    let mut entries = tokio::fs::read_dir(&ingest)
-        .await
-        .map_err(|_| storage("could not inspect BuildKit ingest directory"))?;
-    if entries
-        .next_entry()
-        .await
-        .map_err(|_| storage("could not inspect BuildKit ingest directory"))?
-        .is_some()
-    {
-        return Err(integrity(
-            "BuildKit left an incomplete content-store ingest",
-        ));
-    }
-    tokio::fs::remove_dir(ingest)
-        .await
-        .map_err(|_| storage("could not remove empty BuildKit ingest directory"))
-}
-
 pub(super) async fn validate_blob_inventory(
     layout: &Path,
     seen: &HashMap<String, (String, u64)>,
-) -> Result<(), BuildServiceError> {
+) -> Result<(), BuildOutputValidationError> {
     let mut entries = tokio::fs::read_dir(layout.join("blobs/sha256"))
         .await
         .map_err(|_| storage("could not inspect OCI blob inventory"))?;
@@ -141,7 +113,7 @@ pub(super) async fn validate_blob_inventory(
 pub(super) async fn require_owned_directory(
     path: &Path,
     label: &str,
-) -> Result<(), BuildServiceError> {
+) -> Result<(), BuildOutputValidationError> {
     let metadata = tokio::fs::symlink_metadata(path)
         .await
         .map_err(|_| integrity(format!("{label} is unavailable")))?;

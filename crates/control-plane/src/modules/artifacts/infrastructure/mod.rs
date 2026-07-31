@@ -2,8 +2,9 @@ mod build_cache_validator;
 mod build_evidence_generator;
 mod build_evidence_signing;
 mod build_flow;
-mod buildkit_build_service;
+mod buildkit_output;
 mod local_node_artifact_store;
+mod oci_layout;
 mod oci_registry_artifact_publisher;
 mod persistence;
 mod runtime_build_output_validator;
@@ -14,7 +15,6 @@ pub use build_evidence_signing::{LocalBuildEvidenceSigner, VaultBuildEvidenceSig
 pub use build_flow::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
 };
-pub use buildkit_build_service::{BuildkitBuildService, BuildkitConnection};
 pub use local_node_artifact_store::LocalNodeArtifactStore;
 pub use oci_registry_artifact_publisher::{
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,

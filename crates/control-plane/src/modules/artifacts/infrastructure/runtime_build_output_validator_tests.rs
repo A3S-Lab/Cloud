@@ -424,6 +424,7 @@ fn create_export(
     let layout = export.join("oci");
     let blobs = layout.join("blobs/sha256");
     std::fs::create_dir_all(&blobs)?;
+    std::fs::create_dir(layout.join("ingest"))?;
     std::fs::write(
         layout.join("oci-layout"),
         br#"{"imageLayoutVersion":"1.0.0"}"#,
@@ -533,7 +534,7 @@ fn create_cache_export(
 fn archive_directory(export: &Path, destination: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Builder::new(File::create(destination)?);
     builder.append_dir(".", export)?;
-    for directory in ["oci", "oci/blobs", "oci/blobs/sha256"] {
+    for directory in ["oci", "oci/blobs", "oci/blobs/sha256", "oci/ingest"] {
         builder.append_dir(directory, export.join(directory))?;
     }
     builder.append_path_with_name(

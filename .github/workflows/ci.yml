@@ -255,6 +255,29 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce one Cloud build-execution authority
+        run: |
+          removed_builder='build'"kit"
+          duplicate_api='I'"BuildService|BuildkitBuildService|OciBuildRequest|BuiltOciArtifact|BuildServiceError"
+          forbidden_paths=$(git ls-files crates/control-plane/src/modules/artifacts |
+            grep -E "(^|/)build_service\\.rs$|(^|/)${removed_builder}_build_service(\\.rs|/)" || true)
+          if [[ -n $forbidden_paths ]]; then
+            printf '%s\n' "$forbidden_paths"
+            exit 1
+          fi
+          if git grep -I -n -E "$duplicate_api" -- crates/control-plane/src; then
+            exit 1
+          fi
+          build_client='build'"ctl"
+          executor_files=$(git grep -I -l -E "/usr/bin/$build_client|Command::new\\([^)]*$build_client" \
+            -- crates/control-plane/src/modules/artifacts || true)
+          unexpected_executors=$(printf '%s\n' "$executor_files" |
+            grep -v -E '^crates/control-plane/src/modules/artifacts/infrastructure/build_flow/task_spec\\.rs$' || true)
+          if [[ -n $unexpected_executors ]]; then
+            printf '%s\n' "$unexpected_executors"
+            exit 1
+          fi
+
   client-cli:
     name: TypeScript client and CLI
     runs-on: ubuntu-24.04

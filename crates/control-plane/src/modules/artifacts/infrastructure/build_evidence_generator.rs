@@ -1,4 +1,4 @@
-use super::buildkit_build_service::OciLayoutBlob;
+use super::oci_layout::OciLayoutBlob;
 use super::RuntimeBuildOutputValidator;
 use crate::modules::artifacts::domain::{
     canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,

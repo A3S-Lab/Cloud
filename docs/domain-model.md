@@ -139,12 +139,13 @@ Owns immutable artifact metadata, provenance, checksums, signatures, and
 registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
-The implemented G0 build boundary lives here rather than in Sources or Runtime.
-Its typed Build service and `cloud.build@3` Flow bind a build ID, checked-out
-content digest, recipe, Runtime Task identity, and validated OCI root descriptor
-to exact Artifact receipts. The BuildKit adapter verifies every referenced blob
-and requested platform before accepting the result. Registry publication state
-is bound to the validated OCI result. Before cleanup, the Flow generates
+The implemented G0 artifact boundary lives here while Runtime remains the sole
+build-execution authority. The `cloud.build@3` Flow binds a build ID,
+checked-out content digest, recipe, Runtime Task identity, and validated OCI
+root descriptor to exact Artifact receipts. One output-validation port and its
+shared OCI graph validator verify every referenced blob and requested platform
+before accepting the result. Registry publication state is bound to the
+validated OCI result. Before cleanup, the Flow generates
 deterministic SPDX 2.3 and SLSA provenance documents, signs their DSSE PAE with
 an Ed25519 local or Vault Transit provider, verifies the exact public key and
 signature locally, and freezes the complete `BuildEvidence` on the BuildRun.
@@ -848,14 +849,14 @@ resolving the branch again. Replay does not re-run fanout.
 The implemented secure checkout port materializes an accepted commit under
 bounded isolated Git configuration, supplies an optional repository-bound
 token only through a transient Git HTTP header, removes `.git`, and records an
-immutable filesystem digest for credential-free replay. The implemented
-Artifact-owned Build service can consume a materialized source and recipe
-through rootless BuildKit, then validate and atomically receipt an OCI layout.
-The production Build Flow now coordinates this service boundary through an
-isolated Runtime Task: it replays the checkout, verifies package-time identity,
-admits immutable input bytes, selects a compatible node, applies independent
-Runtime and BuildKit network denials, validates the Runtime output, and removes
-the Task and checkout before terminal completion. Before cleanup it binds an
+immutable filesystem digest for credential-free replay. The production Build
+Flow is the single build lifecycle. It replays the checkout, verifies
+package-time identity, admits immutable input bytes, selects a compatible node,
+runs the current rootless BuildKit workload through one isolated Runtime Task,
+applies independent Runtime and BuildKit network denials, validates the Runtime
+output through the shared OCI validator, and removes the Task and checkout
+before terminal completion. No direct control-plane BuildKit service or
+separate build receipt exists. Before cleanup the Flow binds an
 immutable `OciPublicationTarget`, pushes blobs and manifests by digest, verifies
 the complete remote graph, and records one matching `PublishedOciArtifact`.
 Publication replay may adopt only that exact target; cancellation wins the

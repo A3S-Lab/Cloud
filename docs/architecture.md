@@ -1540,24 +1540,26 @@ revision and build without trusting a caller-supplied artifact locator.
 not require evidence, while `cloud.build@1` drains upgrade-invalidated
 pre-publication work without changing either persisted step history.
 
-The Artifact-owned `IBuildService` accepts one immutable build ID, an absolute
-materialized source directory, the source content receipt digest, and the
-accepted recipe. The BuildKit adapter resolves only recipe-owned context and
-Dockerfile paths beneath that directory, runs `buildctl` with an empty client
-home and no credential, SSH, cache import/export, push, or
-privileged-entitlement inputs, and exports an OCI image layout. Unix sockets
-and mTLS are the production-capable transports; unauthenticated TCP is
-constructible only through an explicitly named conformance option and only for
-a literal loopback address.
+`cloud.build@3` is the only build-execution authority. There is no parallel
+control-plane build service, local build receipt, or second lifecycle API. The
+Flow binds one immutable BuildRun and source receipt to one Runtime Task and
+uses the Runtime command journal for dispatch, replay, cancellation, and
+cleanup. The current Task invokes `buildctl` with no registry credential, SSH,
+push, or privileged-entitlement input and exports one OCI image layout through
+the authenticated node Artifact boundary.
 
-Acceptance requires the BuildKit metadata digest and descriptor to agree, the
-OCI root to bind that descriptor, every reachable index, manifest,
-config, and layer to have its declared size and SHA-256 bytes, the inventory to
-contain no unreferenced blob, and the config platforms to equal the recipe.
-The bounded result and receipt publish atomically by build ID; replay validates
-the whole graph again, changed input conflicts, and changed output fails
-integrity validation. The local-context CI gate still certifies this adapter
-directly.
+The Artifacts context owns one output-validation port. Its narrow BuildKit
+output adapter only decodes the exported metadata and removes an empty
+BuildKit ingest directory; provider-neutral OCI layout validation is the single
+integrity implementation shared by validation, publication, and evidence.
+Acceptance requires the metadata digest and descriptor to agree, the OCI root
+to bind that descriptor, every reachable index, manifest, config, and layer to
+have its declared size and SHA-256 bytes, the inventory to contain no
+unreferenced blob, and the config platforms to equal the recipe. Revalidation
+of publication and evidence materializes the same immutable Runtime Artifact
+and runs the same validator. Any future execution-engine migration must replace
+this Runtime Task path atomically and remove its superseded adapter; it must not
+introduce a second queue, receipt store, or lifecycle.
 
 The production Build Flow closes the previously separate source, Runtime, and
 validation boundaries. `SourceBuildInputPreparer` checks tenant identity,
