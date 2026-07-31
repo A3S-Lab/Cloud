@@ -301,9 +301,19 @@ isolated tmpfs, exact Task-output publication and journal replay, and empty Box,
 Volume, and node Artifact state after removal. No second Artifact store, output
 database, VolumeStore, Runtime driver, scheduler, or cleanup path is added.
 
-Allocation evidence, complete Sandbox/MicroVM/TEE isolation evidence, builds,
-and the clean-host release loop remain release-blocking `BX0.3` through
-`BX0.5` work.
+The sixth `BX0.3` slice closes allocation evidence without adding a provider
+resource model to Cloud. The exact Box provider phase derives and executes its
+Resources profile from the advertised CPU, memory, PID, and execution-timeout
+controls. The Cloud consumer phase then requires those controls, prepares the
+existing inventory-bound Claim, applies and inspects one exact Runtime
+generation with the same binding digest, rejects release before Runtime
+fencing, releases after durable stop, removes the Service, and emits one
+machine-checkable certification marker. The workflow retains both the complete
+advertised-profile result and the allocation marker in the same evidence
+artifact.
+
+Complete Sandbox/MicroVM/TEE isolation evidence, builds, and the clean-host
+release loop remain release-blocking `BX0.3` through `BX0.5` work.
 
 The `A0.1` hosted-asset identity foundation is verified against real
 PostgreSQL. The domain accepts exactly Agent, MCP, and Skill assets; persists

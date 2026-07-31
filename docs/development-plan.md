@@ -157,11 +157,11 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-07-30:
+Status as of 2026-07-31:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, and one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication. Allocation evidence, complete isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, and a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle. Complete isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -330,8 +330,18 @@ journal replay, removal, and empty Box, Volume, and node Artifact state. No
 second Artifact store, output database, VolumeStore, Runtime driver, scheduler,
 queue, or lifecycle path is introduced.
 
-The rest of `BX0.3` remains open: allocation evidence and complete
-Sandbox/MicroVM/TEE isolation certification.
+The sixth `BX0.3` slice closes allocation evidence in the existing provider and
+Claim boundaries. Box advertises CPU, memory, PID, and execution-timeout
+controls, which activate and pass the shared Runtime Resources profile. In the
+same exact-revision job, Cloud requires those controls and proves prepare,
+bound apply, reconstructed inspection with the exact binding digest, release
+rejection before Runtime fencing, durable stop, release, removal, and cleanup.
+The workflow retains the complete advertised-profile result and one
+machine-checkable allocation marker together. No provider resource model,
+Claim repository, scheduler, queue, Runtime driver, or node channel is added.
+
+The rest of `BX0.3` remains open only for complete Sandbox/MicroVM/TEE
+isolation certification.
 
 #### Exit gate
 

@@ -147,10 +147,19 @@ reconstruction, tmpfs isolation, deterministic output publication, journal
 replay, removal, and empty Box, Volume, and node Artifact inventories. No
 second store, output database, Runtime driver, or cleanup mechanism exists.
 
+The sixth `BX0.3` slice closes allocation evidence as a composite provider and
+consumer gate. The provider phase derives the mandatory Resources profile from
+Box's advertised CPU, memory, PID, and execution-timeout controls and executes
+the complete shared behavior suite. The Cloud phase requires the same controls,
+prepares one current-inventory Claim, applies and re-inspects the exact bound
+Runtime generation after reconstruction, verifies the same claim and binding
+digest, rejects release before durable Runtime fencing, then stops, releases,
+removes, and verifies absence. The evidence artifact contains one exact
+advertised-profile result and one exact allocation certification marker.
+
 The following evidence remains required before `BX0` is verified:
 
-1. Allocation evidence and complete Sandbox/MicroVM/TEE isolation
-   certification.
+1. Complete Sandbox/MicroVM/TEE isolation certification.
 2. The typed Box build boundary with OCI graph, cache, SPDX, SLSA, signing,
    publication, replay, and process-death evidence.
 3. A clean-host Cloud, Box, Gateway, and Power loop covering deploy, route,
