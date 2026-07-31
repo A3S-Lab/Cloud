@@ -147,6 +147,7 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
     let volume_id = format!("cloud-box-volume-{}", Uuid::now_v7().simple());
     let first_spec = task_spec(
         "writer",
+        1,
         input.clone(),
         &volume_id,
         false,
@@ -228,6 +229,7 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
 
     let second_spec = task_spec(
         "reader",
+        2,
         input,
         &volume_id,
         true,
@@ -281,6 +283,7 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
 
 fn task_spec(
     role: &str,
+    generation: u64,
     input: ArtifactRef,
     volume_id: &str,
     volume_read_only: bool,
@@ -294,7 +297,7 @@ fn task_spec(
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
         unit_id: format!("cloud-box-storage-{role}-{}", Uuid::now_v7().simple()),
-        generation: 1,
+        generation,
         class: RuntimeUnitClass::Task,
         artifact: ArtifactRef {
             uri: format!("oci://{repository}@{digest}"),
