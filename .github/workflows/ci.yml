@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: Build control plane and Runtime image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile
@@ -105,7 +105,7 @@ jobs:
           cache-from: type=gha,scope=workflow
           cache-to: type=gha,mode=max,scope=workflow
       - name: Build Studio image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/web.Dockerfile
