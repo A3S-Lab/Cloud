@@ -281,8 +281,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-flow"
-version = "0.4.2"
-source = "git+https://github.com/A3S-Lab/Flow.git?rev=ca17ae78968370eacd97992d9202dabf1cd82a2e#ca17ae78968370eacd97992d9202dabf1cd82a2e"
+version = "0.4.3"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=1675376dbced0a65afce2141e799dcdceb8e475d#1675376dbced0a65afce2141e799dcdceb8e475d"
 dependencies = [
  "async-trait",
  "chrono",
