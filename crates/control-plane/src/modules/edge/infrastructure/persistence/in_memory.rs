@@ -13,6 +13,7 @@ use crate::modules::edge::domain::{
     GatewayRouteCutover, GatewayScope, GatewayScopeState, McpCredential, McpCredentialDelivery,
     Route, RouteState,
 };
+use crate::modules::operations::AuditRecord;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
     GatewayScopeId, IdempotencyRequest, IdempotentWrite, McpCredentialId, NodeCommandId, NodeId,
@@ -71,6 +72,7 @@ struct State {
     mcp_credential_lifecycle_idempotency:
         BTreeMap<(String, String), (String, McpCredentialLifecycleReference)>,
     outbox: Vec<DomainEventEnvelope>,
+    audit: Vec<AuditRecord>,
 }
 
 impl InMemoryEdgeRepository {
@@ -80,6 +82,10 @@ impl InMemoryEdgeRepository {
 
     pub async fn outbox_events(&self) -> Vec<DomainEventEnvelope> {
         self.state.read().await.outbox.clone()
+    }
+
+    pub async fn audit_records(&self) -> Vec<AuditRecord> {
+        self.state.read().await.audit.clone()
     }
 
     #[cfg(test)]

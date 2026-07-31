@@ -16,6 +16,7 @@ pub struct RevokeMcpCredential {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub credential_id: McpCredentialId,
+    pub actor_id: Uuid,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
@@ -51,6 +52,7 @@ impl CommandHandler<RevokeMcpCredential> for RevokeMcpCredentialHandler {
                 project_id: command.project_id,
                 environment_id: command.environment_id,
                 credential_id: command.credential_id,
+                actor_id: command.actor_id,
             })
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
@@ -113,6 +115,7 @@ impl CommandHandler<RevokeMcpCredential> for RevokeMcpCredentialHandler {
                     credential,
                     expected_version,
                     idempotency,
+                    command.actor_id,
                     command.request_id,
                     command.requested_at,
                 )
@@ -127,4 +130,5 @@ struct CanonicalRevokeMcpCredential {
     project_id: ProjectId,
     environment_id: EnvironmentId,
     credential_id: McpCredentialId,
+    actor_id: Uuid,
 }

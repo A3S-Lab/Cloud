@@ -13,7 +13,7 @@ pub use application::commands::reconcile_operations::{
 pub use application::queries::list_operations::{ListOperations, ListOperationsHandler};
 pub use application::OperationReconciler;
 pub use domain::entities::{
-    OperationProjection, OperationRecord, OperationRequest, OperationStatus,
+    AuditRecord, OperationProjection, OperationRecord, OperationRequest, OperationStatus,
 };
 pub use domain::repositories::IOperationRepository;
 pub use domain::services::{IOperationEngine, OperationEngineError};

@@ -1,4 +1,5 @@
-use super::postgres_schema::{IdempotencyRecords, MigrationRecords, OutboxEvents};
+use super::postgres_schema::{AuditRecords, IdempotencyRecords, MigrationRecords, OutboxEvents};
+use crate::modules::operations::AuditRecord;
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use a3s_boot::HealthIndicatorResult;
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -706,6 +707,32 @@ pub(crate) async fn store_outbox(
     )
     .await?;
     require_one_row("outbox event", rows)
+}
+
+pub(crate) async fn store_audit(
+    transaction: &PostgresTransaction,
+    record: &AuditRecord,
+) -> Result<(), PostgresPersistenceError> {
+    record.validate().map_err(|error| {
+        PostgresPersistenceError::Invariant(format!("audit record is invalid: {error}"))
+    })?;
+    let rows = execute(
+        transaction,
+        insert_into::<AuditRecords>()
+            .value(AuditRecords::audit_id(), record.id.as_uuid())
+            .value(
+                AuditRecords::organization_id(),
+                record.organization_id.as_uuid(),
+            )
+            .value(AuditRecords::actor_id(), record.actor_id)
+            .value(AuditRecords::action(), record.action.as_str())
+            .value(AuditRecords::aggregate_id(), record.aggregate_id)
+            .value(AuditRecords::occurred_at(), record.occurred_at)
+            .value(AuditRecords::request_id(), record.request_id)
+            .value(AuditRecords::details(), record.details.clone()),
+    )
+    .await?;
+    require_one_row("audit record", rows)
 }
 
 pub(crate) fn require_one_row(

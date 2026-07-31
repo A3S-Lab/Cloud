@@ -34,13 +34,15 @@ pub fn mcp_credential_commands_controller(bus: Arc<CommandBus>) -> Result<Contro
                     let body: IssueMcpCredentialRequest = request.json_with_content_type()?;
                     let (organization_id, project_id, environment_id) =
                         credential_scope(&request)?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let (idempotency_key, request_id, actor_id) =
+                        request_identity(&request)?;
                     match bus
                         .execute(IssueMcpCredential {
                             organization_id,
                             project_id,
                             environment_id,
                             expires_at: body.expires_at,
+                            actor_id,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -70,7 +72,8 @@ pub fn mcp_credential_commands_controller(bus: Arc<CommandBus>) -> Result<Contro
                     let credential_id = McpCredentialId::from_uuid(
                         request.param_as::<Uuid>("credential_id")?,
                     );
-                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let (idempotency_key, request_id, actor_id) =
+                        request_identity(&request)?;
                     match bus
                         .execute(RotateMcpCredential {
                             organization_id,
@@ -78,6 +81,7 @@ pub fn mcp_credential_commands_controller(bus: Arc<CommandBus>) -> Result<Contro
                             environment_id,
                             credential_id,
                             expires_at: body.expires_at,
+                            actor_id,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -102,13 +106,15 @@ pub fn mcp_credential_commands_controller(bus: Arc<CommandBus>) -> Result<Contro
                     let credential_id = McpCredentialId::from_uuid(
                         request.param_as::<Uuid>("credential_id")?,
                     );
-                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let (idempotency_key, request_id, actor_id) =
+                        request_identity(&request)?;
                     match bus
                         .execute(RevokeMcpCredential {
                             organization_id,
                             project_id,
                             environment_id,
                             credential_id,
+                            actor_id,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -148,7 +154,7 @@ fn credential_scope(request: &BootRequest) -> Result<(OrganizationId, ProjectId,
     ))
 }
 
-fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
+fn request_identity(request: &BootRequest) -> Result<(String, Uuid, Uuid)> {
     let idempotency_key = request
         .header("idempotency-key")
         .filter(|value| !value.is_empty())
@@ -161,5 +167,11 @@ fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
             Uuid::parse_str(value)
                 .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
         })?;
-    Ok((idempotency_key, request_id))
+    let actor_id =
+        Uuid::parse_str(request.require_auth_principal()?.subject()).map_err(|error| {
+            BootError::Internal(format!(
+                "authenticated principal subject is not a Cloud identity: {error}"
+            ))
+        })?;
+    Ok((idempotency_key, request_id, actor_id))
 }

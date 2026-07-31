@@ -18,6 +18,7 @@ pub struct RotateMcpCredential {
     pub environment_id: EnvironmentId,
     pub credential_id: McpCredentialId,
     pub expires_at: DateTime<Utc>,
+    pub actor_id: Uuid,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
@@ -55,6 +56,7 @@ impl CommandHandler<RotateMcpCredential> for RotateMcpCredentialHandler {
                 environment_id: command.environment_id,
                 credential_id: command.credential_id,
                 expires_at,
+                actor_id: command.actor_id,
             })
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
@@ -103,6 +105,7 @@ impl CommandHandler<RotateMcpCredential> for RotateMcpCredentialHandler {
                     expires_at,
                     command.requested_at,
                     idempotency,
+                    command.actor_id,
                     command.request_id,
                 )
                 .await)
@@ -117,4 +120,5 @@ struct CanonicalRotateMcpCredential {
     environment_id: EnvironmentId,
     credential_id: McpCredentialId,
     expires_at: DateTime<Utc>,
+    actor_id: Uuid,
 }

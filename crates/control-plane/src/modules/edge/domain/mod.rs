@@ -1,9 +1,11 @@
+mod audit;
 mod entities;
 pub mod events;
 pub mod repositories;
 pub mod services;
 mod value_objects;
 
+pub(crate) use audit::{mcp_credential_audit_record, validate_mcp_credential_audit};
 pub use entities::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,

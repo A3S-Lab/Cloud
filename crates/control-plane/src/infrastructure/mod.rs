@@ -22,8 +22,8 @@ pub(crate) use oci_registry_client::{
 };
 pub(crate) use postgres::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, lock_idempotency_key, require_one_row, store_idempotency, store_outbox,
-    transaction_error, PostgresPersistenceError,
+    is_unique_violation, lock_idempotency_key, require_one_row, store_audit, store_idempotency,
+    store_outbox, transaction_error, PostgresPersistenceError,
 };
 pub(crate) use postgres_schema::OutboxEvents;
 pub(crate) use vault_client::{VaultClient, VaultClientError};

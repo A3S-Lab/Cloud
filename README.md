@@ -861,9 +861,11 @@ cover the complete lifecycle. They require no-store response protections,
 reconstruct only allowlisted fields, reject secret or internal material on
 metadata surfaces, and show the issue/rotate secret only as an explicit
 one-time delivery. The OpenAPI snapshot binds the same request, metadata,
-mutation, and delivery schemas. Executed real PostgreSQL evidence for the new
-certificate and credential paths, control-plane audit, real Box hosting, and
-joint product conformance remain unavailable. Stateful resources
+mutation, and delivery schemas. Every credential issue, rotation, and
+revocation also commits one actor- and request-bound secret-free audit record
+in the same lifecycle transaction. Executed real PostgreSQL evidence for the
+new certificate and credential paths, real Box hosting, and joint product
+conformance remain unavailable. Stateful resources
 remain `S0`; replicas and multi-node placement remain `H0`; accelerator and
 inference capabilities remain `I0`. These profiles do not create separate
 schedulers.

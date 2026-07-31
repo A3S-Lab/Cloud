@@ -3,8 +3,8 @@ use super::postgres_mcp_credentials::{insert_credential, lock_credential, transi
 use super::postgres_schema::McpCredentialDeliveries;
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, require_one_row, store_idempotency, store_outbox, transaction_error,
-    PostgresPersistenceError,
+    is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
+    transaction_error, PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::{
     IMcpCredentialLifecycleRepository, McpCredentialLifecycleReference,
@@ -132,6 +132,7 @@ async fn store(
                     insert_delivery(transaction, delivery).await?;
                 }
                 store_outbox(transaction, &bundle.event).await?;
+                store_audit(transaction, &bundle.audit).await?;
                 let reference = McpCredentialLifecycleReference::from_bundle(&bundle);
                 store_idempotency(transaction, &bundle.idempotency, &reference).await?;
                 Ok(McpCredentialLifecycleResult {

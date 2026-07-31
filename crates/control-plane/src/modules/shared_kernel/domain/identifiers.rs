@@ -42,6 +42,7 @@ identifier!(OrganizationId);
 identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(EnvironmentId);
+identifier!(AuditId);
 identifier!(OperationId);
 identifier!(NodeId);
 identifier!(EnrollmentTokenId);

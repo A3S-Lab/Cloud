@@ -19,6 +19,7 @@ pub struct IssueMcpCredential {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub expires_at: DateTime<Utc>,
+    pub actor_id: Uuid,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
@@ -79,6 +80,7 @@ impl CommandHandler<IssueMcpCredential> for IssueMcpCredentialHandler {
                 project_id: command.project_id,
                 environment_id: command.environment_id,
                 expires_at,
+                actor_id: command.actor_id,
             })
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
@@ -116,6 +118,7 @@ impl CommandHandler<IssueMcpCredential> for IssueMcpCredentialHandler {
                         issued_at: command.requested_at,
                     },
                     idempotency,
+                    command.actor_id,
                     command.request_id,
                 )
                 .await)
@@ -129,4 +132,5 @@ struct CanonicalIssueMcpCredential {
     project_id: ProjectId,
     environment_id: EnvironmentId,
     expires_at: DateTime<Utc>,
+    actor_id: Uuid,
 }

@@ -1,6 +1,9 @@
 use super::IMcpCredentialRepository;
 use crate::modules::edge::domain::events::McpCredentialChanged;
-use crate::modules::edge::domain::{McpCredential, McpCredentialDelivery};
+use crate::modules::edge::domain::{
+    validate_mcp_credential_audit, McpCredential, McpCredentialDelivery,
+};
+use crate::modules::operations::AuditRecord;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, IdempotencyRequest, McpCredentialId, OrganizationId,
     ProjectId, RepositoryError,
@@ -20,6 +23,7 @@ pub struct StoreMcpCredentialLifecycle {
     pub observed_at: DateTime<Utc>,
     pub idempotency: IdempotencyRequest,
     pub event: DomainEventEnvelope,
+    pub audit: AuditRecord,
 }
 
 impl StoreMcpCredentialLifecycle {
@@ -74,6 +78,13 @@ impl StoreMcpCredentialLifecycle {
             || self.event.event_id.is_nil()
             || self.event.schema_version != 1
             || self.event.event_key != expected_event_key
+            || self.audit.request_id != self.event.correlation_id
+            || validate_mcp_credential_audit(
+                &self.audit,
+                &self.credential,
+                self.expected_aggregate_version,
+            )
+            .is_err()
             || !payload_matches
         {
             return Err(RepositoryError::Conflict(

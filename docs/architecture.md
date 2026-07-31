@@ -1074,9 +1074,12 @@ stage proactive certificate replacement. PostgreSQL rechecks every observed
 policy and Workload plus the exact active or suppressing credential state
 under ordered locks before publication. The idempotent credential lifecycle
 persistence boundary, public application commands, REST/OpenAPI contract,
-shared client, and CLI now exist. Control-plane audit, an executed PostgreSQL
-gate for the newest certificate and credential paths, and joint real-process
-recovery remain required before this path can close `MCP0.3`.
+shared client, and CLI now exist. Credential issue, rotation, and revocation
+append one validated actor- and request-bound secret-free control-plane audit
+record in the same aggregate, delivery, Outbox, and idempotency transaction.
+An executed PostgreSQL gate for the newest certificate, credential, and audit
+paths plus joint real-process recovery remain required before this path can
+close `MCP0.3`.
 
 Hosted MCP service credentials are distinct from Cloud management API tokens.
 An API token is organization-scoped management authority with the `a3s_`

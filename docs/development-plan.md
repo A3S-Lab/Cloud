@@ -157,8 +157,10 @@ cross-process evidence. Generation, persistence, application commands, the
 REST/OpenAPI slice, and the registered worker are implemented, including exact
 post-commit secret recovery, non-cacheable redacted responses, closed OpenAPI
 schemas, fail-closed shared-client validation, and explicit one-time-secret
-CLI delivery. Control-plane audit, executed PostgreSQL evidence, and
-cross-process evidence remain.
+CLI delivery. Each issue, rotation, and revocation now commits one validated,
+actor- and request-bound secret-free audit record atomically with the
+credential lifecycle. Executed PostgreSQL evidence and cross-process evidence
+remain.
 
 H0 is delivered through the numbered sub-gates below. H0.1 through H0.3 may be
 proved against an owning profile after that profile's single-node gate. I0 uses

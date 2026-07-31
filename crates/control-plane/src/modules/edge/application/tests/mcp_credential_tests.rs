@@ -126,6 +126,7 @@ struct Fixture {
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    actor_id: Uuid,
     repository: Arc<InMemoryEdgeRepository>,
     lifecycle: McpCredentialLifecycleService,
     environments: Arc<dyn IEnvironmentRepository>,
@@ -135,6 +136,7 @@ fn fixture(decrypt_failures: usize) -> Fixture {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
+    let actor_id = Uuid::new_v4();
     let directory = TempDir::new().expect("temporary key directory");
     let encryption: Arc<dyn ISecretEncryptionService> = Arc::new(
         LocalKeyEncryptionService::load_or_create(directory.path().join("delivery.key"))
@@ -159,6 +161,7 @@ fn fixture(decrypt_failures: usize) -> Fixture {
         organization_id,
         project_id,
         environment_id,
+        actor_id,
         repository,
         lifecycle,
         environments,
@@ -171,6 +174,7 @@ fn issue(fixture: &Fixture, key: &str) -> IssueMcpCredential {
         project_id: fixture.project_id,
         environment_id: fixture.environment_id,
         expires_at: now() + Duration::days(30),
+        actor_id: fixture.actor_id,
         idempotency_key: key.into(),
         request_id: Uuid::new_v4(),
         requested_at: now(),
@@ -259,6 +263,7 @@ async fn issues_rotates_revokes_and_queries_one_exact_tenant_credential() {
         environment_id: fixture.environment_id,
         credential_id: issued.credential.id,
         expires_at: now() + Duration::days(60),
+        actor_id: fixture.actor_id,
         idempotency_key: "rotate-key".into(),
         request_id: Uuid::new_v4(),
         requested_at: now() + Duration::minutes(1),
@@ -344,6 +349,7 @@ async fn issues_rotates_revokes_and_queries_one_exact_tenant_credential() {
         project_id: fixture.project_id,
         environment_id: fixture.environment_id,
         credential_id: rotated.credential.id,
+        actor_id: fixture.actor_id,
         idempotency_key: "revoke-key".into(),
         request_id: Uuid::new_v4(),
         requested_at: now() + Duration::minutes(2),
@@ -369,4 +375,21 @@ async fn issues_rotates_revokes_and_queries_one_exact_tenant_credential() {
         .expect("replay revocation");
     assert!(replayed_revoke.replayed);
     assert!(replayed_revoke.secret().is_none());
+
+    let audits = fixture.repository.audit_records().await;
+    assert_eq!(audits.len(), 3);
+    assert_eq!(
+        audits
+            .iter()
+            .map(|audit| audit.action.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "edge.mcp-credential.issue",
+            "edge.mcp-credential.rotate",
+            "edge.mcp-credential.revoke",
+        ]
+    );
+    assert!(audits
+        .iter()
+        .all(|audit| audit.actor_id == Some(fixture.actor_id)));
 }

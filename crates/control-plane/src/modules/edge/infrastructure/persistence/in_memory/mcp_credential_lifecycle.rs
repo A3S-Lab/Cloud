@@ -110,6 +110,7 @@ impl IMcpCredentialLifecycleRepository for InMemoryEdgeRepository {
             (bundle.idempotency.request_digest, reference),
         );
         state.outbox.push(bundle.event);
+        state.audit.push(bundle.audit);
         Ok(McpCredentialLifecycleResult {
             credential,
             delivery: bundle.delivery,
@@ -224,7 +225,9 @@ fn replay(
 mod tests {
     use super::*;
     use crate::modules::edge::domain::events::McpCredentialChanged;
-    use crate::modules::edge::domain::{McpCredential, McpCredentialDelivery};
+    use crate::modules::edge::domain::{
+        mcp_credential_audit_record, McpCredential, McpCredentialDelivery,
+    };
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, McpCredentialId, OrganizationId, ProjectId,
     };
@@ -268,6 +271,13 @@ mod tests {
     ) -> StoreMcpCredentialLifecycle {
         let event =
             McpCredentialChanged::envelope(&credential, Uuid::new_v4()).expect("event envelope");
+        let audit = mcp_credential_audit_record(
+            &credential,
+            expected_aggregate_version,
+            Uuid::new_v4(),
+            event.correlation_id,
+        )
+        .expect("audit record");
         StoreMcpCredentialLifecycle {
             credential,
             expected_aggregate_version,
@@ -275,6 +285,7 @@ mod tests {
             observed_at,
             idempotency,
             event,
+            audit,
         }
     }
 
@@ -327,6 +338,7 @@ mod tests {
                 ..first.clone()
             }
         );
+        assert_eq!(repository.audit_records().await.len(), 1);
         assert_eq!(
             repository
                 .replay_mcp_credential_lifecycle(
@@ -372,6 +384,24 @@ mod tests {
             ))
             .await
             .expect("store rotation");
+        let audits = repository.audit_records().await;
+        assert_eq!(audits.len(), 2);
+        assert_eq!(audits[0].action, "edge.mcp-credential.issue");
+        assert_eq!(audits[1].action, "edge.mcp-credential.rotate");
+        let rendered = audits
+            .iter()
+            .map(|audit| format!("{} {}", audit.action, audit.details))
+            .collect::<String>();
+        for forbidden in [
+            "issue-ciphertext",
+            "rotated-ciphertext",
+            VERIFIER,
+            ROTATED_VERIFIER,
+            issued.prefix(),
+            rotated.prefix(),
+        ] {
+            assert!(!rendered.contains(forbidden));
+        }
         assert!(matches!(
             repository
                 .replay_mcp_credential_lifecycle(
@@ -479,5 +509,9 @@ mod tests {
             0
         );
         assert_eq!(repository.outbox_events().await.len(), 2);
+        let audits = repository.audit_records().await;
+        assert_eq!(audits.len(), 2);
+        assert_eq!(audits[1].action, "edge.mcp-credential.revoke");
+        assert_eq!(audits[1].details["revoked"], true);
     }
 }

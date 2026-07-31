@@ -4,7 +4,8 @@ use crate::modules::edge::domain::repositories::{
     MCP_CREDENTIAL_IDENTITY_CONFLICT,
 };
 use crate::modules::edge::domain::{
-    McpCredential, McpCredentialDelivery, MAX_MCP_CREDENTIAL_DELIVERY_TTL,
+    mcp_credential_audit_record, McpCredential, McpCredentialDelivery,
+    MAX_MCP_CREDENTIAL_DELIVERY_TTL,
 };
 use crate::modules::edge::infrastructure::{
     McpCredentialIssuanceError, McpCredentialIssueRequest, McpCredentialMaterial,
@@ -149,6 +150,7 @@ impl McpCredentialLifecycleService {
         &self,
         request: McpCredentialIssueRequest,
         idempotency: IdempotencyRequest,
+        actor_id: Uuid,
         correlation_id: Uuid,
     ) -> ApplicationResult<McpCredentialMutationResult> {
         for attempt in 0..MAX_ISSUANCE_ATTEMPTS {
@@ -158,7 +160,13 @@ impl McpCredentialLifecycleService {
                 .await
                 .map_err(material_error)?;
             match self
-                .store_material(material, None, idempotency.clone(), correlation_id)
+                .store_material(
+                    material,
+                    None,
+                    idempotency.clone(),
+                    actor_id,
+                    correlation_id,
+                )
                 .await
             {
                 Ok(result) => return Ok(result),
@@ -185,6 +193,7 @@ impl McpCredentialLifecycleService {
         expires_at: DateTime<Utc>,
         rotated_at: DateTime<Utc>,
         idempotency: IdempotencyRequest,
+        actor_id: Uuid,
         correlation_id: Uuid,
     ) -> ApplicationResult<McpCredentialMutationResult> {
         let expected_version = credential.aggregate_version();
@@ -197,6 +206,7 @@ impl McpCredentialLifecycleService {
             material,
             Some(expected_version),
             idempotency,
+            actor_id,
             correlation_id,
         )
         .await
@@ -207,11 +217,19 @@ impl McpCredentialLifecycleService {
         credential: McpCredential,
         expected_version: u64,
         idempotency: IdempotencyRequest,
+        actor_id: Uuid,
         correlation_id: Uuid,
         observed_at: DateTime<Utc>,
     ) -> ApplicationResult<McpCredentialMutationResult> {
         let event = McpCredentialChanged::envelope(&credential, correlation_id)
             .map_err(|_| internal_delivery_error())?;
+        let audit = mcp_credential_audit_record(
+            &credential,
+            Some(expected_version),
+            actor_id,
+            correlation_id,
+        )
+        .map_err(|_| internal_audit_error())?;
         let stored = self
             .repository
             .store_mcp_credential_lifecycle(StoreMcpCredentialLifecycle {
@@ -221,6 +239,7 @@ impl McpCredentialLifecycleService {
                 observed_at: canonical_timestamp(observed_at),
                 idempotency,
                 event,
+                audit,
             })
             .await
             .map_err(ApplicationError::from)?;
@@ -232,6 +251,7 @@ impl McpCredentialLifecycleService {
         material: McpCredentialMaterial,
         expected_aggregate_version: Option<u64>,
         idempotency: IdempotencyRequest,
+        actor_id: Uuid,
         correlation_id: Uuid,
     ) -> ApplicationResult<McpCredentialMutationResult> {
         let (credential, secret) = material.into_parts();
@@ -270,6 +290,13 @@ impl McpCredentialLifecycleService {
         .map_err(|_| internal_delivery_error())?;
         let event = McpCredentialChanged::envelope(&credential, correlation_id)
             .map_err(|_| internal_delivery_error())?;
+        let audit = mcp_credential_audit_record(
+            &credential,
+            expected_aggregate_version,
+            actor_id,
+            correlation_id,
+        )
+        .map_err(|_| internal_audit_error())?;
         let observed_at = credential.updated_at();
         let stored = self
             .repository
@@ -280,6 +307,7 @@ impl McpCredentialLifecycleService {
                 observed_at,
                 idempotency,
                 event,
+                audit,
             })
             .await
             .map_err(ApplicationError::from)?;
@@ -341,6 +369,10 @@ fn encryption_error(_error: SecretEncryptionError) -> ApplicationError {
 
 fn internal_delivery_error() -> ApplicationError {
     ApplicationError::Internal("MCP credential encrypted delivery failed validation".into())
+}
+
+fn internal_audit_error() -> ApplicationError {
+    ApplicationError::Internal("MCP credential audit record failed validation".into())
 }
 
 pub(crate) fn exact_credential(
