@@ -1,0 +1,22 @@
+[package]
+name = "a3s-workflow-node-runner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "a3s-workflow-node"
+path = "src/main.rs"
+
+[dependencies]
+a3s-workflow-protocol = { path = "../crates/workflow-protocol" }
+anyhow.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

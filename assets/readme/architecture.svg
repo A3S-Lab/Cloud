@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Workflow control plane and execution plane</title>
+  <desc id="desc">The React studio calls an A3S Boot API. A3S Flow stores definitions, events, node executions, and queues in PostgreSQL. Every ready node is dispatched through A3S Runtime to an independently scalable provider pool, then returns a digest-bound result to the workflow history.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1200" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101118"/>
+      <stop offset="1" stop-color="#171329"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="80" y1="0" x2="1120" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2587f5"/>
+      <stop offset="0.52" stop-color="#3b53dc"/>
+      <stop offset="1" stop-color="#7137d8"/>
+    </linearGradient>
+    <marker id="arrow-blue" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L9 4.5L0 9Z" fill="#6ca3ff"/>
+    </marker>
+    <marker id="arrow-muted" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L9 4.5L0 9Z" fill="#707581"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="560" rx="24" fill="url(#background)"/>
+  <text x="58" y="56" fill="#f2f3f5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" font-size="36" font-weight="740">One durable control plane. Every node crosses A3S Runtime.</text>
+  <text x="58" y="91" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="1.5">DESIRED GRAPH → EVENT HISTORY → IMMUTABLE NODE UNIT → OBSERVED RESULT</text>
+
+  <g id="control-plane" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <text x="58" y="142" fill="#6ca3ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="1.6">CONTROL PLANE</text>
+    <rect x="58" y="164" width="1084" height="142" rx="16" fill="#151720" stroke="#3a3d48"/>
+
+    <g transform="translate(82 190)">
+      <rect width="176" height="88" rx="12" fill="#171820" stroke="#3a3d48"/>
+      <text x="20" y="36" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">STUDIO</text>
+      <text x="20" y="67" fill="#f2f3f5" font-size="21" font-weight="700">React + Rsbuild</text>
+    </g>
+    <g transform="translate(316 190)">
+      <rect width="176" height="88" rx="12" fill="#111d32" stroke="#2864e8" stroke-width="2"/>
+      <text x="20" y="36" fill="#6ca3ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">API</text>
+      <text x="20" y="67" fill="#f2f3f5" font-size="21" font-weight="700">A3S Boot</text>
+    </g>
+    <g transform="translate(550 190)">
+      <rect width="176" height="88" rx="12" fill="#111d32" stroke="#3b53dc" stroke-width="2"/>
+      <text x="20" y="36" fill="#8c83ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">ORCHESTRATOR</text>
+      <text x="20" y="67" fill="#f2f3f5" font-size="21" font-weight="700">A3S Flow</text>
+    </g>
+    <g transform="translate(784 190)">
+      <rect width="218" height="88" rx="12" fill="#171820" stroke="#3a3d48"/>
+      <text x="20" y="36" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">SOURCE OF TRUTH</text>
+      <text x="20" y="67" fill="#f2f3f5" font-size="21" font-weight="700">PostgreSQL</text>
+    </g>
+    <text x="1028" y="215" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">graphs</text>
+    <text x="1028" y="240" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">events</text>
+    <text x="1028" y="265" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">queues</text>
+
+    <path d="M258 234H304" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow-blue)"/>
+    <path d="M492 234H538" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow-blue)"/>
+    <path d="M726 234H772" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  </g>
+
+  <path d="M638 306V358" stroke="#6ca3ff" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="658" y="340" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">READY NODE</text>
+
+  <g id="execution-plane" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <text x="58" y="356" fill="#ad87ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="1.6">EXECUTION PLANE</text>
+    <rect x="58" y="374" width="1084" height="132" rx="16" fill="#151720" stroke="#3a3d48"/>
+
+    <g transform="translate(82 397)">
+      <rect width="224" height="86" rx="12" fill="#171820" stroke="#5420bd" stroke-width="2"/>
+      <text x="20" y="34" fill="#ad87ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">DISPATCH</text>
+      <text x="20" y="64" fill="#f2f3f5" font-size="21" font-weight="700">A3S Runtime 0.2</text>
+    </g>
+    <path d="M306 440H338V376H969" fill="none" stroke="#6ca3ff" stroke-width="3"/>
+    <path d="M485 376V389M727 376V389M969 376V389" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow-blue)"/>
+
+    <g transform="translate(378 397)">
+      <rect width="214" height="86" rx="12" fill="#111d32" stroke="#2864e8"/>
+      <text x="18" y="33" fill="#6ca3ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">AGENT / LLM</text>
+      <text x="18" y="63" fill="#f2f3f5" font-size="20" font-weight="700">GPU-aware pool</text>
+    </g>
+    <g transform="translate(620 397)">
+      <rect width="214" height="86" rx="12" fill="#171820" stroke="#3b53dc"/>
+      <text x="18" y="33" fill="#8c83ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">TOOL / HTTP</text>
+      <text x="18" y="63" fill="#f2f3f5" font-size="20" font-weight="700">Stateless CPU pool</text>
+    </g>
+    <g transform="translate(862 397)">
+      <rect width="252" height="86" rx="12" fill="#171820" stroke="#7137d8"/>
+      <text x="18" y="33" fill="#ad87ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">MEMORY / APPROVAL</text>
+      <text x="18" y="63" fill="#f2f3f5" font-size="20" font-weight="700">State externalized</text>
+    </g>
+  </g>
+
+  <path d="M727 506V520H893V306" fill="none" stroke="#707581" stroke-width="2" marker-end="url(#arrow-muted)"/>
+  <text x="584" y="548" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">DIGEST-BOUND OUTPUT + USAGE + EVIDENCE</text>
+  <path d="M58 528H1142" stroke="url(#brand)" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,55 @@
+server {
+  host = env("A3S_WORKFLOW_HOST", "127.0.0.1")
+  port = 8080
+  cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+  body_limit_bytes = 2097152
+}
+
+storage {
+  database_url = env("A3S_WORKFLOW_DATABASE_URL", "postgres://workflow:workflow@127.0.0.1:5432/workflow")
+  max_connections = 16
+  audit_path = env("A3S_WORKFLOW_AUDIT_PATH", ".a3s/workflow/audit/flow-events.jsonl")
+  seed_sample = true
+}
+
+flow {
+  queue_name = env("A3S_WORKFLOW_QUEUE", "workflow")
+  worker_poll_ms = 100
+  scheduler_poll_ms = 1000
+  inflight_lease_seconds = 300
+}
+
+runtime {
+  default_provider = env("A3S_RUNTIME_PROVIDER", "local")
+  invocation_base_url = env("A3S_WORKFLOW_INTERNAL_URL", "http://127.0.0.1:8080")
+  node_artifact_uri = env("A3S_NODE_ARTIFACT_URI", "file:///usr/local/bin/a3s-workflow-node")
+  node_artifact_digest = env("A3S_NODE_ARTIFACT_DIGEST", "sha256:0000000000000000000000000000000000000000000000000000000000000000")
+  node_artifact_media_type = "application/vnd.a3s.workflow.node-runner.v1"
+  node_command = []
+  default_cpu_millis = 500
+  default_memory_bytes = 268435456
+  default_pids = 128
+  default_timeout_ms = 120000
+  output_max_bytes = 2097152
+}
+
+runtimes "local" {
+  endpoint = env("A3S_RUNTIME_URL", "http://127.0.0.1:8090")
+  api_token = env("A3S_RUNTIME_API_TOKEN", "")
+}
+
+gateway {
+  base_url = env("A3S_GATEWAY_URL", "http://127.0.0.1:9877/v1")
+  api_key_reference = env("A3S_GATEWAY_SECRET_REF", "env://A3S_GATEWAY_API_KEY")
+  default_model = env("A3S_GATEWAY_MODEL", "")
+}
+
+memory {
+  base_url = env("A3S_MEMORY_URL", "http://127.0.0.1:8080/api/v1")
+  api_key_reference = env("A3S_MEMORY_SECRET_REF", "")
+}
+
+security {
+  http_allowed_hosts = []
+  max_http_response_bytes = 1048576
+}

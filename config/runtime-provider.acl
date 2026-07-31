@@ -1,0 +1,15 @@
+server {
+  host = env("A3S_RUNTIME_HOST", "127.0.0.1")
+  port = 8090
+  body_limit_bytes = 2097152
+}
+
+provider {
+  id = env("A3S_RUNTIME_PROVIDER_ID", "local")
+  build = env("A3S_RUNTIME_PROVIDER_BUILD", "a3s-workflow-dev")
+  public_base_url = env("A3S_RUNTIME_PUBLIC_URL", "http://127.0.0.1:8090")
+  state_path = env("A3S_RUNTIME_STATE_PATH", ".a3s/runtime/state")
+  artifact_path = env("A3S_RUNTIME_ARTIFACT_PATH", ".a3s/runtime/artifacts")
+  api_token = env("A3S_RUNTIME_API_TOKEN", "")
+  max_input_bytes = 8388608
+}

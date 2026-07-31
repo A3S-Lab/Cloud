@@ -1,0 +1,85 @@
+x-workflow-image: &workflow-image
+  image: a3s-workflow:local
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile
+
+x-control-plane-environment: &control-plane-environment
+  A3S_WORKFLOW_HOST: 0.0.0.0
+  A3S_WORKFLOW_DATABASE_URL: postgres://workflow:workflow@postgres:5432/workflow
+  A3S_WORKFLOW_INTERNAL_URL: http://api:8080
+  A3S_RUNTIME_URL: http://runtime:8090
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: workflow
+      POSTGRES_USER: workflow
+      POSTGRES_PASSWORD: workflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workflow -d workflow"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  runtime:
+    <<: *workflow-image
+    command: ["a3s-workflow-runtime-provider"]
+    environment:
+      A3S_RUNTIME_HOST: 0.0.0.0
+      A3S_RUNTIME_PUBLIC_URL: http://runtime:8090
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8090/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - runtime-state:/var/lib/a3s/runtime
+
+  api:
+    <<: *workflow-image
+    command: ["a3s-workflow-server"]
+    environment: *control-plane-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "8080:8080"
+    volumes:
+      - workflow-audit:/var/lib/a3s/workflow
+
+  worker:
+    <<: *workflow-image
+    command: ["a3s-workflow-worker"]
+    environment: *control-plane-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      runtime:
+        condition: service_healthy
+
+  studio:
+    image: a3s-workflow-studio:local
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres-data:
+  runtime-state:
+  workflow-audit:

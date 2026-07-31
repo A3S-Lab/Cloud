@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Workflow — AI Native Workflow Engine</title>
+  <desc id="desc">A durable workflow graph where every AI, tool, routing, memory, approval, input, and output node crosses the A3S Runtime execution boundary.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1200" y2="460" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101118"/>
+      <stop offset="0.62" stop-color="#151725"/>
+      <stop offset="1" stop-color="#1d1436"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="58" y1="36" x2="1138" y2="414" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2587f5"/>
+      <stop offset="0.5" stop-color="#3b53dc"/>
+      <stop offset="1" stop-color="#7137d8"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L8 4L0 8Z" fill="#6ca3ff"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="460" rx="24" fill="url(#background)"/>
+  <path d="M0 376H1200" stroke="#2a2d35"/>
+  <path d="M500 0V376" stroke="#2a2d35"/>
+
+  <g id="identity" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <g transform="translate(58 42)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M58 8A50 50 0 1 0 103 80" stroke="url(#brand)" stroke-width="9"/>
+      <path d="M34 76L57 26L80 76M44 55H70" stroke="#f2f3f5" stroke-width="8"/>
+      <path d="M13 75C31 62 44 63 58 72C72 81 88 78 106 61" stroke="url(#brand)" stroke-width="9"/>
+    </g>
+
+    <text x="180" y="71" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="2">AI NATIVE WORKFLOW ENGINE</text>
+    <text x="58" y="190" fill="#f2f3f5" font-size="62" font-weight="760" letter-spacing="-3">A3S Workflow</text>
+    <text x="58" y="245" fill="#f2f3f5" font-size="31" font-weight="720" letter-spacing="-1">Durable orchestration.</text>
+    <text x="58" y="287" fill="url(#brand)" font-size="31" font-weight="720" letter-spacing="-1">Every node is a Runtime unit.</text>
+
+    <g transform="translate(58 319)">
+      <rect width="392" height="58" rx="10" fill="#171820" stroke="#3a3d48"/>
+      <text x="20" y="36" fill="#6ca3ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">POSTGRES</text>
+      <text x="128" y="36" fill="#707581" font-size="20">/</text>
+      <text x="151" y="36" fill="#f2f3f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">FLOW</text>
+      <text x="210" y="36" fill="#707581" font-size="20">/</text>
+      <text x="233" y="36" fill="#f2f3f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">RUNTIME</text>
+    </g>
+  </g>
+
+  <g id="workflow-proof" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <text x="548" y="49" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="1.8">ONE GRAPH / MANY EXECUTORS</text>
+
+    <path d="M600 142H704M838 142H932" fill="none" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M771 178V226H646V250" fill="none" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M771 226H960V250" fill="none" stroke="#6ca3ff" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <g transform="translate(534 100)">
+      <rect width="122" height="84" rx="12" fill="#171820" stroke="#3a3d48"/>
+      <circle cx="25" cy="24" r="7" fill="#6ca3ff"/>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Input</text>
+    </g>
+    <g transform="translate(704 100)">
+      <rect width="134" height="84" rx="12" fill="#111d32" stroke="#2864e8" stroke-width="2"/>
+      <circle cx="25" cy="24" r="7" fill="#6ca3ff"/>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Agent</text>
+    </g>
+    <g transform="translate(932 100)">
+      <rect width="132" height="84" rx="12" fill="#171820" stroke="#5420bd" stroke-width="2"/>
+      <circle cx="25" cy="24" r="7" fill="#ad87ff"/>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Router</text>
+    </g>
+    <g transform="translate(578 250)">
+      <rect width="136" height="84" rx="12" fill="#171820" stroke="#3a3d48"/>
+      <circle cx="25" cy="24" r="7" fill="#8c83ff"/>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Tool</text>
+    </g>
+    <g transform="translate(744 250)">
+      <rect width="148" height="84" rx="12" fill="#171820" stroke="#3a3d48"/>
+      <circle cx="25" cy="24" r="7" fill="#8c83ff"/>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Memory</text>
+    </g>
+    <g transform="translate(922 250)">
+      <rect width="154" height="84" rx="12" fill="#171820" stroke="#3a3d48"/>
+      <circle cx="25" cy="24" r="7" fill="#ad87ff"/>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Approval</text>
+    </g>
+
+    <path d="M534 354H1076" stroke="url(#brand)" stroke-width="4" stroke-linecap="round"/>
+    <text x="548" y="368" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700">IMMUTABLE UNIT ID + GENERATION + DIGEST</text>
+  </g>
+
+  <g id="foundation" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <text x="58" y="417" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700" letter-spacing="1.4">CONTROL PLANE</text>
+    <text x="250" y="417" fill="#f2f3f5" font-size="19" font-weight="680">Boot</text>
+    <text x="320" y="417" fill="#f2f3f5" font-size="19" font-weight="680">Flow</text>
+    <text x="385" y="417" fill="#f2f3f5" font-size="19" font-weight="680">Event</text>
+    <text x="462" y="417" fill="#f2f3f5" font-size="19" font-weight="680">ORM</text>
+    <text x="580" y="417" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" font-weight="700" letter-spacing="1.4">EXECUTION PLANE</text>
+    <text x="788" y="417" fill="#f2f3f5" font-size="19" font-weight="680">A3S Runtime</text>
+    <text x="925" y="417" fill="#f2f3f5" font-size="19" font-weight="680">Provider pools</text>
+    <path d="M58 441H1142" stroke="url(#brand)" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

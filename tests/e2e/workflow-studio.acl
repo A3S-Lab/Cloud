@@ -1,0 +1,66 @@
+suite "workflow-studio" {
+    version = 1
+
+    scenario "runtime-backed-graph" {
+        name = "Run every workflow node through A3S Runtime"
+        surface = "web"
+        timeout_ms = 60000
+
+        navigate "open-studio" {
+            url = "http://127.0.0.1:3000"
+        }
+
+        viewport "desktop" {
+            width = 1440
+            height = 900
+        }
+
+        wait "workflow-loaded" {
+            text = "Welcome to A3S Workflow"
+        }
+
+        expect "runtime-unit-count" {
+            text = "3 Runtime units"
+        }
+
+        fill "run-input" {
+            target = testid("run-input")
+            value = "{\"name\":\"A3S E2E\"}"
+        }
+
+        click "run-graph" {
+            target = role("button", "Run graph")
+        }
+
+        wait "runtime-result" {
+            text = "Hello, A3S E2E!"
+        }
+
+        expect "all-runtime-units-completed" {
+            text = "3/3 units"
+        }
+
+        expect "flow-output" {
+            text = "a3s-flow"
+        }
+
+        screenshot "completed-workflow" {
+            path = "screenshots/workflow-completed.png"
+        }
+
+        accessibility "semantic-evidence" {
+            path = "evidence/accessibility.json"
+            interactive = false
+        }
+
+        console "console-evidence" {
+            path = "evidence/console.json"
+            clear = false
+        }
+
+        page_errors "page-error-evidence" {
+            path = "evidence/page-errors.json"
+            clear = false
+        }
+    }
+}

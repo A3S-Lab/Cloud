@@ -1,0 +1,17 @@
+/target/
+/web/node_modules/
+/web/dist/
+/.a3s/
+/.a3s-test/
+/.tools/
+
+.env
+.env.*
+!.env.example
+*.local
+*.log
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

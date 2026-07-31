@@ -1,0 +1,25 @@
+{
+  "name": "@a3s/workflow-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rsbuild dev",
+    "build": "rsbuild build",
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.11.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "2.1.9",
+    "@rsbuild/plugin-react": "2.1.0",
+    "@types/bun": "^1.3.14",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "typescript": "7.0.2"
+  }
+}

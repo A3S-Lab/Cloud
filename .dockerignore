@@ -1,0 +1,9 @@
+.git
+.github
+.a3s
+.a3s-test
+.tools
+target
+web/node_modules
+web/dist
+*.log
