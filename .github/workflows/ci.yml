@@ -41,15 +41,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo install cargo-llvm-cov --version 0.8.7 --locked
-      - run: cargo llvm-cov --workspace --all-targets --locked --fail-under-lines 55 --lcov --output-path lcov.info
-      - name: Upload Rust coverage
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-lcov
-          path: lcov.info
-          if-no-files-found: error
-          retention-days: 1
+      - run: cargo llvm-cov --workspace --all-targets --locked --fail-under-lines 90
 
   studio:
     name: React Studio
@@ -64,7 +56,7 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun test --coverage
+      - run: bun run test:coverage
       - run: bun run build
 
   installers:
@@ -73,21 +65,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - name: Validate macOS/Linux installer
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           bash -n scripts/install.sh
-          scripts/install.sh --dry-run --no-deploy --install-dir /tmp/a3s-workflow/bin --skill-dir /tmp/a3s-workflow/skill
+          output="$(scripts/install.sh --dry-run --install-dir /tmp/a3s-workflow/bin --skill-dir /tmp/a3s-workflow/skill)"
+          printf '%s\n' "$output"
+          [[ "$output" == *"docker compose --project-directory"* ]]
+          [[ "$output" == *"compose.yaml up --build --detach"* ]]
       - name: Validate PowerShell installer
         shell: pwsh
-        run: >-
-          ./scripts/install.ps1 -DryRun -NoDeploy
-          -InstallDir "${{ runner.temp }}/a3s-workflow/bin"
-          -SkillDir "${{ runner.temp }}/a3s-workflow/skill"
+        run: |
+          $output = ./scripts/install.ps1 -DryRun `
+            -InstallDir "${{ runner.temp }}/a3s-workflow/bin" `
+            -SkillDir "${{ runner.temp }}/a3s-workflow/skill" 6>&1 | Out-String
+          Write-Host $output
+          if ($output -notmatch '\+ docker compose .* -f .*compose\.yaml up --build --detach') {
+            throw "Installer did not emit the expected Docker Compose command"
+          }
 
   containers:
     name: Container builds

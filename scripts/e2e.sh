@@ -4,8 +4,9 @@ set -euo pipefail
 A3S_TEST_BIN="${A3S_TEST_BIN:-a3s-test}"
 A3S_TEST_BROWSER="${A3S_TEST_BROWSER:-agent-browser}"
 MANIFEST="${A3S_TEST_MANIFEST:-tests/e2e/workflow-studio.acl}"
-COMMAND_TIMEOUT_MS="${A3S_TEST_COMMAND_TIMEOUT_MS:-30000}"
-IDLE_TIMEOUT_MS="${A3S_TEST_IDLE_TIMEOUT_MS:-30000}"
+COMMAND_TIMEOUT_MS="${A3S_TEST_COMMAND_TIMEOUT_MS:-10000}"
+IDLE_TIMEOUT_MS="${A3S_TEST_IDLE_TIMEOUT_MS:-1000}"
+CLEANUP_TIMEOUT_MS="${A3S_TEST_CLEANUP_TIMEOUT_MS:-20000}"
 
 "$A3S_TEST_BIN" capabilities \
   --browser-driver standalone \
@@ -19,6 +20,6 @@ IDLE_TIMEOUT_MS="${A3S_TEST_IDLE_TIMEOUT_MS:-30000}"
   --browser-executable "$A3S_TEST_BROWSER" \
   --command-timeout-ms "$COMMAND_TIMEOUT_MS" \
   --idle-timeout-ms "$IDLE_TIMEOUT_MS" \
-  --cleanup-timeout-ms 10000 \
+  --cleanup-timeout-ms "$CLEANUP_TIMEOUT_MS" \
   --infrastructure-retries 1 \
   --json
