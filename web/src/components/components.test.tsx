@@ -53,6 +53,15 @@ function textContent(node: ReactTestInstance): string {
     .join('');
 }
 
+function buttonWithText(
+  renderer: TestRenderer.ReactTestRenderer,
+  label: string,
+): ReactTestInstance {
+  return renderer.root
+    .findAllByType('button')
+    .find((item) => textContent(item).trim().startsWith(label))!;
+}
+
 describe('Studio node components', () => {
   test('renders a distinct accessible SVG for every node kind', async () => {
     let renderer: TestRenderer.ReactTestRenderer;
@@ -144,7 +153,7 @@ describe('Studio node components', () => {
       );
     });
 
-    expect(renderer!.root.findAll((node) => node.props.className === 'node-category')).toHaveLength(
+    expect(renderer!.root.findAll((node) => node.props.className === 'node-title')).toHaveLength(
       9,
     );
     expect(renderer!.root.findByProps({ 'data-testid': 'workflow-node-start-node' })).toBeDefined();
@@ -156,6 +165,7 @@ describe('Runtime policy inspector', () => {
   test('edits identity, placement, resources and typed JSON configuration', async () => {
     const changes: Array<{ id: string; data: StudioNode['data'] }> = [];
     const deleted: string[] = [];
+    let closed = 0;
     const node = studioNode();
     const evidence: RuntimeEvidence = {
       executionId: 'execution-1',
@@ -179,6 +189,7 @@ describe('Runtime policy inspector', () => {
           evidence={evidence}
           onChange={(id, data) => changes.push({ id, data })}
           onDelete={(id) => deleted.push(id)}
+          onClose={() => { closed += 1; }}
         />,
       );
     });
@@ -189,6 +200,17 @@ describe('Runtime policy inspector', () => {
       });
     };
     await change({ 'aria-label': 'Display name' }, 'Renamed');
+    await change({ 'aria-label': 'Node configuration JSON' }, '{broken');
+    await act(async () => {
+      renderer!.root.findByProps({ className: 'secondary-button full' }).props.onClick();
+    });
+    expect(renderer!.root.findAllByProps({ className: 'field-error' })).toHaveLength(1);
+
+    await change({ 'aria-label': 'Node configuration JSON' }, '{"template":"updated"}');
+    await act(async () => {
+      renderer!.root.findByProps({ className: 'secondary-button full' }).props.onClick();
+      buttonWithText(renderer!, 'RUNTIME').props.onClick();
+    });
     await change({ 'aria-label': 'Runtime provider' }, 'edge');
     await change({ 'aria-label': 'Runtime provider' }, '');
     await change({ 'aria-label': 'Runtime pool' }, 'gpu');
@@ -209,26 +231,23 @@ describe('Runtime policy inspector', () => {
     expect(changes.some((entry) => entry.data.runtime.cpuMillis === 750)).toBe(true);
     expect(changes.some((entry) => entry.data.runtime.memoryBytes === 512 * 1024 * 1024)).toBe(true);
     expect(changes.some((entry) => entry.data.runtime.timeoutMs === 45_000)).toBe(true);
-
-    await change({ 'aria-label': 'Node configuration JSON' }, '{broken');
-    await act(async () => {
-      renderer!.root.findByProps({ className: 'secondary-button full' }).props.onClick();
-    });
-    expect(renderer!.root.findAllByProps({ className: 'field-error' })).toHaveLength(1);
-
-    await change({ 'aria-label': 'Node configuration JSON' }, '{"template":"updated"}');
-    await act(async () => {
-      renderer!.root.findByProps({ className: 'secondary-button full' }).props.onClick();
-    });
     expect(changes.some((entry) => JSON.stringify(entry.data.config).includes('updated'))).toBe(
       true,
     );
-    expect(renderer!.root.findAllByProps({ className: 'field-error' })).toHaveLength(0);
-    expect(renderer!.root.findAllByProps({ 'data-testid': 'runtime-evidence' })).toHaveLength(1);
 
     await act(async () => {
+      buttonWithText(renderer!, 'EVIDENCE').props.onClick();
+    });
+    expect(renderer!.root.findAllByProps({ 'data-testid': 'runtime-evidence' })).toHaveLength(1);
+    expect(textContent(renderer!.root.findByProps({ 'data-testid': 'runtime-evidence' }))).toContain(
+      'production-cpu',
+    );
+
+    await act(async () => {
+      renderer!.root.findByProps({ 'aria-label': 'Close node inspector' }).props.onClick();
       renderer!.root.findByProps({ className: 'danger-button' }).props.onClick();
     });
+    expect(closed).toBe(1);
     expect(deleted).toEqual([node.id]);
   });
 
@@ -252,6 +271,15 @@ describe('Runtime policy inspector', () => {
       'input',
     );
     expect(renderer!.root.findAllByProps({ className: 'danger-button' })).toHaveLength(0);
+    await act(async () => {
+      buttonWithText(renderer!, 'EVIDENCE').props.onClick();
+    });
+    expect(textContent(renderer!.root.findByProps({ className: 'evidence-empty' }))).toContain(
+      'No Runtime evidence yet',
+    );
+    await act(async () => {
+      buttonWithText(renderer!, 'RUNTIME').props.onClick();
+    });
     expect(renderer!.root.findByProps({ 'aria-label': 'Runtime network' }).props.value).toBe(
       'none',
     );
@@ -260,6 +288,10 @@ describe('Runtime policy inspector', () => {
     llm.data.runtime.network = undefined;
     await act(async () => {
       renderer!.update(<Inspector node={llm} onChange={() => {}} onDelete={() => {}} />);
+    });
+    expect(renderer!.root.findByProps({ 'aria-label': 'Node configuration JSON' })).toBeDefined();
+    await act(async () => {
+      buttonWithText(renderer!, 'RUNTIME').props.onClick();
     });
     expect(renderer!.root.findByProps({ 'aria-label': 'Runtime network' }).props.value).toBe(
       'outbound',

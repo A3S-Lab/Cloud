@@ -34,9 +34,9 @@ totals, preventing tests from covering themselves.
 ## A3S Test policy
 
 `a3s-test` is a local acceptance tool for Codex and other coding agents. It is
-not a GitHub Actions job and its screenshots, accessibility snapshots, console
-records, and page errors are never uploaded. Run it only against an explicitly
-started local stack:
+not a GitHub Actions job. The workflow manifest deliberately omits screenshots,
+accessibility snapshots, console records, page-error captures, and evidence
+uploads. Run it only against an explicitly started local stack:
 
 ```bash
 scripts/e2e.sh
@@ -48,4 +48,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\e2e.ps1 `
 ```
 
 The authoritative pass condition is the `a3s-test run` exit code and scenario
-step report. Files under `.a3s-test/runs/` are ignored, disposable diagnostics.
+step report consumed locally by the coding agent.

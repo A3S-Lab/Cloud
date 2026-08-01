@@ -77,6 +77,7 @@ or confidential execution pools. A3S Workflow makes those concerns explicit:
 | **Every node is Runtime-native** | The API and Flow worker never execute node business logic in-process. Start and output nodes cross the same boundary too. |
 | **PostgreSQL is authoritative** | Definitions, event history, queue leases, hooks, memory, and Runtime evidence survive process failure in one durable store. |
 | **Stateless nodes scale independently** | Provider and pool placement decouple node capacity from API and worker replicas. |
+| **Dify-derived Studio UX** | The familiar workflow canvas, on-demand node library, inspector, and test-run panel are retained and extended with Runtime placement and tracing. |
 | **Evidence, not hope** | Unit ID, generation, artifact digest, invocation digest, observation, and output digest are retained per attempt. |
 
 ### Why PostgreSQL instead of Redis?
@@ -239,8 +240,8 @@ PowerShell path.
 Codex and other coding agents use the official
 [A3S Test](https://github.com/A3S-Lab/Test) engine locally. It drives the Studio
 through semantic browser targets, changes the input, saves the graph, starts
-the run, and waits for the typed output. It then asserts `3/3` Runtime units and
-captures a screenshot, accessibility tree, console messages, and page errors.
+the run, and waits for the typed output. It then checks every sample node's
+Runtime success state and inspects the durable Runtime provider record.
 
 With the local stack running:
 
@@ -253,9 +254,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\e2e.ps1 `
   -BrowserExecutable C:\path\to\agent-browser.exe
 ```
 
-A3S Test is intentionally outside CI: its browser session and diagnostics stay
-under the agent's local `.a3s-test/runs/` directory and are never uploaded by
-the project workflow.
+A3S Test is intentionally outside CI. The acceptance manifest does not request
+screenshots, accessibility dumps, console logs, page-error captures, or upload
+any test evidence; its pass/fail step report is consumed locally by the coding
+agent.
 
 ## Technology stack
 
