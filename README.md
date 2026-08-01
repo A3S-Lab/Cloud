@@ -77,7 +77,7 @@ or confidential execution pools. A3S Workflow makes those concerns explicit:
 | **Every node is Runtime-native** | The API and Flow worker never execute node business logic in-process. Start and output nodes cross the same boundary too. |
 | **PostgreSQL is authoritative** | Definitions, event history, queue leases, hooks, memory, and Runtime evidence survive process failure in one durable store. |
 | **Stateless nodes scale independently** | Provider and pool placement decouple node capacity from API and worker replicas. |
-| **Dify-derived Studio UX** | The familiar workflow canvas, on-demand node library, inspector, and test-run panel are retained and extended with Runtime placement and tracing. |
+| **A3S Web-native Studio** | The workflow canvas, node library, inspector, and test-run panel follow the shared A3S Web design language and extend it with Runtime placement and tracing. |
 | **Evidence, not hope** | Unit ID, generation, artifact digest, invocation digest, observation, and output digest are retained per attempt. |
 
 ### Why PostgreSQL instead of Redis?
@@ -268,9 +268,12 @@ agent.
 | Execution contract | [A3S Runtime](https://github.com/A3S-Lab/Runtime) `0.2.0` |
 | Events / persistence / memory | A3S Event, A3S ORM, A3S Memory |
 | Source of truth | PostgreSQL |
-| Studio | Bun `1.3.14`, Rsbuild `2.1.9`, React `19`, React Flow |
+| Studio | Bun `1.3.14`, Rsbuild `2.1.9`, React `19`, React Flow, Lucide |
 | End-to-end testing | [A3S Test](https://github.com/A3S-Lab/Test) `0.4.3` |
 | Coding-agent interface | Rust CLI plus the `$a3s-workflow` Codex Skill |
+
+Studio visual and interaction changes follow the shared
+[A3S Web Design System](web/DESIGN.md).
 
 ## Repository map
 
@@ -306,4 +309,4 @@ The node, lifecycle, recovery, UI, and local acceptance case matrix is kept in
 
 ## License
 
-This repository is distributed under the terms in [LICENSE](LICENSE).
+This repository is distributed under the [MIT License](LICENSE).

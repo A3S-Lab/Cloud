@@ -71,10 +71,15 @@ describe('workflow canvas conversion', () => {
       source: 'router',
       target: 'output',
       sourceHandle: 'approved',
-      type: 'smoothstep',
+      type: 'bezier',
       animated: false,
-      style: { stroke: '#98a2b3', strokeWidth: 1.5 },
+      className: 'workflow-edge',
     });
+
+    expect(toCanvasEdges([{ id: 'folded', source: 'a', target: 'b' }], 'smoothstep')[0].type)
+      .toBe('smoothstep');
+    expect(toCanvasEdges([{ id: 'straight', source: 'a', target: 'b' }], 'straight')[0].type)
+      .toBe('straight');
   });
 
   test('serializes newly added nodes and strips transient execution state', () => {

@@ -4,6 +4,8 @@ A3S Workflow is an AI-native workflow engine. The Rust control plane is built
 with A3S Boot and A3S Flow, PostgreSQL is the only authoritative store, and
 every workflow node executes through the A3S Runtime contract. The Studio is a
 Bun + Rsbuild + React application; Next.js and PNPM are not part of this repo.
+Studio visual and interaction changes must follow `web/DESIGN.md`, which is
+kept aligned with the canonical A3S Web design system.
 
 ## Invariants
 

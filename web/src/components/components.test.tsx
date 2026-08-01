@@ -63,7 +63,7 @@ function buttonWithText(
 }
 
 describe('Studio node components', () => {
-  test('renders a distinct accessible SVG for every node kind', async () => {
+  test('renders a distinct Lucide glyph for every node kind', async () => {
     let renderer: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
@@ -76,14 +76,12 @@ describe('Studio node components', () => {
     for (const icon of icons) {
       expect(icon.props.width).toBe(24);
       expect(icon.props.height).toBe(24);
-      expect(icon.props['aria-hidden']).toBe(true);
+      expect(String(icon.props['aria-hidden'])).toBe('true');
     }
-    expect(icons.map((icon) => icon.findAllByType('path').length)).toEqual([
-      1, 1, 2, 1, 1, 1, 1, 1, 2, 1,
-    ]);
+    expect(new Set(icons.map((icon) => icon.props.className)).size).toBe(kinds.length);
   });
 
-  test('renders Dify-style node boundaries and deduplicated router handles', async () => {
+  test('renders A3S-style node boundaries and deduplicated router handles', async () => {
     const router = studioNode('router');
     router.data.config = {
       routes: [{ route: 'approved' }, { route: '' }, { route: 'approved' }, {}],
