@@ -278,3 +278,224 @@ fn validate_digest(value: &str) -> Result<()> {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    type ConfigMutation = (&'static str, fn(&mut AppConfig));
+
+    fn valid_config() -> AppConfig {
+        AppConfig {
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+                cors_origins: Vec::new(),
+                body_limit_bytes: 1024,
+            },
+            storage: StorageConfig {
+                database_url: "postgres://workflow:workflow@127.0.0.1/workflow".to_string(),
+                max_connections: 4,
+                audit_path: ".a3s/test-audit.jsonl".to_string(),
+                seed_sample: false,
+            },
+            flow: FlowConfig {
+                queue_name: "workflow-test".to_string(),
+                worker_poll_ms: 10,
+                scheduler_poll_ms: 20,
+                inflight_lease_seconds: 30,
+            },
+            runtime: RuntimeConfig {
+                default_provider: "local".to_string(),
+                invocation_base_url: "http://127.0.0.1:8080".to_string(),
+                node_artifact_uri: "file:///usr/local/bin/a3s-workflow-node".to_string(),
+                node_artifact_digest: format!("sha256:{}", "a".repeat(64)),
+                node_artifact_media_type: "application/vnd.a3s.workflow.node-runner.v1".to_string(),
+                node_command: Vec::new(),
+                default_cpu_millis: 500,
+                default_memory_bytes: 256 * 1024 * 1024,
+                default_pids: 128,
+                default_timeout_ms: 120_000,
+                output_max_bytes: 2 * 1024 * 1024,
+            },
+            runtimes: BTreeMap::from([(
+                "local".to_string(),
+                RuntimeProviderConfig {
+                    endpoint: "http://127.0.0.1:8090".to_string(),
+                    api_token: String::new(),
+                },
+            )]),
+            gateway: GatewayConfig {
+                base_url: "http://127.0.0.1:9877/v1".to_string(),
+                api_key_reference: String::new(),
+                default_model: "test-model".to_string(),
+            },
+            memory: MemoryConfig {
+                base_url: "http://127.0.0.1:8080/api/v1".to_string(),
+                api_key_reference: String::new(),
+            },
+            security: SecurityConfig {
+                http_allowed_hosts: vec!["api.example.test".to_string()],
+                max_http_response_bytes: 1024,
+            },
+        }
+    }
+
+    fn assert_invalid(config: &AppConfig, message: &str) {
+        let error = config.validate().expect_err("application config must fail");
+        assert!(
+            error.to_string().contains(message),
+            "expected {error} to contain {message:?}"
+        );
+    }
+
+    #[test]
+    fn bundled_application_config_loads_and_resolves_socket() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/workflow.acl");
+        let config = AppConfig::from_acl_file(path).expect("bundled workflow config");
+
+        assert_eq!(config.runtime.default_provider, "local");
+        assert_eq!(
+            config.socket_addr().expect("application socket"),
+            "127.0.0.1:8080".parse().expect("literal socket")
+        );
+    }
+
+    #[test]
+    fn missing_application_config_file_reports_its_path() {
+        let error = AppConfig::from_acl_file("missing-workflow-config.acl")
+            .expect_err("missing file must fail");
+        assert!(error.to_string().contains("missing-workflow-config.acl"));
+    }
+
+    #[test]
+    fn application_config_rejects_invalid_host_and_every_zero_limit() {
+        let mut config = valid_config();
+        config.server.host = "localhost".to_string();
+        assert_invalid(&config, "invalid server.host");
+
+        let cases: [ConfigMutation; 10] = [
+            ("server.port", |value| value.server.port = 0),
+            ("server.body_limit_bytes", |value| {
+                value.server.body_limit_bytes = 0
+            }),
+            ("storage.max_connections", |value| {
+                value.storage.max_connections = 0
+            }),
+            ("flow.worker_poll_ms", |value| value.flow.worker_poll_ms = 0),
+            ("flow.scheduler_poll_ms", |value| {
+                value.flow.scheduler_poll_ms = 0
+            }),
+            ("runtime.default_cpu_millis", |value| {
+                value.runtime.default_cpu_millis = 0
+            }),
+            ("runtime.default_memory_bytes", |value| {
+                value.runtime.default_memory_bytes = 0
+            }),
+            ("runtime.default_pids", |value| {
+                value.runtime.default_pids = 0
+            }),
+            ("runtime.default_timeout_ms", |value| {
+                value.runtime.default_timeout_ms = 0
+            }),
+            ("runtime.output_max_bytes", |value| {
+                value.runtime.output_max_bytes = 0
+            }),
+        ];
+        for (label, mutate) in cases {
+            let mut config = valid_config();
+            mutate(&mut config);
+            assert_invalid(&config, label);
+        }
+
+        let mut config = valid_config();
+        config.security.max_http_response_bytes = 0;
+        assert_invalid(&config, "security.max_http_response_bytes");
+    }
+
+    #[test]
+    fn application_config_requires_a_named_positive_flow_queue() {
+        let mut config = valid_config();
+        config.flow.queue_name = "  ".to_string();
+        assert_invalid(&config, "flow queue name");
+
+        let mut config = valid_config();
+        config.flow.inflight_lease_seconds = 0;
+        assert_invalid(&config, "flow queue name");
+    }
+
+    #[test]
+    fn application_config_accepts_only_postgresql_as_source_of_truth() {
+        for database_url in ["sqlite://workflow.db", "redis://127.0.0.1/workflow"] {
+            let mut config = valid_config();
+            config.storage.database_url = database_url.to_string();
+            assert_invalid(&config, "must use postgres:// or postgresql://");
+        }
+
+        let mut config = valid_config();
+        config.storage.database_url = "not a URL".to_string();
+        assert_invalid(&config, "invalid storage.database_url");
+    }
+
+    #[test]
+    fn application_config_rejects_invalid_service_urls_and_artifact_digest() {
+        let cases: [ConfigMutation; 4] = [
+            ("gateway.base_url", |value| {
+                value.gateway.base_url = "not a URL".to_string()
+            }),
+            ("memory.base_url", |value| {
+                value.memory.base_url = "not a URL".to_string()
+            }),
+            ("runtime.invocation_base_url", |value| {
+                value.runtime.invocation_base_url = "not a URL".to_string()
+            }),
+            ("runtime.node_artifact_uri", |value| {
+                value.runtime.node_artifact_uri = "not a URL".to_string()
+            }),
+        ];
+        for (label, mutate) in cases {
+            let mut config = valid_config();
+            mutate(&mut config);
+            assert_invalid(&config, label);
+        }
+
+        for digest in ["sha256:abc", &format!("md5:{}", "a".repeat(64))] {
+            let mut config = valid_config();
+            config.runtime.node_artifact_digest = digest.to_string();
+            assert_invalid(&config, "must be a sha256 digest");
+        }
+    }
+
+    #[test]
+    fn application_config_requires_valid_configured_runtime_provider() {
+        let mut config = valid_config();
+        config.runtime.default_provider = "missing".to_string();
+        assert_invalid(&config, "is not configured");
+
+        let mut config = valid_config();
+        let provider = config.runtimes.remove("local").expect("local runtime");
+        config
+            .runtimes
+            .insert("invalid provider".to_string(), provider);
+        config.runtime.default_provider = "invalid provider".to_string();
+        assert_invalid(&config, "Runtime provider ID");
+
+        let mut config = valid_config();
+        config
+            .runtimes
+            .get_mut("local")
+            .expect("local runtime")
+            .endpoint = "not a URL".to_string();
+        assert_invalid(&config, "runtimes.local.endpoint");
+    }
+
+    #[test]
+    fn socket_addr_rechecks_the_host() {
+        let mut config = valid_config();
+        config.server.host = "invalid".to_string();
+
+        assert!(config.socket_addr().is_err());
+    }
+}

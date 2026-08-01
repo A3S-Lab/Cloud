@@ -546,7 +546,62 @@ fn bounded_message(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use a3s_runtime::contract::{
+        RestartPolicy, RuntimeNetworkSpec, RuntimeOutputSpec, RuntimeProcessSpec, RuntimeUnitSpec,
+    };
+
     use super::*;
+
+    fn driver(root: &Path) -> ProcessRuntimeDriver {
+        ProcessRuntimeDriver::new(ProviderConfig {
+            id: "local".to_string(),
+            build: "test-build".to_string(),
+            public_base_url: "http://runtime.test".to_string(),
+            state_path: root.join("state"),
+            artifact_path: root.join("artifacts"),
+            api_token: String::new(),
+            max_input_bytes: 1024,
+        })
+        .expect("test driver")
+    }
+
+    fn runtime_spec(outputs: Vec<RuntimeOutputSpec>) -> RuntimeUnitSpec {
+        RuntimeUnitSpec {
+            schema: RuntimeUnitSpec::SCHEMA.to_string(),
+            unit_id: "workflow/run/node/1".to_string(),
+            generation: 1,
+            class: RuntimeUnitClass::Task,
+            artifact: ArtifactRef {
+                uri: "file:///runner".to_string(),
+                digest: format!("sha256:{}", "a".repeat(64)),
+                media_type: "application/vnd.a3s.workflow.node-runner.v1".to_string(),
+            },
+            process: RuntimeProcessSpec {
+                command: Vec::new(),
+                args: Vec::new(),
+                working_directory: None,
+                environment: BTreeMap::new(),
+            },
+            mounts: Vec::new(),
+            secrets: Vec::new(),
+            network: RuntimeNetworkSpec {
+                mode: NetworkMode::None,
+                ports: Vec::new(),
+            },
+            resources: a3s_runtime::contract::ResourceLimits {
+                cpu_millis: 100,
+                memory_bytes: 1024 * 1024,
+                pids: 8,
+                ephemeral_storage_bytes: Some(1024 * 1024),
+                execution_timeout_ms: Some(1000),
+            },
+            isolation: IsolationLevel::Process,
+            health: None,
+            restart: RestartPolicy::Never,
+            outputs,
+            semantics_profile_digest: Some(format!("sha256:{}", "b".repeat(64))),
+        }
+    }
 
     #[test]
     fn sandbox_paths_never_escape_the_task_root() {
@@ -556,5 +611,225 @@ mod tests {
             root.join("a3s").join("input.json")
         );
         assert!(sandbox_path(root, "/../secret").is_err());
+        assert!(sandbox_path(root, "/safe/../../secret").is_err());
+        assert!(sandbox_path(root, "relative/path").is_err());
+    }
+
+    #[test]
+    fn artifact_digests_are_content_addressed_and_verified() {
+        let bytes = b"runtime artifact";
+        let expected = digest(bytes);
+
+        assert!(expected.starts_with("sha256:"));
+        assert_eq!(expected.len(), 71);
+        verify_digest(bytes, &expected).expect("matching digest");
+        assert!(verify_digest(bytes, &format!("sha256:{}", "0".repeat(64))).is_err());
+    }
+
+    #[test]
+    fn process_failures_are_bounded_and_have_a_safe_default() {
+        assert_eq!(
+            bounded_message(b"  \n"),
+            "node process exited unsuccessfully"
+        );
+        assert_eq!(bounded_message(b"  failed\n"), "failed");
+        assert_eq!(bounded_message("x".repeat(16_001).as_bytes()).len(), 16_000);
+    }
+
+    #[test]
+    fn driver_rejects_invalid_provider_identity_and_builds_artifact_paths() {
+        let root = TempDir::new().expect("temporary root");
+        let value = ProcessRuntimeDriver::new(ProviderConfig {
+            id: "invalid provider".to_string(),
+            build: "test".to_string(),
+            public_base_url: "http://runtime.test".to_string(),
+            state_path: root.path().join("state"),
+            artifact_path: root.path().join("artifacts"),
+            api_token: String::new(),
+            max_input_bytes: 1024,
+        });
+        assert!(value.is_err());
+
+        let driver = driver(root.path());
+        assert_eq!(
+            driver.artifact_path("abc"),
+            root.path().join("artifacts").join("abc")
+        );
+    }
+
+    #[tokio::test]
+    async fn development_provider_advertises_only_enforced_capabilities() {
+        let root = TempDir::new().expect("temporary root");
+        let capabilities = driver(root.path())
+            .capabilities()
+            .await
+            .expect("provider capabilities");
+
+        assert_eq!(capabilities.provider_id.as_str(), "local");
+        assert_eq!(capabilities.unit_classes, [RuntimeUnitClass::Task]);
+        assert_eq!(capabilities.isolation_levels, [IsolationLevel::Process]);
+        assert!(capabilities.network_modes.contains(&NetworkMode::None));
+        assert!(capabilities.network_modes.contains(&NetworkMode::Outbound));
+        assert!(!capabilities.features.contains(&RuntimeFeature::Exec));
+    }
+
+    #[tokio::test]
+    async fn runner_resolution_requires_file_uri_and_matching_digest() {
+        let root = TempDir::new().expect("temporary root");
+        let runner = root.path().join("runner.bin");
+        tokio::fs::write(&runner, b"runner")
+            .await
+            .expect("write runner");
+        let uri = url::Url::from_file_path(&runner)
+            .expect("runner file URL")
+            .to_string();
+        let driver = driver(root.path());
+        let artifact = ArtifactRef {
+            uri,
+            digest: digest(b"runner"),
+            media_type: "application/octet-stream".to_string(),
+        };
+
+        assert_eq!(
+            driver.resolve_runner(&artifact).await.expect("runner"),
+            runner
+        );
+
+        let mut wrong_digest = artifact.clone();
+        wrong_digest.digest = format!("sha256:{}", "0".repeat(64));
+        assert!(driver.resolve_runner(&wrong_digest).await.is_err());
+
+        let mut remote = artifact;
+        remote.uri = "https://runtime.test/runner".to_string();
+        assert!(matches!(
+            driver.resolve_runner(&remote).await,
+            Err(RuntimeError::UnsupportedCapabilities(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn output_artifacts_are_bounded_persisted_and_digest_bound() {
+        let root = TempDir::new().expect("temporary root");
+        let sandbox = TempDir::new().expect("temporary sandbox");
+        let output = RuntimeOutputSpec {
+            name: "result".to_string(),
+            path: "/a3s/output/result.json".to_string(),
+            media_type: "application/json".to_string(),
+            max_bytes: 128,
+        };
+        let spec = runtime_spec(vec![output.clone()]);
+        let path = sandbox
+            .path()
+            .join("a3s")
+            .join("output")
+            .join("result.json");
+        tokio::fs::create_dir_all(path.parent().expect("output parent"))
+            .await
+            .expect("create output parent");
+        tokio::fs::write(&path, b"{\"ok\":true}")
+            .await
+            .expect("write output");
+        let driver = driver(root.path());
+
+        let artifacts = driver
+            .persist_outputs(&spec, sandbox.path())
+            .await
+            .expect("persist output");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].artifact.digest, digest(b"{\"ok\":true}"));
+        assert_eq!(artifacts[0].size_bytes, 11);
+        let hex = artifacts[0].artifact.digest.trim_start_matches("sha256:");
+        assert_eq!(
+            tokio::fs::read(driver.artifact_path(hex))
+                .await
+                .expect("stored artifact"),
+            b"{\"ok\":true}"
+        );
+
+        let mut oversized = runtime_spec(vec![RuntimeOutputSpec {
+            max_bytes: 4,
+            ..output
+        }]);
+        assert!(driver
+            .persist_outputs(&oversized, sandbox.path())
+            .await
+            .is_err());
+        oversized.outputs[0].path = "/missing.json".to_string();
+        assert!(driver
+            .persist_outputs(&oversized, sandbox.path())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn logs_and_lifecycle_operations_preserve_unit_identity() {
+        let root = TempDir::new().expect("temporary root");
+        let driver = driver(root.path());
+        let spec = runtime_spec(Vec::new());
+        driver.record_logs(&spec, b"hello", b"warning").await;
+        let observation = driver
+            .terminal_observation(
+                &spec,
+                "process-test".to_string(),
+                10,
+                5,
+                TerminalOutcome {
+                    state: RuntimeUnitState::Succeeded,
+                    outputs: Vec::new(),
+                    failure: None,
+                },
+            )
+            .expect("terminal observation");
+        let unit = RuntimeUnitRecord {
+            schema: RuntimeUnitRecord::SCHEMA.to_string(),
+            spec: spec.clone(),
+            observation: observation.clone(),
+            removed_at_ms: None,
+        };
+
+        let query = RuntimeLogQuery {
+            schema: RuntimeLogQuery::SCHEMA.to_string(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            cursor: None,
+            limit: 10,
+            stream: Some(RuntimeLogStream::Stderr),
+        };
+        let logs = driver.logs(&unit, &query).await.expect("stderr logs");
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].data, "warning");
+
+        assert!(matches!(
+            driver.inspect(&unit).await.expect("inspect"),
+            RuntimeInspection::Found { .. }
+        ));
+        let action = RuntimeActionRequest {
+            schema: RuntimeActionRequest::SCHEMA.to_string(),
+            request_id: "request".to_string(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            deadline_at_ms: None,
+        };
+        assert_eq!(
+            driver.stop(&unit, &action).await.expect("stop"),
+            observation
+        );
+        let removal = driver.remove(&unit, &action).await.expect("remove");
+        assert_eq!(removal.request_id, "request");
+        assert_eq!(removal.unit_id, spec.unit_id);
+
+        let exec = RuntimeExecRequest {
+            schema: RuntimeExecRequest::SCHEMA.to_string(),
+            request_id: "exec".to_string(),
+            unit_id: unit.spec.unit_id.clone(),
+            generation: unit.spec.generation,
+            command: vec!["true".to_string()],
+            timeout_ms: 100,
+            deadline_at_ms: None,
+        };
+        assert!(matches!(
+            driver.exec(&unit, &exec).await,
+            Err(RuntimeError::UnsupportedCapabilities(_))
+        ));
     }
 }

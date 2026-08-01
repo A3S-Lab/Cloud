@@ -12,16 +12,54 @@
 
 <p align="center">
   <strong>Build durable AI graphs. Execute every node as an immutable Runtime unit.</strong><br>
-  A PostgreSQL-native control plane powered by A3S Boot and A3S Flow, with a Bun + Rsbuild + React Studio.
+  A PostgreSQL-native control plane for people and coding agents, powered by A3S Boot, A3S Flow, and A3S Runtime.
 </p>
 
 <p align="center">
   <a href="#why-a3s-workflow">Why</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="#quick-start">Quick start</a> ·
+  <a href="#install-and-run">Install</a> ·
   <a href="#runtime-contract">Runtime contract</a> ·
   <a href="#end-to-end-proof">E2E proof</a>
 </p>
+
+## Install and run
+
+From a checkout, one command builds and installs the coding-agent CLI, installs
+the `$a3s-workflow` Codex Skill, deploys the full Docker Compose stack, and waits
+for the API to become healthy.
+
+macOS / Linux:
+
+```bash
+./scripts/install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+The CLI is installed under Cargo's `bin` directory, the Skill under
+`${CODEX_HOME:-~/.codex}/skills/a3s-workflow`, and the Studio opens at
+<http://localhost:3000>. Use `--no-cli`, `--no-skill`, or `--no-deploy` on
+macOS/Linux and `-NoCli`, `-NoSkill`, or `-NoDeploy` on Windows to install only
+the pieces you need.
+
+Verify the machine-readable surface:
+
+```bash
+a3s-workflow health
+a3s-workflow node-types
+a3s-workflow workflow list
+```
+
+Coding agents can invoke the installed Skill with a request such as:
+
+```text
+Use $a3s-workflow to author, run, and inspect a Runtime-backed coding workflow.
+```
 
 ## Why A3S Workflow
 
@@ -31,7 +69,7 @@ or confidential execution pools. A3S Workflow makes those concerns explicit:
 
 | Product invariant | What it means |
 | --- | --- |
-| **AI-native graph** | LLM, Agent, tool, router, memory, approval, input, and output are first-class typed nodes. |
+| **AI-native graph** | LLM, Agent, tool, router, memory, approval, start, and output are first-class typed nodes. |
 | **Every node is Runtime-native** | The API and Flow worker never execute node business logic in-process. Start and output nodes cross the same boundary too. |
 | **PostgreSQL is authoritative** | Definitions, event history, queue leases, hooks, memory, and Runtime evidence survive process failure in one durable store. |
 | **Stateless nodes scale independently** | Provider and pool placement decouple node capacity from API and worker replicas. |
@@ -49,13 +87,14 @@ Redis may become an optional cache one day. It will not own workflow truth.
 ## Architecture
 
 <p align="center">
-  <img src="assets/readme/architecture.svg" width="100%" alt="React Studio, A3S Boot, A3S Flow, PostgreSQL, and independently scalable A3S Runtime provider pools">
+  <img src="assets/readme/architecture.svg" width="100%" alt="Studio and coding-agent clients, A3S Boot, A3S Flow, PostgreSQL, and independently scalable A3S Runtime provider pools">
 </p>
 
-The Studio writes a desired graph. The A3S Boot API validates and versions it.
-A3S Flow appends run events and leases ready work through PostgreSQL. Each ready
-node is converted to a digest-bound A3S Runtime specification; the selected
-provider returns an observed result to the durable history.
+The Studio or coding-agent CLI writes a desired graph. The A3S Boot API validates
+and versions it. A3S Flow appends run events and leases ready work through
+PostgreSQL. Each ready node is converted to a digest-bound A3S Runtime
+specification; the selected provider returns an observed result to the durable
+history.
 
 ```text
 Studio ──> Boot API ──> A3S Flow ──> PostgreSQL
@@ -84,7 +123,7 @@ SHA-256 digest match.
 
 | Node | Runtime behavior |
 | --- | --- |
-| Input | Materializes typed workflow input |
+| Start | Materializes typed workflow input |
 | Template | Performs typed JSON token substitution |
 | LLM | Calls an OpenAI-compatible gateway |
 | Agent | Runs a bounded model/tool loop |
@@ -124,7 +163,7 @@ the full A3S Runtime lifecycle and artifact evidence, but does **not** claim
 container, microVM, cgroup, or confidential-computing enforcement. Production
 providers must reject policies they cannot enforce.
 
-## Quick start
+## Manual deployment
 
 ### Docker Compose
 
@@ -170,11 +209,11 @@ PowerShell path.
 
 ## End-to-end proof
 
-The merge gate uses the official
-[A3S Test](https://github.com/A3S-Lab/Test) engine. It drives the Studio through
-semantic browser targets, changes the input, saves the graph, starts the run,
-and waits for the typed output. It then asserts `3/3` Runtime units and captures
-a screenshot, accessibility tree, console messages, and page errors.
+Codex and other coding agents use the official
+[A3S Test](https://github.com/A3S-Lab/Test) engine locally. It drives the Studio
+through semantic browser targets, changes the input, saves the graph, starts
+the run, and waits for the typed output. It then asserts `3/3` Runtime units and
+captures a screenshot, accessibility tree, console messages, and page errors.
 
 With the local stack running:
 
@@ -187,8 +226,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\e2e.ps1 `
   -BrowserExecutable C:\path\to\agent-browser.exe
 ```
 
-CI pins A3S Test `0.4.3` and the admitted browser protocol. Evidence is stored
-under `.a3s-test/runs/` and uploaded for every CI run.
+A3S Test is intentionally outside CI: its browser session and diagnostics stay
+under the agent's local `.a3s-test/runs/` directory and are never uploaded by
+the project workflow.
 
 ## Technology stack
 
@@ -201,17 +241,21 @@ under `.a3s-test/runs/` and uploaded for every CI run.
 | Source of truth | PostgreSQL |
 | Studio | Bun `1.3.14`, Rsbuild `2.1.9`, React `19`, React Flow |
 | End-to-end testing | [A3S Test](https://github.com/A3S-Lab/Test) `0.4.3` |
+| Coding-agent interface | Rust CLI plus the `$a3s-workflow` Codex Skill |
 
 ## Repository map
 
 ```text
 crates/workflow-protocol/  Stable node invocation and result protocol
+cli/                       Machine-readable coding-agent CLI
 node-runner/               Runtime-executed implementation of every node kind
 runtime-provider/          Development A3S Runtime HTTP provider
 server/                    A3S Boot API and independently scalable Flow worker
 web/                       Bun + Rsbuild + React Studio
+skills/a3s-workflow/       Codex Skill and workflow authoring reference
 config/                    ACL service, Runtime, gateway, memory, and policy config
 deploy/                    Container images and reverse proxy
+scripts/install.*          Cross-platform install and deployment entrypoints
 tests/e2e/                 Official a3s-test ACL manifests
 docs/                      Architecture, development, and provider guidance
 ```
@@ -223,8 +267,10 @@ make verify
 ```
 
 This runs Rust formatting, Clippy, workspace tests, Bun type checking, frontend
-tests, and the production Studio build. `make e2e` runs the browser merge gate
-against an already running local stack.
+tests, and the production Studio build. `make e2e` lets a coding agent run local
+browser acceptance against an already running stack. CI rejects Rust line
+coverage below 55%; the Studio API and graph adapters have their own Bun
+coverage report.
 
 ## License
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
-  <title id="title">A3S Workflow — AI Native Workflow Engine</title>
-  <desc id="desc">A durable workflow graph where every AI, tool, routing, memory, approval, input, and output node crosses the A3S Runtime execution boundary.</desc>
+  <title id="title">A3S Workflow - AI Native Workflow Engine</title>
+  <desc id="desc">Studio and coding agents author durable workflow graphs; every AI, tool, routing, memory, approval, start, and output node crosses the A3S Runtime execution boundary.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1200" y2="460" gradientUnits="userSpaceOnUse">
       <stop stop-color="#101118"/>
@@ -35,11 +35,11 @@
 
     <g transform="translate(58 319)">
       <rect width="392" height="58" rx="10" fill="#171820" stroke="#3a3d48"/>
-      <text x="20" y="36" fill="#6ca3ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">POSTGRES</text>
-      <text x="128" y="36" fill="#707581" font-size="20">/</text>
-      <text x="151" y="36" fill="#f2f3f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">FLOW</text>
-      <text x="210" y="36" fill="#707581" font-size="20">/</text>
-      <text x="233" y="36" fill="#f2f3f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">RUNTIME</text>
+      <text x="20" y="36" fill="#6ca3ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">CLI</text>
+      <text x="67" y="36" fill="#707581" font-size="20">/</text>
+      <text x="90" y="36" fill="#f2f3f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">SKILL</text>
+      <text x="164" y="36" fill="#707581" font-size="20">/</text>
+      <text x="187" y="36" fill="#f2f3f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">RUNTIME</text>
     </g>
   </g>
 
@@ -53,7 +53,7 @@
     <g transform="translate(534 100)">
       <rect width="122" height="84" rx="12" fill="#171820" stroke="#3a3d48"/>
       <circle cx="25" cy="24" r="7" fill="#6ca3ff"/>
-      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Input</text>
+      <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Start</text>
     </g>
     <g transform="translate(704 100)">
       <rect width="134" height="84" rx="12" fill="#111d32" stroke="#2864e8" stroke-width="2"/>

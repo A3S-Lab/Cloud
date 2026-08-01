@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/workflow-protocol", "node-runner", "runtime-provider", "server"]
+members = ["cli", "crates/workflow-protocol", "node-runner", "runtime-provider", "server"]
 resolver = "2"
 
 [workspace.package]
