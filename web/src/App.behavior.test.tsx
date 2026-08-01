@@ -379,6 +379,28 @@ describe('Studio workflow behavior', () => {
     });
     expect(renderer.root.findAllByProps({ className: 'toast' })).toHaveLength(0);
 
+    const flowBeforeDelete = renderer.root.find(
+      (node) => typeof node.props.onNodeClick === 'function' && Array.isArray(node.props.nodes),
+    );
+    const templateNode = flowBeforeDelete.props.nodes.find(
+      (item: { data: { kind: NodeKind } }) => item.data.kind === 'template',
+    );
+    expect(templateNode).toBeDefined();
+    await act(async () => {
+      flowBeforeDelete.props.onNodeClick({}, templateNode);
+    });
+    await act(async () => {
+      renderer.root.findByProps({ className: 'danger-button' }).props.onClick();
+    });
+    const graphAfterDelete = renderer.root.find(
+      (node) => typeof node.props.onNodeClick === 'function' && Array.isArray(node.props.nodes),
+    );
+    expect(
+      graphAfterDelete.props.nodes.some(
+        (item: { data: { kind: NodeKind } }) => item.data.kind === 'template',
+      ),
+    ).toBe(false);
+
     await act(async () => {
       renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.onChange({
         target: { value: 'missing' },
@@ -488,28 +510,6 @@ describe('Studio workflow behavior', () => {
       renderer.root.findByProps({ 'aria-label': '工作流编排' }).props.onClick();
     });
     expect(renderer.root.findAllByProps({ 'aria-label': '测试运行' })).toHaveLength(0);
-
-    const currentFlow = renderer.root.find(
-      (node) => typeof node.props.onNodeClick === 'function' && Array.isArray(node.props.nodes),
-    );
-    const templateNode = currentFlow.props.nodes.find(
-      (item: { data: { kind: NodeKind } }) => item.data.kind === 'template',
-    );
-    expect(templateNode).toBeDefined();
-    await act(async () => {
-      currentFlow.props.onNodeClick({}, templateNode);
-    });
-    await act(async () => {
-      renderer.root.findByProps({ className: 'danger-button' }).props.onClick();
-    });
-    const graphAfterDelete = renderer.root.find(
-      (node) => typeof node.props.onNodeClick === 'function' && Array.isArray(node.props.nodes),
-    );
-    expect(
-      graphAfterDelete.props.nodes.some(
-        (item: { data: { kind: NodeKind } }) => item.data.kind === 'template',
-      ),
-    ).toBe(false);
   });
 
   test('surfaces initialization, invalid input, save and poll failures', async () => {
