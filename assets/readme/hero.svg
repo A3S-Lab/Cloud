@@ -81,7 +81,7 @@
       <text x="22" y="59" fill="#f2f3f5" font-size="22" font-weight="720">Approval</text>
     </g>
 
-    <path d="M534 354H1076" stroke="url(#brand)" stroke-width="4" stroke-linecap="round"/>
+    <path d="M534 344H1076" stroke="url(#brand)" stroke-width="4" stroke-linecap="round"/>
     <text x="548" y="368" fill="#a4a8b2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700">IMMUTABLE UNIT ID + GENERATION + DIGEST</text>
   </g>
 
