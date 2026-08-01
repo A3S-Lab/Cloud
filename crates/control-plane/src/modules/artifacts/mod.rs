@@ -21,17 +21,16 @@ pub use domain::{
     PreparedBuildInput, PublishedOciArtifact, RequestBuildRetryBundle, SlsaBuildDefinition,
     SlsaBuilder, SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
     SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum,
-    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedBuildCache,
-    ValidatedOciBuildOutput, ValidatedRuntimeBuildOutput, VerifiedBuildEvidenceSignature,
-    BUILD_CACHE_SCHEMA, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE,
-    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE, SLSA_BUILD_TYPE,
-    SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
+    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship,
+    ValidatedOciBuildOutput, VerifiedBuildEvidenceSignature, BUILD_EVIDENCE_SCHEMA,
+    DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, OCI_IMAGE_INDEX_MEDIA_TYPE,
+    OCI_IMAGE_MANIFEST_MEDIA_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use infrastructure::{
-    BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
-    InMemoryBuildRunRepository, LocalBuildEvidenceSigner, LocalNodeArtifactStore,
-    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
-    RuntimeBuildEvidenceGenerator, RuntimeBuildOutputValidator, SourceBuildInputPreparer,
+    BoxBuildEvidenceGenerator, BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime,
+    BuildFlowRuntimeDependencies, InMemoryBuildRunRepository, LocalBuildEvidenceSigner,
+    LocalNodeArtifactStore, OciBuildOutputValidator, OciRegistryArtifactPublisher,
+    OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository, SourceBuildInputPreparer,
     VaultBuildEvidenceSigner,
 };
 pub use presentation::ArtifactsModule;

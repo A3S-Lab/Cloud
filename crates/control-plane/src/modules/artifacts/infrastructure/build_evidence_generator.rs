@@ -1,5 +1,5 @@
 use super::oci_layout::OciLayoutBlob;
-use super::RuntimeBuildOutputValidator;
+use super::OciBuildOutputValidator;
 use crate::modules::artifacts::domain::{
     canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
     BuildEvidenceGenerationError, BuildEvidenceSigningError, BuildEvidenceVerificationState,
@@ -12,7 +12,6 @@ use crate::modules::artifacts::domain::{
     SPDX_VERSION,
 };
 use crate::modules::sources::domain::ExternalSourceRevision;
-use a3s_runtime::contract::ArtifactRef;
 use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -20,22 +19,24 @@ use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-pub struct RuntimeBuildEvidenceGenerator {
-    outputs: Arc<RuntimeBuildOutputValidator>,
+pub const BOX_NATIVE_BUILDER_ID: &str = "https://a3s.dev/cloud/build/box-native/v1";
+pub const BOX_NATIVE_BUILDER_DIGEST: &str =
+    "sha256:d257ed785f1193cc653a6d1528a518c7127685e198fd9839a27755b9a401eed6";
+
+pub struct BoxBuildEvidenceGenerator {
+    outputs: Arc<OciBuildOutputValidator>,
     signer: Arc<dyn IBuildEvidenceSigner>,
     builder: BuildEvidenceBuilder,
 }
 
-impl RuntimeBuildEvidenceGenerator {
+impl BoxBuildEvidenceGenerator {
     pub fn new(
-        outputs: Arc<RuntimeBuildOutputValidator>,
+        outputs: Arc<OciBuildOutputValidator>,
         signer: Arc<dyn IBuildEvidenceSigner>,
-        builder: ArtifactRef,
     ) -> Result<Self, String> {
-        builder.validate()?;
         let builder = BuildEvidenceBuilder {
-            uri: builder.uri,
-            digest: builder.digest,
+            uri: BOX_NATIVE_BUILDER_ID.into(),
+            digest: BOX_NATIVE_BUILDER_DIGEST.into(),
         };
         builder.validate()?;
         Ok(Self {
@@ -47,7 +48,7 @@ impl RuntimeBuildEvidenceGenerator {
 }
 
 #[async_trait]
-impl IBuildEvidenceGenerator for RuntimeBuildEvidenceGenerator {
+impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
     async fn generate(
         &self,
         build: &BuildRun,
@@ -125,9 +126,9 @@ impl IBuildEvidenceGenerator for RuntimeBuildEvidenceGenerator {
             })?,
             recipe: revision.recipe.clone(),
             recipe_digest: revision.recipe_digest.clone(),
-            runtime_spec_digest: build.runtime_spec_digest.clone().ok_or_else(|| {
+            build_request_digest: build.build_request_digest.clone().ok_or_else(|| {
                 BuildEvidenceGenerationError::Invalid(
-                    "build evidence omitted its Runtime specification digest".into(),
+                    "build evidence omitted its Box build request digest".into(),
                 )
             })?,
             builder: self.builder.clone(),
@@ -270,9 +271,9 @@ fn build_provenance(
             "SLSA provenance requires a source content digest".into(),
         )
     })?;
-    let runtime_spec_digest = build.runtime_spec_digest.clone().ok_or_else(|| {
+    let build_request_digest = build.build_request_digest.clone().ok_or_else(|| {
         BuildEvidenceGenerationError::Invalid(
-            "SLSA provenance requires a Runtime specification digest".into(),
+            "SLSA provenance requires a Box build request digest".into(),
         )
     })?;
     let artifact_hex = digest_hex(&artifact.digest)?;
@@ -309,7 +310,7 @@ fn build_provenance(
                     operation_id: build.operation_id,
                     source_revision_id: build.source_revision_id,
                     attempt: build.attempt,
-                    runtime_spec_digest,
+                    build_request_digest,
                 },
                 resolved_dependencies: vec![
                     SlsaResourceDescriptor {
@@ -419,7 +420,7 @@ mod tests {
             now,
         );
         build.source_content_digest = Some(format!("sha256:{}", "1".repeat(64)));
-        build.runtime_spec_digest = Some(format!("sha256:{}", "2".repeat(64)));
+        build.build_request_digest = Some(format!("sha256:{}", "2".repeat(64)));
         build.output = Some(crate::modules::artifacts::domain::ValidatedOciBuildOutput {
             artifact: crate::modules::artifacts::domain::BuildArtifact::new(
                 format!("a3s-cloud-blob://sha256/{}", "3".repeat(64)),

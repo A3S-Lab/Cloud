@@ -1,16 +1,18 @@
 use a3s_cloud_contracts::{
-    artifact_uri, RegistryCredentialMaterial, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, RegistryCredentialMaterial, BOX_BUILD_OUTPUT_NAME,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, INodeArtifactStore,
-    LocalNodeArtifactStore, NodeArtifactDescriptor, OciPublicationRequest, OciPublicationTarget,
-    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, RuntimeBuildOutputValidator,
+    LocalNodeArtifactStore, NodeArtifactDescriptor, OciBuildOutputValidator, OciPublicationRequest,
+    OciPublicationTarget, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
 };
 use a3s_cloud_control_plane::modules::sources::domain::BuildRecipe;
 use a3s_cloud_control_plane::modules::workloads::{
     IOciArtifactResolver, OciArtifactReference, OciRegistryArtifactResolver,
 };
-use a3s_runtime::contract::ArtifactRef;
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use reqwest::header::{CONTENT_TYPE, LOCATION};
 use reqwest::{Client, StatusCode, Url};
 use serde_json::json;
@@ -93,7 +95,7 @@ async fn real_private_registry_publishes_and_replays_a_validated_oci_graph(
     let credential = PublicationCredentialEnv::from_test_environment()?;
     let root = tempfile::tempdir()?;
     let export = root.path().join("export");
-    let descriptor = create_publication_export(&export)?;
+    let layout = create_publication_export(&export)?;
     let archive = root.path().join("output.tar");
     archive_publication_export(&export, &archive)?;
     let store = Arc::new(LocalNodeArtifactStore::new(
@@ -101,7 +103,7 @@ async fn real_private_registry_publishes_and_replays_a_validated_oci_graph(
         64 * 1024 * 1024,
     )?);
     let artifact = admit_publication_artifact(&store, &archive).await?;
-    let validator = Arc::new(RuntimeBuildOutputValidator::new(
+    let validator = Arc::new(OciBuildOutputValidator::new(
         store,
         root.path().join("validation"),
         64 * 1024 * 1024,
@@ -118,8 +120,9 @@ async fn real_private_registry_publishes_and_replays_a_validated_oci_graph(
         None,
         vec!["linux/amd64".into()],
     )?;
-    let output = validator.validate(&artifact, &recipe, None).await?.output;
-    assert_eq!(output.descriptor, descriptor);
+    let receipt = publication_receipt(&artifact, &layout)?;
+    let output = validator.validate(&receipt, &recipe).await?;
+    assert_eq!(output.descriptor.digest(), layout.descriptor.digest);
     let publisher = OciRegistryArtifactPublisher::new(
         validator,
         Duration::from_secs(10),
@@ -288,17 +291,20 @@ async fn admit_publication_artifact(
     )?)
 }
 
+struct PublicationLayout {
+    descriptor: NodeBoxBuildDescriptor,
+    content_bytes: u64,
+    blob_count: u64,
+    blob_inventory_digest: String,
+}
+
 fn create_publication_export(
     export: &Path,
-) -> Result<a3s_cloud_control_plane::modules::artifacts::OciDescriptor, Box<dyn std::error::Error>>
-{
-    let layout = export.join("oci");
-    let blobs = layout.join("blobs/sha256");
+) -> Result<PublicationLayout, Box<dyn std::error::Error>> {
+    let blobs = export.join("blobs/sha256");
     std::fs::create_dir_all(&blobs)?;
-    std::fs::write(
-        layout.join("oci-layout"),
-        br#"{"imageLayoutVersion":"1.0.0"}"#,
-    )?;
+    let marker = br#"{"imageLayoutVersion":"1.0.0"}"#;
+    std::fs::write(export.join("oci-layout"), marker)?;
     let layer = write_publication_blob(&blobs, OCI_LAYER, b"registry publication fixture\n")?;
     let layer_digest = layer["digest"].as_str().ok_or("layer digest")?;
     let config = write_publication_json_blob(
@@ -323,30 +329,43 @@ fn create_publication_export(
     )?;
     let mut root = manifest.clone();
     root["platform"] = json!({"architecture": "amd64", "os": "linux"});
-    std::fs::write(
-        layout.join("index.json"),
-        serde_json::to_vec(&json!({
-            "schemaVersion": 2,
-            "mediaType": OCI_INDEX,
-            "manifests": [root],
-        }))?,
-    )?;
-    std::fs::write(
-        export.join("buildkit-metadata.json"),
-        serde_json::to_vec(&json!({
-            "containerimage.digest": manifest["digest"],
-            "containerimage.descriptor": manifest,
-        }))?,
-    )?;
-    Ok(
-        a3s_cloud_control_plane::modules::artifacts::OciDescriptor::new(
-            manifest["mediaType"]
+    let index = serde_json::to_vec(&json!({
+        "schemaVersion": 2,
+        "mediaType": OCI_INDEX,
+        "manifests": [root],
+    }))?;
+    std::fs::write(export.join("index.json"), &index)?;
+    let mut inventory = std::fs::read_dir(&blobs)?
+        .map(|entry| {
+            let entry = entry?;
+            Ok::<_, std::io::Error>((
+                format!("sha256:{}", entry.file_name().to_string_lossy()),
+                entry.metadata()?.len(),
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    inventory.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut inventory_digest = Sha256::new();
+    for (digest, size) in &inventory {
+        inventory_digest.update(digest.as_bytes());
+        inventory_digest.update([0]);
+        inventory_digest.update(size.to_be_bytes());
+    }
+    Ok(PublicationLayout {
+        descriptor: NodeBoxBuildDescriptor {
+            media_type: manifest["mediaType"]
                 .as_str()
-                .ok_or("manifest media type")?,
-            manifest["digest"].as_str().ok_or("manifest digest")?,
-            manifest["size"].as_u64().ok_or("manifest size")?,
-        )?,
-    )
+                .ok_or("manifest media type")?
+                .into(),
+            digest: manifest["digest"].as_str().ok_or("manifest digest")?.into(),
+            size: manifest["size"].as_u64().ok_or("manifest size")?,
+        },
+        content_bytes: marker.len() as u64
+            + index.len() as u64
+            + inventory.iter().map(|(_, size)| size).sum::<u64>(),
+        blob_count: inventory.len() as u64,
+        blob_inventory_digest: format!("sha256:{:x}", inventory_digest.finalize()),
+    })
 }
 
 fn archive_publication_export(
@@ -354,23 +373,74 @@ fn archive_publication_export(
     destination: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Builder::new(File::create(destination)?);
-    for directory in ["oci", "oci/blobs", "oci/blobs/sha256"] {
+    for directory in ["blobs", "blobs/sha256"] {
         builder.append_dir(directory, export.join(directory))?;
     }
-    for path in ["buildkit-metadata.json", "oci/oci-layout", "oci/index.json"] {
+    for path in ["oci-layout", "index.json"] {
         builder.append_path_with_name(export.join(path), path)?;
     }
     let mut blobs =
-        std::fs::read_dir(export.join("oci/blobs/sha256"))?.collect::<Result<Vec<_>, _>>()?;
+        std::fs::read_dir(export.join("blobs/sha256"))?.collect::<Result<Vec<_>, _>>()?;
     blobs.sort_by_key(|entry| entry.file_name());
     for blob in blobs {
         builder.append_path_with_name(
             blob.path(),
-            Path::new("oci/blobs/sha256").join(blob.file_name()),
+            Path::new("blobs/sha256").join(blob.file_name()),
         )?;
     }
     builder.finish()?;
     Ok(())
+}
+
+fn publication_receipt(
+    output: &BuildArtifact,
+    layout: &PublicationLayout,
+) -> Result<NodeBoxBuildOutput, Box<dyn std::error::Error>> {
+    let artifact = ArtifactRef {
+        uri: output.uri.clone(),
+        digest: output.digest.clone(),
+        media_type: output.media_type.clone(),
+    };
+    let platform = NodeBoxBuildPlatform {
+        os: "linux".into(),
+        architecture: "amd64".into(),
+        variant: None,
+    };
+    let receipt = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: BOX_BUILD_OUTPUT_NAME.into(),
+            artifact: artifact.clone(),
+            size_bytes: output.size_bytes,
+        },
+        descriptor: layout.descriptor.clone(),
+        platforms: vec![platform.clone()],
+        manifest_count: 1,
+        content_bytes: layout.content_bytes,
+        blob_count: layout.blob_count,
+        blob_inventory_digest: layout.blob_inventory_digest.clone(),
+        caches: vec![NodeBoxBuildCacheOutput {
+            operation_id: "registry-integration-linux-amd64".into(),
+            artifact: RuntimeOutputArtifact {
+                name: "build-cache-registry-integration".into(),
+                artifact,
+                size_bytes: output.size_bytes,
+            },
+            receipt: NodeBoxBuildCacheReceipt {
+                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                key: format!("sha256:{}", "3".repeat(64)),
+                source_digest: output.digest.clone(),
+                plan_digest: format!("sha256:{}", "4".repeat(64)),
+                descriptor: layout.descriptor.clone(),
+                platform,
+                content_bytes: layout.content_bytes,
+                entry_count: layout.blob_count,
+                blob_count: layout.blob_count,
+                blob_inventory_digest: layout.blob_inventory_digest.clone(),
+            },
+        }],
+    };
+    receipt.validate()?;
+    Ok(receipt)
 }
 
 fn write_publication_json_blob(

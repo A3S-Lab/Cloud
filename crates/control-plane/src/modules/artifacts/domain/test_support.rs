@@ -27,10 +27,10 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
         .source_content_digest
         .clone()
         .expect("source content digest");
-    let runtime_spec_digest = build
-        .runtime_spec_digest
+    let build_request_digest = build
+        .build_request_digest
         .clone()
-        .expect("Runtime specification digest");
+        .expect("Box build request digest");
     let artifact_digest = digest_hex(&artifact.digest);
     let recipe = BuildRecipe::dockerfile(
         BuildRecipe::SCHEMA,
@@ -48,7 +48,7 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
     let recipe_digest = recipe.digest().expect("build recipe digest");
     let builder_digest = format!("sha256:{}", "f".repeat(64));
     let builder = BuildEvidenceBuilder {
-        uri: format!("oci://docker.io/moby/buildkit@{builder_digest}"),
+        uri: "https://a3s.dev/cloud/build/box-native/v1".into(),
         digest: builder_digest.clone(),
     };
     let file_digest = "9".repeat(64);
@@ -132,7 +132,7 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
                     operation_id: build.operation_id,
                     source_revision_id: build.source_revision_id,
                     attempt: build.attempt,
-                    runtime_spec_digest: runtime_spec_digest.clone(),
+                    build_request_digest: build_request_digest.clone(),
                 },
                 resolved_dependencies: vec![SlsaResourceDescriptor {
                     uri: "https://github.com/A3S-Lab/Cloud".into(),
@@ -182,7 +182,7 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
         source_content_digest,
         recipe,
         recipe_digest,
-        runtime_spec_digest,
+        build_request_digest,
         builder,
         platforms: output.platforms.clone(),
         artifact,

@@ -1,10 +1,10 @@
-use super::super::task_spec::{build_cache_key, project_task_spec};
+use super::super::build_plan::project_build_request;
 use super::super::types::BuildFlowInput;
 use super::super::{flow_error, BuildFlowRuntime};
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::sources::domain::ExternalSourceRevision;
+use a3s_cloud_contracts::{NodeBoxBuildOutput, NodeBoxBuildRequest};
 use a3s_flow::FlowError;
-use a3s_runtime::contract::RuntimeUnitSpec;
 use chrono::{DateTime, Utc};
 
 pub(super) async fn load_build(
@@ -50,24 +50,20 @@ pub(super) async fn load_revision(
     Ok(revision)
 }
 
-pub(super) async fn project_spec(
+pub(super) async fn project_request(
     runtime: &BuildFlowRuntime,
     build: &BuildRun,
     revision: &ExternalSourceRevision,
-) -> a3s_flow::Result<RuntimeUnitSpec> {
-    let cache = load_parent_cache(runtime, build, revision).await?;
-    project_task_spec(&runtime.config, build, revision, cache.as_ref())
-        .map_err(|error| flow_error("could not project build Runtime Task", error))
+) -> a3s_flow::Result<NodeBoxBuildRequest> {
+    let parent_output = load_parent_output(runtime, build).await?;
+    project_build_request(&runtime.config, build, revision, parent_output.as_ref())
+        .map_err(|error| flow_error("could not project Box build request", error))
 }
 
-async fn load_parent_cache(
+async fn load_parent_output(
     runtime: &BuildFlowRuntime,
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
-) -> a3s_flow::Result<Option<crate::modules::artifacts::domain::ValidatedBuildCache>> {
-    if !build.cache_required {
-        return Ok(None);
-    }
+) -> a3s_flow::Result<Option<NodeBoxBuildOutput>> {
     let Some(parent_id) = build.retry_of_build_run_id else {
         return Ok(None);
     };
@@ -88,15 +84,13 @@ async fn load_parent_cache(
             "parent build cache does not match retry ownership".into(),
         ));
     }
-    let Some(cache) = parent.cache else {
+    let Some(output) = parent.box_build_output else {
         return Ok(None);
     };
-    let expected = build_cache_key(&runtime.config, build, revision)
-        .map_err(|error| flow_error("could not derive build cache identity", error))?;
-    if cache.key != expected {
-        return Ok(None);
-    }
-    Ok(Some(cache))
+    output
+        .validate()
+        .map_err(|error| flow_error("parent Box build output is invalid", error))?;
+    Ok(Some(output))
 }
 
 pub(super) fn next_poll(
@@ -107,11 +101,6 @@ pub(super) fn next_poll(
     now.checked_add_signed(interval)
         .map(|next| next.min(deadline))
         .ok_or_else(|| FlowError::Runtime("build poll time overflowed".into()))
-}
-
-pub(super) fn timestamp_millis(value: DateTime<Utc>) -> a3s_flow::Result<u64> {
-    u64::try_from(value.timestamp_millis())
-        .map_err(|_| FlowError::Runtime("build Runtime deadline is invalid".into()))
 }
 
 pub(super) fn bounded_reason(reason: impl AsRef<str>) -> String {

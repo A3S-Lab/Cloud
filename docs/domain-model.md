@@ -139,29 +139,26 @@ Owns immutable artifact metadata, provenance, checksums, signatures, and
 registry locations. Blob bytes live in an OCI registry or S3-compatible object
 store. The database stores descriptors, never an image or repository file tree.
 
-The implemented G0 artifact boundary lives here while Runtime remains the sole
-build-execution authority. The `cloud.build@3` Flow binds a build ID,
-checked-out content digest, recipe, Runtime Task identity, and validated OCI
-root descriptor to exact Artifact receipts. One output-validation port and its
-shared OCI graph validator verify every referenced blob and requested platform
-before accepting the result. Registry publication state is bound to the
-validated OCI result. Before cleanup, the Flow generates
+The implemented G0 artifact boundary lives here while A3S Box remains the sole
+build-execution authority. The `cloud.build@5` Flow binds a build ID,
+checked-out content digest, canonical Box request digest, assigned node and
+command identities, Box output receipt, and validated OCI root descriptor to
+exact Artifact receipts. One output-validation port and its shared OCI graph
+validator independently verify every referenced blob and requested platform
+before accepting the untrusted result. Registry publication state is bound to
+the validated OCI result. Before cleanup, the Flow generates
 deterministic SPDX 2.3 and SLSA provenance documents, signs their DSSE PAE with
 an Ed25519 local or Vault Transit provider, verifies the exact public key and
 signature locally, and freezes the complete `BuildEvidence` on the BuildRun.
-The node-transfer store
-persists command-scoped directory archives by digest so Runtime input/output
-bytes can cross the existing mTLS node boundary without pretending that cache
-objects are published OCI artifacts.
-Cache-required BuildRuns also persist one `ValidatedBuildCache`: a
-content-addressed key, the exact output Artifact, the BuildKit OCI cache root
-descriptor, reachable bytes, and blob count. The key binds immutable source,
-recipe/platform, builder, operator socket-volume, schema, tenant scope, and
-execution semantics. Validation rejects cache graph pollution, missing content,
-unsupported media types, incomplete ingest state, and any digest or size
-mismatch. A retry can use only the immediate terminal parent's matching cache;
-the parent Artifact remains read-only while a bounded private tmpfs supplies
-the lock file required by BuildKit's local importer.
+The node-transfer store persists command-scoped directory archives by digest so
+source, output, and cache bytes can cross the existing mTLS node boundary
+without making transfer storage a build or cache authority. Each Box output
+carries bounded per-platform cache Artifacts and Box-issued receipts that bind
+source, canonical plan, platform, descriptor, size, and blob inventory. A retry
+can present only the immediate terminal parent's matching receipts back to Box.
+Cloud does not persist a second cache aggregate, interpret Box cache internals,
+or bypass full OCI admission, publication, and evidence generation on a cache
+hit.
 
 Primary aggregate:
 
@@ -850,18 +847,23 @@ The implemented secure checkout port materializes an accepted commit under
 bounded isolated Git configuration, supplies an optional repository-bound
 token only through a transient Git HTTP header, removes `.git`, and records an
 immutable filesystem digest for credential-free replay. The production Build
-Flow is the single build lifecycle. It replays the checkout, verifies
-package-time identity, admits immutable input bytes, selects a compatible node,
-runs the current rootless BuildKit workload through one isolated Runtime Task,
-applies independent Runtime and BuildKit network denials, validates the Runtime
-output through the shared OCI validator, and removes the Task and checkout
-before terminal completion. No direct control-plane BuildKit service or
-separate build receipt exists. Before cleanup the Flow binds an
+Flow is the single build workflow and recovery authority. It replays the
+checkout, verifies package-time identity, admits immutable input bytes, selects
+a ready node advertising the pinned A3S Box provider, and projects one
+canonical ACL build plan per requested platform. Fleet persists the exact
+`BoxBuildStart`, `BoxBuildInspect`, `BoxBuildCancel`, and `BoxBuildRemove`
+commands, and the Node Agent journal replays them without introducing another
+queue. Box's `BuildOperationJournal`, `BuildCache`, and `ImageStore` remain the
+sole node-local build state. Every plan uses `network = "none"` and
+content-addressed cache policy. The Node Agent transfers source, parent cache,
+output, and cache Artifacts only under the matching command and request digest.
+Cloud treats the returned Box receipt as untrusted and revalidates the complete
+OCI graph through the shared validator. Before cleanup the Flow binds an
 immutable `OciPublicationTarget`, pushes blobs and manifests by digest, verifies
 the complete remote graph, and records one matching `PublishedOciArtifact`.
 Publication replay may adopt only that exact target; cancellation wins the
 terminal status but preserves evidence of a push that already completed. An
-attestation step then binds the source, canonical recipe, Runtime spec, builder,
+attestation step then binds the source, canonical recipe, Box request, builder,
 platform set, complete published descriptor, SPDX SBOM, SLSA provenance, DSSE
 envelope, and versioned signing-key identity. The aggregate accepts only a
 locally verified Ed25519 result, persists it before cleanup, and revalidates the
@@ -877,10 +879,11 @@ deterministic initial `BuildRun` per accepted source revision plus a linear
 sequence of deterministic retry attempts. Every retry has a fresh BuildRun and
 Operation ID, records its attempt and immediate parent BuildRun, and retains the
 exact source revision. Each aggregate binds tenant/environment ownership, the
-exact `cloud.build@3` operation, immutable input and Runtime artifact
-identities, assigned node and command identities, validated OCI output and
-cache, publication target/result, verified build evidence, terminal outcome,
-and cleanup. Concurrent PostgreSQL
+exact `cloud.build@5` operation, immutable input and Box request/output
+identities, assigned node and command identities, validated OCI output,
+publication target/result, verified build evidence, terminal outcome, and
+cleanup. Box cache receipts remain inside the bound output rather than becoming
+a Cloud cache aggregate. Concurrent PostgreSQL
 reservation, atomic retry creation, exact operation replay, and optimistic
 single-transition saves prevent duplicate or forged logical builds across
 process loss. Environment list and tenant detail queries expose only public
@@ -895,8 +898,11 @@ idempotent `build:write` retry command accepts only failed or cancelled runs,
 atomically creates at most one child BuildRun and new Operation for a parent,
 and replays the same child for the same request.
 The production worker runs the BuildRun reconciler and a closed Flow router
-dispatches only the supported
-deployment, workload-stop, and build workflow identities. A separate
+dispatches only the current build workflow plus supported deployment,
+workload-stop, and execution identities. Startup cancels known
+`cloud.build@1` through `@4` histories through Flow's terminal API, and
+migration `060` invalidates their BuildRuns as rebuild-required while removing
+Runtime and Cloud-cache projections. A separate
 implemented GitHub App connection
 aggregate verifies and exclusively assigns an installation/account to one Cloud
 organization using single-use state, OAuth user authority, and PKCE. The
@@ -917,20 +923,19 @@ while the operator-credential external GitHub gate is implemented but remains
 unexecuted. GitHub offers no
 tokenless current-user App-grant query, so signed authorization-revocation
 delivery remains authoritative without persisting OAuth tokens.
-BuildRun log queries and resumable streams resolve the aggregate's private node
-and deterministic Runtime target internally, then reuse the Fleet-owned durable
-log sequence, object, gap, retention, and compaction model. Public projections
-bind BuildRun, attempt, parent, and Operation lineage without exposing node or
-Runtime unit identity. Signed evidence generation, persistence, restoration,
-tenant API projection, and web inspection are implemented. Content-addressed
-cache trust is implemented with worker-pruned real retry evidence. External
-private-provider and signed-evidence fault-injection workflows are implemented,
-including two real process-death boundaries. Operator-owned execution and
-retained revision-bound evidence remain G0 work.
+BuildRun log queries return `503 Service Unavailable` until Box exposes an
+authoritative durable build-log contract. Cloud does not fabricate an empty
+page or project Runtime logs for Box operations. Public projections bind
+BuildRun, attempt, parent, and Operation lineage without exposing node or Box
+operation identity. Signed evidence generation, persistence, restoration,
+tenant API projection, and web inspection are implemented. The retained
+external-provider workflow certifies private GitHub resolution only; exact Box
+build, cache, publication, signing, process-restart, and cleanup certification
+remain G0 work.
 
 The implemented node Artifact transfer model binds every request to one
-authenticated node, persisted unexpired command, exact Runtime spec digest,
-and either one read-only `Artifact` mount or one declared Task output. Download
+authenticated node, persisted unexpired command, exact Runtime specification or
+Box build-request digest, and one admitted mount, source, cache, or output. Download
 identity includes the immutable Cloud URI, digest, and media type. Upload
 identity additionally includes the exact output size and returns a replayable
 `RuntimeOutputArtifact` receipt. The control-plane store and node cache both
@@ -938,7 +943,8 @@ rehash bytes; neither accepts a caller- or transport-asserted digest alone.
 
 Node-local blobs use `a3s-node-artifact://sha256/<digest>` and remain internal
 until the mTLS upload returns `a3s-cloud-artifact://sha256/<digest>`. Mount and
-output receipts bind a blob to the Runtime spec and name. Safe archive
+output receipts bind a blob to the owning specification or build request and
+name. Safe archive
 materialization and restart verification preserve a read-only directory view;
 spec removal deletes its views and garbage-collects only content with no other
 receipt reference. These cache objects carry no tenant authority by
@@ -959,24 +965,26 @@ command-bound upload flow described above.
 
 ```text
 queued -> preparing -> prepared -> scheduled -> running -> validating
+  -> publishing -> attesting -> cleanup_pending -> succeeded
   |          |            |           |           |           |
   +----------+------------+-----------+-----------+-----------+-> cancelling
   +----------+------------+-----------+-----------+-----------+-> cleanup_pending
 
-validating -> cleanup_pending -> succeeded
+publishing -> cleanup_pending
+attesting -> cleanup_pending
 cancelling -> cleanup_pending -> cancelled
 cleanup_pending -> failed | cancelled
 ```
 
-Failure or cancellation before Runtime dispatch may terminate without a
-cleanup command. Once a Runtime Task command exists, terminal state requires a
-durable cleanup command identity. Successful completion requires a validated
-OCI graph whose artifact exactly matches the collected Runtime output;
-cache-required runs also require a validated cache from that same Artifact.
-Cache reuse does not change the publication or signed-evidence requirements.
-Exact transition replay changes neither version nor timestamps. Cleanup first
-observes the deterministic Runtime removal receipt, then deletes the checkout;
-a build failure is persisted only after this cleanup path completes.
+Failure or cancellation before Box dispatch may terminate without a cleanup
+command. Once a Box start command exists, terminal state requires the
+deterministic cleanup command identity. Successful completion requires a
+validated OCI graph whose artifact and measurements exactly match the Box
+output receipt. Cache reuse does not change the OCI admission, publication, or
+signed-evidence requirements. Exact transition replay changes neither version
+nor timestamps. Cleanup uses the same cancel, inspect, and remove command state
+machine, then deletes the checkout; a build failure is persisted only after
+this cleanup path completes.
 
 ### GitHub source connection state
 

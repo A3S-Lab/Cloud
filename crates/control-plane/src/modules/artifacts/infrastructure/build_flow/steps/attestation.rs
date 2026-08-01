@@ -28,7 +28,7 @@ pub(super) async fn attest(
     }
     if !build.evidence_required {
         return Ok(AttestStepOutput::Failed {
-            reason: "cloud.build@3 requires supply-chain evidence for every published artifact"
+            reason: "cloud.build@5 requires supply-chain evidence for every published artifact"
                 .into(),
         });
     }

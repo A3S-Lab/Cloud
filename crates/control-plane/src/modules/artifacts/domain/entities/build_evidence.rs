@@ -36,7 +36,7 @@ pub struct BuildEvidence {
     pub source_content_digest: String,
     pub recipe: BuildRecipe,
     pub recipe_digest: String,
-    pub runtime_spec_digest: String,
+    pub build_request_digest: String,
     pub builder: BuildEvidenceBuilder,
     pub platforms: Vec<BuildPlatform>,
     pub artifact: PublishedOciArtifact,
@@ -74,7 +74,7 @@ impl BuildEvidence {
         }
         validate_sha256(&self.source_content_digest, "source content digest")?;
         validate_sha256(&self.recipe_digest, "build recipe digest")?;
-        validate_sha256(&self.runtime_spec_digest, "Runtime specification digest")?;
+        validate_sha256(&self.build_request_digest, "Box build request digest")?;
         if self.recipe.digest()? != self.recipe_digest {
             return Err("build evidence recipe digest does not match its canonical recipe".into());
         }
@@ -149,7 +149,7 @@ impl BuildEvidence {
             || internal.operation_id != self.operation_id
             || internal.source_revision_id != self.source_revision_id
             || internal.attempt != self.attempt
-            || internal.runtime_spec_digest != self.runtime_spec_digest
+            || internal.build_request_digest != self.build_request_digest
             || self.provenance.predicate.run_details.builder.id != self.builder.uri
         {
             return Err("build evidence provenance changed its immutable build inputs".into());
@@ -183,9 +183,9 @@ impl BuildEvidenceBuilder {
         if self.uri.trim().is_empty()
             || self.uri.len() > 4096
             || self.uri.contains(['\0', '\r', '\n'])
-            || !self.uri.ends_with(&format!("@{}", self.digest))
+            || !(self.uri.starts_with("https://") || self.uri.starts_with("urn:"))
         {
-            return Err("build evidence builder must be a digest-pinned URI".into());
+            return Err("build evidence builder identity is invalid".into());
         }
         Ok(())
     }
@@ -544,8 +544,8 @@ impl SlsaBuildDefinition {
             "SLSA build recipe digest",
         )?;
         validate_sha256(
-            &self.internal_parameters.runtime_spec_digest,
-            "SLSA Runtime specification digest",
+            &self.internal_parameters.build_request_digest,
+            "SLSA Box build request digest",
         )?;
         if self.external_parameters.recipe.digest()? != self.external_parameters.recipe_digest
             || self.internal_parameters.attempt == 0
@@ -579,7 +579,7 @@ pub struct SlsaInternalParameters {
     pub operation_id: OperationId,
     pub source_revision_id: SourceRevisionId,
     pub attempt: u32,
-    pub runtime_spec_digest: String,
+    pub build_request_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
+use super::oci_build_output_validator::OciBuildOutputValidator;
 use super::oci_layout::{OciLayoutBlob, ValidatedOciOutput};
-use super::runtime_build_output_validator::RuntimeBuildOutputValidator;
 use crate::infrastructure::{required_registry_header, OciRegistryClient, OciRegistryClientError};
 use crate::modules::artifacts::domain::entities::{validate_registry, validate_repository_prefix};
 use crate::modules::artifacts::domain::{
@@ -28,7 +28,7 @@ pub struct OciRegistryArtifactPublisherOptions {
 
 pub struct OciRegistryArtifactPublisher {
     client: OciRegistryClient,
-    outputs: Arc<RuntimeBuildOutputValidator>,
+    outputs: Arc<OciBuildOutputValidator>,
     registry: String,
     repository_prefix: String,
     credential_env: String,
@@ -37,7 +37,7 @@ pub struct OciRegistryArtifactPublisher {
 
 impl OciRegistryArtifactPublisher {
     pub fn new(
-        outputs: Arc<RuntimeBuildOutputValidator>,
+        outputs: Arc<OciBuildOutputValidator>,
         request_timeout: Duration,
         insecure_hosts: impl IntoIterator<Item = String>,
         options: OciRegistryArtifactPublisherOptions,

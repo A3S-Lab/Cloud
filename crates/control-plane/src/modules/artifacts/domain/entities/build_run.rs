@@ -1,11 +1,11 @@
 use super::build_artifact::{validate_sha256, BuildArtifact, ValidatedOciBuildOutput};
-use super::build_cache::ValidatedBuildCache;
 use super::build_evidence::BuildEvidence;
 use super::oci_publication::{OciPublicationTarget, PublishedOciArtifact};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, EnvironmentId, NodeCommandId, NodeId, OperationId,
     OrganizationId, ProjectId, SourceRevisionId,
 };
+use a3s_cloud_contracts::NodeBoxBuildOutput;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -91,11 +91,9 @@ pub struct BuildRun {
     pub node_id: Option<NodeId>,
     pub command_id: Option<NodeCommandId>,
     pub cleanup_command_id: Option<NodeCommandId>,
-    pub runtime_spec_digest: Option<String>,
-    pub runtime_output_artifact: Option<BuildArtifact>,
+    pub build_request_digest: Option<String>,
+    pub box_build_output: Option<NodeBoxBuildOutput>,
     pub output: Option<ValidatedOciBuildOutput>,
-    pub cache_required: bool,
-    pub cache: Option<ValidatedBuildCache>,
     pub publication_target: Option<OciPublicationTarget>,
     pub published_artifact: Option<PublishedOciArtifact>,
     pub evidence_required: bool,
@@ -110,8 +108,6 @@ pub struct BuildRun {
 }
 
 impl BuildRun {
-    pub const RUNTIME_GENERATION: u64 = 1;
-
     pub fn id_for(source_revision_id: SourceRevisionId) -> BuildRunId {
         BuildRunId::from_uuid(Uuid::new_v5(
             &BUILD_RUN_NAMESPACE,
@@ -138,14 +134,6 @@ impl BuildRun {
         )))
     }
 
-    pub fn runtime_unit_id_for(build_run_id: BuildRunId) -> String {
-        format!("cloud-build-{build_run_id}")
-    }
-
-    pub fn runtime_unit_id(&self) -> String {
-        Self::runtime_unit_id_for(self.id)
-    }
-
     pub fn reserve(
         organization_id: OrganizationId,
         project_id: ProjectId,
@@ -170,11 +158,9 @@ impl BuildRun {
             node_id: None,
             command_id: None,
             cleanup_command_id: None,
-            runtime_spec_digest: None,
-            runtime_output_artifact: None,
+            build_request_digest: None,
+            box_build_output: None,
             output: None,
-            cache_required: true,
-            cache: None,
             publication_target: None,
             published_artifact: None,
             evidence_required: true,
@@ -221,11 +207,9 @@ impl BuildRun {
             node_id: None,
             command_id: None,
             cleanup_command_id: None,
-            runtime_spec_digest: None,
-            runtime_output_artifact: None,
+            build_request_digest: None,
+            box_build_output: None,
             output: None,
-            cache_required: true,
-            cache: None,
             publication_target: None,
             published_artifact: None,
             evidence_required: true,
@@ -284,22 +268,22 @@ impl BuildRun {
     pub fn schedule(
         &mut self,
         node_id: NodeId,
-        runtime_spec_digest: String,
+        build_request_digest: String,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
-        validate_sha256(&runtime_spec_digest, "Runtime specification digest")?;
+        validate_sha256(&build_request_digest, "Box build request digest")?;
         if self.status == BuildRunStatus::Scheduled {
             return if self.node_id == Some(node_id)
-                && self.runtime_spec_digest.as_ref() == Some(&runtime_spec_digest)
+                && self.build_request_digest.as_ref() == Some(&build_request_digest)
             {
                 self.observe_time(at)
             } else {
-                Err("scheduled build run cannot change its node or Runtime specification".into())
+                Err("scheduled build run cannot change its node or Box build request".into())
             };
         }
         self.transition(BuildRunStatus::Prepared, BuildRunStatus::Scheduled, at)?;
         self.node_id = Some(node_id);
-        self.runtime_spec_digest = Some(runtime_spec_digest);
+        self.build_request_digest = Some(build_request_digest);
         Ok(())
     }
 
@@ -308,10 +292,10 @@ impl BuildRun {
             return if self.command_id == Some(command_id) {
                 self.observe_time(at)
             } else {
-                Err("running build cannot change its Runtime command".into())
+                Err("running build cannot change its Box build command".into())
             };
         }
-        if self.node_id.is_none() || self.runtime_spec_digest.is_none() {
+        if self.node_id.is_none() || self.build_request_digest.is_none() {
             return Err("build run cannot dispatch before scheduling".into());
         }
         self.transition(BuildRunStatus::Scheduled, BuildRunStatus::Running, at)?;
@@ -321,53 +305,47 @@ impl BuildRun {
 
     pub fn begin_validation(
         &mut self,
-        artifact: BuildArtifact,
+        box_build_output: NodeBoxBuildOutput,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
-        artifact.validate()?;
+        box_build_output.validate()?;
         if self.status == BuildRunStatus::Validating {
-            return if self.runtime_output_artifact.as_ref() == Some(&artifact) {
+            return if self.box_build_output.as_ref() == Some(&box_build_output) {
                 self.observe_time(at)
             } else {
-                Err("validating build cannot change its Runtime output artifact".into())
+                Err("validating build cannot change its Box build output receipt".into())
             };
         }
         self.transition(BuildRunStatus::Running, BuildRunStatus::Validating, at)?;
-        self.runtime_output_artifact = Some(artifact);
+        self.box_build_output = Some(box_build_output);
         Ok(())
     }
 
     pub fn record_validated_output(
         &mut self,
         output: ValidatedOciBuildOutput,
-        cache: Option<ValidatedBuildCache>,
         at: DateTime<Utc>,
     ) -> Result<(), String> {
         output.validate()?;
-        if self.cache_required != cache.is_some() {
-            return Err("validated build cache does not match the build workflow contract".into());
-        }
-        if let Some(cache) = &cache {
-            cache.validate()?;
-            if cache.artifact != output.artifact {
-                return Err("validated build cache changed the Runtime output artifact".into());
-            }
-        }
         if self.status != BuildRunStatus::Validating {
             return Err("validated output requires a validating build run".into());
         }
-        if self.runtime_output_artifact.as_ref() != Some(&output.artifact) {
-            return Err("validated output changed the Runtime output artifact".into());
+        let box_artifact = self
+            .box_build_output
+            .as_ref()
+            .ok_or_else(|| "validated output is missing its Box build receipt".to_owned())
+            .and_then(box_output_artifact)?;
+        if box_artifact != output.artifact {
+            return Err("validated output changed the Box build output Artifact".into());
         }
         let at = self.canonical_time(at)?;
         if let Some(existing) = &self.output {
-            if existing != &output || self.cache != cache {
-                return Err("validated build output or cache cannot change".into());
+            if existing != &output {
+                return Err("validated build output cannot change".into());
             }
             return self.observe_time(at);
         }
         self.output = Some(output);
-        self.cache = cache;
         self.aggregate_version += 1;
         self.updated_at = at;
         Ok(())
@@ -534,7 +512,7 @@ impl BuildRun {
         at: DateTime<Utc>,
     ) -> Result<(), String> {
         if self.command_id.is_none() || self.node_id.is_none() {
-            return Err("Runtime cleanup requires a dispatched build Task".into());
+            return Err("Box cleanup requires a dispatched build operation".into());
         }
         if !matches!(
             self.status,
@@ -543,10 +521,10 @@ impl BuildRun {
                 | BuildRunStatus::Cancelling
                 | BuildRunStatus::CleanupPending
         ) {
-            return Err("build run is not ready for Runtime cleanup".into());
+            return Err("build run is not ready for Box cleanup".into());
         }
         if self.status == BuildRunStatus::Publishing && self.published_artifact.is_none() {
-            return Err("successful Runtime cleanup requires a published OCI artifact".into());
+            return Err("successful Box cleanup requires a published OCI artifact".into());
         }
         if self.published_artifact.is_some()
             && self.evidence_required
@@ -580,7 +558,7 @@ impl BuildRun {
             || self.node_id.is_none()
             || self.cleanup_command_id.is_none()
         {
-            return Err("build run is not ready to retry Runtime cleanup".into());
+            return Err("build run is not ready to retry Box cleanup".into());
         }
         if self.cleanup_command_id == Some(command_id) {
             return self.observe_time(at);
@@ -598,7 +576,7 @@ impl BuildRun {
         }
         let at = self.canonical_time(at)?;
         if self.command_id.is_some() && self.cleanup_command_id.is_none() {
-            return Err("dispatched build Task must be removed before completion".into());
+            return Err("dispatched Box build must be removed before completion".into());
         }
         self.status = if self.cancellation_requested_at.is_some() {
             BuildRunStatus::Cancelled
@@ -647,41 +625,31 @@ impl BuildRun {
             (None, None) => {}
             _ => return Err("build input digest and artifact must be stored together".into()),
         }
-        if self.node_id.is_some() != self.runtime_spec_digest.is_some()
+        if self.node_id.is_some() != self.build_request_digest.is_some()
             || self.input_artifact.is_none() && self.node_id.is_some()
             || self.node_id.is_none() && self.command_id.is_some()
             || self.command_id.is_none() && self.cleanup_command_id.is_some()
-            || self.command_id.is_none() && self.runtime_output_artifact.is_some()
+            || self.command_id.is_none() && self.box_build_output.is_some()
             || self.input_artifact.is_some() && self.started_at.is_none()
         {
-            return Err("stored build run has an incomplete Runtime execution chain".into());
+            return Err("stored build run has an incomplete Box build execution chain".into());
         }
-        if let Some(digest) = &self.runtime_spec_digest {
-            validate_sha256(digest, "Runtime specification digest")?;
+        if let Some(digest) = &self.build_request_digest {
+            validate_sha256(digest, "Box build request digest")?;
         }
         if let Some(output) = &self.output {
             output.validate()?;
-            if self.runtime_output_artifact.as_ref() != Some(&output.artifact) {
-                return Err("validated output changed the Runtime output artifact".into());
+            let box_artifact = self
+                .box_build_output
+                .as_ref()
+                .ok_or_else(|| "validated output is missing its Box build receipt".to_owned())
+                .and_then(box_output_artifact)?;
+            if box_artifact != output.artifact {
+                return Err("validated output changed the Box build output Artifact".into());
             }
         }
-        match &self.cache {
-            Some(cache) => {
-                if !self.cache_required {
-                    return Err("stored build cache is not required by this build run".into());
-                }
-                cache.validate()?;
-                if self.output.as_ref().map(|output| &output.artifact) != Some(&cache.artifact) {
-                    return Err("stored build cache changed the Runtime output artifact".into());
-                }
-            }
-            None if self.cache_required && self.output.is_some() => {
-                return Err("stored validated build output is missing its required cache".into())
-            }
-            None => {}
-        }
-        if let Some(artifact) = &self.runtime_output_artifact {
-            artifact.validate()?;
+        if let Some(output) = &self.box_build_output {
+            output.validate()?;
         }
         match (&self.publication_target, &self.published_artifact) {
             (Some(target), published) => {
@@ -753,7 +721,7 @@ impl BuildRun {
             && self.status.is_terminal()
             && self.cleanup_command_id.is_none()
         {
-            return Err("terminal build run retained its dispatched Runtime Task".into());
+            return Err("terminal build run retained its dispatched Box build".into());
         }
         match self.status {
             BuildRunStatus::Queued
@@ -761,9 +729,8 @@ impl BuildRun {
                     || self.input_artifact.is_some()
                     || self.node_id.is_some()
                     || self.command_id.is_some()
-                    || self.runtime_output_artifact.is_some()
+                    || self.box_build_output.is_some()
                     || self.output.is_some()
-                    || self.cache.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
                     || self.evidence.is_some()
@@ -811,7 +778,8 @@ impl BuildRun {
             }
             BuildRunStatus::Running
                 if self.command_id.is_none()
-                    || self.runtime_output_artifact.is_some()
+                    || self.cleanup_command_id.is_some()
+                    || self.box_build_output.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
                     || self.evidence.is_some()
@@ -822,7 +790,7 @@ impl BuildRun {
             }
             BuildRunStatus::Validating
                 if self.command_id.is_none()
-                    || self.runtime_output_artifact.is_none()
+                    || self.box_build_output.is_none()
                     || self.cleanup_command_id.is_some()
                     || self.publication_target.is_some()
                     || self.published_artifact.is_some()
@@ -834,7 +802,7 @@ impl BuildRun {
             }
             BuildRunStatus::Publishing
                 if self.command_id.is_none()
-                    || self.runtime_output_artifact.is_none()
+                    || self.box_build_output.is_none()
                     || self.output.is_none()
                     || self.publication_target.is_none()
                     || self.cleanup_command_id.is_some()
@@ -878,7 +846,7 @@ impl BuildRun {
             || evidence.attempt != self.attempt
             || Some(evidence.source_content_digest.as_str())
                 != self.source_content_digest.as_deref()
-            || Some(evidence.runtime_spec_digest.as_str()) != self.runtime_spec_digest.as_deref()
+            || Some(evidence.build_request_digest.as_str()) != self.build_request_digest.as_deref()
             || Some(&evidence.artifact) != self.published_artifact.as_ref()
             || self
                 .output
@@ -924,6 +892,15 @@ impl BuildRun {
         }
         Ok(at)
     }
+}
+
+fn box_output_artifact(output: &NodeBoxBuildOutput) -> Result<BuildArtifact, String> {
+    BuildArtifact::new(
+        output.artifact.artifact.uri.clone(),
+        output.artifact.artifact.digest.clone(),
+        output.artifact.artifact.media_type.clone(),
+        output.artifact.size_bytes,
+    )
 }
 
 fn validate_reason(reason: &str) -> Result<(), String> {

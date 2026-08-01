@@ -190,7 +190,9 @@ pub(super) async fn validate_oci_layout(
         || root.digest != expected_root.digest()
         || root.size != expected_root.size()
     {
-        return Err(integrity("OCI index root does not match BuildKit metadata"));
+        return Err(integrity(
+            "OCI index root does not match the admitted Box descriptor",
+        ));
     }
     let root_hint = root.platform.clone();
     let mut pending = VecDeque::from([PendingDescriptor {

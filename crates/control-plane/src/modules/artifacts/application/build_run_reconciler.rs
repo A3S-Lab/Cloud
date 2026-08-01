@@ -9,10 +9,8 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 pub const BUILD_WORKFLOW_NAME: &str = "cloud.build";
-pub const BUILD_WORKFLOW_VERSION: &str = "4";
-pub const SIGNED_BUILD_WORKFLOW_VERSION: &str = "3";
-pub const PREVIOUS_BUILD_WORKFLOW_VERSION: &str = "2";
-pub const LEGACY_BUILD_WORKFLOW_VERSION: &str = "1";
+pub const BUILD_WORKFLOW_VERSION: &str = "5";
+pub const RETIRED_BUILD_WORKFLOW_VERSIONS: &[&str] = &["1", "2", "3", "4"];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BuildRunReconcileReport {
@@ -75,14 +73,7 @@ impl BuildRunReconciler {
         for build in pending {
             let subject = OperationSubject::new("build_run", build.id.as_uuid())
                 .map_err(RepositoryError::Storage)?;
-            let version = if build.cache_required {
-                BUILD_WORKFLOW_VERSION
-            } else if build.evidence_required {
-                SIGNED_BUILD_WORKFLOW_VERSION
-            } else {
-                PREVIOUS_BUILD_WORKFLOW_VERSION
-            };
-            let workflow = WorkflowIdentity::new(BUILD_WORKFLOW_NAME, version)
+            let workflow = WorkflowIdentity::new(BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)
                 .map_err(RepositoryError::Storage)?;
             let input = json!({
                 "organizationId": build.organization_id,

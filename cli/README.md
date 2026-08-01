@@ -187,6 +187,11 @@ build-runs cancel <build-run-id>
 build-runs retry <build-run-id>
 ```
 
+`build-runs logs` currently reports the API's explicit `503 Service
+Unavailable` result. A successful log page is unavailable until A3S Box
+exposes the authoritative durable build-log contract; the CLI does not fall
+back to Runtime or Workload logs.
+
 Use [`examples/workload.oci.example.acl`](../examples/workload.oci.example.acl)
 for direct OCI create/update requests. Use
 [`examples/workload.source.example.acl`](../examples/workload.source.example.acl)

@@ -703,7 +703,7 @@ async fn enrollment_is_one_time_replayable_and_certificate_bound() {
         name: NodeName::new("worker-1").expect("node name"),
         agent_instance_id: Uuid::now_v7(),
         agent_version: "0.1.0".into(),
-        capabilities: capabilities("docker-test"),
+        capabilities: capabilities("a3s-box-test"),
         request_digest: format!("sha256:{}", "1".repeat(64)),
         requested_at: now + Duration::seconds(1),
     };

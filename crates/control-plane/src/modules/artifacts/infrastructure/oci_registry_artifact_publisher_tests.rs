@@ -3,14 +3,14 @@ use crate::modules::artifacts::domain::{
     BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, INodeArtifactStore,
     NodeArtifactDescriptor, OciPublicationRequest,
 };
-use crate::modules::artifacts::infrastructure::{
-    LocalNodeArtifactStore, RuntimeBuildOutputValidator,
-};
+use crate::modules::artifacts::infrastructure::{LocalNodeArtifactStore, OciBuildOutputValidator};
 use crate::modules::sources::domain::BuildRecipe;
 use a3s_cloud_contracts::{
-    artifact_uri, RegistryCredentialMaterial, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, RegistryCredentialMaterial, BOX_BUILD_OUTPUT_NAME,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
-use a3s_runtime::contract::ArtifactRef;
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use axum::body::{to_bytes, Body, Bytes};
 use axum::extract::{Request, State};
 use axum::http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, LOCATION, WWW_AUTHENTICATE};
@@ -288,7 +288,7 @@ async fn replay_adopts_a_root_manifest_stored_before_a_transient_response_failur
 
 struct PublicationFixture {
     _root: TempDir,
-    validator: Arc<RuntimeBuildOutputValidator>,
+    validator: Arc<OciBuildOutputValidator>,
     output: crate::modules::artifacts::domain::ValidatedOciBuildOutput,
 }
 
@@ -307,7 +307,7 @@ impl PublicationFixture {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
         let export = root.path().join("export");
-        create_export(&export, platforms, indexed)?;
+        let layout = create_export(&export, platforms, indexed)?;
         let archive = root.path().join("output.tar");
         archive_directory(&export, &archive)?;
         let store = Arc::new(LocalNodeArtifactStore::new(
@@ -315,7 +315,7 @@ impl PublicationFixture {
             64 * 1024 * 1024,
         )?);
         let artifact = admit(&store, &archive).await?;
-        let validator = Arc::new(RuntimeBuildOutputValidator::new(
+        let validator = Arc::new(OciBuildOutputValidator::new(
             store,
             root.path().join("validation"),
             64 * 1024 * 1024,
@@ -335,7 +335,8 @@ impl PublicationFixture {
                 .map(|(os, architecture)| format!("{os}/{architecture}"))
                 .collect(),
         )?;
-        let output = validator.validate(&artifact, &recipe, None).await?.output;
+        let receipt = box_receipt(&artifact, platforms, &layout)?;
+        let output = validator.validate(&receipt, &recipe).await?;
         Ok(Self {
             _root: root,
             validator,
@@ -748,18 +749,23 @@ async fn admit(
     )?)
 }
 
+struct LayoutFixture {
+    root: NodeBoxBuildDescriptor,
+    manifests: Vec<NodeBoxBuildDescriptor>,
+    content_bytes: u64,
+    blob_count: u64,
+    blob_inventory_digest: String,
+}
+
 fn create_export(
     export: &Path,
     platforms: &[(&str, &str)],
     indexed: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let layout = export.join("oci");
-    let blobs = layout.join("blobs/sha256");
+) -> Result<LayoutFixture, Box<dyn std::error::Error>> {
+    let blobs = export.join("blobs/sha256");
     std::fs::create_dir_all(&blobs)?;
-    std::fs::write(
-        layout.join("oci-layout"),
-        br#"{"imageLayoutVersion":"1.0.0"}"#,
-    )?;
+    let marker = br#"{"imageLayoutVersion":"1.0.0"}"#;
+    std::fs::write(export.join("oci-layout"), marker)?;
     let mut manifests = Vec::new();
     for (os, architecture) in platforms {
         let layer_content = format!("fixture layer {os}/{architecture}\n");
@@ -801,46 +807,148 @@ fn create_export(
     } else {
         manifests.into_iter().next().ok_or("missing manifest")?
     };
-    std::fs::write(
-        layout.join("index.json"),
-        serde_json::to_vec(&json!({
-            "schemaVersion": 2,
-            "mediaType": OCI_INDEX,
-            "manifests": [root.clone()],
-        }))?,
-    )?;
-    std::fs::write(
-        export.join("buildkit-metadata.json"),
-        serde_json::to_vec(&json!({
-            "containerimage.digest": root["digest"],
-            "containerimage.descriptor": root,
-        }))?,
-    )?;
-    Ok(())
+    let index = serde_json::to_vec(&json!({
+        "schemaVersion": 2,
+        "mediaType": OCI_INDEX,
+        "manifests": [root.clone()],
+    }))?;
+    std::fs::write(export.join("index.json"), &index)?;
+    let descriptor = |value: &Value| -> Result<NodeBoxBuildDescriptor, Box<dyn std::error::Error>> {
+        Ok(NodeBoxBuildDescriptor {
+            media_type: value["mediaType"]
+                .as_str()
+                .ok_or("descriptor media type")?
+                .into(),
+            digest: value["digest"].as_str().ok_or("descriptor digest")?.into(),
+            size: value["size"].as_u64().ok_or("descriptor size")?,
+        })
+    };
+    let manifest_descriptors = if indexed {
+        let root_blob = std::fs::read(
+            blobs.join(
+                root["digest"]
+                    .as_str()
+                    .ok_or("root digest")?
+                    .strip_prefix("sha256:")
+                    .ok_or("root digest prefix")?,
+            ),
+        )?;
+        let value: Value = serde_json::from_slice(&root_blob)?;
+        value["manifests"]
+            .as_array()
+            .ok_or("root manifests")?
+            .iter()
+            .map(descriptor)
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        vec![descriptor(&root)?]
+    };
+    let mut inventory = std::fs::read_dir(&blobs)?
+        .map(|entry| {
+            let entry = entry?;
+            Ok::<_, std::io::Error>((
+                format!("sha256:{}", entry.file_name().to_string_lossy()),
+                entry.metadata()?.len(),
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    inventory.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut inventory_digest = Sha256::new();
+    for (digest, size) in &inventory {
+        inventory_digest.update(digest.as_bytes());
+        inventory_digest.update([0]);
+        inventory_digest.update(size.to_be_bytes());
+    }
+    Ok(LayoutFixture {
+        root: descriptor(&root)?,
+        manifests: manifest_descriptors,
+        content_bytes: marker.len() as u64
+            + index.len() as u64
+            + inventory.iter().map(|(_, size)| size).sum::<u64>(),
+        blob_count: inventory.len() as u64,
+        blob_inventory_digest: format!("sha256:{:x}", inventory_digest.finalize()),
+    })
 }
 
 fn archive_directory(export: &Path, destination: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Builder::new(File::create(destination)?);
-    for directory in ["oci", "oci/blobs", "oci/blobs/sha256"] {
+    for directory in ["blobs", "blobs/sha256"] {
         builder.append_dir(directory, export.join(directory))?;
     }
-    builder.append_path_with_name(
-        export.join("buildkit-metadata.json"),
-        "buildkit-metadata.json",
-    )?;
-    builder.append_path_with_name(export.join("oci/oci-layout"), "oci/oci-layout")?;
-    builder.append_path_with_name(export.join("oci/index.json"), "oci/index.json")?;
+    builder.append_path_with_name(export.join("oci-layout"), "oci-layout")?;
+    builder.append_path_with_name(export.join("index.json"), "index.json")?;
     let mut blobs =
-        std::fs::read_dir(export.join("oci/blobs/sha256"))?.collect::<Result<Vec<_>, _>>()?;
+        std::fs::read_dir(export.join("blobs/sha256"))?.collect::<Result<Vec<_>, _>>()?;
     blobs.sort_by_key(|entry| entry.file_name());
     for blob in blobs {
         builder.append_path_with_name(
             blob.path(),
-            Path::new("oci/blobs/sha256").join(blob.file_name()),
+            Path::new("blobs/sha256").join(blob.file_name()),
         )?;
     }
     builder.finish()?;
     Ok(())
+}
+
+fn box_receipt(
+    output: &BuildArtifact,
+    platforms: &[(&str, &str)],
+    layout: &LayoutFixture,
+) -> Result<NodeBoxBuildOutput, Box<dyn std::error::Error>> {
+    let artifact = ArtifactRef {
+        uri: output.uri.clone(),
+        digest: output.digest.clone(),
+        media_type: output.media_type.clone(),
+    };
+    let platforms = platforms
+        .iter()
+        .map(|(os, architecture)| NodeBoxBuildPlatform {
+            os: (*os).into(),
+            architecture: (*architecture).into(),
+            variant: None,
+        })
+        .collect::<Vec<_>>();
+    let caches = platforms
+        .iter()
+        .zip(&layout.manifests)
+        .enumerate()
+        .map(|(index, (platform, descriptor))| NodeBoxBuildCacheOutput {
+            operation_id: format!("publisher-fixture-{index}"),
+            artifact: RuntimeOutputArtifact {
+                name: format!("build-cache-publisher-fixture-{index}"),
+                artifact: artifact.clone(),
+                size_bytes: output.size_bytes,
+            },
+            receipt: NodeBoxBuildCacheReceipt {
+                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                key: format!("sha256:{}", format!("{:x}", index + 1).repeat(64)),
+                source_digest: output.digest.clone(),
+                plan_digest: format!("sha256:{}", format!("{:x}", index + 3).repeat(64)),
+                descriptor: descriptor.clone(),
+                platform: platform.clone(),
+                content_bytes: layout.content_bytes,
+                entry_count: layout.blob_count,
+                blob_count: layout.blob_count,
+                blob_inventory_digest: layout.blob_inventory_digest.clone(),
+            },
+        })
+        .collect();
+    let receipt = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: BOX_BUILD_OUTPUT_NAME.into(),
+            artifact,
+            size_bytes: output.size_bytes,
+        },
+        descriptor: layout.root.clone(),
+        platforms,
+        manifest_count: layout.manifests.len() as u64,
+        content_bytes: layout.content_bytes,
+        blob_count: layout.blob_count,
+        blob_inventory_digest: layout.blob_inventory_digest.clone(),
+        caches,
+    };
+    receipt.validate()?;
+    Ok(receipt)
 }
 
 fn write_json_blob(

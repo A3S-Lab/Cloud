@@ -2,10 +2,16 @@ use super::*;
 use crate::modules::artifacts::domain::test_support::evidence_for;
 use crate::modules::artifacts::{
     BuildArtifact, BuildRun, InMemoryBuildRunRepository, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, SourceRevisionId};
 use crate::modules::sources::domain::BuildPlatform;
+use a3s_cloud_contracts::{
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 
 #[tokio::test]
 async fn source_build_deployment_requires_one_owned_success_and_replays_exactly() -> Result<()> {
@@ -373,8 +379,13 @@ async fn succeed_build(
     let previous = build.aggregate_version;
     at += chrono::Duration::milliseconds(1);
     let output_artifact = build_artifact('d')?;
+    let input_artifact = build
+        .input_artifact
+        .as_ref()
+        .expect("prepared BuildRun must retain its input Artifact");
+    let box_output = box_output(&output_artifact, input_artifact)?;
     build
-        .begin_validation(output_artifact.clone(), at)
+        .begin_validation(box_output, at)
         .map_err(BootError::Internal)?;
     let mut build = builds
         .save(build, previous)
@@ -393,19 +404,10 @@ async fn succeed_build(
         content_bytes: 1_024,
         blob_count: 3,
     };
-    let cache = ValidatedBuildCache::new(
-        digest('f'),
-        output.artifact.clone(),
-        OciDescriptor::new("application/vnd.oci.image.index.v1+json", digest('9'), 256)
-            .map_err(BootError::Internal)?,
-        512,
-        2,
-    )
-    .map_err(BootError::Internal)?;
     let previous = build.aggregate_version;
     at += chrono::Duration::milliseconds(1);
     build
-        .record_validated_output(output, Some(cache), at)
+        .record_validated_output(output, at)
         .map_err(BootError::Internal)?;
     let mut build = builds
         .save(build, previous)
@@ -494,13 +496,67 @@ async fn finish_unsuccessfully(
 }
 
 fn build_artifact(character: char) -> Result<BuildArtifact> {
+    let digest = digest(character);
     BuildArtifact::new(
-        format!("memory://build-artifact/{character}"),
-        digest(character),
-        "application/vnd.a3s.directory.v1",
+        artifact_uri(&digest).map_err(BootError::Internal)?,
+        digest,
+        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
         1_024,
     )
     .map_err(BootError::Internal)
+}
+
+fn box_output(output: &BuildArtifact, source: &BuildArtifact) -> Result<NodeBoxBuildOutput> {
+    let artifact = ArtifactRef {
+        uri: output.uri.clone(),
+        digest: output.digest.clone(),
+        media_type: output.media_type.clone(),
+    };
+    let descriptor = NodeBoxBuildDescriptor {
+        media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+        digest: digest('e'),
+        size: 512,
+    };
+    let platform = NodeBoxBuildPlatform {
+        os: "linux".into(),
+        architecture: "amd64".into(),
+        variant: None,
+    };
+    let output = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: BOX_BUILD_OUTPUT_NAME.into(),
+            artifact: artifact.clone(),
+            size_bytes: output.size_bytes,
+        },
+        descriptor: descriptor.clone(),
+        platforms: vec![platform.clone()],
+        manifest_count: 1,
+        content_bytes: 1_024,
+        blob_count: 3,
+        blob_inventory_digest: digest('6'),
+        caches: vec![NodeBoxBuildCacheOutput {
+            operation_id: "test-linux-amd64".into(),
+            artifact: RuntimeOutputArtifact {
+                name: "build-cache-test".into(),
+                artifact,
+                size_bytes: output.size_bytes,
+            },
+            receipt: NodeBoxBuildCacheReceipt {
+                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                key: digest('f'),
+                source_digest: source.digest.clone(),
+                plan_digest: digest('9'),
+                descriptor,
+                platform,
+                content_bytes: 1_024,
+                entry_count: 3,
+                blob_count: 3,
+                blob_inventory_digest: digest('7'),
+            },
+        }],
+    };
+    output.validate().map_err(BootError::Internal)?;
+    Ok(output)
 }
 
 fn digest(character: char) -> String {

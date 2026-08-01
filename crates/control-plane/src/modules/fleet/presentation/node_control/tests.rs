@@ -898,11 +898,11 @@ fn lease_request(node_id: Uuid, agent_instance_id: Uuid) -> NodeCommandLeaseRequ
 fn capabilities() -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("docker").expect("valid Docker provider ID"),
-        provider_build: "docker-test".into(),
+        provider_id: a3s_runtime::ProviderId::parse("a3s-box").expect("valid A3S Box provider ID"),
+        provider_build: "a3s-box-test".into(),
         unit_classes: vec![RuntimeUnitClass::Task, RuntimeUnitClass::Service],
         artifact_media_types: vec!["application/vnd.oci.image.manifest.v1+json".into()],
-        isolation_levels: vec![IsolationLevel::Container],
+        isolation_levels: vec![IsolationLevel::Sandbox],
         network_modes: vec![NetworkMode::None, NetworkMode::Service],
         mount_kinds: Vec::new(),
         health_check_kinds: Vec::new(),

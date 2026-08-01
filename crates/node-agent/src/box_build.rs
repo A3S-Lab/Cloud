@@ -219,12 +219,12 @@ mod native {
                 {
                     Some(RecordedBuildStatus::Succeeded(result)) => terminal.push(*result),
                     Some(status) => non_success.push(status),
-                    None => {
-                        return Err(NodeBoxBuildError::State(format!(
-                            "operation {} has no Box build journal record",
+                    None => non_success.push(RecordedBuildStatus::Failed {
+                        message: format!(
+                            "operation {} was not started before the Box build became terminal",
                             prepared.wire.operation_id
-                        )))
-                    }
+                        ),
+                    }),
                 }
             }
             let inspection = if non_success.is_empty() {

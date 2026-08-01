@@ -196,6 +196,7 @@ mod tests {
         artifact_uri, NodeBoxBuildCacheInput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
         NodeBoxBuildPlan, NodeBoxBuildPlatform,
     };
+    use sha2::{Digest, Sha256};
 
     fn digest(fill: char) -> String {
         format!("sha256:{}", fill.to_string().repeat(64))
@@ -212,20 +213,32 @@ mod tests {
 
     fn box_build_request() -> NodeBoxBuildRequest {
         let source = artifact('a');
+        let plan_acl = concat!(
+            "build \"oci\" {\n",
+            "  cache = \"content-addressed\"\n",
+            "  context = \".\"\n",
+            "  file = \"Dockerfile\"\n",
+            "  network = \"none\"\n",
+            "  platform = \"linux/amd64\"\n",
+            "  schema = \"a3s.box.build-plan.v1\"\n",
+            "}\n",
+        )
+        .to_owned();
+        let plan_digest = format!("sha256:{:x}", Sha256::digest(plan_acl.as_bytes()));
         NodeBoxBuildRequest {
             schema: NodeBoxBuildRequest::SCHEMA.into(),
             generation: 1,
             source: source.clone(),
             plans: vec![NodeBoxBuildPlan {
                 operation_id: "build-1-linux-amd64".into(),
-                plan_acl: "build \"oci\" { schema = \"a3s.box.build-plan.v1\" }\n".into(),
+                plan_acl,
                 cache: Some(NodeBoxBuildCacheInput {
                     artifact: artifact('b'),
                     receipt: NodeBoxBuildCacheReceipt {
                         schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
                         key: digest('c'),
                         source_digest: source.digest,
-                        plan_digest: digest('d'),
+                        plan_digest,
                         descriptor: NodeBoxBuildDescriptor {
                             media_type: "application/vnd.oci.image.manifest.v1+json".into(),
                             digest: digest('e'),

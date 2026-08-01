@@ -152,6 +152,7 @@ version = "0.1.0"
 dependencies = [
  "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-boot",
+ "a3s-box-runtime",
  "a3s-cloud-contracts",
  "a3s-cloud-node-agent",
  "a3s-event",

@@ -707,11 +707,21 @@ describe('a3s-cloud CLI', () => {
     expect(output.stdout()).toContain('Next cursor: v1:9');
   });
 
-  it('reads BuildRun logs as stable JSON', async () => {
+  it('reports that authoritative Box BuildRun logs are unavailable', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
       calls.push(args);
-      return envelope({ ...logPage(), buildRunId: BUILD_RUN_ID, operationId: BUILD_RUN_ID });
+      return new Response(
+        JSON.stringify({
+          code: 503,
+          statusCode: 'SERVICE_UNAVAILABLE',
+          message: 'durable Box build logs are unavailable until Box exposes its build log contract',
+          details: {},
+          requestId: '019c0000-0000-7000-8000-000000000010',
+          timestamp: '2026-07-26T00:00:00.000Z',
+        }),
+        { status: 503 }
+      );
     };
     const output = capture();
 
@@ -721,11 +731,13 @@ describe('a3s-cloud CLI', () => {
       fetch: fetcher,
     });
 
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(ExitCode.Api);
     expect(calls[0]?.[0]).toBe(
       `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/build-runs/${BUILD_RUN_ID}/logs?limit=10`
     );
-    expect(output.stdout()).toContain(`"buildRunId": "${BUILD_RUN_ID}"`);
+    expect(output.stdout()).toBe('');
+    expect(output.stderr()).toContain('"statusCode": "SERVICE_UNAVAILABLE"');
+    expect(output.stderr()).toContain('durable Box build logs are unavailable');
   });
 
   it.each([
@@ -1343,8 +1355,8 @@ function nodeResponse(state: 'ready' | 'draining' | 'revoked'): Record<string, u
     availability: 'online',
     agentInstanceId: '019c0000-0000-7000-8000-000000000010',
     agentVersion: '0.1.0',
-    runtimeProviderId: 'docker',
-    runtimeProviderBuild: '27.0.0',
+    runtimeProviderId: 'a3s-box',
+    runtimeProviderBuild: '3.2.0',
     capabilitiesDigest: 'sha256:capabilities',
     capabilities: {},
     enrolledAt: '2026-07-27T00:00:00.000Z',

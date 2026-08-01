@@ -115,11 +115,14 @@ pub struct NodeBoxBuildCacheInput {
 }
 
 impl NodeBoxBuildCacheInput {
-    fn validate(&self, source_digest: &str) -> Result<(), String> {
+    fn validate(&self, source_digest: &str, plan_digest: &str) -> Result<(), String> {
         validate_cloud_artifact(&self.artifact)?;
         self.receipt.validate()?;
         if self.receipt.source_digest != source_digest {
             return Err("Box build cache source does not match the build input Artifact".into());
+        }
+        if self.receipt.plan_digest != plan_digest {
+            return Err("Box build cache does not match the canonical build plan".into());
         }
         Ok(())
     }
@@ -145,9 +148,13 @@ impl NodeBoxBuildPlan {
             return Err("Box build plan must be bounded canonical A3S ACL".into());
         }
         if let Some(cache) = &self.cache {
-            cache.validate(source_digest)?;
+            cache.validate(source_digest, &self.plan_digest())?;
         }
         Ok(())
+    }
+
+    fn plan_digest(&self) -> String {
+        format!("sha256:{:x}", Sha256::digest(self.plan_acl.as_bytes()))
     }
 
     pub fn cache_output_name(&self) -> String {
@@ -274,23 +281,34 @@ pub struct NodeBoxBuildCacheOutput {
 }
 
 impl NodeBoxBuildCacheOutput {
+    pub fn validate(&self) -> Result<(), String> {
+        self.receipt.validate()?;
+        validate_single_line("Box build cache operation ID", &self.operation_id, 255)?;
+        validate_single_line("Box build cache output name", &self.artifact.name, 255)?;
+        if self.artifact.artifact.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
+            || self.artifact.size_bytes == 0
+            || self.artifact.size_bytes > MAX_ARTIFACT_BYTES
+        {
+            return Err("Box build cache output identity or bounds are invalid".into());
+        }
+        validate_cloud_artifact(&self.artifact.artifact)
+    }
+
     fn validate_for(
         &self,
         plan: &NodeBoxBuildPlan,
         request: &NodeBoxBuildRequest,
     ) -> Result<(), String> {
-        self.receipt.validate()?;
-        validate_single_line("Box build cache output name", &self.artifact.name, 255)?;
+        self.validate()?;
         if self.operation_id != plan.operation_id
             || self.artifact.name != plan.cache_output_name()
-            || self.artifact.artifact.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
-            || self.artifact.size_bytes == 0
             || self.artifact.size_bytes > request.cache_max_bytes
             || self.receipt.source_digest != request.source.digest
+            || self.receipt.plan_digest != plan.plan_digest()
         {
             return Err("Box build cache output changed its admitted identity or bound".into());
         }
-        validate_cloud_artifact(&self.artifact.artifact)
+        Ok(())
     }
 }
 
@@ -308,15 +326,16 @@ pub struct NodeBoxBuildOutput {
 }
 
 impl NodeBoxBuildOutput {
-    fn validate_for(&self, request: &NodeBoxBuildRequest) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         validate_single_line("Box build output name", &self.artifact.name, 255)?;
         validate_cloud_artifact(&self.artifact.artifact)?;
-        let expected_media_type = if request.plans.len() == 1 {
-            OCI_IMAGE_MANIFEST_MEDIA_TYPE
-        } else {
-            OCI_IMAGE_INDEX_MEDIA_TYPE
-        };
-        self.descriptor.validate(expected_media_type)?;
+        if !matches!(
+            self.descriptor.media_type.as_str(),
+            OCI_IMAGE_MANIFEST_MEDIA_TYPE | OCI_IMAGE_INDEX_MEDIA_TYPE
+        ) {
+            return Err("Box build output descriptor media type is invalid".into());
+        }
+        self.descriptor.validate(&self.descriptor.media_type)?;
         validate_lower_sha256(
             "Box build output blob inventory digest",
             &self.blob_inventory_digest,
@@ -324,14 +343,14 @@ impl NodeBoxBuildOutput {
         if self.artifact.name != BOX_BUILD_OUTPUT_NAME
             || self.artifact.artifact.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
             || self.artifact.size_bytes == 0
-            || self.artifact.size_bytes > request.output_max_bytes
-            || self.platforms.len() != request.plans.len()
-            || self.manifest_count != request.plans.len() as u64
+            || self.artifact.size_bytes > MAX_ARTIFACT_BYTES
+            || !(1..=MAX_BUILD_PLANS).contains(&self.platforms.len())
+            || self.manifest_count != self.platforms.len() as u64
             || self.content_bytes < self.descriptor.size
             || self.blob_count < 2
-            || self.caches.len() != request.plans.len()
+            || self.caches.len() != self.platforms.len()
         {
-            return Err("Box build output changed its admitted identity or bounds".into());
+            return Err("Box build output identity or bounds are invalid".into());
         }
         let mut platform_ids = BTreeSet::new();
         for platform in &self.platforms {
@@ -346,6 +365,41 @@ impl NodeBoxBuildOutput {
             .any(|platforms| platforms[0].identity() >= platforms[1].identity())
         {
             return Err("Box build output platforms must be sorted".into());
+        }
+        let mut operation_ids = BTreeSet::new();
+        let mut cache_platforms = BTreeSet::new();
+        let mut source_digest = None;
+        for cache in &self.caches {
+            cache.validate()?;
+            if !operation_ids.insert(cache.operation_id.as_str())
+                || !cache_platforms.insert(cache.receipt.platform.identity())
+                || source_digest
+                    .replace(cache.receipt.source_digest.as_str())
+                    .is_some_and(|expected| expected != cache.receipt.source_digest.as_str())
+            {
+                return Err(
+                    "Box build cache outputs must have unique consistent identities".into(),
+                );
+            }
+        }
+        if cache_platforms != platform_ids {
+            return Err("Box build cache platforms must match the output platforms".into());
+        }
+        Ok(())
+    }
+
+    fn validate_for(&self, request: &NodeBoxBuildRequest) -> Result<(), String> {
+        self.validate()?;
+        let expected_media_type = if request.plans.len() == 1 {
+            OCI_IMAGE_MANIFEST_MEDIA_TYPE
+        } else {
+            OCI_IMAGE_INDEX_MEDIA_TYPE
+        };
+        self.descriptor.validate(expected_media_type)?;
+        if self.artifact.size_bytes > request.output_max_bytes
+            || self.platforms.len() != request.plans.len()
+        {
+            return Err("Box build output changed its admitted identity or bounds".into());
         }
         for (cache, plan) in self.caches.iter().zip(&request.plans) {
             cache.validate_for(plan, request)?;
@@ -523,6 +577,66 @@ mod tests {
         }
     }
 
+    fn cache_receipt(source_digest: String, plan_digest: String) -> NodeBoxBuildCacheReceipt {
+        NodeBoxBuildCacheReceipt {
+            schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+            key: digest('c'),
+            source_digest,
+            plan_digest,
+            descriptor: NodeBoxBuildDescriptor {
+                media_type: OCI_IMAGE_MANIFEST_MEDIA_TYPE.into(),
+                digest: digest('f'),
+                size: 100,
+            },
+            platform: NodeBoxBuildPlatform {
+                os: "linux".into(),
+                architecture: "amd64".into(),
+                variant: None,
+            },
+            content_bytes: 200,
+            entry_count: 1,
+            blob_count: 2,
+            blob_inventory_digest: digest('1'),
+        }
+    }
+
+    fn successful_inspection(request: &NodeBoxBuildRequest) -> NodeBoxBuildInspection {
+        let plan = &request.plans[0];
+        NodeBoxBuildInspection::Succeeded {
+            binding_digest: request.binding_digest().expect("binding digest"),
+            output: Box::new(NodeBoxBuildOutput {
+                artifact: RuntimeOutputArtifact {
+                    name: BOX_BUILD_OUTPUT_NAME.into(),
+                    artifact: artifact('b'),
+                    size_bytes: 4096,
+                },
+                descriptor: NodeBoxBuildDescriptor {
+                    media_type: OCI_IMAGE_MANIFEST_MEDIA_TYPE.into(),
+                    digest: digest('c'),
+                    size: 512,
+                },
+                platforms: vec![NodeBoxBuildPlatform {
+                    os: "linux".into(),
+                    architecture: "amd64".into(),
+                    variant: None,
+                }],
+                manifest_count: 1,
+                content_bytes: 2048,
+                blob_count: 3,
+                blob_inventory_digest: digest('d'),
+                caches: vec![NodeBoxBuildCacheOutput {
+                    operation_id: plan.operation_id.clone(),
+                    artifact: RuntimeOutputArtifact {
+                        name: plan.cache_output_name(),
+                        artifact: artifact('e'),
+                        size_bytes: 1024,
+                    },
+                    receipt: cache_receipt(request.source.digest.clone(), plan.plan_digest()),
+                }],
+            }),
+        }
+    }
+
     #[test]
     fn request_identity_is_closed_and_ordered() {
         let request = request();
@@ -542,30 +656,24 @@ mod tests {
         let mut request = request();
         request.plans[0].cache = Some(NodeBoxBuildCacheInput {
             artifact: artifact('b'),
-            receipt: NodeBoxBuildCacheReceipt {
-                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
-                key: digest('c'),
-                source_digest: digest('d'),
-                plan_digest: digest('e'),
-                descriptor: NodeBoxBuildDescriptor {
-                    media_type: OCI_IMAGE_MANIFEST_MEDIA_TYPE.into(),
-                    digest: digest('f'),
-                    size: 100,
-                },
-                platform: NodeBoxBuildPlatform {
-                    os: "linux".into(),
-                    architecture: "amd64".into(),
-                    variant: None,
-                },
-                content_bytes: 200,
-                entry_count: 1,
-                blob_count: 2,
-                blob_inventory_digest: digest('1'),
-            },
+            receipt: cache_receipt(digest('d'), request.plans[0].plan_digest()),
         });
         assert_eq!(
             request.validate().expect_err("source mismatch"),
             "Box build cache source does not match the build input Artifact"
+        );
+    }
+
+    #[test]
+    fn cache_input_must_bind_the_exact_canonical_plan() {
+        let mut request = request();
+        request.plans[0].cache = Some(NodeBoxBuildCacheInput {
+            artifact: artifact('b'),
+            receipt: cache_receipt(request.source.digest.clone(), digest('e')),
+        });
+        assert_eq!(
+            request.validate().expect_err("plan mismatch"),
+            "Box build cache does not match the canonical build plan"
         );
     }
 
@@ -601,7 +709,27 @@ mod tests {
             inspection
                 .validate_for(&request)
                 .expect_err("missing cache"),
-            "Box build output changed its admitted identity or bounds"
+            "Box build output identity or bounds are invalid"
+        );
+    }
+
+    #[test]
+    fn successful_inspection_binds_each_cache_to_its_canonical_plan() {
+        let request = request();
+        let mut inspection = successful_inspection(&request);
+        inspection
+            .validate_for(&request)
+            .expect("matching Box build output");
+
+        let NodeBoxBuildInspection::Succeeded { output, .. } = &mut inspection else {
+            panic!("inspection must succeed");
+        };
+        output.caches[0].receipt.plan_digest = digest('9');
+        assert_eq!(
+            inspection
+                .validate_for(&request)
+                .expect_err("changed plan digest"),
+            "Box build cache output changed its admitted identity or bound"
         );
     }
 

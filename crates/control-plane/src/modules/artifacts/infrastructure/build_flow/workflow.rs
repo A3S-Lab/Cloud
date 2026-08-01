@@ -1,5 +1,5 @@
 use super::types::{
-    AttestStepInput, AttestStepOutput, BuildFlowInput, CleanupDispatchStepInput,
+    AttestStepInput, AttestStepOutput, BoxCleanupAction, BuildFlowInput, CleanupDispatchStepInput,
     CleanupDispatchStepOutput, CleanupObserveStepInput, CleanupObserveStepOutput,
     CompleteStepInput, CompleteStepOutput, DispatchStepInput, DispatchStepOutput, FailStepInput,
     FailStepOutput, ObserveStepInput, ObserveStepOutput, PreparePublicationStepInput,
@@ -7,10 +7,7 @@ use super::types::{
     ScheduleStepInput, ScheduleStepOutput, ScheduledBuild, ValidateStepInput, ValidateStepOutput,
 };
 use super::BuildFlowConfig;
-use crate::modules::artifacts::application::{
-    BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
-    PREVIOUS_BUILD_WORKFLOW_VERSION, SIGNED_BUILD_WORKFLOW_VERSION,
-};
+use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
 const PREPARE_STEP_ID: &str = "prepare";
@@ -32,18 +29,12 @@ pub(super) fn replay(
             invocation.spec.name, invocation.spec.version
         )));
     }
-    let (requires_publication, requires_evidence) = match invocation.spec.version.as_str() {
-        BUILD_WORKFLOW_VERSION => (true, true),
-        SIGNED_BUILD_WORKFLOW_VERSION => (true, true),
-        PREVIOUS_BUILD_WORKFLOW_VERSION => (true, false),
-        LEGACY_BUILD_WORKFLOW_VERSION => (false, false),
-        _ => {
-            return Err(FlowError::Runtime(format!(
-                "Cloud has no build workflow runtime for {}@{}",
-                invocation.spec.name, invocation.spec.version
-            )))
-        }
-    };
+    if invocation.spec.version != BUILD_WORKFLOW_VERSION {
+        return Err(FlowError::Runtime(format!(
+            "Cloud has no build workflow runtime for {}@{}",
+            invocation.spec.name, invocation.spec.version
+        )));
+    }
     let context = invocation.context();
     let input = context.input_as::<BuildFlowInput>()?;
     if let Some(completed) = context.step_output_as::<CompleteStepOutput>(COMPLETE_STEP_ID)? {
@@ -106,14 +97,14 @@ pub(super) fn replay(
                                 &context,
                                 &input,
                                 DISPATCH_STEP_ID,
-                                "build_dispatch_runtime",
+                                "build_dispatch_box",
                                 &DispatchStepInput { scheduled },
                             )
                         }
                     };
                 if let Some(dispatched) = dispatched {
-                    let artifact = match observe(config, &context, &input, dispatched)? {
-                        Progress::Ready(artifact) => Some(artifact),
+                    let box_output = match observe(config, &context, &input, dispatched)? {
+                        Progress::Ready(output) => Some(output),
                         Progress::Failure(reason) => {
                             return failure_command(config, &context, &input, reason)
                         }
@@ -123,7 +114,7 @@ pub(super) fn replay(
                         }
                         Progress::Command(command) => return Ok(command),
                     };
-                    if let Some(artifact) = artifact {
+                    if let Some(output_receipt) = box_output {
                         let output =
                             match context.step_output_as::<ValidateStepOutput>(VALIDATE_STEP_ID)? {
                                 Some(ValidateStepOutput::Ready { output }) => Some(output),
@@ -143,114 +134,103 @@ pub(super) fn replay(
                                         "build_validate_output",
                                         &ValidateStepInput {
                                             flow: input.clone(),
-                                            artifact,
+                                            output: Box::new(output_receipt),
                                         },
                                     )
                                 }
                             };
                         if let Some(output) = output {
-                            if !requires_publication {
-                                terminal_intent = Some(TerminalIntent::Success);
-                            } else {
-                                let publication = match context
-                                    .step_output_as::<PreparePublicationStepOutput>(
+                            let publication = match context
+                                .step_output_as::<PreparePublicationStepOutput>(
+                                    PREPARE_PUBLICATION_STEP_ID,
+                                )? {
+                                Some(PreparePublicationStepOutput::Ready {
+                                    target,
+                                    deadline_at,
+                                }) => Some((target, deadline_at)),
+                                Some(PreparePublicationStepOutput::Failed { reason }) => {
+                                    return failure_command(config, &context, &input, reason)
+                                }
+                                Some(PreparePublicationStepOutput::CancellationRequested) => {
+                                    terminal_intent = Some(TerminalIntent::Cancellation);
+                                    None
+                                }
+                                None => {
+                                    return stage_or_failure(
+                                        config,
+                                        &context,
+                                        &input,
                                         PREPARE_PUBLICATION_STEP_ID,
-                                    )? {
-                                    Some(PreparePublicationStepOutput::Ready {
-                                        target,
-                                        deadline_at,
-                                    }) => Some((target, deadline_at)),
-                                    Some(PreparePublicationStepOutput::Failed { reason }) => {
+                                        "build_prepare_publication",
+                                        &PreparePublicationStepInput {
+                                            flow: input.clone(),
+                                            output: output.clone(),
+                                        },
+                                    )
+                                }
+                            };
+                            if let Some((target, deadline_at)) = publication {
+                                let published = match context
+                                    .step_output_as::<PublishStepOutput>(PUBLISH_STEP_ID)?
+                                {
+                                    Some(PublishStepOutput::Ready { artifact }) => {
+                                        terminal_intent = Some(TerminalIntent::Success);
+                                        Some(artifact)
+                                    }
+                                    Some(PublishStepOutput::Failed { reason }) => {
                                         return failure_command(config, &context, &input, reason)
                                     }
-                                    Some(PreparePublicationStepOutput::CancellationRequested) => {
+                                    Some(PublishStepOutput::CancellationRequested { artifact }) => {
                                         terminal_intent = Some(TerminalIntent::Cancellation);
-                                        None
+                                        artifact
                                     }
                                     None => {
                                         return stage_or_failure(
                                             config,
                                             &context,
                                             &input,
-                                            PREPARE_PUBLICATION_STEP_ID,
-                                            "build_prepare_publication",
-                                            &PreparePublicationStepInput {
+                                            PUBLISH_STEP_ID,
+                                            "build_publish_output",
+                                            &PublishStepInput {
                                                 flow: input.clone(),
-                                                output: output.clone(),
+                                                output,
+                                                target,
+                                                deadline_at,
                                             },
                                         )
                                     }
                                 };
-                                if let Some((target, deadline_at)) = publication {
-                                    let published = match context
-                                        .step_output_as::<PublishStepOutput>(PUBLISH_STEP_ID)?
+                                if let Some(artifact) = published {
+                                    match context
+                                        .step_output_as::<AttestStepOutput>(ATTEST_STEP_ID)?
                                     {
-                                        Some(PublishStepOutput::Ready { artifact }) => {
-                                            terminal_intent = Some(TerminalIntent::Success);
-                                            Some(artifact)
-                                        }
-                                        Some(PublishStepOutput::Failed { reason }) => {
+                                        Some(AttestStepOutput::Ready { .. }) => {}
+                                        Some(AttestStepOutput::Failed { reason }) => {
                                             return failure_command(
                                                 config, &context, &input, reason,
                                             )
-                                        }
-                                        Some(PublishStepOutput::CancellationRequested {
-                                            artifact,
-                                        }) => {
-                                            terminal_intent = Some(TerminalIntent::Cancellation);
-                                            artifact
                                         }
                                         None => {
                                             return stage_or_failure(
                                                 config,
                                                 &context,
                                                 &input,
-                                                PUBLISH_STEP_ID,
-                                                "build_publish_output",
-                                                &PublishStepInput {
+                                                ATTEST_STEP_ID,
+                                                "build_attest_output",
+                                                &AttestStepInput {
                                                     flow: input.clone(),
-                                                    output,
-                                                    target,
-                                                    deadline_at,
+                                                    artifact,
                                                 },
                                             )
                                         }
-                                    };
-                                    if requires_evidence {
-                                        if let Some(artifact) = published {
-                                            match context.step_output_as::<AttestStepOutput>(
-                                                ATTEST_STEP_ID,
-                                            )? {
-                                                Some(AttestStepOutput::Ready { .. }) => {}
-                                                Some(AttestStepOutput::Failed { reason }) => {
-                                                    return failure_command(
-                                                        config, &context, &input, reason,
-                                                    )
-                                                }
-                                                None => {
-                                                    return stage_or_failure(
-                                                        config,
-                                                        &context,
-                                                        &input,
-                                                        ATTEST_STEP_ID,
-                                                        "build_attest_output",
-                                                        &AttestStepInput {
-                                                            flow: input.clone(),
-                                                            artifact,
-                                                        },
-                                                    )
-                                                }
-                                            }
-                                        } else if !matches!(
-                                            terminal_intent.as_ref(),
-                                            Some(TerminalIntent::Cancellation)
-                                        ) {
-                                            return Err(FlowError::Runtime(
-                                                "build attestation requires a published artifact"
-                                                    .into(),
-                                            ));
-                                        }
                                     }
+                                } else if !matches!(
+                                    terminal_intent.as_ref(),
+                                    Some(TerminalIntent::Cancellation)
+                                ) {
+                                    return Err(FlowError::Runtime(
+                                        "build attestation requires a published artifact".into(),
+                                    ));
                                 }
                             }
                         }
@@ -320,11 +300,11 @@ fn schedule(
     loop {
         let step_id = format!("schedule-{attempt}");
         match context.step_output_as::<ScheduleStepOutput>(&step_id)? {
-            Some(ScheduleStepOutput::Ready { node_id, spec }) => {
+            Some(ScheduleStepOutput::Ready { node_id, request }) => {
                 return Ok(Progress::Ready(ScheduledBuild {
                     prepared,
                     node_id,
-                    spec: *spec,
+                    request: *request,
                 }))
             }
             Some(ScheduleStepOutput::Pending {
@@ -347,7 +327,7 @@ fn schedule(
                     context,
                     flow,
                     &step_id,
-                    "build_schedule_runtime",
+                    "build_schedule_box",
                     &ScheduleStepInput {
                         prepared: prepared.clone(),
                     },
@@ -363,25 +343,39 @@ fn observe(
     context: &WorkflowContext<'_>,
     flow: &BuildFlowInput,
     dispatched: super::types::DispatchedBuild,
-) -> a3s_flow::Result<Progress<crate::modules::artifacts::domain::BuildArtifact>> {
-    let mut attempt = 1_u32;
+) -> a3s_flow::Result<Progress<a3s_cloud_contracts::NodeBoxBuildOutput>> {
+    let mut command_attempt = 1_u32;
+    let mut poll = 1_u32;
     loop {
-        let step_id = format!("observe-{attempt}");
+        let step_id = format!("observe-{command_attempt}-{poll}");
         match context.step_output_as::<ObserveStepOutput>(&step_id)? {
-            Some(ObserveStepOutput::Succeeded { artifact, .. }) => {
-                return Ok(Progress::Ready(artifact))
+            Some(ObserveStepOutput::Succeeded { output, .. }) => {
+                return Ok(Progress::Ready(*output))
             }
-            Some(ObserveStepOutput::Pending {
+            Some(ObserveStepOutput::AwaitingCommand {
                 next_poll_at,
                 deadline_at,
                 ..
             }) => {
                 validate_poll(next_poll_at, deadline_at)?;
-                let wait_id = format!("observe-wait-{attempt}");
+                let wait_id = format!("observe-wait-{command_attempt}-{poll}");
                 if !context.wait_completed(&wait_id) {
                     return Ok(Progress::Command(context.wait_until(wait_id, next_poll_at)));
                 }
-                attempt = next_attempt(attempt)?;
+                poll = next_attempt(poll)?;
+            }
+            Some(ObserveStepOutput::Running {
+                next_poll_at,
+                deadline_at,
+                ..
+            }) => {
+                validate_poll(next_poll_at, deadline_at)?;
+                let wait_id = format!("observe-wait-{command_attempt}-{poll}");
+                if !context.wait_completed(&wait_id) {
+                    return Ok(Progress::Command(context.wait_until(wait_id, next_poll_at)));
+                }
+                command_attempt = next_attempt(command_attempt)?;
+                poll = 1;
             }
             Some(ObserveStepOutput::Failed { reason }) => return Ok(Progress::Failure(reason)),
             Some(ObserveStepOutput::CancellationRequested) => return Ok(Progress::Cancellation),
@@ -391,9 +385,10 @@ fn observe(
                     context,
                     flow,
                     &step_id,
-                    "build_observe_runtime",
+                    "build_observe_box",
                     &ObserveStepInput {
                         dispatched: dispatched.clone(),
+                        attempt: command_attempt,
                     },
                 )
                 .map(Progress::Command)
@@ -407,11 +402,12 @@ fn cleanup(
     context: &WorkflowContext<'_>,
     flow: &BuildFlowInput,
 ) -> a3s_flow::Result<CleanupProgress> {
+    let mut action = BoxCleanupAction::Cancel;
     let mut attempt = 1_u32;
     let mut issued_at = None;
     let mut cleanup_deadline = None;
     loop {
-        let dispatch_id = format!("cleanup-dispatch-{attempt}");
+        let dispatch_id = format!("cleanup-{}-dispatch-{attempt}", action.as_str());
         let dispatched = match context.step_output_as::<CleanupDispatchStepOutput>(&dispatch_id)? {
             Some(CleanupDispatchStepOutput::NotRequired { cleaned_at }) => {
                 return Ok(CleanupProgress::Ready(cleaned_at))
@@ -443,6 +439,7 @@ fn cleanup(
                     "build_cleanup_dispatch",
                     &CleanupDispatchStepInput {
                         flow: flow.clone(),
+                        action,
                         attempt,
                         issued_at,
                         cleanup_deadline,
@@ -451,16 +448,17 @@ fn cleanup(
                 .map(CleanupProgress::Command)
             }
         };
-        if dispatched.attempt != attempt {
+        if dispatched.action != action || dispatched.attempt != attempt {
             return Err(FlowError::Runtime(
-                "build cleanup dispatch changed its attempt".into(),
+                "build cleanup dispatch changed its action or attempt".into(),
             ));
         }
         match observe_cleanup(config, context, flow, &dispatched)? {
             CleanupObserveProgress::Ready(cleaned_at) => {
                 return Ok(CleanupProgress::Ready(cleaned_at))
             }
-            CleanupObserveProgress::Retry {
+            CleanupObserveProgress::Advance {
+                action: next_action,
                 next_attempt_at,
                 deadline_at,
             } => {
@@ -473,6 +471,7 @@ fn cleanup(
                 }
                 issued_at = Some(next_attempt_at);
                 cleanup_deadline = Some(deadline_at);
+                action = next_action;
                 attempt = next_attempt(attempt)?;
             }
             CleanupObserveProgress::Command(command) => {
@@ -490,18 +489,26 @@ fn observe_cleanup(
 ) -> a3s_flow::Result<CleanupObserveProgress> {
     let mut poll = 1_u32;
     loop {
-        let observe_id = format!("cleanup-observe-{}-{poll}", dispatched.attempt);
+        let observe_id = format!(
+            "cleanup-{}-observe-{}-{poll}",
+            dispatched.action.as_str(),
+            dispatched.attempt
+        );
         match context.step_output_as::<CleanupObserveStepOutput>(&observe_id)? {
             Some(CleanupObserveStepOutput::Ready { cleaned_at }) => {
                 return Ok(CleanupObserveProgress::Ready(cleaned_at))
             }
-            Some(CleanupObserveStepOutput::Pending {
+            Some(CleanupObserveStepOutput::AwaitingCommand {
                 next_poll_at,
                 deadline_at,
                 ..
             }) => {
                 validate_poll(next_poll_at, deadline_at)?;
-                let wait_id = format!("cleanup-observe-wait-{}-{poll}", dispatched.attempt);
+                let wait_id = format!(
+                    "cleanup-{}-observe-wait-{}-{poll}",
+                    dispatched.action.as_str(),
+                    dispatched.attempt
+                );
                 if !context.wait_completed(&wait_id) {
                     return Ok(CleanupObserveProgress::Command(
                         context.wait_until(wait_id, next_poll_at),
@@ -509,12 +516,14 @@ fn observe_cleanup(
                 }
                 poll = next_attempt(poll)?;
             }
-            Some(CleanupObserveStepOutput::Retry {
+            Some(CleanupObserveStepOutput::Advance {
+                action,
                 next_attempt_at,
                 deadline_at,
                 ..
             }) => {
-                return Ok(CleanupObserveProgress::Retry {
+                return Ok(CleanupObserveProgress::Advance {
+                    action,
                     next_attempt_at,
                     deadline_at,
                 })
@@ -621,7 +630,8 @@ enum CleanupProgress {
 
 enum CleanupObserveProgress {
     Ready(chrono::DateTime<chrono::Utc>),
-    Retry {
+    Advance {
+        action: BoxCleanupAction,
         next_attempt_at: chrono::DateTime<chrono::Utc>,
         deadline_at: chrono::DateTime<chrono::Utc>,
     },

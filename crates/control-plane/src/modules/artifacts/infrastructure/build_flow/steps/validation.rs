@@ -1,4 +1,3 @@
-use super::super::task_spec::build_cache_key;
 use super::super::types::{
     CompleteStepInput, CompleteStepOutput, FailStepInput, FailStepOutput, ValidateStepInput,
     ValidateStepOutput,
@@ -23,9 +22,9 @@ pub(super) async fn validate(
             reason: reason.clone(),
         });
     }
-    if build.runtime_output_artifact.as_ref() != Some(&input.artifact) {
+    if build.box_build_output.as_ref() != Some(input.output.as_ref()) {
         return Err(FlowError::Runtime(
-            "build validation input changed the Runtime output Artifact".into(),
+            "build validation input changed the Box output receipt".into(),
         ));
     }
     if let Some(output) = &build.output {
@@ -40,18 +39,9 @@ pub(super) async fn validate(
         )));
     }
     let revision = load_revision(runtime, &build).await?;
-    let expected_cache_key = build
-        .cache_required
-        .then(|| build_cache_key(&runtime.config, &build, &revision))
-        .transpose()
-        .map_err(|error| flow_error("could not derive build cache identity", error))?;
     let validated = match runtime
         .outputs
-        .validate(
-            &input.artifact,
-            &revision.recipe,
-            expected_cache_key.as_deref(),
-        )
+        .validate(&input.output, &revision.recipe)
         .await
     {
         Ok(output) => output,
@@ -72,20 +62,14 @@ pub(super) async fn validate(
     };
     let expected = build.aggregate_version;
     build
-        .record_validated_output(
-            validated.output.clone(),
-            validated.cache,
-            Utc::now().max(build.updated_at),
-        )
+        .record_validated_output(validated.clone(), Utc::now().max(build.updated_at))
         .map_err(|error| flow_error("could not bind validated build output", error))?;
     runtime
         .builds
         .save(build, expected)
         .await
         .map_err(|error| flow_error("could not persist validated build output", error))?;
-    Ok(ValidateStepOutput::Ready {
-        output: validated.output,
-    })
+    Ok(ValidateStepOutput::Ready { output: validated })
 }
 
 pub(super) async fn fail(

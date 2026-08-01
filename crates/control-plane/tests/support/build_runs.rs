@@ -1,6 +1,10 @@
 use super::postgres_fixture::{get_as, post_json, response_json, ADMIN_TOKEN};
 use crate::build_evidence_support::evidence_for;
-use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
+use a3s_cloud_contracts::{
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
 use a3s_cloud_control_plane::modules::artifacts::application::{
     BuildRunReconciler, BUILD_WORKFLOW_VERSION,
 };
@@ -9,7 +13,7 @@ use a3s_cloud_control_plane::modules::artifacts::domain::{
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
-    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact, ValidatedBuildCache,
+    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
     ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::operations::{
@@ -25,6 +29,7 @@ use a3s_cloud_control_plane::modules::workloads::{
 };
 use a3s_cloud_control_plane::ControlPlane;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::Duration;
@@ -80,8 +85,8 @@ pub async fn exercise_build_run_persistence(
         )
         .await?;
     for (command_id, sequence, kind) in [
-        (apply_command_id, 1_i64, "runtime_apply"),
-        (cleanup_command_id, 2_i64, "runtime_remove"),
+        (apply_command_id, 1_i64, "box_build_start"),
+        (cleanup_command_id, 2_i64, "box_build_remove"),
     ] {
         database
             .execute(
@@ -206,7 +211,7 @@ pub async fn exercise_build_run_persistence(
     let mut prepared = preparing.clone();
     prepared.record_input(
         input_digest,
-        input_artifact,
+        input_artifact.clone(),
         preparing.updated_at + Duration::milliseconds(1),
     )?;
     let prepared = builds.save(prepared, preparing.aggregate_version).await?;
@@ -226,7 +231,7 @@ pub async fn exercise_build_run_persistence(
     let runtime_output = build_artifact('d', 8_192)?;
     let mut validating = running.clone();
     validating.begin_validation(
-        runtime_output.clone(),
+        box_output(&runtime_output, &input_artifact)?,
         running.updated_at + Duration::milliseconds(1),
     )?;
     let validating = builds.save(validating, running.aggregate_version).await?;
@@ -242,23 +247,8 @@ pub async fn exercise_build_run_persistence(
         content_bytes: 2_048,
         blob_count: 3,
     };
-    let cache = ValidatedBuildCache::new(
-        format!("sha256:{}", "f".repeat(64)),
-        output.artifact.clone(),
-        OciDescriptor::new(
-            "application/vnd.oci.image.index.v1+json",
-            format!("sha256:{}", "9".repeat(64)),
-            256,
-        )?,
-        1_024,
-        2,
-    )?;
     let mut validated = validating.clone();
-    validated.record_validated_output(
-        output,
-        Some(cache),
-        validating.updated_at + Duration::milliseconds(1),
-    )?;
+    validated.record_validated_output(output, validating.updated_at + Duration::milliseconds(1))?;
     let validated = builds.save(validated, validating.aggregate_version).await?;
     let target = OciPublicationTarget::new(
         "registry.example.test",
@@ -933,4 +923,61 @@ fn build_artifact(
         NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
         size_bytes,
     )?)
+}
+
+fn box_output(
+    output: &BuildArtifact,
+    source: &BuildArtifact,
+) -> Result<NodeBoxBuildOutput, Box<dyn std::error::Error>> {
+    let digest = |fill: char| format!("sha256:{}", fill.to_string().repeat(64));
+    let artifact = ArtifactRef {
+        uri: output.uri.clone(),
+        digest: output.digest.clone(),
+        media_type: output.media_type.clone(),
+    };
+    let descriptor = NodeBoxBuildDescriptor {
+        media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+        digest: digest('e'),
+        size: 512,
+    };
+    let platform = NodeBoxBuildPlatform {
+        os: "linux".into(),
+        architecture: "amd64".into(),
+        variant: None,
+    };
+    let receipt = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: BOX_BUILD_OUTPUT_NAME.into(),
+            artifact: artifact.clone(),
+            size_bytes: output.size_bytes,
+        },
+        descriptor: descriptor.clone(),
+        platforms: vec![platform.clone()],
+        manifest_count: 1,
+        content_bytes: 2_048,
+        blob_count: 3,
+        blob_inventory_digest: digest('6'),
+        caches: vec![NodeBoxBuildCacheOutput {
+            operation_id: "postgres-fixture-linux-amd64".into(),
+            artifact: RuntimeOutputArtifact {
+                name: "build-cache-postgres-fixture".into(),
+                artifact,
+                size_bytes: output.size_bytes,
+            },
+            receipt: NodeBoxBuildCacheReceipt {
+                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                key: digest('f'),
+                source_digest: source.digest.clone(),
+                plan_digest: digest('9'),
+                descriptor,
+                platform,
+                content_bytes: 1_024,
+                entry_count: 3,
+                blob_count: 3,
+                blob_inventory_digest: digest('7'),
+            },
+        }],
+    };
+    receipt.validate()?;
+    Ok(receipt)
 }

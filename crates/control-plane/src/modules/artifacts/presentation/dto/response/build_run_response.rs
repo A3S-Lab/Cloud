@@ -145,8 +145,8 @@ mod tests {
             64,
         )
         .expect("internal input artifact");
-        let runtime_output_artifact = BuildArtifact::new(
-            "artifact://internal/runtime-output",
+        let box_output_artifact = BuildArtifact::new(
+            "artifact://internal/box-output",
             &digest,
             "application/vnd.oci.image.layout.v1.tar+gzip",
             128,
@@ -156,10 +156,9 @@ mod tests {
         build.node_id = Some(NodeId::new());
         build.command_id = Some(NodeCommandId::new());
         build.cleanup_command_id = Some(NodeCommandId::new());
-        build.runtime_spec_digest = Some(format!("sha256:{}", "b".repeat(64)));
-        build.runtime_output_artifact = Some(runtime_output_artifact.clone());
+        build.build_request_digest = Some(format!("sha256:{}", "b".repeat(64)));
         build.output = Some(ValidatedOciBuildOutput {
-            artifact: runtime_output_artifact,
+            artifact: box_output_artifact,
             descriptor: OciDescriptor::new(OCI_IMAGE_MANIFEST_MEDIA_TYPE, digest, 64)
                 .expect("OCI descriptor"),
             platforms: vec![BuildPlatform::parse("linux/amd64").expect("build platform")],
@@ -179,14 +178,14 @@ mod tests {
             "nodeId",
             "commandId",
             "cleanupCommandId",
-            "runtimeSpecDigest",
-            "runtimeOutputArtifact",
+            "buildRequestDigest",
+            "boxBuildOutput",
         ] {
             assert!(encoded.get(private_field).is_none());
         }
         assert!(encoded["output"].get("artifact").is_none());
         let encoded = encoded.to_string();
         assert!(!encoded.contains("artifact://internal/build-input"));
-        assert!(!encoded.contains("artifact://internal/runtime-output"));
+        assert!(!encoded.contains("artifact://internal/box-output"));
     }
 }

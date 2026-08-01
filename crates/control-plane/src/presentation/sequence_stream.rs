@@ -75,9 +75,10 @@ pub(crate) fn sequence_stream_error(
         ApplicationError::Invalid(message) => BootError::BadRequest(message),
         ApplicationError::NotFound(message) => BootError::NotFound(message),
         ApplicationError::Forbidden(message) => BootError::Forbidden(message),
-        ApplicationError::Conflict(_)
-        | ApplicationError::Unavailable(_)
-        | ApplicationError::Internal(_) => BootError::Internal(internal_message.into()),
+        ApplicationError::Unavailable(_) => BootError::ServiceUnavailable(internal_message.into()),
+        ApplicationError::Conflict(_) | ApplicationError::Internal(_) => {
+            BootError::Internal(internal_message.into())
+        }
     }
 }
 
