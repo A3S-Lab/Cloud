@@ -22,9 +22,8 @@ export function Inspector({ node, evidence, onChange, onDelete }: Props) {
   if (!node) {
     return (
       <aside className="inspector empty-inspector" aria-label="Node inspector">
-        <div className="empty-orbit"><span /></div>
-        <h2>Select a node</h2>
-        <p>Runtime policy, resources, secrets and typed configuration appear here.</p>
+        <h2>No node selected</h2>
+        <p>Select a Runtime node to edit its policy, resources, secrets, and typed configuration.</p>
       </aside>
     );
   }

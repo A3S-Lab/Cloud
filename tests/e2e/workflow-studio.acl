@@ -4,7 +4,7 @@ suite "workflow-studio" {
     scenario "runtime-backed-graph" {
         name = "Run every workflow node through A3S Runtime"
         surface = "web"
-        timeout_ms = 60000
+        timeout_ms = 120000
 
         navigate "open-studio" {
             url = "http://127.0.0.1:3000"
@@ -17,6 +17,14 @@ suite "workflow-studio" {
 
         wait "workflow-loaded" {
             text = "Welcome to A3S Workflow"
+        }
+
+        expect "runtime-node-catalog" {
+            text = "Runtime node catalog"
+        }
+
+        expect "inspector-ready" {
+            text = "No node selected"
         }
 
         expect "runtime-unit-count" {
@@ -46,6 +54,19 @@ suite "workflow-studio" {
 
         screenshot "completed-workflow" {
             path = "screenshots/workflow-completed.png"
+        }
+
+        viewport "compact" {
+            width = 820
+            height = 900
+        }
+
+        expect "compact-execution-status" {
+            text = "3/3 units"
+        }
+
+        screenshot "compact-workflow" {
+            path = "screenshots/workflow-compact.png"
         }
 
         accessibility "semantic-evidence" {

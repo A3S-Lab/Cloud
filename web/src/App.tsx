@@ -238,25 +238,12 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <nav className="rail" aria-label="Primary navigation">
-        <div className="brand-mark" aria-label="A3S"><span>A</span><i /></div>
-        <button className="rail-button active" aria-label="Workflow studio"><GridIcon /></button>
-        <button className="rail-button" aria-label="Runtime providers"><RuntimeIcon /></button>
-        <div className="rail-spacer" />
-        <span className="system-online" title="Control plane online" />
-        <button className="avatar" aria-label="Account">A3</button>
-      </nav>
-
       <aside className="library" aria-label="Node library">
-        <div className="library-brand">
+        <header className="library-header">
           <span>A3S WORKFLOW</span>
-          <strong>AI Native Studio</strong>
-        </div>
-        <label className="search-box">
-          <SearchIcon />
-          <input aria-label="Search nodes" placeholder="Search nodes" />
-          <kbd>⌘K</kbd>
-        </label>
+          <strong>Runtime node catalog</strong>
+          <p>Every node executes through A3S Runtime.</p>
+        </header>
         <div className="library-scroll">
           {groups.map((group) => (
             <section key={group.label} className="node-group">
@@ -446,15 +433,6 @@ function shortDescription(value: string) {
   return value.replace(/\.$/, '').split(' ').slice(0, 5).join(' ');
 }
 
-function GridIcon() {
-  return <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>;
-}
-function RuntimeIcon() {
-  return <svg viewBox="0 0 24 24"><path d="M5 8l7-4 7 4-7 4-7-4zM5 12l7 4 7-4M5 16l7 4 7-4"/></svg>;
-}
-function SearchIcon() {
-  return <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>;
-}
 function PlayIcon() {
   return <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7V5z"/></svg>;
 }
