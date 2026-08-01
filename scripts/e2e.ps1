@@ -1,7 +1,9 @@
 param(
     [string]$A3sTestExecutable = $(if ($env:A3S_TEST_BIN) { $env:A3S_TEST_BIN } else { "a3s-test" }),
     [string]$BrowserExecutable = $(if ($env:A3S_TEST_BROWSER) { $env:A3S_TEST_BROWSER } else { "agent-browser" }),
-    [string]$Manifest = "tests/e2e/workflow-studio.acl"
+    [string]$Manifest = "tests/e2e/workflow-studio.acl",
+    [int]$CommandTimeoutMs = 10000,
+    [int]$IdleTimeoutMs = 1000
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,8 +29,8 @@ Invoke-Checked @(
     "run", $Manifest,
     "--browser-driver", "standalone",
     "--browser-executable", $BrowserExecutable,
-    "--command-timeout-ms", "10000",
-    "--idle-timeout-ms", "1000",
+    "--command-timeout-ms", $CommandTimeoutMs.ToString(),
+    "--idle-timeout-ms", $IdleTimeoutMs.ToString(),
     "--cleanup-timeout-ms", "10000",
     "--infrastructure-retries", "1",
     "--json"
