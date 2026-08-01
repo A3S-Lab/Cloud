@@ -34,7 +34,7 @@ jobs:
           --health-retries 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.100
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
