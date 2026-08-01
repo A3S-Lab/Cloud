@@ -2,7 +2,7 @@ suite "workflow-studio" {
     version = 1
 
     scenario "core-studio-authoring" {
-        name = "Author Runtime policy in the Dify-derived Studio"
+        name = "在 A3S Studio 中编排 Runtime 策略"
         surface = "web"
         timeout_ms = 120000
 
@@ -17,6 +17,20 @@ suite "workflow-studio" {
 
         wait "workflow-loaded" {
             text = "欢迎使用 A3S Workflow"
+        }
+
+        expect "edge-style-control-visible" {
+            visible = css("[aria-label='连线样式']")
+        }
+
+        select "switch-to-straight-edges" {
+            target = css("[aria-label='连线样式']")
+            values = ["straight"]
+        }
+
+        select "restore-curved-edges" {
+            target = css("[aria-label='连线样式']")
+            values = ["bezier"]
         }
 
         click "open-node-library" {

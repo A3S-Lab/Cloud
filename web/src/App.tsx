@@ -1,7 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity as PulseIcon,
+  Bot as RobotIcon,
+  Box as RuntimeIcon,
+  Check as CheckIcon,
+  ChevronDown as ChevronDownIcon,
+  ChevronRight as ChevronRightIcon,
+  GitBranch as EdgeStyleIcon,
+  History as HistoryIcon,
+  Map as MapIcon,
+  Play as PlayIcon,
+  Plus as PlusIcon,
+  Search as SearchIcon,
+  ShieldCheck as ApprovalIcon,
+  SlidersHorizontal as FeaturesIcon,
+  Workflow as WorkflowIcon,
+  X as CloseIcon,
+} from 'lucide-react';
+import {
   Background,
   BackgroundVariant,
+  ConnectionLineType,
   Controls,
   MiniMap,
   ReactFlow,
@@ -17,6 +36,7 @@ import {
   mergeCanvas,
   toCanvasEdges,
   toCanvasNodes,
+  type CanvasEdgeType,
   type StudioNode,
 } from './graph';
 import type {
@@ -37,6 +57,11 @@ import {
 
 const nodeTypes: NodeTypes = { workflow: WorkflowCardNode };
 const TERMINAL_EVIDENCE_POLL_LIMIT = 4;
+const connectionLineTypes: Record<CanvasEdgeType, ConnectionLineType> = {
+  bezier: ConnectionLineType.Bezier,
+  smoothstep: ConnectionLineType.SmoothStep,
+  straight: ConnectionLineType.Straight,
+};
 
 const groups: Array<{ label: string; description: string; kinds: NodeKind[] }> = [
   { label: '开始', description: '工作流触发器', kinds: ['start'] },
@@ -59,6 +84,7 @@ export function App() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [minimapOpen, setMinimapOpen] = useState(true);
+  const [edgeType, setEdgeType] = useState<CanvasEdgeType>('bezier');
   const [inputSource, setInputSource] = useState('{\n  "name": "小明"\n}');
   const [run, setRun] = useState<WorkflowRun>();
   const [evidence, setEvidence] = useState<RuntimeEvidence[]>([]);
@@ -103,14 +129,14 @@ export function App() {
     (next: Workflow) => {
       setWorkflow(next);
       setNodes(toCanvasNodes(next, []));
-      setEdges(toCanvasEdges(next.edges));
+      setEdges(toCanvasEdges(next.edges, edgeType));
       setSelectedId(undefined);
       setRun(undefined);
       setEvidence([]);
       setRunPanelOpen(false);
       setError('');
     },
-    [setEdges, setNodes],
+    [edgeType, setEdges, setNodes],
   );
 
   const selectedNode = nodes.find((node) => node.id === selectedId);
@@ -170,12 +196,20 @@ export function App() {
           {
             ...connection,
             id: `edge-${crypto.randomUUID().slice(0, 8)}`,
-            type: 'smoothstep',
-            style: { stroke: '#98a2b3', strokeWidth: 1.5 },
+            type: edgeType,
+            className: 'workflow-edge',
           },
           items,
         ),
       );
+    },
+    [edgeType, setEdges],
+  );
+
+  const changeEdgeType = useCallback(
+    (next: CanvasEdgeType) => {
+      setEdgeType(next);
+      setEdges((items) => items.map((edge) => ({ ...edge, type: next })));
     },
     [setEdges],
   );
@@ -427,6 +461,7 @@ export function App() {
             fitViewOptions={{ padding: 0.24, maxZoom: 1 }}
             minZoom={0.25}
             maxZoom={1.8}
+            connectionLineType={connectionLineTypes[edgeType]}
             deleteKeyCode={['Backspace', 'Delete']}
             ariaLabelConfig={{
               'controls.ariaLabel': '画布控制',
@@ -439,7 +474,7 @@ export function App() {
             }}
             proOptions={{ hideAttribution: true }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d0d5dd" />
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--a3s-line-strong)" />
             <Controls position="bottom-left" orientation="horizontal" showInteractive={false} />
             {minimapOpen && (
               <MiniMap
@@ -447,7 +482,7 @@ export function App() {
                 pannable
                 zoomable
                 nodeColor={(node) => nodeColor((node as StudioNode).data.kind)}
-                maskColor="rgba(249, 250, 251, .72)"
+                maskColor="color-mix(in srgb, var(--a3s-bg) 72%, transparent)"
                 ariaLabel="工作流小地图"
               />
             )}
@@ -481,6 +516,20 @@ export function App() {
             >
               <MapIcon />
             </button>
+            <label className="edge-style-control" title="切换连线样式">
+              <EdgeStyleIcon aria-hidden="true" />
+              <select
+                aria-label="连线样式"
+                data-testid="edge-style-selector"
+                value={edgeType}
+                onChange={(event) => changeEdgeType(event.target.value as CanvasEdgeType)}
+              >
+                <option value="bezier">曲线</option>
+                <option value="smoothstep">折线</option>
+                <option value="straight">直线</option>
+              </select>
+              <ChevronDownIcon aria-hidden="true" />
+            </label>
           </div>
 
           {libraryOpen && (
@@ -787,11 +836,11 @@ function RunPanel({
 }
 
 function nodeColor(kind: NodeKind) {
-  if (['llm', 'agent'].includes(kind)) return '#7f56d9';
-  if (['tool', 'http', 'memory'].includes(kind)) return '#12b76a';
-  if (kind === 'approval') return '#f79009';
-  if (kind === 'router') return '#9e77ed';
-  return '#2970ff';
+  if (['llm', 'agent'].includes(kind)) return '#5420bd';
+  if (['tool', 'http', 'memory'].includes(kind)) return '#14a675';
+  if (kind === 'approval') return '#c97816';
+  if (kind === 'router') return '#4034cc';
+  return '#2864e8';
 }
 
 function countSucceededRuntimeUnits(items: RuntimeEvidence[]) {
@@ -799,22 +848,3 @@ function countSucceededRuntimeUnits(items: RuntimeEvidence[]) {
     items.filter((item) => item.state === 'succeeded').map((item) => item.nodeId),
   ).size;
 }
-
-function SvgIcon({ children }: { children: React.ReactNode }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true">{children}</svg>;
-}
-function PlayIcon() { return <SvgIcon><path d="M8 5l11 7-11 7V5z" /></SvgIcon>; }
-function PlusIcon() { return <SvgIcon><path d="M12 5v14M5 12h14" /></SvgIcon>; }
-function CloseIcon() { return <SvgIcon><path d="M6 6l12 12M18 6L6 18" /></SvgIcon>; }
-function SearchIcon() { return <SvgIcon><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></SvgIcon>; }
-function MapIcon() { return <SvgIcon><path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM9 4v14M15 6v14" /></SvgIcon>; }
-function ChevronDownIcon() { return <SvgIcon><path d="M7 9l5 5 5-5" /></SvgIcon>; }
-function ChevronRightIcon() { return <SvgIcon><path d="M9 6l6 6-6 6" /></SvgIcon>; }
-function CheckIcon() { return <SvgIcon><path d="M5 12l4 4L19 6" /></SvgIcon>; }
-function ApprovalIcon() { return <SvgIcon><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7l8-4z" /><path d="M8.5 12l2.2 2.2 4.8-5" /></SvgIcon>; }
-function WorkflowIcon() { return <SvgIcon><rect x="4" y="4" width="6" height="6" rx="1.5" /><rect x="14" y="14" width="6" height="6" rx="1.5" /><path d="M10 7h3a4 4 0 014 4v3" /></SvgIcon>; }
-function PulseIcon() { return <SvgIcon><path d="M3 12h4l2-6 4 12 2-6h6" /></SvgIcon>; }
-function RuntimeIcon() { return <SvgIcon><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /></SvgIcon>; }
-function RobotIcon() { return <SvgIcon><rect x="5" y="7" width="14" height="11" rx="3" /><path d="M9 12h.01M15 12h.01M9 15h6M12 7V4M10 4h4" /></SvgIcon>; }
-function FeaturesIcon() { return <SvgIcon><circle cx="8" cy="8" r="2.5" /><circle cx="16" cy="16" r="2.5" /><path d="M10 8h9M5 16h9M16 5v6M8 13v6" /></SvgIcon>; }
-function HistoryIcon() { return <SvgIcon><path d="M4 5v5h5M5.5 9A7.5 7.5 0 1120 12" /><path d="M12 8v4l3 2" /></SvgIcon>; }

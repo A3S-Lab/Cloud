@@ -329,6 +329,23 @@ describe('Studio workflow behavior', () => {
     const flow = renderer.root.find(
       (node) => typeof node.props.onConnect === 'function' && Array.isArray(node.props.nodes),
     );
+    expect(flow.props.edges.every((edge: { type?: string }) => edge.type === 'bezier')).toBe(true);
+    expect(renderer.root.findByProps({ 'aria-label': '连线样式' }).props.value).toBe('bezier');
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': '连线样式' }).props.onChange({
+        target: { value: 'straight' },
+      });
+    });
+    const straightFlow = renderer.root.find(
+      (node) => typeof node.props.onConnect === 'function' && Array.isArray(node.props.nodes),
+    );
+    expect(straightFlow.props.edges.every((edge: { type?: string }) => edge.type === 'straight'))
+      .toBe(true);
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': '连线样式' }).props.onChange({
+        target: { value: 'bezier' },
+      });
+    });
     await act(async () => {
       flow.props.onConnect({ source: null, target: 'output' });
       flow.props.onConnect({ source: 'start', target: 'output', sourceHandle: null });
@@ -451,11 +468,11 @@ describe('Studio workflow behavior', () => {
     expect(renderer.root.findByProps({ 'data-testid': 'runtime-evidence' })).toBeDefined();
 
     const minimap = renderer.root.find((node) => typeof node.props.nodeColor === 'function');
-    expect(minimap.props.nodeColor({ data: { kind: 'llm' } })).toBe('#7f56d9');
-    expect(minimap.props.nodeColor({ data: { kind: 'tool' } })).toBe('#12b76a');
-    expect(minimap.props.nodeColor({ data: { kind: 'approval' } })).toBe('#f79009');
-    expect(minimap.props.nodeColor({ data: { kind: 'router' } })).toBe('#9e77ed');
-    expect(minimap.props.nodeColor({ data: { kind: 'output' } })).toBe('#2970ff');
+    expect(minimap.props.nodeColor({ data: { kind: 'llm' } })).toBe('#5420bd');
+    expect(minimap.props.nodeColor({ data: { kind: 'tool' } })).toBe('#14a675');
+    expect(minimap.props.nodeColor({ data: { kind: 'approval' } })).toBe('#c97816');
+    expect(minimap.props.nodeColor({ data: { kind: 'router' } })).toBe('#4034cc');
+    expect(minimap.props.nodeColor({ data: { kind: 'output' } })).toBe('#2864e8');
 
     await act(async () => {
       renderer.root.findByProps({ 'aria-label': '关闭节点检查器' }).props.onClick();

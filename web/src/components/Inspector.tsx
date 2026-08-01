@@ -1,4 +1,10 @@
 import { useEffect, useState } from 'react';
+import {
+  Box as RuntimeIcon,
+  MousePointer2 as CursorIcon,
+  Trash2 as TrashIcon,
+  X as CloseIcon,
+} from 'lucide-react';
 import type { StudioNode } from '../graph';
 import type { RuntimeEvidence } from '../types';
 import { nodeKindLabel, statusLabel } from '../localization';
@@ -251,11 +257,3 @@ function compact(value?: string | null) {
   if (!value) return '—';
   return value.length > 28 ? `${value.slice(0, 15)}…${value.slice(-9)}` : value;
 }
-
-function Icon({ children }: { children: React.ReactNode }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true">{children}</svg>;
-}
-function CloseIcon() { return <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>; }
-function CursorIcon() { return <Icon><path d="M5 3l13 9-7 2-3 7L5 3z" /></Icon>; }
-function RuntimeIcon() { return <Icon><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /></Icon>; }
-function TrashIcon() { return <Icon><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></Icon>; }

@@ -1,6 +1,8 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { RuntimeEvidence, Workflow, WorkflowEdge, WorkflowNode } from './types';
 
+export type CanvasEdgeType = 'bezier' | 'smoothstep' | 'straight';
+
 export type StudioNodeData = WorkflowNode['data'] & {
   kind: WorkflowNode['type'];
   executionState?: string;
@@ -31,12 +33,15 @@ export function toCanvasNodes(
   });
 }
 
-export function toCanvasEdges(edges: WorkflowEdge[]): Edge[] {
+export function toCanvasEdges(
+  edges: WorkflowEdge[],
+  edgeType: CanvasEdgeType = 'bezier',
+): Edge[] {
   return edges.map((edge) => ({
     ...edge,
-    type: 'smoothstep',
+    type: edgeType,
     animated: false,
-    style: { stroke: '#98a2b3', strokeWidth: 1.5 },
+    className: 'workflow-edge',
   }));
 }
 
