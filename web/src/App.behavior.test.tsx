@@ -291,7 +291,7 @@ describe('Studio workflow behavior', () => {
     );
 
     await act(async () => {
-      button(renderer, 'open-node-library').props.onClick();
+      buttonWithText(renderer, '功能').props.onClick();
     });
     expect(renderer.root.findByProps({ 'aria-label': '节点库' })).toBeDefined();
     expect(renderer.root.findByProps({ 'aria-label': '搜索节点' })).toBeDefined();
