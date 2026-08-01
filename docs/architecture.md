@@ -4,6 +4,11 @@ A3S Workflow separates durable orchestration from node execution. The control
 plane decides what should run; an A3S Runtime provider decides where and how a
 node runs. There is no in-process node execution path.
 
+The product has two composition roots: the currently shipped standalone host
+and a target A3S Cloud module. Both use the same domain and application core;
+embedded mode replaces outer adapters rather than calling a second Workflow
+service over HTTP.
+
 ```text
 React Studio       Coding-agent CLI + Skill
            \         /
@@ -36,6 +41,43 @@ PostgreSQL is the sole authoritative store for:
 
 Redis is not required. A cache may be added later, but it cannot own workflow
 truth or recovery state.
+
+## A3S Cloud embedding target
+
+The engine will be extracted behind inward-facing ports so A3S Cloud can
+import it as an A3S Boot module and register its commands, queries,
+controllers, guards, health hooks, and workers in the existing Cloud
+composition root.
+
+```text
+Standalone host ─┐
+                 ├─> Workflow domain + application + engine
+A3S Cloud module ┘        │ repository / Flow / Runtime / event ports
+                          v
+            Host-provided PostgreSQL + A3S Flow + A3S Runtime
+```
+
+The ownership boundary is strict:
+
+- Workflow owns graph, publication, run, node-attempt, interaction, and output
+  semantics.
+- Cloud owns organization/project/environment tenancy, identity,
+  authorization, operations, placement, capacity, secrets, artifacts, node
+  agents, and Runtime lifecycle.
+- Embedded records carry Cloud tenant IDs; Workflow Run IDs correlate with
+  Cloud Operation and Execution IDs.
+- Cloud PostgreSQL and its transactional outbox are used directly. Embedded
+  mode does not introduce another database, queue, or source of truth.
+- Workflow dispatches through a Cloud execution port. It does not create a
+  competing scheduler, provider registry, or node-agent protocol.
+- Embedded configuration is passed as typed values decoded from Cloud A3S ACL;
+  no parallel YAML or JSON product configuration is introduced.
+
+This design keeps the domain and application layers independent of A3S Boot,
+SQL, HTTP, A3S Flow, A3S Runtime, and Cloud-specific types. Those dependencies
+live in adapters and the composition root. Idempotency keys, aggregate
+versions, Runtime generations, and content digests protect all retry and replay
+paths.
 
 ## Runtime boundary
 

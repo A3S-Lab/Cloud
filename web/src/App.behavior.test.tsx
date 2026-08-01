@@ -291,7 +291,7 @@ describe('Studio workflow behavior', () => {
     );
 
     await act(async () => {
-      button(renderer, 'open-node-library').props.onClick();
+      buttonWithText(renderer, '功能').props.onClick();
     });
     expect(renderer.root.findByProps({ 'aria-label': '节点库' })).toBeDefined();
     expect(renderer.root.findByProps({ 'aria-label': '搜索节点' })).toBeDefined();
@@ -378,6 +378,28 @@ describe('Studio workflow behavior', () => {
       renderer.root.findByProps({ 'aria-label': '关闭节点库' }).props.onClick();
     });
     expect(renderer.root.findAllByProps({ className: 'toast' })).toHaveLength(0);
+
+    const flowBeforeDelete = renderer.root.find(
+      (node) => typeof node.props.onNodeClick === 'function' && Array.isArray(node.props.nodes),
+    );
+    const templateNode = flowBeforeDelete.props.nodes.find(
+      (item: { data: { kind: NodeKind } }) => item.data.kind === 'template',
+    );
+    expect(templateNode).toBeDefined();
+    await act(async () => {
+      flowBeforeDelete.props.onNodeClick({}, templateNode);
+    });
+    await act(async () => {
+      renderer.root.findByProps({ className: 'danger-button' }).props.onClick();
+    });
+    const graphAfterDelete = renderer.root.find(
+      (node) => typeof node.props.onNodeClick === 'function' && Array.isArray(node.props.nodes),
+    );
+    expect(
+      graphAfterDelete.props.nodes.some(
+        (item: { data: { kind: NodeKind } }) => item.data.kind === 'template',
+      ),
+    ).toBe(false);
 
     await act(async () => {
       renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.onChange({
