@@ -73,7 +73,7 @@ describe('workflow canvas conversion', () => {
       sourceHandle: 'approved',
       type: 'smoothstep',
       animated: false,
-      style: { stroke: '#526078', strokeWidth: 1.5 },
+      style: { stroke: '#98a2b3', strokeWidth: 1.5 },
     });
   });
 

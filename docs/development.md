@@ -106,5 +106,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\e2e.ps1 `
 
 The manifest drives the Studio, saves the graph, submits a run, and asserts
 that all three sample nodes report Runtime evidence before checking the typed
-output. Screenshots, accessibility data, console output, and page errors are
-written under `.a3s-test/runs/` for local diagnosis and are not uploaded by CI.
+output. It does not request screenshots, accessibility data, console output,
+page-error captures, or upload test evidence. The coding agent consumes the
+step report locally.

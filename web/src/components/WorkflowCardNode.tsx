@@ -41,20 +41,26 @@ export function WorkflowCardNode({ id, data, selected }: NodeProps<StudioNode>) 
       {data.kind !== 'start' && (
         <Handle type="target" position={Position.Left} className="node-handle" />
       )}
-      <div className="node-accent" />
       <div className="node-header">
-        <span className="node-icon">
+        <span className={`node-icon kind-${data.kind}`}>
           <NodeIcon kind={data.kind} />
         </span>
-        <span className="node-category">{category[data.kind]}</span>
-        {data.executionState && (
-          <span className={`execution-dot state-${data.executionState}`} title={data.executionState} />
-        )}
+        <span className="node-title">
+          <strong>{data.label}</strong>
+          <small>{category[data.kind]}</small>
+        </span>
+        <span className="node-menu" aria-hidden="true">•••</span>
       </div>
-      <strong>{data.label}</strong>
       <div className="node-runtime">
-        <span>RT</span>
-        <span>{runtime}</span>
+        <span className={`runtime-mark${data.executionState ? ` state-${data.executionState}` : ''}`}>
+          {data.executionState === 'succeeded' ? '✓' : 'RT'}
+        </span>
+        <span><strong>A3S Runtime</strong><small>{runtime}</small></span>
+        {data.executionState && (
+          <span className={`execution-state state-${data.executionState}`} title={data.executionState}>
+            {data.executionState}
+          </span>
+        )}
       </div>
       {data.kind === 'router' ? (
         <div className="route-handles" aria-label="Router outputs">

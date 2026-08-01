@@ -124,6 +124,48 @@ function runtimeEvidence(): RuntimeEvidence[] {
       state: 'succeeded',
       observation: {},
     },
+    {
+      executionId: 'execution-start-retry',
+      runId: 'run-behavior-1',
+      stepId: 'node:start:execute',
+      attempt: 2,
+      nodeId: 'start',
+      providerId: 'production-start-retry',
+      runtimePool: 'start',
+      unitId: 'workflow/run-behavior-1/node/start/execute',
+      generation: 2,
+      specDigest: `sha256:${'b'.repeat(64)}`,
+      state: 'succeeded',
+      observation: {},
+    },
+    {
+      executionId: 'execution-approval',
+      runId: 'run-behavior-1',
+      stepId: 'node:approval:execute',
+      attempt: 1,
+      nodeId: 'approval',
+      providerId: 'production-approval',
+      runtimePool: 'approval',
+      unitId: 'workflow/run-behavior-1/node/approval/execute',
+      generation: 1,
+      specDigest: `sha256:${'c'.repeat(64)}`,
+      state: 'succeeded',
+      observation: {},
+    },
+    {
+      executionId: 'execution-output',
+      runId: 'run-behavior-1',
+      stepId: 'node:output:execute',
+      attempt: 1,
+      nodeId: 'output',
+      providerId: 'production-output',
+      runtimePool: 'output',
+      unitId: 'workflow/run-behavior-1/node/output/execute',
+      generation: 1,
+      specDigest: `sha256:${'d'.repeat(64)}`,
+      state: 'succeeded',
+      observation: {},
+    },
   ];
 }
 
@@ -160,6 +202,15 @@ function textContent(node: ReactTestInstance): string {
   return node.children
     .map((child) => (typeof child === 'string' ? child : textContent(child)))
     .join('');
+}
+
+function buttonWithText(
+  renderer: TestRenderer.ReactTestRenderer,
+  label: string,
+): ReactTestInstance {
+  return renderer.root
+    .findAllByType('button')
+    .find((item) => textContent(item).trim().startsWith(label))!;
 }
 
 describe('Studio workflow behavior', () => {
@@ -229,19 +280,36 @@ describe('Studio workflow behavior', () => {
     }) as typeof fetch;
 
     const renderer = await renderApp();
-    expect(renderer.root.findByProps({ 'aria-label': 'Node library' })).toBeDefined();
     expect(renderer.root.findByProps({ 'data-testid': 'workflow-canvas' })).toBeDefined();
-    expect(renderer.root.findByProps({ 'aria-label': 'Execution console' })).toBeDefined();
-    expect(renderer.root.findByProps({ 'aria-label': 'Node inspector' })).toBeDefined();
-    expect(renderer.root.findAllByType('nav')).toHaveLength(0);
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Primary navigation' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ 'aria-label': 'Primary navigation' })).toBeDefined();
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Node library' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Test run' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Node inspector' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ 'aria-label': 'Account' })).toHaveLength(0);
-    expect(JSON.stringify(renderer.toJSON())).not.toContain('Runtime providers');
-    expect(JSON.stringify(renderer.toJSON())).not.toContain('Search nodes');
     expect(renderer.root.findByProps({ 'aria-label': 'Select workflow' }).props.value).toBe(
       'workflow-1',
     );
+
+    await act(async () => {
+      button(renderer, 'open-node-library').props.onClick();
+    });
+    expect(renderer.root.findByProps({ 'aria-label': 'Node library' })).toBeDefined();
+    expect(renderer.root.findByProps({ 'aria-label': 'Search nodes' })).toBeDefined();
     expect(button(renderer, 'add-node-template')).toBeDefined();
+
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'Search nodes' }).props.onChange({
+        target: { value: 'does-not-exist' },
+      });
+    });
+    expect(textContent(renderer.root.findByProps({ className: 'catalog-empty' }))).toContain(
+      'No matching nodes',
+    );
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'Search nodes' }).props.onChange({
+        target: { value: 'template' },
+      });
+    });
 
     await act(async () => {
       button(renderer, 'add-node-template').props.onClick();
@@ -272,10 +340,16 @@ describe('Studio workflow behavior', () => {
     await act(async () => {
       flow.props.onPaneClick();
     });
-    expect(textContent(renderer.root.findByProps({ 'aria-label': 'Node inspector' }))).toContain(
-      'No node selected',
-    );
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Node inspector' })).toHaveLength(0);
 
+    await act(async () => {
+      button(renderer, 'open-node-library').props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'Search nodes' }).props.onChange({
+        target: { value: '' },
+      });
+    });
     await act(async () => {
       button(renderer, 'add-node-start').props.onClick();
     });
@@ -284,6 +358,7 @@ describe('Studio workflow behavior', () => {
     );
     await act(async () => {
       renderer.root.findByProps({ className: 'toast' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'Close node library' }).props.onClick();
     });
     expect(renderer.root.findAllByProps({ className: 'toast' })).toHaveLength(0);
 
@@ -311,6 +386,9 @@ describe('Studio workflow behavior', () => {
     expect(calls.some((call) => call.method === 'PUT')).toBe(true);
 
     await act(async () => {
+      button(renderer, 'open-run-panel').props.onClick();
+    });
+    await act(async () => {
       renderer.root.findByProps({ 'data-testid': 'run-input' }).props.onChange({
         target: { value: '{"name":"Ada"}' },
       });
@@ -321,9 +399,20 @@ describe('Studio workflow behavior', () => {
     expect(textContent(renderer.root.findByProps({ 'data-testid': 'run-output' }))).toContain(
       'approval required',
     );
+    expect(textContent(renderer.root.findByProps({ 'data-testid': 'execution-console' }))).toContain(
+      '3/3 units',
+    );
+
+    await act(async () => {
+      buttonWithText(renderer, 'TRACING').props.onClick();
+    });
     expect(textContent(renderer.root.findByProps({ 'data-testid': 'execution-track' }))).toContain(
       'production-start',
     );
+
+    await act(async () => {
+      buttonWithText(renderer, 'RESULT').props.onClick();
+    });
 
     const approval = () => renderer.root.findByProps({ className: 'approval-button' });
     await act(async () => {
@@ -343,17 +432,45 @@ describe('Studio workflow behavior', () => {
       'done',
     );
 
-    const minimap = renderer.root.find((node) => typeof node.props.nodeColor === 'function');
-    expect(minimap.props.nodeColor({ data: { kind: 'llm' } })).toBe('#7a5cff');
-    expect(minimap.props.nodeColor({ data: { kind: 'tool' } })).toBe('#21b7a8');
-    expect(minimap.props.nodeColor({ data: { kind: 'approval' } })).toBe('#e2a93b');
-    expect(minimap.props.nodeColor({ data: { kind: 'output' } })).toBe('#2587f5');
+    await act(async () => {
+      buttonWithText(renderer, 'DETAIL').props.onClick();
+    });
+    expect(textContent(renderer.root.findByProps({ className: 'run-summary' }))).toContain(
+      'PostgreSQL',
+    );
+    await act(async () => {
+      buttonWithText(renderer, 'TRACING').props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findAllByProps({ className: 'trace-card' })[0].props.onClick();
+    });
+    expect(renderer.root.findByProps({ 'data-testid': 'node-inspector' })).toBeDefined();
+    await act(async () => {
+      buttonWithText(renderer, 'EVIDENCE').props.onClick();
+    });
+    expect(renderer.root.findByProps({ 'data-testid': 'runtime-evidence' })).toBeDefined();
 
-    const dock = renderer.root.findByProps({ className: 'dock-toggle' });
-    await act(async () => dock.props.onClick());
-    expect(renderer.root.findAllByProps({ className: 'dock-body' })).toHaveLength(0);
-    await act(async () => renderer.root.findByProps({ className: 'dock-toggle' }).props.onClick());
-    expect(renderer.root.findAllByProps({ className: 'dock-body' })).toHaveLength(1);
+    const minimap = renderer.root.find((node) => typeof node.props.nodeColor === 'function');
+    expect(minimap.props.nodeColor({ data: { kind: 'llm' } })).toBe('#7f56d9');
+    expect(minimap.props.nodeColor({ data: { kind: 'tool' } })).toBe('#12b76a');
+    expect(minimap.props.nodeColor({ data: { kind: 'approval' } })).toBe('#f79009');
+    expect(minimap.props.nodeColor({ data: { kind: 'router' } })).toBe('#9e77ed');
+    expect(minimap.props.nodeColor({ data: { kind: 'output' } })).toBe('#2970ff');
+
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'Close node inspector' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'Toggle minimap' }).props.onClick();
+    });
+    expect(renderer.root.findAll((node) => typeof node.props.nodeColor === 'function')).toHaveLength(0);
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'Toggle minimap' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'Runtime runs' }).props.onClick();
+    });
+    expect(renderer.root.findByProps({ 'aria-label': 'Test run' })).toBeDefined();
+    await act(async () => {
+      renderer.root.findByProps({ 'aria-label': 'Workflow editor' }).props.onClick();
+    });
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Test run' })).toHaveLength(0);
   });
 
   test('surfaces initialization, invalid input, save and poll failures', async () => {
@@ -387,6 +504,9 @@ describe('Studio workflow behavior', () => {
     }) as typeof fetch;
     const renderer = await renderApp();
 
+    await act(async () => {
+      button(renderer, 'open-run-panel').props.onClick();
+    });
     await act(async () => {
       renderer.root.findByProps({ 'data-testid': 'run-input' }).props.onChange({
         target: { value: '{invalid' },

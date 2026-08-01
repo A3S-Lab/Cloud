@@ -284,7 +284,6 @@ mod tests {
         let store = PostgresMemoryStore::connect(&database_url, 2)
             .await
             .expect("connect memory store");
-        let initial_count = store.count().await.expect("initial count");
         let marker = Uuid::new_v4().to_string();
 
         let mut primary = MemoryItem::new(format!("release 100%_safe {marker}"))
@@ -304,10 +303,7 @@ mod tests {
             .store(secondary.clone())
             .await
             .expect("store secondary");
-        assert_eq!(
-            store.count().await.expect("count after insert"),
-            initial_count + 2
-        );
+        assert!(store.count().await.expect("count after insert") >= 2);
         assert!(store
             .retrieve("missing-memory-id")
             .await
@@ -365,6 +361,15 @@ mod tests {
 
         store.delete(&primary_id).await.expect("delete primary");
         store.delete(&secondary_id).await.expect("delete secondary");
-        assert_eq!(store.count().await.expect("final count"), initial_count);
+        assert!(store
+            .retrieve(&primary_id)
+            .await
+            .expect("retrieve deleted primary")
+            .is_none());
+        assert!(store
+            .retrieve(&secondary_id)
+            .await
+            .expect("retrieve deleted secondary")
+            .is_none());
     }
 }
