@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { StudioNode } from '../graph';
 import type { RuntimeEvidence } from '../types';
+import { nodeKindLabel, statusLabel } from '../localization';
 import { NodeIcon } from './NodeIcon';
 
 type InspectorTab = 'CONFIG' | 'RUNTIME' | 'EVIDENCE';
@@ -26,10 +27,10 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
 
   if (!node) {
     return (
-      <aside className="node-panel empty-node-panel" aria-label="Node inspector">
+      <aside className="node-panel empty-node-panel" aria-label="节点检查器">
         <div className="empty-state-icon"><CursorIcon /></div>
-        <h2>No node selected</h2>
-        <p>Select a node on the canvas to configure it.</p>
+        <h2>尚未选择节点</h2>
+        <p>请在画布上选择一个节点进行配置。</p>
       </aside>
     );
   }
@@ -43,29 +44,29 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
     try {
       patch({ config: JSON.parse(configSource) });
       setConfigError('');
-    } catch (error) {
-      setConfigError(error instanceof Error ? error.message : 'Invalid JSON');
+    } catch {
+      setConfigError('JSON 配置格式无效。');
     }
   };
 
   return (
-    <aside className="node-panel" aria-label="Node inspector" data-testid="node-inspector">
+    <aside className="node-panel" aria-label="节点检查器" data-testid="node-inspector">
       <header className="panel-header node-panel-header">
         <div className="inspector-title">
           <span className={`node-icon kind-${node.data.kind}`}><NodeIcon kind={node.data.kind} /></span>
-          <div><span>{node.data.kind.toUpperCase()} NODE</span><h2>{node.data.label}</h2></div>
+          <div><span>节点类型 · {nodeKindLabel(node.data.kind)}</span><h2>{node.data.label}</h2></div>
         </div>
         <div className="panel-header-actions">
-          {evidence && <span className={`status-pill state-${evidence.state}`}>{evidence.state}</span>}
+          {evidence && <span className={`status-pill state-${evidence.state}`}>{statusLabel(evidence.state)}</span>}
           {onClose && (
-            <button type="button" className="icon-button" aria-label="Close node inspector" onClick={onClose}>
+            <button type="button" className="icon-button" aria-label="关闭节点检查器" onClick={onClose}>
               <CloseIcon />
             </button>
           )}
         </div>
       </header>
 
-      <nav className="panel-tabs" aria-label="Node settings">
+      <nav className="panel-tabs" aria-label="节点设置">
         {(['CONFIG', 'RUNTIME', 'EVIDENCE'] as InspectorTab[]).map((tab) => (
           <button
             type="button"
@@ -73,7 +74,7 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
             key={tab}
             onClick={() => setActiveTab(tab)}
           >
-            {tab}
+            {{ CONFIG: '配置', RUNTIME: '运行环境', EVIDENCE: '执行证据' }[tab]}
             {tab === 'EVIDENCE' && evidence && <span>1</span>}
           </button>
         ))}
@@ -83,29 +84,29 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
         {activeTab === 'CONFIG' && (
           <>
             <section className="inspector-section">
-              <div className="section-heading"><span>GENERAL</span><small>Node identity</small></div>
+              <div className="section-heading"><span>常规</span><small>节点标识</small></div>
               <label>
-                Display name
+                显示名称
                 <input
-                  aria-label="Display name"
+                  aria-label="显示名称"
                   value={node.data.label}
                   onChange={(event) => patch({ label: event.target.value })}
                 />
               </label>
-              <div className="readonly-field"><span>Node ID</span><code>{node.id}</code></div>
+              <div className="readonly-field"><span>节点 ID</span><code>{node.id}</code></div>
             </section>
 
             <section className="inspector-section config-section">
-              <div className="section-heading"><span>NODE CONFIGURATION</span><small>Typed JSON</small></div>
+              <div className="section-heading"><span>节点配置</span><small>类型化 JSON</small></div>
               <textarea
-                aria-label="Node configuration JSON"
+                aria-label="节点配置 JSON"
                 value={configSource}
                 onChange={(event) => setConfigSource(event.target.value)}
                 spellCheck={false}
               />
               {configError && <p className="field-error">{configError}</p>}
               <button className="secondary-button full" type="button" onClick={applyConfig}>
-                Apply JSON
+                应用 JSON
               </button>
             </section>
           </>
@@ -115,25 +116,25 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
           <>
             <div className="runtime-callout">
               <RuntimeIcon />
-              <div><strong>Runs through A3S Runtime</strong><span>Placement is independent from the workflow control plane.</span></div>
+              <div><strong>通过 A3S Runtime 运行</strong><span>运行位置独立于工作流控制平面。</span></div>
             </div>
 
             <section className="inspector-section">
-              <div className="section-heading"><span>PLACEMENT</span><small>Provider & pool</small></div>
+              <div className="section-heading"><span>运行位置</span><small>提供方与资源池</small></div>
               <div className="field-grid">
                 <label>
-                  Provider
+                  提供方
                   <input
-                    aria-label="Runtime provider"
-                    placeholder="default"
+                    aria-label="Runtime 提供方"
+                    placeholder="默认"
                     value={node.data.runtime.provider ?? ''}
                     onChange={(event) => patchRuntime({ provider: event.target.value || undefined })}
                   />
                 </label>
                 <label>
-                  Pool
+                  资源池
                   <input
-                    aria-label="Runtime pool"
+                    aria-label="Runtime 资源池"
                     placeholder="cpu / gpu"
                     value={node.data.runtime.pool ?? ''}
                     onChange={(event) => patchRuntime({ pool: event.target.value || undefined })}
@@ -142,39 +143,39 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
               </div>
               <div className="field-grid">
                 <label>
-                  Isolation
+                  隔离方式
                   <select
-                    aria-label="Runtime isolation"
+                    aria-label="Runtime 隔离方式"
                     value={node.data.runtime.isolation ?? 'process'}
                     onChange={(event) => patchRuntime({
                       isolation: event.target.value as StudioNode['data']['runtime']['isolation'],
                     })}
                   >
-                    <option value="process">Process</option>
-                    <option value="container">Container</option>
-                    <option value="sandbox">Sandbox</option>
-                    <option value="confidential">Confidential</option>
+                    <option value="process">进程</option>
+                    <option value="container">容器</option>
+                    <option value="sandbox">沙箱</option>
+                    <option value="confidential">机密计算</option>
                   </select>
                 </label>
                 <label>
-                  Network
+                  网络访问
                   <select
-                    aria-label="Runtime network"
+                    aria-label="Runtime 网络访问"
                     value={node.data.runtime.network ?? (['llm', 'agent', 'tool', 'memory', 'http'].includes(node.data.kind) ? 'outbound' : 'none')}
                     onChange={(event) => patchRuntime({ network: event.target.value as 'none' | 'outbound' })}
                   >
-                    <option value="none">None</option>
-                    <option value="outbound">Outbound</option>
+                    <option value="none">禁止联网</option>
+                    <option value="outbound">允许出站</option>
                   </select>
                 </label>
               </div>
             </section>
 
             <section className="inspector-section">
-              <div className="section-heading"><span>RESOURCE ENVELOPE</span><small>Per execution</small></div>
+              <div className="section-heading"><span>资源配额</span><small>每次执行</small></div>
               <div className="resource-grid">
                 <label>
-                  CPU · millicores
+                  CPU · 毫核
                   <input
                     type="number"
                     min="1"
@@ -184,7 +185,7 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
                   />
                 </label>
                 <label>
-                  Memory · MiB
+                  内存 · MiB
                   <input
                     type="number"
                     min="1"
@@ -196,7 +197,7 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
                   />
                 </label>
                 <label>
-                  Timeout · ms
+                  超时 · ms
                   <input
                     type="number"
                     min="1"
@@ -214,22 +215,22 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
           evidence ? (
             <section className="runtime-evidence" data-testid="runtime-evidence">
               <div className="evidence-heading">
-                <span className={`status-pill state-${evidence.state}`}>{evidence.state}</span>
-                <strong>Verified Runtime execution</strong>
+                <span className={`status-pill state-${evidence.state}`}>{statusLabel(evidence.state)}</span>
+                <strong>已验证的 Runtime 执行</strong>
               </div>
               <dl>
-                <div><dt>Provider</dt><dd>{evidence.providerId}</dd></div>
-                <div><dt>Pool</dt><dd>{evidence.runtimePool ?? 'default'}</dd></div>
-                <div><dt>Generation</dt><dd>{evidence.generation ?? '—'}</dd></div>
-                <div><dt>Unit</dt><dd title={evidence.unitId ?? ''}>{compact(evidence.unitId)}</dd></div>
-                <div><dt>Spec digest</dt><dd title={evidence.specDigest ?? ''}>{compact(evidence.specDigest)}</dd></div>
+                <div><dt>提供方</dt><dd>{evidence.providerId}</dd></div>
+                <div><dt>资源池</dt><dd>{evidence.runtimePool ?? '默认'}</dd></div>
+                <div><dt>代次</dt><dd>{evidence.generation ?? '—'}</dd></div>
+                <div><dt>运行单元</dt><dd title={evidence.unitId ?? ''}>{compact(evidence.unitId)}</dd></div>
+                <div><dt>规格摘要</dt><dd title={evidence.specDigest ?? ''}>{compact(evidence.specDigest)}</dd></div>
               </dl>
             </section>
           ) : (
             <div className="evidence-empty">
               <RuntimeIcon />
-              <h3>No Runtime evidence yet</h3>
-              <p>Run the workflow to inspect provider placement, unit generation, and content digests.</p>
+              <h3>暂无 Runtime 执行证据</h3>
+              <p>运行工作流后可查看提供方调度、单元代次和内容摘要。</p>
             </div>
           )
         )}
@@ -238,7 +239,7 @@ export function Inspector({ node, evidence, onChange, onDelete, onClose }: Props
       {!['start', 'output'].includes(node.data.kind) && (
         <footer className="node-panel-footer">
           <button className="danger-button" type="button" onClick={() => onDelete(node.id)}>
-            <TrashIcon /> Delete node
+            <TrashIcon /> 删除节点
           </button>
         </footer>
       )}

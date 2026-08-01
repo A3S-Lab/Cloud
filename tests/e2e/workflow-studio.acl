@@ -16,7 +16,7 @@ suite "workflow-studio" {
         }
 
         wait "workflow-loaded" {
-            text = "Welcome to A3S Workflow"
+            text = "欢迎使用 A3S Workflow"
         }
 
         click "open-node-library" {
@@ -28,7 +28,7 @@ suite "workflow-studio" {
         }
 
         expect "runtime-catalog-contract" {
-            text = "All nodes execute through the A3S Runtime contract"
+            text = "所有节点都通过 A3S Runtime 契约执行"
         }
 
         click "add-template" {
@@ -40,45 +40,45 @@ suite "workflow-studio" {
         }
 
         fill "rename-template" {
-            target = css("[aria-label='Display name']")
-            value = "Runtime prompt renderer"
+            target = css("[aria-label='显示名称']")
+            value = "Runtime 提示词渲染器"
         }
 
         fill "configure-template" {
-            target = css("[aria-label='Node configuration JSON']")
+            target = css("[aria-label='节点配置 JSON']")
             value = "{\"value\":{\"message\":\"Runtime {{input.name}}\"}}"
         }
 
         click "apply-template-config" {
-            target = role("button", "Apply JSON")
+            target = css("[data-testid='node-inspector'] .config-section .secondary-button")
         }
 
         click "open-runtime-settings" {
-            target = role("button", "RUNTIME")
+            target = role("button", "运行环境")
         }
 
         fill "select-provider" {
-            target = css("[aria-label='Runtime provider']")
+            target = css("[aria-label='Runtime 提供方']")
             value = "production"
         }
 
         fill "select-pool" {
-            target = css("[aria-label='Runtime pool']")
+            target = css("[aria-label='Runtime 资源池']")
             value = "cpu"
         }
 
         select "select-isolation" {
-            target = css("[aria-label='Runtime isolation']")
+            target = css("[aria-label='Runtime 隔离方式']")
             values = ["sandbox"]
         }
 
         select "select-network" {
-            target = css("[aria-label='Runtime network']")
+            target = css("[aria-label='Runtime 网络访问']")
             values = ["none"]
         }
 
         expect "runtime-placement-visible" {
-            text = "Runs through A3S Runtime"
+            text = "通过 A3S Runtime 运行"
         }
 
         click "delete-template" {
@@ -86,7 +86,7 @@ suite "workflow-studio" {
         }
 
         expect "template-removed" {
-            text = "3 Runtime units"
+            text = "3 个 Runtime 单元"
         }
 
         click "reopen-node-library" {
@@ -98,7 +98,7 @@ suite "workflow-studio" {
         }
 
         expect "duplicate-boundary-message" {
-            text = "This workflow already has a start node."
+            text = "当前工作流已经有一个开始节点。"
         }
 
         click "dismiss-message" {
@@ -106,7 +106,7 @@ suite "workflow-studio" {
         }
 
         click "close-node-library" {
-            target = css("[aria-label='Close node library']")
+            target = css("[aria-label='关闭节点库']")
         }
 
         click "open-test-run" {
@@ -119,7 +119,7 @@ suite "workflow-studio" {
         }
 
         click "reject-invalid-run" {
-            target = role("button", "Start run")
+            target = role("button", "开始运行")
         }
 
         expect "invalid-json-message" {
@@ -142,11 +142,11 @@ suite "workflow-studio" {
         }
 
         wait "workflow-loaded" {
-            text = "Welcome to A3S Workflow"
+            text = "欢迎使用 A3S Workflow"
         }
 
         expect "runtime-unit-count" {
-            text = "3 Runtime units"
+            text = "3 个 Runtime 单元"
         }
 
         click "open-test-run" {
@@ -159,15 +159,15 @@ suite "workflow-studio" {
         }
 
         click "run-graph" {
-            target = role("button", "Start run")
+            target = role("button", "开始运行")
         }
 
         wait "runtime-result" {
-            text = "Hello, A3S E2E!"
+            text = "你好，A3S E2E！"
         }
 
         click "open-runtime-tracing" {
-            target = role("button", "TRACING")
+            target = role("button", "追踪")
         }
 
         expect "start-runtime-succeeded" {
@@ -187,7 +187,7 @@ suite "workflow-studio" {
         }
 
         click "open-runtime-evidence" {
-            target = role("button", "EVIDENCE")
+            target = role("button", "执行证据")
         }
 
         expect "runtime-evidence-visible" {
@@ -199,7 +199,7 @@ suite "workflow-studio" {
         }
 
         click "return-to-runtime-run" {
-            target = css("[aria-label='Runtime runs']")
+            target = css("[aria-label='Runtime 运行记录']")
         }
 
         viewport "compact" {

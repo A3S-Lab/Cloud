@@ -83,7 +83,7 @@ describe('Studio node components', () => {
     ]);
   });
 
-  test('renders node boundaries, runtime placement and deduplicated router handles', async () => {
+  test('renders Dify-style node boundaries and deduplicated router handles', async () => {
     const router = studioNode('router');
     router.data.config = {
       routes: [{ route: 'approved' }, { route: '' }, { route: 'approved' }, {}],
@@ -106,11 +106,12 @@ describe('Studio node components', () => {
       'data-testid': 'workflow-node-router-node',
     });
     expect(card.props.className).toContain('selected');
-    expect(textContent(card)).toContain('production / cpu');
-    expect(textContent(renderer!.root.findByProps({ 'aria-label': 'Router outputs' }))).toContain(
+    expect(textContent(card)).toContain('2 个分支');
+    expect(textContent(card)).not.toContain('production / cpu');
+    expect(textContent(renderer!.root.findByProps({ 'aria-label': '条件分支输出' }))).toContain(
       'approvedfallback',
     );
-    expect(renderer!.root.findAllByProps({ title: 'succeeded' })).toHaveLength(1);
+    expect(renderer!.root.findAllByProps({ title: '成功' })).toHaveLength(1);
 
     router.data.config = null;
     await act(async () => {
@@ -124,7 +125,7 @@ describe('Studio node components', () => {
         </ReactFlowProvider>,
       );
     });
-    expect(textContent(renderer!.root.findByProps({ 'aria-label': 'Router outputs' }))).toContain(
+    expect(textContent(renderer!.root.findByProps({ 'aria-label': '条件分支输出' }))).toContain(
       'default',
     );
   });
@@ -199,23 +200,23 @@ describe('Runtime policy inspector', () => {
         renderer!.root.findByProps(props).props.onChange({ target: { value } });
       });
     };
-    await change({ 'aria-label': 'Display name' }, 'Renamed');
-    await change({ 'aria-label': 'Node configuration JSON' }, '{broken');
+    await change({ 'aria-label': '显示名称' }, 'Renamed');
+    await change({ 'aria-label': '节点配置 JSON' }, '{broken');
     await act(async () => {
       renderer!.root.findByProps({ className: 'secondary-button full' }).props.onClick();
     });
     expect(renderer!.root.findAllByProps({ className: 'field-error' })).toHaveLength(1);
 
-    await change({ 'aria-label': 'Node configuration JSON' }, '{"template":"updated"}');
+    await change({ 'aria-label': '节点配置 JSON' }, '{"template":"updated"}');
     await act(async () => {
       renderer!.root.findByProps({ className: 'secondary-button full' }).props.onClick();
-      buttonWithText(renderer!, 'RUNTIME').props.onClick();
+      buttonWithText(renderer!, '运行环境').props.onClick();
     });
-    await change({ 'aria-label': 'Runtime provider' }, 'edge');
-    await change({ 'aria-label': 'Runtime provider' }, '');
-    await change({ 'aria-label': 'Runtime pool' }, 'gpu');
-    await change({ 'aria-label': 'Runtime isolation' }, 'sandbox');
-    await change({ 'aria-label': 'Runtime network' }, 'none');
+    await change({ 'aria-label': 'Runtime 提供方' }, 'edge');
+    await change({ 'aria-label': 'Runtime 提供方' }, '');
+    await change({ 'aria-label': 'Runtime 资源池' }, 'gpu');
+    await change({ 'aria-label': 'Runtime 隔离方式' }, 'sandbox');
+    await change({ 'aria-label': 'Runtime 网络访问' }, 'none');
     await change({ placeholder: '500' }, '750');
     await change({ placeholder: '500' }, '');
     await change({ placeholder: '256' }, '512');
@@ -236,7 +237,7 @@ describe('Runtime policy inspector', () => {
     );
 
     await act(async () => {
-      buttonWithText(renderer!, 'EVIDENCE').props.onClick();
+      buttonWithText(renderer!, '执行证据').props.onClick();
     });
     expect(renderer!.root.findAllByProps({ 'data-testid': 'runtime-evidence' })).toHaveLength(1);
     expect(textContent(renderer!.root.findByProps({ 'data-testid': 'runtime-evidence' }))).toContain(
@@ -244,7 +245,7 @@ describe('Runtime policy inspector', () => {
     );
 
     await act(async () => {
-      renderer!.root.findByProps({ 'aria-label': 'Close node inspector' }).props.onClick();
+      renderer!.root.findByProps({ 'aria-label': '关闭节点检查器' }).props.onClick();
       renderer!.root.findByProps({ className: 'danger-button' }).props.onClick();
     });
     expect(closed).toBe(1);
@@ -258,8 +259,8 @@ describe('Runtime policy inspector', () => {
         <Inspector node={undefined} onChange={() => {}} onDelete={() => {}} />,
       );
     });
-    expect(textContent(renderer!.root.findByProps({ 'aria-label': 'Node inspector' }))).toContain(
-      'No node selected',
+    expect(textContent(renderer!.root.findByProps({ 'aria-label': '节点检查器' }))).toContain(
+      '尚未选择节点',
     );
 
     const start = studioNode('start');
@@ -267,20 +268,20 @@ describe('Runtime policy inspector', () => {
     await act(async () => {
       renderer!.update(<Inspector node={start} onChange={() => {}} onDelete={() => {}} />);
     });
-    expect(renderer!.root.findByProps({ 'aria-label': 'Node configuration JSON' }).props.value).toContain(
+    expect(renderer!.root.findByProps({ 'aria-label': '节点配置 JSON' }).props.value).toContain(
       'input',
     );
     expect(renderer!.root.findAllByProps({ className: 'danger-button' })).toHaveLength(0);
     await act(async () => {
-      buttonWithText(renderer!, 'EVIDENCE').props.onClick();
+      buttonWithText(renderer!, '执行证据').props.onClick();
     });
     expect(textContent(renderer!.root.findByProps({ className: 'evidence-empty' }))).toContain(
-      'No Runtime evidence yet',
+      '暂无 Runtime 执行证据',
     );
     await act(async () => {
-      buttonWithText(renderer!, 'RUNTIME').props.onClick();
+      buttonWithText(renderer!, '运行环境').props.onClick();
     });
-    expect(renderer!.root.findByProps({ 'aria-label': 'Runtime network' }).props.value).toBe(
+    expect(renderer!.root.findByProps({ 'aria-label': 'Runtime 网络访问' }).props.value).toBe(
       'none',
     );
 
@@ -289,11 +290,11 @@ describe('Runtime policy inspector', () => {
     await act(async () => {
       renderer!.update(<Inspector node={llm} onChange={() => {}} onDelete={() => {}} />);
     });
-    expect(renderer!.root.findByProps({ 'aria-label': 'Node configuration JSON' })).toBeDefined();
+    expect(renderer!.root.findByProps({ 'aria-label': '节点配置 JSON' })).toBeDefined();
     await act(async () => {
-      buttonWithText(renderer!, 'RUNTIME').props.onClick();
+      buttonWithText(renderer!, '运行环境').props.onClick();
     });
-    expect(renderer!.root.findByProps({ 'aria-label': 'Runtime network' }).props.value).toBe(
+    expect(renderer!.root.findByProps({ 'aria-label': 'Runtime 网络访问' }).props.value).toBe(
       'outbound',
     );
   });
