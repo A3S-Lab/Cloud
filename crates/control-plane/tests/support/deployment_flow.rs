@@ -689,7 +689,11 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             | NodeCommandResult::ResourceClaimPrepared { .. }
             | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. }
-            | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
+            | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::BoxBuildStarted { .. }
+            | NodeCommandResult::BoxBuildInspected { .. }
+            | NodeCommandResult::BoxBuildCancelled { .. }
+            | NodeCommandResult::BoxBuildRemoved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }

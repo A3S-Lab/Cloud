@@ -152,7 +152,7 @@ export interface BuildEvidence {
   sourceContentDigest: string;
   recipe: Record<string, unknown>;
   recipeDigest: string;
-  runtimeSpecDigest: string;
+  buildRequestDigest: string;
   builder: {
     uri: string;
     digest: string;

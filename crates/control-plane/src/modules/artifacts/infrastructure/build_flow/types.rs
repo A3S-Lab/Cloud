@@ -6,7 +6,7 @@ use crate::modules::shared_kernel::domain::{
     BuildRunId, NodeCommandId, NodeId, OrganizationId, SourceRevisionId,
 };
 use crate::modules::sources::domain::BuildRecipe;
-use a3s_runtime::contract::RuntimeUnitSpec;
+use a3s_cloud_contracts::{NodeBoxBuildOutput, NodeBoxBuildRequest};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -49,7 +49,7 @@ pub(super) struct ScheduleStepInput {
 pub(super) enum ScheduleStepOutput {
     Ready {
         node_id: NodeId,
-        spec: Box<RuntimeUnitSpec>,
+        request: Box<NodeBoxBuildRequest>,
     },
     Pending {
         reason: String,
@@ -67,7 +67,7 @@ pub(super) enum ScheduleStepOutput {
 pub(super) struct ScheduledBuild {
     pub prepared: PreparedBuild,
     pub node_id: NodeId,
-    pub spec: RuntimeUnitSpec,
+    pub request: NodeBoxBuildRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,18 +96,24 @@ pub(super) enum DispatchStepOutput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ObserveStepInput {
     pub dispatched: DispatchedBuild,
+    pub attempt: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum ObserveStepOutput {
-    Pending {
+    AwaitingCommand {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Running {
         reason: String,
         next_poll_at: DateTime<Utc>,
         deadline_at: DateTime<Utc>,
     },
     Succeeded {
-        artifact: BuildArtifact,
+        output: Box<NodeBoxBuildOutput>,
         completed_at: DateTime<Utc>,
     },
     Failed {
@@ -120,7 +126,7 @@ pub(super) enum ObserveStepOutput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ValidateStepInput {
     pub flow: BuildFlowInput,
-    pub artifact: BuildArtifact,
+    pub output: Box<NodeBoxBuildOutput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,14 +219,34 @@ pub(super) struct FailStepOutput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct CleanupDispatchStepInput {
     pub flow: BuildFlowInput,
+    pub action: BoxCleanupAction,
     pub attempt: u32,
     pub issued_at: Option<DateTime<Utc>>,
     pub cleanup_deadline: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum BoxCleanupAction {
+    Cancel,
+    Inspect,
+    Remove,
+}
+
+impl BoxCleanupAction {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cancel => "cancel",
+            Self::Inspect => "inspect",
+            Self::Remove => "remove",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct DispatchedCleanup {
+    pub action: BoxCleanupAction,
     pub node_id: NodeId,
     pub command_id: NodeCommandId,
     pub result_deadline: DateTime<Utc>,
@@ -254,7 +280,7 @@ pub(super) struct CleanupObserveStepInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum CleanupObserveStepOutput {
-    Pending {
+    AwaitingCommand {
         reason: String,
         next_poll_at: DateTime<Utc>,
         deadline_at: DateTime<Utc>,
@@ -262,7 +288,8 @@ pub(super) enum CleanupObserveStepOutput {
     Ready {
         cleaned_at: DateTime<Utc>,
     },
-    Retry {
+    Advance {
+        action: BoxCleanupAction,
         reason: String,
         next_attempt_at: DateTime<Utc>,
         deadline_at: DateTime<Utc>,

@@ -6,9 +6,9 @@
 provider, and A3S Power is the required local inference Service boundary. The
 previous Docker/Bollard implementation and its R0 through E0 evidence are
 historical regression records only; they do not certify the Box-only release.
-The paragraphs below that describe completed Docker/BuildKit gates record that
-historical behavior until `BX0.5` removes the retired implementation and ports
-the evidence to exact Box revisions.
+Any paragraph explicitly labelled historical describes superseded evidence
+only. The active architecture contains no Docker, BuildKit, Bollard, Runtime
+build task, or Cloud-local build/cache/journal fallback.
 
 R0 through E0 behavior was previously implemented and certified. E0 has durable Edge route
 ownership, exact and wildcard domain claims, managed Gateway certificate
@@ -87,14 +87,14 @@ reject unsafe tree entries, strip `.git`, and commit an immutable content
 receipt. The Artifacts context also owns deterministic PostgreSQL-backed
 `BuildRun` attempts and a production reconciler that reserve one initial build
 per accepted revision, create fresh child attempts for failed or cancelled
-runs, and enqueue one exact `cloud.build@3` Operation for each attempt. The
+runs, and enqueue one exact `cloud.build@5` Operation for each attempt. The
 registered Flow replays and packages the credential-free checkout, selects a
-compatible node, dispatches a digest-pinned BuildKit client as a Runtime Task,
-validates the complete OCI output graph, persists a deterministic digest-only
+ready Box node, dispatches canonical ACL plans through typed Fleet commands,
+validates the complete returned OCI output graph, persists a deterministic digest-only
 registry target, publishes and remotely verifies every reachable descriptor,
 generates SPDX and SLSA documents, signs and locally verifies their DSSE
 envelope with an Ed25519 local or Vault Transit provider, persists the complete
-evidence, and durably removes both the Task and checkout before terminal
+evidence, and durably removes both the Box operation and checkout before terminal
 completion. The
 node-control boundary now also provides command-bound mTLS Artifact streaming:
 the control plane stores content-addressed directory archives, and the node
@@ -116,24 +116,22 @@ materialized only per attempt, and no credential enters source state, URLs,
 receipts, responses, or events. The operator-supplied real private-repository
 gate is implemented but has not been run with operator credentials. External
 private-provider certification therefore remains unrecorded. Signed build
-evidence is implemented and restored fail-closed from PostgreSQL. The companion
-external Registry/Vault workflow implements two real `SIGKILL` recovery
-boundaries and has passed a local real-provider rehearsal, but that rehearsal
-is not operator certification. Content-addressed BuildKit cache trust is
-implemented: cache-required BuildRuns persist an exact validated cache graph,
-and retries can stage only the matching immediate parent's read-only Artifact.
+evidence is implemented and restored fail-closed from PostgreSQL. Box's
+`BuildOperationJournal`, `BuildCache`, and `ImageStore` are the sole node-local
+authorities; retries can present only the matching immediate parent's cache
+Artifacts and receipts. A revision-bound external Registry/Vault and real Box
+process-restart gate remains open.
 The published-build
 deployment handoff is implemented: it
 accepts an artifact-free service template only for an exact tenant-owned
 successful BuildRun whose source revision and remotely verified digest match,
 then reuses `cloud.deployment@3` with durable source/build lineage.
 Registry publication is implemented and covered by hostile-protocol fixtures
-plus an authenticated private Distribution CI gate. The combined
-Runtime/BuildKit/Registry gate provisions the operator-controlled shared socket
-volume, validates and removes a cache-producing parent, prunes the BuildKit
-worker, proves a child cache hit from the parent Artifact alone, then records
-the exact isolated Task, publication, signed evidence, replay, and cleanup
-evidence.
+plus an authenticated private Distribution CI gate. The pending combined
+Box/Registry gate must validate and remove a cache-producing parent,
+reconstruct command and Box journals, prove a child cache hit from the parent
+receipt alone, then record the exact operation, publication, signed evidence,
+replay, and cleanup evidence.
 Unimplemented portions of later milestone sections remain accepted design
 until their own exit gates pass. A3S Cloud ships as a Rust modular monolith, a
 separate Linux node agent, and a React web application.
@@ -1260,10 +1258,10 @@ source reference -> immutable revision -> build/provenance -> artifact digest
 ```
 
 External Git inputs resolve a branch or tag once, then build the pinned commit
-with a Runtime Task. OCI inputs resolve a tag once and deploy only the manifest
-digest. Build cache keys include tenant scope, immutable source digest,
-canonical recipe digest and platforms, digest-pinned builder, operator
-BuildKit socket-volume identity, cache schema, and execution-semantics profile.
+through the sole `cloud.build@5` Flow and typed Box commands. OCI inputs resolve
+a tag once and deploy only the manifest digest. Box owns cache identity and
+storage; Cloud may pass only the immediate terminal parent's request-bound
+cache receipts and never interprets them as a second cache model.
 
 The GitHub App connection boundary owns installation authorization, not
 repository subscription or checkout credentials. An organization-authorized
@@ -1464,31 +1462,32 @@ locking and a source/attempt uniqueness constraint so concurrent reconcilers
 create one initial row. Atomic retry creation locks the parent, permits at most
 one child per parent, records the idempotency response in the same transaction,
 and rejects nonterminal or successful parents. The aggregate binds the
-organization/project/environment, source revision, attempt and parent,
-operation ID, immutable input and Runtime artifact identities, exact
+  organization/project/environment, source revision, attempt and parent,
+  operation ID, immutable input and Box request/output identities, exact
 node/command identities, validated OCI output, cancellation/failure outcome,
 cleanup command, timestamps, and optimistic version. Its state transitions are
 exact-replay no-ops; storage accepts only one transition generated by the
 aggregate and rejects stale or forged state. A separate reconciler repairs the
-durable gap after source or retry commit by enqueuing the same deterministic
-`cloud.build@3` request for that attempt. The PostgreSQL gate covers concurrent
+  durable gap after source or retry commit by enqueuing the same deterministic
+  `cloud.build@5` request for that attempt. The PostgreSQL gate covers concurrent
 reservation and retry, one-child parent lineage, the pre-enqueue crash gap,
 operation replay, tenant ownership, foreign-key integrity, cleanup order, and
 optimistic conflicts. The production worker runs this reconciler before the
-generic operation coordinator; a closed Flow router keeps
-`cloud.deployment@1/@2/@3`, `cloud.workload.stop@1`, and
-`cloud.build@1/@2/@3` on their own Runtime implementations.
+  generic operation coordinator; the closed Flow router executes only
+  `cloud.build@5` for builds. Known build versions 1 through 4 are retired
+  through Flow's cancellation API, while unrelated historical deployment and
+  workload-stop workflows retain their required compatibility paths.
 
 The Artifacts presentation layer exposes environment-scoped BuildRun lists and
 tenant-scoped detail. Its public projection includes source/Operation lineage,
 status, timestamps, validated OCI metadata, publication state, a bounded
-evidence summary, and bounded failure, while excluding node/command identities
-and internal input or Runtime Artifact URIs. A tenant-scoped evidence resource
+  evidence summary, and bounded failure, while excluding node/command identities
+  and internal input, Box receipt, or Artifact URIs. A tenant-scoped evidence resource
 returns the complete immutable SPDX, SLSA provenance, DSSE envelope, and public
 signing-key identity; the web console loads and downloads that JSON only on
 demand. `build:write` cancellation persists the aggregate transition and
 idempotency response atomically. It is deliberately cooperative: the Flow
-continues through publication-race adoption, attestation, Runtime removal, and
+  continues through publication-race adoption, attestation, Box removal, and
 checkout cleanup before projecting a terminal cancellation. The `build:write`
 retry endpoint atomically creates a queued child BuildRun and fresh Operation
 only for a failed or cancelled parent; exact request replay returns that same
@@ -1498,10 +1497,12 @@ when eligible.
 
 The Artifact transport prerequisite is implemented below that Flow boundary.
 Typed download and upload requests bind the authenticated node, durable command
-ID, Runtime specification digest, exact mount or output name, media type,
+ID, Runtime specification or Box build-request digest, exact mount or output
+name, media type,
 SHA-256 digest, and byte size. The mTLS node-control API authorizes those fields
-against the persisted unexpired `RuntimeApply` command before opening a blob or
-accepting a body. It streams raw bytes rather than base64, returns explicit
+against the matching persisted unexpired Runtime or Box build command before
+opening a blob or accepting a body. It streams raw bytes rather than base64,
+returns explicit
 length/content/digest metadata, applies a total transfer deadline, and persists
 content-addressed blobs plus atomic replay receipts. A blob/receipt crash gap
 is repaired only after the bytes are rehashed.
@@ -1516,91 +1517,74 @@ permissions after restart. Artifact views are reference-counted by durable spec
 receipts; Runtime removal deletes the view and reclaims only blobs with no
 remaining reference.
 
-Docker advertises `MountKind::Artifact` and `OutputArtifacts`; node startup
-binds this manager before it begins command processing. Artifact inputs become
-exact read-only host binds. A successful finite Task is archived through the
-Docker API with the declared directory contents at the Artifact root, then the
-command executor uploads the verified node-local blob and replaces the local
-URI with the control-plane content URI. The safe tar boundary accepts at most
-one leading empty `./` directory marker and does not expose a provider-specific
-basename when the Artifact is mounted again. Exact command replay, node/client
-restart, inspection, and removal retain or retire the same output identity.
-The registered `cloud.build@3` Flow
-now composes this transport with checkout replay, BuildKit execution, OCI
-validation, authoritative registry publication, and cleanup. A separate
-Workload command resolves only the deterministic successful BuildRun for the
-exact organization, project, environment, and source revision, converts its
-verified publication to a digest-pinned Workload artifact, and reuses
-`cloud.deployment@3`. Its idempotency identity covers the BuildRun, published
-digest, name, and complete artifact-free service template. The resulting
-revision retains an `ExternalBuildReference` across rollback and Secret
-rotation so Workload and Operation projections expose the originating source
-revision and build without trusting a caller-supplied artifact locator.
-`cloud.build@2` remains executable for persisted publication-era runs that did
-not require evidence, while `cloud.build@1` drains upgrade-invalidated
-pre-publication work without changing either persisted step history.
+A3S Box consumes the existing Artifact port for Runtime mounts and Task
+outputs; node startup binds this manager before command processing. Artifact
+inputs become exact read-only views. A successful finite Task is archived from
+its quiescent Box output directory, then the command executor uploads the
+verified node-local blob and replaces the local URI with the control-plane
+content URI. The same transport authorizes Box build source/cache downloads
+and output/cache uploads against the exact build command and request digest.
+Exact command replay, node/client restart, inspection, and removal retain or
+retire the same output identity.
 
-`cloud.build@3` is the only build-execution authority. There is no parallel
-control-plane build service, local build receipt, or second lifecycle API. The
-Flow binds one immutable BuildRun and source receipt to one Runtime Task and
-uses the Runtime command journal for dispatch, replay, cancellation, and
-cleanup. The current Task invokes `buildctl` with no registry credential, SSH,
-push, or privileged-entitlement input and exports one OCI image layout through
-the authenticated node Artifact boundary.
+The registered `cloud.build@5` Flow composes checkout replay, Box-native
+execution, OCI admission, authoritative registry publication, evidence, and
+cleanup. A separate Workload command resolves only the deterministic successful
+BuildRun for the exact organization, project, environment, and source revision,
+converts its verified publication to a digest-pinned Workload artifact, and
+reuses `cloud.deployment@3`. Its idempotency identity covers the BuildRun,
+published digest, name, and complete artifact-free service template. The
+resulting revision retains an `ExternalBuildReference` across rollback and
+Secret rotation so Workload and Operation projections expose the originating
+source revision and build without trusting a caller-supplied artifact locator.
 
-The Artifacts context owns one output-validation port. Its narrow BuildKit
-output adapter only decodes the exported metadata and removes an empty
-BuildKit ingest directory; provider-neutral OCI layout validation is the single
-integrity implementation shared by validation, publication, and evidence.
-Acceptance requires the metadata digest and descriptor to agree, the OCI root
-to bind that descriptor, every reachable index, manifest, config, and layer to
-have its declared size and SHA-256 bytes, the inventory to contain no
-unreferenced blob, and the config platforms to equal the recipe. Revalidation
-of publication and evidence materializes the same immutable Runtime Artifact
-and runs the same validator. Any future execution-engine migration must replace
-this Runtime Task path atomically and remove its superseded adapter; it must not
-introduce a second queue, receipt store, or lifecycle.
+Known `cloud.build@1` through `@4` histories are not executable. Startup
+terminalizes them through A3S Flow, while migration `060` invalidates their
+BuildRuns as rebuild-required and clears superseded Runtime, output,
+publication, evidence, and Cloud-cache projections.
 
-The production Build Flow closes the previously separate source, Runtime, and
-validation boundaries. `SourceBuildInputPreparer` checks tenant identity,
-materializes the exact commit anonymously or with one ephemeral installation
-token, packages deterministic archive bytes, admits them to the Artifact store,
-then performs an offline checkout receipt replay to reject package-time change.
-Only nodes advertising Task, container isolation, Artifact/Volume mounts,
-Tmpfs mounts, output Artifacts, resource controls, `NetworkMode::None`, and the
-builder media type are eligible. The projected Task mounts source and the
-BuildKit socket read-only, drops Runtime networking, and also passes
-`force-network-mode=none`; it accepts no secret, SSH, or entitlement channel.
-Cache-required runs export a BuildKit OCI cache alongside the image output.
-The cache validator requires one exact reachable graph, supported media types,
-no missing or unreferenced blobs, and an empty ingest directory. A retry may
-mount only its immediate terminal parent's key-matching Artifact read-only. It
-copies the validated cache tree into a size-bounded, non-executable tmpfs
-because BuildKit needs a writable local lock, then imports only that staging
-copy. Successful output is rehashed from the mTLS Artifact store and its
-complete OCI and cache graphs are validated before a deterministic
-`RuntimeRemove` command and checkout deletion. Cache reuse never skips
-publication or signed-evidence generation. Flow history persists dispatch
-identities before replay, so a crash cannot duplicate apply or removal.
+`cloud.build@5` is the only build workflow. There is no parallel control-plane
+build service, Runtime build Task, local process executor, or second lifecycle
+API. Flow owns workflow and recovery; Fleet `node_commands` owns remote
+delivery; the Node Agent journal owns command replay; Box owns its
+`BuildOperationJournal`, `BuildCache`, and `ImageStore`. The exact command set
+is `BoxBuildStart`, `BoxBuildInspect`, `BoxBuildCancel`, and `BoxBuildRemove`.
 
-The Runtime gate uses the exact projector, node command journal, Docker driver,
-Artifact upload, and OCI validator. Its Dockerfile requires a `RUN` environment
-without `eth0` and a failed `wget` attempt while the overall build succeeds.
-CI provisions the operator-controlled rootless BuildKit socket volume and
-authenticated registry for this implemented gate. Authoritative registry
-publication, locally verified signed evidence, evidence API/web inspection,
-and explicit published-build deployment are implemented. The gate cancels and
-removes the cache-producing parent, prunes all worker state, requires the child
-to parse the imported cache manifest and emit a real `CACHED` record,
-revalidates identical OCI/cache graphs, publishes and signs the child, and
-leaves no managed Task. The manual external-provider workflow now adds private
-GitHub resolution, operator Registry/Vault signing, and real process death
-after publication and evidence persistence. A local real-provider rehearsal
-passes; operator-owned execution and retained revision-bound evidence remain
-before G0 verification. BuildRun status, cancellation, retry-as-new-attempt,
-ordered log page/SSE, and web controls are implemented; the log projection
-reuses Fleet metadata and object storage while redacting node and internal
-Runtime identities.
+The Artifacts context owns one output-validation port. Its Box receipt adapter
+validates the closed wire shape, then provider-neutral OCI layout validation is
+the single integrity implementation shared by validation, publication, and
+evidence. Acceptance requires the Box descriptor and measurements to agree,
+the OCI root to bind that descriptor, every reachable index, manifest, config,
+and layer to have its declared size and SHA-256 bytes, the inventory to contain
+no unreferenced blob, and the config platforms to equal the recipe.
+Revalidation of publication and evidence materializes the same immutable
+Artifact and runs the same validator. Any future build-engine migration must
+replace this Box command path atomically and remove its superseded adapter; it
+must not introduce a second queue, receipt store, cache, journal, image store,
+or lifecycle.
+
+The production Build Flow closes the source, Box, and validation boundaries.
+`SourceBuildInputPreparer` checks tenant identity, materializes the exact commit
+anonymously or with one ephemeral installation token, packages deterministic
+archive bytes, admits them to the Artifact store, then performs an offline
+checkout receipt replay to reject package-time change. Only ready nodes
+advertising the pinned `a3s-box` provider are eligible. Cloud projects sorted
+canonical ACL plans with `network = "none"`, one platform per operation,
+bounded output/cache sizes, and optional immediate-parent cache receipts. The
+Agent materializes those Artifacts and calls Box's typed build API. Box returns
+one OCI layout plus one cache receipt per platform; Cloud rehashes the
+transferred bytes and validates the complete OCI graph before publication.
+Cache reuse never skips OCI admission, publication, or signed evidence. Flow
+persists deterministic start, inspect, cancel, and remove command identities,
+so restart cannot duplicate logical work or cleanup.
+
+Focused tests cover canonical projection, wire bounds, start/inspection replay,
+cancellation, timeout, rejected output, OCI tampering, cache-parent binding, and
+process restart during cleanup. The exact Linux Box provider, cache-hit,
+external Registry/Vault, and process-death conformance gate remains open.
+BuildRun status, cancellation, retry-as-new-attempt, and evidence controls are
+implemented. BuildRun log page and SSE endpoints return explicit `503` until
+Box exposes an authoritative durable log contract.
 
 The target hosted-asset publication chain is:
 
@@ -1721,9 +1705,10 @@ non-secret context from flags or environment, reads the token only from
 `A3S_CLOUD_TOKEN`, and invokes public tenant-guarded queries. It does not persist
 context, read PostgreSQL, contact nodes, or infer authorization from hidden
 output. The operational read slice adds workload, deployment, route, BuildRun,
-signed-evidence, and cursor-paginated workload/build logs through the exact
-existing REST queries. Resource identifiers are validated before transport;
-log cursors remain opaque and limits stay bounded. Later mutation and MCP
+  signed-evidence, cursor-paginated Workload logs, and explicit BuildRun-log
+  unavailability through the exact existing REST queries. Resource identifiers
+  are validated before transport; log cursors remain opaque and limits stay
+  bounded. Later mutation and MCP
 surfaces must continue through this API and the same application commands and
 queries.
 
@@ -1734,8 +1719,9 @@ loads the current API token through the Identity A3S ORM repository on every
 request. The adapter derives its organization only from the authenticated
 principal, filters and rechecks mutation tools by effective scope, rejects
 batches and foreign origins, and dispatches Project, Environment, search, Node,
-Operation, Workload, Deployment, Route, and BuildRun tools plus bounded
-cursor-paginated Workload and BuildRun logs, signed BuildRun evidence, Workload
+  Operation, Workload, Deployment, Route, and BuildRun tools plus bounded
+  cursor-paginated Workload logs, explicit BuildRun-log unavailability, signed
+  BuildRun evidence, Workload
 stop/rollback, Deployment cancel, and BuildRun cancel/retry to the same
 `CommandBus` and `QueryBus` handlers used by REST. The operational commands
 require caller-owned idempotency keys and their existing `workload:write` or
@@ -2048,12 +2034,12 @@ whether a command is required. NATS subjects carry event IDs and compact fact
 payloads, not secret material, logs, or Runtime command authority.
 
 The Box build boundary is not a second Runtime or scheduler. Build Flow submits
-one isolated Runtime Task with an immutable ACL build plan and content-addressed
-inputs. Box owns local build execution, cache isolation, snapshots, and cleanup;
-Artifacts owns OCI graph validation, publication, SPDX/SLSA evidence, and
-retention. Runtime remains unaware of build-system syntax and registry policy.
-Missing Box build capability fails closed rather than opening a daemon socket
-or selecting a compatibility path.
+one canonical ACL plan through Fleet's existing command queue, and the Node
+Agent invokes Box's typed build API. Box owns local operation state, cache,
+images, isolation, snapshots, and cleanup; Artifacts owns byte transport, OCI
+graph admission, publication, SPDX/SLSA evidence, and retention. Runtime is not
+part of artifact builds. Missing Box build capability fails closed rather than
+opening a daemon socket or selecting a compatibility path.
 
 Registry publication is a separate typed Artifacts port. The Flow first commits
 an immutable target containing registry, repository, root digest, media type,
@@ -2082,11 +2068,13 @@ deletion. A separate bounded worker compacts aged tombstones into coalesced
 sequence ranges while preserving batch replay and durable sequence watermarks.
 Provider cursor loss and source disconnects use typed Runtime errors, durable
 node replay, and ordered PostgreSQL gap metadata without creating object
-bodies. Real Docker provider restart, control-plane object-before-receipt
-process death, filesystem REST corruption projection, and real MinIO
-corruption are certified independently. Loki or ClickHouse is introduced only
-when product requirements demand global text search at a volume that the chunk
-index cannot serve.
+bodies. Control-plane object-before-receipt process death, filesystem REST
+corruption projection, and real MinIO corruption have independent evidence;
+provider restart must be re-certified against the exact Box revision. Loki or
+ClickHouse is introduced only when product requirements demand global text
+search at a volume that the chunk index cannot serve. BuildRun endpoints do not
+reuse this Workload-log authority and return `503` until Box publishes a
+durable build-log contract.
 
 ### 14.2 Middleware deliberately not selected
 
@@ -2109,14 +2097,14 @@ branching on raw backend-name strings inside a domain module.
 
 ## 15. Deployment profiles
 
-The verified E0 profile runs one control-plane process, PostgreSQL, a local
-registry and object-store adapter, one node agent, Docker, and A3S Gateway.
+The target Box-only profile runs one control-plane process, PostgreSQL, a local
+registry and object-store adapter, one node agent, A3S Box, and A3S Gateway.
 Production adds external KMS/PKI, S3-compatible storage, OpenTelemetry
-collection, and NATS JetStream when roles are replicated. Git builds add
-BuildKit and an owned OCI registry. Correctness must remain unchanged: all
-coordination uses
-PostgreSQL/Flow leases, idempotent commands, and observed state rather than
-process memory.
+collection, and NATS JetStream when roles are replicated. Git builds use the
+same Box provider plus an owned OCI registry. Correctness remains unchanged:
+all coordination uses PostgreSQL/Flow leases, idempotent commands, and observed
+state rather than process memory. The prior E0 profile is historical until this
+exact topology passes the complete Box-only release gate.
 
 Multi-node scheduling, stateful failover, provider-specific autoscaling, and
 federated control planes are later capabilities. The verified E0 release does

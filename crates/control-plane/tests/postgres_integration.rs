@@ -250,7 +250,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 58);
+    assert_eq!(applied, 60);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -265,6 +265,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
         .await?;
     assert_gateway_scope_membership_migration_backfills_primary_members(&executor).await?;
+    assert_box_native_build_authority_migration_invalidates_legacy_runs(&executor).await?;
     let evidence_required_column = database
         .fetch_one_as(sql_query::<(String, String, Option<String>)>(
             "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'evidence_required'",
@@ -280,27 +281,33 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(evidence_column, ("jsonb".into(), "YES".into(), None));
-    let cache_required_column = database
-        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
-            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'cache_required'",
-        ))
-        .await?;
-    assert_eq!(cache_required_column, ("boolean".into(), "NO".into(), None));
-    let cache_column = database
-        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
-            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'cache'",
-        ))
-        .await?;
-    assert_eq!(cache_column, ("jsonb".into(), "YES".into(), None));
-    let build_cache_constraint_count = database
+    let retired_build_columns = database
         .fetch_one_as(sql_query::<i64>(
-            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_cache_shape_check', 'build_runs_required_cache_check')",
+            "select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name in ('runtime_spec_digest', 'runtime_output_artifact', 'cache_required', 'cache')",
         ))
         .await?;
-    assert_eq!(build_cache_constraint_count, 2);
+    assert_eq!(retired_build_columns, 0);
+    let box_build_columns = database
+        .fetch_all_as(sql_query::<(String, String)>(
+            "select column_name, data_type from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name in ('build_request_digest', 'box_build_output') order by column_name",
+        ))
+        .await?;
+    assert_eq!(
+        box_build_columns.rows,
+        vec![
+            ("box_build_output".into(), "jsonb".into()),
+            ("build_request_digest".into(), "text".into()),
+        ]
+    );
+    let box_build_constraint_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_box_chain_check', 'build_runs_box_output_shape_check', 'build_runs_validated_output_check')",
+        ))
+        .await?;
+    assert_eq!(box_build_constraint_count, 3);
     let build_evidence_constraint_count = database
         .fetch_one_as(sql_query::<i64>(
-            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_status_check', 'build_runs_evidence_shape_check', 'build_runs_attesting_state_check', 'build_runs_required_evidence_cleanup_check', 'build_runs_required_evidence_success_check', 'build_runs_required_evidence_cancel_check')",
+            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_status_check', 'build_runs_evidence_shape_check', 'build_runs_execution_state_check', 'build_runs_required_evidence_cleanup_check', 'build_runs_success_check', 'build_runs_cancelled_check')",
         ))
         .await?;
     assert_eq!(build_evidence_constraint_count, 6);
@@ -821,6 +828,22 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "059",
+                "Box native build node commands",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/059_box_build_commands.sql"
+                )),
+            ),
+            Migration::new(
+                "060",
+                "sole Box native build authority",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/060_box_native_build_authority.sql"
+                )),
+            ),
+            Migration::new(
+                "061",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -2718,6 +2741,299 @@ begin
     end if;
 end
 $$;
+
+rollback;
+"#
+    );
+    client.batch_execute(&probe).await?;
+    Ok(())
+}
+
+async fn assert_box_native_build_authority_migration_invalidates_legacy_runs(
+    executor: &PostgresExecutor,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = executor.pool().get().await?;
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/060_box_native_build_authority.sql"
+    ));
+    let probe = format!(
+        r#"
+begin;
+set local search_path = pg_temp;
+
+create temporary table build_runs (
+    organization_id uuid not null,
+    project_id uuid not null,
+    environment_id uuid not null,
+    id uuid not null,
+    source_revision_id uuid not null,
+    operation_id uuid not null,
+    status text not null,
+    source_content_digest text,
+    input_artifact jsonb,
+    node_id uuid,
+    command_id uuid,
+    cleanup_command_id uuid,
+    runtime_spec_digest text,
+    runtime_output_artifact jsonb,
+    output jsonb,
+    publication_target jsonb,
+    published_artifact jsonb,
+    evidence_required boolean not null,
+    evidence jsonb,
+    cache_required boolean not null,
+    cache jsonb,
+    failure text,
+    aggregate_version bigint not null,
+    attempt integer not null,
+    retry_of_build_run_id uuid,
+    requested_at timestamptz not null,
+    updated_at timestamptz not null,
+    started_at timestamptz,
+    cancellation_requested_at timestamptz,
+    finished_at timestamptz,
+    check (status <> '')
+);
+
+create temporary table operation_projections (
+    operation_id uuid primary key,
+    status text not null,
+    last_sequence bigint not null,
+    output jsonb,
+    error text,
+    updated_at timestamptz not null
+);
+
+create temporary table operation_requests (
+    operation_id uuid primary key
+);
+
+insert into build_runs (
+    organization_id,
+    project_id,
+    environment_id,
+    id,
+    source_revision_id,
+    operation_id,
+    status,
+    source_content_digest,
+    input_artifact,
+    node_id,
+    command_id,
+    cleanup_command_id,
+    runtime_spec_digest,
+    runtime_output_artifact,
+    output,
+    publication_target,
+    published_artifact,
+    evidence_required,
+    evidence,
+    cache_required,
+    cache,
+    aggregate_version,
+    attempt,
+    requested_at,
+    updated_at,
+    started_at,
+    finished_at
+) values (
+    '60000000-0000-0000-0000-000000000001',
+    '60000000-0000-0000-0000-000000000002',
+    '60000000-0000-0000-0000-000000000003',
+    '60000000-0000-0000-0000-000000000004',
+    '60000000-0000-0000-0000-000000000005',
+    '60000000-0000-0000-0000-000000000004',
+    'succeeded',
+    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    '{{
+        "uri": "a3s-cloud-artifact://sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mediaType": "application/vnd.a3s.directory.v1+tar",
+        "sizeBytes": 1024
+    }}'::jsonb,
+    '60000000-0000-0000-0000-000000000006',
+    '60000000-0000-0000-0000-000000000007',
+    '60000000-0000-0000-0000-000000000008',
+    'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    '{{"legacy": "runtime-output"}}'::jsonb,
+    '{{"legacy": "validated-output"}}'::jsonb,
+    '{{"legacy": "publication-target"}}'::jsonb,
+    '{{"legacy": "published-artifact"}}'::jsonb,
+    true,
+    '{{"legacy": "evidence"}}'::jsonb,
+    true,
+    '{{"legacy": "cache"}}'::jsonb,
+    7,
+    1,
+    '2026-07-01T00:00:00Z',
+    '2026-07-01T00:00:08Z',
+    '2026-07-01T00:00:01Z',
+    '2026-07-01T00:00:08Z'
+), (
+    '60000000-0000-0000-0000-000000000001',
+    '60000000-0000-0000-0000-000000000002',
+    '60000000-0000-0000-0000-000000000003',
+    '60000000-0000-0000-0000-000000000009',
+    '60000000-0000-0000-0000-000000000010',
+    '60000000-0000-0000-0000-000000000009',
+    'queued',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    null,
+    false,
+    null,
+    1,
+    1,
+    '2026-07-01T00:00:00Z',
+    '2026-07-01T00:00:00Z',
+    null,
+    null
+);
+
+insert into operation_requests (operation_id)
+select operation_id from build_runs;
+
+insert into operation_projections (
+    operation_id,
+    status,
+    last_sequence,
+    output,
+    error,
+    updated_at
+)
+select operation_id, status, 7, '{{"legacy": true}}'::jsonb, null, updated_at
+from build_runs
+where id = '60000000-0000-0000-0000-000000000004';
+
+{migration}
+
+do $probe$
+declare
+    invalidation_reason constant text :=
+        'build predates the sole Box-native workflow; rebuild required';
+begin
+    if (select count(*) from build_runs) <> 2
+        or exists (
+            select 1
+            from build_runs
+            where status <> 'failed'
+               or node_id is not null
+               or command_id is not null
+               or cleanup_command_id is not null
+               or build_request_digest is not null
+               or box_build_output is not null
+               or output is not null
+               or publication_target is not null
+               or published_artifact is not null
+               or evidence is not null
+               or failure <> invalidation_reason
+               or cancellation_requested_at is not null
+               or finished_at is null
+        )
+    then
+        raise exception 'Box authority migration retained a legacy build projection';
+    end if;
+
+    if not exists (
+        select 1
+        from build_runs
+        where id = '60000000-0000-0000-0000-000000000004'
+          and aggregate_version = 8
+          and source_content_digest =
+              'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          and input_artifact ->> 'digest' = source_content_digest
+    ) or not exists (
+        select 1
+        from build_runs
+        where id = '60000000-0000-0000-0000-000000000009'
+          and aggregate_version = 2
+    ) then
+        raise exception 'Box authority migration changed immutable legacy input or version';
+    end if;
+
+    if (select count(*) from operation_projections) <> 2
+        or exists (
+        select 1
+        from operation_projections as projection
+        join build_runs as build
+          on build.operation_id = projection.operation_id
+        where projection.status <> 'cancelled'
+           or projection.output is not null
+           or projection.error <> invalidation_reason
+           or projection.updated_at <> build.updated_at
+    ) then
+        raise exception 'Box authority migration retained a runnable operation projection';
+    end if;
+
+    if not exists (
+        select 1
+        from operation_projections
+        where operation_id = '60000000-0000-0000-0000-000000000004'
+          and last_sequence = 7
+    ) or not exists (
+        select 1
+        from operation_projections
+        where operation_id = '60000000-0000-0000-0000-000000000009'
+          and last_sequence = 0
+    ) then
+        raise exception 'Box authority migration did not preserve or seed Flow projection sequences';
+    end if;
+
+    if exists (
+        select 1
+        from pg_attribute
+        where attrelid = 'build_runs'::regclass
+          and attnum > 0
+          and not attisdropped
+          and attname in (
+              'runtime_spec_digest',
+              'runtime_output_artifact',
+              'cache_required',
+              'cache'
+          )
+    ) then
+        raise exception 'Box authority migration retained a duplicate legacy column';
+    end if;
+
+    update build_runs
+    set status = 'running',
+        source_content_digest =
+            'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        input_artifact = '{{
+            "uri": "a3s-cloud-artifact://sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "mediaType": "application/vnd.a3s.directory.v1+tar",
+            "sizeBytes": 1024
+        }}'::jsonb,
+        node_id = '60000000-0000-0000-0000-000000000011',
+        command_id = '60000000-0000-0000-0000-000000000012',
+        build_request_digest =
+            'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+        failure = null,
+        started_at = requested_at,
+        finished_at = null
+    where id = '60000000-0000-0000-0000-000000000009';
+
+    begin
+        update build_runs
+        set cleanup_command_id = '60000000-0000-0000-0000-000000000013'
+        where id = '60000000-0000-0000-0000-000000000009';
+        raise exception 'running Box build accepted a premature cleanup command';
+    exception
+        when check_violation then null;
+    end;
+end
+$probe$;
 
 rollback;
 "#

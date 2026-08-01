@@ -1,42 +1,33 @@
-import { useState } from 'react';
-import type { CloudApi } from '../../lib/api';
-import type { BuildRun, WorkloadLogStreamFilter } from '../../types/api';
+import type { BuildRun } from '../../types/api';
 import { humanize, shortId } from '../console/console-format';
 import { LogPanel } from './log-panel';
-import { useBuildRunLogStream } from './use-build-run-log-stream';
-
-type LogFilter = 'all' | WorkloadLogStreamFilter;
 
 interface BuildRunLogPanelProps {
-  api: CloudApi;
-  organizationId: string | null;
   buildRun: BuildRun | null;
 }
 
-export function BuildRunLogPanel({ api, organizationId, buildRun }: BuildRunLogPanelProps) {
-  const [filter, setFilter] = useState<LogFilter>('all');
-  const stream = useBuildRunLogStream(
-    api,
-    organizationId,
-    buildRun?.id ?? null,
-    filter === 'all' ? undefined : filter
-  );
-
+export function BuildRunLogPanel({ buildRun }: BuildRunLogPanelProps) {
   return (
     <LogPanel
-      ariaLabel='Live build logs'
-      eyebrow='BuildKit plain progress'
+      ariaLabel='Build log availability'
+      eyebrow='A3S Box contract pending'
       title='Build logs'
-      available={buildRun !== null}
+      available={false}
       contextLabel={
         buildRun ? `Build ${shortId(buildRun.id)} · ${humanize(buildRun.status)}` : 'No selected build'
       }
-      unavailableMessage='Select a build run to inspect its ordered Runtime output.'
-      records={stream.records}
-      state={stream.state}
-      error={stream.error}
-      filter={filter}
-      onFilterChange={setFilter}
+      unavailableMessage={
+        buildRun
+          ? 'Build logs are unavailable until A3S Box exposes an authoritative durable log contract.'
+          : 'Select a build run to inspect log availability.'
+      }
+      records={[]}
+      state='idle'
+      error={null}
+      filter='all'
+      onFilterChange={ignoreFilterChange}
     />
   );
 }
+
+function ignoreFilterChange() {}

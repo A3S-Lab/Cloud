@@ -68,7 +68,7 @@ Commands:
   build-runs list       List recent BuildRuns in the selected environment
   build-runs get ID     Get one BuildRun
   build-runs evidence ID Get verified BuildRun evidence
-  build-runs logs ID    Read one page of BuildRun logs
+  build-runs logs ID    Report Box BuildRun log availability
   build-runs cancel ID  Request BuildRun cancellation idempotently
   build-runs retry ID   Retry one terminal BuildRun idempotently
 

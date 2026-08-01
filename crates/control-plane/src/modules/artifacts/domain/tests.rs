@@ -1,12 +1,17 @@
 use super::test_support::evidence_for;
 use super::{
     BuildArtifact, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::BuildPlatform;
+use a3s_cloud_contracts::{
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{Duration, Utc};
@@ -43,7 +48,7 @@ fn oci_descriptor_accepts_only_content_addressed_image_roots() {
 }
 
 #[test]
-fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
+fn build_run_binds_one_source_to_one_box_operation_and_validated_output() {
     let requested_at = Utc::now();
     let source_revision_id = SourceRevisionId::new();
     let mut build = BuildRun::reserve(
@@ -54,8 +59,6 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         requested_at,
     );
     assert_eq!(build.id, BuildRun::id_for(source_revision_id));
-    assert_eq!(build.runtime_unit_id(), format!("cloud-build-{}", build.id));
-    assert_eq!(BuildRun::RUNTIME_GENERATION, 1);
     assert_eq!(build.id.as_uuid(), build.operation_id.as_uuid());
 
     build
@@ -109,12 +112,13 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         .dispatch(command_id, requested_at + Duration::milliseconds(8))
         .expect("replay dispatch");
     assert_eq!(build, running);
-    let output_artifact = artifact('d');
+    let mut impossible_running_cleanup = build.clone();
+    impossible_running_cleanup.cleanup_command_id = Some(NodeCommandId::new());
+    assert!(BuildRun::restore(impossible_running_cleanup).is_err());
+    let box_output = box_output('d', 'e');
+    let output_artifact = artifact_from_box(&box_output);
     build
-        .begin_validation(
-            output_artifact.clone(),
-            requested_at + Duration::milliseconds(9),
-        )
+        .begin_validation(box_output.clone(), requested_at + Duration::milliseconds(9))
         .expect("begin validation");
     assert!(build
         .begin_cleanup(
@@ -124,10 +128,7 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         .is_err());
     let validating = build.clone();
     build
-        .begin_validation(
-            output_artifact.clone(),
-            requested_at + Duration::milliseconds(11),
-        )
+        .begin_validation(box_output, requested_at + Duration::milliseconds(11))
         .expect("replay validation");
     assert_eq!(build, validating);
     let output = ValidatedOciBuildOutput {
@@ -142,21 +143,12 @@ fn build_run_binds_one_source_to_one_runtime_task_and_validated_output() {
         content_bytes: 456,
         blob_count: 3,
     };
-    let cache = cache_for(&output);
     build
-        .record_validated_output(
-            output.clone(),
-            Some(cache.clone()),
-            requested_at + Duration::milliseconds(12),
-        )
+        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(12))
         .expect("record validated output");
     let validated = build.clone();
     build
-        .record_validated_output(
-            output.clone(),
-            Some(cache),
-            requested_at + Duration::milliseconds(13),
-        )
+        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(13))
         .expect("replay validated output");
     assert_eq!(build, validated);
     let target = OciPublicationTarget::new(
@@ -448,29 +440,85 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
 }
 
 fn artifact(fill: char) -> BuildArtifact {
+    let digest = format!("sha256:{}", fill.to_string().repeat(64));
     BuildArtifact::new(
-        format!("a3s-cloud-blob://sha256/{}", fill.to_string().repeat(64)),
-        format!("sha256:{}", fill.to_string().repeat(64)),
-        "application/vnd.a3s.cloud.runtime-archive.v1.tar",
+        artifact_uri(&digest).expect("artifact URI"),
+        digest,
+        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
         1024,
     )
     .expect("artifact")
 }
 
-fn cache_for(output: &ValidatedOciBuildOutput) -> ValidatedBuildCache {
-    ValidatedBuildCache::new(
-        format!("sha256:{}", "9".repeat(64)),
-        output.artifact.clone(),
-        OciDescriptor::new(
-            "application/vnd.oci.image.index.v1+json",
-            format!("sha256:{}", "8".repeat(64)),
-            64,
-        )
-        .expect("cache descriptor"),
-        128,
-        2,
+fn artifact_from_box(output: &NodeBoxBuildOutput) -> BuildArtifact {
+    BuildArtifact::new(
+        output.artifact.artifact.uri.clone(),
+        output.artifact.artifact.digest.clone(),
+        output.artifact.artifact.media_type.clone(),
+        output.artifact.size_bytes,
     )
-    .expect("validated build cache")
+    .expect("Box output artifact")
+}
+
+fn box_output(artifact_fill: char, descriptor_fill: char) -> NodeBoxBuildOutput {
+    let output_digest = format!("sha256:{}", artifact_fill.to_string().repeat(64));
+    let cache_digest = format!("sha256:{}", "8".repeat(64));
+    let platform = NodeBoxBuildPlatform {
+        os: "linux".into(),
+        architecture: "amd64".into(),
+        variant: None,
+    };
+    let output = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: "oci-layout".into(),
+            artifact: ArtifactRef {
+                uri: artifact_uri(&output_digest).expect("output artifact URI"),
+                digest: output_digest,
+                media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+            },
+            size_bytes: 1024,
+        },
+        descriptor: NodeBoxBuildDescriptor {
+            media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            digest: format!("sha256:{}", descriptor_fill.to_string().repeat(64)),
+            size: 123,
+        },
+        platforms: vec![platform.clone()],
+        manifest_count: 1,
+        content_bytes: 456,
+        blob_count: 3,
+        blob_inventory_digest: format!("sha256:{}", "7".repeat(64)),
+        caches: vec![NodeBoxBuildCacheOutput {
+            operation_id: "cloud-build-test-linux-amd64".into(),
+            artifact: RuntimeOutputArtifact {
+                name: "build-cache-test".into(),
+                artifact: ArtifactRef {
+                    uri: artifact_uri(&cache_digest).expect("cache artifact URI"),
+                    digest: cache_digest,
+                    media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+                },
+                size_bytes: 512,
+            },
+            receipt: NodeBoxBuildCacheReceipt {
+                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                key: format!("sha256:{}", "9".repeat(64)),
+                source_digest: format!("sha256:{}", "b".repeat(64)),
+                plan_digest: format!("sha256:{}", "6".repeat(64)),
+                descriptor: NodeBoxBuildDescriptor {
+                    media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+                    digest: format!("sha256:{}", "5".repeat(64)),
+                    size: 64,
+                },
+                platform,
+                content_bytes: 128,
+                entry_count: 1,
+                blob_count: 2,
+                blob_inventory_digest: format!("sha256:{}", "4".repeat(64)),
+            },
+        }],
+    };
+    output.validate().expect("Box build output");
+    output
 }
 
 fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
@@ -501,9 +549,10 @@ fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
     build
         .dispatch(NodeCommandId::new(), now + Duration::milliseconds(4))
         .expect("dispatched build");
-    let runtime_output = artifact('d');
+    let box_output = box_output('d', 'e');
+    let runtime_output = artifact_from_box(&box_output);
     build
-        .begin_validation(runtime_output.clone(), now + Duration::milliseconds(5))
+        .begin_validation(box_output, now + Duration::milliseconds(5))
         .expect("validating build");
     let output = ValidatedOciBuildOutput {
         artifact: runtime_output,
@@ -517,9 +566,8 @@ fn publishing_build(now: chrono::DateTime<Utc>) -> BuildRun {
         content_bytes: 456,
         blob_count: 3,
     };
-    let cache = cache_for(&output);
     build
-        .record_validated_output(output.clone(), Some(cache), now + Duration::milliseconds(6))
+        .record_validated_output(output.clone(), now + Duration::milliseconds(6))
         .expect("validated output");
     build
         .begin_publication(

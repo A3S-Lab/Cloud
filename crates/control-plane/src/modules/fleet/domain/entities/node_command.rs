@@ -61,6 +61,10 @@ impl NodeCommand {
             NodeCommandPayload::RuntimeInspect { .. } => "runtime_inspect",
             NodeCommandPayload::RuntimeStop { .. } => "runtime_stop",
             NodeCommandPayload::RuntimeRemove { .. } => "runtime_remove",
+            NodeCommandPayload::BoxBuildStart { .. } => "box_build_start",
+            NodeCommandPayload::BoxBuildInspect { .. } => "box_build_inspect",
+            NodeCommandPayload::BoxBuildCancel { .. } => "box_build_cancel",
+            NodeCommandPayload::BoxBuildRemove { .. } => "box_build_remove",
             NodeCommandPayload::ResourceClaimRelease { .. } => "resource_claim_release",
             NodeCommandPayload::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
             NodeCommandPayload::GatewaySnapshotObserve { .. } => "gateway_snapshot_observe",
@@ -120,7 +124,11 @@ impl NodeCommand {
                 NodeCommandResult::RuntimeApplied { .. }
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
-                | NodeCommandResult::RuntimeRemoved { .. } => {}
+                | NodeCommandResult::RuntimeRemoved { .. }
+                | NodeCommandResult::BoxBuildStarted { .. }
+                | NodeCommandResult::BoxBuildInspected { .. }
+                | NodeCommandResult::BoxBuildCancelled { .. }
+                | NodeCommandResult::BoxBuildRemoved { .. } => {}
             }
         }
         acknowledgement

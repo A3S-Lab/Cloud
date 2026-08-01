@@ -527,6 +527,22 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/058_mcp_gateway_desired_state.sql"
             )),
         ),
+        Migration::new(
+            "059",
+            "Box native build node commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/059_box_build_commands.sql"
+            )),
+        ),
+        Migration::new(
+            "060",
+            "sole Box native build authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/060_box_native_build_authority.sql"
+            )),
+        ),
     ]
 }
 

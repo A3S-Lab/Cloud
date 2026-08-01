@@ -4,14 +4,18 @@ version = 4
 
 [[package]]
 name = "a3s-acl"
-version = "0.2.2"
-source = "git+https://github.com/A3S-Lab/ACL.git?rev=fc041758758eba89dd5d22a3414d884c158c9ac1#fc041758758eba89dd5d22a3414d884c158c9ac1"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "add06e627b80ea0d3f6de5ecfb2708cfcf4c6d022806ae33aec0905aeffde3ce"
+dependencies = [
+ "ryu-js",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "a3s-acl"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "add06e627b80ea0d3f6de5ecfb2708cfcf4c6d022806ae33aec0905aeffde3ce"
+source = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99"
 dependencies = [
  "ryu-js",
  "sha2 0.10.9",
@@ -40,9 +44,9 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=4756ad60278aa8d8d21450ea6ed046ccff29306f#4756ad60278aa8d8d21450ea6ed046ccff29306f"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=3e43c43f48a3a5fa71f9e9be5f17e8f51250bd83#3e43c43f48a3a5fa71f9e9be5f17e8f51250bd83"
 dependencies = [
- "a3s-acl 0.2.2",
+ "a3s-acl 0.3.0 (git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99)",
  "a3s-common",
  "async-trait",
  "base64 0.22.1",
@@ -61,7 +65,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=4756ad60278aa8d8d21450ea6ed046ccff29306f#4756ad60278aa8d8d21450ea6ed046ccff29306f"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=3e43c43f48a3a5fa71f9e9be5f17e8f51250bd83#3e43c43f48a3a5fa71f9e9be5f17e8f51250bd83"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -72,8 +76,9 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=4756ad60278aa8d8d21450ea6ed046ccff29306f#4756ad60278aa8d8d21450ea6ed046ccff29306f"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=3e43c43f48a3a5fa71f9e9be5f17e8f51250bd83#3e43c43f48a3a5fa71f9e9be5f17e8f51250bd83"
 dependencies = [
+ "a3s-acl 0.3.0 (git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99)",
  "a3s-box-core",
  "a3s-box-netproxy",
  "a3s-common",
@@ -145,8 +150,9 @@ dependencies = [
 name = "a3s-cloud-control-plane"
 version = "0.1.0"
 dependencies = [
- "a3s-acl 0.3.0",
+ "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-boot",
+ "a3s-box-runtime",
  "a3s-cloud-contracts",
  "a3s-cloud-node-agent",
  "a3s-event",
@@ -199,7 +205,8 @@ dependencies = [
 name = "a3s-cloud-node-agent"
 version = "0.1.0"
 dependencies = [
- "a3s-acl 0.3.0",
+ "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "a3s-box-core",
  "a3s-box-runtime",
  "a3s-cloud-contracts",
  "a3s-runtime",

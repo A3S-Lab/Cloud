@@ -1,7 +1,6 @@
-use crate::modules::artifacts::domain::{
-    BuildArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
-};
+use crate::modules::artifacts::domain::ValidatedOciBuildOutput;
 use crate::modules::sources::domain::BuildRecipe;
+use a3s_cloud_contracts::NodeBoxBuildOutput;
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -16,18 +15,11 @@ pub enum BuildOutputValidationError {
     Storage(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidatedRuntimeBuildOutput {
-    pub output: ValidatedOciBuildOutput,
-    pub cache: Option<ValidatedBuildCache>,
-}
-
 #[async_trait]
 pub trait IBuildOutputValidator: Send + Sync {
     async fn validate(
         &self,
-        artifact: &BuildArtifact,
+        output: &NodeBoxBuildOutput,
         recipe: &BuildRecipe,
-        expected_cache_key: Option<&str>,
-    ) -> Result<ValidatedRuntimeBuildOutput, BuildOutputValidationError>;
+    ) -> Result<ValidatedOciBuildOutput, BuildOutputValidationError>;
 }

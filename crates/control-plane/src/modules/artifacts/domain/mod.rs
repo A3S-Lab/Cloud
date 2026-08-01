@@ -9,10 +9,10 @@ pub use entities::{
     OciPublicationTarget, PublishedOciArtifact, SlsaBuildDefinition, SlsaBuilder,
     SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
     SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum,
-    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedBuildCache,
-    ValidatedOciBuildOutput, BUILD_CACHE_SCHEMA, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE,
-    IN_TOTO_STATEMENT_TYPE, OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
-    SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
+    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship,
+    ValidatedOciBuildOutput, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE,
+    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE, SLSA_BUILD_TYPE,
+    SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use repositories::{
     IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
@@ -22,8 +22,7 @@ pub use services::{
     BuildInputPreparationError, BuildOutputValidationError, IBuildArtifactPublisher,
     IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
-    NodeArtifactWrite, OpenNodeArtifact, PreparedBuildInput, ValidatedRuntimeBuildOutput,
-    VerifiedBuildEvidenceSignature,
+    NodeArtifactWrite, OpenNodeArtifact, PreparedBuildInput, VerifiedBuildEvidenceSignature,
 };
 
 #[cfg(test)]

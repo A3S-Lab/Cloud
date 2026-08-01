@@ -223,7 +223,7 @@ export function DeliverySection({
         onRetry={onRetry}
       />
       <BuildEvidencePanel api={api} organizationId={organizationId} buildRun={selectedBuildRun} />
-      <BuildRunLogPanel api={api} organizationId={organizationId} buildRun={selectedBuildRun} />
+      <BuildRunLogPanel buildRun={selectedBuildRun} />
     </section>
   );
 }

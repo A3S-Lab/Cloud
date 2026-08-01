@@ -235,6 +235,24 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce A3S ORM as the relational persistence authority
+        run: |
+          direct_driver='sqlx|tokio-postgres|deadpool-postgres|postgres|diesel|sea-orm'
+          direct_import='sqlx|tokio_postgres|deadpool_postgres|postgres|diesel|sea_orm'
+          if git grep -I -n -E \
+            "^[[:space:]]*($direct_driver)[[:space:]]*=" -- '**/Cargo.toml'; then
+            exit 1
+          fi
+          if git grep -I -n -E \
+            "package[[:space:]]*=[[:space:]]*\"($direct_driver)\"" -- '**/Cargo.toml'; then
+            exit 1
+          fi
+          if git grep -I -n -E \
+            "^[[:space:]]*(use|extern[[:space:]]+crate)[[:space:]]+($direct_import)(::|[[:space:]]|;)" -- \
+            'crates/**/*.rs'; then
+            exit 1
+          fi
+
       - name: Enforce Box-only runtime and automation paths
         run: |
           removed_provider='do'"cker"
@@ -258,25 +276,40 @@ jobs:
       - name: Enforce one Cloud build-execution authority
         run: |
           removed_builder='build'"kit"
-          duplicate_api='I'"BuildService|BuildkitBuildService|OciBuildRequest|BuiltOciArtifact|BuildServiceError"
+          removed_client='boll'"ard"
+          duplicate_api='I'"BuildService|BuildkitBuildService|OciBuildRequest|BuiltOciArtifact|BuildServiceError|RuntimeBuildOutputValidator|RuntimeBuildEvidenceGenerator|ValidatedBuildCache|BuildCacheValidator"
           forbidden_paths=$(git ls-files crates/control-plane/src/modules/artifacts |
-            grep -E "(^|/)build_service\\.rs$|(^|/)${removed_builder}_build_service(\\.rs|/)" || true)
+            grep -E "(^|/)(build_service|build_cache_validator|${removed_builder}_output|runtime_build_output_validator|task_spec|journal|scheduler)(\\.rs|/)|(^|/)runtime_gate(/|$)|(^|/)${removed_builder}([^/]*)(/|$)" || true)
           if [[ -n $forbidden_paths ]]; then
             printf '%s\n' "$forbidden_paths"
             exit 1
           fi
-          if git grep -I -n -E "$duplicate_api" -- crates/control-plane/src; then
+          if git grep -I -n -E "$duplicate_api|$removed_builder|$removed_client" -- \
+            crates/control-plane/src/modules/artifacts; then
             exit 1
           fi
-          build_client='build'"ctl"
-          executor_files=$(git grep -I -l -E "/usr/bin/$build_client|Command::new\\([^)]*$build_client" \
+          local_executors=$(git grep -I -l -E \
+            '(^|[^[:alnum:]_])(std|tokio)::process|Command::new[[:space:]]*\\(' \
             -- crates/control-plane/src/modules/artifacts || true)
-          unexpected_executors=$(printf '%s\n' "$executor_files" |
-            grep -v -E '^crates/control-plane/src/modules/artifacts/infrastructure/build_flow/task_spec[.]rs$' || true)
-          if [[ -n $unexpected_executors ]]; then
-            printf '%s\n' "$unexpected_executors"
+          if [[ -n $local_executors ]]; then
+            printf '%s\n' "$local_executors"
             exit 1
           fi
+          unexpected_commands=$(git grep -I -h -o -E \
+            'NodeCommandPayload::[A-Za-z0-9_]+' \
+            -- crates/control-plane/src/modules/artifacts |
+            grep -v -E '^NodeCommandPayload::BoxBuild(Start|Inspect|Cancel|Remove)$' || true)
+          if [[ -n $unexpected_commands ]]; then
+            printf '%s\n' "$unexpected_commands"
+            exit 1
+          fi
+          for command in BoxBuildStart BoxBuildInspect BoxBuildCancel BoxBuildRemove; do
+            if ! git grep -I -q "NodeCommandPayload::$command" -- \
+              crates/control-plane/src/modules/artifacts/infrastructure/build_flow; then
+              echo "missing sole Box build command: $command"
+              exit 1
+            fi
+          done
 
   client-cli:
     name: TypeScript client and CLI

@@ -137,15 +137,11 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
 
     let logs_path = format!("{detail_path}/logs");
     let logs = app.call(get_as(&logs_path, ADMIN_TOKEN)).await?;
-    assert_eq!(logs.status(), 200);
+    assert_eq!(logs.status(), 503);
     let logs = response_json(&logs)?;
-    assert_eq!(logs["data"]["buildRunId"], queued.id.to_string());
-    assert_eq!(logs["data"]["operationId"], queued.operation_id.to_string());
-    assert_eq!(logs["data"]["generation"], 1);
-    assert_eq!(logs["data"]["records"].as_array().map(Vec::len), Some(0));
-    assert!(logs["data"]["nextCursor"].is_null());
-    assert!(logs["data"].get("nodeId").is_none());
-    assert!(logs["data"].get("unitId").is_none());
+    assert_eq!(logs["statusCode"], "SERVICE_UNAVAILABLE");
+    assert_eq!(logs["message"], "Service unavailable");
+    assert!(logs.get("data").is_none());
 
     let invalid_cursor = app
         .call(get_as(format!("{logs_path}?cursor=invalid"), ADMIN_TOKEN))

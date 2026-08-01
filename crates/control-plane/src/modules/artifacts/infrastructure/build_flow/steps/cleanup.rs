@@ -1,15 +1,17 @@
 use super::super::types::{
-    CleanupDispatchStepInput, CleanupDispatchStepOutput, CleanupObserveStepInput,
+    BoxCleanupAction, CleanupDispatchStepInput, CleanupDispatchStepOutput, CleanupObserveStepInput,
     CleanupObserveStepOutput, DispatchedCleanup,
 };
 use super::super::{flow_error, BuildFlowRuntime};
-use super::common::{load_build, load_revision, next_poll, project_spec, timestamp_millis};
-use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus};
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
-use crate::modules::shared_kernel::domain::NodeCommandId;
-use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
+use super::common::{bounded_reason, load_build, load_revision, next_poll, project_request};
+use crate::modules::artifacts::domain::BuildRunStatus;
+use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
+use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId};
+use a3s_cloud_contracts::{
+    NodeBoxBuildInspection, NodeBoxBuildRequest, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult,
+};
 use a3s_flow::FlowError;
-use a3s_runtime::contract::RuntimeActionRequest;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -18,6 +20,11 @@ pub(super) async fn dispatch(
     run_id: &str,
     input: CleanupDispatchStepInput,
 ) -> a3s_flow::Result<CleanupDispatchStepOutput> {
+    if input.attempt == 0 {
+        return Err(FlowError::Runtime(
+            "Box cleanup command attempt must be positive".into(),
+        ));
+    }
     let mut build = load_build(runtime, run_id, &input.flow).await?;
     if build.status.is_terminal() {
         return Ok(CleanupDispatchStepOutput::NotRequired {
@@ -41,100 +48,85 @@ pub(super) async fn dispatch(
             build.status.as_str()
         )));
     }
+
     let revision = load_revision(runtime, &build).await?;
-    let spec = project_spec(runtime, &build, &revision).await?;
+    let request = project_request(runtime, &build, &revision).await?;
     let node_id = build
         .node_id
-        .ok_or_else(|| FlowError::Runtime("dispatched build omitted its Runtime node".into()))?;
-    let first_issued_at = build.updated_at;
+        .ok_or_else(|| FlowError::Runtime("dispatched build omitted its Box node".into()))?;
+    let now = Utc::now().max(build.updated_at);
     let cleanup_deadline = input.cleanup_deadline.unwrap_or(
-        first_issued_at
+        build
+            .updated_at
             .checked_add_signed(runtime.config.cleanup_timeout)
-            .ok_or_else(|| FlowError::Runtime("build cleanup deadline overflowed".into()))?,
+            .ok_or_else(|| FlowError::Runtime("Box cleanup deadline overflowed".into()))?,
     );
-    let issued_at = input.issued_at.unwrap_or(first_issued_at);
+    ensure_before_cleanup_deadline(now, cleanup_deadline)?;
+    let issued_at = input.issued_at.unwrap_or(now);
     let not_after = issued_at
         .checked_add_signed(runtime.config.command_ttl)
-        .ok_or_else(|| FlowError::Runtime("build cleanup command deadline overflowed".into()))?;
-    let result_deadline = not_after.min(cleanup_deadline);
-    let now = Utc::now().max(build.updated_at);
-    if now >= cleanup_deadline {
-        return Err(FlowError::Runtime(
-            "build Runtime cleanup exceeded its independent deadline".into(),
-        ));
-    }
-    if now >= result_deadline {
+        .ok_or_else(|| FlowError::Runtime("Box cleanup command deadline overflowed".into()))?
+        .min(cleanup_deadline);
+    if now >= not_after {
         return Ok(CleanupDispatchStepOutput::Retry {
-            reason: "build cleanup command expired before dispatch".into(),
-            next_attempt_at: now,
+            reason: "Box cleanup command expired before dispatch".into(),
+            next_attempt_at: next_poll(now, runtime.config.observation_poll, cleanup_deadline)?,
             deadline_at: cleanup_deadline,
         });
     }
-    let command_id = cleanup_command_id(build.id, input.attempt);
-    if build.cleanup_command_id == Some(command_id) {
-        let command = runtime
+
+    let command_id = cleanup_command_id(build.id, input.action, input.attempt);
+    let command = if build.cleanup_command_id == Some(command_id) {
+        runtime
             .node_control
             .find_command(node_id, command_id)
             .await
-            .map_err(|error| flow_error("could not reload build cleanup command", error))?
-            .ok_or_else(|| FlowError::Runtime("build cleanup command is missing".into()))?;
-        validate_remove_command(&build, &spec, input.attempt, &command)?;
-        return Ok(CleanupDispatchStepOutput::Ready {
-            dispatched: DispatchedCleanup {
-                node_id,
-                command_id,
-                result_deadline: remove_result_deadline(&command)?.min(cleanup_deadline),
-                cleanup_deadline,
-                attempt: input.attempt,
-            },
-        });
-    }
-    let payload = NodeCommandPayload::RuntimeRemove {
-        request: RuntimeActionRequest {
-            schema: RuntimeActionRequest::SCHEMA.into(),
-            request_id: format!("build:{}:remove:{}", build.id, input.attempt),
-            unit_id: spec.unit_id.clone(),
-            generation: spec.generation,
-            deadline_at_ms: Some(timestamp_millis(result_deadline)?),
-        },
-    };
-    let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
-            proposed_command_id: command_id,
-            node_id,
-            aggregate_id: build.id.as_uuid(),
-            payload,
-            issued_at,
-            not_after,
-            correlation_id: build.operation_id.as_uuid(),
-        })
-        .await
-        .map_err(|error| flow_error("could not enqueue build cleanup command", error))?
-        .value;
-    validate_remove_command(&build, &spec, input.attempt, &command)?;
-    let expected = build.aggregate_version;
-    if build.cleanup_command_id.is_some() {
-        build
-            .retry_cleanup(command_id, now)
-            .map_err(|error| flow_error("could not retry build Runtime cleanup", error))?;
+            .map_err(|error| flow_error("could not reload Box cleanup command", error))?
+            .ok_or_else(|| FlowError::Runtime("Box cleanup command is missing".into()))?
     } else {
-        build
-            .begin_cleanup(command_id, now)
-            .map_err(|error| flow_error("could not begin build Runtime cleanup", error))?;
+        runtime
+            .node_control
+            .enqueue_command(NodeCommandDraft {
+                proposed_command_id: command_id,
+                node_id,
+                aggregate_id: build.id.as_uuid(),
+                payload: cleanup_payload(input.action, &request),
+                issued_at,
+                not_after,
+                correlation_id: build.operation_id.as_uuid(),
+            })
+            .await
+            .map_err(|error| flow_error("could not enqueue Box cleanup command", error))?
+            .value
+    };
+    validate_cleanup_command(&build, &request, input.action, input.attempt, &command)?;
+
+    if build.cleanup_command_id != Some(command_id) {
+        let expected = build.aggregate_version;
+        if build.cleanup_command_id.is_some() {
+            build
+                .retry_cleanup(command_id, now)
+                .map_err(|error| flow_error("could not advance Box cleanup", error))?;
+        } else {
+            build
+                .begin_cleanup(command_id, now)
+                .map_err(|error| flow_error("could not begin Box cleanup", error))?;
+        }
+        build = runtime
+            .builds
+            .save(build, expected)
+            .await
+            .map_err(|error| flow_error("could not persist Box cleanup", error))?;
     }
-    let cleanup = runtime
-        .builds
-        .save(build, expected)
-        .await
-        .map_err(|error| flow_error("could not persist build Runtime cleanup", error))?;
+
     Ok(CleanupDispatchStepOutput::Ready {
         dispatched: DispatchedCleanup {
+            action: input.action,
             node_id,
-            command_id: cleanup.cleanup_command_id.ok_or_else(|| {
-                FlowError::Runtime("build cleanup omitted its Runtime command".into())
+            command_id: build.cleanup_command_id.ok_or_else(|| {
+                FlowError::Runtime("Box cleanup command was not persisted".into())
             })?,
-            result_deadline,
+            result_deadline: command.not_after.min(cleanup_deadline),
             cleanup_deadline,
             attempt: input.attempt,
         },
@@ -157,53 +149,105 @@ pub(super) async fn observe(
         || build.cleanup_command_id != Some(input.dispatched.command_id)
     {
         return Err(FlowError::Runtime(
-            "build cleanup observation changed its durable identity".into(),
+            "Box cleanup observation changed its durable identity".into(),
         ));
     }
+    let revision = load_revision(runtime, &build).await?;
+    let request = project_request(runtime, &build, &revision).await?;
+    let command = runtime
+        .node_control
+        .find_command(input.dispatched.node_id, input.dispatched.command_id)
+        .await
+        .map_err(|error| flow_error("could not reload Box cleanup command", error))?
+        .ok_or_else(|| FlowError::Runtime("Box cleanup command is missing".into()))?;
+    validate_cleanup_command(
+        &build,
+        &request,
+        input.dispatched.action,
+        input.dispatched.attempt,
+        &command,
+    )?;
+
     if let Some(acknowledgement) = runtime
         .node_control
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
-        .map_err(|error| flow_error("could not load build cleanup result", error))?
+        .map_err(|error| flow_error("could not load Box cleanup result", error))?
     {
-        match acknowledgement.outcome {
-            NodeCommandOutcome::Succeeded { result } => match *result {
-                NodeCommandResult::RuntimeRemoved { removal }
-                    if removal.unit_id
-                        == BuildRun::runtime_unit_id_for(input.flow.build_run_id)
-                        && removal.generation == BuildRun::RUNTIME_GENERATION =>
-                {
-                    return Ok(CleanupObserveStepOutput::Ready {
-                        cleaned_at: acknowledgement.completed_at,
-                    })
-                }
-                _ => {
-                    return retry(
+        let completed_at = acknowledgement.completed_at.max(build.updated_at);
+        return match acknowledgement.outcome {
+            NodeCommandOutcome::Succeeded { result } => match (input.dispatched.action, *result) {
+                (BoxCleanupAction::Cancel, NodeCommandResult::BoxBuildCancelled { cancelled }) => {
+                    cancelled
+                        .validate_for(&request)
+                        .map_err(|error| flow_error("Box cancellation result is invalid", error))?;
+                    advance(
                         runtime,
-                        "build cleanup completed without exact Runtime removal evidence",
+                        BoxCleanupAction::Inspect,
+                        "Box cancellation is terminally acknowledged",
                         input.dispatched.cleanup_deadline,
                     )
                 }
+                (
+                    BoxCleanupAction::Inspect,
+                    NodeCommandResult::BoxBuildInspected { inspection },
+                ) => {
+                    inspection
+                        .validate_for(&request)
+                        .map_err(|error| flow_error("Box cleanup inspection is invalid", error))?;
+                    let (action, reason) = match inspection.as_ref() {
+                        NodeBoxBuildInspection::Running { .. }
+                        | NodeBoxBuildInspection::Cancelling { .. } => (
+                            BoxCleanupAction::Inspect,
+                            "Box build has not reached a terminal phase",
+                        ),
+                        NodeBoxBuildInspection::Succeeded { .. }
+                        | NodeBoxBuildInspection::Cancelled { .. }
+                        | NodeBoxBuildInspection::Failed { .. } => (
+                            BoxCleanupAction::Remove,
+                            "Box build reached a terminal phase",
+                        ),
+                    };
+                    advance(runtime, action, reason, input.dispatched.cleanup_deadline)
+                }
+                (BoxCleanupAction::Remove, NodeCommandResult::BoxBuildRemoved { removed }) => {
+                    removed
+                        .validate_for(&request)
+                        .map_err(|error| flow_error("Box removal result is invalid", error))?;
+                    Ok(CleanupObserveStepOutput::Ready {
+                        cleaned_at: completed_at,
+                    })
+                }
+                _ => Err(FlowError::Runtime(
+                    "Box cleanup command returned another result kind".into(),
+                )),
             },
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
-                return retry(
+                advance(
                     runtime,
+                    input.dispatched.action,
                     &format!("{}: {}", failure.code, failure.message),
                     input.dispatched.cleanup_deadline,
                 )
             }
-        }
+        };
     }
-    let now = Utc::now();
+
+    let now = Utc::now().max(build.updated_at);
+    ensure_before_cleanup_deadline(now, input.dispatched.cleanup_deadline)?;
     if now >= input.dispatched.result_deadline {
-        return retry(
+        return advance(
             runtime,
-            "build cleanup command did not finish before its attempt deadline",
+            input.dispatched.action,
+            "Box cleanup command did not finish before its attempt deadline",
             input.dispatched.cleanup_deadline,
         );
     }
-    Ok(CleanupObserveStepOutput::Pending {
-        reason: "waiting for build Runtime removal evidence".into(),
+    Ok(CleanupObserveStepOutput::AwaitingCommand {
+        reason: format!(
+            "waiting for Box build {} acknowledgement",
+            input.dispatched.action.as_str()
+        ),
         next_poll_at: next_poll(
             now,
             runtime.config.observation_poll,
@@ -213,77 +257,91 @@ pub(super) async fn observe(
     })
 }
 
-fn retry(
+fn advance(
     runtime: &BuildFlowRuntime,
+    action: BoxCleanupAction,
     reason: &str,
     deadline: DateTime<Utc>,
 ) -> a3s_flow::Result<CleanupObserveStepOutput> {
     let now = Utc::now();
-    if now >= deadline {
-        return Err(FlowError::Runtime(
-            "build Runtime cleanup exceeded its independent deadline".into(),
-        ));
-    }
-    Ok(CleanupObserveStepOutput::Retry {
-        reason: super::common::bounded_reason(reason),
+    ensure_before_cleanup_deadline(now, deadline)?;
+    Ok(CleanupObserveStepOutput::Advance {
+        action,
+        reason: bounded_reason(reason),
         next_attempt_at: next_poll(now, runtime.config.observation_poll, deadline)?,
         deadline_at: deadline,
     })
 }
 
+fn ensure_before_cleanup_deadline(
+    now: DateTime<Utc>,
+    deadline: DateTime<Utc>,
+) -> a3s_flow::Result<()> {
+    if now >= deadline {
+        Err(FlowError::Runtime(
+            "Box cleanup exceeded its independent deadline".into(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn cleanup_payload(action: BoxCleanupAction, request: &NodeBoxBuildRequest) -> NodeCommandPayload {
+    match action {
+        BoxCleanupAction::Cancel => NodeCommandPayload::BoxBuildCancel {
+            request: Box::new(request.clone()),
+        },
+        BoxCleanupAction::Inspect => NodeCommandPayload::BoxBuildInspect {
+            request: Box::new(request.clone()),
+        },
+        BoxCleanupAction::Remove => NodeCommandPayload::BoxBuildRemove {
+            request: Box::new(request.clone()),
+        },
+    }
+}
+
 fn cleanup_command_id(
-    build_id: crate::modules::shared_kernel::domain::BuildRunId,
+    build_id: BuildRunId,
+    action: BoxCleanupAction,
     attempt: u32,
 ) -> NodeCommandId {
     NodeCommandId::from_uuid(Uuid::new_v5(
         &build_id.as_uuid(),
-        format!("runtime-remove:{attempt}").as_bytes(),
+        format!("box-build-cleanup:{}:{attempt}", action.as_str()).as_bytes(),
     ))
 }
 
-fn validate_remove_command(
+fn validate_cleanup_command(
     build: &crate::modules::artifacts::domain::BuildRun,
-    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+    request: &NodeBoxBuildRequest,
+    action: BoxCleanupAction,
     attempt: u32,
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &NodeCommand,
 ) -> a3s_flow::Result<()> {
-    let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
-        return Err(FlowError::Runtime(
-            "build cleanup command is not a Runtime remove".into(),
-        ));
+    let admitted = match (action, &command.payload) {
+        (BoxCleanupAction::Cancel, NodeCommandPayload::BoxBuildCancel { request })
+        | (BoxCleanupAction::Inspect, NodeCommandPayload::BoxBuildInspect { request })
+        | (BoxCleanupAction::Remove, NodeCommandPayload::BoxBuildRemove { request }) => {
+            request.as_ref()
+        }
+        _ => {
+            return Err(FlowError::Runtime(
+                "Box cleanup command action changed during replay".into(),
+            ))
+        }
     };
-    if command.id != cleanup_command_id(build.id, attempt)
+    if command.id != cleanup_command_id(build.id, action, attempt)
         || command.node_id
-            != build.node_id.ok_or_else(|| {
-                FlowError::Runtime("dispatched build omitted its Runtime node".into())
-            })?
+            != build
+                .node_id
+                .ok_or_else(|| FlowError::Runtime("dispatched build omitted its Box node".into()))?
         || command.aggregate_id != build.id.as_uuid()
         || command.correlation_id != build.operation_id.as_uuid()
-        || request.request_id != format!("build:{}:remove:{attempt}", build.id)
-        || request.unit_id != spec.unit_id
-        || request.generation != spec.generation
+        || admitted != request
     {
         return Err(FlowError::Runtime(
-            "build cleanup command changed its durable identity".into(),
+            "Box cleanup command changed its durable identity".into(),
         ));
     }
     Ok(())
-}
-
-fn remove_result_deadline(
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
-) -> a3s_flow::Result<DateTime<Utc>> {
-    let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
-        return Err(FlowError::Runtime(
-            "build cleanup command is not a Runtime remove".into(),
-        ));
-    };
-    let millis = request
-        .deadline_at_ms
-        .ok_or_else(|| FlowError::Runtime("build Runtime remove omitted its deadline".into()))?;
-    let millis = i64::try_from(millis)
-        .map_err(|_| FlowError::Runtime("build Runtime remove deadline is invalid".into()))?;
-    DateTime::from_timestamp_millis(millis)
-        .map(|deadline| deadline.min(command.not_after))
-        .ok_or_else(|| FlowError::Runtime("build Runtime remove deadline is invalid".into()))
 }

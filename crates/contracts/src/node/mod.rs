@@ -1,4 +1,5 @@
 mod artifact;
+mod box_build;
 mod command;
 mod enrollment;
 mod error;
@@ -13,6 +14,13 @@ mod tests;
 pub use artifact::{
     artifact_uri, validate_cloud_artifact, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+pub use box_build::{
+    NodeBoxBuildCacheInput, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,
+    NodeBoxBuildCancelResult, NodeBoxBuildCancellation, NodeBoxBuildDescriptor,
+    NodeBoxBuildInspection, NodeBoxBuildOperationCancellation, NodeBoxBuildOperationRemoval,
+    NodeBoxBuildOutput, NodeBoxBuildPhase, NodeBoxBuildPlan, NodeBoxBuildPlatform,
+    NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, BOX_BUILD_OUTPUT_NAME,
 };
 pub use command::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure,
@@ -69,6 +77,20 @@ pub(crate) fn validate_sha256(label: &str, value: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+pub(crate) fn validate_lower_sha256(label: &str, value: &str) -> Result<(), String> {
+    let valid = value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    });
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("{label} must be a lowercase SHA-256 digest"))
+    }
 }
 
 pub(crate) fn validate_uuid(label: &str, value: uuid::Uuid) -> Result<(), String> {

@@ -1,57 +1,22 @@
-use super::super::task_spec::CACHE_IMPORT_ROOT;
 use super::support::*;
 use crate::modules::artifacts::domain::{
-    BuildEvidenceGenerationError, BuildOutputValidationError, BuildRun, BuildRunStatus,
-    IBuildRunRepository, RequestBuildRetryBundle,
+    BuildOutputValidationError, BuildRunStatus, IBuildRunRepository,
 };
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
-use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, NodeCommandId, OrganizationId, ProjectId, SourceRevisionId,
-};
+use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{
-    NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    NodeBoxBuildCancelResult, NodeBoxBuildCancellation, NodeBoxBuildInspection,
+    NodeBoxBuildOperationCancellation, NodeBoxBuildOperationRemoval, NodeBoxBuildPhase,
+    NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, NodeCommandAck,
+    NodeCommandEnvelope, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
 };
-use a3s_flow::{FlowEngine, FlowError, FlowEventStore, WorkflowRunStatus};
-use a3s_runtime::contract::{NetworkMode, RuntimeMountSource, RuntimeRemoval};
+use a3s_flow::{FlowEngine, FlowError, WorkflowRunStatus};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn legacy_build_workflow_drains_an_upgrade_invalidated_build_without_publication(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = BuildFixture::create(None).await?;
-    let reason = "legacy build requires rebuild for authoritative OCI publication".to_owned();
-    let mut invalidated = fixture
-        .builds
-        .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    let expected = invalidated.aggregate_version;
-    invalidated.record_failure(reason.clone(), Utc::now().max(invalidated.updated_at))?;
-    fixture.builds.save(invalidated, expected).await?;
-
-    let run_id = fixture.build.operation_id.to_string();
-    let engine = FlowEngine::in_memory(Arc::new(fixture.runtime.clone()));
-    engine
-        .start_with_id(run_id.clone(), legacy_workflow_spec(), fixture.input())
-        .await?;
-
-    assert_eq!(
-        engine.snapshot(&run_id).await?.status,
-        WorkflowRunStatus::Failed
-    );
-    let failed = fixture
-        .builds
-        .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    assert_eq!(failed.status, BuildRunStatus::Failed);
-    assert_eq!(failed.failure.as_deref(), Some(reason.as_str()));
-    assert_eq!(fixture.publisher.publications(), 0);
-    Ok(())
-}
-
-#[tokio::test]
-async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_removal(
+async fn dispatch_replay_reuses_the_exact_box_start_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = BuildFixture::create(None).await?;
     let run_id = fixture.build.operation_id.to_string();
@@ -63,125 +28,154 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
         .await
         .expect_err("injected crash must interrupt dispatch completion persistence");
     assert!(matches!(failure, FlowError::Store(_)));
-    let expected_apply_id = NodeCommandId::from_uuid(fixture.build.id.as_uuid());
-    let command_before_restart = fixture
+    let command_id = NodeCommandId::from_uuid(Uuid::new_v5(
+        &fixture.build.id.as_uuid(),
+        b"box-build-start",
+    ));
+    let before_restart = fixture
         .nodes
-        .find_command(fixture.node_id, expected_apply_id)
+        .find_command(fixture.node_id, command_id)
         .await?
-        .ok_or("build apply side effect was not persisted before the injected crash")?;
-    assert_eq!(fixture.inputs.prepares(), 1);
+        .ok_or("Box start command was not persisted before the crash")?;
 
     drop(engine);
+    let engine = FlowEngine::new(store, Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id, workflow_spec(), fixture.input())
+        .await?;
+    let after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, command_id)
+        .await?
+        .ok_or("Box start command disappeared after replay")?;
+    assert_eq!(after_restart, before_restart);
+    assert_eq!(fixture.inputs.prepares(), 1);
+
+    let leased = lease_one(&fixture, 0).await?;
+    assert_eq!(leased.command_id, command_id.as_uuid());
+    assert!(matches!(
+        leased.payload,
+        NodeCommandPayload::BoxBuildStart { .. }
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn process_restart_reuses_the_exact_box_cleanup_command(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = BuildFixture::create(None).await?;
+    let run_id = fixture.build.operation_id.to_string();
+    let store = Arc::new(FailOnceStepCompletionStore::new(
+        "cleanup-cancel-dispatch-1",
+    ));
     let engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
     engine
         .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
         .await?;
-    assert_eq!(
-        fixture
-            .nodes
-            .find_command(fixture.node_id, expected_apply_id)
-            .await?
-            .ok_or("build apply command disappeared after restart")?,
-        command_before_restart
-    );
-    assert_eq!(fixture.inputs.prepares(), 1);
-    assert_eq!(
-        engine.snapshot(&run_id).await?.status,
-        WorkflowRunStatus::Suspended
-    );
-
-    let apply_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        0,
-    )
-    .await?;
-    assert_eq!(apply_lease.commands.len(), 1);
-    let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    assert_eq!(apply.command_id, expected_apply_id.as_uuid());
-    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
-        return Err("build command is not Runtime apply".into());
-    };
-    assert_eq!(
-        request.request_id,
-        format!("build:{}:apply", fixture.build.id)
-    );
-    assert_eq!(request.spec.network.mode, NetworkMode::None);
-    assert_eq!(request.spec.artifact.media_type, BUILDER_MEDIA_TYPE);
-    assert_eq!(request.spec.mounts.len(), 2);
-    assert_eq!(request.spec.outputs.len(), 1);
-    assert!(request
-        .spec
-        .process
-        .args
-        .windows(2)
-        .any(|arguments| arguments == ["--opt", "force-network-mode=none"]));
-    assert_eq!(
-        fixture
-            .builds
-            .find(fixture.organization_id, fixture.build.id)
-            .await?
-            .node_id,
-        Some(fixture.node_id)
-    );
-
-    record_observation(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        &fixture.capabilities,
-        apply,
-        succeeded_observation(&request.spec, fixture.outputs.artifact())?,
+    let start = lease_one(&fixture, 0).await?;
+    let build_request = request(&start)?.clone();
+    acknowledge(
+        &fixture,
+        &start,
+        NodeCommandResult::BoxBuildStarted {
+            started: NodeBoxBuildStartResult {
+                binding_digest: build_request.binding_digest()?,
+                phase: NodeBoxBuildPhase::Running,
+            },
+        },
     )
     .await?;
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(1))
         .await?;
-
-    let cleanup_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        apply.sequence,
+    let inspect = lease_one(&fixture, start.sequence).await?;
+    let output = box_output_for(&build_request, fixture.outputs.artifact())?;
+    acknowledge(
+        &fixture,
+        &inspect,
+        NodeCommandResult::BoxBuildInspected {
+            inspection: Box::new(NodeBoxBuildInspection::Succeeded {
+                binding_digest: build_request.binding_digest()?,
+                output: Box::new(output.clone()),
+            }),
+        },
     )
     .await?;
-    let build_before_cleanup = fixture
+
+    let failure = engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await
+        .expect_err("injected crash must interrupt cleanup dispatch persistence");
+    assert!(matches!(failure, FlowError::Store(_)));
+    let cleanup_command_id = fixture
         .builds
         .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    let events_before_cleanup = store.list(&run_id).await?;
-    assert_eq!(
-        cleanup_lease.commands.len(),
-        1,
-        "build before cleanup: {build_before_cleanup:?}; Flow events: {events_before_cleanup:?}"
-    );
-    let cleanup = cleanup_lease
-        .commands
-        .first()
-        .ok_or("missing build Runtime removal")?;
-    let expected_cleanup_id = NodeCommandId::from_uuid(Uuid::new_v5(
-        &fixture.build.id.as_uuid(),
-        b"runtime-remove:1",
-    ));
-    assert_eq!(cleanup.command_id, expected_cleanup_id.as_uuid());
-    let NodeCommandPayload::RuntimeRemove {
-        request: removal_request,
-    } = &cleanup.payload
-    else {
-        return Err("build cleanup command is not Runtime remove".into());
-    };
-    assert_eq!(
-        removal_request.request_id,
-        format!("build:{}:remove:1", fixture.build.id)
-    );
-    assert_eq!(removal_request.unit_id, request.spec.unit_id);
-    assert_eq!(removal_request.generation, request.spec.generation);
-    acknowledge_removal(&fixture, cleanup, removal_request).await?;
+        .await?
+        .cleanup_command_id
+        .ok_or("Box cleanup command was not persisted before the crash")?;
+    let before_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, cleanup_command_id)
+        .await?
+        .ok_or("Box cleanup command was not queued before the crash")?;
 
+    drop(engine);
+    let engine = FlowEngine::new(store, Arc::new(fixture.runtime.clone()));
     engine
-        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
         .await?;
+    let after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, cleanup_command_id)
+        .await?
+        .ok_or("Box cleanup command disappeared after restart")?;
+    assert_eq!(after_restart, before_restart);
+
+    let cancel = lease_one(&fixture, inspect.sequence).await?;
+    assert_eq!(cancel.command_id, cleanup_command_id.as_uuid());
+    finish_cleanup(
+        &fixture,
+        &engine,
+        &cancel,
+        NodeBoxBuildInspection::Succeeded {
+            binding_digest: build_request.binding_digest()?,
+            output: Box::new(output),
+        },
+    )
+    .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(fixture.publisher.publications(), 1);
+    assert_eq!(fixture.evidence.generations(), 1);
+    assert_eq!(fixture.inputs.removals(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn box_build_completes_only_after_cancel_inspect_remove_cleanup(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = BuildFixture::create(None).await?;
+    let run_id = fixture.build.operation_id.to_string();
+    let engine = FlowEngine::in_memory(Arc::new(fixture.runtime.clone()));
+    let (output, cancel) = drive_to_cleanup(&fixture, &engine, &run_id).await?;
+
+    assert!(matches!(
+        cancel.payload,
+        NodeCommandPayload::BoxBuildCancel { .. }
+    ));
+    finish_cleanup(
+        &fixture,
+        &engine,
+        &cancel,
+        NodeBoxBuildInspection::Succeeded {
+            binding_digest: request(&cancel)?.binding_digest()?,
+            output: Box::new(output),
+        },
+    )
+    .await?;
+
     assert_eq!(
         engine.snapshot(&run_id).await?.status,
         WorkflowRunStatus::Completed
@@ -191,8 +185,6 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
         .find(fixture.organization_id, fixture.build.id)
         .await?;
     assert_eq!(completed.status, BuildRunStatus::Succeeded);
-    assert_eq!(completed.cleanup_command_id, Some(expected_cleanup_id));
-    assert!(completed.publication_target.is_some());
     assert!(completed.published_artifact.is_some());
     assert!(completed.evidence.is_some());
     assert!(completed.finished_at.is_some());
@@ -200,209 +192,48 @@ async fn build_flow_replays_dispatch_and_completes_only_after_exact_runtime_remo
     assert_eq!(fixture.publisher.publications(), 1);
     assert_eq!(fixture.evidence.generations(), 1);
     assert_eq!(fixture.inputs.removals(), 1);
-
-    let history_length = store.list(&run_id).await?.len();
-    engine
-        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
-        .await?;
-    assert_eq!(store.list(&run_id).await?.len(), history_length);
-    assert_eq!(fixture.inputs.prepares(), 1);
-    assert_eq!(fixture.outputs.validations(), 1);
-    assert_eq!(fixture.publisher.publications(), 1);
-    assert_eq!(fixture.evidence.generations(), 1);
-    assert_eq!(fixture.inputs.removals(), 1);
     Ok(())
 }
 
 #[tokio::test]
-async fn retry_imports_only_its_verified_parent_cache_as_a_read_only_artifact(
+async fn offline_cleanup_polls_the_same_command_until_its_ttl_expires(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = BuildFixture::create(None).await?;
-    fixture
-        .evidence
-        .fail_with(BuildEvidenceGenerationError::Integrity(
-            "test attestation failure after cache validation".into(),
-        ));
-    let parent_run_id = fixture.build.operation_id.to_string();
+    let run_id = fixture.build.operation_id.to_string();
     let engine = FlowEngine::in_memory(Arc::new(fixture.runtime.clone()));
-    engine
-        .start_with_id(parent_run_id.clone(), workflow_spec(), fixture.input())
-        .await?;
-    let apply_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        0,
-    )
-    .await?;
-    let apply = apply_lease.commands.first().ok_or("missing parent apply")?;
-    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
-        return Err("parent build command is not Runtime apply".into());
-    };
-    record_observation(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        &fixture.capabilities,
-        apply,
-        succeeded_observation(&request.spec, fixture.outputs.artifact())?,
-    )
-    .await?;
-    engine
-        .resume_due_waits(Utc::now() + Duration::seconds(1))
-        .await?;
-    let cleanup_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        apply.sequence,
-    )
-    .await?;
-    let cleanup = cleanup_lease
-        .commands
-        .first()
-        .ok_or("missing parent cleanup")?;
-    let NodeCommandPayload::RuntimeRemove { request } = &cleanup.payload else {
-        return Err("parent cleanup command is not Runtime remove".into());
-    };
-    acknowledge_removal(&fixture, cleanup, request).await?;
-    engine
-        .resume_due_waits(Utc::now() + Duration::seconds(2))
-        .await?;
-    let parent = fixture
+    let (_, cancel) = drive_to_cleanup(&fixture, &engine, &run_id).await?;
+    let expected = fixture
         .builds
         .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    assert_eq!(parent.status, BuildRunStatus::Failed);
-    let parent_cache = parent.cache.clone().ok_or("parent cache missing")?;
-
-    let retry = BuildRun::retry(&parent, Utc::now().max(parent.updated_at))?;
-    let idempotency = IdempotencyRequest::new(
-        format!("build-runs/{}/retry", parent.id),
-        "cache-retry",
-        parent.id.to_string().as_bytes(),
-    )?;
-    let retry = fixture
-        .builds
-        .request_retry(RequestBuildRetryBundle {
-            retry,
-            expected_previous_version: parent.aggregate_version,
-            idempotency,
-        })
         .await?
-        .value;
-    let retry_run_id = retry.operation_id.to_string();
-    engine
-        .start_with_id(
-            retry_run_id,
-            workflow_spec(),
-            serde_json::json!({
-                "organizationId": retry.organization_id,
-                "buildRunId": retry.id,
-            }),
-        )
-        .await?;
-    let retry_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        cleanup.sequence,
-    )
-    .await?;
-    let retry_apply = retry_lease.commands.first().ok_or("missing retry apply")?;
-    let NodeCommandPayload::RuntimeApply { request, .. } = &retry_apply.payload else {
-        return Err("retry build command is not Runtime apply".into());
-    };
-    assert_eq!(request.spec.mounts.len(), 4);
-    assert!(request
-        .spec
-        .process
-        .args
-        .iter()
-        .any(|argument| argument == "--import-cache"));
-    assert!(matches!(
-        &request.spec.mounts[2].source,
-        RuntimeMountSource::Artifact { artifact }
-            if artifact.digest == parent_cache.artifact.digest
-                && request.spec.mounts[2].read_only
-    ));
-    assert!(matches!(
-        &request.spec.mounts[3].source,
-        RuntimeMountSource::Tmpfs { size_bytes }
-            if *size_bytes == parent_cache.artifact.size_bytes
-                && request.spec.mounts[3].target == CACHE_IMPORT_ROOT
-                && !request.spec.mounts[3].read_only
-    ));
-    Ok(())
-}
+        .cleanup_command_id;
 
-#[tokio::test]
-async fn publication_step_replay_does_not_repeat_a_durably_projected_push(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = BuildFixture::create(None).await?;
-    let run_id = fixture.build.operation_id.to_string();
-    let store = Arc::new(FailOnceStepCompletionStore::new("publish"));
-    let engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
-    engine
-        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
-        .await?;
-    let apply_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        0,
-    )
-    .await?;
-    let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
-        return Err("build command is not Runtime apply".into());
-    };
-    record_observation(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        &fixture.capabilities,
-        apply,
-        succeeded_observation(&request.spec, fixture.outputs.artifact())?,
-    )
-    .await?;
+    for seconds in 3..7 {
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(seconds))
+            .await?;
+    }
 
-    let failure = engine
-        .resume_due_waits(Utc::now() + Duration::seconds(1))
-        .await
-        .expect_err("injected crash must lose the publish StepCompleted event");
-    assert!(matches!(failure, FlowError::Store(_)));
-    let published_before_restart = fixture
+    let pending = fixture
         .builds
         .find(fixture.organization_id, fixture.build.id)
         .await?;
-    assert_eq!(published_before_restart.status, BuildRunStatus::Publishing);
-    assert!(published_before_restart.published_artifact.is_some());
-    assert_eq!(fixture.publisher.publications(), 1);
-
-    drop(engine);
-    let engine = FlowEngine::new(store, Arc::new(fixture.runtime.clone()));
-    engine
-        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
-        .await?;
-    assert_eq!(fixture.publisher.publications(), 1);
-    assert_eq!(
-        engine.snapshot(&run_id).await?.status,
-        WorkflowRunStatus::Suspended
-    );
-    let cleanup_lease = lease(
+    assert_eq!(pending.cleanup_command_id, expected);
+    assert_eq!(pending.status, BuildRunStatus::CleanupPending);
+    assert!(lease(
         &fixture.nodes,
         fixture.node_id,
         fixture.agent_instance_id,
-        apply.sequence,
+        cancel.sequence,
     )
-    .await?;
-    assert_eq!(cleanup_lease.commands.len(), 1);
+    .await?
+    .commands
+    .is_empty());
     Ok(())
 }
 
 #[tokio::test]
-async fn cancellation_racing_a_completed_push_adopts_the_published_artifact(
+async fn cancellation_uses_the_same_box_cleanup_state_machine(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = BuildFixture::create(None).await?;
     let run_id = fixture.build.operation_id.to_string();
@@ -410,88 +241,34 @@ async fn cancellation_racing_a_completed_push_adopts_the_published_artifact(
     engine
         .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
         .await?;
-    let apply_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        0,
-    )
-    .await?;
-    let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
-        return Err("build command is not Runtime apply".into());
-    };
-    record_observation(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        &fixture.capabilities,
-        apply,
-        succeeded_observation(&request.spec, fixture.outputs.artifact())?,
-    )
-    .await?;
+    let start = lease_one(&fixture, 0).await?;
 
-    fixture.publisher.pause_next_publication();
-    let resuming_engine = engine.clone();
-    let resume = tokio::spawn(async move {
-        resuming_engine
-            .resume_due_waits(Utc::now() + Duration::seconds(1))
-            .await
-    });
-    fixture.publisher.wait_for_publication().await;
-    let mut cancelling = fixture
+    let mut build = fixture
         .builds
         .find(fixture.organization_id, fixture.build.id)
         .await?;
-    assert_eq!(cancelling.status, BuildRunStatus::Publishing);
-    assert!(cancelling.published_artifact.is_none());
-    let expected = cancelling.aggregate_version;
-    cancelling.request_cancellation(Utc::now().max(cancelling.updated_at))?;
-    fixture.builds.save(cancelling, expected).await?;
-    fixture.publisher.resume_publication();
-    resume.await??;
-
-    let conflicted = fixture
-        .builds
-        .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    assert_eq!(conflicted.status, BuildRunStatus::Cancelling);
-    assert!(conflicted.published_artifact.is_none());
-    assert_eq!(fixture.publisher.publications(), 1);
-    assert_eq!(fixture.publisher.lookups(), 0);
-
+    let expected = build.aggregate_version;
+    build.request_cancellation(Utc::now().max(build.updated_at))?;
+    fixture.builds.save(build, expected).await?;
     engine
-        .resume_due_retries(Utc::now() + Duration::seconds(2))
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
         .await?;
-    let reconciled = fixture
-        .builds
-        .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    assert_eq!(reconciled.status, BuildRunStatus::CleanupPending);
-    assert!(reconciled.published_artifact.is_some());
-    assert!(reconciled.evidence.is_some());
-    assert_eq!(fixture.publisher.publications(), 1);
-    assert_eq!(fixture.publisher.lookups(), 1);
-    assert_eq!(fixture.evidence.generations(), 1);
+    let cancel = lease_one(&fixture, start.sequence).await?;
+    assert!(matches!(
+        cancel.payload,
+        NodeCommandPayload::BoxBuildCancel { .. }
+    ));
 
-    let cleanup_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        apply.sequence,
+    finish_cleanup(
+        &fixture,
+        &engine,
+        &cancel,
+        NodeBoxBuildInspection::Cancelled {
+            binding_digest: request(&cancel)?.binding_digest()?,
+            message: "cancelled by Cloud".into(),
+        },
     )
     .await?;
-    let cleanup = cleanup_lease
-        .commands
-        .first()
-        .ok_or("missing build Runtime removal")?;
-    let NodeCommandPayload::RuntimeRemove { request } = &cleanup.payload else {
-        return Err("build cleanup command is not Runtime remove".into());
-    };
-    acknowledge_removal(&fixture, cleanup, request).await?;
-    engine
-        .resume_due_waits(Utc::now() + Duration::seconds(3))
-        .await?;
     assert_eq!(
         engine.snapshot(&run_id).await?.status,
         WorkflowRunStatus::Completed
@@ -501,13 +278,12 @@ async fn cancellation_racing_a_completed_push_adopts_the_published_artifact(
         .find(fixture.organization_id, fixture.build.id)
         .await?;
     assert_eq!(cancelled.status, BuildRunStatus::Cancelled);
-    assert!(cancelled.published_artifact.is_some());
-    assert!(cancelled.evidence.is_some());
+    assert!(cancelled.failure.is_none());
     Ok(())
 }
 
 #[tokio::test]
-async fn rejected_runtime_output_is_failed_only_after_cleanup(
+async fn rejected_box_output_fails_only_after_the_same_cleanup_chain(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = BuildFixture::create(Some(BuildOutputValidationError::Integrity(
         "tampered OCI graph".into(),
@@ -515,153 +291,215 @@ async fn rejected_runtime_output_is_failed_only_after_cleanup(
     .await?;
     let run_id = fixture.build.operation_id.to_string();
     let engine = FlowEngine::in_memory(Arc::new(fixture.runtime.clone()));
-    engine
-        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+    let (output, cancel) = drive_to_cleanup(&fixture, &engine, &run_id).await?;
+    let pending = fixture
+        .builds
+        .find(fixture.organization_id, fixture.build.id)
         .await?;
-    let apply_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        0,
+    assert!(pending
+        .failure
+        .as_deref()
+        .is_some_and(|reason| reason.contains("tampered OCI graph")));
+    assert_eq!(fixture.publisher.publications(), 0);
+
+    finish_cleanup(
+        &fixture,
+        &engine,
+        &cancel,
+        NodeBoxBuildInspection::Succeeded {
+            binding_digest: request(&cancel)?.binding_digest()?,
+            output: Box::new(output),
+        },
     )
     .await?;
-    let apply = apply_lease.commands.first().ok_or("missing build apply")?;
-    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
-        return Err("build command is not Runtime apply".into());
-    };
-    record_observation(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        &fixture.capabilities,
-        apply,
-        succeeded_observation(&request.spec, fixture.outputs.artifact())?,
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Failed
+    );
+    assert_eq!(
+        fixture
+            .builds
+            .find(fixture.organization_id, fixture.build.id)
+            .await?
+            .status,
+        BuildRunStatus::Failed
+    );
+    Ok(())
+}
+
+async fn drive_to_cleanup(
+    fixture: &BuildFixture,
+    engine: &FlowEngine,
+    run_id: &str,
+) -> Result<
+    (a3s_cloud_contracts::NodeBoxBuildOutput, NodeCommandEnvelope),
+    Box<dyn std::error::Error>,
+> {
+    engine
+        .start_with_id(run_id.to_owned(), workflow_spec(), fixture.input())
+        .await?;
+    let start = lease_one(fixture, 0).await?;
+    let build_request = request(&start)?.clone();
+    acknowledge(
+        fixture,
+        &start,
+        NodeCommandResult::BoxBuildStarted {
+            started: NodeBoxBuildStartResult {
+                binding_digest: build_request.binding_digest()?,
+                phase: NodeBoxBuildPhase::Running,
+            },
+        },
     )
     .await?;
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(1))
         .await?;
 
-    let pending = fixture
-        .builds
-        .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    assert_eq!(pending.status, BuildRunStatus::CleanupPending);
-    assert!(pending
-        .failure
-        .as_deref()
-        .is_some_and(|reason| reason.contains("tampered OCI graph")));
-    assert_eq!(
-        engine.snapshot(&run_id).await?.status,
-        WorkflowRunStatus::Suspended
-    );
-
-    let cleanup_lease = lease(
-        &fixture.nodes,
-        fixture.node_id,
-        fixture.agent_instance_id,
-        apply.sequence,
+    let inspect = lease_one(fixture, start.sequence).await?;
+    assert!(matches!(
+        inspect.payload,
+        NodeCommandPayload::BoxBuildInspect { .. }
+    ));
+    let output = box_output_for(&build_request, fixture.outputs.artifact())?;
+    acknowledge(
+        fixture,
+        &inspect,
+        NodeCommandResult::BoxBuildInspected {
+            inspection: Box::new(NodeBoxBuildInspection::Succeeded {
+                binding_digest: build_request.binding_digest()?,
+                output: Box::new(output.clone()),
+            }),
+        },
     )
     .await?;
-    let cleanup = cleanup_lease
-        .commands
-        .first()
-        .ok_or("missing build Runtime removal")?;
-    let NodeCommandPayload::RuntimeRemove { request } = &cleanup.payload else {
-        return Err("build cleanup command is not Runtime remove".into());
-    };
-    acknowledge_removal(&fixture, cleanup, request).await?;
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(2))
         .await?;
-
-    assert_eq!(
-        engine.snapshot(&run_id).await?.status,
-        WorkflowRunStatus::Failed
-    );
-    let failed = fixture
-        .builds
-        .find(fixture.organization_id, fixture.build.id)
-        .await?;
-    assert_eq!(failed.status, BuildRunStatus::Failed);
-    assert!(failed.finished_at.is_some());
-    assert_eq!(fixture.outputs.validations(), 1);
-    assert_eq!(fixture.publisher.publications(), 0);
-    assert_eq!(fixture.inputs.removals(), 1);
-    Ok(())
+    let cancel = lease_one(fixture, inspect.sequence).await?;
+    Ok((output, cancel))
 }
 
-#[tokio::test]
-async fn flow_rejects_operation_and_source_ownership_changes_before_checkout(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = BuildFixture::create(None).await?;
-    let engine = FlowEngine::in_memory(Arc::new(fixture.runtime.clone()));
-    let wrong_run_id = Uuid::now_v7().to_string();
-    engine
-        .start_with_id(wrong_run_id.clone(), workflow_spec(), fixture.input())
-        .await?;
-    assert_eq!(
-        engine.snapshot(&wrong_run_id).await?.status,
-        WorkflowRunStatus::Failed
-    );
-    assert_eq!(fixture.inputs.prepares(), 0);
-
-    let organization_id = OrganizationId::new();
-    let project_id = ProjectId::new();
-    let environment_id = EnvironmentId::new();
-    let source_revision_id = SourceRevisionId::new();
-    let accepted_at = Utc::now() - Duration::seconds(1);
-    let mismatched_revision = revision(
-        organization_id,
-        ProjectId::new(),
-        environment_id,
-        source_revision_id,
-        accepted_at,
-    )?;
-    accept_revision(&fixture.sources, mismatched_revision).await?;
-    fixture
-        .builds
-        .add_source_revision(
-            organization_id,
-            project_id,
-            environment_id,
-            source_revision_id,
-            accepted_at,
-        )
-        .await;
-    let foreign_build = fixture
-        .builds
-        .reserve_pending(1, accepted_at)
-        .await?
-        .pop()
-        .ok_or("mismatched source build was not reserved")?;
-    engine
-        .start_with_id(
-            foreign_build.operation_id.to_string(),
-            workflow_spec(),
-            serde_json::json!({
-                "organizationId": organization_id,
-                "buildRunId": foreign_build.id,
-            }),
-        )
-        .await?;
-    assert_eq!(
-        engine
-            .snapshot(&foreign_build.operation_id.to_string())
-            .await?
-            .status,
-        WorkflowRunStatus::Failed
-    );
-    assert_eq!(fixture.inputs.prepares(), 0);
-    Ok(())
-}
-
-pub(super) async fn acknowledge_removal(
+async fn finish_cleanup(
     fixture: &BuildFixture,
-    command: &a3s_cloud_contracts::NodeCommandEnvelope,
-    request: &a3s_runtime::contract::RuntimeActionRequest,
+    engine: &FlowEngine,
+    cancel: &NodeCommandEnvelope,
+    terminal_inspection: NodeBoxBuildInspection,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let completed_at = Utc::now();
+    let build_request = request(cancel)?.clone();
+    acknowledge(
+        fixture,
+        cancel,
+        NodeCommandResult::BoxBuildCancelled {
+            cancelled: NodeBoxBuildCancelResult {
+                binding_digest: build_request.binding_digest()?,
+                operations: build_request
+                    .plans
+                    .iter()
+                    .map(|plan| NodeBoxBuildOperationCancellation {
+                        operation_id: plan.operation_id.clone(),
+                        outcome: NodeBoxBuildCancellation::Requested,
+                    })
+                    .collect(),
+            },
+        },
+    )
+    .await?;
+    resume_cleanup_advance(engine, 3).await?;
+    let inspect = lease_one(fixture, cancel.sequence).await?;
+    assert!(matches!(
+        inspect.payload,
+        NodeCommandPayload::BoxBuildInspect { .. }
+    ));
+    acknowledge(
+        fixture,
+        &inspect,
+        NodeCommandResult::BoxBuildInspected {
+            inspection: Box::new(terminal_inspection),
+        },
+    )
+    .await?;
+    resume_cleanup_advance(engine, 5).await?;
+    let remove = lease_one(fixture, inspect.sequence).await?;
+    assert!(matches!(
+        remove.payload,
+        NodeCommandPayload::BoxBuildRemove { .. }
+    ));
+    acknowledge(
+        fixture,
+        &remove,
+        NodeCommandResult::BoxBuildRemoved {
+            removed: NodeBoxBuildRemoveResult {
+                binding_digest: build_request.binding_digest()?,
+                operations: build_request
+                    .plans
+                    .iter()
+                    .map(|plan| NodeBoxBuildOperationRemoval {
+                        operation_id: plan.operation_id.clone(),
+                        removed: true,
+                    })
+                    .collect(),
+                assembly_removed: build_request.assembly_reference.is_some(),
+            },
+        },
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(7))
+        .await?;
+    Ok(())
+}
+
+async fn resume_cleanup_advance(
+    engine: &FlowEngine,
+    seconds: i64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(seconds))
+        .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(seconds + 1))
+        .await?;
+    Ok(())
+}
+
+async fn lease_one(
+    fixture: &BuildFixture,
+    after_sequence: u64,
+) -> Result<NodeCommandEnvelope, Box<dyn std::error::Error>> {
+    let response = lease(
+        &fixture.nodes,
+        fixture.node_id,
+        fixture.agent_instance_id,
+        after_sequence,
+    )
+    .await?;
+    if response.commands.len() != 1 {
+        return Err(format!(
+            "expected one Box command after sequence {after_sequence}, got {}",
+            response.commands.len()
+        )
+        .into());
+    }
+    Ok(response.commands.into_iter().next().expect("one command"))
+}
+
+fn request(
+    command: &NodeCommandEnvelope,
+) -> Result<&NodeBoxBuildRequest, Box<dyn std::error::Error>> {
+    match &command.payload {
+        NodeCommandPayload::BoxBuildStart { request }
+        | NodeCommandPayload::BoxBuildInspect { request }
+        | NodeCommandPayload::BoxBuildCancel { request }
+        | NodeCommandPayload::BoxBuildRemove { request } => Ok(request),
+        _ => Err("command is not a Box build command".into()),
+    }
+}
+
+async fn acknowledge(
+    fixture: &BuildFixture,
+    command: &NodeCommandEnvelope,
+    result: NodeCommandResult,
+) -> Result<(), Box<dyn std::error::Error>> {
     fixture
         .nodes
         .acknowledge_command(
@@ -672,21 +510,12 @@ pub(super) async fn acknowledge_removal(
                 node_id: command.node_id,
                 sequence: command.sequence,
                 payload_digest: command.payload_digest.clone(),
-                completed_at,
+                completed_at: Utc::now(),
                 outcome: NodeCommandOutcome::Succeeded {
-                    result: Box::new(NodeCommandResult::RuntimeRemoved {
-                        removal: RuntimeRemoval {
-                            schema: RuntimeRemoval::SCHEMA.into(),
-                            request_id: request.request_id.clone(),
-                            unit_id: request.unit_id.clone(),
-                            generation: request.generation,
-                            removed_at_ms: u64::try_from(completed_at.timestamp_millis())?,
-                            already_absent: false,
-                        },
-                    }),
+                    result: Box::new(result),
                 },
             },
-            completed_at,
+            Utc::now(),
         )
         .await?;
     Ok(())

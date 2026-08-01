@@ -123,7 +123,7 @@ pub(crate) fn validate_build_run_transition(
             })
         || next
             .node_id
-            .zip(next.runtime_spec_digest.as_ref())
+            .zip(next.build_request_digest.as_ref())
             .is_some_and(|(node_id, digest)| {
                 matches_transition(existing, next, |candidate| {
                     candidate.schedule(node_id, digest.clone(), at)
@@ -134,17 +134,14 @@ pub(crate) fn validate_build_run_transition(
                 candidate.dispatch(command_id, at)
             })
         })
-        || next
-            .runtime_output_artifact
-            .as_ref()
-            .is_some_and(|artifact| {
-                matches_transition(existing, next, |candidate| {
-                    candidate.begin_validation(artifact.clone(), at)
-                })
+        || next.box_build_output.as_ref().is_some_and(|output| {
+            matches_transition(existing, next, |candidate| {
+                candidate.begin_validation(output.clone(), at)
             })
+        })
         || next.output.as_ref().is_some_and(|output| {
             matches_transition(existing, next, |candidate| {
-                candidate.record_validated_output(output.clone(), next.cache.clone(), at)
+                candidate.record_validated_output(output.clone(), at)
             })
         })
         || next.publication_target.as_ref().is_some_and(|target| {

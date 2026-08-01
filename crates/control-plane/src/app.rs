@@ -1,13 +1,13 @@
 use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
-    ArtifactsModule, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
-    GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler, IBuildArtifactPublisher,
-    IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
-    IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner,
-    LocalNodeArtifactStore, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
-    PostgresBuildRunRepository, RetryBuildRunHandler, RuntimeBuildEvidenceGenerator,
-    RuntimeBuildOutputValidator, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
+    ArtifactsModule, BoxBuildEvidenceGenerator, BuildFlowRuntime, BuildFlowRuntimeDependencies,
+    CancelBuildRunHandler, GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler,
+    IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler,
+    LocalBuildEvidenceSigner, LocalNodeArtifactStore, OciBuildOutputValidator,
+    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
+    RetryBuildRunHandler, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 use crate::modules::assets::{IMcpServiceProfileRepository, PostgresAssetRepository};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
@@ -316,8 +316,8 @@ pub async fn build_application_with_source_resolver(
     let build_flow_config = config
         .build_flow_config()
         .map_err(ControlPlaneStartupError::Build)?;
-    let runtime_build_outputs = Arc::new(
-        RuntimeBuildOutputValidator::new(
+    let oci_build_outputs = Arc::new(
+        OciBuildOutputValidator::new(
             Arc::clone(&node_artifacts),
             &config.builds.output_staging_dir,
             config.builds.output_max_bytes,
@@ -328,10 +328,10 @@ pub async fn build_application_with_source_resolver(
         )
         .map_err(ControlPlaneStartupError::Build)?,
     );
-    let build_outputs: Arc<dyn IBuildOutputValidator> = runtime_build_outputs.clone();
+    let build_outputs: Arc<dyn IBuildOutputValidator> = oci_build_outputs.clone();
     let build_publisher: Arc<dyn IBuildArtifactPublisher> = Arc::new(
         OciRegistryArtifactPublisher::new(
-            Arc::clone(&runtime_build_outputs),
+            Arc::clone(&oci_build_outputs),
             Duration::from_millis(config.registry.request_timeout_ms),
             config
                 .registry
@@ -349,12 +349,8 @@ pub async fn build_application_with_source_resolver(
         .map_err(ControlPlaneStartupError::Registry)?,
     );
     let build_evidence: Arc<dyn IBuildEvidenceGenerator> = Arc::new(
-        RuntimeBuildEvidenceGenerator::new(
-            runtime_build_outputs,
-            build_evidence_signer,
-            build_flow_config.builder.clone(),
-        )
-        .map_err(ControlPlaneStartupError::Build)?,
+        BoxBuildEvidenceGenerator::new(oci_build_outputs, build_evidence_signer)
+            .map_err(ControlPlaneStartupError::Build)?,
     );
     let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
         SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
@@ -845,7 +841,6 @@ fn build_application_with_health(
     let workload_get_observations = Arc::clone(&node_control);
     let deployment_get_observations = Arc::clone(&node_control);
     let workload_log_metadata = Arc::clone(&node_control);
-    let build_log_metadata = Arc::clone(&node_control);
     let gateway_commands = node_control;
     let create_domain_claims = Arc::clone(&routes);
     let verify_domain_claims = Arc::clone(&routes);
@@ -904,7 +899,6 @@ fn build_application_with_health(
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = secret_encryption;
     let workload_log_store = Arc::clone(&log_chunks);
-    let build_log_store = Arc::clone(&log_chunks);
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
     let certificate_ttl = chrono_duration(config.fleet.certificate_ttl_ms)?;
@@ -1190,11 +1184,7 @@ fn build_application_with_health(
                     GetBuildEvidenceHandler::new(get_build_evidence),
                 )
                 .query_handler::<crate::modules::artifacts::GetBuildRunLogs, _>(
-                    GetBuildRunLogsHandler::new(
-                        get_build_logs,
-                        build_log_metadata,
-                        build_log_store,
-                    ),
+                    GetBuildRunLogsHandler::new(get_build_logs),
                 )
                 .query_handler::<crate::modules::executions::ListExecutions, _>(
                     ListExecutionsHandler::new(list_executions),

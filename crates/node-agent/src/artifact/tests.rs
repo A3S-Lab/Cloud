@@ -254,7 +254,7 @@ async fn task_output_directory_is_archived_once_and_publishes_exactly() {
     tokio::fs::create_dir_all(source.join("export/oci/blobs/sha256"))
         .await
         .expect("output directories");
-    tokio::fs::write(source.join("export/buildkit-metadata.json"), b"{}")
+    tokio::fs::write(source.join("export/metadata.json"), b"{}")
         .await
         .expect("output metadata");
     tokio::fs::write(source.join("export/oci/index.json"), b"{\"manifests\":[]}")
@@ -287,7 +287,7 @@ async fn task_output_directory_is_archived_once_and_publishes_exactly() {
         entries,
         vec![
             "export/",
-            "export/buildkit-metadata.json",
+            "export/metadata.json",
             "export/oci/",
             "export/oci/blobs/",
             "export/oci/blobs/sha256/",

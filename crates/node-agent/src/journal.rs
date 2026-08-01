@@ -608,7 +608,14 @@ fn state_mutation_digest(
             request.validate().map_err(CommandJournalError::Invalid)?;
             Ok(None)
         }
-        NodeCommandPayload::RuntimeInspect { .. }
+        NodeCommandPayload::BoxBuildStart { request } => request
+            .binding_digest()
+            .map(Some)
+            .map_err(CommandJournalError::Invalid),
+        NodeCommandPayload::BoxBuildInspect { .. }
+        | NodeCommandPayload::BoxBuildCancel { .. }
+        | NodeCommandPayload::BoxBuildRemove { .. }
+        | NodeCommandPayload::RuntimeInspect { .. }
         | NodeCommandPayload::RuntimeStop { .. }
         | NodeCommandPayload::RuntimeRemove { .. } => Ok(None),
         NodeCommandPayload::ResourceClaimRelease { request } => {
@@ -651,6 +658,10 @@ impl ResourceClaimJournalProjection {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::BoxBuildStart { .. }
+            | NodeCommandPayload::BoxBuildInspect { .. }
+            | NodeCommandPayload::BoxBuildCancel { .. }
+            | NodeCommandPayload::BoxBuildRemove { .. }
             | NodeCommandPayload::GatewaySnapshotInstall { .. }
             | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
         }

@@ -10,9 +10,9 @@ The initial `C0.2` slice established the transport, authorization, tenant,
 idempotency, and response boundaries with core Project, Environment, and search
 tools. The operational-read slice adds Node, Operation, Workload, Deployment,
 Route, and BuildRun queries without adding another business or persistence
-path. The observability-read slice adds bounded Workload and BuildRun log pages
-and signed BuildRun evidence through the same application queries and REST
-response projections. The operational-mutation slice adds five replay-safe
+path. The observability-read slice adds bounded Workload log pages, explicit
+BuildRun-log unavailability, and signed BuildRun evidence through the same
+application queries and REST response projections. The operational-mutation slice adds five replay-safe
 Workload, Deployment, and BuildRun commands through the existing application
 handlers and REST response projections.
 
@@ -114,6 +114,11 @@ A tool that is unavailable to the current principal is absent from
 scope check is repeated during invocation; hiding a tool is never the
 authorization boundary.
 
+`a3s_cloud_build_run_logs_get` remains discoverable for API compatibility but
+returns the standard `503 Service Unavailable` business envelope until Box
+exposes an authoritative durable build-log contract. It does not return an
+empty success page and does not reuse Workload or Runtime logs.
+
 ## Client flow
 
 Initialize the protocol with an API token:
@@ -153,12 +158,15 @@ same durable idempotency identity and replay projection.
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
-`cursor`, `limit`, and `stream` arguments. `a3s_cloud_build_run_logs_get`
-accepts `buildRunId` with the same optional page arguments. Cursors use the
-opaque REST-compatible `v1:<sequence>` form, the default page contains 100
-records, the maximum is 256, and `stream` is either `stdout` or `stderr`.
-Responses reuse the REST log DTOs and retain explicit gap records and the next
-opaque cursor.
+`cursor`, `limit`, and `stream` arguments. Cursors use the opaque
+REST-compatible `v1:<sequence>` form, the default page contains 100 records,
+the maximum is 256, and `stream` is either `stdout` or `stderr`. Responses reuse
+the REST log DTOs and retain explicit gap records and the next opaque cursor.
+
+`a3s_cloud_build_run_logs_get` accepts `buildRunId` and the same bounded
+arguments so its public contract remains stable, but currently returns the
+standard `503 Service Unavailable` envelope. Box has not yet exposed the
+authoritative durable build-log records needed for a successful page.
 
 `a3s_cloud_build_evidence_get` accepts only `buildRunId` and returns the same
 signed SPDX/SLSA evidence projection as REST. The MCP surface performs no live

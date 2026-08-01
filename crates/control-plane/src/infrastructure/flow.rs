@@ -75,10 +75,7 @@ impl FlowRuntime for FlowRuntimeRouter {
         &self,
         invocation: WorkflowInvocation,
     ) -> Result<RuntimeCommand, FlowError> {
-        use crate::modules::artifacts::application::{
-            BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
-            PREVIOUS_BUILD_WORKFLOW_VERSION, SIGNED_BUILD_WORKFLOW_VERSION,
-        };
+        use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
         use crate::modules::executions::application::{
             EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
         };
@@ -92,10 +89,7 @@ impl FlowRuntime for FlowRuntimeRouter {
             invocation.spec.name.as_str(),
             invocation.spec.version.as_str(),
         ) {
-            (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)
-            | (BUILD_WORKFLOW_NAME, SIGNED_BUILD_WORKFLOW_VERSION)
-            | (BUILD_WORKFLOW_NAME, PREVIOUS_BUILD_WORKFLOW_VERSION)
-            | (BUILD_WORKFLOW_NAME, LEGACY_BUILD_WORKFLOW_VERSION) => &self.builds,
+            (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION) => &self.builds,
             (EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION) => &self.executions,
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
@@ -250,7 +244,42 @@ pub async fn connect_flow(
     database_url: &str,
     runtime: Arc<dyn FlowRuntime>,
 ) -> Result<FlowInfrastructure, FlowInfrastructureError> {
-    FlowInfrastructure::connect(database_url, runtime).await
+    let flow = FlowInfrastructure::connect(database_url, runtime).await?;
+    let retired_runs = retire_incompatible_build_workflows(&flow.engine()).await?;
+    if retired_runs > 0 {
+        tracing::warn!(
+            retired_runs,
+            "cancelled incompatible build workflow histories through A3S Flow"
+        );
+    }
+    Ok(flow)
+}
+
+async fn retire_incompatible_build_workflows(engine: &FlowEngine) -> Result<usize, FlowError> {
+    use crate::modules::artifacts::application::{
+        BUILD_WORKFLOW_NAME, RETIRED_BUILD_WORKFLOW_VERSIONS,
+    };
+
+    let mut retired = 0usize;
+    for snapshot in engine.list_snapshots().await? {
+        if snapshot.spec.name != BUILD_WORKFLOW_NAME
+            || !RETIRED_BUILD_WORKFLOW_VERSIONS.contains(&snapshot.spec.version.as_str())
+            || snapshot.status.is_terminal()
+        {
+            continue;
+        }
+        engine
+            .cancel(
+                &snapshot.run_id,
+                Some(format!(
+                    "{}@{} predates the sole Box-native build workflow; rebuild with cloud.build@5",
+                    snapshot.spec.name, snapshot.spec.version
+                )),
+            )
+            .await?;
+        retired += 1;
+    }
+    Ok(retired)
 }
 
 fn scoped_postgres_url(database_url: &str) -> Result<Url, FlowInfrastructureError> {
@@ -266,7 +295,8 @@ fn scoped_postgres_url(database_url: &str) -> Result<Url, FlowInfrastructureErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_flow::WorkflowSpec;
+    use a3s_flow::{WorkflowRunStatus, WorkflowSpec};
+    use chrono::{DateTime, Utc};
     use serde_json::json;
 
     #[derive(Clone, Copy)]
@@ -286,6 +316,33 @@ mod tests {
             _invocation: StepInvocation,
         ) -> Result<serde_json::Value, FlowError> {
             Ok(json!(self.0))
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct SuspendingRuntime;
+
+    #[async_trait::async_trait]
+    impl FlowRuntime for SuspendingRuntime {
+        async fn run_workflow(
+            &self,
+            invocation: WorkflowInvocation,
+        ) -> Result<RuntimeCommand, FlowError> {
+            let resume_at = "2099-01-01T00:00:00Z"
+                .parse::<DateTime<Utc>>()
+                .map_err(|error| FlowError::Runtime(error.to_string()))?;
+            Ok(invocation
+                .context()
+                .wait_until("retirement-probe", resume_at))
+        }
+
+        async fn run_step(
+            &self,
+            _invocation: StepInvocation,
+        ) -> Result<serde_json::Value, FlowError> {
+            Err(FlowError::Runtime(
+                "retirement probe does not execute steps".into(),
+            ))
         }
     }
 
@@ -323,9 +380,7 @@ mod tests {
             ("cloud.deployment", "1", "deployment"),
             ("cloud.deployment", "2", "deployment"),
             ("cloud.workload.stop", "1", "deployment"),
-            ("cloud.build", "1", "build"),
-            ("cloud.build", "2", "build"),
-            ("cloud.build", "3", "build"),
+            ("cloud.build", "5", "build"),
             ("cloud.execution", "1", "execution"),
         ] {
             assert_eq!(
@@ -335,6 +390,74 @@ mod tests {
                 }
             );
         }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_router_rejects_retired_build_workflows() {
+        for version in crate::modules::artifacts::application::RETIRED_BUILD_WORKFLOW_VERSIONS {
+            let error = router()
+                .run_workflow(workflow("cloud.build", version))
+                .await
+                .expect_err("retired build workflow must be rejected");
+            assert_eq!(
+                error.to_string(),
+                format!("runtime error: Cloud has no workflow runtime for cloud.build@{version}")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_retires_only_known_incompatible_build_histories() -> Result<(), FlowError> {
+        let engine = FlowEngine::in_memory(Arc::new(SuspendingRuntime));
+        for (run_id, name, version) in [
+            ("legacy-build-1", "cloud.build", "1"),
+            ("legacy-build-4", "cloud.build", "4"),
+            ("current-build", "cloud.build", "5"),
+            ("future-build", "cloud.build", "6"),
+            ("deployment", "cloud.deployment", "1"),
+        ] {
+            engine
+                .start_with_id(
+                    run_id,
+                    WorkflowSpec::rust_embedded(name, version, "cloud", "run"),
+                    json!({}),
+                )
+                .await?;
+        }
+
+        assert_eq!(retire_incompatible_build_workflows(&engine).await?, 2);
+        assert_eq!(retire_incompatible_build_workflows(&engine).await?, 0);
+
+        for version in ["1", "4"] {
+            let snapshot = engine.snapshot(&format!("legacy-build-{version}")).await?;
+            assert_eq!(snapshot.status, WorkflowRunStatus::Cancelled);
+            assert_eq!(
+                snapshot.error.as_deref(),
+                Some(
+                    format!(
+                        "cloud.build@{version} predates the sole Box-native build workflow; rebuild with cloud.build@5"
+                    )
+                    .as_str()
+                )
+            );
+        }
+        for run_id in ["current-build", "future-build", "deployment"] {
+            assert_eq!(
+                engine.snapshot(run_id).await?.status,
+                WorkflowRunStatus::Suspended
+            );
+        }
+
+        let due = engine.list_due_waits(DateTime::<Utc>::MAX_UTC).await?;
+        assert_eq!(
+            due,
+            vec![
+                ("current-build".into(), "retirement-probe".into()),
+                ("deployment".into(), "retirement-probe".into()),
+                ("future-build".into(), "retirement-probe".into()),
+            ]
+        );
         Ok(())
     }
 

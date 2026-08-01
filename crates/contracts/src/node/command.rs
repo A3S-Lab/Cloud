@@ -9,9 +9,10 @@ use uuid::Uuid;
 
 use super::{
     validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
-    GatewaySnapshotObservationRequest, NodeGatewayAck, NodeGatewaySnapshotObservation,
-    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
-    NodeResourceClaimRelease, NodeResourceClaimReleased,
+    GatewaySnapshotObservationRequest, NodeBoxBuildCancelResult, NodeBoxBuildInspection,
+    NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, NodeGatewayAck,
+    NodeGatewaySnapshotObservation, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +35,18 @@ pub enum NodeCommandPayload {
     },
     RuntimeRemove {
         request: RuntimeActionRequest,
+    },
+    BoxBuildStart {
+        request: Box<NodeBoxBuildRequest>,
+    },
+    BoxBuildInspect {
+        request: Box<NodeBoxBuildRequest>,
+    },
+    BoxBuildCancel {
+        request: Box<NodeBoxBuildRequest>,
+    },
+    BoxBuildRemove {
+        request: Box<NodeBoxBuildRequest>,
     },
     ResourceClaimRelease {
         request: Box<NodeResourceClaimRelease>,
@@ -73,6 +86,10 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { .. } => "a3s.runtime.inspect-request.v1",
             Self::RuntimeStop { .. } => "a3s.runtime.stop-request.v1",
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
+            Self::BoxBuildStart { .. } => "a3s.cloud.box-build-start.v1",
+            Self::BoxBuildInspect { .. } => "a3s.cloud.box-build-inspect.v1",
+            Self::BoxBuildCancel { .. } => "a3s.cloud.box-build-cancel.v1",
+            Self::BoxBuildRemove { .. } => "a3s.cloud.box-build-remove.v1",
             Self::ResourceClaimRelease { .. } => NodeResourceClaimRelease::SCHEMA,
             Self::GatewaySnapshotInstall { .. } => GatewaySnapshot::SCHEMA,
             Self::GatewaySnapshotObserve { .. } => GatewaySnapshotObservationRequest::SCHEMA,
@@ -85,6 +102,10 @@ impl NodeCommandPayload {
             Self::RuntimeApply { request, .. } => request.spec.generation,
             Self::RuntimeInspect { generation, .. } => *generation,
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
+            Self::BoxBuildStart { request }
+            | Self::BoxBuildInspect { request }
+            | Self::BoxBuildCancel { request }
+            | Self::BoxBuildRemove { request } => request.generation,
             Self::ResourceClaimRelease { request } => request.claim_generation,
             Self::GatewaySnapshotInstall { snapshot } => snapshot.revision,
             Self::GatewaySnapshotObserve { request } => request.revision,
@@ -115,6 +136,10 @@ impl NodeCommandPayload {
                 Ok(())
             }
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
+            Self::BoxBuildStart { request }
+            | Self::BoxBuildInspect { request }
+            | Self::BoxBuildCancel { request }
+            | Self::BoxBuildRemove { request } => request.validate(),
             Self::ResourceClaimRelease { request } => request.validate(),
             Self::GatewaySnapshotInstall { snapshot } => snapshot.validate(),
             Self::GatewaySnapshotObserve { request } => request.validate(),
@@ -241,6 +266,10 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::BoxBuildStart { .. }
+            | NodeCommandPayload::BoxBuildInspect { .. }
+            | NodeCommandPayload::BoxBuildCancel { .. }
+            | NodeCommandPayload::BoxBuildRemove { .. }
             | NodeCommandPayload::GatewaySnapshotInstall { .. }
             | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
         }
@@ -280,6 +309,18 @@ pub enum NodeCommandResult {
     RuntimeRemoved {
         removal: RuntimeRemoval,
     },
+    BoxBuildStarted {
+        started: NodeBoxBuildStartResult,
+    },
+    BoxBuildInspected {
+        inspection: Box<NodeBoxBuildInspection>,
+    },
+    BoxBuildCancelled {
+        cancelled: NodeBoxBuildCancelResult,
+    },
+    BoxBuildRemoved {
+        removed: NodeBoxBuildRemoveResult,
+    },
     ResourceClaimReleased {
         released: NodeResourceClaimReleased,
     },
@@ -300,6 +341,10 @@ impl NodeCommandResult {
                 inspection.validate()
             }
             Self::RuntimeRemoved { removal } => removal.validate(),
+            Self::BoxBuildStarted { started } => started.phase.validate(),
+            Self::BoxBuildInspected { .. }
+            | Self::BoxBuildCancelled { .. }
+            | Self::BoxBuildRemoved { .. } => Ok(()),
             Self::ResourceClaimReleased { released } => released.validate(),
             Self::GatewaySnapshotInstalled { acknowledgement } => acknowledgement.validate(),
             Self::GatewaySnapshotObserved { observation } => observation.validate(),
@@ -353,6 +398,20 @@ impl NodeCommandResult {
             }
             (NodeCommandPayload::RuntimeRemove { .. }, Self::RuntimeRemoved { .. }) => {
                 Err("node command result identity does not match its payload".into())
+            }
+            (NodeCommandPayload::BoxBuildStart { request }, Self::BoxBuildStarted { started }) => {
+                started.validate_for(request)
+            }
+            (
+                NodeCommandPayload::BoxBuildInspect { request },
+                Self::BoxBuildInspected { inspection },
+            ) => inspection.validate_for(request),
+            (
+                NodeCommandPayload::BoxBuildCancel { request },
+                Self::BoxBuildCancelled { cancelled },
+            ) => cancelled.validate_for(request),
+            (NodeCommandPayload::BoxBuildRemove { request }, Self::BoxBuildRemoved { removed }) => {
+                removed.validate_for(request)
             }
             (
                 NodeCommandPayload::ResourceClaimRelease { request },
@@ -490,6 +549,10 @@ impl NodeCommandAck {
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
                 | NodeCommandResult::RuntimeRemoved { .. }
+                | NodeCommandResult::BoxBuildStarted { .. }
+                | NodeCommandResult::BoxBuildInspected { .. }
+                | NodeCommandResult::BoxBuildCancelled { .. }
+                | NodeCommandResult::BoxBuildRemoved { .. }
                 | NodeCommandResult::GatewaySnapshotInstalled { .. }
                 | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
             };
@@ -506,6 +569,10 @@ impl NodeCommandAck {
                         resource_claim: Some(_),
                         ..
                     }
+                    | NodeCommandPayload::BoxBuildStart { .. }
+                    | NodeCommandPayload::BoxBuildInspect { .. }
+                    | NodeCommandPayload::BoxBuildCancel { .. }
+                    | NodeCommandPayload::BoxBuildRemove { .. }
             ) && self.schema != Self::SCHEMA
             {
                 return Err(

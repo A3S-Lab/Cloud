@@ -145,12 +145,15 @@ second deployment or reconciliation engine.
    Artifact boundary. The composite provider/Cloud Claim gate closes allocation
    evidence; complete Sandbox/MicroVM/TEE isolation certification keeps the
    gate in progress.
-4. `BX0.4` replaces the BuildKit/Docker-oriented build path with the typed Box
-   build boundary and ACL build plans while preserving OCI validation,
-   publication, cache, SPDX/SLSA evidence, and process-death recovery.
-5. `BX0.5` ports every conformance and clean-host gate, removes Bollard,
-   Docker configuration, sockets, fixtures, and stale documentation, and adds
-   a zero-Docker architecture guard.
+4. `BX0.4` now implements the sole `cloud.build@5` path through typed Box
+   commands and canonical ACL build plans. Box owns its operation journal,
+   content-addressed cache, and images; Cloud retains Artifact transport, OCI
+   admission, publication, and SPDX/SLSA evidence. Exact Linux provider and
+   process-death certification remains open.
+5. `BX0.5` has removed the retired build executors and adds an architecture
+   guard against BuildKit, Bollard, Runtime build adapters, and duplicate build
+   caches, journals, schedulers, or services. Complete Box-only conformance and
+   the clean-host release gate remain open.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
@@ -269,30 +272,33 @@ Artifact; serves one bounded Power inference request; recovers the named
 process/VM failures; and leaves no execution, Secret, credential, mount,
 network, volume, VM, or build residue.
 
-The historical `G0` provider implementation currently includes:
+The current `G0` implementation includes:
 
 - canonical GitHub identities, repository policy, immutable source revisions,
   and versioned build recipes;
 - signed replay-safe GitHub ingress, tenant-owned App connections,
   subscriptions, lifecycle reconciliation, and short-lived private access;
 - exact-commit checkout, deterministic initial BuildRuns, retry-as-new-attempt
-  lineage, cancellation, log streaming, and web controls;
-- command-bound Artifact transport and isolated `cloud.build@3` Runtime Tasks;
-- content-addressed BuildKit cache validation, parent-bound retry reuse, and
-  worker-pruned real cache-hit evidence;
+  lineage, cancellation, explicit build-log unavailability, and web controls;
+- the sole `cloud.build@5` Flow, Fleet command queue, Node Agent replay journal,
+  and typed Box start, inspect, cancel, and remove commands;
+- Box-owned `BuildOperationJournal`, `BuildCache`, and `ImageStore` authority,
+  with immediate-parent cache receipt binding and no Cloud cache fallback;
 - complete OCI graph validation, deterministic registry targets,
   authenticated digest-only publication, remote verification, replay adoption,
   cleanup, and explicit deployment handoff to `cloud.deployment@3`; and
 - deterministic SPDX 2.3 and SLSA provenance, locally verified Ed25519 DSSE
   signing through persistent local or Vault Transit providers, durable
   evidence restoration, and tenant-scoped API/web inspection and download; and
-- a manual external-provider gate for a private GitHub repository, HTTPS OCI
-  Registry, Vault Transit Ed25519 signing, PostgreSQL 17, rootless BuildKit,
-  exact remote replay, and two real `SIGKILL` recovery boundaries.
+- migration of every pre-Box BuildRun to an explicit rebuild-required outcome,
+  plus A3S Flow cancellation of known retired build histories on startup.
 
-The gate implementation and a local real-provider rehearsal pass, but `G0`
-remains in progress because no operator-owned external run is recorded. The
-repository currently has no configured G0 provider secrets.
+The retained external-provider workflow certifies private GitHub resolution
+only. `G0` remains in progress until a revision-bound Linux gate certifies the
+exact Box build provider, external Registry and signing boundaries, command and
+Box-journal process-death replay, parent-cache reuse, and zero-residue removal.
+Durable BuildRun logs also remain unavailable until Box exposes the
+authoritative contract Cloud can transport.
 
 `C0` now includes the initial `C0.1` automation slices:
 
@@ -305,9 +311,10 @@ repository currently has no configured G0 provider secrets.
   emits bounded table or stable JSON output;
 - organization, project, environment, node, and operation queries use the same
   public REST paths and tenant guards as the web console; and
-- workload, deployment, route, BuildRun, signed-evidence, and bounded paged-log
-  queries extend that same transport without reading PostgreSQL or contacting a
-  node directly; and
+- workload, deployment, route, BuildRun, signed-evidence, and bounded Workload
+  log queries extend that same transport without reading PostgreSQL or
+  contacting a node directly; BuildRun log requests fail explicitly while the
+  Box log contract is unavailable; and
 - workload stop/rollback plus deployment and BuildRun cancel/retry commands
   require a caller-owned validated `Idempotency-Key`, surface replay state, and
   call the existing application commands without a hidden confirmation path;
@@ -377,8 +384,8 @@ repository currently has no configured G0 provider secrets.
 `C0.1` and `C0.2` are verified. `C0` remains in progress. `C0.2` provides
 stateless scoped management MCP for core Project, Environment, and authorized
 search commands and queries plus Node, Operation, Workload, Deployment, Route,
-and BuildRun reads, bounded cursor-paginated Workload and BuildRun logs, and
-signed BuildRun evidence. Five replay-safe Workload stop/rollback, Deployment
+and BuildRun reads, bounded cursor-paginated Workload logs, explicit BuildRun-log
+unavailability, and signed BuildRun evidence. Five replay-safe Workload stop/rollback, Deployment
 cancel, and BuildRun cancel/retry commands reuse the existing mutation scopes
 and application handlers. A dedicated real PostgreSQL gate proves scope-derived
 catalogs, strict arguments and annotations, operational query and command
@@ -544,14 +551,17 @@ shared-kernel execution requires an explicit `sandbox` selection.
 
 Next outcome:
 
-1. configure the bounded private GitHub, HTTPS Registry, and Vault Transit
-   credentials required by the implemented manual workflow;
-2. dispatch both external-provider jobs from the exact release candidate and
-   retain their revision-bound evidence;
-3. verify the recorded run proves both `SIGKILL` boundaries, one publication,
-   one evidence document, and authoritative Runtime cleanup; and
-4. promote `G0` only after the complete source-to-published-Workload evidence
-   remains green with those operator-owned providers.
+1. add a revision-bound Linux gate for the pinned Box build provider without
+   introducing another executor, cache, journal, image store, or scheduler;
+2. prove exact Fleet and Node Agent replay plus Box operation-journal recovery
+   across start and cleanup interruption boundaries;
+3. prove immediate-parent Box cache reuse, one external Registry publication,
+   one locally verified signature, one evidence document, and authoritative Box
+   removal with no node residue;
+4. expose build logs only after Box publishes its authoritative durable log
+   contract; and
+5. promote `G0` only after the complete private-source-to-published-Workload
+   evidence remains green with operator-owned providers.
 
 `G0` is complete only when an exact source revision produces a verifiable,
 signed, digest-addressed OCI graph, survives retry/cancellation/process death,
@@ -588,7 +598,8 @@ idempotency, operations, or audit.
 The verified `C0.1` slices establish the shared typed transport,
 non-persistent environment/flag context, safe output and exit-code contracts,
 read-only tenant commands, then add workload, deployment, route, BuildRun,
-signed-evidence, and bounded paged-log queries. The Web console composes those
+   signed-evidence, bounded Workload-log queries, and explicit BuildRun-log
+   unavailability. The Web console composes those
 same queries, operation streams, projection refreshes, and mutations into
 responsive Overview, Workloads, Delivery, and Edge workspaces. Authorized
 search and validated deep links select the owning workspace without creating a
@@ -623,8 +634,9 @@ sessionless, initialization-based `2025-06-18` Streamable HTTP JSON-RPC,
 current-token scope-derived tool discovery, organization context derived only
 from the authenticated principal, three core queries, two idempotent create
 commands, ten operational Node, Operation, Workload, Deployment, Route, and
-BuildRun queries, two bounded cursor-paginated log queries, one signed-evidence
-query, and five replay-safe operational commands through the existing
+  BuildRun queries, one bounded cursor-paginated Workload-log query, one explicit
+  BuildRun-log availability query, one signed-evidence query, and five
+  replay-safe operational commands through the existing
 application buses. Workload stop/rollback and
 Deployment cancel require `workload:write`; BuildRun cancel/retry require
 `build:write`. It rejects batches, foreign origins, hidden-tool invocation,
@@ -703,13 +715,13 @@ persistence uses migrations and typed A3S ORM repositories.
 | Audit and approval authority | `audit_records` plus `C0.3` grants | Reuse the common audit chain and authorization evaluator; do not create an Agent audit subsystem |
 | Scheduling and provider lifecycle | Workloads plus A3S Runtime | Run the selected Agent release and Harness through the common placement, apply, health, stop, and recovery path |
 | Published assets | `A0.3` through `A0.5` `AssetRelease` | Bind immutable Agent, MCP, and Skill release IDs; never copy mutable manifests into an execution |
-| Streaming and cursors | Existing ordered Workload, BuildRun, and Operation streams | Extract one shared sequence cursor, reconnect, gap, and SSE transport implementation before adding the Agent stream |
+| Streaming and cursors | Existing Workload sequence stream and Operation snapshot polling; BuildRun logs are unavailable pending Box authority | Reuse the shared sequence cursor, reconnect, gap, SSE, and polling transports before adding the Agent stream |
 | Immutable objects | Existing filesystem and S3-compatible object backends | Share one low-level content-addressed client while preserving typed domain ports, namespaces, admission limits, and retention policy |
 | Optional Redis | No durable Agent authority | Redis may accelerate ephemeral fan-out only after correctness without it; it never owns conversations, queues, locks, cursors, approvals, or checkpoints |
 
 `A1.0` is implemented. One shared sequence component now
 owns the versioned cursor, `Last-Event-ID` precedence, bounded SSE record
-events, and cursor advancement for Workload and BuildRun logs. A separate
+events, and cursor advancement for Workload logs. A separate
 shared polling transport owns interval scheduling, keepalive cadence, and retry
 metadata for those sequence streams and the hash-addressed Operation snapshot
 stream without inventing an Operation sequence. The duplicate domain-local

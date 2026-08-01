@@ -126,10 +126,6 @@ pub struct ExecutionsConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildsConfig {
     pub reconcile_interval_ms: u64,
-    pub builder_uri: String,
-    pub builder_digest: String,
-    pub builder_media_type: String,
-    pub buildkit_socket_volume_id: String,
     pub input_staging_dir: String,
     pub input_max_entries: usize,
     pub input_max_bytes: u64,
@@ -139,14 +135,12 @@ pub struct BuildsConfig {
     pub oci_max_blobs: usize,
     pub oci_max_bytes: u64,
     pub command_ttl_ms: u64,
-    pub runtime_execution_timeout_ms: u64,
+    pub execution_timeout_ms: u64,
     pub observation_poll_ms: u64,
     pub convergence_timeout_ms: u64,
     pub cleanup_timeout_ms: u64,
-    pub cpu_millis: u64,
-    pub memory_bytes: u64,
-    pub pids: u32,
     pub output_max_bytes: u64,
+    pub cache_max_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -417,10 +411,6 @@ impl CloudConfig {
             builds,
             &[
                 "reconcile_interval_ms",
-                "builder_uri",
-                "builder_digest",
-                "builder_media_type",
-                "buildkit_socket_volume_id",
                 "input_staging_dir",
                 "input_max_entries",
                 "input_max_bytes",
@@ -430,14 +420,12 @@ impl CloudConfig {
                 "oci_max_blobs",
                 "oci_max_bytes",
                 "command_ttl_ms",
-                "runtime_execution_timeout_ms",
+                "execution_timeout_ms",
                 "observation_poll_ms",
                 "convergence_timeout_ms",
                 "cleanup_timeout_ms",
-                "cpu_millis",
-                "memory_bytes",
-                "pids",
                 "output_max_bytes",
+                "cache_max_bytes",
             ],
         )?;
         let registry = one_block(&document, "registry")?;
@@ -623,10 +611,6 @@ impl CloudConfig {
             },
             builds: BuildsConfig {
                 reconcile_interval_ms: integer(builds, "reconcile_interval_ms")?,
-                builder_uri: string(builds, "builder_uri")?,
-                builder_digest: string(builds, "builder_digest")?,
-                builder_media_type: string(builds, "builder_media_type")?,
-                buildkit_socket_volume_id: string(builds, "buildkit_socket_volume_id")?,
                 input_staging_dir: string(builds, "input_staging_dir")?,
                 input_max_entries: integer(builds, "input_max_entries")?,
                 input_max_bytes: integer(builds, "input_max_bytes")?,
@@ -636,14 +620,12 @@ impl CloudConfig {
                 oci_max_blobs: integer(builds, "oci_max_blobs")?,
                 oci_max_bytes: integer(builds, "oci_max_bytes")?,
                 command_ttl_ms: integer(builds, "command_ttl_ms")?,
-                runtime_execution_timeout_ms: integer(builds, "runtime_execution_timeout_ms")?,
+                execution_timeout_ms: integer(builds, "execution_timeout_ms")?,
                 observation_poll_ms: integer(builds, "observation_poll_ms")?,
                 convergence_timeout_ms: integer(builds, "convergence_timeout_ms")?,
                 cleanup_timeout_ms: integer(builds, "cleanup_timeout_ms")?,
-                cpu_millis: integer(builds, "cpu_millis")?,
-                memory_bytes: integer(builds, "memory_bytes")?,
-                pids: integer(builds, "pids")?,
                 output_max_bytes: integer(builds, "output_max_bytes")?,
+                cache_max_bytes: integer(builds, "cache_max_bytes")?,
             },
             registry: RegistryConfig {
                 request_timeout_ms: integer(registry, "request_timeout_ms")?,
@@ -780,23 +762,15 @@ impl CloudConfig {
     ) -> Result<crate::modules::artifacts::BuildFlowConfig, String> {
         crate::modules::artifacts::BuildFlowConfig::new(
             crate::modules::artifacts::BuildFlowConfigOptions {
-                builder: a3s_runtime::contract::ArtifactRef {
-                    uri: self.builds.builder_uri.clone(),
-                    digest: self.builds.builder_digest.clone(),
-                    media_type: self.builds.builder_media_type.clone(),
-                },
-                buildkit_socket_volume_id: self.builds.buildkit_socket_volume_id.clone(),
                 heartbeat_timeout_ms: self.fleet.heartbeat_timeout_ms,
                 command_ttl_ms: self.builds.command_ttl_ms,
-                execution_timeout_ms: self.builds.runtime_execution_timeout_ms,
+                execution_timeout_ms: self.builds.execution_timeout_ms,
                 observation_poll_ms: self.builds.observation_poll_ms,
                 convergence_timeout_ms: self.builds.convergence_timeout_ms,
                 cleanup_timeout_ms: self.builds.cleanup_timeout_ms,
                 publication_timeout_ms: self.registry.publication_timeout_ms,
-                cpu_millis: self.builds.cpu_millis,
-                memory_bytes: self.builds.memory_bytes,
-                pids: self.builds.pids,
                 output_max_bytes: self.builds.output_max_bytes,
+                cache_max_bytes: self.builds.cache_max_bytes,
             },
         )
     }
@@ -963,18 +937,16 @@ impl CloudConfig {
             || !(1..=2_000_000).contains(&self.builds.output_max_entries)
             || self.builds.output_max_bytes < 1024 * 1024
             || self.builds.output_max_bytes > self.artifacts.max_blob_bytes
+            || self.builds.cache_max_bytes < 1024 * 1024
+            || self.builds.cache_max_bytes > self.artifacts.max_blob_bytes
             || self.builds.output_max_expanded_bytes < self.builds.output_max_bytes
             || self.builds.output_max_expanded_bytes > 1024 * 1024 * 1024 * 1024_u64
             || !(1..=1_000_000).contains(&self.builds.oci_max_blobs)
             || self.builds.oci_max_bytes == 0
             || self.builds.oci_max_bytes > self.builds.output_max_expanded_bytes
-            || self.builds.cpu_millis > 1_000_000
-            || !(16 * 1024 * 1024..=1024 * 1024 * 1024 * 1024_u64)
-                .contains(&self.builds.memory_bytes)
-            || self.builds.pids > 1_000_000
         {
             return Err(ConfigError::Invalid(
-                "builds requires bounded reconciliation, separate normalized staging paths, Artifact/OCI byte and entry limits, and bounded Runtime resources"
+                "builds requires bounded reconciliation, separate normalized staging paths, and Artifact/OCI byte and entry limits"
                     .into(),
             ));
         }
@@ -1763,10 +1735,6 @@ executions {
 }
 builds {
   reconcile_interval_ms = 1000
-  builder_uri = "oci://docker.io/moby/buildkit@sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
-  builder_digest = "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
-  builder_media_type = "application/vnd.oci.image.index.v1+json"
-  buildkit_socket_volume_id = "a3s-cloud-buildkit-v0-31-2"
   input_staging_dir = ".a3s/cloud/build-input-staging"
   input_max_entries = 100000
   input_max_bytes = 536870912
@@ -1776,14 +1744,12 @@ builds {
   oci_max_blobs = 10000
   oci_max_bytes = 1073741824
   command_ttl_ms = 900000
-  runtime_execution_timeout_ms = 600000
+  execution_timeout_ms = 600000
   observation_poll_ms = 1000
   convergence_timeout_ms = 1800000
   cleanup_timeout_ms = 300000
-  cpu_millis = 2000
-  memory_bytes = 1073741824
-  pids = 512
   output_max_bytes = 536870912
+  cache_max_bytes = 536870912
 }
 registry {
   request_timeout_ms = 10000
@@ -1890,10 +1856,7 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
-        assert_eq!(
-            config.builds.builder_digest,
-            "sha256:0eeb84626c0cd01aecae7848c5ed8f095aec279dd936d0cdb5a64110f42ca65b"
-        );
+        assert_eq!(config.builds.cache_max_bytes, 536_870_912);
         assert_eq!(config.builds.output_max_entries, 100_000);
         assert_eq!(config.sources.allowed_repositories.len(), 1);
         assert_eq!(

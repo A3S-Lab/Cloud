@@ -32,10 +32,10 @@ pub(super) fn evidence_for(
         .source_content_digest
         .clone()
         .ok_or("published build evidence fixture omitted its source digest")?;
-    let runtime_spec_digest = build
-        .runtime_spec_digest
+    let build_request_digest = build
+        .build_request_digest
         .clone()
-        .ok_or("published build evidence fixture omitted its Runtime specification digest")?;
+        .ok_or("published build evidence fixture omitted its Box build request digest")?;
     let artifact_digest = digest_hex(&artifact.digest)?;
     let recipe = BuildRecipe::dockerfile(
         BuildRecipe::SCHEMA,
@@ -50,9 +50,10 @@ pub(super) fn evidence_for(
             .collect(),
     )?;
     let recipe_digest = recipe.digest()?;
-    let builder_digest = format!("sha256:{}", "f".repeat(64));
+    let builder_digest =
+        "sha256:d257ed785f1193cc653a6d1528a518c7127685e198fd9839a27755b9a401eed6".to_owned();
     let builder = BuildEvidenceBuilder {
-        uri: format!("oci://docker.io/moby/buildkit@{builder_digest}"),
+        uri: "https://a3s.dev/cloud/build/box-native/v1".into(),
         digest: builder_digest.clone(),
     };
     let file_digest = "9".repeat(64);
@@ -136,7 +137,7 @@ pub(super) fn evidence_for(
                     operation_id: build.operation_id,
                     source_revision_id: build.source_revision_id,
                     attempt: build.attempt,
-                    runtime_spec_digest: runtime_spec_digest.clone(),
+                    build_request_digest: build_request_digest.clone(),
                 },
                 resolved_dependencies: vec![SlsaResourceDescriptor {
                     uri: "https://github.com/A3S-Lab/Cloud".into(),
@@ -186,7 +187,7 @@ pub(super) fn evidence_for(
         source_content_digest,
         recipe,
         recipe_digest,
-        runtime_spec_digest,
+        build_request_digest,
         builder,
         platforms: output.platforms.clone(),
         artifact,

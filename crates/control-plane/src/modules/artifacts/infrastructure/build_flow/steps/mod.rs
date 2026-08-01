@@ -1,9 +1,9 @@
 mod attestation;
+mod box_execution;
 mod cleanup;
 mod common;
 mod prepare;
 mod publication;
-mod runtime;
 mod validation;
 
 use super::BuildFlowRuntime;
@@ -21,14 +21,14 @@ pub(super) async fn execute(
         "build_prepare_input" => {
             encode(prepare::prepare(runtime, &run_id, invocation.input_as()?).await?)
         }
-        "build_schedule_runtime" => {
-            encode(runtime::schedule(runtime, &run_id, invocation.input_as()?).await?)
+        "build_schedule_box" => {
+            encode(box_execution::schedule(runtime, &run_id, invocation.input_as()?).await?)
         }
-        "build_dispatch_runtime" => {
-            encode(runtime::dispatch(runtime, &run_id, invocation.input_as()?).await?)
+        "build_dispatch_box" => {
+            encode(box_execution::dispatch(runtime, &run_id, invocation.input_as()?).await?)
         }
-        "build_observe_runtime" => {
-            encode(runtime::observe(runtime, &run_id, invocation.input_as()?).await?)
+        "build_observe_box" => {
+            encode(box_execution::observe(runtime, &run_id, invocation.input_as()?).await?)
         }
         "build_validate_output" => {
             encode(validation::validate(runtime, &run_id, invocation.input_as()?).await?)

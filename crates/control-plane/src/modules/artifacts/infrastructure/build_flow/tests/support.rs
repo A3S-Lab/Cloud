@@ -1,16 +1,13 @@
 use super::super::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
 };
-use crate::modules::artifacts::application::{
-    BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION, LEGACY_BUILD_WORKFLOW_VERSION,
-};
+use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildArtifactPublicationError, BuildEvidence, BuildEvidenceGenerationError,
     BuildInputPreparationError, BuildOutputValidationError, BuildRun, IBuildArtifactPublisher,
     IBuildEvidenceGenerator, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
     OciDescriptor, OciPublicationRequest, OciPublicationTarget, PreparedBuildInput,
-    PublishedOciArtifact, ValidatedBuildCache, ValidatedOciBuildOutput,
-    ValidatedRuntimeBuildOutput,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
@@ -30,32 +27,31 @@ use crate::modules::sources::domain::{
     GitRepository, ISourceRevisionRepository, NewExternalSourceRevision,
 };
 use crate::modules::sources::infrastructure::persistence::InMemorySourceRevisionRepository;
+use a3s_box_runtime::BoxBuildPlan;
 use a3s_cloud_contracts::{
-    artifact_uri, DomainEventEnvelope, NodeCommandLeaseRequest, NodeHeartbeat,
-    NodeObservationBatch, RuntimeObservationReport, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    artifact_uri, DomainEventEnvelope, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,
+    NodeBoxBuildDescriptor, NodeBoxBuildOutput, NodeBoxBuildPlatform, NodeBoxBuildRequest,
+    NodeCommandLeaseRequest, BOX_BUILD_OUTPUT_NAME, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_flow::{
     FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, InMemoryEventStore, WorkflowSpec,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeCapabilities,
-    RuntimeFeature, RuntimeObservation, RuntimeOutputArtifact, RuntimeUnitClass, RuntimeUnitState,
+    RuntimeFeature, RuntimeOutputArtifact, RuntimeUnitClass,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
-use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::Notify;
 use uuid::Uuid;
 
-pub(super) const BUILDER_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
+const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 
 pub(super) struct BuildFixture {
     pub organization_id: OrganizationId,
     pub build: BuildRun,
     pub builds: Arc<InMemoryBuildRunRepository>,
-    pub sources: Arc<InMemorySourceRevisionRepository>,
     pub nodes: Arc<InMemoryNodeRepository>,
     pub inputs: Arc<RecordingInputPreparer>,
     pub outputs: Arc<RecordingOutputValidator>,
@@ -63,7 +59,6 @@ pub(super) struct BuildFixture {
     pub evidence: Arc<RecordingEvidenceGenerator>,
     pub node_id: NodeId,
     pub agent_instance_id: Uuid,
-    pub capabilities: RuntimeCapabilities,
     pub runtime: BuildFlowRuntime,
 }
 
@@ -84,7 +79,7 @@ impl BuildFixture {
             base,
         )?;
         let sources = Arc::new(InMemorySourceRevisionRepository::new());
-        accept_revision(&sources, revision.clone()).await?;
+        accept_revision(&sources, revision).await?;
         let builds = Arc::new(InMemoryBuildRunRepository::new());
         builds
             .add_source_revision(
@@ -101,51 +96,39 @@ impl BuildFixture {
             .pop()
             .ok_or("build reservation did not produce a build")?;
         let nodes = Arc::new(InMemoryNodeRepository::new());
-        let missing_capabilities = build_capabilities(false);
         ready_node(
             &nodes,
             organization_id,
             base,
-            "build-node-missing-index",
-            missing_capabilities,
+            "non-box-node",
+            build_capabilities("another-provider"),
         )
         .await?;
-        let capabilities = build_capabilities(true);
         let (node_id, agent_instance_id) = ready_node(
             &nodes,
             organization_id,
             base,
-            "build-node-ready",
-            capabilities.clone(),
+            "box-build-node",
+            build_capabilities("a3s-box"),
         )
         .await?;
-        let input_artifact = artifact('1', 4096)?;
-        let runtime_output = artifact('2', 8192)?;
-        let inputs = Arc::new(RecordingInputPreparer::new(input_artifact));
+        let inputs = Arc::new(RecordingInputPreparer::new(artifact('1', 4096)?));
         let outputs = Arc::new(RecordingOutputValidator::new(
-            runtime_output,
+            artifact('2', 8192)?,
             output_failure,
         ));
         let publisher = Arc::new(RecordingPublisher::new());
         let evidence = Arc::new(RecordingEvidenceGenerator::new());
-        let build_port: Arc<dyn IBuildRunRepository> = builds.clone();
-        let source_port: Arc<dyn ISourceRevisionRepository> = sources.clone();
-        let input_port: Arc<dyn IBuildInputPreparer> = inputs.clone();
-        let output_port: Arc<dyn IBuildOutputValidator> = outputs.clone();
-        let publisher_port: Arc<dyn IBuildArtifactPublisher> = publisher.clone();
-        let evidence_port: Arc<dyn IBuildEvidenceGenerator> = evidence.clone();
-        let node_port: Arc<dyn INodeRepository> = nodes.clone();
-        let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
         let runtime = BuildFlowRuntime::new(
             BuildFlowRuntimeDependencies {
-                builds: build_port,
-                sources: source_port,
-                inputs: input_port,
-                outputs: output_port,
-                publisher: publisher_port,
-                evidence: evidence_port,
-                nodes: node_port,
-                node_control: control_port,
+                builds: builds.clone(),
+                sources,
+                inputs: inputs.clone(),
+                outputs: outputs.clone(),
+                publisher: publisher.clone(),
+                evidence: evidence.clone(),
+                nodes: nodes.clone(),
+                node_control: nodes.clone(),
             },
             config()?,
         );
@@ -153,7 +136,6 @@ impl BuildFixture {
             organization_id,
             build,
             builds,
-            sources,
             nodes,
             inputs,
             outputs,
@@ -161,7 +143,6 @@ impl BuildFixture {
             evidence,
             node_id,
             agent_instance_id,
-            capabilities,
             runtime,
         })
     }
@@ -175,14 +156,7 @@ impl BuildFixture {
 }
 
 pub(super) fn config() -> Result<BuildFlowConfig, String> {
-    let digest = format!("sha256:{}", "a".repeat(64));
     BuildFlowConfig::new(BuildFlowConfigOptions {
-        builder: ArtifactRef {
-            uri: format!("oci://docker.io/moby/buildkit@{digest}"),
-            digest,
-            media_type: BUILDER_MEDIA_TYPE.into(),
-        },
-        buildkit_socket_volume_id: "a3s-cloud-buildkit-v0-31-2".into(),
         heartbeat_timeout_ms: 5_000,
         command_ttl_ms: 30_000,
         execution_timeout_ms: 10_000,
@@ -190,10 +164,8 @@ pub(super) fn config() -> Result<BuildFlowConfig, String> {
         convergence_timeout_ms: 60_000,
         cleanup_timeout_ms: 30_000,
         publication_timeout_ms: 30_000,
-        cpu_millis: 1_000,
-        memory_bytes: 512 * 1024 * 1024,
-        pids: 256,
         output_max_bytes: 128 * 1024 * 1024,
+        cache_max_bytes: 128 * 1024 * 1024,
     })
 }
 
@@ -206,17 +178,12 @@ pub(super) fn workflow_spec() -> WorkflowSpec {
     )
 }
 
-pub(super) fn legacy_workflow_spec() -> WorkflowSpec {
-    WorkflowSpec::rust_embedded(
-        BUILD_WORKFLOW_NAME,
-        LEGACY_BUILD_WORKFLOW_VERSION,
-        "a3s-cloud",
-        "main",
-    )
+pub(super) fn digest(fill: char) -> String {
+    format!("sha256:{}", fill.to_string().repeat(64))
 }
 
-pub(super) fn artifact(digest_character: char, size_bytes: u64) -> Result<BuildArtifact, String> {
-    let digest = format!("sha256:{}", digest_character.to_string().repeat(64));
+pub(super) fn artifact(fill: char, size_bytes: u64) -> Result<BuildArtifact, String> {
+    let digest = digest(fill);
     BuildArtifact::new(
         artifact_uri(&digest)?,
         digest,
@@ -225,7 +192,92 @@ pub(super) fn artifact(digest_character: char, size_bytes: u64) -> Result<BuildA
     )
 }
 
-pub(super) fn revision(
+pub(super) fn box_output_for(
+    request: &NodeBoxBuildRequest,
+    output: BuildArtifact,
+) -> Result<NodeBoxBuildOutput, String> {
+    request.validate()?;
+    let artifact = ArtifactRef {
+        uri: output.uri,
+        digest: output.digest,
+        media_type: output.media_type,
+    };
+    let descriptor = NodeBoxBuildDescriptor {
+        media_type: if request.plans.len() == 1 {
+            OCI_MANIFEST.into()
+        } else {
+            "application/vnd.oci.image.index.v1+json".into()
+        },
+        digest: digest('e'),
+        size: 512,
+    };
+    let platforms = request
+        .plans
+        .iter()
+        .map(|plan| {
+            let parsed =
+                BoxBuildPlan::parse_acl(&plan.plan_acl).map_err(|error| error.to_string())?;
+            let identity = parsed.platform().to_string();
+            let (os, architecture) = identity
+                .split_once('/')
+                .ok_or_else(|| "Box fixture platform is invalid".to_owned())?;
+            Ok(NodeBoxBuildPlatform {
+                os: os.into(),
+                architecture: architecture.into(),
+                variant: None,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let caches = request
+        .plans
+        .iter()
+        .zip(&platforms)
+        .map(|(plan, platform)| {
+            let plan_digest = BoxBuildPlan::parse_acl(&plan.plan_acl)
+                .map_err(|error| error.to_string())?
+                .canonical_digest()
+                .map_err(|error| error.to_string())?;
+            Ok(NodeBoxBuildCacheOutput {
+                operation_id: plan.operation_id.clone(),
+                artifact: RuntimeOutputArtifact {
+                    name: plan.cache_output_name(),
+                    artifact: artifact.clone(),
+                    size_bytes: 4096,
+                },
+                receipt: NodeBoxBuildCacheReceipt {
+                    schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                    key: digest('3'),
+                    source_digest: request.source.digest.clone(),
+                    plan_digest,
+                    descriptor: descriptor.clone(),
+                    platform: platform.clone(),
+                    content_bytes: 2048,
+                    entry_count: 3,
+                    blob_count: 3,
+                    blob_inventory_digest: digest('4'),
+                },
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let output = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: BOX_BUILD_OUTPUT_NAME.into(),
+            artifact,
+            size_bytes: 8192,
+        },
+        descriptor,
+        platforms,
+        manifest_count: request.plans.len() as u64,
+        content_bytes: 2048,
+        blob_count: 3,
+        blob_inventory_digest: digest('5'),
+        caches,
+    };
+    output.validate()?;
+    Ok(output)
+}
+
+fn revision(
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
@@ -238,7 +290,7 @@ pub(super) fn revision(
         environment_id,
         id: source_revision_id,
         repository: GitRepository::parse(GitProvider::Github, "https://github.com/A3S-Lab/Cloud")?,
-        commit_sha: GitCommitSha::parse("b".repeat(40))?,
+        commit_sha: GitCommitSha::parse("a".repeat(40))?,
         recipe: BuildRecipe::dockerfile(
             BuildRecipe::SCHEMA,
             BuildRecipe::DOCKERFILE_KIND,
@@ -251,7 +303,7 @@ pub(super) fn revision(
     })
 }
 
-pub(super) async fn accept_revision(
+async fn accept_revision(
     sources: &InMemorySourceRevisionRepository,
     revision: ExternalSourceRevision,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -271,37 +323,23 @@ pub(super) async fn accept_revision(
     Ok(())
 }
 
-pub(super) fn build_capabilities(supports_index: bool) -> RuntimeCapabilities {
+fn build_capabilities(provider_id: &str) -> RuntimeCapabilities {
     RuntimeCapabilities {
         schema: RuntimeCapabilities::SCHEMA.into(),
-        provider_id: a3s_runtime::ProviderId::parse("test-build-runtime")
-            .expect("valid provider ID"),
-        provider_build: "test-build-runtime-1".into(),
+        provider_id: a3s_runtime::ProviderId::parse(provider_id).expect("valid provider ID"),
+        provider_build: format!("{provider_id}-test"),
         unit_classes: vec![RuntimeUnitClass::Task],
-        artifact_media_types: vec![if supports_index {
-            BUILDER_MEDIA_TYPE.into()
-        } else {
-            "application/vnd.oci.image.manifest.v1+json".into()
-        }],
+        artifact_media_types: vec!["application/vnd.oci.image.index.v1+json".into()],
         isolation_levels: vec![IsolationLevel::Container],
         network_modes: vec![NetworkMode::None],
-        mount_kinds: vec![MountKind::Artifact, MountKind::Volume, MountKind::Tmpfs],
+        mount_kinds: vec![MountKind::Artifact],
         health_check_kinds: Vec::new(),
-        resource_controls: vec![
-            ResourceControl::Cpu,
-            ResourceControl::Memory,
-            ResourceControl::Pids,
-            ResourceControl::ExecutionTimeout,
-        ],
-        features: vec![
-            RuntimeFeature::DurableIdentity,
-            RuntimeFeature::Remove,
-            RuntimeFeature::OutputArtifacts,
-        ],
+        resource_controls: vec![ResourceControl::ExecutionTimeout],
+        features: vec![RuntimeFeature::DurableIdentity],
     }
 }
 
-pub(super) async fn ready_node(
+async fn ready_node(
     nodes: &InMemoryNodeRepository,
     organization_id: OrganizationId,
     enrolled_at: chrono::DateTime<Utc>,
@@ -310,8 +348,7 @@ pub(super) async fn ready_node(
 ) -> Result<(NodeId, Uuid), Box<dyn std::error::Error>> {
     capabilities.validate()?;
     let token_id = EnrollmentTokenId::new();
-    let token_secret = token_id.as_uuid().simple().to_string().repeat(2);
-    let secret = format!("a3sn_{token_secret}");
+    let secret = format!("a3sn_{}", token_id.as_uuid().simple().to_string().repeat(2));
     let credential = EnrollmentTokenCredential::from_secret(&secret)?;
     let token = EnrollmentToken::new(
         token_id,
@@ -347,7 +384,7 @@ pub(super) async fn ready_node(
                 agent_instance_id,
                 agent_version: "0.1.0".into(),
                 capabilities: stored.clone(),
-                request_digest: format!("sha256:{}", "c".repeat(64)),
+                request_digest: digest('c'),
                 requested_at: enrolled_at,
             },
         )
@@ -386,89 +423,9 @@ pub(super) async fn lease(
             },
             Uuid::now_v7(),
             now,
-            now + Duration::seconds(1),
+            now + Duration::seconds(5),
         )
         .await
-}
-
-pub(super) async fn record_observation(
-    nodes: &InMemoryNodeRepository,
-    node_id: NodeId,
-    agent_instance_id: Uuid,
-    capabilities: &RuntimeCapabilities,
-    command: &a3s_cloud_contracts::NodeCommandEnvelope,
-    observation: RuntimeObservation,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let observed_at = Utc::now();
-    nodes
-        .record_observations(
-            NodeObservationBatch {
-                schema: NodeObservationBatch::SCHEMA.into(),
-                node_id: node_id.as_uuid(),
-                agent_instance_id,
-                sent_at: observed_at,
-                heartbeat: NodeHeartbeat {
-                    schema: NodeHeartbeat::SCHEMA.into(),
-                    node_id: node_id.as_uuid(),
-                    agent_instance_id,
-                    observed_at,
-                    agent_version: "0.1.0".into(),
-                    runtime_capabilities: capabilities.clone(),
-                },
-                observations: vec![RuntimeObservationReport {
-                    report_id: Uuid::now_v7(),
-                    command_id: Some(command.command_id),
-                    observed_at,
-                    observation,
-                }],
-            }
-            .into(),
-            observed_at,
-        )
-        .await?;
-    Ok(())
-}
-
-pub(super) fn succeeded_observation(
-    spec: &a3s_runtime::contract::RuntimeUnitSpec,
-    output: &BuildArtifact,
-) -> Result<RuntimeObservation, String> {
-    let now_ms = u64::try_from(Utc::now().timestamp_millis())
-        .map_err(|_| "test clock predates Unix epoch")?;
-    let observation = RuntimeObservation {
-        schema: RuntimeObservation::SCHEMA.into(),
-        unit_id: spec.unit_id.clone(),
-        generation: spec.generation,
-        spec_digest: spec.digest()?,
-        class: RuntimeUnitClass::Task,
-        state: RuntimeUnitState::Succeeded,
-        provider_resource_id: Some("build-container-1".into()),
-        provider_build: Some("test-build-runtime-1".into()),
-        observed_at_ms: now_ms,
-        started_at_ms: Some(now_ms.saturating_sub(1)),
-        finished_at_ms: Some(now_ms),
-        health: None,
-        outputs: vec![RuntimeOutputArtifact {
-            name: "oci-layout".into(),
-            artifact: ArtifactRef {
-                uri: output.uri.clone(),
-                digest: output.digest.clone(),
-                media_type: output.media_type.clone(),
-            },
-            size_bytes: output.size_bytes,
-        }],
-        usage: None,
-        evidence: Some(a3s_runtime::contract::RuntimeEvidence {
-            provider_build: "test-build-runtime-1".into(),
-            spec_digest: spec.digest()?,
-            semantics_profile_digest: spec.semantics_profile_digest.clone(),
-            claims: BTreeMap::new(),
-        }),
-        provider_attestation: None,
-        failure: None,
-    };
-    observation.validate_against(spec)?;
-    Ok(observation)
 }
 
 pub(super) struct RecordingInputPreparer {
@@ -511,7 +468,7 @@ impl IBuildInputPreparer for RecordingInputPreparer {
         }
         self.prepares.fetch_add(1, Ordering::SeqCst);
         Ok(PreparedBuildInput {
-            source_content_digest: format!("sha256:{}", "d".repeat(64)),
+            source_content_digest: digest('d'),
             artifact: self.artifact.clone(),
         })
     }
@@ -537,8 +494,8 @@ impl RecordingOutputValidator {
         }
     }
 
-    pub(super) fn artifact(&self) -> &BuildArtifact {
-        &self.artifact
+    pub(super) fn artifact(&self) -> BuildArtifact {
+        self.artifact.clone()
     }
 
     pub(super) fn validations(&self) -> usize {
@@ -550,91 +507,53 @@ impl RecordingOutputValidator {
 impl IBuildOutputValidator for RecordingOutputValidator {
     async fn validate(
         &self,
-        artifact: &BuildArtifact,
+        output: &NodeBoxBuildOutput,
         recipe: &BuildRecipe,
-        expected_cache_key: Option<&str>,
-    ) -> Result<ValidatedRuntimeBuildOutput, BuildOutputValidationError> {
+    ) -> Result<ValidatedOciBuildOutput, BuildOutputValidationError> {
         self.validations.fetch_add(1, Ordering::SeqCst);
-        if artifact != &self.artifact {
+        output
+            .validate()
+            .map_err(BuildOutputValidationError::Integrity)?;
+        if output.artifact.artifact.uri != self.artifact.uri
+            || output.artifact.artifact.digest != self.artifact.digest
+            || output.artifact.artifact.media_type != self.artifact.media_type
+            || output.artifact.size_bytes != self.artifact.size_bytes
+        {
             return Err(BuildOutputValidationError::Integrity(
-                "test Runtime output changed identity".into(),
+                "test Box output changed identity".into(),
             ));
         }
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        let output = ValidatedOciBuildOutput {
-            artifact: artifact.clone(),
+        Ok(ValidatedOciBuildOutput {
+            artifact: self.artifact.clone(),
             descriptor: OciDescriptor::new(
-                "application/vnd.oci.image.manifest.v1+json",
-                format!("sha256:{}", "e".repeat(64)),
-                512,
+                &output.descriptor.media_type,
+                &output.descriptor.digest,
+                output.descriptor.size,
             )
             .map_err(BuildOutputValidationError::Invalid)?,
             platforms: recipe.platforms().to_vec(),
-            content_bytes: 2048,
-            blob_count: 3,
-        };
-        let cache = expected_cache_key
-            .map(|key| {
-                ValidatedBuildCache::new(
-                    key,
-                    artifact.clone(),
-                    OciDescriptor::new(
-                        "application/vnd.oci.image.index.v1+json",
-                        format!("sha256:{}", "f".repeat(64)),
-                        256,
-                    )
-                    .map_err(BuildOutputValidationError::Invalid)?,
-                    1024,
-                    2,
-                )
-                .map_err(BuildOutputValidationError::Invalid)
-            })
-            .transpose()?;
-        Ok(ValidatedRuntimeBuildOutput { output, cache })
+            content_bytes: output.content_bytes,
+            blob_count: output.blob_count as usize,
+        })
     }
 }
 
 pub(super) struct RecordingPublisher {
     publications: AtomicUsize,
-    lookups: AtomicUsize,
-    published: AtomicBool,
-    pause_next_publication: AtomicBool,
-    publication_started: Notify,
-    publication_release: Notify,
 }
 
 impl RecordingPublisher {
     fn new() -> Self {
         Self {
             publications: AtomicUsize::new(0),
-            lookups: AtomicUsize::new(0),
-            published: AtomicBool::new(false),
-            pause_next_publication: AtomicBool::new(false),
-            publication_started: Notify::new(),
-            publication_release: Notify::new(),
         }
     }
 
     pub(super) fn publications(&self) -> usize {
         self.publications.load(Ordering::SeqCst)
-    }
-
-    pub(super) fn lookups(&self) -> usize {
-        self.lookups.load(Ordering::SeqCst)
-    }
-
-    pub(super) fn pause_next_publication(&self) {
-        self.pause_next_publication.store(true, Ordering::SeqCst);
-    }
-
-    pub(super) async fn wait_for_publication(&self) {
-        self.publication_started.notified().await;
-    }
-
-    pub(super) fn resume_publication(&self) {
-        self.publication_release.notify_one();
     }
 }
 
@@ -657,13 +576,9 @@ impl IBuildArtifactPublisher for RecordingPublisher {
 
     async fn find(
         &self,
-        request: &OciPublicationRequest,
+        _request: &OciPublicationRequest,
     ) -> Result<Option<PublishedOciArtifact>, BuildArtifactPublicationError> {
-        self.lookups.fetch_add(1, Ordering::SeqCst);
-        Ok(self
-            .published
-            .load(Ordering::SeqCst)
-            .then(|| PublishedOciArtifact::from_target(&request.target)))
+        Ok(None)
     }
 
     async fn publish(
@@ -671,43 +586,23 @@ impl IBuildArtifactPublisher for RecordingPublisher {
         request: &OciPublicationRequest,
     ) -> Result<PublishedOciArtifact, BuildArtifactPublicationError> {
         self.publications.fetch_add(1, Ordering::SeqCst);
-        self.published.store(true, Ordering::SeqCst);
-        if self.pause_next_publication.swap(false, Ordering::SeqCst) {
-            self.publication_started.notify_one();
-            self.publication_release.notified().await;
-        }
         Ok(PublishedOciArtifact::from_target(&request.target))
     }
 }
 
 pub(super) struct RecordingEvidenceGenerator {
     generations: AtomicUsize,
-    failure: std::sync::Mutex<Option<BuildEvidenceGenerationError>>,
-    next_failure: std::sync::Mutex<Option<BuildEvidenceGenerationError>>,
 }
 
 impl RecordingEvidenceGenerator {
     fn new() -> Self {
         Self {
             generations: AtomicUsize::new(0),
-            failure: std::sync::Mutex::new(None),
-            next_failure: std::sync::Mutex::new(None),
         }
     }
 
     pub(super) fn generations(&self) -> usize {
         self.generations.load(Ordering::SeqCst)
-    }
-
-    pub(super) fn fail_with(&self, failure: BuildEvidenceGenerationError) {
-        *self.failure.lock().expect("evidence failure lock") = Some(failure);
-    }
-
-    pub(super) fn fail_once_with(&self, failure: BuildEvidenceGenerationError) {
-        *self
-            .next_failure
-            .lock()
-            .expect("one-shot evidence failure lock") = Some(failure);
     }
 }
 
@@ -720,17 +615,6 @@ impl IBuildEvidenceGenerator for RecordingEvidenceGenerator {
         attested_at: chrono::DateTime<Utc>,
     ) -> Result<BuildEvidence, BuildEvidenceGenerationError> {
         self.generations.fetch_add(1, Ordering::SeqCst);
-        if let Some(failure) = self
-            .next_failure
-            .lock()
-            .expect("one-shot evidence failure lock")
-            .take()
-        {
-            return Err(failure);
-        }
-        if let Some(failure) = self.failure.lock().expect("evidence failure lock").clone() {
-            return Err(failure);
-        }
         if build.organization_id != revision.organization_id
             || build.project_id != revision.project_id
             || build.environment_id != revision.environment_id

@@ -37,7 +37,8 @@ process restarts.
 Cloud is not a reverse proxy, an inference byte path, or a replacement Runtime.
 It owns business state, scheduling and deployment policy, rollout and
 autoscaling decisions, complete Gateway policy, operations, and management
-surfaces. Runtime owns provider lifecycle mechanics, while Gateway owns
+surfaces. Runtime owns Task and Service lifecycle mechanics, Box owns
+node-local build execution, cache, images, and cleanup, while Gateway owns
 transport and request-path enforcement.
 
 ### Basic usage
@@ -86,10 +87,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   through the Node Agent command journal, and preserve the same typed endpoint
   for Gateway publication; Box alone executes and certifies HTTP, TCP, and
   command probes
-- **Box-Only Execution Migration**: Converge every Task, Service, build,
-  network, mount, Secret, log, output, and cleanup operation through the shared
-  A3S Runtime contract and A3S Box, with no Docker-compatible daemon or fallback
-  provider
+- **Box-Only Execution and Build Migration**: Converge every Task and Service
+  through the shared A3S Runtime contract and A3S Box, and every source build
+  through typed Box commands, with no Docker-compatible daemon, Runtime build
+  task, or fallback provider
 - **Explicit Box Isolation**: Require every Node Agent ACL profile to select
   exactly `microvm` or `sandbox`; the shipped product profile selects MicroVM,
   hosted Cloud consumer validation selects Sandbox explicitly, and neither
@@ -127,10 +128,15 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Safe Changes**: Replace an active workload immutably, preserve the prior
   healthy revision until cutover, and roll back by cloning a proven template
   into a new generation
-- **Historical Source Delivery Evidence**: Resolve exact GitHub commits, run
-  isolated builds, validate trusted content-addressed caches and complete OCI
-  graphs, publish by digest, freeze locally verified signed SPDX/SLSA evidence,
-  and hand successful builds to the existing workload deployment path
+- **Box-Native Source Delivery**: Resolve exact GitHub commits, execute the sole
+  `cloud.build@5` Flow through Fleet's command queue and the Node Agent journal,
+  let Box own its build-operation journal, content-addressed cache, and images,
+  revalidate untrusted OCI output before digest-only publication, freeze locally
+  verified signed SPDX/SLSA evidence, and hand successful builds to the existing
+  Workload deployment path
+- **Explicit Build Log Availability**: Return `503 Service Unavailable` for
+  BuildRun logs until Box exposes an authoritative durable log contract; Cloud
+  neither fabricates empty pages nor projects build logs from Runtime
 - **Hosted Asset Foundation**: Persist tenant-scoped Agent, MCP, and Skill
   identities plus draft, published, and yanked release state; enforce canonical
   SemVer, immutable Git and SHA-256 identities, typed OCI or Skill artifacts,
@@ -144,7 +150,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - **Typed Automation Slice**: Reuse one validated TypeScript client across the
   web console and `a3s-cloud` CLI, select tenant context without a credential
   file, inspect tenant and operational resources, BuildRun evidence, and paged
-  workload or build logs as bounded tables or stable JSON, and request
+  Workload logs as bounded tables or stable JSON, report BuildRun-log
+  unavailability explicitly, and request
   stop/rollback/cancel/retry operations with caller-owned idempotency keys;
   create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud;
   create core tenant resources and transition nodes with explicit optimistic
@@ -166,10 +173,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   initialization-based `2025-06-18` Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
   from the current principal, expose Project, Environment, search, Node,
-  Operation, Workload, Deployment, Route, and BuildRun queries,
-  bounded cursor-paginated Workload and BuildRun logs, and signed BuildRun
-  evidence plus scope-gated idempotent Project and Environment commands through
-  the existing application buses, reject batching, forged tenant input,
+  Operation, Workload, Deployment, Route, and BuildRun queries, bounded
+  cursor-paginated Workload logs, explicit BuildRun-log unavailability, and
+  signed BuildRun evidence plus scope-gated idempotent Project and Environment
+  commands through the existing application buses, reject batching, forged tenant input,
   invalid bounds, and cross-origin confusion, and preserve the standard API
   envelope inside tool results; prove scope-derived discovery, operational
   reads, REST-to-MCP idempotency replay, tenant non-disclosure, immediate
@@ -187,7 +194,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, command journal, and sole Box driver | Historical evidence; Box re-certification pending |
 | `D0` — OCI deployment | Digest-pinned revisions, one-node scheduling, apply, health, activation, stop, cancellation, and recovery | Historical evidence; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, ordered logs, immutable update, cloned rollback, web operations, and clean-host recovery | Historical evidence; Box re-certification pending |
-| `G0` — External source delivery | Pinned Git sources, isolated builds, trusted retry caches, OCI validation and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
+| `G0` — External source delivery | Pinned Git sources, Box-native builds and caches, OCI admission and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
 | `A0` — Release catalog | Immutable Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
@@ -334,30 +341,36 @@ authorization, PostgreSQL write leases, quotas, backup and restore, and pinned
 build publication, Workload deployment, Skill binding, and catalog surfaces
 remain `A0.3` through `A0.5`, so the complete `A0` gate remains in progress.
 
-The `A1.0` consolidation gate is verified. Workload and BuildRun logs share one
-sequence/SSE implementation, Operation snapshots reuse the same polling
-transport without fabricating a sequence, log chunks and node Artifacts share
+The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
+implementation, Operation snapshots reuse the same polling transport without
+fabricating a sequence, log chunks and node Artifacts share
 one namespaced immutable-object client behind typed adapters, and the node
 agent uses one typed durable outbound-batch primitive for exact restart replay
 and receipt-gated settlement. These are reusable foundations only; user-visible
 Agent execution begins with `A1.1` only after `A0.3` supplies published,
 immutable release identities.
 
-`G0` already includes GitHub App connections and signed webhooks, private
-repository access, immutable source revisions, BuildRuns, cancellation, retry,
-ordered logs, command-bound Artifact transport, isolated BuildKit execution,
-trusted content-addressed retry caches, complete OCI graph validation,
-digest-only registry publication, deterministic SPDX/SLSA generation,
-locally verified Ed25519 DSSE signing through persistent local or Vault Transit
-providers, durable evidence restoration, evidence API/web download, replay
-adoption, cleanup, and explicit deployment handoff. The manual external-provider
-gate is implemented for an operator-owned private GitHub repository, HTTPS OCI
-Registry, Vault Transit Ed25519 key, PostgreSQL 17, and rootless BuildKit. It
-also terminates real child processes with `SIGKILL` after remote publication
-and after evidence persistence, then proves exact replay and cleanup. A local
-real-provider rehearsal passes, but no operator-owned run is recorded because
-the repository has no G0 provider secrets. `G0` therefore remains in progress
-until that external certification produces retained evidence.
+`G0` now routes every new BuildRun through `cloud.build@5`. Flow remains the
+workflow and recovery authority; Fleet's `node_commands` table remains the
+remote command queue; the Node Agent journal replays the exact
+`BoxBuildStart`, `BoxBuildInspect`, `BoxBuildCancel`, and `BoxBuildRemove`
+commands. Box's `BuildOperationJournal`, `BuildCache`, and `ImageStore` are the
+sole node-local build, cache, and image authorities. Cloud retains authenticated
+Artifact transfer and independently admits the returned OCI graph before
+digest-only registry publication and deterministic signed SPDX/SLSA evidence.
+Retry can reuse only the immediate parent's matching Box cache receipt, and all
+dispatched outcomes pass through the same cancel, inspect, and remove cleanup
+chain before becoming terminal.
+
+Migration `060` invalidates pre-Box BuildRuns as rebuild-required, cancels
+known `cloud.build@1` through `@4` histories through A3S Flow, and removes the
+old Runtime and Cloud-cache projections. Dockerfile remains a source-recipe
+format, not an executor selection. Durable BuildRun logs remain unavailable and
+return `503` until Box supplies its authoritative log contract. The retained
+external-provider workflow currently certifies private GitHub resolution only;
+`G0` remains in progress until the exact Box build revision, external registry
+publication, signing, restart replay, cache reuse, and zero-residue cleanup are
+certified together on Linux.
 
 The current `H0.1` foundation maps every existing single-instance Workload to
 one stable replica and member. Replica identity survives immutable revision
@@ -799,9 +812,10 @@ plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
 verified. The [`C0.2` management MCP](docs/management-mcp.md) now provides the
 sessionless `2025-06-18` initialization-based protocol, scoped core-resource
 tools, tenant-authorized Node, Operation, Workload, Deployment, Route, and
-BuildRun reads, bounded paged Workload and BuildRun logs, signed BuildRun
-evidence, and five replay-safe Workload, Deployment, and BuildRun mutation
-tools. Its dedicated real PostgreSQL gate proves exact 23-tool administrator
+BuildRun reads, bounded paged Workload logs, explicit BuildRun-log
+unavailability, signed BuildRun evidence, and five replay-safe Workload,
+Deployment, and BuildRun mutation tools. Its dedicated real PostgreSQL gate
+proves exact 23-tool administrator
 and 16-tool read-only catalogs, strict arguments and annotations, operational
 query and command dispatch, hidden mutation denial, Project and Workload
 replay, foreign-resource non-disclosure, next-request revocation, A3S ORM
@@ -944,10 +958,11 @@ The current `G0` path is:
 ```text
 GitHub reference
   -> verified immutable commit and versioned recipe
-  -> tenant-owned BuildRun and cloud.build@3 operation
+  -> tenant-owned BuildRun and cloud.build@5 operation
   -> bounded exact checkout and content-addressed Artifact
-  -> isolated Runtime Task and typed A3S Box build
-  -> complete OCI and trusted retry-cache graph validation
+  -> Fleet command lease and Node Agent journal
+  -> Box-native build, operation journal, cache, and image store
+  -> Cloud admission of the complete returned OCI graph
   -> deterministic digest-only registry publication
   -> deterministic SPDX/SLSA evidence and locally verified DSSE signature
   -> explicit cloud.deployment@3 workload handoff
@@ -956,18 +971,19 @@ GitHub reference
 Private access uses short-lived GitHub App credentials that are revalidated for
 the exact installation, account, and repository. Build cancellation and retry
 remain durable operations; retry creates a new attempt while retaining the
-source revision and lineage. Retry cache reuse cannot bypass OCI validation,
-publication, evidence generation, signing, or local verification. Node-local
-Artifact locations, signing private keys, and provider credentials are not part
-of the public BuildRun state.
+source revision and lineage. Retry cache reuse consumes only a parent-bound Box
+receipt and cannot bypass OCI validation, publication, evidence generation,
+signing, or local verification. Node-local Artifact locations, Box operation
+state, signing private keys, and provider credentials are not part of the
+public BuildRun state.
 
 The `G0 external provider conformance` workflow binds its evidence to the exact
-Cloud revision. Its private-source job proves credential-free replay and
-checkout removal. Its signed-build job proves one remote OCI publication, one
-locally verified Vault signature, one persisted evidence document, one
-Runtime apply and cleanup, and recovery from both process-death boundaries.
-The workflow is implemented but is not external certification until an
-operator configures its private providers and the retained run passes.
+Cloud revision. Its retained private-source job proves credential-free replay
+and checkout removal. Box-native build certification remains a separate open
+gate and must prove one remote OCI publication, one locally verified signature,
+one persisted evidence document, exact command and Box-journal replay, cache
+reuse, and authoritative Box removal. No build-log success is claimed while the
+Box log contract is absent.
 
 The detailed request contracts, failure boundaries, and acceptance evidence
 remain in the [Development Plan](docs/development-plan.md).
@@ -1057,8 +1073,9 @@ A3S Boot control-plane API
         |
         v  outbound mTLS command lease
 node agent
-        +----> A3S Runtime ----> A3S Box
+        +----> A3S Runtime ----> A3S Box (Task and Service lifecycle)
         |                         +----> A3S Power Service (inference)
+        +----> typed build commands ----> A3S Box build journal/cache/images
         +----> A3S Gateway ----> active edge revision
         +----> inventories, observations, and durable acknowledgements
 ```
@@ -1070,7 +1087,7 @@ node agent
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
 | A3S Runtime | Provider-neutral Task and Service lifecycle, endpoints, and health observations |
-| A3S Box | Sole node-local execution, image build, network, health-probe, mount, log, snapshot, and cleanup provider |
+| A3S Box | Sole node-local execution provider and sole build-operation journal, cache, image, network, health-probe, mount, log, snapshot, and cleanup authority |
 | A3S Power | Required Box-hosted inference serving and attestation boundary |
 | A3S Gateway | HTTPS, routing, health, native snapshot application, and durable applied-state recovery |
 | A3S ACL | Closed product configuration and validated manifests |

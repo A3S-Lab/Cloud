@@ -136,10 +136,10 @@ function evidence(): BuildEvidence {
     sourceContentDigest: `sha256:${'a'.repeat(64)}`,
     recipe: { schema: 'a3s.cloud.build-recipe.v1' },
     recipeDigest: `sha256:${'e'.repeat(64)}`,
-    runtimeSpecDigest: `sha256:${'f'.repeat(64)}`,
+    buildRequestDigest: `sha256:${'f'.repeat(64)}`,
     builder: {
-      uri: `oci://docker.io/moby/buildkit@sha256:${'1'.repeat(64)}`,
-      digest: `sha256:${'1'.repeat(64)}`,
+      uri: 'https://a3s.dev/cloud/build/box-native/v1',
+      digest: 'sha256:d257ed785f1193cc653a6d1528a518c7127685e198fd9839a27755b9a401eed6',
     },
     platforms: ['linux/amd64'],
     artifact: {

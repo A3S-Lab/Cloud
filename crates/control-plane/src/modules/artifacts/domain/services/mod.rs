@@ -13,9 +13,7 @@ pub use build_evidence_signer::{
 pub use build_input_preparer::{
     BuildInputPreparationError, IBuildInputPreparer, PreparedBuildInput,
 };
-pub use build_output_validator::{
-    BuildOutputValidationError, IBuildOutputValidator, ValidatedRuntimeBuildOutput,
-};
+pub use build_output_validator::{BuildOutputValidationError, IBuildOutputValidator};
 pub use node_artifact_store::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
     NodeArtifactWrite, OpenNodeArtifact,

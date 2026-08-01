@@ -1,4 +1,6 @@
 use crate::artifact::CloudBoxArtifactPort;
+#[cfg(target_os = "linux")]
+use crate::box_build::BoxBuildCommandExecutor;
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
 use crate::log_shipper::LogShipper;
 use crate::resource_inventory::ResourceInventoryManager;
@@ -74,6 +76,11 @@ pub async fn run_node_agent(
         )
         .map_err(NodeAgentError::Invalid)?,
     );
+    #[cfg(target_os = "linux")]
+    let box_build = Arc::new(
+        BoxBuildCommandExecutor::new(&config.box_runtime, Arc::clone(&artifact_manager))
+            .map_err(|error| NodeAgentError::State(error.to_string()))?,
+    );
     let runtime = runtime
         .into_artifact_bound_client(artifact_manager.clone())
         .await?;
@@ -91,6 +98,8 @@ pub async fn run_node_agent(
         Duration::from_millis(config.control_plane.retry_max_ms),
     )?
     .with_artifacts(artifact_manager);
+    #[cfg(target_os = "linux")]
+    let session = session.with_box_build(box_build);
     let session_run = session.run(shutdown.clone());
     let rotation_run = certificate_rotation_loop(config, identity_store, transport, shutdown);
     tokio::pin!(session_run, rotation_run);
@@ -217,6 +226,12 @@ impl NodeAgentSession {
 
     fn with_artifacts(mut self, artifacts: Arc<NodeArtifactManager>) -> Self {
         self.executor = self.executor.with_artifacts(artifacts);
+        self
+    }
+
+    #[cfg(target_os = "linux")]
+    fn with_box_build(mut self, box_build: Arc<BoxBuildCommandExecutor>) -> Self {
+        self.executor = self.executor.with_box_build(box_build);
         self
     }
 
@@ -444,6 +459,10 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::BoxBuildStarted { .. }
+            | NodeCommandResult::BoxBuildInspected { .. }
+            | NodeCommandResult::BoxBuildCancelled { .. }
+            | NodeCommandResult::BoxBuildRemoved { .. }
             | NodeCommandResult::ResourceClaimPrepared { .. }
             | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. }
@@ -471,6 +490,10 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::BoxBuildStarted { .. }
+            | NodeCommandResult::BoxBuildInspected { .. }
+            | NodeCommandResult::BoxBuildCancelled { .. }
+            | NodeCommandResult::BoxBuildRemoved { .. }
             | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
