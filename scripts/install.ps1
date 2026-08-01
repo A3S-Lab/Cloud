@@ -38,7 +38,13 @@ function Assert-Command {
 
 if (-not $NoCli) {
     Assert-Command "cargo"
-    Invoke-NativeChecked cargo build --manifest-path (Join-Path $RepoRoot "Cargo.toml") --package a3s-workflow-cli --release --locked
+    Invoke-NativeChecked -FilePath "cargo" -Arguments @(
+        "build",
+        "--manifest-path", (Join-Path $RepoRoot "Cargo.toml"),
+        "--package", "a3s-workflow-cli",
+        "--release",
+        "--locked"
+    )
     Write-Host "+ New-Item -ItemType Directory -Force $InstallDir"
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -68,7 +74,14 @@ if (-not $NoSkill) {
 
 if (-not $NoDeploy) {
     Assert-Command "docker"
-    Invoke-NativeChecked docker compose --project-directory $RepoRoot -f (Join-Path $RepoRoot "compose.yaml") up --build --detach
+    Invoke-NativeChecked -FilePath "docker" -Arguments @(
+        "compose",
+        "--project-directory", $RepoRoot,
+        "-f", (Join-Path $RepoRoot "compose.yaml"),
+        "up",
+        "--build",
+        "--detach"
+    )
     if (-not $DryRun) {
         $Deadline = [DateTime]::UtcNow.AddSeconds(120)
         do {

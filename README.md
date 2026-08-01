@@ -29,6 +29,10 @@ From a checkout, one command builds and installs the coding-agent CLI, installs
 the `$a3s-workflow` Codex Skill, deploys the full Docker Compose stack, and waits
 for the API to become healthy.
 
+Prerequisites are Docker Desktop or Docker Engine with Compose v2, plus Rust
+1.88+ when installing the CLI. Use the platform-specific `--no-cli` / `-NoCli`
+switch for a Docker-only deployment.
+
 macOS / Linux:
 
 ```bash
@@ -97,11 +101,34 @@ specification; the selected provider returns an observed result to the durable
 history.
 
 ```text
-Studio ──> Boot API ──> A3S Flow ──> PostgreSQL
-                              │
-                              └──> A3S Runtime ──> provider / pool / unit
-                                         │
-                                         └──> verified result + evidence
++--------------------------------- CLIENTS ----------------------------------+
+| React Studio        coding-agent CLI        $a3s-workflow Skill            |
++----------------------------------------------------------------------------+
+                                  |
+                                  v
++------------------------------ CONTROL PLANE -------------------------------+
+| A3S Boot API ---> A3S Flow scheduler / workers (replicas 1..N)             |
+|       |                         |                                          |
+|       +-------------------------+                                          |
+|                                 v                                          |
+| PostgreSQL: graphs | events | queues | hooks | memory | Runtime evidence   |
++----------------------------------------------------------------------------+
+                                  | ready node -> immutable RuntimeSpec
+                                  | artifact digest + policy + placement
+                                  v
++----------------------------- EXECUTION PLANE ------------------------------+
+| A3S Runtime contract and provider routing                                  |
+|        |                 |                  |                  |           |
+|        v                 v                  v                  v           |
+| CPU pool 1..N      GPU pool 1..N      sandbox pool 1..N   custom pools     |
+| immutable units    immutable units    immutable units     immutable units  |
+|                                                                            |
+| Every NodeExecutor: start, template, llm, agent, tool, router, memory,     |
+|                     http, approval, output                                 |
++----------------------------------------------------------------------------+
+                                  |
+                                  +--> result + digest + usage + evidence
+                                       -> A3S Flow -> PostgreSQL -> clients
 ```
 
 - **API replicas** serve graph, run, memory, approval, and evidence endpoints.
@@ -268,9 +295,12 @@ make verify
 
 This runs Rust formatting, Clippy, workspace tests, Bun type checking, frontend
 tests, and the production Studio build. `make e2e` lets a coding agent run local
-browser acceptance against an already running stack. CI rejects Rust line
-coverage below 55%; the Studio API and graph adapters have their own Bun
-coverage report.
+browser acceptance against an already running stack. CI rejects Rust or Studio
+source coverage below 90%; Bun excludes test files themselves from the Studio
+coverage gate.
+
+The node, lifecycle, recovery, UI, and local acceptance case matrix is kept in
+[docs/testing.md](docs/testing.md).
 
 ## License
 

@@ -76,12 +76,15 @@ all ten node configurations and the provider/pool placement contract.
 Install `cargo-llvm-cov` and reproduce the CI threshold with:
 
 ```bash
-cargo llvm-cov --workspace --all-targets --locked --fail-under-lines 55
+cargo llvm-cov --workspace --all-targets --locked --fail-under-lines 90
+cd web && bun run test:coverage
 ```
 
 Set `A3S_WORKFLOW_TEST_DATABASE_URL` to a disposable PostgreSQL database to run
 the repository, memory, and Runtime evidence integration cases. CI always sets
 this value; local test runs without it skip only those database-backed cases.
+Both Rust and Studio source lines must remain at or above 90%. Studio coverage
+excludes test files themselves, so test code cannot inflate the gate.
 
 ## End-to-end test
 

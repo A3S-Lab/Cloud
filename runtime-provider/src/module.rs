@@ -211,9 +211,117 @@ fn map_runtime_error(error: RuntimeError) -> BootError {
 
 #[cfg(test)]
 mod tests {
-    use a3s_boot::HttpMethod;
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    use a3s_boot::{BootApplication, BootRequest, HttpMethod};
+    use a3s_runtime::contract::{
+        ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
+        RuntimeCapabilities, RuntimeLogStream, RuntimeNetworkSpec, RuntimeObservation,
+        RuntimeOutputSpec, RuntimeProcessSpec, RuntimeRemoval, RuntimeUnitClass, RuntimeUnitSpec,
+        RuntimeUnitState,
+    };
+    use a3s_runtime::FileRuntimeStateStore;
+    use serde::Serialize;
+    use serde_json::{json, Value};
+    use sha2::{Digest, Sha256};
+    use tempfile::TempDir;
 
     use super::*;
+    use crate::config::ProviderConfig;
+
+    fn digest(bytes: &[u8]) -> String {
+        format!("sha256:{:x}", Sha256::digest(bytes))
+    }
+
+    fn application(root: &Path, api_token: &str) -> BootApplication {
+        let driver = Arc::new(
+            ProcessRuntimeDriver::new(ProviderConfig {
+                id: "local".to_string(),
+                build: "module-test".to_string(),
+                public_base_url: "http://runtime.test".to_string(),
+                state_path: root.join("state"),
+                artifact_path: root.join("artifacts"),
+                api_token: api_token.to_string(),
+                max_input_bytes: 1024,
+            })
+            .expect("process Runtime driver"),
+        );
+        let state = Arc::new(FileRuntimeStateStore::new(root.join("state")));
+        let client = Arc::new(ManagedRuntimeClient::new(state, driver.clone()));
+        BootApplication::builder()
+            .import(RuntimeProviderModule::new(
+                client,
+                driver,
+                api_token.to_string(),
+            ))
+            .build()
+            .expect("Runtime provider application")
+    }
+
+    fn authenticated(method: HttpMethod, path: impl Into<String>) -> BootRequest {
+        BootRequest::new(method, path).with_header("authorization", "Bearer module-secret")
+    }
+
+    fn json_request<T: Serialize>(path: impl Into<String>, body: &T) -> BootRequest {
+        authenticated(HttpMethod::Post, path)
+            .with_json(body)
+            .expect("serialize Runtime request")
+    }
+
+    fn runtime_spec(runner: &Path) -> RuntimeUnitSpec {
+        let command = if cfg!(windows) {
+            vec![
+                "powershell.exe".to_string(),
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "Write-Output runtime-module".to_string(),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "printf runtime-module".to_string(),
+            ]
+        };
+        RuntimeUnitSpec {
+            schema: RuntimeUnitSpec::SCHEMA.to_string(),
+            unit_id: "workflow/module/node/1".to_string(),
+            generation: 1,
+            class: RuntimeUnitClass::Task,
+            artifact: ArtifactRef {
+                uri: url::Url::from_file_path(runner)
+                    .expect("runner file URL")
+                    .to_string(),
+                digest: digest(b"runner placeholder"),
+                media_type: "application/vnd.a3s.workflow.node-runner.v1".to_string(),
+            },
+            process: RuntimeProcessSpec {
+                command,
+                args: Vec::new(),
+                working_directory: None,
+                environment: BTreeMap::new(),
+            },
+            mounts: Vec::new(),
+            secrets: Vec::new(),
+            network: RuntimeNetworkSpec {
+                mode: NetworkMode::None,
+                ports: Vec::new(),
+            },
+            resources: ResourceLimits {
+                cpu_millis: 100,
+                memory_bytes: 1024 * 1024,
+                pids: 8,
+                ephemeral_storage_bytes: Some(1024 * 1024),
+                execution_timeout_ms: Some(10_000),
+            },
+            isolation: IsolationLevel::Process,
+            health: None,
+            restart: RestartPolicy::Never,
+            outputs: Vec::<RuntimeOutputSpec>::new(),
+            semantics_profile_digest: None,
+        }
+    }
 
     #[test]
     fn authorization_is_optional_but_exact_when_configured() {
@@ -290,5 +398,172 @@ mod tests {
             map_runtime_error(RuntimeError::Protocol("invalid".to_string())),
             BootError::BadGateway(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn controllers_expose_authenticated_runtime_lifecycle_and_artifacts() {
+        let root = TempDir::new().expect("temporary Runtime provider root");
+        let app = application(root.path(), "module-secret");
+
+        let unauthorized = app
+            .handle(BootRequest::new(HttpMethod::Get, "/v1/capabilities"))
+            .await;
+        assert_eq!(unauthorized.status(), 401);
+
+        let capabilities = app
+            .handle(authenticated(HttpMethod::Get, "/v1/capabilities"))
+            .await;
+        assert_eq!(capabilities.status(), 200);
+        let capabilities = capabilities
+            .body_json::<RuntimeCapabilities>()
+            .expect("capabilities JSON");
+        assert_eq!(capabilities.provider_id.as_str(), "local");
+        assert_eq!(capabilities.unit_classes, vec![RuntimeUnitClass::Task]);
+
+        let missing = app
+            .handle(json_request(
+                "/v1/units/inspect",
+                &json!({"unitId": "workflow/missing/node/1"}),
+            ))
+            .await;
+        assert_eq!(missing.status(), 200);
+        assert_eq!(
+            missing.body_json::<Value>().expect("missing inspection")["status"],
+            "not_found"
+        );
+
+        let malformed = app
+            .handle(json_request(
+                "/v1/units/inspect",
+                &json!({"wrongField": "unit"}),
+            ))
+            .await;
+        assert_eq!(malformed.status(), 400);
+
+        let runner = root.path().join("runner-placeholder");
+        tokio::fs::write(&runner, b"runner placeholder")
+            .await
+            .expect("write runner placeholder");
+        let spec = runtime_spec(&runner);
+        let apply = RuntimeApplyRequest {
+            schema: RuntimeApplyRequest::SCHEMA.to_string(),
+            request_id: "apply-module".to_string(),
+            deadline_at_ms: None,
+            spec: spec.clone(),
+        };
+        let applied = app.handle(json_request("/v1/units/apply", &apply)).await;
+        assert_eq!(
+            applied.status(),
+            200,
+            "{}",
+            applied.body_text().unwrap_or_default()
+        );
+        let observation = applied
+            .body_json::<RuntimeObservation>()
+            .expect("Runtime observation");
+        assert_eq!(observation.state, RuntimeUnitState::Succeeded);
+        assert_eq!(observation.unit_id, spec.unit_id);
+
+        let inspection = app
+            .handle(json_request(
+                "/v1/units/inspect",
+                &json!({"unitId": spec.unit_id}),
+            ))
+            .await;
+        assert_eq!(inspection.status(), 200);
+        assert_eq!(
+            inspection.body_json::<Value>().expect("inspection JSON")["status"],
+            "found"
+        );
+
+        let logs = RuntimeLogQuery {
+            schema: RuntimeLogQuery::SCHEMA.to_string(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            cursor: None,
+            limit: 10,
+            stream: Some(RuntimeLogStream::Stdout),
+        };
+        let logs = app.handle(json_request("/v1/units/logs", &logs)).await;
+        assert_eq!(logs.status(), 200);
+        assert!(logs
+            .body_json::<Vec<Value>>()
+            .expect("Runtime logs")
+            .iter()
+            .any(|chunk| chunk["data"]
+                .as_str()
+                .is_some_and(|data| data.contains("runtime-module"))));
+
+        let action = RuntimeActionRequest {
+            schema: RuntimeActionRequest::SCHEMA.to_string(),
+            request_id: "stop-module".to_string(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            deadline_at_ms: None,
+        };
+        let stopped = app.handle(json_request("/v1/units/stop", &action)).await;
+        assert_eq!(stopped.status(), 200);
+
+        let exec = RuntimeExecRequest {
+            schema: RuntimeExecRequest::SCHEMA.to_string(),
+            request_id: "exec-module".to_string(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            command: vec!["true".to_string()],
+            timeout_ms: 1_000,
+            deadline_at_ms: None,
+        };
+        let unsupported = app.handle(json_request("/v1/units/exec", &exec)).await;
+        assert_eq!(unsupported.status(), 422);
+
+        let remove = RuntimeActionRequest {
+            request_id: "remove-module".to_string(),
+            ..action
+        };
+        let removed = app.handle(json_request("/v1/units/remove", &remove)).await;
+        assert_eq!(removed.status(), 200);
+        let removal = removed
+            .body_json::<RuntimeRemoval>()
+            .expect("Runtime removal");
+        assert_eq!(removal.unit_id, spec.unit_id);
+        assert!(!removal.already_absent);
+
+        let artifact_hex = "a".repeat(64);
+        tokio::fs::create_dir_all(root.path().join("artifacts"))
+            .await
+            .expect("create artifacts directory");
+        tokio::fs::write(
+            root.path().join("artifacts").join(&artifact_hex),
+            b"artifact",
+        )
+        .await
+        .expect("write artifact");
+        let artifact = app
+            .handle(BootRequest::new(
+                HttpMethod::Get,
+                format!("/v1/artifacts/{artifact_hex}"),
+            ))
+            .await;
+        assert_eq!(artifact.status(), 200);
+        assert_eq!(artifact.body(), b"artifact");
+        assert_eq!(
+            artifact.header("cache-control"),
+            Some("public, immutable, max-age=31536000")
+        );
+
+        let invalid_artifact = app
+            .handle(BootRequest::new(
+                HttpMethod::Get,
+                "/v1/artifacts/not-a-digest",
+            ))
+            .await;
+        assert_eq!(invalid_artifact.status(), 400);
+        let missing_artifact = app
+            .handle(BootRequest::new(
+                HttpMethod::Get,
+                format!("/v1/artifacts/{}", "b".repeat(64)),
+            ))
+            .await;
+        assert_eq!(missing_artifact.status(), 404);
     }
 }

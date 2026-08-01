@@ -1,8 +1,146 @@
 suite "workflow-studio" {
     version = 1
 
+    scenario "core-studio-authoring" {
+        name = "Author Runtime policy without non-core console chrome"
+        surface = "web"
+        timeout_ms = 120000
+
+        navigate "open-studio" {
+            url = "http://127.0.0.1:3000"
+        }
+
+        viewport "desktop" {
+            width = 1440
+            height = 900
+        }
+
+        wait "workflow-loaded" {
+            text = "Welcome to A3S Workflow"
+        }
+
+        expect "input-node-available" {
+            visible = css("[data-testid='add-node-start']")
+        }
+
+        expect "template-node-available" {
+            visible = css("[data-testid='add-node-template']")
+        }
+
+        expect "llm-node-available" {
+            visible = css("[data-testid='add-node-llm']")
+        }
+
+        expect "agent-node-available" {
+            visible = css("[data-testid='add-node-agent']")
+        }
+
+        expect "tool-node-available" {
+            visible = css("[data-testid='add-node-tool']")
+        }
+
+        expect "router-node-available" {
+            visible = css("[data-testid='add-node-router']")
+        }
+
+        expect "memory-node-available" {
+            visible = css("[data-testid='add-node-memory']")
+        }
+
+        expect "http-node-available" {
+            visible = css("[data-testid='add-node-http']")
+        }
+
+        expect "approval-node-available" {
+            visible = css("[data-testid='add-node-approval']")
+        }
+
+        expect "output-node-available" {
+            visible = css("[data-testid='add-node-output']")
+        }
+
+        click "add-template" {
+            target = testid("add-node-template")
+        }
+
+        expect "template-selected" {
+            visible = css("[data-testid='node-inspector']")
+        }
+
+        fill "rename-template" {
+            target = label("Display name")
+            value = "Runtime prompt renderer"
+        }
+
+        fill "select-provider" {
+            target = css("[aria-label='Runtime provider']")
+            value = "production"
+        }
+
+        fill "select-pool" {
+            target = css("[aria-label='Runtime pool']")
+            value = "cpu"
+        }
+
+        select "select-isolation" {
+            target = css("[aria-label='Runtime isolation']")
+            values = ["sandbox"]
+        }
+
+        select "select-network" {
+            target = css("[aria-label='Runtime network']")
+            values = ["none"]
+        }
+
+        fill "configure-template" {
+            target = css("[aria-label='Node configuration JSON']")
+            value = "{\"value\":{\"message\":\"Runtime {{input.name}}\"}}"
+        }
+
+        click "apply-template-config" {
+            target = role("button", "Apply JSON")
+        }
+
+        expect "runtime-placement-visible" {
+            text = "production / cpu"
+        }
+
+        click "delete-template" {
+            target = css("[data-testid='node-inspector'] .danger-button")
+        }
+
+        expect "template-removed" {
+            text = "3 Runtime units"
+        }
+
+        click "reject-duplicate-start" {
+            target = testid("add-node-start")
+        }
+
+        expect "duplicate-boundary-message" {
+            text = "This workflow already has a start node."
+        }
+
+        click "dismiss-message" {
+            target = css(".toast")
+        }
+
+        fill "invalid-run-input" {
+            target = testid("run-input")
+            value = "{invalid"
+        }
+
+        click "reject-invalid-run" {
+            target = role("button", "Run graph")
+        }
+
+        expect "invalid-json-message" {
+            visible = css(".toast.error")
+        }
+    }
+
     scenario "runtime-backed-graph" {
-        name = "Run every workflow node through A3S Runtime"
+        name = "Run the sample graph through A3S Runtime"
         surface = "web"
         timeout_ms = 120000
 
@@ -50,6 +188,18 @@ suite "workflow-studio" {
 
         expect "flow-output" {
             text = "a3s-flow"
+        }
+
+        click "inspect-start-runtime" {
+            target = css(".track-item:first-child")
+        }
+
+        expect "runtime-evidence-visible" {
+            visible = css("[data-testid='runtime-evidence']")
+        }
+
+        expect "runtime-provider-visible" {
+            text = "local"
         }
 
         screenshot "completed-workflow" {

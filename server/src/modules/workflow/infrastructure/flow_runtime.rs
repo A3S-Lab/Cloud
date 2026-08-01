@@ -783,8 +783,20 @@ fn workflow_execution_error(error: WorkflowError) -> FlowError {
 
 #[cfg(test)]
 mod tests {
-    use a3s_workflow_protocol::{NodeData, NodeRuntimePolicy, Position, NODE_RESULT_SCHEMA};
+    use a3s_flow::{FlowEventEnvelope, RuntimeCommand, WorkflowSpec};
+    use a3s_runtime::contract::{
+        RuntimeActionRequest, RuntimeCapabilities, RuntimeExecRequest, RuntimeExecResult,
+        RuntimeFailure, RuntimeInspection, RuntimeLogChunk, RuntimeLogQuery, RuntimeObservation,
+        RuntimeOutputArtifact, RuntimeRemoval,
+    };
+    use a3s_runtime::{RuntimeError, RuntimeResult};
+    use a3s_workflow_protocol::{
+        NodeData, NodeRuntimePolicy, NodeSecretReference, NodeSecretTarget, Position,
+        NODE_RESULT_SCHEMA,
+    };
+    use chrono::Utc;
     use serde_json::{json, Map};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
 
@@ -828,6 +840,897 @@ mod tests {
             suspension: None,
             metadata: Map::new(),
         }
+    }
+
+    fn test_database_url() -> Option<String> {
+        std::env::var("A3S_WORKFLOW_TEST_DATABASE_URL").ok()
+    }
+
+    fn graph_config() -> GraphRuntimeConfig {
+        GraphRuntimeConfig {
+            runtime: RuntimeConfig {
+                default_provider: "local".to_string(),
+                invocation_base_url: "http://control.test".to_string(),
+                node_artifact_uri: "file:///a3s-workflow-node".to_string(),
+                node_artifact_digest: format!("sha256:{}", "a".repeat(64)),
+                node_artifact_media_type: "application/vnd.a3s.workflow.node-runner.v1".to_string(),
+                node_command: Vec::new(),
+                default_cpu_millis: 500,
+                default_memory_bytes: 256 * 1024 * 1024,
+                default_pids: 128,
+                default_timeout_ms: 120_000,
+                output_max_bytes: 1024,
+            },
+            providers: BTreeMap::from([(
+                "local".to_string(),
+                RuntimeProviderConfig {
+                    endpoint: "http://runtime.test".to_string(),
+                    api_token: "runtime-token".to_string(),
+                },
+            )]),
+            gateway: GatewayConfig {
+                base_url: "http://gateway.test/v1".to_string(),
+                api_key_reference: "env://GATEWAY_KEY".to_string(),
+                default_model: "test-model".to_string(),
+            },
+            memory: MemoryConfig {
+                base_url: "http://memory.test/api/v1".to_string(),
+                api_key_reference: "env://MEMORY_KEY".to_string(),
+            },
+            http_allowed_hosts: vec!["example.test".to_string()],
+            max_http_response_bytes: 4096,
+        }
+    }
+
+    async fn replay_runtime() -> Option<GraphRuntime> {
+        let database_url = test_database_url()?;
+        let executions = Arc::new(
+            super::super::node_execution_store::PostgresNodeExecutionStore::connect(
+                &database_url,
+                2,
+            )
+            .await
+            .expect("connect execution store"),
+        );
+        Some(GraphRuntime::new(graph_config(), executions).expect("graph runtime"))
+    }
+
+    fn definition(
+        id: &str,
+        nodes: Vec<WorkflowNode>,
+        edges: Vec<WorkflowEdge>,
+    ) -> WorkflowDefinition {
+        let now = Utc::now();
+        WorkflowDefinition {
+            id: id.to_string(),
+            name: format!("{id} workflow"),
+            description: "Runtime replay coverage".to_string(),
+            version: 1,
+            nodes,
+            edges,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn node(id: &str, kind: NodeKind) -> WorkflowNode {
+        let mut value = invocation(kind).node;
+        value.id = id.to_string();
+        value.data.label = id.to_string();
+        value
+    }
+
+    fn edge(id: &str, source: &str, target: &str, handle: Option<&str>) -> WorkflowEdge {
+        WorkflowEdge {
+            id: id.to_string(),
+            source: source.to_string(),
+            target: target.to_string(),
+            source_handle: handle.map(str::to_string),
+        }
+    }
+
+    fn envelope(sequence: u64, event: FlowEvent) -> FlowEventEnvelope {
+        FlowEventEnvelope {
+            run_id: "replay-run".to_string(),
+            sequence,
+            event_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            event,
+        }
+    }
+
+    fn completed(
+        sequence: u64,
+        node_id: &str,
+        phase: NodeExecutionPhase,
+        value: NodeExecutionResult,
+    ) -> FlowEventEnvelope {
+        envelope(
+            sequence,
+            FlowEvent::StepCompleted {
+                step_id: GraphRuntime::step_id(node_id, phase),
+                output: serde_json::to_value(value).expect("serialize node result"),
+            },
+        )
+    }
+
+    fn workflow_invocation(
+        definition: WorkflowDefinition,
+        history: Vec<FlowEventEnvelope>,
+    ) -> WorkflowInvocation {
+        let input = serde_json::to_value(GraphRunInput {
+            definition: definition.clone(),
+            input: json!({"name": "Runtime"}),
+        })
+        .expect("serialize graph input");
+        WorkflowInvocation {
+            run_id: "replay-run".to_string(),
+            spec: WorkflowSpec::rust_embedded(
+                format!("workflow.{}", definition.id),
+                "1",
+                "test",
+                "run",
+            ),
+            input,
+            history,
+        }
+    }
+
+    fn scheduled_ids(command: RuntimeCommand) -> Vec<String> {
+        match command {
+            RuntimeCommand::ScheduleSteps { steps } => {
+                steps.into_iter().map(|step| step.step_id).collect()
+            }
+            other => panic!("expected scheduled steps, got {other:?}"),
+        }
+    }
+
+    #[derive(Clone)]
+    struct StubRuntimeClient {
+        output_uri: String,
+        output: Vec<u8>,
+        state: RuntimeUnitState,
+    }
+
+    impl StubRuntimeClient {
+        fn unavailable<T>() -> RuntimeResult<T> {
+            Err(RuntimeError::ProviderUnavailable(
+                "unused test operation".to_string(),
+            ))
+        }
+    }
+
+    #[async_trait]
+    impl RuntimeClient for StubRuntimeClient {
+        async fn capabilities(&self) -> RuntimeResult<RuntimeCapabilities> {
+            Self::unavailable()
+        }
+
+        async fn apply(&self, request: &RuntimeApplyRequest) -> RuntimeResult<RuntimeObservation> {
+            let succeeded = self.state == RuntimeUnitState::Succeeded;
+            Ok(RuntimeObservation {
+                schema: RuntimeObservation::SCHEMA.to_string(),
+                unit_id: request.spec.unit_id.clone(),
+                generation: request.spec.generation,
+                spec_digest: request.spec.digest().map_err(RuntimeError::Protocol)?,
+                class: request.spec.class,
+                state: self.state,
+                provider_resource_id: Some("test-resource".to_string()),
+                provider_build: Some("coverage-runtime".to_string()),
+                observed_at_ms: now_ms(),
+                started_at_ms: Some(now_ms()),
+                finished_at_ms: Some(now_ms()),
+                health: None,
+                outputs: if succeeded {
+                    vec![RuntimeOutputArtifact {
+                        name: "result".to_string(),
+                        artifact: ArtifactRef {
+                            uri: self.output_uri.clone(),
+                            digest: digest(&self.output),
+                            media_type: NODE_RESULT_MEDIA_TYPE.to_string(),
+                        },
+                        size_bytes: self.output.len() as u64,
+                    }]
+                } else {
+                    Vec::new()
+                },
+                usage: None,
+                evidence: None,
+                provider_attestation: None,
+                failure: (self.state == RuntimeUnitState::Failed).then(|| RuntimeFailure {
+                    code: "node_failed".to_string(),
+                    message: "stub Runtime failed".to_string(),
+                    retryable: false,
+                }),
+            })
+        }
+
+        async fn inspect(&self, _unit_id: &str) -> RuntimeResult<RuntimeInspection> {
+            Self::unavailable()
+        }
+
+        async fn stop(&self, _request: &RuntimeActionRequest) -> RuntimeResult<RuntimeInspection> {
+            Self::unavailable()
+        }
+
+        async fn remove(&self, _request: &RuntimeActionRequest) -> RuntimeResult<RuntimeRemoval> {
+            Self::unavailable()
+        }
+
+        async fn logs(&self, _query: &RuntimeLogQuery) -> RuntimeResult<Vec<RuntimeLogChunk>> {
+            Self::unavailable()
+        }
+
+        async fn exec(&self, _request: &RuntimeExecRequest) -> RuntimeResult<RuntimeExecResult> {
+            Self::unavailable()
+        }
+    }
+
+    async fn artifact_server(
+        routes: BTreeMap<String, (u16, Vec<u8>)>,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind artifact server");
+        let address = listener.local_addr().expect("artifact server address");
+        let routes = Arc::new(routes);
+        let task = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    break;
+                };
+                let routes = Arc::clone(&routes);
+                tokio::spawn(async move {
+                    let mut request = vec![0_u8; 4096];
+                    let Ok(read) = stream.read(&mut request).await else {
+                        return;
+                    };
+                    let request = String::from_utf8_lossy(&request[..read]);
+                    let path = request
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split_whitespace().nth(1))
+                        .unwrap_or("/");
+                    let (status, body) = routes
+                        .get(path)
+                        .cloned()
+                        .unwrap_or_else(|| (404, b"missing".to_vec()));
+                    let reason = if status == 200 { "OK" } else { "Error" };
+                    let response = format!(
+                        "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    if stream.write_all(response.as_bytes()).await.is_ok() {
+                        let _ = stream.write_all(&body).await;
+                    }
+                });
+            }
+        });
+        (format!("http://{address}"), task)
+    }
+
+    fn runtime_with_client(
+        config: GraphRuntimeConfig,
+        executions: SharedNodeExecutionStore,
+        client: Arc<dyn RuntimeClient>,
+    ) -> GraphRuntime {
+        GraphRuntime {
+            config: Arc::new(config),
+            providers: Arc::new(BTreeMap::from([("local".to_string(), client)])),
+            executions,
+            client: reqwest::Client::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn workflow_replay_schedules_runtime_nodes_routes_and_approvals() {
+        let Some(runtime) = replay_runtime().await else {
+            return;
+        };
+
+        let linear = definition(
+            "linear-replay",
+            vec![
+                node("start", NodeKind::Start),
+                node("output", NodeKind::Output),
+            ],
+            vec![edge("start-output", "start", "output", None)],
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(linear.clone(), Vec::new()))
+                    .await
+                    .expect("schedule start")
+            ),
+            vec!["node:start:execute"]
+        );
+        let start_done = completed(
+            1,
+            "start",
+            NodeExecutionPhase::Execute,
+            NodeExecutionResult::completed(json!({"name": "Runtime"})),
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(
+                        linear.clone(),
+                        vec![start_done.clone()],
+                    ))
+                    .await
+                    .expect("schedule output")
+            ),
+            vec!["node:output:execute"]
+        );
+        let output = json!({"message": "complete"});
+        let command = runtime
+            .run_workflow(workflow_invocation(
+                linear,
+                vec![
+                    start_done.clone(),
+                    completed(
+                        2,
+                        "output",
+                        NodeExecutionPhase::Execute,
+                        NodeExecutionResult::completed(output.clone()),
+                    ),
+                ],
+            ))
+            .await
+            .expect("complete graph");
+        assert_eq!(command, RuntimeCommand::Complete { output });
+
+        let routed = definition(
+            "router-replay",
+            vec![
+                node("start", NodeKind::Start),
+                node("router", NodeKind::Router),
+                node("left", NodeKind::Template),
+                node("right", NodeKind::Template),
+                node("output", NodeKind::Output),
+            ],
+            vec![
+                edge("start-router", "start", "router", None),
+                edge("router-left", "router", "left", Some("left")),
+                edge("router-right", "router", "right", Some("right")),
+                edge("left-output", "left", "output", None),
+                edge("right-output", "right", "output", None),
+            ],
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(
+                        routed.clone(),
+                        vec![start_done.clone()],
+                    ))
+                    .await
+                    .expect("schedule router")
+            ),
+            vec!["node:router:execute"]
+        );
+        let mut selected_left = result(Some("left"));
+        selected_left.output = json!({"selected": "left"});
+        let route_done = completed(
+            2,
+            "router",
+            NodeExecutionPhase::Execute,
+            selected_left.clone(),
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(
+                        routed.clone(),
+                        vec![start_done.clone(), route_done.clone()],
+                    ))
+                    .await
+                    .expect("schedule selected branch")
+            ),
+            vec!["node:left:execute"]
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(
+                        routed.clone(),
+                        vec![
+                            start_done.clone(),
+                            route_done,
+                            completed(
+                                3,
+                                "left",
+                                NodeExecutionPhase::Execute,
+                                NodeExecutionResult::completed(json!({"branch": "left"})),
+                            ),
+                        ],
+                    ))
+                    .await
+                    .expect("join active branch")
+            ),
+            vec!["node:output:execute"]
+        );
+        let unknown_route = runtime
+            .run_workflow(workflow_invocation(
+                routed,
+                vec![
+                    start_done.clone(),
+                    completed(
+                        2,
+                        "router",
+                        NodeExecutionPhase::Execute,
+                        result(Some("missing")),
+                    ),
+                ],
+            ))
+            .await
+            .expect_err("reject unknown route");
+        assert!(unknown_route.to_string().contains("selected unknown route"));
+
+        let approval = definition(
+            "approval-replay",
+            vec![
+                node("start", NodeKind::Start),
+                node("approval", NodeKind::Approval),
+                node("output", NodeKind::Output),
+            ],
+            vec![
+                edge("start-approval", "start", "approval", None),
+                edge("approval-output", "approval", "output", None),
+            ],
+        );
+        let mut suspension = result(None);
+        suspension.suspension = Some(NodeSuspension::HumanApproval {
+            message: "Approve deployment".to_string(),
+            details: json!({"environment": "production"}),
+        });
+        let approval_done = completed(2, "approval", NodeExecutionPhase::Execute, suspension);
+        let command = runtime
+            .run_workflow(workflow_invocation(
+                approval.clone(),
+                vec![start_done.clone(), approval_done.clone()],
+            ))
+            .await
+            .expect("create approval hook");
+        match command {
+            RuntimeCommand::CreateHook {
+                hook_id, metadata, ..
+            } => {
+                assert_eq!(hook_id, "approval");
+                assert_eq!(metadata["kind"], "human_approval");
+                assert_eq!(metadata["labels"]["node_id"], "approval");
+            }
+            other => panic!("expected approval hook, got {other:?}"),
+        }
+
+        let disposed = runtime
+            .run_workflow(workflow_invocation(
+                approval.clone(),
+                vec![
+                    start_done.clone(),
+                    envelope(
+                        2,
+                        FlowEvent::HookDisposed {
+                            hook_id: "approval".to_string(),
+                        },
+                    ),
+                ],
+            ))
+            .await
+            .expect("disposed approval becomes workflow failure");
+        assert!(matches!(
+            disposed,
+            RuntimeCommand::Fail { error } if error.contains("was disposed")
+        ));
+
+        let received = envelope(
+            3,
+            FlowEvent::HookReceived {
+                hook_id: "approval".to_string(),
+                payload: json!({"approved": true}),
+            },
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(
+                        approval.clone(),
+                        vec![start_done.clone(), approval_done.clone(), received.clone()],
+                    ))
+                    .await
+                    .expect("schedule approval resume")
+            ),
+            vec!["node:approval:resume"]
+        );
+        assert_eq!(
+            scheduled_ids(
+                runtime
+                    .run_workflow(workflow_invocation(
+                        approval.clone(),
+                        vec![
+                            start_done.clone(),
+                            approval_done,
+                            received,
+                            completed(
+                                4,
+                                "approval",
+                                NodeExecutionPhase::Resume,
+                                NodeExecutionResult::completed(json!({"approved": true})),
+                            ),
+                        ],
+                    ))
+                    .await
+                    .expect("schedule output after approval")
+            ),
+            vec!["node:output:execute"]
+        );
+        let missing_suspension = runtime
+            .run_workflow(workflow_invocation(
+                approval,
+                vec![
+                    start_done,
+                    completed(
+                        2,
+                        "approval",
+                        NodeExecutionPhase::Execute,
+                        NodeExecutionResult::completed(Value::Null),
+                    ),
+                ],
+            ))
+            .await
+            .expect_err("approval must request suspension");
+        assert!(missing_suspension
+            .to_string()
+            .contains("completed without requesting approval"));
+    }
+
+    #[tokio::test]
+    async fn runtime_spec_preserves_policy_secrets_and_service_context() {
+        let Some(database_url) = test_database_url() else {
+            return;
+        };
+        let executions = Arc::new(
+            super::super::node_execution_store::PostgresNodeExecutionStore::connect(
+                &database_url,
+                2,
+            )
+            .await
+            .expect("connect execution store"),
+        );
+        let runtime = GraphRuntime::new(graph_config(), executions.clone()).expect("graph runtime");
+        let mut value = invocation(NodeKind::Llm);
+        value.run_id = format!("runtime-spec-{}", Uuid::new_v4());
+        value.step_id = "node:llm:execute".to_string();
+        value.attempt = 3;
+        value.node.data.runtime = NodeRuntimePolicy {
+            provider: Some("local".to_string()),
+            pool: Some("gpu".to_string()),
+            cpu_millis: Some(2_000),
+            memory_bytes: Some(8 * 1024 * 1024 * 1024),
+            pids: Some(512),
+            timeout_ms: Some(45_000),
+            isolation: Some(NodeIsolation::Confidential),
+            network: Some(NodeNetworkMode::Outbound),
+            secrets: vec![
+                NodeSecretReference {
+                    name: "custom-api-key".to_string(),
+                    reference: "env://CUSTOM_API_KEY".to_string(),
+                    target: NodeSecretTarget::Environment {
+                        variable: "CUSTOM_API_KEY".to_string(),
+                    },
+                },
+                NodeSecretReference {
+                    name: "client-certificate".to_string(),
+                    reference: "vault://workflow/client-certificate".to_string(),
+                    target: NodeSecretTarget::File {
+                        path: "/run/secrets/client.pem".to_string(),
+                        mode: 0o400,
+                    },
+                },
+            ],
+        };
+        let prepared = executions
+            .prepare(&value, "local-gpu", Some("gpu"))
+            .await
+            .expect("prepare invocation");
+        let spec = runtime
+            .runtime_spec(&value, &prepared)
+            .expect("runtime unit spec");
+
+        assert_eq!(runtime.provider_selector(&value.node), "local-gpu");
+        assert_eq!(
+            spec.unit_id,
+            format!("workflow/{}/node/llm/execute", value.run_id)
+        );
+        assert_eq!(spec.generation, 3);
+        assert_eq!(spec.resources.cpu_millis, 2_000);
+        assert_eq!(spec.resources.memory_bytes, 8 * 1024 * 1024 * 1024);
+        assert_eq!(spec.resources.pids, 512);
+        assert_eq!(spec.resources.execution_timeout_ms, Some(45_000));
+        assert_eq!(spec.resources.ephemeral_storage_bytes, Some(4_096));
+        assert_eq!(spec.isolation, IsolationLevel::Confidential);
+        assert_eq!(spec.network.mode, NetworkMode::Outbound);
+        assert_eq!(spec.process.environment["A3S_RUNTIME_POOL"], "gpu");
+        assert_eq!(spec.process.environment["A3S_WORKFLOW_NODE_KIND"], "llm");
+        assert_eq!(spec.mounts.len(), 1);
+        match &spec.mounts[0].source {
+            RuntimeMountSource::Artifact { artifact } => {
+                assert_eq!(artifact.digest, prepared.invocation_digest);
+                assert!(artifact.uri.contains(&prepared.execution_id));
+                assert!(artifact.uri.contains(&prepared.token));
+            }
+            other => panic!("expected invocation artifact mount, got {other:?}"),
+        }
+        assert_eq!(spec.secrets.len(), 3);
+        assert!(spec
+            .secrets
+            .iter()
+            .any(|secret| secret.name == "a3s-gateway-api-key"));
+        assert!(spec.secrets.iter().any(|secret| {
+            secret.name == "client-certificate"
+                && matches!(
+                    &secret.target,
+                    SecretTarget::File { path, mode }
+                        if path == "/run/secrets/client.pem" && *mode == 0o400
+                )
+        }));
+        assert_eq!(spec.outputs[0].max_bytes, 1_024);
+        assert_eq!(
+            spec.semantics_profile_digest,
+            Some(semantics_digest(
+                &graph_config().runtime.node_artifact_digest
+            ))
+        );
+
+        let services = runtime.services();
+        assert_eq!(services.gateway_base_url, "http://gateway.test/v1");
+        assert_eq!(
+            services.memory_base_url.as_deref(),
+            Some("http://memory.test/api/v1")
+        );
+        assert_eq!(services.http_allowed_hosts, vec!["example.test"]);
+
+        let mut memory = invocation(NodeKind::Memory);
+        assert!(runtime
+            .runtime_secrets(&memory)
+            .expect("memory secret")
+            .iter()
+            .any(|secret| secret.name == "a3s-memory-api-key"));
+
+        memory.node.kind = NodeKind::Llm;
+        memory.node.data.runtime.secrets.push(NodeSecretReference {
+            name: "a3s-gateway-api-key".to_string(),
+            reference: "env://DUPLICATE".to_string(),
+            target: NodeSecretTarget::Environment {
+                variable: "DUPLICATE".to_string(),
+            },
+        });
+        assert!(runtime
+            .runtime_secrets(&memory)
+            .expect_err("duplicate secret name")
+            .to_string()
+            .contains("duplicate Runtime secret names"));
+
+        let mut invalid = graph_config();
+        invalid
+            .providers
+            .get_mut("local")
+            .expect("provider")
+            .endpoint = "://invalid".to_string();
+        assert!(GraphRuntime::new(invalid, executions).is_err());
+    }
+
+    #[tokio::test]
+    async fn runtime_dispatch_records_evidence_and_surfaces_failures() {
+        let Some(database_url) = test_database_url() else {
+            return;
+        };
+        let executions = Arc::new(
+            super::super::node_execution_store::PostgresNodeExecutionStore::connect(
+                &database_url,
+                2,
+            )
+            .await
+            .expect("connect execution store"),
+        );
+        let successful_result = NodeExecutionResult::completed(json!({"rendered": "hello"}));
+        let output = serde_json::to_vec(&successful_result).expect("serialize result");
+        let (base_url, server) = artifact_server(BTreeMap::from([(
+            "/result".to_string(),
+            (200, output.clone()),
+        )]))
+        .await;
+        let runtime = runtime_with_client(
+            graph_config(),
+            executions.clone(),
+            Arc::new(StubRuntimeClient {
+                output_uri: format!("{base_url}/result"),
+                output: output.clone(),
+                state: RuntimeUnitState::Succeeded,
+            }),
+        );
+        let run_id = format!("runtime-dispatch-{}", Uuid::new_v4());
+        let step_id = "node:template:execute".to_string();
+        let step_input = GraphStepInput {
+            workflow_id: "workflow".to_string(),
+            workflow_version: 7,
+            phase: NodeExecutionPhase::Execute,
+            node: node("template", NodeKind::Template),
+            workflow_input: json!({"name": "hello"}),
+            dependencies: BTreeMap::from([("start".to_string(), json!({"ready": true}))]),
+            resume_payload: None,
+        };
+        let step = StepInvocation {
+            run_id: run_id.clone(),
+            step_id: step_id.clone(),
+            step_name: "template:execute".to_string(),
+            input: serde_json::to_value(step_input).expect("serialize step input"),
+            history: vec![envelope(
+                1,
+                FlowEvent::StepStarted {
+                    step_id: step_id.clone(),
+                    attempt: 2,
+                },
+            )],
+        };
+        let result_value = runtime.run_step(step).await.expect("dispatch runtime step");
+        assert_eq!(
+            serde_json::from_value::<NodeExecutionResult>(result_value).expect("decode result"),
+            successful_result
+        );
+        let evidence = executions
+            .list_for_run(&run_id)
+            .await
+            .expect("list Runtime evidence");
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(evidence[0].attempt, 2);
+        assert_eq!(evidence[0].state, "succeeded");
+        assert_eq!(evidence[0].provider_id, "local");
+        assert!(evidence[0]
+            .unit_id
+            .as_deref()
+            .is_some_and(|id| id.contains(&run_id)));
+        assert!(evidence[0].observation.is_some());
+
+        let missing_attempt = runtime
+            .run_step(StepInvocation {
+                run_id: format!("missing-attempt-{}", Uuid::new_v4()),
+                step_id: step_id.clone(),
+                step_name: "template:execute".to_string(),
+                input: json!({
+                    "workflowId": "workflow",
+                    "workflowVersion": 1,
+                    "phase": "execute",
+                    "node": node("template", NodeKind::Template),
+                    "workflowInput": null,
+                    "dependencies": {}
+                }),
+                history: Vec::new(),
+            })
+            .await
+            .expect_err("durable attempt required");
+        assert!(missing_attempt
+            .to_string()
+            .contains("has no durable attempt identity"));
+
+        let mut invalid = invocation(NodeKind::Template);
+        invalid.schema = "unsupported".to_string();
+        assert!(runtime
+            .dispatch(invalid)
+            .await
+            .expect_err("invalid invocation")
+            .to_string()
+            .contains("invalid node invocation"));
+
+        let mut unconfigured = invocation(NodeKind::Template);
+        unconfigured.run_id = format!("unconfigured-{}", Uuid::new_v4());
+        unconfigured.node.data.runtime.provider = Some("missing".to_string());
+        assert!(runtime
+            .dispatch(unconfigured)
+            .await
+            .expect_err("unconfigured provider")
+            .to_string()
+            .contains("unconfigured Runtime provider"));
+
+        for (state, expected) in [
+            (RuntimeUnitState::Failed, "node_failed: stub Runtime failed"),
+            (RuntimeUnitState::Stopped, "Runtime unit ended in Stopped"),
+        ] {
+            let failed_runtime = runtime_with_client(
+                graph_config(),
+                executions.clone(),
+                Arc::new(StubRuntimeClient {
+                    output_uri: format!("{base_url}/result"),
+                    output: output.clone(),
+                    state,
+                }),
+            );
+            let mut failed = invocation(NodeKind::Template);
+            failed.run_id = format!("runtime-{state:?}-{}", Uuid::new_v4());
+            let error = failed_runtime
+                .dispatch(failed)
+                .await
+                .expect_err("terminal Runtime failure");
+            assert!(error.to_string().contains(expected));
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn output_artifacts_reject_unsafe_or_corrupt_responses() {
+        let Some(runtime) = replay_runtime().await else {
+            return;
+        };
+        let valid = b"valid artifact".to_vec();
+        let too_large = vec![
+            b'x';
+            usize::try_from(runtime.config.runtime.output_max_bytes + 1)
+                .expect("test output limit fits usize")
+        ];
+        let (base_url, server) = artifact_server(BTreeMap::from([
+            ("/ok".to_string(), (200, valid.clone())),
+            ("/status".to_string(), (500, b"provider error".to_vec())),
+            ("/large".to_string(), (200, too_large.clone())),
+        ]))
+        .await;
+
+        assert_eq!(
+            runtime
+                .fetch_output(
+                    &format!("{base_url}/ok"),
+                    valid.len() as u64,
+                    &digest(&valid)
+                )
+                .await
+                .expect("fetch valid artifact"),
+            valid
+        );
+        assert!(runtime
+            .fetch_output(
+                &format!("{base_url}/ok"),
+                runtime.config.runtime.output_max_bytes + 1,
+                &digest(b"valid artifact"),
+            )
+            .await
+            .expect_err("reject reported oversize")
+            .to_string()
+            .contains("exceeds configured output limit"));
+        assert!(runtime
+            .fetch_output("not a URI", 1, &digest(b"x"))
+            .await
+            .expect_err("reject malformed URI")
+            .to_string()
+            .contains("invalid output artifact URI"));
+        assert!(runtime
+            .fetch_output("file:///tmp/result.json", 1, &digest(b"x"))
+            .await
+            .expect_err("reject local artifact URI")
+            .to_string()
+            .contains("must use http:// or https://"));
+        assert!(runtime
+            .fetch_output(
+                &format!("{base_url}/status"),
+                14,
+                &digest(b"provider error")
+            )
+            .await
+            .expect_err("reject provider status")
+            .to_string()
+            .contains("returned 500"));
+        assert!(runtime
+            .fetch_output(&format!("{base_url}/large"), 1, &digest(&too_large))
+            .await
+            .expect_err("reject actual oversize")
+            .to_string()
+            .contains("exceeds configured output limit"));
+        assert!(runtime
+            .fetch_output(&format!("{base_url}/ok"), 1, &digest(b"wrong"))
+            .await
+            .expect_err("reject digest mismatch")
+            .to_string()
+            .contains("digest mismatch"));
+        server.abort();
     }
 
     #[test]
