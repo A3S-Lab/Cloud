@@ -4,10 +4,10 @@ import { pluginReact } from '@rsbuild/plugin-react';
 export default defineConfig({
   plugins: [pluginReact()],
   html: {
-    title: 'A3S Workflow — AI Native Workflow Engine',
+    title: 'A3S Workflow — AI 原生工作流引擎',
     meta: {
       description:
-        'Design durable AI workflows where every node executes through A3S Runtime.',
+        '设计持久化 AI 工作流，所有节点均通过 A3S Runtime 独立执行。',
       themeColor: '#101118',
     },
   },

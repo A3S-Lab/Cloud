@@ -281,32 +281,32 @@ describe('Studio workflow behavior', () => {
 
     const renderer = await renderApp();
     expect(renderer.root.findByProps({ 'data-testid': 'workflow-canvas' })).toBeDefined();
-    expect(renderer.root.findByProps({ 'aria-label': 'Primary navigation' })).toBeDefined();
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Node library' })).toHaveLength(0);
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Test run' })).toHaveLength(0);
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Node inspector' })).toHaveLength(0);
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Account' })).toHaveLength(0);
-    expect(renderer.root.findByProps({ 'aria-label': 'Select workflow' }).props.value).toBe(
+    expect(renderer.root.findByProps({ 'aria-label': '主导航' })).toBeDefined();
+    expect(renderer.root.findAllByProps({ 'aria-label': '节点库' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': '测试运行' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': '节点检查器' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': '账户' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.value).toBe(
       'workflow-1',
     );
 
     await act(async () => {
       button(renderer, 'open-node-library').props.onClick();
     });
-    expect(renderer.root.findByProps({ 'aria-label': 'Node library' })).toBeDefined();
-    expect(renderer.root.findByProps({ 'aria-label': 'Search nodes' })).toBeDefined();
+    expect(renderer.root.findByProps({ 'aria-label': '节点库' })).toBeDefined();
+    expect(renderer.root.findByProps({ 'aria-label': '搜索节点' })).toBeDefined();
     expect(button(renderer, 'add-node-template')).toBeDefined();
 
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Search nodes' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '搜索节点' }).props.onChange({
         target: { value: 'does-not-exist' },
       });
     });
     expect(textContent(renderer.root.findByProps({ className: 'catalog-empty' }))).toContain(
-      'No matching nodes',
+      '没有匹配的节点',
     );
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Search nodes' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '搜索节点' }).props.onChange({
         target: { value: 'template' },
       });
     });
@@ -315,10 +315,10 @@ describe('Studio workflow behavior', () => {
       button(renderer, 'add-node-template').props.onClick();
     });
     expect(renderer.root.findAllByProps({ 'data-testid': 'node-inspector' })).toHaveLength(1);
-    expect(textContent(renderer.root.findByProps({ className: 'toast' }))).toContain('node added');
+    expect(textContent(renderer.root.findByProps({ className: 'toast' }))).toContain('已添加');
 
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Display name' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '显示名称' }).props.onChange({
         target: { value: 'Prompt renderer' },
       });
     });
@@ -340,13 +340,13 @@ describe('Studio workflow behavior', () => {
     await act(async () => {
       flow.props.onPaneClick();
     });
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Node inspector' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': '节点检查器' })).toHaveLength(0);
 
     await act(async () => {
       button(renderer, 'open-node-library').props.onClick();
     });
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Search nodes' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '搜索节点' }).props.onChange({
         target: { value: '' },
       });
     });
@@ -354,27 +354,27 @@ describe('Studio workflow behavior', () => {
       button(renderer, 'add-node-start').props.onClick();
     });
     expect(textContent(renderer.root.findByProps({ className: 'toast' }))).toContain(
-      'already has a start',
+      '已经有一个开始节点',
     );
     await act(async () => {
       renderer.root.findByProps({ className: 'toast' }).props.onClick();
-      renderer.root.findByProps({ 'aria-label': 'Close node library' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': '关闭节点库' }).props.onClick();
     });
     expect(renderer.root.findAllByProps({ className: 'toast' })).toHaveLength(0);
 
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Select workflow' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.onChange({
         target: { value: 'missing' },
       });
-      renderer.root.findByProps({ 'aria-label': 'Select workflow' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.onChange({
         target: { value: 'workflow-2' },
       });
     });
-    expect(renderer.root.findByProps({ 'aria-label': 'Select workflow' }).props.value).toBe(
+    expect(renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.value).toBe(
       'workflow-2',
     );
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Select workflow' }).props.onChange({
+      renderer.root.findByProps({ 'aria-label': '选择工作流' }).props.onChange({
         target: { value: 'workflow-1' },
       });
     });
@@ -400,18 +400,18 @@ describe('Studio workflow behavior', () => {
       'approval required',
     );
     expect(textContent(renderer.root.findByProps({ 'data-testid': 'execution-console' }))).toContain(
-      '3/3 units',
+      '3/3 个单元',
     );
 
     await act(async () => {
-      buttonWithText(renderer, 'TRACING').props.onClick();
+      buttonWithText(renderer, '追踪').props.onClick();
     });
     expect(textContent(renderer.root.findByProps({ 'data-testid': 'execution-track' }))).toContain(
       'production-start',
     );
 
     await act(async () => {
-      buttonWithText(renderer, 'RESULT').props.onClick();
+      buttonWithText(renderer, '结果').props.onClick();
     });
 
     const approval = () => renderer.root.findByProps({ className: 'approval-button' });
@@ -433,20 +433,20 @@ describe('Studio workflow behavior', () => {
     );
 
     await act(async () => {
-      buttonWithText(renderer, 'DETAIL').props.onClick();
+      buttonWithText(renderer, '详情').props.onClick();
     });
     expect(textContent(renderer.root.findByProps({ className: 'run-summary' }))).toContain(
       'PostgreSQL',
     );
     await act(async () => {
-      buttonWithText(renderer, 'TRACING').props.onClick();
+      buttonWithText(renderer, '追踪').props.onClick();
     });
     await act(async () => {
       renderer.root.findAllByProps({ className: 'trace-card' })[0].props.onClick();
     });
     expect(renderer.root.findByProps({ 'data-testid': 'node-inspector' })).toBeDefined();
     await act(async () => {
-      buttonWithText(renderer, 'EVIDENCE').props.onClick();
+      buttonWithText(renderer, '执行证据').props.onClick();
     });
     expect(renderer.root.findByProps({ 'data-testid': 'runtime-evidence' })).toBeDefined();
 
@@ -458,19 +458,19 @@ describe('Studio workflow behavior', () => {
     expect(minimap.props.nodeColor({ data: { kind: 'output' } })).toBe('#2970ff');
 
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Close node inspector' }).props.onClick();
-      renderer.root.findByProps({ 'aria-label': 'Toggle minimap' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': '关闭节点检查器' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': '切换小地图' }).props.onClick();
     });
     expect(renderer.root.findAll((node) => typeof node.props.nodeColor === 'function')).toHaveLength(0);
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Toggle minimap' }).props.onClick();
-      renderer.root.findByProps({ 'aria-label': 'Runtime runs' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': '切换小地图' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': 'Runtime 运行记录' }).props.onClick();
     });
-    expect(renderer.root.findByProps({ 'aria-label': 'Test run' })).toBeDefined();
+    expect(renderer.root.findByProps({ 'aria-label': '测试运行' })).toBeDefined();
     await act(async () => {
-      renderer.root.findByProps({ 'aria-label': 'Workflow editor' }).props.onClick();
+      renderer.root.findByProps({ 'aria-label': '工作流编排' }).props.onClick();
     });
-    expect(renderer.root.findAllByProps({ 'aria-label': 'Test run' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ 'aria-label': '测试运行' })).toHaveLength(0);
   });
 
   test('surfaces initialization, invalid input, save and poll failures', async () => {

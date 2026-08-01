@@ -5,9 +5,11 @@ import '@xyflow/react/dist/style.css';
 import './styles.css';
 import { App } from './App';
 
+document.documentElement.lang = 'zh-CN';
+
 const root = document.getElementById('root');
 if (!root) {
-  throw new Error('Missing #root application mount');
+  throw new Error('缺少 #root 应用挂载点');
 }
 
 createRoot(root).render(

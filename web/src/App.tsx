@@ -29,34 +29,25 @@ import type {
 import { Inspector } from './components/Inspector';
 import { NodeIcon } from './components/NodeIcon';
 import { WorkflowCardNode } from './components/WorkflowCardNode';
+import {
+  localizeNodeDescriptor,
+  localizeWorkflow,
+  statusLabel,
+} from './localization';
 
 const nodeTypes: NodeTypes = { workflow: WorkflowCardNode };
 const TERMINAL_EVIDENCE_POLL_LIMIT = 4;
 
 const groups: Array<{ label: string; description: string; kinds: NodeKind[] }> = [
-  {
-    label: 'AI & agents',
-    description: 'Reason, plan, and retain context',
-    kinds: ['llm', 'agent', 'memory'],
-  },
-  {
-    label: 'Logic',
-    description: 'Shape and control the workflow',
-    kinds: ['template', 'router', 'approval'],
-  },
-  {
-    label: 'Integrations',
-    description: 'Call tools and external services',
-    kinds: ['tool', 'http'],
-  },
-  {
-    label: 'Input & output',
-    description: 'Define workflow boundaries',
-    kinds: ['start', 'output'],
-  },
+  { label: '开始', description: '工作流触发器', kinds: ['start'] },
+  { label: 'AI', description: '模型、智能体与上下文', kinds: ['llm', 'agent', 'memory'] },
+  { label: '逻辑', description: '分支与审批', kinds: ['router', 'approval'] },
+  { label: '转换', description: '处理工作流数据', kinds: ['template'] },
+  { label: '实用工具', description: '工具与外部请求', kinds: ['tool', 'http'] },
+  { label: '输出', description: '工作流结果', kinds: ['output'] },
 ];
 
-type RunTab = 'RESULT' | 'DETAIL' | 'TRACING';
+type RunTab = 'INPUT' | 'RESULT' | 'DETAIL' | 'TRACING';
 
 export function App() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -68,11 +59,11 @@ export function App() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [minimapOpen, setMinimapOpen] = useState(true);
-  const [inputSource, setInputSource] = useState('{\n  "name": "Ada"\n}');
+  const [inputSource, setInputSource] = useState('{\n  "name": "小明"\n}');
   const [run, setRun] = useState<WorkflowRun>();
   const [evidence, setEvidence] = useState<RuntimeEvidence[]>([]);
   const [runPanelOpen, setRunPanelOpen] = useState(false);
-  const [runTab, setRunTab] = useState<RunTab>('RESULT');
+  const [runTab, setRunTab] = useState<RunTab>('INPUT');
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState('');
@@ -82,9 +73,10 @@ export function App() {
   useEffect(() => {
     void Promise.all([api.listWorkflows(), api.listNodeTypes()])
       .then(([items, descriptors]) => {
-        setWorkflows(items);
-        setCatalog(descriptors);
-        if (items[0]) selectWorkflow(items[0]);
+        const localizedWorkflows = items.map(localizeWorkflow);
+        setWorkflows(localizedWorkflows);
+        setCatalog(descriptors.map(localizeNodeDescriptor));
+        if (localizedWorkflows[0]) selectWorkflow(localizedWorkflows[0]);
       })
       .catch(showError);
   }, []);
@@ -149,7 +141,7 @@ export function App() {
       ['start', 'output'].includes(descriptor.kind) &&
       nodes.some((node) => node.data.kind === descriptor.kind)
     ) {
-      setNotice(`This workflow already has a ${descriptor.kind} node.`);
+      setNotice(`当前工作流已经有一个${descriptor.kind === 'start' ? '开始' : '结束'}节点。`);
       return;
     }
     const id = `${descriptor.kind}-${crypto.randomUUID().slice(0, 8)}`;
@@ -167,7 +159,7 @@ export function App() {
     setNodes((items) => [...items, next]);
     setSelectedId(id);
     setLibraryOpen(false);
-    setNotice(`${descriptor.label} node added.`);
+    setNotice(`已添加“${descriptor.label}”节点。`);
   };
 
   const connect = useCallback(
@@ -189,16 +181,18 @@ export function App() {
   );
 
   const saveWorkflow = useCallback(async (): Promise<Workflow> => {
-    if (!workflow) throw new Error('No workflow selected');
+    if (!workflow) throw new Error('尚未选择工作流');
     setSaving(true);
     setError('');
     try {
-      const updated = await api.updateWorkflow(mergeCanvas(workflow, nodes, edges));
+      const updated = localizeWorkflow(
+        await api.updateWorkflow(mergeCanvas(workflow, nodes, edges)),
+      );
       setWorkflow(updated);
       setWorkflows((items) =>
         items.map((item) => (item.id === updated.id ? updated : item)),
       );
-      setNotice(`Saved version ${updated.version}.`);
+      setNotice(`已保存版本 ${updated.version}。`);
       return updated;
     } finally {
       setSaving(false);
@@ -209,9 +203,14 @@ export function App() {
     setError('');
     setRunning(true);
     setRunPanelOpen(true);
-    setRunTab('RESULT');
     try {
-      const input = JSON.parse(inputSource);
+      let input: unknown;
+      try {
+        input = JSON.parse(inputSource);
+      } catch {
+        throw new Error('运行输入不是有效的 JSON。');
+      }
+      setRunTab('RESULT');
       const saved = await saveWorkflow();
       const next = await api.startRun(saved.id, input);
       setRun(next);
@@ -264,7 +263,7 @@ export function App() {
         );
       } else {
         setRunning(false);
-        setNotice(`Run ${next.status}.`);
+        setNotice(`运行${statusLabel(next.status)}。`);
       }
     } catch (reason) {
       setRunning(false);
@@ -296,14 +295,15 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <aside className="product-rail" aria-label="Primary navigation">
-        <div className="brand-mark" aria-label="A3S Workflow">A</div>
+      <aside className="product-rail" aria-label="主导航">
+        <div className="brand-mark" aria-label="A3S Workflow"><RobotIcon /></div>
+        <span className="rail-divider" />
         <nav>
           <button
             type="button"
             className={!runPanelOpen ? 'rail-button active' : 'rail-button'}
-            aria-label="Workflow editor"
-            title="Workflow editor"
+            aria-label="工作流编排"
+            title="工作流编排"
             onClick={() => setRunPanelOpen(false)}
           >
             <WorkflowIcon />
@@ -311,8 +311,8 @@ export function App() {
           <button
             type="button"
             className={runPanelOpen ? 'rail-button active' : 'rail-button'}
-            aria-label="Runtime runs"
-            title="Runtime runs"
+            aria-label="Runtime 运行记录"
+            title="测试运行与追踪"
             onClick={() => {
               setRunPanelOpen(true);
               setLibraryOpen(false);
@@ -322,18 +322,16 @@ export function App() {
             <PulseIcon />
           </button>
         </nav>
-        <div className="rail-runtime" title="A3S Runtime connected"><span /></div>
+        <div className="rail-runtime" title="A3S Runtime 已连接"><span /></div>
       </aside>
 
       <section className="studio-shell">
         <header className="studio-header">
           <div className="workflow-identity">
-            <span className="workflow-badge"><WorkflowIcon /></span>
             <div className="workflow-picker">
-              <span>Studio / Workflow</span>
               <div>
                 <select
-                  aria-label="Select workflow"
+                  aria-label="选择工作流"
                   value={workflow?.id ?? ''}
                   onChange={(event) => {
                     const next = workflows.find((item) => item.id === event.target.value);
@@ -347,23 +345,21 @@ export function App() {
                 <ChevronDownIcon />
               </div>
             </div>
+            <span className="autosave-state"><CheckIcon /> {saving ? '保存中…' : '已自动保存'} · 草稿</span>
             <span className="version-chip">v{workflow?.version ?? '—'}</span>
-          </div>
-
-          <div className="header-status">
-            <span className="durable-status"><i /> PostgreSQL durable</span>
-            <span className="runtime-count">{nodes.length} Runtime units</span>
           </div>
 
           <div className="header-actions">
             <button
               type="button"
-              className="secondary-button"
+              className="icon-button save-button"
+              aria-label="保存工作流"
+              title="保存工作流"
               onClick={() => void saveWorkflow().catch(showError)}
               disabled={!workflow || saving}
               data-testid="save-workflow"
             >
-              {saving ? 'Saving…' : 'Save'}
+              <CheckIcon />
             </button>
             <button
               type="button"
@@ -376,7 +372,36 @@ export function App() {
               disabled={!workflow}
               data-testid="open-run-panel"
             >
-              <PlayIcon /> Test Run
+              <PlayIcon /> 运行
+            </button>
+            <button
+              type="button"
+              className="secondary-button features-button"
+              onClick={() => {
+                setLibraryOpen(true);
+                setRunPanelOpen(false);
+                setSelectedId(undefined);
+              }}
+            >
+              <FeaturesIcon /> 功能
+            </button>
+            <button
+              type="button"
+              className="publish-button"
+              onClick={() => void saveWorkflow().catch(showError)}
+              disabled={!workflow || saving}
+            >
+              发布 <ChevronDownIcon />
+            </button>
+            <button
+              type="button"
+              className="icon-button history-button"
+              aria-label="版本历史"
+              title="版本历史"
+              onClick={() => void saveWorkflow().catch(showError)}
+              disabled={!workflow || saving}
+            >
+              <HistoryIcon />
             </button>
           </div>
         </header>
@@ -399,14 +424,23 @@ export function App() {
               setLibraryOpen(false);
             }}
             fitView
-            fitViewOptions={{ padding: 0.24 }}
+            fitViewOptions={{ padding: 0.24, maxZoom: 1 }}
             minZoom={0.25}
             maxZoom={1.8}
             deleteKeyCode={['Backspace', 'Delete']}
+            ariaLabelConfig={{
+              'controls.ariaLabel': '画布控制',
+              'controls.zoomIn.ariaLabel': '放大',
+              'controls.zoomOut.ariaLabel': '缩小',
+              'controls.fitView.ariaLabel': '适应画布',
+              'controls.interactive.ariaLabel': '切换交互模式',
+              'minimap.ariaLabel': '小地图',
+              'handle.ariaLabel': '节点连接点',
+            }}
             proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d0d5dd" />
-            <Controls position="bottom-left" showInteractive={false} />
+            <Controls position="bottom-left" orientation="horizontal" showInteractive={false} />
             {minimapOpen && (
               <MiniMap
                 position="bottom-right"
@@ -414,16 +448,17 @@ export function App() {
                 zoomable
                 nodeColor={(node) => nodeColor((node as StudioNode).data.kind)}
                 maskColor="rgba(249, 250, 251, .72)"
+                ariaLabel="工作流小地图"
               />
             )}
           </ReactFlow>
 
           <div className="canvas-context">
             <span className="context-icon"><RuntimeIcon /></span>
-            <div><strong>A3S Runtime graph</strong><span>Every node is independently placed and executed</span></div>
+            <div><strong>A3S Runtime 已连接 · {nodes.length} 个 Runtime 单元</strong><span>所有节点均在控制平面之外执行 · PostgreSQL 持久化</span></div>
           </div>
 
-          <div className="canvas-operators" aria-label="Canvas tools">
+          <div className="canvas-operators" aria-label="画布工具">
             <button
               type="button"
               className={libraryOpen ? 'operator-button primary active' : 'operator-button primary'}
@@ -434,14 +469,14 @@ export function App() {
               }}
               data-testid="open-node-library"
             >
-              <PlusIcon /> <span>Add node</span>
+              <PlusIcon /> <span>添加节点</span>
             </button>
             <button
               type="button"
               className={minimapOpen ? 'operator-button active' : 'operator-button'}
               aria-pressed={minimapOpen}
-              aria-label="Toggle minimap"
-              title="Toggle minimap"
+              aria-label="切换小地图"
+              title="切换小地图"
               onClick={() => setMinimapOpen((value) => !value)}
             >
               <MapIcon />
@@ -513,30 +548,49 @@ type NodeLibraryProps = {
 };
 
 function NodeLibrary({ catalog, query, onQueryChange, onAdd, onClose }: NodeLibraryProps) {
+  const [libraryTab, setLibraryTab] = useState<'NODES' | 'TOOLS'>('NODES');
   const normalized = query.trim().toLowerCase();
-  const filtered = catalog.filter((item) =>
+  const candidates = libraryTab === 'TOOLS'
+    ? catalog.filter((item) => ['tool', 'http'].includes(item.kind))
+    : catalog;
+  const filtered = candidates.filter((item) =>
     `${item.label} ${item.description} ${item.kind}`.toLowerCase().includes(normalized),
   );
 
   return (
-    <aside className="node-library" aria-label="Node library">
-      <header className="panel-header">
-        <div><span>BUILDING BLOCKS</span><h2>Add node</h2></div>
-        <button type="button" className="icon-button" aria-label="Close node library" onClick={onClose}>
+    <aside className="node-library" aria-label="节点库">
+      <div className="library-search-row">
+        <label className="catalog-search">
+          <SearchIcon />
+          <input
+            autoFocus
+            aria-label="搜索节点"
+            placeholder="搜索节点…"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+          <kbd>Ctrl K</kbd>
+        </label>
+        <button type="button" className="icon-button" aria-label="关闭节点库" onClick={onClose}>
           <CloseIcon />
         </button>
-      </header>
-      <label className="catalog-search">
-        <SearchIcon />
-        <input
-          autoFocus
-          aria-label="Search nodes"
-          placeholder="Search nodes"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-        <kbd>⌘/Ctrl K</kbd>
-      </label>
+      </div>
+      <nav className="node-library-tabs" aria-label="节点库视图">
+        <button
+          type="button"
+          className={libraryTab === 'NODES' ? 'active' : ''}
+          onClick={() => setLibraryTab('NODES')}
+        >
+          节点
+        </button>
+        <button
+          type="button"
+          className={libraryTab === 'TOOLS' ? 'active' : ''}
+          onClick={() => setLibraryTab('TOOLS')}
+        >
+          工具
+        </button>
+      </nav>
       <div className="catalog-scroll">
         {groups.map((group) => {
           const descriptors = group.kinds
@@ -565,10 +619,10 @@ function NodeLibrary({ catalog, query, onQueryChange, onAdd, onClose }: NodeLibr
           );
         })}
         {!filtered.length && (
-          <div className="catalog-empty"><SearchIcon /><strong>No matching nodes</strong><span>Try another name or capability.</span></div>
+          <div className="catalog-empty"><SearchIcon /><strong>没有匹配的节点</strong><span>请尝试其他名称或能力。</span></div>
         )}
       </div>
-      <footer className="catalog-footer"><RuntimeIcon /> All nodes execute through the A3S Runtime contract</footer>
+      <footer className="catalog-footer"><RuntimeIcon /> 所有节点都通过 A3S Runtime 契约执行</footer>
     </aside>
   );
 }
@@ -604,21 +658,27 @@ function RunPanel({
   onInspect,
   onClose,
 }: RunPanelProps) {
-  const tabs: RunTab[] = ['RESULT', 'DETAIL', 'TRACING'];
-  const output = run?.error ?? run?.output ?? { status: 'Ready for a test run' };
+  const tabs: RunTab[] = ['INPUT', 'RESULT', 'DETAIL', 'TRACING'];
+  const tabLabels: Record<RunTab, string> = {
+    INPUT: '输入',
+    RESULT: '结果',
+    DETAIL: '详情',
+    TRACING: '追踪',
+  };
+  const output = run?.error ?? run?.output ?? { 状态: '可以开始测试运行' };
 
   return (
-    <aside className="run-panel" aria-label="Test run" data-testid="execution-console">
+    <aside className="run-panel" aria-label="测试运行" data-testid="execution-console">
       <header className="panel-header run-panel-header">
-        <div><span>DEBUG WORKFLOW</span><h2>Test Run</h2></div>
+        <div><h2>测试运行{run ? ` #${run.run_id.slice(-4)}` : ''}</h2></div>
         <div className="run-panel-heading-meta">
-          <span className={`status-pill state-${run?.status ?? 'idle'}`}>{run?.status ?? 'idle'}</span>
-          <span>{run ? `${completedNodes}/${nodes.length} units` : `${nodes.length} Runtime units`}</span>
-          <button type="button" className="icon-button" aria-label="Close test run" onClick={onClose}><CloseIcon /></button>
+          <span className={`status-pill state-${run?.status ?? 'idle'}`}>{statusLabel(run?.status ?? 'idle')}</span>
+          <span>{run ? `${completedNodes}/${nodes.length} 个单元` : `${nodes.length} 个 Runtime 单元`}</span>
+          <button type="button" className="icon-button" aria-label="关闭测试运行" onClick={onClose}><CloseIcon /></button>
         </div>
       </header>
 
-      <nav className="panel-tabs" aria-label="Run views">
+      <nav className="panel-tabs" aria-label="运行视图">
         {tabs.map((tab) => (
           <button
             type="button"
@@ -626,33 +686,42 @@ function RunPanel({
             key={tab}
             onClick={() => onTabChange(tab)}
           >
-            {tab}
+            {tabLabels[tab]}
             {tab === 'TRACING' && evidenceByNode.size > 0 && <span>{evidenceByNode.size}</span>}
           </button>
         ))}
       </nav>
 
       <div className="run-panel-body">
-        {activeTab === 'RESULT' && (
-          <div className="result-view">
+        {activeTab === 'INPUT' && (
+          <div className="result-view input-view">
+            <div className="run-intro">
+              <span className="node-icon kind-start"><PlayIcon /></span>
+              <div><strong>运行此工作流</strong><span>提供“开始”节点需要的输入。</span></div>
+            </div>
             <label className="run-input-field">
-              <span>Workflow inputs <em>JSON</em></span>
+              <span>工作流输入 <em>JSON</em></span>
               <textarea
-                aria-label="Run input JSON"
+                aria-label="运行输入 JSON"
                 data-testid="run-input"
                 value={inputSource}
                 onChange={(event) => onInputChange(event.target.value)}
                 spellCheck={false}
               />
             </label>
+          </div>
+        )}
+
+        {activeTab === 'RESULT' && (
+          <div className="result-view">
             <section className="output-card" data-testid="run-output">
-              <header><span>Final output</span><span>{run?.error ? 'ERROR' : 'JSON'}</span></header>
+              <header><span>最终输出</span><span>{run?.error ? '错误' : 'JSON'}</span></header>
               <pre>{JSON.stringify(output, null, 2)}</pre>
             </section>
             {run && Object.entries(run.hooks ?? {}).map(([nodeId, hook]) =>
               hook.status === 'active' ? (
                 <button key={nodeId} className="approval-button" onClick={() => onApprove(nodeId)}>
-                  <ApprovalIcon /> Approve · {hook.metadata?.subject ?? nodeId}
+                  <ApprovalIcon /> 批准 · {hook.metadata?.subject ?? nodeId}
                 </button>
               ) : null,
             )}
@@ -662,17 +731,17 @@ function RunPanel({
         {activeTab === 'DETAIL' && (
           <div className="detail-view">
             <section className="run-summary">
-              <div><span>Status</span><strong className={`state-text-${run?.status ?? 'idle'}`}>{run?.status ?? 'Not started'}</strong></div>
-              <div><span>Runtime units</span><strong>{completedNodes} / {nodes.length}</strong></div>
-              <div><span>Durability</span><strong>PostgreSQL</strong></div>
-              <div><span>Execution boundary</span><strong>A3S Runtime</strong></div>
+              <div><span>状态</span><strong className={`state-text-${run?.status ?? 'idle'}`}>{run ? statusLabel(run.status) : '尚未开始'}</strong></div>
+              <div><span>Runtime 单元</span><strong>{completedNodes} / {nodes.length}</strong></div>
+              <div><span>持久化存储</span><strong>PostgreSQL</strong></div>
+              <div><span>执行边界</span><strong>A3S Runtime</strong></div>
             </section>
             <section className="detail-card">
-              <span>Run ID</span>
-              <code>{run?.run_id ?? 'Created when the test starts'}</code>
+              <span>运行 ID</span>
+              <code>{run?.run_id ?? '测试开始时创建'}</code>
             </section>
             <section className="detail-card">
-              <span>Input</span>
+              <span>输入</span>
               <pre>{inputSource}</pre>
             </section>
           </div>
@@ -690,9 +759,9 @@ function RunPanel({
                   <span className={`node-icon kind-${node.data.kind}`}><NodeIcon kind={node.data.kind} /></span>
                   <span className="trace-copy">
                     <strong>{node.data.label}</strong>
-                    <small>{item ? `${item.providerId} · generation ${item.generation}` : 'Waiting for execution'}</small>
+                    <small>{item ? `${item.providerId} · 第 ${item.generation ?? '—'} 代` : '等待执行'}</small>
                   </span>
-                  <span className={`trace-state state-text-${item?.state ?? 'waiting'}`}>{item?.state ?? 'waiting'}</span>
+                  <span className={`trace-state state-text-${item?.state ?? 'waiting'}`}>{statusLabel(item?.state ?? 'waiting')}</span>
                   <ChevronRightIcon />
                 </button>
               );
@@ -702,7 +771,7 @@ function RunPanel({
       </div>
 
       <footer className="run-panel-footer">
-        <span><RuntimeIcon /> Executed outside the control plane</span>
+        <span><RuntimeIcon /> 在控制平面之外执行</span>
         <button
           type="button"
           className="run-button"
@@ -710,7 +779,7 @@ function RunPanel({
           disabled={running}
           data-testid="run-workflow"
         >
-          <PlayIcon /> {running ? 'Running…' : 'Start run'}
+          <PlayIcon /> {running ? '运行中…' : '开始运行'}
         </button>
       </footer>
     </aside>
@@ -746,3 +815,6 @@ function ApprovalIcon() { return <SvgIcon><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6
 function WorkflowIcon() { return <SvgIcon><rect x="4" y="4" width="6" height="6" rx="1.5" /><rect x="14" y="14" width="6" height="6" rx="1.5" /><path d="M10 7h3a4 4 0 014 4v3" /></SvgIcon>; }
 function PulseIcon() { return <SvgIcon><path d="M3 12h4l2-6 4 12 2-6h6" /></SvgIcon>; }
 function RuntimeIcon() { return <SvgIcon><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /></SvgIcon>; }
+function RobotIcon() { return <SvgIcon><rect x="5" y="7" width="14" height="11" rx="3" /><path d="M9 12h.01M15 12h.01M9 15h6M12 7V4M10 4h4" /></SvgIcon>; }
+function FeaturesIcon() { return <SvgIcon><circle cx="8" cy="8" r="2.5" /><circle cx="16" cy="16" r="2.5" /><path d="M10 8h9M5 16h9M16 5v6M8 13v6" /></SvgIcon>; }
+function HistoryIcon() { return <SvgIcon><path d="M4 5v5h5M5.5 9A7.5 7.5 0 1120 12" /><path d="M12 8v4l3 2" /></SvgIcon>; }

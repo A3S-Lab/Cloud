@@ -257,8 +257,8 @@ impl WorkflowService {
         let now = Utc::now();
         let workflow = WorkflowDefinition {
             id: SAMPLE_ID.to_string(),
-            name: "Welcome to A3S Workflow".to_string(),
-            description: "A durable workflow executed by A3S Flow.".to_string(),
+            name: "欢迎使用 A3S Workflow".to_string(),
+            description: "一个由 A3S Flow 持久化执行的工作流。".to_string(),
             version: 1,
             nodes: vec![
                 WorkflowNode {
@@ -266,7 +266,7 @@ impl WorkflowService {
                     kind: NodeKind::Start,
                     position: Position { x: 40.0, y: 180.0 },
                     data: NodeData {
-                        label: "Input".to_string(),
+                        label: "输入".to_string(),
                         config: json!({}),
                         runtime: NodeRuntimePolicy::default(),
                     },
@@ -276,10 +276,10 @@ impl WorkflowService {
                     kind: NodeKind::Template,
                     position: Position { x: 340.0, y: 180.0 },
                     data: NodeData {
-                        label: "Compose greeting".to_string(),
+                        label: "生成问候语".to_string(),
                         config: json!({
                             "value": {
-                                "message": "Hello, {{input.name}}!",
+                                "message": "你好，{{input.name}}！",
                                 "engine": "a3s-flow"
                             }
                         }),
@@ -291,7 +291,7 @@ impl WorkflowService {
                     kind: NodeKind::Output,
                     position: Position { x: 640.0, y: 180.0 },
                     data: NodeData {
-                        label: "Result".to_string(),
+                        label: "结果".to_string(),
                         config: json!({}),
                         runtime: NodeRuntimePolicy::default(),
                     },
