@@ -1,14 +1,15 @@
-use super::arguments::{parse, parse_optional};
+use super::arguments::{parse, parse_optional, EmptyArguments};
 use super::catalog::ManagementTool;
 use super::dispatch;
 use super::protocol::{
-    self, BodyError, JsonRpcRequest, JSON_RPC_INTERNAL_ERROR, JSON_RPC_INVALID_PARAMS,
+    self, BodyError, JsonRpcRequest, RequestMetadataError, TransportMetadataError,
+    JSON_RPC_HEADER_MISMATCH, JSON_RPC_INTERNAL_ERROR, JSON_RPC_INVALID_PARAMS,
     JSON_RPC_INVALID_REQUEST, JSON_RPC_METHOD_NOT_FOUND, JSON_RPC_PARSE_ERROR,
+    JSON_RPC_UNSUPPORTED_PROTOCOL_VERSION,
 };
 use super::MANAGEMENT_MCP_PROTOCOL_VERSION;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use a3s_boot::{AuthPrincipal, BootError, BootRequest, BootResponse, CommandBus, QueryBus, Result};
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -72,7 +73,7 @@ impl ManagementMcpHandler {
                 "Batch requests are not supported",
             );
         }
-        let parsed = match JsonRpcRequest::parse(body) {
+        let mut parsed = match JsonRpcRequest::parse(body) {
             Ok(parsed) => parsed,
             Err(()) => {
                 return protocol::error_response(
@@ -85,69 +86,92 @@ impl ManagementMcpHandler {
         };
         let id = parsed.id.clone().unwrap_or(Value::Null);
         let principal = request.require_auth_principal()?;
-
-        if parsed.method == "initialize" {
-            return self.initialize(parsed);
-        }
-        if !protocol::negotiated_version(&request) {
-            return protocol::error_response(
-                400,
-                id,
-                JSON_RPC_INVALID_REQUEST,
-                "Missing or unsupported MCP-Protocol-Version",
-            );
+        let metadata = match protocol::take_request_metadata(&mut parsed) {
+            Ok(metadata) => metadata,
+            Err(RequestMetadataError::Invalid) => {
+                return protocol::error_response(
+                    400,
+                    id,
+                    JSON_RPC_INVALID_PARAMS,
+                    "Invalid request metadata",
+                )
+            }
+        };
+        match protocol::validate_transport_metadata(&request, &parsed, &metadata) {
+            Ok(()) => {}
+            Err(TransportMetadataError::HeaderMismatch) => {
+                return protocol::error_response(
+                    400,
+                    id,
+                    JSON_RPC_HEADER_MISMATCH,
+                    "Header mismatch",
+                )
+            }
+            Err(TransportMetadataError::UnsupportedProtocolVersion(requested)) => {
+                return protocol::error_response_with_data(
+                    400,
+                    id,
+                    JSON_RPC_UNSUPPORTED_PROTOCOL_VERSION,
+                    "Unsupported protocol version",
+                    Some(json!({
+                        "supported": [MANAGEMENT_MCP_PROTOCOL_VERSION],
+                        "requested": requested
+                    })),
+                )
+            }
         }
         if parsed.id.is_none() {
-            return self.notification(parsed);
+            return protocol::error_response(
+                400,
+                Value::Null,
+                JSON_RPC_INVALID_REQUEST,
+                "Notifications are not supported",
+            );
         }
 
         match parsed.method.as_str() {
-            "ping" => protocol::result_response(id, json!({})),
+            "server/discover" => self.discover(id, parsed.params),
+            "ping" => self.ping(id, parsed.params),
             "tools/list" => self.list_tools(id, parsed.params, &principal),
             "tools/call" => {
                 self.call_tool(id, parsed.params, principal, request_id)
                     .await
             }
-            _ => protocol::error_response(200, id, JSON_RPC_METHOD_NOT_FOUND, "Method not found"),
+            _ => protocol::error_response(404, id, JSON_RPC_METHOD_NOT_FOUND, "Method not found"),
         }
     }
 
-    fn initialize(&self, request: JsonRpcRequest) -> Result<BootResponse> {
-        let Some(id) = request.id else {
-            return protocol::accepted_response();
-        };
-        let arguments = match parse::<InitializeArguments>(request.params) {
-            Ok(arguments) => arguments,
-            Err(()) => {
-                return protocol::error_response(
-                    200,
-                    id,
-                    JSON_RPC_INVALID_PARAMS,
-                    "Invalid initialize parameters",
-                )
-            }
-        };
-        if !arguments.is_valid() {
+    fn discover(&self, id: Value, params: Value) -> Result<BootResponse> {
+        if parse::<EmptyArguments>(params).is_err() {
             return protocol::error_response(
                 200,
                 id,
                 JSON_RPC_INVALID_PARAMS,
-                "Invalid initialize parameters",
+                "Invalid server/discover parameters",
             );
         }
         protocol::result_response(
             id,
             json!({
-                "protocolVersion": MANAGEMENT_MCP_PROTOCOL_VERSION,
-                "capabilities": {"tools": {"listChanged": false}},
-                "serverInfo": {"name": "a3s-cloud", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Use tools/list to discover tenant-scoped Cloud management tools. Mutation visibility follows the current API-token scopes."
+                "supportedVersions": [MANAGEMENT_MCP_PROTOCOL_VERSION],
+                "capabilities": {"tools": {}},
+                "instructions": "Use tools/list to discover tenant-scoped Cloud management tools. Mutation visibility follows the current API-token scopes.",
+                "ttlMs": 0,
+                "cacheScope": "private"
             }),
         )
     }
 
-    fn notification(&self, _request: JsonRpcRequest) -> Result<BootResponse> {
-        protocol::accepted_response()
+    fn ping(&self, id: Value, params: Value) -> Result<BootResponse> {
+        if parse::<EmptyArguments>(params).is_err() {
+            return protocol::error_response(
+                200,
+                id,
+                JSON_RPC_INVALID_PARAMS,
+                "Invalid ping parameters",
+            );
+        }
+        protocol::result_response(id, json!({}))
     }
 
     fn list_tools(
@@ -232,46 +256,14 @@ impl ManagementMcpHandler {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InitializeArguments {
-    protocol_version: String,
-    capabilities: serde_json::Map<String, Value>,
-    client_info: ImplementationInfo,
-}
-
-impl InitializeArguments {
-    fn is_valid(&self) -> bool {
-        !self.protocol_version.is_empty()
-            && self.protocol_version.len() <= 32
-            && self.capabilities.len() <= 32
-            && self.client_info.is_valid()
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ImplementationInfo {
-    name: String,
-    version: String,
-}
-
-impl ImplementationInfo {
-    fn is_valid(&self) -> bool {
-        !self.name.is_empty()
-            && self.name.len() <= 128
-            && !self.version.is_empty()
-            && self.version.len() <= 128
-    }
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ListToolsArguments {
     #[serde(default)]
     cursor: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CallToolArguments {
     name: String,

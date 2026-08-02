@@ -1,7 +1,7 @@
 import { expect } from 'bun:test';
 import { CLOUD_API_CONTRACT_VERSION } from './api';
 
-export const MCP_PROTOCOL_VERSION = '2025-06-18';
+export const MCP_PROTOCOL_VERSION = '2026-07-28';
 
 export const ADMIN_TOOLS = [
   'a3s_cloud_environments_create',
@@ -68,6 +68,16 @@ interface ToolResponse {
 }
 
 type JsonObject = Record<string, unknown>;
+
+export interface McpRequestOptions {
+  bodyProtocolVersion?: string;
+  headerProtocolVersion?: string;
+  methodHeader?: string;
+  nameHeader?: string | null;
+  sessionIdHeader?: string;
+  includeClientInfo?: boolean;
+  includeClientCapabilities?: boolean;
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -144,17 +154,51 @@ export async function mcpRequest(
   body: JsonObject,
   expectedStatus: number,
   credentials: readonly string[],
-  label: string
+  label: string,
+  options: McpRequestOptions = {}
 ): Promise<JsonResponse> {
+  const method = stringValue(body.method, `${label} method`);
+  const params = body.params === undefined ? {} : objectValue(body.params, `${label} params`);
+  const metadata: JsonObject = {
+    'io.modelcontextprotocol/protocolVersion': options.bodyProtocolVersion ?? MCP_PROTOCOL_VERSION,
+  };
+  if (options.includeClientInfo !== false) {
+    metadata['io.modelcontextprotocol/clientInfo'] = {
+      name: 'a3s-cloud-c0-gate',
+      version: '1.0.0',
+    };
+  }
+  if (options.includeClientCapabilities !== false) {
+    metadata['io.modelcontextprotocol/clientCapabilities'] = {};
+  }
+  const requestBody = {
+    ...body,
+    params: { ...params, _meta: metadata },
+  };
+  const headers: Record<string, string> = {
+    accept: 'application/json, text/event-stream',
+    authorization: `Bearer ${token}`,
+    'content-type': 'application/json',
+    'mcp-protocol-version': options.headerProtocolVersion ?? MCP_PROTOCOL_VERSION,
+    'mcp-method': options.methodHeader ?? method,
+  };
+  const derivedName =
+    method === 'tools/call' || method === 'prompts/get'
+      ? params.name
+      : method === 'resources/read'
+        ? params.uri
+        : undefined;
+  const name = options.nameHeader === undefined ? derivedName : options.nameHeader;
+  if (name !== null && name !== undefined) {
+    headers['mcp-name'] = stringValue(name, `${label} name`);
+  }
+  if (options.sessionIdHeader !== undefined) {
+    headers['mcp-session-id'] = options.sessionIdHeader;
+  }
   const response = await fetch(`${environment.baseUrl}/mcp`, {
     method: 'POST',
-    headers: {
-      accept: 'application/json, text/event-stream',
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
-      'mcp-protocol-version': MCP_PROTOCOL_VERSION,
-    },
-    body: JSON.stringify(body),
+    headers,
+    body: JSON.stringify(requestBody),
   });
   const text = await response.text();
   assertCredentialFree(text, credentials, label);
@@ -187,7 +231,9 @@ export async function listTools(
   );
   expect(response.body.jsonrpc).toBe('2.0');
   expect(response.body.id).toBe(id);
-  return objectValue(response.body.result, `${label} result`);
+  const result = objectValue(response.body.result, `${label} result`);
+  expect(result.resultType).toBe('complete');
+  return result;
 }
 
 export async function callTool(
@@ -210,6 +256,7 @@ export async function callTool(
   expect(response.body.jsonrpc).toBe('2.0');
   expect(response.body.id).toBe(id);
   const result = objectValue(response.body.result, `${label} result`);
+  expect(result.resultType).toBe('complete');
   const structured = objectValue(result.structuredContent, `${label} structured content`);
   const content = arrayValue(result.content, `${label} content`);
   expect(content).toHaveLength(1);

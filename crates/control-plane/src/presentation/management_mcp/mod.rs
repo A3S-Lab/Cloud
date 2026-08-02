@@ -15,4 +15,4 @@ mod workloads;
 
 pub use module::ManagementMcpModule;
 
-pub const MANAGEMENT_MCP_PROTOCOL_VERSION: &str = "2025-06-18";
+pub use a3s_cloud_contracts::MCP_PROTOCOL_VERSION as MANAGEMENT_MCP_PROTOCOL_VERSION;

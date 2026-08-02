@@ -3,71 +3,85 @@ use crate::modules::search::{SearchResourceKind, SearchResult};
 use crate::modules::shared_kernel::domain::OrganizationId;
 
 const MCP_PATH: &str = "/api/v1/mcp";
-const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
+const MCP_PROTOCOL_VERSION: &str = a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
 const MCP_WORKLOAD_TOKEN: &str =
     "a3s_1111111111111111111111111111111111111111111111111111111111111111";
 const MCP_BUILD_TOKEN: &str =
     "a3s_2222222222222222222222222222222222222222222222222222222222222222";
 
 #[tokio::test]
-async fn management_mcp_initializes_as_raw_stateless_json_rpc() -> Result<()> {
+async fn management_mcp_discovers_modern_stateless_json_rpc() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
     bootstrap_organization(&app, "mcp-bootstrap", "Acme").await?;
 
-    let unauthenticated = app.call(mcp_request(None, initialize_request(1))).await?;
+    let unauthenticated = app.call(mcp_request(None, discover_request(1))).await?;
     assert_eq!(unauthenticated.status(), 401);
 
-    let initialized = app
-        .call(mcp_request(Some(ADMIN_TOKEN), initialize_request(2)))
+    let discovered = app
+        .call(mcp_request(Some(ADMIN_TOKEN), discover_request(2)))
         .await?;
-    assert_eq!(initialized.status(), 200);
-    assert_eq!(initialized.header("content-type"), Some("application/json"));
+    assert_eq!(discovered.status(), 200);
+    assert_eq!(discovered.header("content-type"), Some("application/json"));
     assert_eq!(
-        initialized.header("mcp-protocol-version"),
+        discovered.header("mcp-protocol-version"),
         Some(MCP_PROTOCOL_VERSION)
     );
-    assert_eq!(initialized.header("cache-control"), Some("no-store"));
-    assert!(initialized.header("mcp-session-id").is_none());
+    assert_eq!(discovered.header("cache-control"), Some("no-store"));
+    assert!(discovered.header("mcp-session-id").is_none());
 
-    let body = response_json(&initialized)?;
+    let body = response_json(&discovered)?;
     assert_eq!(body["jsonrpc"], "2.0");
     assert_eq!(body["id"], 2);
-    assert_eq!(body["result"]["protocolVersion"], MCP_PROTOCOL_VERSION);
-    assert_eq!(body["result"]["serverInfo"]["name"], "a3s-cloud");
+    assert_eq!(body["result"]["resultType"], "complete");
     assert_eq!(
-        body["result"]["capabilities"]["tools"]["listChanged"],
-        false
+        body["result"]["supportedVersions"],
+        json!([MCP_PROTOCOL_VERSION])
     );
+    assert_eq!(body["result"]["capabilities"]["tools"], json!({}));
+    assert_eq!(
+        body["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "a3s-cloud"
+    );
+    assert_eq!(body["result"]["ttlMs"], 0);
+    assert_eq!(body["result"]["cacheScope"], "private");
     assert!(body.get("data").is_none());
 
-    let notification = app
+    let initialized = app
         .call(mcp_request(
             Some(ADMIN_TOKEN),
             json!({
                 "jsonrpc": "2.0",
-                "method": "notifications/initialized"
+                "id": 3,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "legacy-client", "version": "1.0.0"}
+                }
             }),
         ))
         .await?;
-    assert_eq!(notification.status(), 202);
-    assert!(notification.body().is_empty());
+    assert_eq!(initialized.status(), 404);
+    assert_eq!(response_json(&initialized)?["error"]["code"], -32601);
 
-    let event_stream = app
-        .call(
-            BootRequest::new(HttpMethod::Get, MCP_PATH)
-                .with_header("accept", "text/event-stream")
-                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
-        )
-        .await?;
-    assert_eq!(event_stream.status(), 405);
-    assert_eq!(event_stream.header("allow"), Some("POST"));
+    for method in [HttpMethod::Get, HttpMethod::Delete] {
+        let rejected = app
+            .call(
+                BootRequest::new(method, MCP_PATH)
+                    .with_header("accept", "text/event-stream")
+                    .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+            )
+            .await?;
+        assert_eq!(rejected.status(), 405);
+        assert_eq!(rejected.header("allow"), Some("POST"));
+    }
     Ok(())
 }
 
 #[tokio::test]
-async fn management_mcp_rejects_batches_and_unnegotiated_requests() -> Result<()> {
+async fn management_mcp_rejects_batches_and_invalid_modern_metadata() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
@@ -76,36 +90,162 @@ async fn management_mcp_rejects_batches_and_unnegotiated_requests() -> Result<()
     let batch = app
         .call(mcp_request(
             Some(ADMIN_TOKEN),
-            json!([initialize_request(1), initialize_request(2)]),
+            json!([discover_request(1), discover_request(2)]),
         ))
         .await?;
     assert_eq!(batch.status(), 400);
     assert_eq!(response_json(&batch)?["error"]["code"], -32600);
 
+    let tools_list = with_request_metadata(json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/list"
+    }));
     let missing_version = app
-        .call(mcp_request_without_version(
-            Some(ADMIN_TOKEN),
-            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}),
-        ))
+        .call(
+            raw_mcp_request(Some(ADMIN_TOKEN), tools_list.clone())
+                .with_header("mcp-method", "tools/list"),
+        )
         .await?;
     assert_eq!(missing_version.status(), 400);
-    assert_eq!(response_json(&missing_version)?["error"]["code"], -32600);
+    assert_eq!(response_json(&missing_version)?["error"]["code"], -32020);
 
-    let wrong_version = app
+    let mismatched_version = app
+        .call(
+            raw_mcp_request(Some(ADMIN_TOKEN), tools_list)
+                .with_header("mcp-protocol-version", "2025-03-26"),
+        )
+        .await?;
+    assert_eq!(mismatched_version.status(), 400);
+    assert_eq!(response_json(&mismatched_version)?["error"]["code"], -32020);
+
+    let unsupported_version = app
+        .call(mcp_request_with_version(
+            Some(ADMIN_TOKEN),
+            json!({"jsonrpc": "2.0", "id": 4, "method": "tools/list"}),
+            "1900-01-01",
+        ))
+        .await?;
+    assert_eq!(unsupported_version.status(), 400);
+    let unsupported = response_json(&unsupported_version)?;
+    assert_eq!(unsupported["error"]["code"], -32022);
+    assert_eq!(
+        unsupported["error"]["data"]["supported"],
+        json!([MCP_PROTOCOL_VERSION])
+    );
+    assert_eq!(unsupported["error"]["data"]["requested"], "1900-01-01");
+
+    let missing_method = app
+        .call(
+            raw_mcp_request(
+                Some(ADMIN_TOKEN),
+                with_request_metadata(json!({
+                    "jsonrpc": "2.0",
+                    "id": 5,
+                    "method": "tools/list"
+                })),
+            )
+            .with_header("mcp-protocol-version", MCP_PROTOCOL_VERSION),
+        )
+        .await?;
+    assert_eq!(missing_method.status(), 400);
+    assert_eq!(response_json(&missing_method)?["error"]["code"], -32020);
+
+    let mismatched_name = app
         .call(
             mcp_request(
                 Some(ADMIN_TOKEN),
-                json!({"jsonrpc": "2.0", "id": 4, "method": "tools/list"}),
+                tool_call(6, "a3s_cloud_projects_list", json!({})),
             )
-            .with_header("mcp-protocol-version", "2025-03-26"),
+            .with_header("mcp-name", "a3s_cloud_projects_create"),
         )
         .await?;
-    assert_eq!(wrong_version.status(), 400);
-    assert_eq!(response_json(&wrong_version)?["error"]["code"], -32600);
+    assert_eq!(mismatched_name.status(), 400);
+    assert_eq!(response_json(&mismatched_name)?["error"]["code"], -32020);
+
+    let optional_client_info = app
+        .call(request_with_metadata(
+            Some(ADMIN_TOKEN),
+            json!({"jsonrpc": "2.0", "id": 7, "method": "tools/list"}),
+            json!({
+                "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                "io.modelcontextprotocol/clientCapabilities": {}
+            }),
+            MCP_PROTOCOL_VERSION,
+        ))
+        .await?;
+    assert_eq!(optional_client_info.status(), 200);
+    assert_eq!(
+        response_json(&optional_client_info)?["result"]["resultType"],
+        "complete"
+    );
+
+    let missing_client_capabilities = app
+        .call(request_with_metadata(
+            Some(ADMIN_TOKEN),
+            json!({"jsonrpc": "2.0", "id": 8, "method": "tools/list"}),
+            json!({
+                "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                "io.modelcontextprotocol/clientInfo": {
+                    "name": "a3s-cloud-test",
+                    "version": "1.0.0"
+                }
+            }),
+            MCP_PROTOCOL_VERSION,
+        ))
+        .await?;
+    assert_eq!(missing_client_capabilities.status(), 400);
+    assert_eq!(
+        response_json(&missing_client_capabilities)?["error"]["code"],
+        -32602
+    );
+
+    let missing_body_protocol_version = app
+        .call(request_with_metadata(
+            Some(ADMIN_TOKEN),
+            json!({"jsonrpc": "2.0", "id": 9, "method": "tools/list"}),
+            json!({
+                "io.modelcontextprotocol/clientCapabilities": {}
+            }),
+            MCP_PROTOCOL_VERSION,
+        ))
+        .await?;
+    assert_eq!(missing_body_protocol_version.status(), 400);
+    assert_eq!(
+        response_json(&missing_body_protocol_version)?["error"]["code"],
+        -32602
+    );
+
+    let ignored_legacy_session = app
+        .call(
+            mcp_request(
+                Some(ADMIN_TOKEN),
+                json!({"jsonrpc": "2.0", "id": 10, "method": "tools/list"}),
+            )
+            .with_header("mcp-session-id", "legacy-session"),
+        )
+        .await?;
+    assert_eq!(ignored_legacy_session.status(), 200);
+    assert!(ignored_legacy_session.header("mcp-session-id").is_none());
+
+    let encoded_name = app
+        .call(
+            mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(11, "a3s_cloud_projects_list", json!({})),
+            )
+            .with_header("mcp-name", "=?base64?YTNzX2Nsb3VkX3Byb2plY3RzX2xpc3Q=?="),
+        )
+        .await?;
+    assert_eq!(encoded_name.status(), 200);
+    assert_eq!(
+        response_json(&encoded_name)?["result"]["resultType"],
+        "complete"
+    );
 
     let foreign_origin = app
         .call(
-            mcp_request(Some(ADMIN_TOKEN), initialize_request(5))
+            mcp_request(Some(ADMIN_TOKEN), discover_request(12))
                 .with_header("host", "cloud.example.test")
                 .with_header("origin", "https://attacker.example.test"),
         )
@@ -852,25 +992,67 @@ async fn management_mcp_observes_api_token_revocation_on_the_next_request() -> R
     Ok(())
 }
 
-fn initialize_request(id: u64) -> Value {
+fn discover_request(id: u64) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": MCP_PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": {"name": "a3s-cloud-test", "version": "1.0.0"}
-        }
+        "method": "server/discover",
+        "params": {}
     })
 }
 
 fn mcp_request(token: Option<&str>, body: Value) -> BootRequest {
-    mcp_request_without_version(token, body)
-        .with_header("mcp-protocol-version", MCP_PROTOCOL_VERSION)
+    mcp_request_with_version(token, body, MCP_PROTOCOL_VERSION)
 }
 
-fn mcp_request_without_version(token: Option<&str>, body: Value) -> BootRequest {
+fn mcp_request_with_version(token: Option<&str>, body: Value, version: &str) -> BootRequest {
+    let body = with_request_metadata_version(body, version);
+    let method = body
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or("server/discover")
+        .to_owned();
+    let name = body
+        .get("params")
+        .and_then(Value::as_object)
+        .and_then(|params| params.get("name"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let mut request = raw_mcp_request(token, body)
+        .with_header("mcp-protocol-version", version)
+        .with_header("mcp-method", method);
+    if let Some(name) = name {
+        request = request.with_header("mcp-name", name);
+    }
+    request
+}
+
+fn request_with_metadata(
+    token: Option<&str>,
+    mut body: Value,
+    metadata: Value,
+    version: &str,
+) -> BootRequest {
+    let params = body
+        .as_object_mut()
+        .and_then(|body| {
+            body.entry("params")
+                .or_insert_with(|| json!({}))
+                .as_object_mut()
+        })
+        .expect("MCP test request params must be an object");
+    params.insert("_meta".into(), metadata);
+    let method = body["method"].as_str().expect("MCP test method").to_owned();
+    let mut request = raw_mcp_request(token, body)
+        .with_header("mcp-protocol-version", version)
+        .with_header("mcp-method", method);
+    if let Some(name) = request_name(request.body()) {
+        request = request.with_header("mcp-name", name);
+    }
+    request
+}
+
+fn raw_mcp_request(token: Option<&str>, body: Value) -> BootRequest {
     let request = BootRequest::new(HttpMethod::Post, MCP_PATH)
         .with_header("content-type", "application/json")
         .with_header("accept", "application/json, text/event-stream")
@@ -879,6 +1061,42 @@ fn mcp_request_without_version(token: Option<&str>, body: Value) -> BootRequest 
         Some(token) => request.with_header("authorization", format!("Bearer {token}")),
         None => request,
     }
+}
+
+fn with_request_metadata(body: Value) -> Value {
+    with_request_metadata_version(body, MCP_PROTOCOL_VERSION)
+}
+
+fn with_request_metadata_version(mut body: Value, version: &str) -> Value {
+    let Some(object) = body.as_object_mut() else {
+        return body;
+    };
+    let params = object
+        .entry("params")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .expect("MCP test request params must be an object");
+    params.insert(
+        "_meta".into(),
+        json!({
+            "io.modelcontextprotocol/protocolVersion": version,
+            "io.modelcontextprotocol/clientInfo": {
+                "name": "a3s-cloud-test",
+                "version": "1.0.0"
+            },
+            "io.modelcontextprotocol/clientCapabilities": {}
+        }),
+    );
+    body
+}
+
+fn request_name(body: &[u8]) -> Option<String> {
+    serde_json::from_slice::<Value>(body)
+        .ok()?
+        .get("params")?
+        .get("name")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn tool_call(id: u64, name: &str, arguments: Value) -> Value {
@@ -898,7 +1116,13 @@ async fn list_tools(app: &BootApplication, token: &str, id: u64) -> Result<Value
         ))
         .await?;
     assert_eq!(response.status(), 200);
-    response_json(&response)
+    let body = response_json(&response)?;
+    assert_eq!(body["result"]["resultType"], "complete");
+    assert_eq!(
+        body["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "a3s-cloud"
+    );
+    Ok(body)
 }
 
 fn tool_names(body: &Value) -> Vec<&str> {

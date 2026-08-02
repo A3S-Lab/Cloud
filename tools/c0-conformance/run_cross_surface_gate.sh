@@ -388,7 +388,7 @@ if [[ $scenario == cross-surface ]]; then
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 else
-  printf 'A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2025-06-18 contract=1.1.0\n' \
+  printf 'A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2026-07-28 contract=1.1.0\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 fi

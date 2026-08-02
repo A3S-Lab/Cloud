@@ -182,15 +182,19 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
   `1.1.0`, and reject incompatible or invalidly deprecated contract changes
-- **Scoped Management MCP Operational Reads**: Serve the sessionless,
-  initialization-based `2025-06-18` Streamable HTTP MCP through the same
+- **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
+  Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
   from the current principal, expose Project, Environment, search, Node,
   Operation, Workload, Deployment, Route, and BuildRun queries, bounded
   cursor-paginated Workload logs, explicit BuildRun-log unavailability, and
   signed BuildRun evidence plus scope-gated idempotent Project and Environment
-  commands through the existing application buses, reject batching, forged tenant input,
-  invalid bounds, and cross-origin confusion, and preserve the standard API
+  commands through the existing application buses; require per-request
+  protocol/client metadata and matching transport headers, expose
+  `server/discover`, reject legacy initialization and batching, ignore legacy
+  session identifiers without creating session state, reject forged tenant
+  input, invalid bounds, and cross-origin confusion, and preserve the standard
+  API
   envelope inside tool results; prove scope-derived discovery, operational
   reads, REST-to-MCP idempotency replay, tenant non-disclosure, immediate
   revocation, and digest-only persistence against real PostgreSQL through A3S
@@ -823,8 +827,9 @@ against one control-plane process and PostgreSQL 17 database. It proves
 cross-surface idempotency replay, stable conflicts, authorized search,
 cross-tenant denial, immediate token revocation, A3S ORM persistence, and zero
 plaintext credentials in API/CLI evidence or the PostgreSQL dump. `C0.1` is
-verified. The [`C0.2` management MCP](docs/management-mcp.md) now provides the
-sessionless `2025-06-18` initialization-based protocol, scoped core-resource
+verified. The [`C0.2m` management MCP](docs/management-mcp.md) now provides the
+sessionless `2026-07-28` protocol with per-request metadata,
+`server/discover`, scoped core-resource
 tools, tenant-authorized Node, Operation, Workload, Deployment, Route, and
 BuildRun reads, bounded paged Workload logs, explicit BuildRun-log
 unavailability, signed BuildRun evidence, and five replay-safe Workload,
@@ -833,8 +838,10 @@ proves exact 23-tool administrator
 and 16-tool read-only catalogs, strict arguments and annotations, operational
 query and command dispatch, hidden mutation denial, Project and Workload
 replay, foreign-resource non-disclosure, next-request revocation, A3S ORM
-state, and credential-free evidence. `C0.2` is verified; the modern
-`2026-07-28` migration remains planned as `C0.2m`.
+state, and credential-free evidence. It retains the verified `C0.2` command,
+query, authorization, idempotency, audit, and A3S ORM paths without adding a
+second management mechanism. The clean Linux PostgreSQL/A3S Box conformance
+gate passes; `C0.2m` is verified.
 
 ## Platform Model
 
