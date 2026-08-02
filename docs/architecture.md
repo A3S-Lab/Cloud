@@ -20,6 +20,7 @@ shipped claim unless its gate is marked `Verified` in the product roadmap.
 | [Domain model](domain-model.md) | Aggregates, state machines, invariants, and data ownership |
 | [Inference plan](inference-plan.md) | Detailed `I0` model-serving design |
 | [Management MCP contract](management-mcp.md) | Management MCP transport and authorization contract |
+| [A3S Use plugin roadmap](https://github.com/A3S-Lab/Use/blob/main/ROADMAP.md) | Canonical package, catalog, plan/apply, grant, binding, capability-generation, and shared Plugin Manager delivery |
 
 When the documents disagree, this document decides architectural ownership,
 the roadmap decides public availability, and the owning detailed plan decides
@@ -36,6 +37,8 @@ Replacement means that the A3S stack owns the complete product outcome:
 
 - Cloud owns tenant intent, durable business state, orchestration policy, and
   management surfaces;
+- the Cloud Plugins context owns tenant plugin assignments, while A3S Use owns
+  package verification and the complete plugin-generation lifecycle;
 - Flow and Operations own resumable long-running work;
 - Workloads and Fleet own placement, claims, rollout, and outbound node
   control;
@@ -58,6 +61,8 @@ The architecture also excludes:
 
 - a second scheduler, workflow engine, job queue, node-control channel, or
   autoscaler;
+- a Cloud package installer, plugin capability registry, workspace-grant
+  store, Runtime-binding store, or plugin-specific execution protocol;
 - Docker, a Docker-compatible daemon, or a fallback execution provider;
 - Cloud on the live application, MCP, or inference byte path;
 - mutable provider configuration as product desired state;
@@ -90,6 +95,10 @@ The architecture also excludes:
    replay, fencing, or cleanup rule for process death and ambiguous delivery.
 10. **Configuration is ACL-only.** A3S ACL is parsed and generated with
     `a3s-acl`; no compatibility configuration language exists.
+11. **Plugin management is assignment, not installation.** Cloud records who
+    wants which exact A3S Use package on which authorized workspace host. The
+    shared A3S Use Plugin Manager remains the only component allowed to plan,
+    apply, reconcile, enable, disable, drain, or remove that package.
 
 ## 4. Single-authority map
 
@@ -99,6 +108,8 @@ second entry in an authority row must be redesigned before implementation.
 | Concern | Sole authority | Prohibited duplicate |
 | --- | --- | --- |
 | Business desired state | PostgreSQL | Redis, event streams, node journals, or local files as product truth |
+| Tenant plugin registry enrollment and desired assignment | Cloud Plugins context in PostgreSQL | Asset kinds, node-local receipts, catalog caches, or Use capability snapshots as tenant intent |
+| Plugin catalog, package trust, immutable generation, grant, binding, and capability lifecycle | Shared A3S Use Plugin Manager and its canonical contracts | Cloud installer, TUF implementation, package/grant/binding tables, capability registry, surface reconciler, or universal plugin action RPC |
 | Relational access | A3S ORM | Raw SQL, direct database drivers, or a context-local data-access layer |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
 | Request replay | Shared tenant-scoped idempotency records | Per-context idempotency tables or in-memory replay state |
@@ -241,6 +252,7 @@ not business ownership or convenience wrappers.
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Search | Tenant-authorized resource projections and bounded discovery | Current |
+| Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
 | Agents | Conversations, Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | Planned `A1.1` through `A1.5` |
 | Data | Managed databases, volumes, backup, restore, retention, and writer fencing | Planned `S0` |
 | Inference | Models, backends, deployments, routes, provider egress, and durable usage | Planned `I0` |
@@ -250,6 +262,98 @@ generic finite Task product. `Agents` owns conversation semantics and binds an
 immutable Agent release to the common orchestration path; it is not another
 execution engine. Both reuse Flow, Workloads placement policy, Fleet, Runtime,
 and Box.
+
+### 6.3 A3S Use plugin management boundary
+
+`Plugins` is a deliberately thin bounded context planned under `U0`. It owns
+organization- and environment-scoped registry enrollment plus one desired
+assignment for each `(package_id, target host)` tuple. The initial assignment
+binds exactly one workspace scope, one exact signed catalog record, one exact
+set of named surfaces, and `enabled`, `disabled`, or `absent` intent. This
+prevents two Cloud operations from competing for the one Use-owned package
+generation on a host. Multi-workspace binding remains unavailable until A3S
+Use exposes a canonical multi-scope parent-saga contract; Cloud will not invent
+its own coordinator. An assignment does not copy package metadata into
+`Assets`: a Use package is a multi-surface package,
+while a Cloud Asset is exactly one Agent, MCP, or Skill release.
+
+The stable package identity is the A3S Use identity
+`<publisher>/<name>`. `use/<publisher>/<name>` is its component identity and a
+route is only an alias. Cloud consumes these identities, surface kinds,
+catalog records, operation plans, confirmations, and observations from the
+pinned `a3s-use-core` contracts. It must not restate their validation rules or
+fork their schemas. If a required value object or remote-host API is not public
+in A3S Use, `U0.1` adds it there and updates the compatibility lock before any
+Cloud-local substitute is accepted.
+
+One assignment converges through this control path:
+
+```text
+REST / Web / CLI / Management MCP
+  -> one Plugins command or query bus
+  -> commit PluginAssignment + idempotency + Operation + Outbox
+  -> one cloud.plugin-assignment@1 Flow
+  -> one typed Fleet plan command to the assigned Plugin Host
+  -> Node Agent journal
+  -> shared A3S Use Plugin Manager creates one immutable canonical plan
+  -> Cloud stores only the exact digest and bounded review projection
+  -> trusted user confirmation or canonical ACL allow decision
+  -> one typed Fleet apply command carrying operationId + planDigest
+  -> A3S Use resumes its own parent saga and publishes one capability generation
+  -> exact receipt and applied observation return through Fleet
+  -> Cloud advances the assignment's observed projection
+```
+
+Fleet delivery replay and the A3S Use operation journal protect different
+boundaries. The first proves that one remote command is not executed twice;
+the second resumes package, grant, binding, projection, capability cutover,
+drain, and cleanup side effects inside that command. Neither replaces the
+other, and Cloud Flow never reproduces the Use child saga.
+
+The Cloud Node Agent provides one host adapter around the shared Plugin
+Manager. It does not call an extension CLI or its management MCP. Registry
+verification, package generations, install receipts, Workspace Grants,
+Runtime Binding receipts, Route Leases, capability snapshots, Skill/UI/OKF
+projections, dependency closure, reference counts, and local reconciliation
+remain Use-owned node-local evidence. Cloud persists only the registry and
+assignment desired state plus exact plan, policy, receipt, generation, command,
+and observation digests needed for review, audit, convergence, and recovery.
+
+In a cloud-managed workspace scope, the Node Agent host adapter is the only
+enabled mutation adapter. Local CLI, Web, and A3S Use management MCP mutation
+are disabled or policy-denied for that scope, while bounded read-only
+inspection may remain available. The managed-scope ownership/fence is part of
+the versioned U0 host contract, so a local adapter cannot create competing
+desired state behind Cloud. Standalone A3S Use scopes keep their existing local
+authority and are not silently adopted by Cloud.
+
+Cloud Identity authorization and a Use Workspace Grant answer different
+questions. Identity decides whether the current principal may change a tenant
+assignment. The canonical A3S Use policy and exact-generation Workspace Grant
+decide what the installed package may do inside its assigned scope. Plugins
+stores only the latter's reviewed digest/effect projection; it never translates
+it into a Cloud role or mirrors its grant store.
+
+Executable plugin surfaces cannot create a Cloud-side provider path. `U0`
+targets an already authorized Plugin Host; its A3S Use manager may use only the
+host's explicitly injected A3S Runtime-to-Box provider and private scoped
+bindings. It cannot create a Cloud Workload, select a node or replica count,
+publish a Cloud Edge/Gateway route, choose an autoscaling policy, receive a
+Secret value from the management plane, or fall back to another provider. A
+Tool Service or MCP server that needs Cloud-managed reachability, replicas, or
+rollout must be published and deployed through the existing A0/MCP0,
+Workloads, Fleet, Edge, and Gateway path; `U0` does not synthesize that product
+from a local plugin. Secret and OKF surfaces use the existing Secrets and A3S
+Knowledge host adapters. The first `U0` release is single-host and
+TUF-registry-only. Later multi-host operations manage the same independent
+per-host assignments over existing H0/Fleet membership; they do not introduce
+a group rollout aggregate or plugin scheduler.
+
+REST, Web, CLI, and Management MCP are presentation adapters over the same
+Plugins application service. Cloud does not proxy the local A3S Use management
+MCP or add `execute(plugin, action, payload)`. Runtime Tools retain native
+argv/HTTP behavior, MCP remains standard MCP, and active surfaces are consumed
+through their normal host bindings rather than through the management plane.
 
 ## 7. Data, consistency, and recovery model
 
@@ -355,6 +459,11 @@ current node identity. Commands contain an idempotency identity, protocol
 version, desired generation, expiry, and typed payload. A receipt settles only
 the exact command or batch it names. Redelivery after a lost acknowledgement
 must return the same outcome without repeating a side effect.
+
+The planned A3S Use host adapter is another typed executor behind this same
+command lease and journal. Plan, apply, enablement, and observation are
+versioned payload variants in the existing Fleet envelope; they are not a
+second node endpoint, queue, stream, or generic action envelope.
 
 ### 9.2 Claims and fencing
 
@@ -577,6 +686,12 @@ are resumable projections, not command transports or new state authorities.
 Management MCP derives tool visibility and tenant scope from the authenticated
 principal and cannot accept caller-forged tenant identity.
 
+Plugin assignment tools call the Plugins application bus. They never tunnel to
+the local Use management MCP. Agent callers may request only operations
+pre-authorized by the current canonical A3S Use ACL policy; they cannot enroll
+or rotate a registry trust root, confirm an `ask` decision, install unsigned
+local content, grant a Secret, or request destructive user-data purge.
+
 ### 14.2 Security boundaries
 
 - Identity authenticates globally and authorizes at organization, project,
@@ -587,6 +702,12 @@ principal and cannot accept caller-forged tenant identity.
   persistence, and removed during fenced cleanup.
 - External source, registry, model-provider, and certificate credentials never
   enter product ACL, events, operations, telemetry, or traffic snapshots.
+- Plugin registry roots and signed catalog metadata are protocol evidence, not
+  product configuration. Registry enrollment and policy selection are
+  authenticated, tenant-scoped, immutable-digest-bound, and audited; only A3S
+  Use performs TUF and plugin-policy validation. Secret names may appear in a
+  reviewed permission plan, but values never enter a plan, Fleet command,
+  receipt, capability snapshot, log, or audit record.
 - Snapshot and command validity is bounded; missing, expired, cross-tenant, or
   version-incompatible security state fails closed.
 
@@ -629,6 +750,8 @@ without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
 | Node partition or stale inventory | No new placement uses stale capacity; Claims remain fenced until exact recovery evidence |
 | Gateway apply before acknowledgement loss | Redelivery observes the exact native revision and does not repeat or infer the apply |
 | Candidate deployment failure | Prior healthy generation and route remain active; cleanup is explicit and resumable |
+| Plugin plan/apply acknowledgement loss | Fleet replays the exact command; the A3S Use manager reloads the same operation and plan digest, preserves the prior active generation until cutover, and returns the same receipt |
+| Plugin plan expiry or policy/trust drift | Apply fails closed; Cloud records the blocked attempt and may create a new immutable plan attempt only inside the still-current desired-generation reconciliation, never by mutating or silently reauthorizing the reviewed plan |
 | PostgreSQL unavailability | New mutations and authoritative progress stop safely; no cache is promoted to authority |
 | Object backend unavailability | Metadata remains readable where safe; content-dependent work blocks explicitly and resumes |
 | Redis loss | Optional acceleration degrades or exact-limit traffic follows its fail policy; business state is unchanged |
@@ -650,6 +773,7 @@ discard an approval, command, log gap, usage gap, or cleanup obligation.
 | A3S Box | Local execution, build, image, isolation, mount, snapshot, and cleanup | Required sole provider |
 | A3S Gateway | Managed application, MCP, and inference traffic | Required when a profile exposes traffic |
 | A3S Power | Local inference serving | Required only for `I0` |
+| A3S Use | Signed plugin catalog, canonical plan/confirmation/receipt contracts, shared Plugin Manager, package generations, grants, bindings, and capability reconciliation | Required only for `U0`; Cloud pins and adapts it rather than reimplementing it |
 | Filesystem or S3-compatible objects | Immutable large content | One selected backend per namespace/profile behind the shared client |
 | NATS JetStream | Replicated A3S Event delivery | Conditional on the HA profile; never workflow or desired-state authority |
 | Redis | Ephemeral fan-out or specifically gated exact distributed counters | Optional and disposable; prohibited for durable control state |

@@ -16,6 +16,12 @@ approvals, checkpoints, forks, and trajectories. It binds published Asset
 releases to Flow, Workloads, Fleet, Runtime, and Box; it does not add another
 execution engine, scheduler, node channel, or event-log authority.
 
+Planned U0 adds tenant desired assignments for signed A3S Use plugin packages.
+It does not add a fourth Asset kind or a Cloud package manager. A3S Use remains
+authoritative for catalog verification, immutable package generations,
+Workspace Grants, Runtime Bindings, capability publication, drain, and
+receipt-owned cleanup.
+
 The domain uses ordinary transactional aggregates. It does not event-source all
 business data. A3S Flow event-sources long-running operations, and A3S Event
 distributes committed facts after the corresponding database transaction.
@@ -31,6 +37,11 @@ distributes committed facts after the corresponding database transaction.
 | Asset | Hosted reusable A3S unit. Its kind is exactly Agent, MCP, or Skill. |
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
 | Asset release | An immutable, versioned publication of one asset revision and artifact. |
+| Use plugin package | One immutable A3S Use package identified by `<publisher>/<name>` that may contribute named Tool Task, Tool Service, MCP, Skill, UI, and OKF surfaces. It is not a Cloud Asset. |
+| Plugin registry | An organization-enrolled TUF registry reference and exact trust-root evidence consumed and verified by A3S Use. It is not a Source or OCI registry. |
+| Plugin assignment | Environment-scoped Cloud desired state selecting one exact signed package record, named surfaces, one Use workspace scope, one target Plugin Host, and present/enabled intent. |
+| Plugin operation plan | Immutable canonical A3S Use plan for install, upgrade, or uninstall. Cloud projects its digest and bounded review evidence but never becomes its apply authority. |
+| Plugin host observation | Exact command-bound A3S Use receipt, installed generation, capability generation, and enabled state observed for one assignment generation on one host. |
 | Agent conversation | Tenant-scoped logical interaction that owns one monotonic semantic event sequence across executions and forks. |
 | Agent execution | One durable run of an immutable Agent release and its exact Skill, MCP, workspace, and tool bindings. |
 | Agent semantic event | Immutable ordered conversation fact such as model output, tool request/result, approval, checkpoint, failure, or terminal outcome; it is not Flow history or a Runtime log. |
@@ -335,6 +346,39 @@ authorization and audit to their shared contexts, and large immutable content
 to typed adapters over the shared object infrastructure. It never writes those
 contexts' tables or exposes a direct client-to-Harness control path.
 
+### 3.14 Plugin assignments (planned U0)
+
+Owns organization-scoped plugin registry enrollment and environment-scoped
+desired package assignments. It answers which exact signed package and named
+surface set should be present in which authorized A3S Use workspace on which
+Plugin Host. It also owns immutable remote-plan review projections and exact
+host observations required to explain convergence.
+
+Primary aggregates:
+
+- `PluginRegistry`
+- `PluginAssignment`
+
+Supporting immutable records:
+
+- `PluginPlanProjection`
+- `PluginHostObservation`
+
+The context exposes one desired-state mutation instead of separate Cloud
+install, upgrade, enable, disable, and uninstall engines. A changed exact
+catalog selection or surface set increments the assignment generation;
+`enabled`, `disabled`, or `absent` intent lets reconciliation choose the
+matching canonical A3S Use manager operation. Package dependencies are resolved
+and reference-counted by A3S Use and never become synthetic Cloud assignments.
+
+The context delegates catalog/TUF validation and every package-generation side
+effect to the shared A3S Use Plugin Manager, orchestration to Flow and
+Operations, delivery to Fleet and the Node Agent journal, execution to the
+existing Runtime/Box and Workloads boundaries, routing to Edge/Gateway,
+authorization to Identity plus the canonical A3S Use policy, Secrets to the
+Secrets context, and audit to the shared audit chain. It writes none of those
+contexts' tables.
+
 ## 4. Aggregate invariants
 
 ### Organization
@@ -518,6 +562,68 @@ contexts' tables or exposes a direct client-to-Harness control path.
 - Skill releases require a bundle artifact and cannot contain a workload spec.
 - A yanked release remains addressable by existing deployments but is hidden
   from new selection.
+
+### Plugin registry and assignment (planned U0)
+
+- A registry belongs to one organization and binds one normalized HTTPS
+  endpoint, exact TUF trust-root digest and version, immutable root-object
+  reference, lifecycle state, and aggregate version. Trust-root bytes are
+  protocol evidence in the shared immutable-object infrastructure; they are
+  never parsed as product configuration or copied into a PluginAssignment.
+- Registry enrollment, trust-root rotation, suspension, and removal require a
+  trusted human principal and the shared audit path. Management MCP agents
+  cannot create trust authority.
+- A package is identified only by the canonical A3S Use `package_id`. The
+  derived component ID and any route aliases never participate in Cloud
+  uniqueness or ownership.
+- U0.3 permits one live assignment for each organization, package ID, and
+  target host and binds exactly one environment/workspace scope. This matches
+  the one Use-owned package generation on that host and prevents competing
+  Cloud plans for different versions or surface sets. Multi-workspace binding
+  remains unavailable until a canonical A3S Use multi-scope parent saga exists;
+  Cloud does not coordinate parallel local generations itself.
+- The workspace scope and target host must belong to the same tenant and remain
+  immutable within one assignment generation.
+- The workspace scope is an opaque canonical A3S Use workspace identity derived
+  at the trusted host boundary, never a caller-supplied filesystem path. A
+  package, route, request, or cross-tenant identifier cannot choose or escape
+  its scope root.
+- A cloud-managed workspace scope has one versioned Node Agent ownership/fence.
+  Local Use CLI, Web, or management MCP adapters cannot mutate that scope, and
+  a standalone scope is never adopted without an explicit tenant assignment
+  and matching host evidence.
+- Desired package state binds one exact verified catalog-record digest,
+  version, channel, target, package and manifest digests, plus a canonical
+  sorted surface selection. Mutable tags, an unverified catalog listing, a
+  route alias, or display metadata cannot become apply authority.
+- Desired lifecycle is exactly `enabled`, `disabled`, or `absent`. An explicit
+  update creates the next positive assignment generation; the reconciler never
+  changes a desired release merely because a registry publishes a newer one.
+- Each nonterminal generation owns one idempotent
+  `cloud.plugin-assignment@1` Operation. Reusing an idempotency key with changed
+  registry, package, surface, scope, host, policy, or desired lifecycle is a
+  conflict.
+- A plan projection must decode and validate through the pinned
+  `a3s-use-core` type, bind the exact assignment and host generation, remain
+  within its canonical expiry, and match its recorded digest. Cloud never
+  edits, extends, or applies from the projection bytes; the target Use manager
+  reloads its own authoritative stored plan.
+- An `ask` plan advances only after a trusted user creates the canonical A3S
+  Use confirmation for the same actor, operation ID, plan digest, and validity
+  interval. An agent cannot create that confirmation. An `allow` decision must
+  match the current canonical policy digest; `deny` is terminal for that plan.
+- A host observation advances applied state only when tenant, node, workspace,
+  package, assignment generation, Fleet command, Use operation, receipt,
+  installed generation, and capability generation all match. Missing or stale
+  evidence remains pending or unavailable; it is never inferred as success.
+- Cloud stores no package archive, install tree, Workspace Grant, Runtime
+  Binding, Route Lease, capability registry, dependency graph, or Use
+  operation journal in Plugins tables. Use receipt and generation digests are
+  observations, not Cloud desired state.
+- Removing an assignment requests canonical Use uninstall and retains user
+  data by default. Destructive purge, unsigned local packages, and caller-
+  supplied executable/provider/endpoint values are outside the initial U0
+  contract.
 
 ### Artifact
 
@@ -1178,11 +1284,45 @@ The terminal outcome must match the exact node, command, revision, digest, and
 acknowledgement time. A rejected convergence does not advance the installed
 Gateway revision.
 
+### Plugin assignment convergence state (planned U0)
+
+`PluginAssignment` stores desired lifecycle rather than operation progress:
+
+```text
+enabled | disabled | absent
+```
+
+The user-visible Operation projection uses the common Operation lifecycle with
+these plugin phases:
+
+```text
+queued -> planning -> awaiting_confirmation -> applying -> observing -> succeeded
+                  \-> applying
+      \-> blocked | failed | cancelled
+```
+
+`awaiting_confirmation` is entered only for the canonical A3S Use `ask`
+decision. Plan expiry, trust-root change, policy drift, host capability drift,
+or stale Use state blocks that immutable plan; reconciliation may create a new
+plan only for the same still-current desired generation and must obtain a new
+confirmation when required.
+
+Cloud does not mirror A3S Use's internal stage, grant preparation, Runtime
+binding, capability cutover, drain, or receipt-owned cleanup phases. Until an
+exact `PluginHostObservation` matches the desired assignment generation, the
+computed assignment status is `pending`, `blocked`, or `unavailable`, never
+partially installed or optimistically active.
+
 ## 7. Data ownership
 
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
+| Tenant plugin registry enrollment, trust-root object reference/digest, desired assignment, requested surface set, target host/workspace, and desired assignment generation | PostgreSQL Plugins tables through A3S ORM |
+| Signed plugin catalog record, permission ceiling, immutable operation plan, confirmation, and contract validation semantics | Canonical A3S Use contracts; Cloud retains only exact validated review evidence and digests |
+| Installed plugin generation, package files, receipts, Workspace Grants, Runtime Bindings, Route Leases, capability generation, dependency closure, and receipt-owned cleanup | Shared A3S Use Plugin Manager and its host-local stores/journals |
+| Remote plugin command delivery and replay | Fleet command queue, lease, and Node Agent command journal; no plugin-specific queue or endpoint |
+| Assignment reconciliation progress and user-visible result | One A3S Flow run plus the shared Operation projection; Use child-saga phases are not copied into Cloud |
 | Current project attribution reference and immutable business-owner, external cost-attribution code, and label revisions | PostgreSQL Projects tables |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
 | Verified GitHub installation/account ownership, verifying-user identity, explicit status, provider-check health/backoff, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential or raw provider body |
@@ -1241,6 +1381,9 @@ source.github-repository-subscription.deactivated
 source.revision.accepted
 asset.asset.created
 asset.release.published
+plugin.registry.enrolled
+plugin.assignment.changed
+plugin.assignment.converged
 agent.conversation.created
 agent.execution.started
 agent.execution.checkpointed
@@ -1287,6 +1430,14 @@ The first architecture does not implement:
 - asset kinds other than Agent, MCP, and Skill;
 - pull requests, Issues, stars, watches, wikis, or social graphs;
 - a generic digital-asset metadata bag;
+- a fourth `plugin` Asset kind or a conversion of a multi-surface Use package
+  into parallel Agent, MCP, and Skill Assets;
+- a Cloud plugin installer, TUF verifier, catalog schema, operation-plan
+  generator, permission evaluator, Workspace Grant store, Runtime Binding
+  store, capability registry, surface reconciler, dependency graph, package
+  reference counter, or plugin-specific scheduler;
+- direct REST, CLI, Web, or Cloud Management MCP calls to the node-local A3S
+  Use management MCP, or a private `execute(plugin, action, payload)` protocol;
 - mutable-tag deployments;
 - database writes from node agents;
 - direct node access to NATS;

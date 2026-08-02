@@ -79,6 +79,13 @@
       "statusKind": "in-progress"
     },
     {
+      "code": "U0",
+      "name": "A3S Use plugin assignments",
+      "outcome": "Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
       "code": "MCP0",
       "name": "Hosted MCP services",
       "outcome": "Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence",
