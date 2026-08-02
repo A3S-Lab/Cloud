@@ -34,6 +34,13 @@ work. A mutation commits desired state and an operation identity, then A3S Flow,
 reconcilers, and node command leases continue the work across retries and
 process restarts.
 
+The product target is an A3S-native Agent and application platform that replaces
+the operational responsibilities commonly split between Google AX and
+Kubernetes. It requires neither system and does not emulate their APIs. The
+existing Cloud, Flow, Workloads, Fleet, Runtime, Box, Gateway, and Power
+authorities provide the replacement path; availability remains governed by the
+verified gates in the [product roadmap](ROADMAP.md).
+
 Cloud is not a reverse proxy, an inference byte path, or a replacement Runtime.
 It owns business state, scheduling and deployment policy, rollout and
 autoscaling decisions, complete Gateway policy, operations, and management
@@ -1058,7 +1065,10 @@ rollout blocks; Cloud is the sole production authority for those decisions.
 
 A3S Cloud is a modular monolith with a separate outbound-only node agent. API,
 worker, and event-relay roles can run in one control-plane process or as
-independent roles from the same binary.
+independent roles from the same binary. The architecture assigns one authority
+to each concern, so Agent, MCP, stateful, and inference profiles extend the
+same control path instead of adding schedulers, queues, node channels, or
+desired-state stores.
 
 ```text
 browser / API client
@@ -1086,6 +1096,7 @@ node agent
 | A3S ORM | Typed PostgreSQL access, transactions, and migrations |
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
+| Cloud Workloads and Fleet | Placement, replicas, rollout, autoscaling policy, resource Claims, and the sole outbound node-control channel |
 | A3S Runtime | Provider-neutral Task and Service lifecycle, endpoints, and health observations |
 | A3S Box | Sole node-local execution provider and sole build-operation journal, cache, image, network, health-probe, mount, log, snapshot, and cleanup authority |
 | A3S Power | Required Box-hosted inference serving and attestation boundary |

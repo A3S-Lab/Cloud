@@ -11,6 +11,11 @@ Planned I0 adds models and inference deployments as a separate product profile
 that compiles into the same Workloads path; it does not broaden the Asset kind
 set or create a second deployment engine.
 
+Planned A1 adds durable Agent conversations, executions, semantic events,
+approvals, checkpoints, forks, and trajectories. It binds published Asset
+releases to Flow, Workloads, Fleet, Runtime, and Box; it does not add another
+execution engine, scheduler, node channel, or event-log authority.
+
 The domain uses ordinary transactional aggregates. It does not event-source all
 business data. A3S Flow event-sources long-running operations, and A3S Event
 distributes committed facts after the corresponding database transaction.
@@ -26,6 +31,11 @@ distributes committed facts after the corresponding database transaction.
 | Asset | Hosted reusable A3S unit. Its kind is exactly Agent, MCP, or Skill. |
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
 | Asset release | An immutable, versioned publication of one asset revision and artifact. |
+| Agent conversation | Tenant-scoped logical interaction that owns one monotonic semantic event sequence across executions and forks. |
+| Agent execution | One durable run of an immutable Agent release and its exact Skill, MCP, workspace, and tool bindings. |
+| Agent semantic event | Immutable ordered conversation fact such as model output, tool request/result, approval, checkpoint, failure, or terminal outcome; it is not Flow history or a Runtime log. |
+| Agent approval checkpoint | Grant-checked durable decision boundary that prevents Harness progress until an explicit allow, deny, expiry, or cancellation outcome commits. |
+| Agent execution checkpoint | Digest-addressed immutable logical execution state used for verified resume or fork lineage. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
 | Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
@@ -298,6 +308,32 @@ planned boundary is defined in [`inference-plan.md`](inference-plan.md).
 Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
 tables directly. Audit records are append-only and separate from event delivery.
+
+### 3.13 Agent execution (planned A1)
+
+Owns tenant-scoped conversations, Agent executions, the sole semantic event
+sequence, immutable execution bindings, approval checkpoints, logical execution
+checkpoints, fork lineage, and trajectory projections. The Cloud API is its
+client control boundary.
+
+Primary aggregates:
+
+- `AgentConversation`
+- `AgentExecution`
+
+Supporting records:
+
+- immutable execution bindings;
+- `AgentExecutionEvent`;
+- `AgentApprovalCheckpoint`; and
+- `AgentExecutionCheckpoint`.
+
+The context owns semantic Agent state but delegates long-running coordination
+to Flow and Operations, placement and rollout to Workloads, node delivery to
+Fleet and the Node Agent journal, provider lifecycle to Runtime and Box,
+authorization and audit to their shared contexts, and large immutable content
+to typed adapters over the shared object infrastructure. It never writes those
+contexts' tables or exposes a direct client-to-Harness control path.
 
 ## 4. Aggregate invariants
 
@@ -761,6 +797,31 @@ tables directly. Audit records are append-only and separate from event delivery.
   Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
+### Agent conversation and execution (planned A1)
+
+- A conversation belongs to one organization, project, and environment and
+  owns the sole positive monotonic `last_event_sequence` head.
+- An execution binds one exact published Agent release and immutable Skill,
+  MCP, workspace, and tool identities before dispatch. Mutable manifests or
+  source refs never become execution authority.
+- Appending one or more semantic events and advancing the conversation head is
+  one transaction. A committed sequence is immutable, contiguous, and unique
+  within the conversation.
+- `AgentExecution` owns logical state and the correlated Operation and Harness
+  identities. Flow history owns orchestration recovery; Runtime logs own
+  process output; neither can substitute for semantic events.
+- An approval-required action cannot execute until a current Identity grant and
+  explicit approval decision commit. Duplicate decide/resume commands replay;
+  denial, expiry, cancellation, and process death cannot emit a hidden resume.
+- Large event content and checkpoints reference one verified immutable object
+  by namespace, digest, length, and media type. No Agent-specific object backend
+  or mutable execution-head store is permitted.
+- Forking creates a new execution with immutable parent and checkpoint lineage;
+  it never mutates the parent trajectory.
+- Provider suspend/resume remains unavailable until the exact A3S Runtime and
+  Box checkpoint contract passes crash, integrity, compatibility, adoption,
+  and cleanup certification.
+
 ### Managed database, volume, and backup
 
 - A managed database belongs to one environment and references one immutable
@@ -1131,6 +1192,9 @@ Gateway revision.
 | Asset repository refs and objects | Git repository store |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |
+| Agent conversation, execution, event-stream head, semantic event metadata, immutable bindings, approval decisions, checkpoint descriptors, and fork lineage | PostgreSQL Agents tables through A3S ORM |
+| Large Agent event content and logical checkpoint bytes | Shared immutable-object infrastructure through typed Agent adapters |
+| Live Harness process, provider checkpoint, and local resume state | A3S Runtime and A3S Box; Cloud retains only exact identities and verified receipts required for recovery |
 | Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
 | Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
 | Workload replicas, placement members, and generic hard-resource claims | PostgreSQL Workloads tables |
@@ -1177,6 +1241,10 @@ source.github-repository-subscription.deactivated
 source.revision.accepted
 asset.asset.created
 asset.release.published
+agent.conversation.created
+agent.execution.started
+agent.execution.checkpointed
+agent.execution.completed
 artifact.artifact.registered
 fleet.node.enrolled
 fleet.node.observed
@@ -1224,7 +1292,12 @@ The first architecture does not implement:
 - direct node access to NATS;
 - SSH as the normal control channel;
 - event-only reconciliation;
-- a second deployment engine for Agent or MCP workloads.
+- a second deployment engine for Agent or MCP workloads;
+- an Agent-specific workflow engine, scheduler, command queue, node channel,
+  idempotency table, audit store, low-level object client, or integration bus;
+- Flow history or Runtime logs as an Agent semantic event stream; and
+- a direct client-to-Agent, client-to-Harness, or client-to-Gateway execution
+  control path.
 
 Planned I0 also excludes model training/fine-tuning orchestration, unisolated
 soft GPU overcommit, price catalogs, monetary credits/balances, checkout,

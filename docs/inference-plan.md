@@ -57,7 +57,7 @@ The capability boundary is explicit:
 | Soft fractional GPU/VRAM sharing | Not a production capability in I0 | Future hardware-enforced or isolated design only |
 | GPU cloud-instance provisioning and SSH credential custody | Outside Inference | Future Fleet/Compute provider, if justified |
 | Training, fine-tuning and notebook lifecycle | Outside I0 | Separate owning profile required |
-| Kubernetes as an alternative workload scheduler | Excluded | It may package Cloud, but Workloads remains authoritative |
+| Kubernetes, Helm, CRDs, or Operators as installation or scheduling dependencies | Excluded | The Cloud production profile is ACL-native and Box-hosted; Workloads remains authoritative |
 
 ## 2. Fixed architecture decisions
 
@@ -1159,7 +1159,7 @@ Cloud GPU host creation, SSH credential custody, and cloud-instance lifecycle
 are not owned by Inference. If required, they land later as a separate typed
 Fleet/Compute provider that produces an ordinarily enrolled Node and passes the
 same fencing, drain, cleanup, cost-quota, and recovery gates. Kubernetes also
-remains an optional deployment profile rather than a second scheduler.
+does not become an optional Cloud deployment profile or a second scheduler.
 
 ## 13. Mandatory verification
 
