@@ -624,7 +624,7 @@ format never becomes a second mutable source of truth.
 | --- | --- | --- |
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
-| `C0.2m` | In progress | Management MCP uses modern per-request metadata, `server/discover`, and protocol revision `2026-07-28` without changing its application-command boundary; clean real PostgreSQL/Box recertification remains |
+| `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
@@ -692,8 +692,8 @@ headers, complete-result metadata, and `server/discover`. It removes
 `initialize`, ignores legacy session identifiers without creating session
 state, and reuses the same application buses,
 authentication, scopes, tenant guards, idempotency identities, audit, and A3S
-ORM repositories. Focused conformance passes; clean real PostgreSQL/Box
-recertification remains before verification.
+ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
+gate pass; `C0.2m` is verified.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

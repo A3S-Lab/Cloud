@@ -840,7 +840,8 @@ query and command dispatch, hidden mutation denial, Project and Workload
 replay, foreign-resource non-disclosure, next-request revocation, A3S ORM
 state, and credential-free evidence. It retains the verified `C0.2` command,
 query, authorization, idempotency, audit, and A3S ORM paths without adding a
-second management mechanism.
+second management mechanism. The clean Linux PostgreSQL/A3S Box conformance
+gate passes; `C0.2m` is verified.
 
 ## Platform Model
 

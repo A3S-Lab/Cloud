@@ -243,8 +243,9 @@ repositories.
 
 ## Current limits
 
-`C0.2m` retains bearer-token authentication. OAuth 2.1 discovery and consent
-follow only after the token-scoped confused-deputy gate.
+`C0.2m` is verified by the clean Linux PostgreSQL/A3S Box conformance gate and
+retains bearer-token authentication. OAuth 2.1 discovery and consent follow
+only after the token-scoped confused-deputy gate.
 Secret material, exec, terminal access, server-side sessions, live log
 streams, and JSON-RPC batching are not exposed by this slice. No additional
 mutation is admitted without its existing scope, idempotency contract, tenant
