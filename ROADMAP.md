@@ -624,7 +624,7 @@ format never becomes a second mutable source of truth.
 | --- | --- | --- |
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
-| `C0.2m` | Planned | Migrate management MCP to modern per-request metadata, `server/discover`, and protocol revision `2026-07-28` without changing its application-command boundary |
+| `C0.2m` | In progress | Management MCP uses modern per-request metadata, `server/discover`, and protocol revision `2026-07-28` without changing its application-command boundary; clean real PostgreSQL/Box recertification remains |
 | `C0.3` | Planned | Memberships, grants, role-focused console, attribution, notifications, and audit |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
@@ -665,8 +665,8 @@ route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
 PostgreSQL, proves replay and authorization consistency, and rejects plaintext
-credentials across responses, logs, and persisted data. `C0.2` adds raw,
-sessionless, initialization-based `2025-06-18` Streamable HTTP JSON-RPC,
+credentials across responses, logs, and persisted data. `C0.2` established raw,
+sessionless Streamable HTTP JSON-RPC,
 current-token scope-derived tool discovery, organization context derived only
 from the authenticated principal, three core queries, two idempotent create
 commands, ten operational Node, Operation, Workload, Deployment, Route, and
@@ -685,7 +685,15 @@ zero-write, Project and Workload
 replay through one durable record per idempotency identity, indistinguishable
 foreign and missing Project errors, operational read and command boundaries,
 next-request revocation, expected A3S ORM rows, and credential-free logs,
-evidence, and database dumps. `C0.2` is verified.
+evidence, and database dumps. `C0.2` is verified. `C0.2m` replaces only the
+legacy protocol adapter with `2026-07-28` per-request protocol/client metadata,
+matching `MCP-Protocol-Version`, `Mcp-Method`, and applicable `Mcp-Name`
+headers, complete-result metadata, and `server/discover`. It removes
+`initialize`, ignores legacy session identifiers without creating session
+state, and reuses the same application buses,
+authentication, scopes, tenant guards, idempotency identities, audit, and A3S
+ORM repositories. Focused conformance passes; clean real PostgreSQL/Box
+recertification remains before verification.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

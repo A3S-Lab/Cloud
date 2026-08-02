@@ -207,7 +207,7 @@ Status as of 2026-08-02:
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
 | G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Exact Linux Box, parent-cache reuse, external Registry/Vault, process-death, and zero-residue certification still block G0 verification |
-| C0 | In progress | `C0.1` and `C0.2` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` adds a sessionless `2025-06-18` initialization-based Streamable HTTP management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` modern-protocol migration, `C0.3`, and `C0.4` remain planned. |
+| C0 | In progress | `C0.1` and `C0.2` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` now replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance passes and clean real PostgreSQL/Box recertification remains. `C0.3` and `C0.4` remain planned. |
 | A0 | In progress | `A0.1` is verified. Exact Agent/MCP/Skill Asset and AssetRelease aggregates, tenant-scoped migration 051, typed A3S ORM transactions, shared idempotency and Outbox, optimistic concurrency, immutable published identities, yanked addressability, and cross-tenant denial pass isolated real PostgreSQL tests. The first `A0.2` slice adds a tenant-qualified local bare-repository foundation with atomic provisioning, immutable identity checks, and the shared Git runner. Smart HTTP authorization, PostgreSQL leases and quotas, backup/restore, pinned `.a3s/asset.acl` admission, publication, deployment, Skill binding, and catalog surfaces remain. |
 | U0 | Planned | Architecture and delivery gates are defined. No Cloud plugin module, schema, API, Fleet payload, Node Agent host adapter, or product capability is implemented or claimed. A3S Use M2/M5/M6/M7 dependencies remain external gates. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Fleet dispatch/redelivery, exact acknowledgement and restart convergence, an executed real PostgreSQL gate for the new path, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
@@ -1395,10 +1395,11 @@ packages:
   evidence, or the PostgreSQL dump.
 
 `C0.1` and `C0.2` are verified. The broader `C0` milestone remains in progress.
-The scoped management MCP runs through the same application commands and
-queries. Core-resource tools, ten operational resource reads, two bounded
-paged-log reads, one signed-evidence read, and five replay-safe operational
-commands pass its real PostgreSQL cross-surface gate.
+The `C0.2m` modern management MCP adapter is implemented and its focused
+conformance passes; clean real PostgreSQL/Box recertification remains. It runs
+through the same application commands and queries. Core-resource tools, ten
+operational resource reads, two bounded paged-log reads, one signed-evidence
+read, and five replay-safe operational commands retain the verified boundary.
 Desired-state files and CLI configuration remain A3S ACL; the CLI must not add
 a second configuration format. No CLI command may read PostgreSQL or contact a
 node.
@@ -1417,8 +1418,8 @@ node.
   credential and prints a checksum-verified agent installation invocation.
   Package publication and upgrade reuse signed A3S release channels; Cloud never
   accepts or stores a server SSH password or private key.
-- Implemented as the first `C0.2` slice: a sessionless, initialization-based
-  `2025-06-18` Streamable HTTP management MCP endpoint with Project,
+- Implemented as the first `C0.2` slice: a sessionless Streamable HTTP
+  management MCP endpoint with Project,
   Environment, and authorized-search queries plus
   idempotent Project and Environment create commands. Tool visibility and
   invocation derive from the current API-token scopes, organization context
@@ -1454,13 +1455,18 @@ node.
   23-tool administrator and 16-tool read-only catalogs, annotations, all five
   missing-resource command boundaries, a durable Workload-stop replay, A3S ORM
   state, and credential-free evidence. `C0.2` is verified.
-- Planned as `C0.2m`: migrate the same presentation adapter to modern
-  `2026-07-28` MCP. Remove `initialize`, require per-request version/client
-  metadata and matching transport headers, implement `server/discover`, retain
-  POST-only sessionless behavior, and rerun the exact authorization,
-  revocation, idempotency, PostgreSQL, malformed-request, and redaction gates.
-  This migration changes no command, query, tool authorization, or persistence
-  authority and is independent of hosted-service `MCP0`.
+- Implemented for `C0.2m`: the same presentation adapter now uses modern
+  `2026-07-28` MCP. It removes `initialize`, requires per-request version/client
+  metadata and matching `MCP-Protocol-Version`, `Mcp-Method`, and applicable
+  `Mcp-Name` headers, returns complete-result metadata, implements
+  `server/discover`, ignores legacy session identifiers without creating state,
+  and retains POST-only sessionless behavior. Focused tests
+  cover version negotiation, metadata/header mismatch, discovery, legacy-flow
+  removal, and the existing authorization boundary. The clean real
+  PostgreSQL/Box gate must still rerun the exact authorization, revocation,
+  idempotency, malformed-request, and redaction scenarios before verification.
+  This migration changes no command, query, tool authorization, A3S ORM
+  persistence, or audit authority and is independent of hosted-service `MCP0`.
 - Start MCP authentication with bounded API tokens. Add OAuth 2.1 discovery,
   dynamic client registration, PKCE, consent, and revocation only after the
   token-scoped tool contract and confused-deputy tests pass.

@@ -19,50 +19,49 @@ handlers and REST response projections.
 ## Transport contract
 
 The endpoint is `POST /api/v1/mcp` and implements a sessionless deployment of
-the initialization-based MCP protocol version `2025-06-18`.
-
-This is the verified `C0.2` compatibility baseline. It is not a claim of
-modern `2026-07-28` MCP conformance: the modern protocol uses per-request
-metadata instead of `initialize`, requires `server/discover`, and has no
-protocol-level sessions.
+MCP protocol version `2026-07-28`. `C0.2m` changes only this presentation
+adapter; it retains the verified `C0.2` application, authorization,
+idempotency, persistence, and audit boundaries.
 
 - Requests and immediate responses use raw JSON-RPC 2.0 with
   `Content-Type: application/json`.
 - Clients advertise both `application/json` and `text/event-stream` in
   `Accept`, even though the stateless first slice returns immediate JSON.
-- After initialization, every request carries
-  `MCP-Protocol-Version: 2025-06-18`.
-- The endpoint emits no `MCP-Session-Id`; `GET /api/v1/mcp` returns `405`.
+- Every request carries matching protocol version and client-capability
+  metadata under `params._meta`, `MCP-Protocol-Version`, and `Mcp-Method`.
+  `tools/call`, `prompts/get`, and `resources/read` also carry a matching
+  `Mcp-Name`; the Base64 sentinel form is accepted for values that cannot be
+  represented safely as an HTTP field value.
+- `clientInfo` is optional protocol metadata and is validated when present. It
+  is never used as an authenticated identity.
+- The endpoint ignores legacy `Mcp-Session-Id` input and never creates or emits
+  protocol session state; `GET` and `DELETE /api/v1/mcp` return `405`.
 - JSON-RPC batches are rejected. Each HTTP request carries one message.
+- Notifications and the legacy `initialize` method are rejected.
 - Browser-originated requests are accepted only when `Origin` matches `Host`.
 - Transport responses are not wrapped in the REST envelope. A successful or
   failed tool execution carries the same REST success or business-error
   envelope in both `structuredContent` and text content.
+- Every successful result is complete and includes `resultType: "complete"`
+  plus bounded server metadata. `server/discover` returns the supported
+  version, tools capability, private cache scope, and zero discovery TTL.
 
 The endpoint is hidden from the REST OpenAPI document because JSON-RPC and MCP
 tool schemas, rather than REST operations, define this transport contract.
 
-## Planned modern protocol migration
+## Modern protocol boundary
 
-`C0.2m` migrates this same management presentation surface to MCP revision
-`2026-07-28`:
+`C0.2m` removes the legacy initialization state without creating a replacement
+session or a second management mechanism. Unsupported versions return JSON-RPC
+error `-32022` with the supported and requested versions. Missing or invalid
+required body metadata returns HTTP `400` with `-32602`; missing or mismatched
+transport headers return HTTP `400` with `-32020`. Unknown methods return HTTP
+`404` with JSON-RPC error `-32601`.
 
-- remove the `initialize` flow;
-- require protocol version and client capabilities in every request's `_meta`;
-  validate recommended `clientInfo` when present without treating it as an
-  authenticated identity;
-- require `MCP-Protocol-Version`, `Mcp-Method`, and applicable `Mcp-Name`
-  headers and reject header/body mismatches;
-- implement `server/discover`;
-- retain one POST per JSON-RPC request, request-level authentication, Origin
-  validation, no `Mcp-Session-Id`, and `405` for GET and DELETE; and
-- rerun the exact tool visibility, authorization, revocation, idempotency,
-  PostgreSQL, malformed-request, and redaction gates.
-
-This migration does not change Cloud application commands, queries, scopes,
-tool catalogs, or persistence. It is also separate from product gate `MCP0`,
-which deploys tenant MCP AssetReleases as Runtime Services behind Gateway.
-Until `C0.2m` passes, clients must use the verified `2025-06-18` flow below.
+The migration does not change Cloud application commands, queries, scopes,
+tool catalogs, A3S ORM persistence, or audit behavior. It is also separate
+from product gate `MCP0`, which deploys tenant MCP AssetReleases as Runtime
+Services behind Gateway.
 
 ## Authentication and authorization
 
@@ -121,21 +120,29 @@ empty success page and does not reuse Workload or Runtime logs.
 
 ## Client flow
 
-Initialize the protocol with an API token:
+Discover the server with an API token. The client sends protocol metadata on
+this and every later request:
 
 ```bash
 curl --request POST "https://cloud.example.com/api/v1/mcp" \
   --header "Authorization: Bearer ${A3S_CLOUD_TOKEN}" \
   --header "Content-Type: application/json" \
   --header "Accept: application/json, text/event-stream" \
+  --header "MCP-Protocol-Version: 2026-07-28" \
+  --header "Mcp-Method: server/discover" \
   --data '{
     "jsonrpc": "2.0",
     "id": 1,
-    "method": "initialize",
+    "method": "server/discover",
     "params": {
-      "protocolVersion": "2025-06-18",
-      "capabilities": {},
-      "clientInfo": {"name": "operator-client", "version": "1.0.0"}
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "operator-client",
+          "version": "1.0.0"
+        }
+      }
     }
   }'
 ```
@@ -147,9 +154,24 @@ curl --request POST "https://cloud.example.com/api/v1/mcp" \
   --header "Authorization: Bearer ${A3S_CLOUD_TOKEN}" \
   --header "Content-Type: application/json" \
   --header "Accept: application/json, text/event-stream" \
-  --header "MCP-Protocol-Version: 2025-06-18" \
-  --data '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+  --header "MCP-Protocol-Version: 2026-07-28" \
+  --header "Mcp-Method: tools/list" \
+  --data '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
+    }
+  }'
 ```
+
+For `tools/call`, also send `Mcp-Name` with the exact tool name. Header and
+body metadata are integrity checks, not authorization inputs; the bearer token
+continues to determine the tenant and visible tools on every request.
 
 Mutation tools require a caller-owned idempotency key in their arguments. A
 REST call and an MCP call with the same command input and key resolve to the
@@ -197,10 +219,13 @@ replays return code `200` and `replayed: true` in the standard envelope.
 
 ## Conformance
 
-The dedicated `C0.2` scenario in
+The dedicated `C0.2m` scenario in
 [`tools/c0-conformance`](../tools/c0-conformance/README.md) boots the production
 control-plane binary with the shipped A3S ACL configuration and digest-pinned
-PostgreSQL 17. It proves the exact 23-tool administrator and 16-tool
+PostgreSQL 17. It first proves `server/discover`, per-request version and
+client metadata, exact transport-header matching, legacy initialization
+removal, and unsupported-version errors. It then proves the exact 23-tool
+administrator and 16-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -218,8 +243,8 @@ repositories.
 
 ## Current limits
 
-`C0.2` is verified for `2025-06-18`; `C0.2m` remains planned. OAuth 2.1
-discovery and consent follow only after the token-scoped confused-deputy gate.
+`C0.2m` retains bearer-token authentication. OAuth 2.1 discovery and consent
+follow only after the token-scoped confused-deputy gate.
 Secret material, exec, terminal access, server-side sessions, live log
 streams, and JSON-RPC batching are not exposed by this slice. No additional
 mutation is admitted without its existing scope, idempotency contract, tenant

@@ -25,28 +25,31 @@ It:
 7. requires the expected Token digests, durable revocation, and zero plaintext
    credentials in API/CLI evidence or the PostgreSQL dump.
 
-## C0.2 management MCP
+## C0.2m management MCP
 
 The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
-`2025-06-18` against the same production binary. It:
+`2026-07-28` against the same production binary. It:
 
-1. compares the 23-tool administrator and 16-tool `cloud:read` catalogs and
+1. proves `server/discover`, mandatory per-request protocol/client metadata,
+   matching transport headers, unsupported-version errors, complete-result
+   metadata, and removal of the legacy initialization flow;
+2. compares the 23-tool administrator and 16-tool `cloud:read` catalogs and
    verifies their behavioral annotations;
-2. proves a hidden mutation cannot be invoked and leaves no Project row;
-3. creates a Project through REST and replays the same command and idempotency
+3. proves a hidden mutation cannot be invoked and leaves no Project row;
+4. creates a Project through REST and replays the same command and idempotency
    key through MCP using one durable record;
-4. creates one Environment, exercises Node, Operation, Workload, Route, and
+5. creates one Environment, exercises Node, Operation, Workload, Route, and
    BuildRun lists, checks missing Node, Workload, Deployment, Route, and
    BuildRun details plus Workload logs, BuildRun logs, and BuildRun evidence,
    and rejects invalid list/log bounds, cursors, and stream filters;
-5. checks all five replay-safe operational commands against missing resources,
+6. checks all five replay-safe operational commands against missing resources,
    rejects missing, empty, and forged command arguments, then creates a
    Workload from A3S ACL and proves MCP stop plus exact replay;
-6. rejects a forged organization argument and returns the same `404`
+7. rejects a forged organization argument and returns the same `404`
    business-error contract for a foreign and a missing Project;
-7. revokes the read-only Token through REST and requires the next MCP request
+8. revokes the read-only Token through REST and requires the next MCP request
    to return `401`; and
-8. requires the expected Project, Environment, stopped Workload, idempotency,
+9. requires the expected Project, Environment, stopped Workload, idempotency,
    and Token-digest rows, read-only scope, revocation, and zero plaintext
    credentials in responses, logs, evidence, or the PostgreSQL dump.
 
@@ -88,6 +91,6 @@ and cgroups. A local pre-commit rehearsal may set
 `dirty-rehearsal` and is not release evidence.
 
 A passing clean default run writes `A3S_CLOUD_C0_1_CROSS_SURFACE_PASS`. A
-passing clean MCP run writes `A3S_CLOUD_C0_2_MANAGEMENT_MCP_PASS`. Both results
+passing clean MCP run writes `A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS`. Both results
 bind the exact Cloud, Runtime, and Box revisions and retain only sanitized
 scenario evidence, provider logs, and credential-free persistence checks.
