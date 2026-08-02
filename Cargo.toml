@@ -31,6 +31,7 @@ a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] 
 a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "1675376dbced0a65afce2141e799dcdceb8e475d", default-features = false, features = ["postgres"] }
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "a09b4db0f55c29cff3cb7963f2d45125ed7b3936", default-features = false, features = ["postgres"] }
 a3s-runtime = { version = "=0.2.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "25caf65ffed7ff9b82cedc4e7156c79f396896f7" }
+a3s-use-core = { version = "=0.2.1", git = "https://github.com/A3S-Lab/Use.git", rev = "a15cb412b26d83040ab491386baff2dda90264b1" }
 aes-gcm = "0.10"
 argon2 = "0.5"
 async-trait = "0.1"

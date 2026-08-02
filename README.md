@@ -41,11 +41,13 @@ existing Cloud, Flow, Workloads, Fleet, Runtime, Box, Gateway, and Power
 authorities provide the replacement path; availability remains governed by the
 verified gates in the [product roadmap](ROADMAP.md).
 
-Planned `U0` adds tenant A3S Use plugin assignments without moving plugin
-lifecycle into Cloud. Cloud will own exact registry and workspace assignment
-intent; the shared A3S Use Plugin Manager will remain the sole authority for
-signed catalogs, immutable package generations, grants, bindings, capability
-publication, drain, and cleanup.
+`U0` is in progress at the Cloud-to-A3S Use host boundary. Cloud now pins the
+canonical A3S Use host contract and carries typed capabilities, plan, apply,
+enablement, and observation commands through the existing Fleet journal. It
+does not yet expose tenant plugin APIs. Cloud will own exact registry and
+workspace assignment intent; the shared A3S Use Plugin Manager remains the
+sole authority for signed catalogs, immutable package generations, grants,
+bindings, capability publication, drain, and cleanup.
 
 Cloud is not a reverse proxy, an inference byte path, or a replacement Runtime.
 It owns business state, scheduling and deployment policy, rollout and
@@ -211,7 +213,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
 | `A0` — Release catalog | Immutable Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
-| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | Planned |
+| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern `2026-07-28` MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned (`A1.0` verified) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
@@ -1104,7 +1106,7 @@ node agent
 | A3S ORM | Typed PostgreSQL access, transactions, and migrations |
 | A3S Flow | Durable operations, retries, timers, and worker leases |
 | A3S Event | Integration-fact delivery through local or NATS providers |
-| A3S Use | Planned `U0` signed plugin catalog, canonical plan/apply contracts, shared Plugin Manager, package generations, grants, bindings, and capability reconciliation |
+| A3S Use | Canonical `U0` signed plugin catalog and plan/apply contracts, the sole shared Plugin Manager, package generations, grants, bindings, and capability reconciliation |
 | Cloud Workloads and Fleet | Placement, replicas, rollout, autoscaling policy, resource Claims, and the sole outbound node-control channel |
 | A3S Runtime | Provider-neutral Task and Service lifecycle, endpoints, and health observations |
 | A3S Box | Sole node-local execution provider and sole build-operation journal, cache, image, network, health-probe, mount, log, snapshot, and cleanup authority |

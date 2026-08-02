@@ -135,6 +135,7 @@ name = "a3s-cloud-contracts"
 version = "0.1.0"
 dependencies = [
  "a3s-runtime",
+ "a3s-use-core",
  "argon2",
  "base64 0.22.1",
  "chrono",
@@ -210,6 +211,7 @@ dependencies = [
  "a3s-box-runtime",
  "a3s-cloud-contracts",
  "a3s-runtime",
+ "a3s-use-core",
  "async-trait",
  "axum",
  "base64 0.22.1",
@@ -365,6 +367,24 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "a3s-use-core"
+version = "0.2.1"
+source = "git+https://github.com/A3S-Lab/Use.git?rev=a15cb412b26d83040ab491386baff2dda90264b1#a15cb412b26d83040ab491386baff2dda90264b1"
+dependencies = [
+ "async-trait",
+ "olpc-cjson",
+ "percent-encoding",
+ "pulldown-cmark",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "url",
 ]
 
 [[package]]
@@ -3404,6 +3424,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags 2.13.0",
+ "memchr",
+ "unicase",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.38.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4243,6 +4274,19 @@ name = "serde_yaml"
 version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
+name = "serde_yaml_ng"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap",
  "itoa",

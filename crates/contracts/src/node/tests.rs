@@ -704,3 +704,4 @@ fn node_protocol_errors_are_versioned_and_strict() {
 }
 
 mod gateway_tests;
+mod plugin_host_tests;

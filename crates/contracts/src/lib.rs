@@ -34,12 +34,12 @@ pub use node::{
     NodeGatewayAck, NodeGatewayAckReceipt, NodeGatewaySnapshotObservation, NodeHeartbeat,
     NodeHeartbeatV2, NodeInventoryReference, NodeLogChunkBatch, NodeLogChunkReceipt,
     NodeLogChunkReport, NodeLogGapReport, NodeObservationBatch, NodeObservationBatchEnvelope,
-    NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolError, NodeProtocolErrorCode,
-    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
-    NodeResourceClaimRelease, NodeResourceClaimReleased, NodeResourceInventory,
-    NodeResourceInventoryReceipt, NodeResourceSlot, NodeSecretMaterialRequest,
-    NodeSecretMaterialResponse, RuntimeObservationReport, BOX_BUILD_OUTPUT_NAME,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
+    NodeObservationBatchV2, NodeObservationReceipt, NodePluginHostCapabilitiesRequest,
+    NodeProtocolError, NodeProtocolErrorCode, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
+    NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
+    NodeSecretMaterialRequest, NodeSecretMaterialResponse, RuntimeObservationReport,
+    BOX_BUILD_OUTPUT_NAME, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
     RUNTIME_RESOURCE_CLAIM_ID_KEY,
 };
 pub use registry_credential::RegistryCredentialMaterial;

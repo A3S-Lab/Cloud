@@ -466,7 +466,12 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             | NodeCommandResult::ResourceClaimPrepared { .. }
             | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. }
-            | NodeCommandResult::GatewaySnapshotObserved { .. } => return None,
+            | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+            | NodeCommandResult::PluginHostPlanned { .. }
+            | NodeCommandResult::PluginHostApplied { .. }
+            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostObserved { .. } => return None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => return None,
     };
@@ -494,7 +499,12 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::BoxBuildInspected { .. }
             | NodeCommandResult::BoxBuildCancelled { .. }
             | NodeCommandResult::BoxBuildRemoved { .. }
-            | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
+            | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+            | NodeCommandResult::PluginHostPlanned { .. }
+            | NodeCommandResult::PluginHostApplied { .. }
+            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }

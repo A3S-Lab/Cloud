@@ -693,7 +693,12 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             | NodeCommandResult::BoxBuildStarted { .. }
             | NodeCommandResult::BoxBuildInspected { .. }
             | NodeCommandResult::BoxBuildCancelled { .. }
-            | NodeCommandResult::BoxBuildRemoved { .. } => None,
+            | NodeCommandResult::BoxBuildRemoved { .. }
+            | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+            | NodeCommandResult::PluginHostPlanned { .. }
+            | NodeCommandResult::PluginHostApplied { .. }
+            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,
     }

@@ -543,6 +543,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/060_box_native_build_authority.sql"
             )),
         ),
+        Migration::new(
+            "061",
+            "A3S Use Plugin Host node commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/061_plugin_host_commands.sql"
+            )),
+        ),
     ]
 }
 

@@ -14,6 +14,7 @@ mod identity;
 mod journal;
 mod log_shipper;
 mod outbound_batch;
+mod plugin_host;
 mod resource_claim;
 mod resource_inventory;
 mod secret;
