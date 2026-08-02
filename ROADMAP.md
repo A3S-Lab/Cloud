@@ -12,6 +12,7 @@ plans.
 | Document | Authority |
 | --- | --- |
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
+| [Technical architecture](docs/architecture.md) | Stable component ownership, control paths, consistency boundaries, deployment profiles, and failure behavior |
 | [Cloud development plan](docs/development-plan.md) | Detailed implementation sequence, exit criteria, provider evidence, recovery gates, and definition of done |
 | [Inference plan](docs/inference-plan.md) | Detailed `I0` domain, protocol, scheduling, Gateway, usage, and conformance contracts |
 | [Runtime roadmap](https://github.com/A3S-Lab/Runtime/blob/main/ROADMAP.md) | Runtime-local Unit lifecycle, provider certification, and `MCP0.2` substrate work |
@@ -35,6 +36,12 @@ The roadmap is gate-driven, not date-driven:
 
 **A3S Cloud is the self-hosted control plane for applications, Agents, MCP
 services, and model-serving workloads on operator-owned infrastructure.**
+
+The cumulative product target is an A3S-native platform that replaces the
+operational responsibilities commonly split between Google AX and Kubernetes.
+It requires neither system and does not preserve their APIs or controllers.
+The outcome is delivered across the existing `A0`, `A1`, `C0`, `H0`, and Box
+certification gates rather than through a parallel replacement milestone.
 
 Cloud turns tenant-owned intent into durable, observable infrastructure state.
 PostgreSQL is authoritative for desired state, A3S Flow coordinates long-lived
@@ -63,7 +70,8 @@ Cloud does not own:
 
 - per-request proxying, protocol framing, or provider-byte forwarding;
 - a second workload engine outside the common Workloads and Runtime path;
-- Kubernetes as an alternative Cloud scheduler;
+- Kubernetes, Helm, CRDs, or Operators as a required installation or an
+  alternative Cloud control plane;
 - raw provider configuration formats at the product boundary;
 - a built-in mail server or a separate native-desktop feature set; or
 - commercial prices, balances, invoices, settlement, and managed-service
@@ -689,6 +697,12 @@ execution. The Cloud API remains the client control boundary, and Gateway
 remains a transport data plane; neither a Harness nor a client gains a direct
 path around Cloud authorization, idempotency, Operations, or audit.
 
+This is the native replacement for AX's Agent server, actor controller, event
+log, Harness lifecycle, and snapshot roles. The common Workloads, Fleet,
+Runtime, Box, Edge, and Gateway path supplies the cluster responsibilities
+without importing a Kubernetes controller. The stable responsibility map is
+owned by the [technical architecture](docs/architecture.md#11-native-agent-platform-replacing-ax-and-kubernetes).
+
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `A1.0` | Verified | One sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
@@ -696,7 +710,7 @@ path around Cloud authorization, idempotency, Operations, or audit.
 | `A1.2` | Planned | Add a versioned Harness command/event protocol over the existing Fleet node-control channel and node-agent journal |
 | `A1.3` | Planned | Pin Agent, Skill, MCP, workspace, and tool bindings to immutable identities and record auditable tool request/result events |
 | `A1.4` | Planned | Add grant-checked approval checkpoints and logical pause/resume through the existing Operation and Harness lifecycle |
-| `A1.5` | Planned | Add immutable checkpoints, explicit fork lineage, trajectory export, telemetry correlation, and recovery evidence |
+| `A1.5` | Planned | Add immutable checkpoints, explicit fork lineage, trajectory export, telemetry correlation, and exact Box checkpoint/suspend/resume recovery certification where provider resume is enabled |
 
 The only new durable domain records are `agent_conversations`,
 `agent_executions`, `agent_execution_events`, immutable execution-binding child
@@ -766,11 +780,12 @@ not a product capability until restore passes against a clean environment.
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
 | `H0.3` | Planned | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
-| `H0.4` | Planned | Production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Install, upgrade, loss, leadership fencing, migration, rollback, and Gateway readiness gates pass |
+| `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
-Kubernetes or Helm may package Cloud, but Workloads remains the only workload
-scheduler and Cloud product configuration remains ACL.
+The Cloud production profile is ACL-native and Box-hosted. It does not depend
+on Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon;
+Workloads remains the only workload scheduler.
 
 The current `H0.1` foundation persists inference-neutral managed-owner
 references, one effective single-replica placement policy, one stable
@@ -1061,13 +1076,19 @@ The default portfolio priority is:
    generic platform dependencies;
 8. start `P0` only on verified `G0`; start `A1.1` after immutable published
    `A0.3` identities exist, add `A1.2` after `A0.4` Agent deployment, add
-   `A1.3` after `A0.5` bindings, then gate `A1.4` on `C0.3` grants and audit;
+   `A1.3` after `A0.5` bindings, gate `A1.4` on `C0.3` grants and audit, and
+   close `A1.5` only with exact checkpoint, suspend/resume, fork, and crash
+   recovery evidence;
 9. re-certify the `H0.2` projection gate while advancing `H0.3`
    multi-node placement and networking;
 10. close `MCP0.6` only after its `H0.3` multi-node and `C0.3` grant/audit
     dependencies pass; and
 11. close full production packaging, HA, autoscaling, and inference hardening
-    through `H0.4`, `H0.5`, and `I0.5`.
+    through `H0.4`, `H0.5`, and `I0.5`; and
+12. claim native AX-plus-Kubernetes replacement only after the cumulative
+    `A0.3` through `A0.5`, `A1.1` through `A1.5`, `C0.3`, `H0.3` through
+    `H0.5`, and Box checkpoint/suspend/resume gates pass on a clean supported
+    Linux installation.
 
 This order expresses dependency and product risk, not equal staffing or a
 calendar promise. The next implementation is the smallest vertical slice that
@@ -1157,6 +1178,9 @@ A product gate is complete only when:
   retry, cleanup, and documented error semantics;
 - real-provider happy path, failure, process-death, replay, corruption, and
   cleanup gates pass from a clean environment;
+- the owning installation gate passes on clean supported Linux with A3S Box and
+  without AX, Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility
+  daemon when the capability is part of the native replacement outcome;
 - Secret handling, authorization, revocation, SSRF, path/URL validation, and
   cross-tenant fixtures pass;
 - upgrades, mixed versions, rollback, backup/restore, observability, and
@@ -1184,7 +1208,10 @@ The current roadmap does not include:
 - a Cloud-equivalent control plane inside Gateway;
 - training, fine-tuning, or notebook lifecycle inside `I0`;
 - GPU host creation or SSH credential custody inside Inference;
-- Kubernetes as an alternative Workloads scheduler;
+- AX as a required Agent controller, event log, scheduler, configuration
+  authority, or direct client control path;
+- Kubernetes, Helm, CRDs, or Operators as an installation dependency or an
+  alternative Workloads scheduler;
 - plaintext credentials in ACL, desired state, operations, logs, or events;
 - a built-in mail server or divergent native desktop feature set; or
 - commercial billing inside the Cloud core.

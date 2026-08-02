@@ -18,11 +18,24 @@ when its exit evidence passes against real dependencies. Later milestones do
 not compensate for an unproven Runtime contract, lost-operation recovery, or a
 mock-only deployment path.
 
+The cumulative delivery objective is an A3S-native Agent and application
+platform that replaces the operational responsibilities commonly split between
+Google AX and Kubernetes. A clean supported Linux installation must reach that
+outcome through Cloud, Flow, Workloads, Fleet, Runtime, Box, Gateway, and Power
+without requiring AX, Kubernetes, Helm, CRDs, Operators, Docker, or a
+compatibility daemon. This is a cumulative exit outcome across existing gates,
+not a second controller or delivery lane.
+
 The root [product roadmap](../ROADMAP.md) publishes the complete Cloud
 portfolio, current gate status, dependencies, and the boundary between the
 Cloud control plane and Gateway data plane. This document owns detailed
 implementation order, exit criteria, and evidence. It reuses the roadmap
 boundary without creating a second Gateway control loop.
+
+The [technical architecture](architecture.md) is authoritative for component
+ownership, control paths, deployment profiles, and failure behavior. This plan
+may record historical provider evidence, but historical Docker evidence never
+defines the active Box-only architecture or certifies a current gate.
 
 The roadmap has four delivery horizons:
 
@@ -1831,6 +1844,11 @@ resumable, and approval-governed execution without introducing a second
 scheduler, event log, node-control channel, object store, audit path, or source
 of truth.
 
+Together with the existing Cloud control path, this milestone natively replaces
+AX's Agent server, actor controller, semantic event log, Harness lifecycle, and
+snapshot responsibilities. It does not implement AX wire compatibility or
+import AX as a required dependency.
+
 The Cloud API is the client control boundary. A Harness executes behind a typed
 port on an existing managed Workload, while A3S Flow, Operations, Fleet node
 control, and A3S Runtime retain their existing responsibilities. Gateway may
@@ -1848,7 +1866,7 @@ Deliver the capability through these ordered sub-gates:
 | `A1.2` | Define a versioned Harness command, event-batch, receipt, cancellation, and recovery contract in `contracts`; carry it over existing Fleet long poll, `node_commands`, leases, and the node-agent journal; run the Agent release through its existing Workload and Runtime identity | `A1.1` plus `A0.4` Agent deployment |
 | `A1.3` | Resolve and persist immutable Agent, Skill, MCP, workspace, and tool bindings before dispatch; record bounded tool request/result events and correlate audit without copying mutable manifests or secret material | `A1.2` plus `A0.5` immutable bindings |
 | `A1.4` | Add grant-checked approval checkpoints, expiry policy, logical pause/resume, denial/cancellation, and exact resume-command replay through Operations and the Harness lifecycle | `A1.3` plus `C0.3` grants and audit |
-| `A1.5` | Persist immutable checkpoint objects and projections, create explicit parent/fork lineage, expose trajectory query/export and telemetry correlation, and close the real-provider crash and cleanup gates | `A1.4` |
+| `A1.5` | Persist immutable checkpoint objects and projections, create explicit parent/fork lineage, expose trajectory query/export and telemetry correlation, certify exact Box checkpoint/suspend/resume recovery where provider resume is enabled, and close the real-provider crash and cleanup gates | `A1.4` |
 
 Current `A1.0` implementation:
 
@@ -1968,10 +1986,11 @@ contract.
 - Checkpoint creation is digest-verified and adoptable after a crash. Forking
   creates one new execution with immutable parent/checkpoint lineage and cannot
   mutate the parent trajectory.
-- Real PostgreSQL, object-store, Docker Runtime, node-agent, Harness, SSE, and
-  process-death gates pass all A1 crash rows in the verification matrix and
-  leave no unreferenced object, live Runtime unit, pending command, open grant,
-  or secret-bearing evidence.
+- Real PostgreSQL, object-store, exact pinned A3S Runtime/A3S Box provider,
+  Node Agent, Harness, SSE, checkpoint/suspend/resume, and process-death gates
+  pass all A1 crash rows in the verification matrix and leave no unreferenced
+  object, live Runtime unit, pending command, open grant, or secret-bearing
+  evidence.
 - Tenant denial, revocation, redaction, bounded-content, malformed protocol,
   stale sequence, conflicting receipt, and object-tamper fixtures fail closed.
 - Source architecture tests prove A3S ORM is the only A1 relational
@@ -2041,7 +2060,7 @@ reconciliation, process death, and provider recovery.
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Planned | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Planned | Cloud-owned production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Install and upgrade gates cover RBAC, service accounts, disruption budgets, network policy, migrations and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold |
+| `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
 The implemented `H0.1` foundation introduces `WorkloadControl`,
@@ -2215,15 +2234,15 @@ failure, recovery, and PostgreSQL gates close `H0.2`. Independently placed
 multi-node Gateways remain `H0.3`, and production control-plane/Gateway HA
 remains `H0.4`.
 
-H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway and migration
-job. PostgreSQL, NATS JetStream, S3-compatible storage, profile-conditional
-Redis, and the OpenTelemetry Collector remain replaceable dependencies with
-explicit health and recovery contracts. Redis is required only when replicated
-Gateways advertise the `I0.2b` globally exact limit contract; otherwise limits
-remain explicitly per-Gateway approximations. Kubernetes/Helm may be one
-installation profile, but it
-does not become a second workload scheduler, and Cloud product configuration
-remains ACL.
+H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
+migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,
+S3-compatible storage, profile-conditional Redis, and the OpenTelemetry
+Collector remain replaceable dependencies with explicit health and recovery
+contracts. Redis is required only when replicated Gateways advertise the
+`I0.2b` globally exact limit contract; otherwise limits remain explicitly
+per-Gateway approximations. The production profile requires no Kubernetes,
+Helm, CRD, Operator, Docker, or compatibility daemon, and Workloads remains the
+sole scheduler.
 
 ### Work
 
@@ -2250,6 +2269,10 @@ remains ACL.
   isolation, partition, and recovery evidence across real nodes.
 - Add highly available control-plane roles, leader/lease contention tests,
   backup/restore for control-plane PostgreSQL, and disaster runbooks.
+- Package the control-plane roles, migration job, Node Agent, Gateway, and
+  required dependencies as versioned Box-hosted units generated from closed
+  A3S ACL, with explicit process identity, least privilege, upgrade ordering,
+  rollback, health, and cleanup contracts.
 - Add versioned control-plane export/import manifests for tenant-owned desired
   state, provenance, audit metadata, and referenced artifacts. Secret values are
   re-encrypted for the destination through an explicit migration ceremony;
@@ -2280,6 +2303,9 @@ remains ACL.
   the ordinary scheduler and Runtime path.
 - Control-plane process loss, NATS loss when configured, node partition, and
   PostgreSQL failover have documented and tested recovery behavior.
+- A clean supported Linux host installs, upgrades, rolls back, and removes the
+  complete production profile through A3S ACL and Box without AX, Kubernetes,
+  Helm, CRDs, Operators, Docker, or a compatibility daemon.
 - A restore into a clean control plane reconstructs desired state, Flow runs,
   operations, assets, and node reconciliation without inventing provider state.
 - Export/import between supported versions preserves tenant ownership,
@@ -2300,7 +2326,7 @@ expand the Cloud core or delay its critical path:
 | Commercial billing and managed-cloud plans | Keep in a separately deployed service/profile that consumes public usage and entitlement contracts. Billing cannot enter scheduling, deployment, or domain aggregates. |
 | Development tunnels | Allow an optional, explicitly non-production C0 adapter with expiring credentials and visible routing state. Tunnels are never the production ingress or node-control path. |
 | Additional Runtime providers | Excluded from Cloud. A3S Box is the sole provider; cloud compute must produce an ordinarily enrolled Box node rather than another Runtime driver. |
-| Agent framework integrations | Keep Google AX and other frameworks behind the versioned A1 Harness port. An adapter may translate framework behavior, but cannot import another controller, event log, scheduler, configuration authority, or client control path. |
+| Agent framework integrations | Complete native `A1.5` first. Google AX and other frameworks may then implement the versioned A1 Harness port only when their integration contract is stable; an adapter cannot import another controller, event log, scheduler, configuration authority, or client control path. |
 
 These boundaries are revisited only with an operator use case and an owning
 domain. Feature breadth alone is not sufficient evidence.
@@ -2557,6 +2583,9 @@ A milestone is complete only when all of the following are true:
   retry, and cleanup semantics with documented errors.
 - Real-provider happy path, failure, process-death, replay, corruption, and
   cleanup gates pass from a clean environment.
+- Native replacement milestones pass on clean supported Linux through A3S ACL
+  and Box without AX, Kubernetes, Helm, CRDs, Operators, Docker, or a
+  compatibility daemon.
 - Security fixtures cover secret handling, path and URL validation, SSRF,
   authorization, revocation, and cross-tenant identifiers relevant to the
   milestone.
