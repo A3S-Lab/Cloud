@@ -203,6 +203,14 @@ pub(super) fn config() -> CloudConfig {
             max_blob_bytes: 1024 * 1024 * 1024,
             transfer_timeout_ms: 900_000,
         },
+        assets: AssetsConfig {
+            repository_dir: ".a3s/integration-asset-repositories".into(),
+            git_command_timeout_ms: 10_000,
+            write_lease_ms: 30_000,
+            repository_quota_bytes: 1024 * 1024 * 1024,
+            max_rpc_body_bytes: 64 * 1024 * 1024,
+            backup_max_bytes: 1024 * 1024 * 1024,
+        },
         postgres: PostgresConfig {
             url_env: URL_ENV.into(),
             max_connections: 8,

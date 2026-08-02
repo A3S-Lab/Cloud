@@ -222,7 +222,10 @@ pub async fn exercise_secret_rotation_restart(
         Arc::new(PostgresOperationRepository::new(executor.clone()));
     let coordinator = build_coordinator(&flow, operation_repository.clone())?;
     for _ in 0..12 {
-        coordinator.run_once().await?;
+        coordinator
+            .run_once()
+            .await
+            .map_err(|error| format!("Secret rotation scheduling failed: {error}"))?;
         if workload_repository
             .find_deployment(organization_id, deployment_id)
             .await?
@@ -239,7 +242,10 @@ pub async fn exercise_secret_rotation_restart(
     assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
     for _ in 0..16 {
         tokio::time::sleep(Duration::from_millis(6)).await;
-        coordinator.run_once().await?;
+        coordinator
+            .run_once()
+            .await
+            .map_err(|error| format!("Secret rotation Claim preparation failed: {error}"))?;
         if resource_claims
             .find(
                 organization_id,
@@ -296,7 +302,10 @@ pub async fn exercise_secret_rotation_restart(
 
     for _ in 0..12 {
         tokio::time::sleep(Duration::from_millis(6)).await;
-        coordinator.run_once().await?;
+        coordinator
+            .run_once()
+            .await
+            .map_err(|error| format!("Secret rotation Runtime dispatch failed: {error}"))?;
         if workload_repository
             .find_deployment(organization_id, deployment_id)
             .await?
@@ -390,7 +399,8 @@ pub async fn exercise_secret_rotation_restart(
         operation_id,
         target_revision_id,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Secret rotation activation crash gate failed: {error}"))?;
 
     // A reconstructed coordinator must replay activation and issue one
     // deterministic stop for the previous immutable Runtime revision.
@@ -403,7 +413,10 @@ pub async fn exercise_secret_rotation_restart(
     .await?;
     let coordinator = build_coordinator(&flow, operation_repository.clone())?;
     for _ in 0..12 {
-        coordinator.run_once().await?;
+        coordinator
+            .run_once()
+            .await
+            .map_err(|error| format!("Secret rotation retirement recovery failed: {error}"))?;
         let deployment = workload_repository
             .find_deployment(organization_id, deployment_id)
             .await?;
@@ -488,7 +501,10 @@ pub async fn exercise_secret_rotation_restart(
     .await?;
     for _ in 0..12 {
         tokio::time::sleep(Duration::from_millis(6)).await;
-        coordinator.run_once().await?;
+        coordinator
+            .run_once()
+            .await
+            .map_err(|error| format!("Secret rotation retirement observation failed: {error}"))?;
     }
     let release_lease = node_repository
         .lease_commands(
@@ -524,7 +540,10 @@ pub async fn exercise_secret_rotation_restart(
     )
     .await?;
     for _ in 0..12 {
-        coordinator.run_once().await?;
+        coordinator
+            .run_once()
+            .await
+            .map_err(|error| format!("Secret rotation completion recovery failed: {error}"))?;
         let deployment = workload_repository
             .find_deployment(organization_id, deployment_id)
             .await?;

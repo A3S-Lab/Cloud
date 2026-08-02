@@ -15,15 +15,15 @@ pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError}
 pub(crate) use git::{GitCommandError, GitCommandRunner};
 pub(crate) use immutable_object::{
     ImmutableObjectClient, ImmutableObjectError, ImmutableObjectOpenResult, ImmutableObjectRead,
-    ImmutableObjectVerification, S3ImmutableObjectOptions,
+    ImmutableObjectReader, ImmutableObjectVerification, S3ImmutableObjectOptions,
 };
 pub(crate) use oci_registry_client::{
     required_registry_header, OciRegistryClient, OciRegistryClientError,
 };
 pub(crate) use postgres::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, lock_idempotency_key, require_one_row, store_idempotency, store_outbox,
-    transaction_error, PostgresPersistenceError,
+    is_unique_violation, lock_idempotency_key, require_one_row, store_audit, store_idempotency,
+    store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
 pub(crate) use postgres_schema::OutboxEvents;
 pub(crate) use vault_client::{VaultClient, VaultClientError};

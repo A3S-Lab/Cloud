@@ -1,12 +1,17 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_cloud_control_plane::app::build_application_with_source_resolver;
 use a3s_cloud_control_plane::config::{
-    ArtifactTransferConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
+    ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
     EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
+use a3s_cloud_control_plane::modules::assets::{
+    AcquireAssetGitWriteLease, AssetGitRpcLimits, AssetGitService, AssetGitWriteOperation,
+    AssetGitWriteRecovery, ClaimAssetGitWriteRecovery, IAssetGitRepository,
+    IAssetGitRepositoryControl, LocalAssetGitRepository, PostgresAssetRepository,
+};
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
@@ -231,6 +236,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists mcp_credentials cascade;
              drop table if exists mcp_route_policies cascade;
              drop table if exists mcp_service_profiles cascade;
+             drop table if exists asset_git_repository_controls cascade;
              drop table if exists asset_releases cascade;
              drop table if exists assets cascade;
              drop table if exists environments cascade;
@@ -250,7 +256,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 60);
+    assert_eq!(applied, 62);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -844,6 +850,22 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "061",
+                "hosted Asset Git repository controls",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/061_asset_git_repository_controls.sql"
+                )),
+            ),
+            Migration::new(
+                "062",
+                "canonical A3S Runtime artifact JSON contract",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/062_runtime_artifact_json_contract.sql"
+                )),
+            ),
+            Migration::new(
+                "063",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -877,6 +899,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     application_config.node_control.client_ca_file = security_directory
         .path()
         .join("node-ca/ca.pem")
+        .display()
+        .to_string();
+    let asset_repository_directory = security_directory.path().join("asset-repositories");
+    application_config.assets.repository_dir = asset_repository_directory.display().to_string();
+    application_config.artifacts.store_dir = security_directory
+        .path()
+        .join("immutable-objects")
         .display()
         .to_string();
     let app = if std::env::var("A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER").as_deref() == Ok("1") {
@@ -1023,6 +1052,167 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )?)?),
     )
     .await?;
+    let hosted_git_asset = assets_support::exercise_asset_git_controls(
+        &executor,
+        OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
+        OrganizationId::from_uuid(Uuid::parse_str(&response_id(
+            &installation_conflict_organization,
+        )?)?),
+    )
+    .await?;
+    let hosted_git =
+        LocalAssetGitRepository::new(&asset_repository_directory, Duration::from_secs(10))?;
+    hosted_git.provision(&hosted_git_asset).await?;
+    let receive_advertisement_path = format!(
+        "/api/v1/organizations/{organization_id}/assets/{}/git/info/refs?service=git-receive-pack",
+        hosted_git_asset.id
+    );
+    let receive_advertisement = app
+        .call(get_as(&receive_advertisement_path, ADMIN_TOKEN))
+        .await?;
+    assert_eq!(receive_advertisement.status(), 200);
+    assert_eq!(
+        receive_advertisement.header("content-type"),
+        Some("application/x-git-receive-pack-advertisement")
+    );
+    assert!(receive_advertisement
+        .body()
+        .starts_with(b"001f# service=git-receive-pack\n0000"));
+    let physical_repository = asset_repository_directory
+        .join(organization_id.as_str())
+        .join(format!("{}.git", hosted_git_asset.id));
+    let original_refs = hosted_git.refs_digest(&hosted_git_asset).await?;
+    let original_bytes = hosted_git.repository_bytes(&hosted_git_asset).await?;
+    let crash_body =
+        assets_support::receive_pack_fixture(&physical_repository, hosted_git_asset.kind)?;
+    let crash_acquired_at = Utc::now();
+    let crash_controls = PostgresAssetRepository::new(executor.clone());
+    let crash_lease = crash_controls
+        .acquire_write(AcquireAssetGitWriteLease {
+            asset: hosted_git_asset.clone(),
+            lease_id: Uuid::now_v7(),
+            operation: AssetGitWriteOperation::ReceivePack,
+            actor_id: Uuid::now_v7(),
+            request_id: Uuid::now_v7(),
+            observed_bytes: original_bytes,
+            default_quota_bytes: 1_048_576,
+            acquired_at: crash_acquired_at,
+            leased_until: crash_acquired_at + chrono::Duration::seconds(1),
+        })
+        .await?;
+    hosted_git
+        .prepare_write(&hosted_git_asset, &crash_lease)
+        .await?;
+    hosted_git
+        .execute_rpc(
+            &hosted_git_asset,
+            AssetGitService::ReceivePack,
+            crash_body,
+            AssetGitRpcLimits {
+                maximum_input_bytes: 64 * 1024 * 1024,
+                maximum_repository_bytes: crash_lease.quota_bytes,
+            },
+            Some(&crash_lease),
+        )
+        .await?;
+    assert_ne!(
+        hosted_git.refs_digest(&hosted_git_asset).await?,
+        original_refs
+    );
+    drop(hosted_git);
+    let restarted_git =
+        LocalAssetGitRepository::new(&asset_repository_directory, Duration::from_secs(10))?;
+    let recovery = match crash_controls
+        .claim_write_recovery(ClaimAssetGitWriteRecovery {
+            asset: hosted_git_asset.clone(),
+            claimed_at: crash_acquired_at + chrono::Duration::seconds(2),
+            leased_until: crash_acquired_at + chrono::Duration::seconds(32),
+        })
+        .await?
+    {
+        Some(AssetGitWriteRecovery::Rollback(lease)) => lease,
+        outcome => return Err(format!("unexpected real hosted Git recovery: {outcome:?}").into()),
+    };
+    assert_eq!(recovery.lease_id, crash_lease.lease_id);
+    restarted_git
+        .rollback_write(&hosted_git_asset, &recovery)
+        .await?;
+    crash_controls.abandon_write(&recovery).await?;
+    assert_eq!(
+        restarted_git.refs_digest(&hosted_git_asset).await?,
+        original_refs
+    );
+    assert!(restarted_git.repository_bytes(&hosted_git_asset).await? <= original_bytes);
+    let receive_body =
+        assets_support::receive_pack_fixture(&physical_repository, hosted_git_asset.kind)?;
+    let receive = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Post,
+                format!(
+                    "/api/v1/organizations/{organization_id}/assets/{}/git/git-receive-pack",
+                    hosted_git_asset.id
+                ),
+            )
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+            .with_header("content-type", "application/x-git-receive-pack-request")
+            .with_body(receive_body),
+        )
+        .await?;
+    assert_eq!(receive.status(), 200);
+    assert_eq!(
+        receive.header("content-type"),
+        Some("application/x-git-receive-pack-result")
+    );
+    assert!(!receive.body().is_empty());
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<(Option<Uuid>, Option<Uuid>)>(
+                "select write_lease_id, write_cleanup_lease_id from asset_git_repository_controls where organization_id = ",
+            )
+            .bind(hosted_git_asset.organization_id.as_uuid())
+            .append(" and asset_id = ")
+            .bind(hosted_git_asset.id.as_uuid()))
+            .await?,
+        (None, None),
+        "successful Smart HTTP completion must settle the same write journal",
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where aggregate_id = ",)
+                    .bind(hosted_git_asset.id.as_uuid())
+                    .append(" and action = ")
+                    .bind("asset.repository.pushed")
+            )
+            .await?,
+        2,
+        "repository-control completion and Smart HTTP push must each use the shared audit table",
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ",)
+                    .bind(hosted_git_asset.id.as_uuid())
+                    .append(" and event_key = ")
+                    .bind("asset.asset.created")
+            )
+            .await?,
+        1,
+        "Hosted Git controls must reuse the Asset outbox event instead of publishing a second repository event",
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from idempotency_records where scope_key = ",)
+                    .bind(format!("organizations/{organization_id}/assets"))
+                    .append(" and idempotency_key = ")
+                    .bind("create-hosted-git-control")
+            )
+            .await?,
+        1,
+        "Hosted Git controls must reuse the Asset idempotency authority",
+    );
 
     let webhook_body = serde_json::to_vec(&json!({
         "ref": "refs/heads/main",
@@ -1421,8 +1611,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 34);
-    assert_eq!(idempotency_records, 26);
+    assert_eq!(outbox_events, 38);
+    assert_eq!(idempotency_records, 30);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
@@ -1881,7 +2071,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             registry_password.as_str(),
         ],
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Secret rotation restart integration failed: {error}"))?;
     for plaintext in [
         second_secret_value,
         third_secret_value,
@@ -2033,7 +2224,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             token: ADMIN_TOKEN,
         },
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Edge API integration failed after Secret restart: {error}"))?;
 
     let mut cancellation_workload_body = workload_body;
     cancellation_workload_body["template"]["secrets"] = json!([]);
@@ -2053,7 +2245,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             admin_token: ADMIN_TOKEN,
         },
     )
-    .await?;
+    .await
+    .map_err(|error| format!("deployment cancellation integration failed: {error}"))?;
 
     let rollback_replay = workload_rollback_support::accept_and_cancel(
         workload_rollback_support::RollbackApiScenario {
@@ -2067,7 +2260,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             token: ADMIN_TOKEN,
         },
     )
-    .await?;
+    .await
+    .map_err(|error| format!("workload rollback acceptance failed: {error}"))?;
 
     let stop_path = format!("/api/v1/organizations/{organization_id}/workloads/{workload_id}/stop");
     let stop = app
@@ -2103,22 +2297,27 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         rollback_replay,
         ADMIN_TOKEN,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("workload rollback replay failed after stop: {error}"))?;
 
-    fleet_support::exercise_fleet(&executor, Uuid::parse_str(&organization_id)?).await?;
+    fleet_support::exercise_fleet(&executor, Uuid::parse_str(&organization_id)?)
+        .await
+        .map_err(|error| format!("Fleet persistence integration failed: {error}"))?;
     let workload_fixture = workloads_support::exercise_workloads(
         &executor,
         Uuid::parse_str(&organization_id)?,
         Uuid::parse_str(&project_id)?,
         Uuid::parse_str(&environment_id)?,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Workload persistence integration failed: {error}"))?;
     resource_claims_support::exercise_resource_claims(
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
         &workload_fixture,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Resource Claim persistence integration failed: {error}"))?;
     edge_support::exercise_edge(
         &executor,
         edge_support::EdgeFixture {
@@ -2140,7 +2339,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             candidate_deployment_id: workload_fixture.candidate_deployment_id,
         },
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Edge persistence integration failed: {error}"))?;
     let gateway_rollout_fixture = gateway_rollouts_support::GatewayRolloutFixture {
         organization_id: OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
         project_id: a3s_cloud_control_plane::modules::shared_kernel::domain::ProjectId::from_uuid(
@@ -2158,12 +2358,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         &executor,
         gateway_rollout_fixture,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Gateway replica recovery integration failed: {error}"))?;
     gateway_rollouts_support::exercise_replicated_gateway_rollout(
         &executor,
         gateway_rollout_fixture,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Gateway rollout persistence integration failed: {error}"))?;
     mcp_route_policies_support::exercise(
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
@@ -2175,7 +2377,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             Uuid::parse_str(&environment_id)?,
         ),
     )
-    .await?;
+    .await
+    .map_err(|error| format!("MCP route-policy persistence integration failed: {error}"))?;
     executions_support::exercise_execution_persistence(
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
@@ -2187,7 +2390,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             Uuid::parse_str(&environment_id)?,
         ),
     )
-    .await?;
+    .await
+    .map_err(|error| format!("Execution persistence integration failed: {error}"))?;
 
     Ok(())
 }

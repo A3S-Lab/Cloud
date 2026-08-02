@@ -1,6 +1,10 @@
-use crate::modules::assets::domain::{Asset, AssetState};
-use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
+use crate::modules::assets::domain::{
+    Asset, AssetGitBackup, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
+    AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission, AssetState,
+};
+use crate::modules::shared_kernel::domain::{AssetId, GitCommitSha, OrganizationId, Sha256Digest};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 pub const DEFAULT_ASSET_BRANCH: &str = "main";
 
@@ -59,6 +63,10 @@ pub enum AssetGitRepositoryError {
     NotFound,
     #[error("hosted Git repository failed integrity validation: {0}")]
     Integrity(String),
+    #[error("hosted Git repository request exceeds its configured quota")]
+    QuotaExceeded,
+    #[error("hosted Git repository backup support is unavailable")]
+    BackupUnavailable,
     #[error("hosted Git repository storage failed: {0}")]
     Storage(String),
 }
@@ -71,12 +79,70 @@ pub trait IAssetGitRepository: Send + Sync {
     ) -> Result<AssetGitRepositoryWrite, AssetGitRepositoryError>;
 
     async fn inspect(&self, asset: &Asset) -> Result<AssetGitRepository, AssetGitRepositoryError>;
+
+    async fn prepare_write(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+    ) -> Result<(), AssetGitRepositoryError>;
+
+    async fn rollback_write(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+    ) -> Result<(), AssetGitRepositoryError>;
+
+    async fn settle_write(
+        &self,
+        asset: &Asset,
+        journal: &AssetGitWriteJournal,
+    ) -> Result<(), AssetGitRepositoryError>;
+
+    async fn advertise(
+        &self,
+        asset: &Asset,
+        service: AssetGitService,
+    ) -> Result<Vec<u8>, AssetGitRepositoryError>;
+
+    async fn execute_rpc(
+        &self,
+        asset: &Asset,
+        service: AssetGitService,
+        request: Vec<u8>,
+        limits: AssetGitRpcLimits,
+        write_lease: Option<&AssetGitWriteLease>,
+    ) -> Result<AssetGitRpcResponse, AssetGitRepositoryError>;
+
+    async fn repository_bytes(&self, asset: &Asset) -> Result<u64, AssetGitRepositoryError>;
+
+    async fn refs_digest(&self, asset: &Asset) -> Result<Sha256Digest, AssetGitRepositoryError>;
+
+    async fn create_backup(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+        created_at: DateTime<Utc>,
+    ) -> Result<AssetGitBackup, AssetGitRepositoryError>;
+
+    async fn restore_backup(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+        backup: &AssetGitBackup,
+        maximum_repository_bytes: u64,
+    ) -> Result<AssetGitRpcResponse, AssetGitRepositoryError>;
+
+    async fn admit_manifest(
+        &self,
+        asset: &Asset,
+        commit_sha: &GitCommitSha,
+    ) -> Result<AssetManifestAdmission, AssetGitRepositoryError>;
 }
 
-pub fn validate_asset_repository_provision(asset: &Asset) -> Result<(), String> {
+pub fn validate_asset_repository_mutation(asset: &Asset) -> Result<(), String> {
     asset.validate()?;
     if asset.state != AssetState::Active {
-        return Err("archived Asset cannot provision a hosted Git repository".into());
+        return Err("archived Asset repository is read-only".into());
     }
     Ok(())
 }

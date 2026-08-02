@@ -9,7 +9,13 @@ use crate::modules::artifacts::{
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
     RetryBuildRunHandler, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
-use crate::modules::assets::{IMcpServiceProfileRepository, PostgresAssetRepository};
+use crate::modules::assets::{
+    AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, AssetGitApplicationService,
+    AssetGitApplicationServiceOptions, AssetsModule, BackupAssetGitRepositoryHandler,
+    IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
+    IMcpServiceProfileRepository, LocalAssetGitRepository, PostgresAssetRepository,
+    ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, UploadAssetGitPackHandler,
+};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -163,6 +169,8 @@ pub enum ControlPlaneStartupError {
     Sources(String),
     #[error("could not initialize build execution: {0}")]
     Build(String),
+    #[error("could not initialize hosted Asset repositories: {0}")]
+    Assets(String),
     #[error("could not initialize finite execution: {0}")]
     Execution(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
@@ -237,8 +245,42 @@ pub async fn build_application_with_source_resolver(
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
         edge_repository.clone();
-    let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> =
-        Arc::new(PostgresAssetRepository::new(executor.clone()));
+    let asset_repository = Arc::new(PostgresAssetRepository::new(executor.clone()));
+    let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
+    let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
+    let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
+    let asset_backup_objects =
+        ImmutableObjectClient::local(&config.artifacts.store_dir, "asset-git-backups")
+            .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
+    let asset_git_repositories: Arc<dyn IAssetGitRepository> = Arc::new(
+        LocalAssetGitRepository::new(
+            &config.assets.repository_dir,
+            Duration::from_millis(config.assets.git_command_timeout_ms),
+        )
+        .and_then(|repository| {
+            repository.with_backup_objects(asset_backup_objects, config.assets.backup_max_bytes)
+        })
+        .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?,
+    );
+    let asset_git = Arc::new(
+        AssetGitApplicationService::new(
+            assets,
+            asset_git_repositories,
+            asset_controls,
+            AssetGitApplicationServiceOptions {
+                write_lease: Duration::from_millis(config.assets.write_lease_ms),
+                default_repository_quota_bytes: config.assets.repository_quota_bytes,
+                maximum_rpc_body_bytes: u64::try_from(config.assets.max_rpc_body_bytes).map_err(
+                    |_| {
+                        ControlPlaneStartupError::Assets(
+                            "Asset Git RPC body bound exceeds u64".into(),
+                        )
+                    },
+                )?,
+            },
+        )
+        .map_err(ControlPlaneStartupError::Assets)?,
+    );
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
@@ -664,6 +706,7 @@ pub async fn build_application_with_source_resolver(
             projects: projects.clone(),
             environments: projects,
             search,
+            asset_git,
             workloads,
             builds,
             executions,
@@ -728,6 +771,7 @@ struct ApplicationDependencies {
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     search: Arc<dyn ISearchRepository>,
+    asset_git: Arc<AssetGitApplicationService>,
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     executions: Arc<dyn IExecutionRepository>,
@@ -765,6 +809,7 @@ fn build_application_with_health(
         projects,
         environments,
         search,
+        asset_git,
         workloads,
         builds,
         executions,
@@ -971,6 +1016,15 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
                 )
+                .command_handler::<crate::modules::assets::ReceiveAssetGitPack, _>(
+                    ReceiveAssetGitPackHandler::new(Arc::clone(&asset_git)),
+                )
+                .command_handler::<crate::modules::assets::BackupAssetGitRepository, _>(
+                    BackupAssetGitRepositoryHandler::new(Arc::clone(&asset_git)),
+                )
+                .command_handler::<crate::modules::assets::RestoreAssetGitRepository, _>(
+                    RestoreAssetGitRepositoryHandler::new(Arc::clone(&asset_git)),
+                )
                 .command_handler::<crate::modules::secrets::CreateSecret, _>(
                     CreateSecretHandler::new(
                         secret_environments,
@@ -1153,6 +1207,15 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),
                 )
+                .query_handler::<crate::modules::assets::AdvertiseAssetGitRepository, _>(
+                    AdvertiseAssetGitRepositoryHandler::new(Arc::clone(&asset_git)),
+                )
+                .query_handler::<crate::modules::assets::UploadAssetGitPack, _>(
+                    UploadAssetGitPackHandler::new(Arc::clone(&asset_git)),
+                )
+                .query_handler::<crate::modules::assets::AdmitAssetManifest, _>(
+                    AdmitAssetManifestHandler::new(asset_git),
+                )
                 .query_handler::<crate::modules::secrets::ListSecrets, _>(ListSecretsHandler::new(
                     list_secrets,
                 ))
@@ -1252,6 +1315,7 @@ fn build_application_with_health(
         .import(SearchModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
+        .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)
         .import(ArtifactsModule)
         .import(ExecutionsModule)
         .import(OperationsModule)

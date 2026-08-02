@@ -1,6 +1,6 @@
 use super::*;
 use crate::config::{
-    ArtifactTransferConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
+    ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
     EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
@@ -36,6 +36,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 mod api_contract_tests;
+mod asset_git_support;
+mod asset_git_tests;
 mod build_tests;
 mod execution_tests;
 mod management_mcp_tests;
@@ -47,6 +49,8 @@ mod source_private_tests;
 mod source_subscription_tests;
 mod source_tests;
 mod workload_tests;
+
+use asset_git_support::UnavailableAssetStore;
 
 const BOOTSTRAP_TOKEN: &str = "test-bootstrap-credential-0123456789abcdef";
 const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -268,6 +272,14 @@ fn config() -> CloudConfig {
             store_dir: ".a3s/test-artifacts".into(),
             max_blob_bytes: 1024 * 1024 * 1024,
             transfer_timeout_ms: 900_000,
+        },
+        assets: AssetsConfig {
+            repository_dir: ".a3s/test-asset-repositories".into(),
+            git_command_timeout_ms: 10_000,
+            write_lease_ms: 30_000,
+            repository_quota_bytes: 1024 * 1024 * 1024,
+            max_rpc_body_bytes: 64 * 1024 * 1024,
+            backup_max_bytes: 1024 * 1024 * 1024,
         },
         postgres: PostgresConfig {
             url_env: "A3S_CLOUD_POSTGRES_URL".into(),
@@ -738,6 +750,20 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
     let source_webhooks = sources.clone();
     let source_subscriptions = sources.clone();
+    let unavailable_assets = Arc::new(UnavailableAssetStore);
+    let asset_git = Arc::new(
+        AssetGitApplicationService::new(
+            unavailable_assets.clone(),
+            unavailable_assets.clone(),
+            unavailable_assets,
+            AssetGitApplicationServiceOptions {
+                write_lease: std::time::Duration::from_secs(30),
+                default_repository_quota_bytes: 1024 * 1024 * 1024,
+                maximum_rpc_body_bytes: 64 * 1024 * 1024,
+            },
+        )
+        .map_err(BootError::Internal)?,
+    );
     build_application_with_health(
         config(),
         ApplicationDependencies {
@@ -746,6 +772,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             projects: projects.clone(),
             environments: projects,
             search,
+            asset_git,
             workloads: workload_port,
             builds,
             executions: Arc::new(InMemoryExecutionRepository::new()),

@@ -550,8 +550,24 @@ contexts' tables.
   `{root}/{organization_id}/{asset_id}.git`.
 - The repository starts on `main`; releases always pin a commit SHA rather than
   a mutable branch.
-- Archiving prevents new releases but never deletes existing releases.
-- Asset ACL changes are read from a commit and validated before release.
+- Upload-pack requires tenant read authority, and receive-pack requires
+  `asset:write`. Backup and restore remain typed internal commands carrying
+  actor and request identity through the same mutation fence. Every mutation is
+  rejected after the Asset is archived; archiving never deletes the repository
+  or its published releases.
+- One PostgreSQL control row owns the repository quota, observed usage,
+  single-writer lease, committed-cleanup lease, audit commit, and latest backup
+  receipt. A3S ORM is the only relational access path.
+- Every ref mutation prepares one local checksummed journal named by the same
+  lease ID. Before PostgreSQL completion it restores the exact prior refs and
+  removes newly introduced objects; after completion it is cleanup evidence
+  only. A stale lease cannot be overwritten before this recovery settles.
+- Backups are immutable digest-verified Git bundles stored through the shared
+  object client. Restore validates the receipt, refs digest, quota, and journal
+  before replacing refs.
+- Asset ACL is read only from `.a3s/asset.acl` at an exact reachable commit,
+  parsed with `a3s-acl`, and admitted only when its closed kind matches the
+  Asset.
 
 ### Asset release
 
@@ -1329,7 +1345,9 @@ partially installed or optimistically active.
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
 | Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
-| Asset repository refs and objects | Git repository store |
+| Asset repository refs, objects, immutable repository identity, and same-lease rollback journal | Tenant/Asset-qualified local Git repository store |
+| Asset repository writer lease, quota, applied usage, audit commit, cleanup obligation, and latest backup receipt | One PostgreSQL `asset_git_repository_controls` row through A3S ORM |
+| Asset repository backup bytes | Shared immutable-object infrastructure through the typed Assets adapter |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |
 | Agent conversation, execution, event-stream head, semantic event metadata, immutable bindings, approval decisions, checkpoint descriptors, and fork lineage | PostgreSQL Agents tables through A3S ORM |

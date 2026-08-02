@@ -734,6 +734,30 @@ mod tests {
     }
 
     #[test]
+    fn output_json_preserves_the_canonical_runtime_artifact_field_names() {
+        let request = request();
+        let NodeBoxBuildInspection::Succeeded { output, .. } = successful_inspection(&request)
+        else {
+            panic!("inspection must succeed");
+        };
+        let json = serde_json::to_value(output).expect("serialize Box build output");
+
+        assert_eq!(json["artifact"]["name"], BOX_BUILD_OUTPUT_NAME);
+        assert_eq!(
+            json["artifact"]["artifact"]["media_type"],
+            NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
+        );
+        assert_eq!(json["artifact"]["size_bytes"], 4096);
+        assert!(json["artifact"]["artifact"].get("mediaType").is_none());
+        assert!(json["artifact"].get("sizeBytes").is_none());
+        assert_eq!(
+            json["descriptor"]["mediaType"],
+            OCI_IMAGE_MANIFEST_MEDIA_TYPE
+        );
+        assert_eq!(json["manifestCount"], 1);
+    }
+
+    #[test]
     fn node_command_acknowledgement_binds_the_box_build_action_and_request() {
         let request = request();
         let issued_at = Utc::now();

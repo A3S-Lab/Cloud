@@ -145,6 +145,49 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/executions/{execution_id}"];
     assert!(execution["get"].is_object());
     assert!(execution["delete"].is_object());
+
+    let asset_git = &document["paths"]
+        ["/organizations/{organization_id}/assets/{asset_id}/git/info/refs"]["get"];
+    assert_eq!(asset_git["tags"], json!(["Assets"]));
+    assert!(asset_git["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "service"
+                && parameter["in"] == "query"
+                && parameter["required"] == true
+                && parameter["schema"]["enum"] == json!(["git-upload-pack", "git-receive-pack"])
+        })));
+    assert_eq!(
+        asset_git["responses"]["200"]["$ref"],
+        "#/components/responses/AssetGitAdvertisementSuccess200"
+    );
+
+    let receive_pack = &document["paths"]
+        ["/organizations/{organization_id}/assets/{asset_id}/git/git-receive-pack"]["post"];
+    assert!(
+        receive_pack["requestBody"]["content"]["application/x-git-receive-pack-request"]
+            .is_object()
+    );
+    assert!(receive_pack["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert!(receive_pack["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters
+            .iter()
+            .all(|parameter| parameter["name"] != "idempotency-key")));
+    assert_eq!(
+        receive_pack["responses"]["200"]["$ref"],
+        "#/components/responses/AssetGitReceivePackSuccess200"
+    );
+    assert_eq!(
+        receive_pack["responses"]["413"]["$ref"],
+        "#/components/responses/Error413"
+    );
+    assert_eq!(
+        receive_pack["responses"]["415"]["$ref"],
+        "#/components/responses/Error415"
+    );
     Ok(())
 }
 

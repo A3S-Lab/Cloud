@@ -18,7 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "config/cloud.acl".to_owned());
     let config = CloudConfig::load(path)?;
     let address = config.server_address()?;
-    let body_limit = DEFAULT_API_BODY_LIMIT_BYTES.max(config.sources.github_webhook_max_body_bytes);
+    let body_limit = DEFAULT_API_BODY_LIMIT_BYTES
+        .max(config.sources.github_webhook_max_body_bytes)
+        .max(config.assets.max_rpc_body_bytes);
     let application = build_application(config).await?;
     application
         .serve_with(&AxumAdapter::new().with_body_limit(body_limit), address)

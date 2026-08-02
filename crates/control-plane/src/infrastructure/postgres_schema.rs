@@ -35,3 +35,16 @@ orm_table! {
         last_error: Option<String> => "last_error",
     }
 }
+
+orm_table! {
+    pub(crate) struct AuditRecords => "audit_records" {
+        audit_id: Uuid => "audit_id",
+        organization_id: Uuid => "organization_id",
+        actor_id: Option<Uuid> => "actor_id",
+        action: String => "action",
+        aggregate_id: Uuid => "aggregate_id",
+        occurred_at: DateTime<Utc> => "occurred_at",
+        request_id: Uuid => "request_id",
+        details: serde_json::Value => "details",
+    }
+}

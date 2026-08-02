@@ -55,6 +55,16 @@ pub struct ArtifactTransferConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetsConfig {
+    pub repository_dir: String,
+    pub git_command_timeout_ms: u64,
+    pub write_lease_ms: u64,
+    pub repository_quota_bytes: u64,
+    pub max_rpc_body_bytes: usize,
+    pub backup_max_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresConfig {
     pub url_env: String,
     pub max_connections: usize,
@@ -309,6 +319,7 @@ pub struct CloudConfig {
     pub server: ServerConfig,
     pub node_control: NodeControlConfig,
     pub artifacts: ArtifactTransferConfig,
+    pub assets: AssetsConfig,
     pub postgres: PostgresConfig,
     pub auth: AuthConfig,
     pub events: EventsConfig,
@@ -359,6 +370,18 @@ impl CloudConfig {
         validate_block(
             artifacts,
             &["store_dir", "max_blob_bytes", "transfer_timeout_ms"],
+        )?;
+        let assets = one_block(&document, "assets")?;
+        validate_block(
+            assets,
+            &[
+                "repository_dir",
+                "git_command_timeout_ms",
+                "write_lease_ms",
+                "repository_quota_bytes",
+                "max_rpc_body_bytes",
+                "backup_max_bytes",
+            ],
         )?;
         let postgres = one_block(&document, "postgres")?;
         validate_block(postgres, &["url_env", "max_connections"])?;
@@ -569,6 +592,14 @@ impl CloudConfig {
                 store_dir: string(artifacts, "store_dir")?,
                 max_blob_bytes: integer(artifacts, "max_blob_bytes")?,
                 transfer_timeout_ms: integer(artifacts, "transfer_timeout_ms")?,
+            },
+            assets: AssetsConfig {
+                repository_dir: string(assets, "repository_dir")?,
+                git_command_timeout_ms: integer(assets, "git_command_timeout_ms")?,
+                write_lease_ms: integer(assets, "write_lease_ms")?,
+                repository_quota_bytes: integer(assets, "repository_quota_bytes")?,
+                max_rpc_body_bytes: integer(assets, "max_rpc_body_bytes")?,
+                backup_max_bytes: integer(assets, "backup_max_bytes")?,
             },
             postgres: PostgresConfig {
                 url_env: string(postgres, "url_env")?,
@@ -845,6 +876,28 @@ impl CloudConfig {
         {
             return Err(ConfigError::Invalid(
                 "artifacts requires a normalized store path, a 1 MiB to 10 GiB blob bound, and a 1 second to 1 hour transfer timeout"
+                    .into(),
+            ));
+        }
+        let repository_path = Path::new(&self.assets.repository_dir);
+        let object_path = Path::new(&self.artifacts.store_dir);
+        if !valid_data_path(&self.assets.repository_dir)
+            || repository_path == object_path
+            || repository_path.starts_with(object_path)
+            || object_path.starts_with(repository_path)
+            || !(1_000..=600_000).contains(&self.assets.git_command_timeout_ms)
+            || self.assets.write_lease_ms <= self.assets.git_command_timeout_ms
+            || self.assets.write_lease_ms > 3_600_000
+            || !(1024 * 1024..=10 * 1024 * 1024 * 1024_u64)
+                .contains(&self.assets.repository_quota_bytes)
+            || !(1024 * 1024..=64 * 1024 * 1024).contains(&self.assets.max_rpc_body_bytes)
+            || self.assets.max_rpc_body_bytes as u64 > self.assets.repository_quota_bytes
+            || !(1024 * 1024..=self.artifacts.max_blob_bytes)
+                .contains(&self.assets.backup_max_bytes)
+            || self.assets.backup_max_bytes > self.assets.repository_quota_bytes
+        {
+            return Err(ConfigError::Invalid(
+                "assets requires separate normalized repository/object paths, a 1-600 second Git timeout, a longer lease up to one hour, a 1 MiB to 10 GiB repository quota, a 1-64 MiB bounded RPC body, and a backup bound within both the repository quota and immutable-object limit"
                     .into(),
             ));
         }
@@ -1424,6 +1477,7 @@ pub enum ConfigError {
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
     let allowed = [
         "artifacts",
+        "assets",
         "auth",
         "builds",
         "events",
@@ -1701,6 +1755,14 @@ artifacts {
   store_dir = ".a3s/cloud/artifacts"
   max_blob_bytes = 1073741824
   transfer_timeout_ms = 900000
+}
+assets {
+  repository_dir = ".a3s/cloud/asset-repositories"
+  git_command_timeout_ms = 120000
+  write_lease_ms = 180000
+  repository_quota_bytes = 1073741824
+  max_rpc_body_bytes = 67108864
+  backup_max_bytes = 1073741824
 }
 postgres { url_env = "A3S_CLOUD_POSTGRES_URL" max_connections = 16 }
 auth { bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN" }
