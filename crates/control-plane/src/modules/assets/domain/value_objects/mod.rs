@@ -1,7 +1,11 @@
+mod asset_git;
 mod asset_release_artifact;
 mod asset_release_version;
 mod mcp_service_profile;
 
+pub use asset_git::{
+    AssetGitBackup, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetManifestAdmission,
+};
 pub use asset_release_artifact::{
     AssetReleaseArtifact, AssetReleaseArtifactKind, SKILL_BUNDLE_MEDIA_TYPE,
 };

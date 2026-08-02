@@ -22,6 +22,15 @@ artifacts {
   transfer_timeout_ms = 900000
 }
 
+assets {
+  repository_dir = ".a3s/cloud/asset-repositories"
+  git_command_timeout_ms = 120000
+  write_lease_ms = 180000
+  repository_quota_bytes = 1073741824
+  max_rpc_body_bytes = 67108864
+  backup_max_bytes = 1073741824
+}
+
 postgres {
   url_env = "A3S_CLOUD_POSTGRES_URL"
   max_connections = 16

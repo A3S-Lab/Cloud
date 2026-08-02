@@ -385,7 +385,7 @@ authoritative contract Cloud can transport.
   Web adds debounced keyboard search and validated contextual navigation; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
   at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.1.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  `1.2.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
   minimum sunset window; and
@@ -421,23 +421,30 @@ the current search boundary is the organization tenant guard.
   evidence for replay, stale-write rejection, tenant isolation, archival,
   publication immutability, yanking, and atomic event persistence.
 
-No hosted Git or release API is public yet, and no Agent, MCP, or Skill is
-deployable from this foundation alone. `A0` therefore remains in progress.
+Hosted Git is now public through a tenant-authorized Smart HTTP boundary, but
+no release API is public and no Agent, MCP, or Skill is deployable from this
+foundation alone. `A0` therefore remains in progress.
 
-`A0.2` is now in progress. The first repository-safety slice provides a local
-durable bare-Git adapter under
-`{root}/{organization_id}/{asset_id}.git`. It initializes `main`, binds and
+`A0.2` is verified. One local durable bare-Git adapter under
+`{root}/{organization_id}/{asset_id}.git` initializes `main`, binds and
 revalidates immutable tenant, Asset, and repository-schema metadata, enables
 receive and transfer object checks, publishes through atomic staging and parent
 directory sync, converges concurrent provisioning, and rejects symlinked paths
-or identity tampering. It reuses the hardened Git command runner already owned
-by Source checkout; it does not add a second Git subprocess mechanism.
+or identity tampering. Smart HTTP uses the existing tenant guard and scoped API
+tokens. Source checkout and hosted repositories share the same hardened Git
+runner; no second Git subprocess mechanism exists.
 
-This slice exposes no Smart HTTP route and adds no relational persistence.
-`A0.2` remains open until authenticated tenant-scoped Git access, A3S
-ORM-backed PostgreSQL write leases and quotas, backup and restore through the
-shared immutable-object boundary, and pinned `.a3s/asset.acl` admission through
-`a3s-acl` pass their integration and recovery gates.
+One `asset_git_repository_controls` row accessed only through A3S ORM owns the
+durable quota, single-writer lease, applied usage, audit commit, and latest
+backup receipt. Its lease ID also names one checksummed local rollback journal.
+Recovery rolls back refs and newly introduced objects only while the database
+lease is uncommitted; after the database commits, the same recovery path only
+removes the journal. An uncertain commit result retains evidence for replay.
+Backup and restore use the shared immutable-object client, and admission parses
+the exact commit's `.a3s/asset.acl` only through `a3s-acl`. Real PostgreSQL and
+Git integration covers concurrency, quota, tenant denial, audit atomicity,
+process death, exact refs/object rollback, subsequent push, backup/restore, and
+manifest rejection without Redis or another coordinator.
 
 ## 4. Delivery horizons and dependencies
 
@@ -660,7 +667,7 @@ bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
-public raw OpenAPI v1 snapshot, shared `1.1.0` client/response versioning,
+public raw OpenAPI v1 snapshot, shared `1.2.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
@@ -700,22 +707,23 @@ gate pass; `C0.2m` is verified.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset and AssetRelease aggregates, immutable identity rules, tenant-scoped A3S ORM persistence, optimistic transitions, shared idempotency and Outbox, and real PostgreSQL behavior evidence |
-| `A0.2` | In progress | Tenant-qualified Asset-ID bare-repository foundation is implemented; authorized Git Smart HTTP, A3S ORM-backed PostgreSQL single-writer leases and quotas, atomic backup/restore, and pinned `.a3s/asset.acl` validation remain |
+| `A0.2` | Verified | Tenant-authorized Git Smart HTTP, tenant/Asset-bound durable bare repositories, A3S ORM-backed PostgreSQL single-writer leases and quotas, same-lease crash recovery, immutable backup/restore, and pinned `.a3s/asset.acl` admission |
 | `A0.3` | Planned | Atomic source-to-artifact publication, immutable release provenance, draft recovery, yanking, and release selection over the verified `G0` build contracts |
 | `A0.4` | Planned | Agent deployment, health, logs, update, rollback, and cleanup through the existing Workload, Flow, Fleet, and Runtime path; hosted MCP deployment is owned by `MCP0` |
 | `A0.5` | Planned | Immutable Skill bundle binding plus tenant-authorized release/catalog API, client, CLI, and Web surfaces without generic forge features |
 
-`A0.1` is a durable prerequisite, not a user-visible catalog. Close `A0.2` in
-this order:
+`A0.1` is a durable prerequisite, not a user-visible catalog. `A0.2` closes
+through one repository path:
 
-1. retain the implemented local bare-repository, immutable identity, atomic
+1. retain the local bare-repository, immutable identity, atomic
    provisioning, and shared Git-runner foundation;
-2. add tenant-authorized Smart HTTP through the existing authentication and
+2. serve tenant-authorized Smart HTTP through the existing authentication and
    audit boundaries;
-3. serialize ref writes and enforce quotas through PostgreSQL using A3S ORM;
-4. create and restore atomic repository bundles through the existing
+3. serialize ref writes, persist audit, and enforce quotas through PostgreSQL
+   using A3S ORM while one same-lease journal closes process-death windows;
+4. create and restore verified repository bundles through the existing
    immutable-object boundary; and
-5. admit only a pinned `.a3s/asset.acl` parsed by `a3s-acl`.
+5. admit only the exact pinned commit's `.a3s/asset.acl` parsed by `a3s-acl`.
 
 No step adds another Git runner, database access layer, queue, object store, or
 configuration language. `A0.3` cannot close until the exact `G0` source,
@@ -1175,9 +1183,9 @@ The default portfolio priority is:
    `H0.1`, and `H0.2` on exact Box revisions;
 2. freeze `MCP0.1` immediately as a contract-only slice while provider work
    continues; it may not claim hosted MCP availability;
-3. execute and retain the remaining operator-owned `G0` certification, advance
-   `A0.2`, and close `A0.3` so hosted MCP can bind a published immutable
-   release;
+3. execute and retain the remaining operator-owned `G0` certification, preserve
+   the verified `A0.2` repository gate, and close `A0.3` so hosted MCP can bind
+   a published immutable release;
 4. after their dependencies pass, advance Runtime `MCP0.2`, Cloud `MCP0.3`,
    and Gateway `MCP0.4` in parallel, then close only through the joint
    single-node `MCP0.5` gate;

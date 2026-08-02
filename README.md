@@ -181,7 +181,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stdin-only credentials; and search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.1.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.2.0`, and reject incompatible or invalidly deprecated contract changes
 - **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
   Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
@@ -347,17 +347,23 @@ the `active -> archived` and `draft -> published -> yanked` lifecycles; and
 commits typed events, idempotency records, and aggregate changes atomically
 through A3S ORM.
 
-`A0.2` is now in progress. Its first slice provides one local durable bare-Git
-adapter addressed by organization and immutable Asset ID, publishes newly
-initialized repositories through atomic staging, records and verifies the
-organization, Asset, schema, and `main`-branch identity, enables Git object
-integrity checks, converges concurrent provisioning, and fails closed on
-symlinked paths or changed identity. Source checkout and hosted repositories
-reuse the same hardened Git command runner. No Smart HTTP route is public yet;
-authorization, PostgreSQL write leases, quotas, backup and restore, and pinned
-`.a3s/asset.acl` admission remain before `A0.2` can be verified. Release APIs,
-build publication, Workload deployment, Skill binding, and catalog surfaces
-remain `A0.3` through `A0.5`, so the complete `A0` gate remains in progress.
+`A0.2` is verified. Tenant-authorized Git Smart HTTP serves one durable bare
+repository addressed by organization and immutable Asset ID. The adapter
+publishes repositories atomically, verifies tenant, Asset, schema, `main`, and
+Git integrity configuration on every access, rejects path or identity
+tampering, and keeps archived Assets readable but immutable. Source checkout
+and hosted repositories reuse the same hardened Git runner.
+
+One A3S ORM-backed PostgreSQL control row owns the repository quota,
+single-writer lease, successful-write audit, and latest immutable backup
+receipt. The same lease ID binds that row to one checksummed local rollback
+journal: an uncommitted write restores refs and removes newly introduced
+objects, while a committed write only cleans up the journal. An uncertain
+database completion preserves the journal for restart recovery. Backup and
+restore reuse the shared immutable-object client, and release admission reads
+only a pinned `.a3s/asset.acl` through `a3s-acl`. Release publication, Agent
+deployment, Skill binding, and catalog surfaces remain `A0.3` through `A0.5`,
+so the complete `A0` gate remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -627,7 +633,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.1.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.2.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -815,7 +821,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.1.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.2.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record
@@ -879,11 +885,10 @@ to the concrete backend selected by the required node-local `box.isolation`
 ACL field. The shipped profile selects MicroVM; shared-kernel Sandbox must be
 selected explicitly, and neither path can fall back automatically.
 
-Applications use this path today. Agent, MCP, and Skill publication has an
-implemented `A0.1` domain and PostgreSQL foundation plus the first `A0.2` local
-bare-repository slice. Authorized Smart HTTP and the remaining repository
-safety gates, publication, Agent deployment, Skill binding, and catalog
-surfaces remain open `A0` work. Hosted modern MCP contract/compiler,
+Applications use this path today. Agent, MCP, and Skill publication has a
+verified `A0.1` identity foundation and `A0.2` hosted Git repository boundary.
+Release publication, Agent deployment, Skill binding, and catalog surfaces
+remain open `A0.3` through `A0.5` work. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
 complete version-vector CAS, atomic publication/certificate/scope/Outbox
 staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry

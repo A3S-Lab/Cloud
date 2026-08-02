@@ -13,7 +13,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) use s3::S3ImmutableObjectOptions;
-pub(crate) use stream::{ImmutableObjectOpenResult, ImmutableObjectVerification};
+pub(crate) use stream::{
+    ImmutableObjectOpenResult, ImmutableObjectReader, ImmutableObjectVerification,
+};
 
 const MAX_OBJECT_PATH_BYTES: usize = 4096;
 

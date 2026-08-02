@@ -122,6 +122,8 @@ second entry in an authority row must be redesigned before implementation.
 | Routing intent | Edge | Gateway-local desired routes in managed mode |
 | Applied request-path state | A3S Gateway | Cloud request proxying or Edge inferring an apply without acknowledgement |
 | Product configuration | A3S ACL through `a3s-acl` | Non-ACL product configuration, provider-native manifests, or compatibility parsers |
+| Hosted Asset Git refs, objects, and rollback evidence | Assets `LocalAssetGitRepository` plus its same-lease checksummed journal | PostgreSQL ref mirrors, Source checkout clones, Artifact copies, or another Git runner |
+| Hosted Asset Git writer, quota, commit, and backup-reference state | One `asset_git_repository_controls` row through A3S ORM | Redis/file locks, process-local writer flags, a second repository-control table, or event-stream authority |
 | Immutable bytes | One shared immutable-object infrastructure client with typed domain adapters | Parallel filesystem or S3 clients and untyped cross-domain blob APIs |
 | Audit | Shared append-only audit records | Agent, Gateway, inference, or MCP-specific audit stores |
 | Client sequence transport | Shared cursor, gap, polling, and SSE primitives | Controller-local cursor codecs or best-effort in-memory streams |
@@ -242,7 +244,7 @@ not business ownership or convenience wrappers.
 | Identity | Organizations, principals, tokens, membership, grants, and authorization | Current |
 | Projects | Projects, environments, and tenant boundaries | Current |
 | Sources | External source identities, revisions, webhooks, and subscriptions | Current |
-| Assets | Agent, MCP, and Skill identities and immutable release lifecycle | Current foundation; later `A0` gates planned |
+| Assets | Agent, MCP, and Skill identities, hosted Git, and immutable release lifecycle | `A0.1` and `A0.2` current; later `A0` gates planned |
 | Artifacts | Immutable admitted bytes, receipts, evidence, and retention | Current |
 | Executions | Generic finite Runtime Task product and cancellation lifecycle | Current |
 | Workloads | Service desired state, placement, replicas, claims, deployment, rollout, and autoscaling policy | Current foundation; later `H0` gates planned |
@@ -263,7 +265,49 @@ immutable Agent release to the common orchestration path; it is not another
 execution engine. Both reuse Flow, Workloads placement policy, Fleet, Runtime,
 and Box.
 
-### 6.3 A3S Use plugin management boundary
+### 6.3 Hosted Asset Git boundary
+
+`A0.2` adds source hosting to the existing Assets context without turning
+Cloud into a generic forge. One repository is addressed only by
+`(organization_id, asset_id)` and lives at
+`{root}/{organization_id}/{asset_id}.git`; a mutable Asset name never selects a
+path. The local adapter owns Git refs and objects. PostgreSQL owns only writer
+admission, quota, applied usage, audit commit, and the latest immutable backup
+reference. Those facts are complementary consistency boundaries, not mirrored
+repository state.
+
+```text
+Git client
+  -> tenant guard + cloud:read or asset:write scope
+  -> thin Smart HTTP controller
+  -> one Assets command/query handler
+  -> AssetGitApplicationService
+       -> PostgresAssetRepository through A3S ORM (lease/quota/commit)
+       -> LocalAssetGitRepository through the shared Git runner (refs/objects)
+       -> shared immutable-object client (backup bundle)
+```
+
+Every ref mutation, backup, or restore obtains one PostgreSQL lease and prepares
+one checksummed local journal with the same lease ID before the side effect.
+The journal records the exact prior refs digest and pre-existing object paths.
+If the database row still contains an expired uncommitted lease, recovery
+restores refs and removes objects introduced by that operation before releasing
+the lease. If completion committed, the row contains the same cleanup lease ID
+and recovery only removes the journal. A transaction whose completion is
+unknown leaves the journal intact; no request guesses whether to roll back or
+starts another writer. Reads fail explicitly while a writer or recovery owns
+the repository.
+
+The adapter disables receive auto-maintenance so a write cannot rewrite or
+collect pre-existing immutable objects behind the journal. Provisioning,
+Smart HTTP, backup, restore, and manifest admission all revalidate the bare
+repository identity and reject symlinks, special files, changed configuration,
+or cross-tenant paths. Backup and restore use one namespaced typed adapter over
+the shared immutable-object client. `.a3s/asset.acl` is read from an exact
+reachable commit and parsed only through `a3s-acl`; it never becomes a second
+mutable repository configuration source.
+
+### 6.4 A3S Use plugin management boundary
 
 `Plugins` is a deliberately thin bounded context planned under `U0`. It owns
 organization- and environment-scoped registry enrollment plus one desired
@@ -400,7 +444,8 @@ and recovery semantics; duplicating one into another is equally prohibited.
 
 ### 7.4 Immutable objects
 
-Large logs, artifacts, Agent content, checkpoints, and evidence share one
+Large logs, artifacts, hosted Git backup bundles, Agent content, checkpoints,
+and evidence share one
 low-level content-addressed object client. Each domain keeps a typed adapter,
 namespace, size/media admission policy, authorization, and retention rule.
 Filesystem and S3-compatible implementations are deployment choices behind
@@ -750,6 +795,8 @@ without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
 | Node partition or stale inventory | No new placement uses stale capacity; Claims remain fenced until exact recovery evidence |
 | Gateway apply before acknowledgement loss | Redelivery observes the exact native revision and does not repeat or infer the apply |
 | Candidate deployment failure | Prior healthy generation and route remain active; cleanup is explicit and resumable |
+| Hosted Git process death before PostgreSQL completion | The expired lease is claimed for recovery; the same local journal restores refs and removes only newly introduced objects before another writer starts |
+| Hosted Git completion acknowledged by PostgreSQL before journal cleanup | The committed cleanup lease causes restart to remove the same journal without rolling back applied refs |
 | Plugin plan/apply acknowledgement loss | Fleet replays the exact command; the A3S Use manager reloads the same operation and plan digest, preserves the prior active generation until cutover, and returns the same receipt |
 | Plugin plan expiry or policy/trust drift | Apply fails closed; Cloud records the blocked attempt and may create a new immutable plan attempt only inside the still-current desired-generation reconciliation, never by mutating or silently reauthorizing the reviewed plan |
 | PostgreSQL unavailability | New mutations and authoritative progress stop safely; no cache is promoted to authority |
