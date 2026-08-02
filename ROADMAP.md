@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-07-31.**
+**Status as of 2026-08-02.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -15,6 +15,7 @@ plans.
 | [Technical architecture](docs/architecture.md) | Stable component ownership, control paths, consistency boundaries, deployment profiles, and failure behavior |
 | [Cloud development plan](docs/development-plan.md) | Detailed implementation sequence, exit criteria, provider evidence, recovery gates, and definition of done |
 | [Inference plan](docs/inference-plan.md) | Detailed `I0` domain, protocol, scheduling, Gateway, usage, and conformance contracts |
+| [A3S Use plugin roadmap](https://github.com/A3S-Lab/Use/blob/main/ROADMAP.md) | Canonical plugin package, catalog, plan/apply, grant, Runtime-binding, capability-generation, and shared Plugin Manager delivery |
 | [Runtime roadmap](https://github.com/A3S-Lab/Runtime/blob/main/ROADMAP.md) | Runtime-local Unit lifecycle, provider certification, and `MCP0.2` substrate work |
 | [Gateway roadmap](https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md) | Gateway-local current capability truth and implementation backlog |
 
@@ -62,7 +63,9 @@ Cloud owns:
   exact applied-state projection;
 - databases, volumes, fencing, backup, restore, and retention after `S0`;
 - durable operations, audit, logs, usage ledgers, API, CLI, management MCP, and
-  web surfaces; and
+  web surfaces;
+- tenant-scoped A3S Use registry enrollment, exact package assignments,
+  reviewed-plan projections, and applied-host observations after `U0`; and
 - installation, upgrades, high availability, disaster recovery, and
   operational policy after `H0`.
 
@@ -70,6 +73,9 @@ Cloud does not own:
 
 - per-request proxying, protocol framing, or provider-byte forwarding;
 - a second workload engine outside the common Workloads and Runtime path;
+- an A3S Use package installer, TUF/catalog implementation, Workspace Grant or
+  Runtime Binding store, capability registry, surface reconciler, or plugin
+  execution RPC;
 - Kubernetes, Helm, CRDs, or Operators as a required installation or an
   alternative Cloud control plane;
 - raw provider configuration formats at the product boundary;
@@ -107,6 +113,7 @@ training, trajectories, or any Agentic RL policy.
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
+| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | Planned |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
@@ -438,6 +445,7 @@ shared immutable-object boundary, and pinned `.a3s/asset.acl` admission through
 | --- | --- | --- |
 | Usable service platform | `BX0` plus `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one Box-hosted stateless Service on one Linux node |
 | Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path |
+| Plugin-managed cognitive platform | `U0`, `C0.3`, the required A3S Use gates, and named `BX0`/`H0` host foundations | Tenants assign signed multi-surface A3S Use packages to authorized workspaces without another package manager, scheduler, or node channel |
 | Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service through an authorized conforming Gateway |
 | Agent execution platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases become durable, resumable, approval-governed executions with replayable trajectories |
 | Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable |
@@ -462,6 +470,14 @@ flowchart LR
     A03 --> A04[A0.4 Agent deployment]
     A04 --> A05[A0.5 Skill and catalog]
     E0 --> C0[Control surfaces]
+    E0 --> U01[U0.1 Use contract and host boundary]
+    U01 --> U02[U0.2 trusted catalog reads]
+    C0 -->|C0.1/C0.2 reads| U02
+    U02 --> U03[U0.3 single-host assignments]
+    C0 -->|C0.3 grants and audit| U03
+    U03 --> U04[U0.4 executable surfaces]
+    H03 --> U05[U0.5 multi-host hardening]
+    U04 --> U05
     A03 -->|A1.1 identity| A1[Durable Agent execution]
     A04 -->|A1.2 runtime| A1
     A05 -->|A1.3 bindings| A1
@@ -519,6 +535,18 @@ Dependency rules:
 - `A1` extends Operations and Flow, Fleet node control, Workloads, Runtime,
   Artifacts, the transactional Outbox, and shared sequence streaming. It does
   not add another scheduler, job queue, node channel, or integration bus.
+- `U0.1` freezes the Cloud-to-Use host contract and consumes only canonical
+  `a3s-use-core` identities, catalog records, plans, confirmations, receipts,
+  and observations. `U0.2` may add read-only signed catalog discovery while
+  A3S Use completes its mutation saga. `U0.3` requires the shared Plugin
+  Manager and `C0.3` authorization/audit, and begins with one TUF registry and
+  one explicit host/workspace. Host-local executable surfaces in `U0.4` use
+  only the injected Runtime/Box and private Use bindings; a public or replicated
+  service remains an explicit A0/MCP0 Workload, and Secrets/Knowledge retain
+  their existing owners.
+  Multi-host operations in `U0.5` consume existing H0/Fleet host membership
+  and keep one independent assignment per host; they cannot add a plugin
+  scheduler, group rollout controller, queue, or capability registry.
 - `MCP0.1` may freeze the cross-repository contract from the verified `E0`
   model. `MCP0.2` consumes Box Service networking, health, and recovery;
   `MCP0.3` consumes immutable `A0.3` releases and `H0.2` target projection;
@@ -1051,6 +1079,85 @@ Protocol baseline:
 - [MCP 2026-07-28 Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
 - [MCP server discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)
 
+### 5.10 `U0`: A3S Use plugin assignments
+
+`U0` adds a Cloud management service for A3S Use plugins without adding a
+second plugin platform. Cloud owns registry enrollment and tenant desired
+assignment; the shared A3S Use Plugin Manager remains the sole package
+lifecycle application service.
+
+| Sub-gate | State | Outcome | Dependency |
+| --- | --- | --- | --- |
+| `U0.1` | Planned | Freeze exact Cloud/Use compatibility revisions, public typed package/surface/plan/confirmation/receipt/observation contracts, one Node Agent host adapter, managed-scope mutation fencing, and versioned Fleet payloads | A3S Use M0 contracts and M2 shared-manager API |
+| `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Web/Management MCP read parity and no package download | A3S Use M1/M4 and Cloud `C0.1`/`C0.2` |
+| `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C |
+| `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
+| `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
+
+The Cloud API has one assignment vocabulary. Creating or updating an
+assignment selects an exact verified catalog record, canonical surface set,
+workspace scope, target host, policy reference, and desired lifecycle of
+`enabled`, `disabled`, or `absent`. A newer registry release never changes an
+assignment automatically. The reconciler maps desired/observed drift to the
+canonical Use install, upgrade, enable, disable, or uninstall operation; Cloud
+does not expose parallel lifecycle aggregates for those verbs.
+
+`U0.3` allows one workspace assignment for each package/host. A second
+workspace cannot drive a conflicting version or surface plan against the same
+Use-owned generation. Multi-workspace reuse waits for a canonical A3S Use
+multi-scope parent saga and is not implemented as Cloud-side reference counting
+or competing per-workspace flows.
+
+The single-authority split is mandatory:
+
+| Concern | Authority | Cloud projection |
+| --- | --- | --- |
+| Tenant registry enrollment and assignment intent | Plugins context in PostgreSQL through A3S ORM | Full desired aggregate |
+| Signed catalog, package identity, permission ceiling, and dependency closure | A3S Use and TUF | Exact verified record/digests needed for selection and review |
+| Immutable plan and confirmation semantics | Canonical `a3s-use-core` contracts | Digest plus bounded immutable review projection |
+| Install, generation cutover, grants, bindings, capability publication, drain, and cleanup | Shared A3S Use Plugin Manager | Exact receipt, installed/capability generation, and applied observation only |
+| Remote orchestration and delivery | Existing Operations/Flow and Fleet/Node Agent journal | One `cloud.plugin-assignment@1` Operation and existing command records |
+| Placement, execution, routing, Secrets, and knowledge indexing | Host-local surfaces use the explicitly injected Runtime/Box and private Use bindings; Cloud-managed/public services remain Workloads/Fleet/Edge/Gateway; Secrets and A3S Knowledge retain their boundaries | References and canonical receipts only |
+| Audit and management surfaces | Shared Cloud audit plus one Plugins command/query bus | REST, Web, CLI, and Management MCP adapters only |
+
+The Node Agent invokes the shared Plugin Manager through a typed library/host
+adapter. It never shells out to `a3s use`, calls the local manager MCP, accepts
+a raw executable/provider/endpoint from Cloud, or opens another management
+port. The existing Fleet command queue and Node Agent journal carry bounded
+plan, apply, enablement, and observation payloads. A3S Use's local operation
+journal then owns its nested package saga; Cloud Flow waits for its exact
+result rather than reproducing its stages.
+
+`U0` deliberately does not:
+
+- add `plugin` to the closed Cloud `AssetKind` set or split one Use package
+  into synthetic Agent, MCP, Skill, Tool, UI, or OKF Assets;
+- copy A3S Use catalog schemas, TUF verification, package bytes, receipts,
+  Workspace Grants, Runtime Bindings, Route Leases, dependency/reference-count
+  state, capability registry, or surface reconciler into PostgreSQL;
+- proxy the A3S Use management MCP or define a universal
+  `execute(plugin, action, payload)` API;
+- allow an agent to enroll/rotate trust roots, approve an `ask` plan, install
+  unsigned local content, grant Secret authority, select a provider, or purge
+  user data; or
+- create a plugin scheduler, deployment engine, Runtime provider, Gateway
+  route owner, knowledge index, command queue, event bus, audit store, object
+  client, or Redis-backed authority.
+
+A plugin Tool Service or MCP surface is private to its assigned Use workspace.
+`U0` never turns it into a public or replicated Cloud service. That product
+outcome requires an explicit immutable A0/MCP0 release and the ordinary
+Workloads/Fleet/Edge/Gateway lifecycle; no automatic promotion or mirrored
+deployment is planned.
+
+`U0.3` closes only after process death at assignment commit, plan persistence,
+confirmation commit, apply dispatch, capability cutover, and observation
+acknowledgement converges to one desired generation and one exact Use receipt.
+The prior capability generation remains active until the shared Plugin Manager
+publishes its complete replacement. Plan expiry, trust/policy/provider drift,
+node loss, partial cleanup, or unknown schemas remain explicitly blocked or
+unavailable; Cloud never infers success from an enabled flag or missing host.
+
 ## 6. Near-term execution order
 
 The default portfolio priority is:
@@ -1069,8 +1176,9 @@ The default portfolio priority is:
 5. complete `PW0.1` and make the immutable Box-hosted Power profile the first
    `I0` backend;
 6. preserve the verified `A1.0` shared-infrastructure regressions while
-   advancing `C0.3`, `C0.2m`, and the first `S0` foundation independently when
-   staffed;
+   advancing `C0.3`, `C0.2m`, the contract-only `U0.1`, and the first `S0`
+   foundation independently when staffed; `U0.1` must change A3S Use rather
+   than copy any missing canonical type into Cloud;
 7. re-certify the `H0.1` real-provider Claim behavior while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
@@ -1079,13 +1187,17 @@ The default portfolio priority is:
    `A1.3` after `A0.5` bindings, gate `A1.4` on `C0.3` grants and audit, and
    close `A1.5` only with exact checkpoint, suspend/resume, fork, and crash
    recovery evidence;
-9. re-certify the `H0.2` projection gate while advancing `H0.3`
+9. add read-only `U0.2` after the pinned A3S Use catalog/manager contracts
+   pass, then start single-host `U0.3` only after the shared Manager mutation
+   saga and `C0.3` authorization/audit are ready; keep executable and
+   multi-host surfaces behind `U0.4` and `U0.5`;
+10. re-certify the `H0.2` projection gate while advancing `H0.3`
    multi-node placement and networking;
-10. close `MCP0.6` only after its `H0.3` multi-node and `C0.3` grant/audit
+11. close `MCP0.6` only after its `H0.3` multi-node and `C0.3` grant/audit
     dependencies pass; and
-11. close full production packaging, HA, autoscaling, and inference hardening
+12. close full production packaging, HA, autoscaling, and inference hardening
     through `H0.4`, `H0.5`, and `I0.5`; and
-12. claim native AX-plus-Kubernetes replacement only after the cumulative
+13. claim native AX-plus-Kubernetes replacement only after the cumulative
     `A0.3` through `A0.5`, `A1.1` through `A1.5`, `C0.3`, `H0.3` through
     `H0.5`, and Box checkpoint/suspend/resume gates pass on a clean supported
     Linux installation.
@@ -1104,7 +1216,7 @@ the Cloud product lanes above.
 | Product | Position | Owns |
 | --- | --- | --- |
 | A3S Runtime | Provider-neutral Unit lifecycle | One Task or Service identity, generation, request replay, capability admission, typed endpoint observations, provider recovery, and cleanup; it owns no product profile or request protocol |
-| A3S Cloud | Self-hosted control plane | Tenancy, identity, catalogs, Agent conversations and executions, approvals, checkpoints, Workloads, desired replicas, placement, rollout, autoscaling, complete Gateway policy, operations, usage ledger, and management surfaces |
+| A3S Cloud | Self-hosted control plane | Tenancy, identity, catalogs, A3S Use plugin assignments, Agent conversations and executions, approvals, checkpoints, Workloads, desired replicas, placement, rollout, autoscaling, complete Gateway policy, operations, usage ledger, and management surfaces |
 | A3S Gateway | AI traffic and protocol data plane | Transport, TLS, streaming, local enforcement, healthy endpoint selection, modern MCP and OpenAI protocol handling, atomic snapshot application, request-path telemetry, and the planned durable usage spool; it does not own Agent execution state |
 
 Cloud never becomes the per-request proxy or synchronous authorization
