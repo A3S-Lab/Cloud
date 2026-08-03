@@ -1,5 +1,4 @@
-use crate::modules::artifacts::domain::{BuildEvidence, BuildRun};
-use crate::modules::sources::domain::ExternalSourceRevision;
+use crate::modules::artifacts::domain::{BuildEvidence, BuildRun, BuildSource};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -20,7 +19,7 @@ pub trait IBuildEvidenceGenerator: Send + Sync {
     async fn generate(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
         attested_at: DateTime<Utc>,
     ) -> Result<BuildEvidence, BuildEvidenceGenerationError>;
 }

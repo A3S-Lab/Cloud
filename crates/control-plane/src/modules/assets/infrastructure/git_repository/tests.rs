@@ -4,7 +4,9 @@ use crate::modules::assets::domain::{
     AssetGitRepositoryError, AssetGitRpcLimits, AssetGitService, AssetGitWriteLease,
     AssetGitWriteOperation, AssetKind, AssetState, IAssetGitRepository,
 };
-use crate::modules::shared_kernel::domain::{AssetId, GitCommitSha, OrganizationId, ResourceName};
+use crate::modules::shared_kernel::domain::{
+    AssetId, BuildRunId, GitCommitSha, OrganizationId, ResourceName,
+};
 use chrono::{Duration as ChronoDuration, Utc};
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -472,6 +474,58 @@ async fn pinned_asset_acl_uses_a3s_acl_and_rejects_kind_drift() {
 }
 
 #[tokio::test]
+async fn pinned_build_manifest_and_git_archive_share_one_immutable_commit() {
+    let directory = tempfile::tempdir().expect("repository directory");
+    let work = tempfile::tempdir().expect("work tree");
+    let store = store(directory.path());
+    let asset = asset_with(AssetId::new(), OrganizationId::new(), "Build Input");
+    store.provision(&asset).await.expect("repository");
+    initialize_work_tree(work.path(), asset.kind, "hosted source");
+    std::fs::write(work.path().join("Dockerfile"), "FROM scratch\n").expect("Dockerfile");
+    write_build_manifest(work.path(), asset.kind);
+    git_success(work.path(), &["add", "."]);
+    git_success(
+        work.path(),
+        &["commit", "--quiet", "-m", "add build contract"],
+    );
+    push_main(work.path(), &store.repository_path(&asset));
+    let source_commit = commit(work.path());
+
+    let admitted = store
+        .admit_manifest(&asset, &source_commit)
+        .await
+        .expect("admitted build manifest");
+    let recipe = admitted.build_recipe.expect("build recipe");
+    assert_eq!(recipe.context_path(), ".");
+    assert_eq!(recipe.dockerfile_path(), "Dockerfile");
+    assert_eq!(recipe.target(), Some("release"));
+    assert_eq!(recipe.platforms()[0].as_str(), "linux/amd64");
+
+    let build_run_id = BuildRunId::new();
+    let first = store
+        .prepare_build_input(&asset, &source_commit, build_run_id)
+        .await
+        .expect("prepared build archive");
+    let replay = store
+        .prepare_build_input(&asset, &source_commit, build_run_id)
+        .await
+        .expect("replayed build archive");
+    assert_eq!(first, replay);
+    assert_eq!(first.commit_sha, admitted.commit_sha);
+    assert!(first.path.is_file());
+
+    store
+        .remove_build_input(build_run_id)
+        .await
+        .expect("removed build archive");
+    store
+        .remove_build_input(build_run_id)
+        .await
+        .expect("idempotent removal");
+    assert!(!first.path.exists());
+}
+
+#[tokio::test]
 async fn immutable_bundle_restore_atomically_reproduces_advertised_refs() {
     let directory = tempfile::tempdir().expect("repository directory");
     let objects = tempfile::tempdir().expect("object directory");
@@ -648,6 +702,29 @@ fn write_manifest(path: &Path, kind: AssetKind) {
         ),
     )
     .expect("Asset manifest");
+}
+
+fn write_build_manifest(path: &Path, kind: AssetKind) {
+    std::fs::create_dir_all(path.join(".a3s")).expect("manifest directory");
+    std::fs::write(
+        path.join(".a3s/asset.acl"),
+        format!(
+            concat!(
+                "asset {{\n",
+                "  schema = \"a3s.cloud.asset.v1\"\n",
+                "  kind = \"{}\"\n",
+                "  build {{\n",
+                "    context = \".\"\n",
+                "    file = \"Dockerfile\"\n",
+                "    platforms = [\"linux/amd64\"]\n",
+                "    target = \"release\"\n",
+                "  }}\n",
+                "}}\n",
+            ),
+            kind.as_str()
+        ),
+    )
+    .expect("Asset build manifest");
 }
 
 fn push_main(work: &Path, repository: &Path) {

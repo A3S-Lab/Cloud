@@ -105,9 +105,9 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
             {
                 Ok(Some(build))
                     if build.organization_id == command.organization_id
-                        && build.project_id == command.project_id
-                        && build.environment_id == command.environment_id
-                        && build.source_revision_id == source.id =>
+                        && build.project_id() == Some(command.project_id)
+                        && build.environment_id() == Some(command.environment_id)
+                        && build.source_revision_id() == Some(source.id) =>
                 {
                     build
                 }

@@ -79,7 +79,7 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         let existing_sources = state
             .builds
             .values()
-            .map(|build| build.source_revision_id)
+            .filter_map(BuildRun::source_revision_id)
             .collect::<BTreeSet<_>>();
         let mut revisions = state
             .revisions
@@ -148,7 +148,7 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             .values()
             .filter(|build| {
                 build.organization_id == organization_id
-                    && build.source_revision_id == source_revision_id
+                    && build.source_revision_id() == Some(source_revision_id)
             })
             .max_by_key(|build| build.attempt)
             .cloned())
@@ -169,8 +169,8 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             .values()
             .filter(|build| {
                 build.organization_id == organization_id
-                    && build.project_id == project_id
-                    && build.environment_id == environment_id
+                    && build.project_id() == Some(project_id)
+                    && build.environment_id() == Some(environment_id)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -318,6 +318,7 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::artifacts::domain::BuildSubject;
     use chrono::Duration;
     use std::sync::Arc;
 
@@ -400,7 +401,13 @@ mod tests {
         ));
 
         let mut forged = preparing.clone();
-        forged.project_id = ProjectId::new();
+        forged.subject = BuildSubject::external_source_revision(
+            ProjectId::new(),
+            forged.environment_id().expect("external environment"),
+            forged
+                .source_revision_id()
+                .expect("external source revision"),
+        );
         forged.aggregate_version += 1;
         forged.updated_at += Duration::milliseconds(3);
         assert!(matches!(
@@ -576,7 +583,12 @@ mod tests {
         );
         assert_eq!(
             repository
-                .list(organization_id, retry.project_id, retry.environment_id, 10)
+                .list(
+                    organization_id,
+                    retry.project_id().expect("external project"),
+                    retry.environment_id().expect("external environment"),
+                    10,
+                )
                 .await
                 .expect("list attempts")
                 .len(),

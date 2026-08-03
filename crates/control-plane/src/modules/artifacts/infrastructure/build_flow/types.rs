@@ -1,10 +1,8 @@
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildRunStatus, OciPublicationTarget, PublishedOciArtifact,
+    BuildArtifact, BuildRunStatus, BuildSubject, OciPublicationTarget, PublishedOciArtifact,
     ValidatedOciBuildOutput,
 };
-use crate::modules::shared_kernel::domain::{
-    BuildRunId, NodeCommandId, NodeId, OrganizationId, SourceRevisionId,
-};
+use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId, NodeId, OrganizationId};
 use crate::modules::sources::domain::BuildRecipe;
 use a3s_cloud_contracts::{NodeBoxBuildOutput, NodeBoxBuildRequest};
 use chrono::{DateTime, Utc};
@@ -18,11 +16,16 @@ pub(super) struct BuildFlowInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+// `BuildSubject` is flattened to preserve the established external-source
+// checkpoint fields. Serde cannot combine a flattened untagged enum with
+// `deny_unknown_fields`; the restored BuildRun and resolved BuildSource perform
+// the closed identity validation before any side effect.
+#[serde(rename_all = "camelCase")]
 pub(super) struct PreparedBuild {
     pub organization_id: OrganizationId,
     pub build_run_id: BuildRunId,
-    pub source_revision_id: SourceRevisionId,
+    #[serde(flatten)]
+    pub subject: BuildSubject,
     pub source_content_digest: String,
     pub input_artifact: BuildArtifact,
     pub recipe: BuildRecipe,

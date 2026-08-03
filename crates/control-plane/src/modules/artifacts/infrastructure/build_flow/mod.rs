@@ -8,10 +8,9 @@ mod tests;
 
 use crate::modules::artifacts::domain::{
     IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildInputPreparer, IBuildOutputValidator,
-    IBuildRunRepository,
+    IBuildRunRepository, IBuildSourceResolver,
 };
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
-use crate::modules::sources::domain::ISourceRevisionRepository;
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -102,7 +101,7 @@ fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 #[derive(Clone)]
 pub struct BuildFlowRuntimeDependencies {
     pub builds: Arc<dyn IBuildRunRepository>,
-    pub sources: Arc<dyn ISourceRevisionRepository>,
+    pub sources: Arc<dyn IBuildSourceResolver>,
     pub inputs: Arc<dyn IBuildInputPreparer>,
     pub outputs: Arc<dyn IBuildOutputValidator>,
     pub publisher: Arc<dyn IBuildArtifactPublisher>,
@@ -114,7 +113,7 @@ pub struct BuildFlowRuntimeDependencies {
 #[derive(Clone)]
 pub struct BuildFlowRuntime {
     pub(super) builds: Arc<dyn IBuildRunRepository>,
-    pub(super) sources: Arc<dyn ISourceRevisionRepository>,
+    pub(super) sources: Arc<dyn IBuildSourceResolver>,
     pub(super) inputs: Arc<dyn IBuildInputPreparer>,
     pub(super) outputs: Arc<dyn IBuildOutputValidator>,
     pub(super) publisher: Arc<dyn IBuildArtifactPublisher>,

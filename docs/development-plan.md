@@ -1547,14 +1547,16 @@ generic asset metadata platform.
 
 `A0` is in progress. `A0.1` establishes the durable release identity that later
 publication and Agent execution slices consume. `A0.2` is verified and exposes
-the authorized hosted Git boundary without claiming release publication or a
-usable catalog.
+the authorized hosted Git boundary. The first `A0.3` foundation now admits and
+packages an exact hosted commit through the existing Git, Artifact, and
+`cloud.build@5` path without yet claiming atomic release publication or a usable
+catalog.
 
 | Sub-gate | State | Scope |
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset/AssetRelease domain, immutable identities, tenant-scoped PostgreSQL schema and A3S ORM repository, optimistic concurrency, shared idempotency/Outbox, and real PostgreSQL behavior evidence |
 | `A0.2` | Verified | Tenant-authorized Git Smart HTTP, tenant-qualified durable bare repositories, immutable identity checks, atomic concurrent provisioning, shared Git runner, A3S ORM-backed leases/quotas/audit, same-lease recovery, immutable backup/restore, and pinned `.a3s/asset.acl` admission |
-| `A0.3` | Planned | Atomic release build, artifact publication, provenance, selection, and yank lifecycle |
+| `A0.3` | In progress | Typed external-or-hosted build subject/source, closed Asset build admission, deterministic pinned hosted-Git input, and shared Build Flow/OCI/evidence projection foundation are implemented; durable reservation, atomic release publication, provenance binding, draft recovery, selection, yanking, and management surfaces remain |
 | `A0.4` | Planned | Agent deployment through the existing Workload path; hosted MCP deployment is owned by `MCP0` |
 | `A0.5` | Planned | Immutable Skill binding and authorized catalog surfaces |
 
@@ -1592,8 +1594,14 @@ typed immutable-object client. Restore verifies object size, digest, advertised
 refs, quota, and the same write journal before atomically replacing refs. Asset
 manifest admission reads only `.a3s/asset.acl` from an exact reachable commit,
 parses it with `a3s-acl`, accepts one closed `asset` block, and requires its kind
-to match the owning Asset. No path adds Redis, a second Git runner, another
-database layer, another object client, or a second configuration language.
+to match the owning Asset. `A0.3` optionally admits one closed `build` block for
+Agent and MCP releases, resolves it into the same canonical `BuildRecipe`, and
+uses the shared Git runner to materialize a deterministic pinned tar input in
+the existing node Artifact store. A typed `BuildSubject` and `BuildSource`
+carry either the unchanged external revision identity or an AssetRelease
+identity through the sole Build Flow, OCI target, and evidence contracts. No
+path adds Redis, a second Git runner, another build engine, another database
+layer, another object client, or a second configuration language.
 
 ### Remaining A0 work
 

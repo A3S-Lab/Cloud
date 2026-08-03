@@ -1,8 +1,7 @@
 use super::super::build_plan::project_build_request;
 use super::super::types::BuildFlowInput;
 use super::super::{flow_error, BuildFlowRuntime};
-use crate::modules::artifacts::domain::BuildRun;
-use crate::modules::sources::domain::ExternalSourceRevision;
+use crate::modules::artifacts::domain::{BuildRun, BuildSource};
 use a3s_cloud_contracts::{NodeBoxBuildOutput, NodeBoxBuildRequest};
 use a3s_flow::FlowError;
 use chrono::{DateTime, Utc};
@@ -29,34 +28,30 @@ pub(super) async fn load_build(
     Ok(build)
 }
 
-pub(super) async fn load_revision(
+pub(super) async fn load_source(
     runtime: &BuildFlowRuntime,
     build: &BuildRun,
-) -> a3s_flow::Result<ExternalSourceRevision> {
-    let revision = runtime
+) -> a3s_flow::Result<BuildSource> {
+    let source = runtime
         .sources
-        .find(build.organization_id, build.source_revision_id)
+        .resolve(build)
         .await
-        .map_err(|error| flow_error("could not load build source revision", error))?;
-    if revision.organization_id != build.organization_id
-        || revision.project_id != build.project_id
-        || revision.environment_id != build.environment_id
-        || revision.id != build.source_revision_id
-    {
+        .map_err(|error| flow_error("could not resolve build source", error))?;
+    if source.organization_id != build.organization_id || source.subject != build.subject {
         return Err(FlowError::Runtime(
-            "build source revision does not match persisted build ownership".into(),
+            "resolved build source does not match persisted build ownership".into(),
         ));
     }
-    Ok(revision)
+    Ok(source)
 }
 
 pub(super) async fn project_request(
     runtime: &BuildFlowRuntime,
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
+    source: &BuildSource,
 ) -> a3s_flow::Result<NodeBoxBuildRequest> {
     let parent_output = load_parent_output(runtime, build).await?;
-    project_build_request(&runtime.config, build, revision, parent_output.as_ref())
+    project_build_request(&runtime.config, build, source, parent_output.as_ref())
         .map_err(|error| flow_error("could not project Box build request", error))
 }
 
@@ -73,9 +68,7 @@ async fn load_parent_output(
         .await
         .map_err(|error| flow_error("could not load parent build cache", error))?;
     if parent.organization_id != build.organization_id
-        || parent.project_id != build.project_id
-        || parent.environment_id != build.environment_id
-        || parent.source_revision_id != build.source_revision_id
+        || parent.subject != build.subject
         || parent.id != parent_id
         || parent.attempt.checked_add(1) != Some(build.attempt)
         || !parent.status.is_terminal()

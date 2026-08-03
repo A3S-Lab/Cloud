@@ -1,6 +1,6 @@
 use super::BuildFlowConfig;
-use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus};
-use crate::modules::sources::domain::{BuildPlatform, ExternalSourceRevision};
+use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus, BuildSource};
+use crate::modules::sources::domain::BuildPlatform;
 use a3s_box_runtime::{BoxBuildPlan, BuildCachePolicy};
 use a3s_cloud_contracts::{
     validate_cloud_artifact, NodeBoxBuildCacheInput, NodeBoxBuildOutput, NodeBoxBuildPlan,
@@ -12,33 +12,33 @@ use std::collections::BTreeMap;
 pub(super) fn project_build_request(
     config: &BuildFlowConfig,
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
+    source: &BuildSource,
     parent_output: Option<&NodeBoxBuildOutput>,
 ) -> Result<NodeBoxBuildRequest, String> {
-    validate_projection(build, revision, parent_output)?;
+    validate_projection(build, source, parent_output)?;
     let input = build
         .input_artifact
         .as_ref()
         .ok_or_else(|| "Box build projection requires a prepared input Artifact".to_owned())?;
-    let source = ArtifactRef {
+    let source_artifact = ArtifactRef {
         uri: input.uri.clone(),
         digest: input.digest.clone(),
         media_type: input.media_type.clone(),
     };
-    validate_cloud_artifact(&source)?;
+    validate_cloud_artifact(&source_artifact)?;
 
     let parent_caches = parent_output
         .map(parent_caches_by_platform)
         .transpose()?
         .unwrap_or_default();
-    let mut plans = Vec::with_capacity(revision.recipe.platforms().len());
-    for platform in revision.recipe.platforms() {
-        let plan = canonical_plan(&revision.recipe, platform)?;
+    let mut plans = Vec::with_capacity(source.recipe.platforms().len());
+    for platform in source.recipe.platforms() {
+        let plan = canonical_plan(&source.recipe, platform)?;
         let plan_digest = plan.canonical_digest().map_err(|error| error.to_string())?;
         let cache = parent_caches
             .get(platform.as_str())
             .map(|cache| {
-                if cache.receipt.source_digest != source.digest
+                if cache.receipt.source_digest != source_artifact.digest
                     || cache.receipt.plan_digest != plan_digest
                 {
                     return Err(format!(
@@ -61,9 +61,9 @@ pub(super) fn project_build_request(
     let request = NodeBoxBuildRequest {
         schema: NodeBoxBuildRequest::SCHEMA.into(),
         generation: u64::from(build.attempt),
-        source,
+        source: source_artifact,
         plans,
-        assembly_reference: (revision.recipe.platforms().len() > 1)
+        assembly_reference: (source.recipe.platforms().len() > 1)
             .then(|| format!("cloud-build-{}-assembly", build.id)),
         output_max_bytes: config.output_max_bytes,
         cache_max_bytes: config.cache_max_bytes,
@@ -74,13 +74,12 @@ pub(super) fn project_build_request(
 
 fn validate_projection(
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
+    source: &BuildSource,
     parent_output: Option<&NodeBoxBuildOutput>,
 ) -> Result<(), String> {
-    if build.organization_id != revision.organization_id
-        || build.project_id != revision.project_id
-        || build.environment_id != revision.environment_id
-        || build.source_revision_id != revision.id
+    source.validate()?;
+    if build.organization_id != source.organization_id
+        || build.subject != source.subject
         || !matches!(
             build.status,
             BuildRunStatus::Prepared

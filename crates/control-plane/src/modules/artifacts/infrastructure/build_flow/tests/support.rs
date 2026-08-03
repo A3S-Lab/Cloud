@@ -4,8 +4,9 @@ use super::super::{
 use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildArtifactPublicationError, BuildEvidence, BuildEvidenceGenerationError,
-    BuildInputPreparationError, BuildOutputValidationError, BuildRun, IBuildArtifactPublisher,
-    IBuildEvidenceGenerator, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    BuildInputPreparationError, BuildOutputValidationError, BuildRun, BuildSource,
+    BuildSourceResolutionError, IBuildArtifactPublisher, IBuildEvidenceGenerator,
+    IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository, IBuildSourceResolver,
     OciDescriptor, OciPublicationRequest, OciPublicationTarget, PreparedBuildInput,
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
@@ -80,6 +81,9 @@ impl BuildFixture {
         )?;
         let sources = Arc::new(InMemorySourceRevisionRepository::new());
         accept_revision(&sources, revision).await?;
+        let build_sources = Arc::new(FixtureBuildSourceResolver {
+            sources: Arc::clone(&sources),
+        });
         let builds = Arc::new(InMemoryBuildRunRepository::new());
         builds
             .add_source_revision(
@@ -122,7 +126,7 @@ impl BuildFixture {
         let runtime = BuildFlowRuntime::new(
             BuildFlowRuntimeDependencies {
                 builds: builds.clone(),
-                sources,
+                sources: build_sources,
                 inputs: inputs.clone(),
                 outputs: outputs.clone(),
                 publisher: publisher.clone(),
@@ -152,6 +156,28 @@ impl BuildFixture {
             "organizationId": self.organization_id,
             "buildRunId": self.build.id,
         })
+    }
+}
+
+struct FixtureBuildSourceResolver {
+    sources: Arc<InMemorySourceRevisionRepository>,
+}
+
+#[async_trait]
+impl IBuildSourceResolver for FixtureBuildSourceResolver {
+    async fn resolve(&self, build: &BuildRun) -> Result<BuildSource, BuildSourceResolutionError> {
+        let source_revision_id = build.source_revision_id().ok_or_else(|| {
+            BuildSourceResolutionError::Invalid(
+                "external build fixture requires a source revision subject".into(),
+            )
+        })?;
+        let revision = self
+            .sources
+            .find(build.organization_id, source_revision_id)
+            .await
+            .map_err(|error| BuildSourceResolutionError::Storage(error.to_string()))?;
+        BuildSource::from_external_revision(&revision)
+            .map_err(BuildSourceResolutionError::Integrity)
     }
 }
 
@@ -457,13 +483,9 @@ impl IBuildInputPreparer for RecordingInputPreparer {
     async fn prepare(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
     ) -> Result<PreparedBuildInput, BuildInputPreparationError> {
-        if build.organization_id != revision.organization_id
-            || build.project_id != revision.project_id
-            || build.environment_id != revision.environment_id
-            || build.source_revision_id != revision.id
-        {
+        if build.organization_id != source.organization_id || build.subject != source.subject {
             return Err(BuildInputPreparationError::Conflict);
         }
         self.prepares.fetch_add(1, Ordering::SeqCst);
@@ -611,15 +633,11 @@ impl IBuildEvidenceGenerator for RecordingEvidenceGenerator {
     async fn generate(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
         attested_at: chrono::DateTime<Utc>,
     ) -> Result<BuildEvidence, BuildEvidenceGenerationError> {
         self.generations.fetch_add(1, Ordering::SeqCst);
-        if build.organization_id != revision.organization_id
-            || build.project_id != revision.project_id
-            || build.environment_id != revision.environment_id
-            || build.source_revision_id != revision.id
-        {
+        if build.organization_id != source.organization_id || build.subject != source.subject {
             return Err(BuildEvidenceGenerationError::Invalid(
                 "test evidence source changed identity".into(),
             ));

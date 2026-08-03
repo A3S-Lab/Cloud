@@ -3,7 +3,7 @@ use super::super::types::{
     ValidateStepOutput,
 };
 use super::super::{flow_error, BuildFlowRuntime};
-use super::common::{bounded_reason, load_build, load_revision};
+use super::common::{bounded_reason, load_build, load_source};
 use crate::modules::artifacts::domain::{BuildOutputValidationError, BuildRunStatus};
 use a3s_flow::FlowError;
 use chrono::Utc;
@@ -38,10 +38,10 @@ pub(super) async fn validate(
             build.status.as_str()
         )));
     }
-    let revision = load_revision(runtime, &build).await?;
+    let source = load_source(runtime, &build).await?;
     let validated = match runtime
         .outputs
-        .validate(&input.output, &revision.recipe)
+        .validate(&input.output, &source.recipe)
         .await
     {
         Ok(output) => output,

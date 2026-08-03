@@ -1,6 +1,6 @@
 use super::super::types::{AttestStepInput, AttestStepOutput};
 use super::super::{flow_error, BuildFlowRuntime};
-use super::common::{bounded_reason, load_build, load_revision};
+use super::common::{bounded_reason, load_build, load_source};
 use crate::modules::artifacts::domain::{
     BuildEvidence, BuildEvidenceGenerationError, BuildRunStatus,
 };
@@ -52,11 +52,11 @@ pub(super) async fn attest(
         )));
     }
 
-    let revision = load_revision(runtime, &build).await?;
+    let source = load_source(runtime, &build).await?;
     let attested_at = Utc::now().max(build.updated_at);
     let evidence = match runtime
         .evidence
-        .generate(&build, &revision, attested_at)
+        .generate(&build, &source, attested_at)
         .await
     {
         Ok(evidence) => evidence,

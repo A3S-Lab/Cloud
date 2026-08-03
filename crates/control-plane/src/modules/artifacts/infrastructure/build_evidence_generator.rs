@@ -2,16 +2,15 @@ use super::oci_layout::OciLayoutBlob;
 use super::OciBuildOutputValidator;
 use crate::modules::artifacts::domain::{
     canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
-    BuildEvidenceGenerationError, BuildEvidenceSigningError, BuildEvidenceVerificationState,
-    BuildRun, BuildRunStatus, DsseEnvelope, DsseSignature, IBuildEvidenceGenerator,
-    IBuildEvidenceSigner, InTotoSubject, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
-    SlsaInternalParameters, SlsaProvenancePredicate, SlsaProvenanceStatement,
-    SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo,
-    SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, BUILD_EVIDENCE_SCHEMA,
-    DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE,
-    SPDX_VERSION,
+    BuildEvidenceGenerationError, BuildEvidenceSigningError, BuildEvidenceSubject,
+    BuildEvidenceVerificationState, BuildRun, BuildRunStatus, BuildSource, DsseEnvelope,
+    DsseSignature, IBuildEvidenceGenerator, IBuildEvidenceSigner, InTotoSubject,
+    SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters, SlsaInternalParameters,
+    SlsaProvenancePredicate, SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails,
+    SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage,
+    SpdxRelationship, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE,
+    SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
-use crate::modules::sources::domain::ExternalSourceRevision;
 use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -52,10 +51,10 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
     async fn generate(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
         attested_at: DateTime<Utc>,
     ) -> Result<BuildEvidence, BuildEvidenceGenerationError> {
-        validate_request(build, revision)?;
+        validate_request(build, source)?;
         let attested_at = crate::modules::shared_kernel::domain::canonical_timestamp(attested_at);
         if attested_at < build.updated_at {
             return Err(BuildEvidenceGenerationError::Invalid(
@@ -90,7 +89,7 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
         let sbom_digest = sha256_digest(&sbom_bytes);
         let provenance = build_provenance(
             build,
-            revision,
+            source,
             &self.builder,
             &artifact,
             &sbom,
@@ -115,17 +114,21 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
             schema: BUILD_EVIDENCE_SCHEMA.into(),
             build_run_id: build.id,
             operation_id: build.operation_id,
-            source_revision_id: build.source_revision_id,
+            subject: BuildEvidenceSubject::from_build_subject(build.subject),
             attempt: build.attempt,
-            repository: revision.repository.canonical_url().into(),
-            commit_sha: revision.commit_sha.as_str().into(),
+            repository: source.repository.clone(),
+            commit_sha: source.commit_sha.as_str().into(),
+            manifest_digest: source
+                .manifest_digest
+                .as_ref()
+                .map(|digest| digest.as_str().to_owned()),
             source_content_digest: build.source_content_digest.clone().ok_or_else(|| {
                 BuildEvidenceGenerationError::Invalid(
                     "build evidence omitted its source content digest".into(),
                 )
             })?,
-            recipe: revision.recipe.clone(),
-            recipe_digest: revision.recipe_digest.clone(),
+            recipe: source.recipe.clone(),
+            recipe_digest: source.recipe_digest.clone(),
             build_request_digest: build.build_request_digest.clone().ok_or_else(|| {
                 BuildEvidenceGenerationError::Invalid(
                     "build evidence omitted its Box build request digest".into(),
@@ -149,7 +152,7 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
 
 fn validate_request(
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
+    source: &BuildSource,
 ) -> Result<(), BuildEvidenceGenerationError> {
     if !build.evidence_required
         || build.evidence.is_some()
@@ -159,17 +162,14 @@ fn validate_request(
         )
         || build.published_artifact.is_none()
         || build.output.is_none()
-        || build.organization_id != revision.organization_id
-        || build.project_id != revision.project_id
-        || build.environment_id != revision.environment_id
-        || build.source_revision_id != revision.id
+        || build.organization_id != source.organization_id
+        || build.subject != source.subject
     {
         return Err(BuildEvidenceGenerationError::Invalid(
             "build evidence request changed its durable build or source identity".into(),
         ));
     }
-    revision
-        .clone()
+    source
         .validate()
         .map_err(BuildEvidenceGenerationError::Invalid)?;
     Ok(())
@@ -254,7 +254,7 @@ fn build_spdx(
 
 fn build_provenance(
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
+    source: &BuildSource,
     builder: &BuildEvidenceBuilder,
     artifact: &crate::modules::artifacts::domain::PublishedOciArtifact,
     sbom: &SpdxDocument,
@@ -280,7 +280,7 @@ fn build_provenance(
     let sbom_hex = digest_hex(sbom_digest)?;
     let builder_hex = digest_hex(&builder.digest)?;
     let source_hex = digest_hex(&source_content_digest)?;
-    let recipe_hex = digest_hex(&revision.recipe_digest)?;
+    let recipe_hex = digest_hex(&source.recipe_digest)?;
     let statement = SlsaProvenanceStatement {
         statement_type: IN_TOTO_STATEMENT_TYPE.into(),
         subject: vec![
@@ -298,26 +298,30 @@ fn build_provenance(
             build_definition: SlsaBuildDefinition {
                 build_type: SLSA_BUILD_TYPE.into(),
                 external_parameters: SlsaExternalParameters {
-                    repository: revision.repository.canonical_url().into(),
-                    commit_sha: revision.commit_sha.as_str().into(),
+                    repository: source.repository.clone(),
+                    commit_sha: source.commit_sha.as_str().into(),
+                    manifest_digest: source
+                        .manifest_digest
+                        .as_ref()
+                        .map(|digest| digest.as_str().to_owned()),
                     source_content_digest: source_content_digest.clone(),
-                    recipe: revision.recipe.clone(),
-                    recipe_digest: revision.recipe_digest.clone(),
+                    recipe: source.recipe.clone(),
+                    recipe_digest: source.recipe_digest.clone(),
                     platforms: output.platforms.clone(),
                 },
                 internal_parameters: SlsaInternalParameters {
                     build_run_id: build.id,
                     operation_id: build.operation_id,
-                    source_revision_id: build.source_revision_id,
+                    subject: BuildEvidenceSubject::from_build_subject(build.subject),
                     attempt: build.attempt,
                     build_request_digest,
                 },
                 resolved_dependencies: vec![
                     SlsaResourceDescriptor {
-                        uri: revision.repository.canonical_url().into(),
+                        uri: source.repository.clone(),
                         digest: BTreeMap::from([(
                             "gitCommit".into(),
-                            revision.commit_sha.as_str().into(),
+                            source.commit_sha.as_str().into(),
                         )]),
                     },
                     SlsaResourceDescriptor {

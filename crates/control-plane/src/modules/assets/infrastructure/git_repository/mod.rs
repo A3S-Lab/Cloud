@@ -1,4 +1,5 @@
 mod backup;
+mod build_input;
 mod journal;
 mod manifest;
 mod protocol;
@@ -7,12 +8,12 @@ mod tests;
 
 use crate::infrastructure::{GitCommandError, GitCommandRunner, ImmutableObjectClient};
 use crate::modules::assets::domain::{
-    validate_asset_repository_mutation, Asset, AssetGitBackup, AssetGitRepository,
-    AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse,
-    AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission,
-    IAssetGitRepository, DEFAULT_ASSET_BRANCH,
+    validate_asset_repository_mutation, Asset, AssetGitBackup, AssetGitBuildInput,
+    AssetGitRepository, AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits,
+    AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal, AssetGitWriteLease,
+    AssetManifestAdmission, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
-use crate::modules::shared_kernel::domain::{GitCommitSha, Sha256Digest};
+use crate::modules::shared_kernel::domain::{BuildRunId, GitCommitSha, Sha256Digest};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::ffi::OsString;
@@ -27,6 +28,7 @@ const MAX_GIT_COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 pub struct LocalAssetGitRepository {
     root: PathBuf,
     staging_root: PathBuf,
+    build_input_root: PathBuf,
     git_home: PathBuf,
     hooks: PathBuf,
     commands: GitCommandRunner,
@@ -57,11 +59,13 @@ impl LocalAssetGitRepository {
         let root = std::fs::canonicalize(root)
             .map_err(|error| storage(format!("could not canonicalize repository root: {error}")))?;
         let staging_root = root.join(".repository-staging");
+        let build_input_root = root.join(".build-inputs");
         let sandbox = root.join(".git-command-sandbox");
         let git_home = sandbox.join("home");
         let hooks = sandbox.join("hooks");
         for (path, label) in [
             (&staging_root, "staging root"),
+            (&build_input_root, "build input root"),
             (&sandbox, "Git sandbox"),
             (&git_home, "Git home"),
             (&hooks, "Git hooks"),
@@ -73,6 +77,7 @@ impl LocalAssetGitRepository {
         Ok(Self {
             root,
             staging_root,
+            build_input_root,
             git_home,
             hooks,
             commands,
@@ -363,6 +368,22 @@ impl IAssetGitRepository for LocalAssetGitRepository {
         commit_sha: &GitCommitSha,
     ) -> Result<AssetManifestAdmission, AssetGitRepositoryError> {
         manifest::admit(self, asset, commit_sha).await
+    }
+
+    async fn prepare_build_input(
+        &self,
+        asset: &Asset,
+        commit_sha: &GitCommitSha,
+        build_run_id: BuildRunId,
+    ) -> Result<AssetGitBuildInput, AssetGitRepositoryError> {
+        build_input::prepare(self, asset, commit_sha, build_run_id).await
+    }
+
+    async fn remove_build_input(
+        &self,
+        build_run_id: BuildRunId,
+    ) -> Result<(), AssetGitRepositoryError> {
+        build_input::remove(self, build_run_id).await
     }
 }
 

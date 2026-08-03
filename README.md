@@ -361,9 +361,20 @@ journal: an uncommitted write restores refs and removes newly introduced
 objects, while a committed write only cleans up the journal. An uncertain
 database completion preserves the journal for restart recovery. Backup and
 restore reuse the shared immutable-object client, and release admission reads
-only a pinned `.a3s/asset.acl` through `a3s-acl`. Release publication, Agent
-deployment, Skill binding, and catalog surfaces remain `A0.3` through `A0.5`,
-so the complete `A0` gate remains in progress.
+only a pinned `.a3s/asset.acl` through `a3s-acl`.
+
+The first `A0.3` foundation extends that same manifest with one optional closed
+`build` block for Agent and MCP sources, resolves external revisions and hosted
+Asset releases through one typed `BuildSource`, and carries both through the
+sole `cloud.build@5` Flow. Hosted input is a deterministic archive of the exact
+reachable commit produced by the shared Git runner, admitted into the existing
+node Artifact store, and removed through the same build cleanup boundary.
+Build evidence and OCI publication targets now bind the typed source subject;
+the external-source wire identity remains unchanged. Durable hosted BuildRun
+reservation, atomic release finalization, immutable release provenance, draft
+recovery, yanking, and deterministic selection remain open `A0.3` work. Agent
+deployment, Skill binding, and catalog surfaces remain `A0.4` and `A0.5`, so
+the complete `A0` gate remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -887,8 +898,10 @@ selected explicitly, and neither path can fall back automatically.
 
 Applications use this path today. Agent, MCP, and Skill publication has a
 verified `A0.1` identity foundation and `A0.2` hosted Git repository boundary.
-Release publication, Agent deployment, Skill binding, and catalog surfaces
-remain open `A0.3` through `A0.5` work. Hosted modern MCP contract/compiler,
+The typed hosted-build input foundation is in progress under `A0.3`; atomic
+release finalization, provenance, recovery, yanking, and selection remain open.
+Agent deployment, Skill binding, and catalog surfaces remain `A0.4` and
+`A0.5`. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
 complete version-vector CAS, atomic publication/certificate/scope/Outbox
 staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry

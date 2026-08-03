@@ -3,6 +3,7 @@ use crate::modules::assets::domain::{
     Asset, AssetGitRepositoryError, AssetKind, AssetManifestAdmission, IAssetGitRepository,
 };
 use crate::modules::shared_kernel::domain::{GitCommitSha, Sha256Digest};
+use crate::modules::sources::domain::BuildRecipe;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
@@ -61,7 +62,7 @@ pub(super) async fn admit(
         .collect::<BTreeSet<_>>();
     if block.name != "asset"
         || !block.labels.is_empty()
-        || !block.blocks.is_empty()
+        || block.blocks.len() > 1
         || keys != BTreeSet::from(["kind", "schema"])
     {
         return Err(integrity(
@@ -87,14 +88,79 @@ pub(super) async fn admit(
             "pinned Asset manifest kind does not match its Asset",
         ));
     }
+    let build_recipe = block.blocks.first().map(parse_build_recipe).transpose()?;
     let admission = AssetManifestAdmission {
         commit_sha: commit_sha.clone(),
         manifest_digest: Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(&body)))
             .map_err(AssetGitRepositoryError::Integrity)?,
         kind,
+        build_recipe,
     };
     admission
         .validate_for(asset.kind)
         .map_err(AssetGitRepositoryError::Integrity)?;
     Ok(admission)
+}
+
+fn parse_build_recipe(block: &a3s_acl::Block) -> Result<BuildRecipe, AssetGitRepositoryError> {
+    let keys = block
+        .attributes
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let required = BTreeSet::from(["context", "file", "platforms"]);
+    let allowed = BTreeSet::from(["context", "file", "platforms", "target"]);
+    if block.name != "build"
+        || !block.labels.is_empty()
+        || !block.blocks.is_empty()
+        || !required.is_subset(&keys)
+        || !keys.is_subset(&allowed)
+    {
+        return Err(integrity(
+            "pinned Asset build block has an unsupported structure",
+        ));
+    }
+    let context = required_string(block, "context")?;
+    let file = required_string(block, "file")?;
+    let target = block
+        .attributes
+        .get("target")
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| integrity("pinned Asset build target must be a string"))
+        })
+        .transpose()?;
+    let platforms = match block.attributes.get("platforms") {
+        Some(a3s_acl::Value::List(values)) => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| integrity("pinned Asset build platforms must be strings"))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => return Err(integrity("pinned Asset build platforms must be a list")),
+    };
+    BuildRecipe::dockerfile(
+        BuildRecipe::SCHEMA,
+        BuildRecipe::DOCKERFILE_KIND,
+        context,
+        file,
+        target,
+        platforms,
+    )
+    .map_err(|error| integrity(format!("pinned Asset build recipe is invalid: {error}")))
+}
+
+fn required_string<'a>(
+    block: &'a a3s_acl::Block,
+    field: &str,
+) -> Result<&'a str, AssetGitRepositoryError> {
+    block
+        .attributes
+        .get(field)
+        .and_then(a3s_acl::Value::as_str)
+        .ok_or_else(|| integrity(format!("pinned Asset build {field} must be a string")))
 }

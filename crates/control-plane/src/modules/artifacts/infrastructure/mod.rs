@@ -1,6 +1,7 @@
 mod build_evidence_generator;
 mod build_evidence_signing;
 mod build_flow;
+mod build_source_resolver;
 mod local_node_artifact_store;
 mod oci_build_output_validator;
 mod oci_layout;
@@ -13,6 +14,7 @@ pub use build_evidence_signing::{LocalBuildEvidenceSigner, VaultBuildEvidenceSig
 pub use build_flow::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
 };
+pub use build_source_resolver::CloudBuildSourceResolver;
 pub use local_node_artifact_store::LocalNodeArtifactStore;
 pub use oci_build_output_validator::OciBuildOutputValidator;
 pub use oci_registry_artifact_publisher::{
