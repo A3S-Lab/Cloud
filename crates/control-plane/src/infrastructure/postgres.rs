@@ -587,6 +587,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/064_atomic_hosted_release_publication.sql"
             )),
         ),
+        Migration::new(
+            "065",
+            "A3S Use Plugin Host node commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/065_plugin_host_commands.sql"
+            )),
+        ),
     ]
 }
 

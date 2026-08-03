@@ -82,8 +82,8 @@
       "code": "U0",
       "name": "A3S Use plugin assignments",
       "outcome": "Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager",
-      "status": "Planned",
-      "statusKind": "planned"
+      "status": "In progress; unavailable",
+      "statusKind": "in-progress"
     },
     {
       "code": "MCP0",

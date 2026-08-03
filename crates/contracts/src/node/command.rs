@@ -2,6 +2,13 @@ use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeInspection, RuntimeObservation,
     RuntimeRemoval,
 };
+use a3s_use_core::{
+    PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
+    PluginHostEnablementRequest, PluginHostEnablementResult, PluginHostObservationRequest,
+    PluginHostObservationResult, PluginHostPlanRequest, PluginHostPlanResult,
+    PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA,
+    PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA, PLUGIN_HOST_PLAN_REQUEST_SCHEMA,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -11,8 +18,9 @@ use super::{
     validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
     GatewaySnapshotObservationRequest, NodeBoxBuildCancelResult, NodeBoxBuildInspection,
     NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, NodeGatewayAck,
-    NodeGatewaySnapshotObservation, NodeResourceClaimBinding, NodeResourceClaimPrepare,
-    NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
+    NodeGatewaySnapshotObservation, NodePluginHostCapabilitiesRequest, NodeResourceClaimBinding,
+    NodeResourceClaimPrepare, NodeResourceClaimPrepared, NodeResourceClaimRelease,
+    NodeResourceClaimReleased,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +65,21 @@ pub enum NodeCommandPayload {
     GatewaySnapshotObserve {
         request: GatewaySnapshotObservationRequest,
     },
+    PluginHostCapabilitiesInspect {
+        request: NodePluginHostCapabilitiesRequest,
+    },
+    PluginHostPlan {
+        request: Box<PluginHostPlanRequest>,
+    },
+    PluginHostApply {
+        request: Box<PluginHostApplyRequest>,
+    },
+    PluginHostSetEnablement {
+        request: Box<PluginHostEnablementRequest>,
+    },
+    PluginHostObserve {
+        request: Box<PluginHostObservationRequest>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +95,28 @@ pub struct NodeCommandMetadata {
 }
 
 impl NodeCommandPayload {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::ResourceClaimPrepare { .. } => "resource_claim_prepare",
+            Self::RuntimeApply { .. } => "runtime_apply",
+            Self::RuntimeInspect { .. } => "runtime_inspect",
+            Self::RuntimeStop { .. } => "runtime_stop",
+            Self::RuntimeRemove { .. } => "runtime_remove",
+            Self::BoxBuildStart { .. } => "box_build_start",
+            Self::BoxBuildInspect { .. } => "box_build_inspect",
+            Self::BoxBuildCancel { .. } => "box_build_cancel",
+            Self::BoxBuildRemove { .. } => "box_build_remove",
+            Self::ResourceClaimRelease { .. } => "resource_claim_release",
+            Self::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
+            Self::GatewaySnapshotObserve { .. } => "gateway_snapshot_observe",
+            Self::PluginHostCapabilitiesInspect { .. } => "plugin_host_capabilities_inspect",
+            Self::PluginHostPlan { .. } => "plugin_host_plan",
+            Self::PluginHostApply { .. } => "plugin_host_apply",
+            Self::PluginHostSetEnablement { .. } => "plugin_host_set_enablement",
+            Self::PluginHostObserve { .. } => "plugin_host_observe",
+        }
+    }
+
     pub fn schema(&self) -> &'static str {
         match self {
             Self::ResourceClaimPrepare { .. } => NodeResourceClaimPrepare::SCHEMA,
@@ -93,6 +138,11 @@ impl NodeCommandPayload {
             Self::ResourceClaimRelease { .. } => NodeResourceClaimRelease::SCHEMA,
             Self::GatewaySnapshotInstall { .. } => GatewaySnapshot::SCHEMA,
             Self::GatewaySnapshotObserve { .. } => GatewaySnapshotObservationRequest::SCHEMA,
+            Self::PluginHostCapabilitiesInspect { .. } => NodePluginHostCapabilitiesRequest::SCHEMA,
+            Self::PluginHostPlan { .. } => PLUGIN_HOST_PLAN_REQUEST_SCHEMA,
+            Self::PluginHostApply { .. } => PLUGIN_HOST_APPLY_REQUEST_SCHEMA,
+            Self::PluginHostSetEnablement { .. } => PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA,
+            Self::PluginHostObserve { .. } => PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA,
         }
     }
 
@@ -109,6 +159,11 @@ impl NodeCommandPayload {
             Self::ResourceClaimRelease { request } => request.claim_generation,
             Self::GatewaySnapshotInstall { snapshot } => snapshot.revision,
             Self::GatewaySnapshotObserve { request } => request.revision,
+            Self::PluginHostCapabilitiesInspect { request } => request.generation,
+            Self::PluginHostPlan { request } => request.assignment_generation,
+            Self::PluginHostApply { request } => request.assignment_generation,
+            Self::PluginHostSetEnablement { request } => request.assignment_generation,
+            Self::PluginHostObserve { request } => request.assignment_generation,
         }
     }
 
@@ -143,6 +198,25 @@ impl NodeCommandPayload {
             Self::ResourceClaimRelease { request } => request.validate(),
             Self::GatewaySnapshotInstall { snapshot } => snapshot.validate(),
             Self::GatewaySnapshotObserve { request } => request.validate(),
+            Self::PluginHostCapabilitiesInspect { request } => request.validate(),
+            Self::PluginHostPlan { request } => request.validate().map_err(|error| {
+                format!("invalid A3S Use Plugin Host plan request ({})", error.code)
+            }),
+            Self::PluginHostApply { request } => request.validate().map_err(|error| {
+                format!("invalid A3S Use Plugin Host apply request ({})", error.code)
+            }),
+            Self::PluginHostSetEnablement { request } => request.validate().map_err(|error| {
+                format!(
+                    "invalid A3S Use Plugin Host enablement request ({})",
+                    error.code
+                )
+            }),
+            Self::PluginHostObserve { request } => request.validate().map_err(|error| {
+                format!(
+                    "invalid A3S Use Plugin Host observation request ({})",
+                    error.code
+                )
+            }),
         }
     }
 
@@ -271,7 +345,12 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::BoxBuildCancel { .. }
             | NodeCommandPayload::BoxBuildRemove { .. }
             | NodeCommandPayload::GatewaySnapshotInstall { .. }
-            | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
+            | NodeCommandPayload::GatewaySnapshotObserve { .. }
+            | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+            | NodeCommandPayload::PluginHostPlan { .. }
+            | NodeCommandPayload::PluginHostApply { .. }
+            | NodeCommandPayload::PluginHostSetEnablement { .. }
+            | NodeCommandPayload::PluginHostObserve { .. } => {}
         }
         if self.generation != self.payload.generation() {
             return Err("command generation does not match its payload".into());
@@ -330,6 +409,25 @@ pub enum NodeCommandResult {
     GatewaySnapshotObserved {
         observation: NodeGatewaySnapshotObservation,
     },
+    PluginHostCapabilitiesInspected {
+        capabilities: PluginHostCapabilities,
+    },
+    PluginHostPlanned {
+        capabilities: PluginHostCapabilities,
+        plan: Box<PluginHostPlanResult>,
+    },
+    PluginHostApplied {
+        capabilities: PluginHostCapabilities,
+        applied: Box<PluginHostApplyResult>,
+    },
+    PluginHostEnablementSet {
+        capabilities: PluginHostCapabilities,
+        enablement: Box<PluginHostEnablementResult>,
+    },
+    PluginHostObserved {
+        capabilities: PluginHostCapabilities,
+        observation: Box<PluginHostObservationResult>,
+    },
 }
 
 impl NodeCommandResult {
@@ -348,6 +446,49 @@ impl NodeCommandResult {
             Self::ResourceClaimReleased { released } => released.validate(),
             Self::GatewaySnapshotInstalled { acknowledgement } => acknowledgement.validate(),
             Self::GatewaySnapshotObserved { observation } => observation.validate(),
+            Self::PluginHostCapabilitiesInspected { capabilities } => capabilities
+                .validate()
+                .map_err(|error| format!("invalid Plugin Host capabilities ({})", error.code)),
+            Self::PluginHostPlanned { capabilities, plan } => {
+                capabilities.validate().map_err(|error| {
+                    format!("invalid Plugin Host capabilities ({})", error.code)
+                })?;
+                plan.validate()
+                    .map_err(|error| format!("invalid Plugin Host plan result ({})", error.code))
+            }
+            Self::PluginHostApplied {
+                capabilities,
+                applied,
+            } => {
+                capabilities.validate().map_err(|error| {
+                    format!("invalid Plugin Host capabilities ({})", error.code)
+                })?;
+                applied
+                    .validate()
+                    .map_err(|error| format!("invalid Plugin Host apply result ({})", error.code))
+            }
+            Self::PluginHostEnablementSet {
+                capabilities,
+                enablement,
+            } => {
+                capabilities.validate().map_err(|error| {
+                    format!("invalid Plugin Host capabilities ({})", error.code)
+                })?;
+                enablement.validate().map_err(|error| {
+                    format!("invalid Plugin Host enablement result ({})", error.code)
+                })
+            }
+            Self::PluginHostObserved {
+                capabilities,
+                observation,
+            } => {
+                capabilities.validate().map_err(|error| {
+                    format!("invalid Plugin Host capabilities ({})", error.code)
+                })?;
+                observation.validate().map_err(|error| {
+                    format!("invalid Plugin Host observation result ({})", error.code)
+                })
+            }
         }
     }
 
@@ -425,9 +566,73 @@ impl NodeCommandResult {
                 NodeCommandPayload::GatewaySnapshotObserve { request },
                 Self::GatewaySnapshotObserved { observation },
             ) => observation.validate_for(command.command_id, command.node_id, request),
+            (
+                NodeCommandPayload::PluginHostCapabilitiesInspect { .. },
+                Self::PluginHostCapabilitiesInspected { capabilities },
+            ) => capabilities
+                .validate()
+                .map_err(|error| format!("invalid Plugin Host capabilities ({})", error.code)),
+            (
+                NodeCommandPayload::PluginHostPlan { request },
+                Self::PluginHostPlanned { capabilities, plan },
+            ) => plan.validate_for(request, capabilities).map_err(|error| {
+                format!(
+                    "Plugin Host plan result does not match its request ({})",
+                    error.code
+                )
+            }),
+            (
+                NodeCommandPayload::PluginHostApply { request },
+                Self::PluginHostApplied {
+                    capabilities,
+                    applied,
+                },
+            ) => applied
+                .validate_for(request, capabilities)
+                .map_err(|error| {
+                    format!(
+                        "Plugin Host apply result does not match its request ({})",
+                        error.code
+                    )
+                }),
+            (
+                NodeCommandPayload::PluginHostSetEnablement { request },
+                Self::PluginHostEnablementSet {
+                    capabilities,
+                    enablement,
+                },
+            ) => enablement
+                .validate_for(request, capabilities)
+                .map_err(|error| {
+                    format!(
+                        "Plugin Host enablement result does not match its request ({})",
+                        error.code
+                    )
+                }),
+            (
+                NodeCommandPayload::PluginHostObserve { request },
+                Self::PluginHostObserved {
+                    capabilities,
+                    observation,
+                },
+            ) => observation
+                .validate_for(request, capabilities)
+                .map_err(|error| {
+                    format!(
+                        "Plugin Host observation result does not match its request ({})",
+                        error.code
+                    )
+                }),
             _ => Err("node command result kind does not match its payload".into()),
         }
     }
+}
+
+fn plugin_host_timestamp(label: &str, milliseconds: u64) -> Result<DateTime<Utc>, String> {
+    let milliseconds = i64::try_from(milliseconds)
+        .map_err(|_| format!("Plugin Host {label} time exceeds supported bounds"))?;
+    DateTime::from_timestamp_millis(milliseconds)
+        .ok_or_else(|| format!("Plugin Host {label} time exceeds supported bounds"))
 }
 
 fn validate_inspection_identity(
@@ -542,9 +747,29 @@ impl NodeCommandAck {
         self.outcome.validate()?;
         if let NodeCommandOutcome::Succeeded { result } = &self.outcome {
             result.validate_against(command)?;
-            let resource_evidence_at = match result.as_ref() {
-                NodeCommandResult::ResourceClaimPrepared { prepared } => Some(prepared.prepared_at),
-                NodeCommandResult::ResourceClaimReleased { released } => Some(released.released_at),
+            let result_evidence = match result.as_ref() {
+                NodeCommandResult::ResourceClaimPrepared { prepared } => {
+                    Some((prepared.prepared_at, false))
+                }
+                NodeCommandResult::ResourceClaimReleased { released } => {
+                    Some((released.released_at, false))
+                }
+                NodeCommandResult::PluginHostPlanned { plan, .. } => Some((
+                    plugin_host_timestamp("plan creation", plan.plan.plan.created_at_ms)?,
+                    plan.replayed,
+                )),
+                NodeCommandResult::PluginHostApplied { applied, .. } => Some((
+                    plugin_host_timestamp("apply completion", applied.completed_at_ms)?,
+                    applied.replayed,
+                )),
+                NodeCommandResult::PluginHostEnablementSet { enablement, .. } => Some((
+                    plugin_host_timestamp("enablement completion", enablement.completed_at_ms)?,
+                    enablement.replayed,
+                )),
+                NodeCommandResult::PluginHostObserved { observation, .. } => Some((
+                    plugin_host_timestamp("observation", observation.observed_at_ms)?,
+                    false,
+                )),
                 NodeCommandResult::RuntimeApplied { .. }
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
@@ -554,12 +779,13 @@ impl NodeCommandAck {
                 | NodeCommandResult::BoxBuildCancelled { .. }
                 | NodeCommandResult::BoxBuildRemoved { .. }
                 | NodeCommandResult::GatewaySnapshotInstalled { .. }
-                | NodeCommandResult::GatewaySnapshotObserved { .. } => None,
+                | NodeCommandResult::GatewaySnapshotObserved { .. }
+                | NodeCommandResult::PluginHostCapabilitiesInspected { .. } => None,
             };
-            if resource_evidence_at
-                .is_some_and(|at| at < command.issued_at || at > self.completed_at)
-            {
-                return Err("resource Claim evidence time falls outside command execution".into());
+            if result_evidence.is_some_and(|(at, replayed)| {
+                (!replayed && at < command.issued_at) || at > self.completed_at
+            }) {
+                return Err("node command result evidence time falls outside execution".into());
             }
             if matches!(
                 command.payload,
@@ -573,11 +799,14 @@ impl NodeCommandAck {
                     | NodeCommandPayload::BoxBuildInspect { .. }
                     | NodeCommandPayload::BoxBuildCancel { .. }
                     | NodeCommandPayload::BoxBuildRemove { .. }
+                    | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+                    | NodeCommandPayload::PluginHostPlan { .. }
+                    | NodeCommandPayload::PluginHostApply { .. }
+                    | NodeCommandPayload::PluginHostSetEnablement { .. }
+                    | NodeCommandPayload::PluginHostObserve { .. }
             ) && self.schema != Self::SCHEMA
             {
-                return Err(
-                    "resource-bound commands require the current acknowledgement schema".into(),
-                );
+                return Err("this command requires the current acknowledgement schema".into());
             }
             if let NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } = result.as_ref()
             {

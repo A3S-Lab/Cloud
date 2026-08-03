@@ -55,20 +55,7 @@ impl NodeCommand {
     }
 
     pub fn kind(&self) -> &'static str {
-        match self.payload {
-            NodeCommandPayload::ResourceClaimPrepare { .. } => "resource_claim_prepare",
-            NodeCommandPayload::RuntimeApply { .. } => "runtime_apply",
-            NodeCommandPayload::RuntimeInspect { .. } => "runtime_inspect",
-            NodeCommandPayload::RuntimeStop { .. } => "runtime_stop",
-            NodeCommandPayload::RuntimeRemove { .. } => "runtime_remove",
-            NodeCommandPayload::BoxBuildStart { .. } => "box_build_start",
-            NodeCommandPayload::BoxBuildInspect { .. } => "box_build_inspect",
-            NodeCommandPayload::BoxBuildCancel { .. } => "box_build_cancel",
-            NodeCommandPayload::BoxBuildRemove { .. } => "box_build_remove",
-            NodeCommandPayload::ResourceClaimRelease { .. } => "resource_claim_release",
-            NodeCommandPayload::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
-            NodeCommandPayload::GatewaySnapshotObserve { .. } => "gateway_snapshot_observe",
-        }
+        self.payload.kind()
     }
 
     pub fn generation(&self) -> u64 {
@@ -128,7 +115,12 @@ impl NodeCommand {
                 | NodeCommandResult::BoxBuildStarted { .. }
                 | NodeCommandResult::BoxBuildInspected { .. }
                 | NodeCommandResult::BoxBuildCancelled { .. }
-                | NodeCommandResult::BoxBuildRemoved { .. } => {}
+                | NodeCommandResult::BoxBuildRemoved { .. }
+                | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+                | NodeCommandResult::PluginHostPlanned { .. }
+                | NodeCommandResult::PluginHostApplied { .. }
+                | NodeCommandResult::PluginHostEnablementSet { .. }
+                | NodeCommandResult::PluginHostObserved { .. } => {}
             }
         }
         acknowledgement

@@ -608,6 +608,16 @@ fn state_mutation_digest(
             request.validate().map_err(CommandJournalError::Invalid)?;
             Ok(None)
         }
+        // Fleet journals remote delivery and exact command replay. The shared
+        // A3S Use Manager owns assignment-generation fencing and its nested
+        // plan/apply/enablement saga. One assignment generation can therefore
+        // contain several distinct Plugin Host commands without creating a
+        // second lifecycle projection in the Node Agent.
+        NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+        | NodeCommandPayload::PluginHostPlan { .. }
+        | NodeCommandPayload::PluginHostApply { .. }
+        | NodeCommandPayload::PluginHostSetEnablement { .. }
+        | NodeCommandPayload::PluginHostObserve { .. } => Ok(None),
         NodeCommandPayload::BoxBuildStart { request } => request
             .binding_digest()
             .map(Some)
@@ -663,7 +673,12 @@ impl ResourceClaimJournalProjection {
             | NodeCommandPayload::BoxBuildCancel { .. }
             | NodeCommandPayload::BoxBuildRemove { .. }
             | NodeCommandPayload::GatewaySnapshotInstall { .. }
-            | NodeCommandPayload::GatewaySnapshotObserve { .. } => {}
+            | NodeCommandPayload::GatewaySnapshotObserve { .. }
+            | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+            | NodeCommandPayload::PluginHostPlan { .. }
+            | NodeCommandPayload::PluginHostApply { .. }
+            | NodeCommandPayload::PluginHostSetEnablement { .. }
+            | NodeCommandPayload::PluginHostObserve { .. } => {}
         }
 
         let Some(completion) = &entry.completion else {

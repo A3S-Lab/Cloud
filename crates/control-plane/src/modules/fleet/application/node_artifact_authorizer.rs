@@ -153,7 +153,12 @@ fn artifact_binding_digest(payload: &NodeCommandPayload) -> Result<Option<String
         | NodeCommandPayload::BoxBuildRemove { .. }
         | NodeCommandPayload::ResourceClaimRelease { .. }
         | NodeCommandPayload::GatewaySnapshotInstall { .. }
-        | NodeCommandPayload::GatewaySnapshotObserve { .. } => Ok(None),
+        | NodeCommandPayload::GatewaySnapshotObserve { .. }
+        | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+        | NodeCommandPayload::PluginHostPlan { .. }
+        | NodeCommandPayload::PluginHostApply { .. }
+        | NodeCommandPayload::PluginHostSetEnablement { .. }
+        | NodeCommandPayload::PluginHostObserve { .. } => Ok(None),
     }
 }
 

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 a3s-runtime.workspace = true
+a3s-use-core.workspace = true
 argon2.workspace = true
 base64.workspace = true
 chrono.workspace = true

@@ -317,7 +317,25 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 64);
+    assert_eq!(applied, 65);
+    let node_command_kind_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'node_commands'::regclass and conname = 'node_commands_command_kind_check'",
+        ))
+        .await?;
+    for kind in [
+        "plugin_host_capabilities_inspect",
+        "plugin_host_plan",
+        "plugin_host_apply",
+        "plugin_host_set_enablement",
+        "plugin_host_observe",
+    ] {
+        assert!(
+            node_command_kind_constraint.contains(&format!("'{kind}'")),
+            "node command kind constraint omitted {kind}"
+        );
+    }
+    assert!(!node_command_kind_constraint.contains("plugin_host_execute"));
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -1001,6 +1019,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "065",
+                "A3S Use Plugin Host node commands",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/065_plugin_host_commands.sql"
+                )),
+            ),
+            Migration::new(
+                "066",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

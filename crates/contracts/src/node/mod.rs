@@ -6,6 +6,7 @@ mod error;
 mod gateway;
 mod inventory;
 mod observation;
+mod plugin_host;
 mod resource_claim;
 mod secret;
 #[cfg(test)]
@@ -47,6 +48,7 @@ pub use observation::{
     NodeObservationBatch, NodeObservationBatchEnvelope, NodeObservationBatchV2,
     NodeObservationReceipt, RuntimeObservationReport,
 };
+pub use plugin_host::NodePluginHostCapabilitiesRequest;
 pub use resource_claim::{
     NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
     NodeResourceClaimRelease, NodeResourceClaimReleased, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,

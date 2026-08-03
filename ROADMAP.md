@@ -113,7 +113,7 @@ training, trajectories, or any Agentic RL policy.
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal | In progress |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
-| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | Planned |
+| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
@@ -1104,18 +1104,21 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | Planned | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-1 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | A3S Use M0 contracts and the frozen managed-host contract; complete shared-manager composition still gates mutation |
+| `U0.1` | In progress | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-1 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | A3S Use M0 contracts and the frozen managed-host contract; complete shared-manager composition still gates mutation |
 | `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Web/Management MCP read parity and no package download | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
 
-As of 2026-08-03, A3S Use already publishes the canonical managed-scope fence,
-host capabilities, package identity, plan, digest-only apply, enablement,
-observation, and `PluginHostManager` protocol-level-1 contracts. This upstream
-readiness does not advance `U0.1`: Cloud still has no plugin module or product
-capability until it pins an exact compatible Use revision and proves the Cloud
-adapter, Fleet payloads, fixtures, and managed-scope fencing together.
+The current `U0.1` slice pins `a3s-use-core` to the exact upstream revision
+that owns the canonical `PluginHostManager`, managed-scope fence, and host
+contracts. Five explicit Fleet commands reuse those upstream request/result
+types, the existing node-command queue, and the existing Node Agent journal.
+Host capabilities are read from that sole Manager through the capabilities
+inspection command and returned as command-bound evidence; Cloud does not add
+another heartbeat capability schema or capability store. The root compatibility
+lock and production Manager composition remain open, so no registry,
+assignment, or user-facing plugin capability is claimed yet.
 
 The Cloud API has one assignment vocabulary and imports A3S Use's canonical
 `PluginDesiredState`; it does not define a parallel lifecycle enum. The sole
