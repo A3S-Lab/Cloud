@@ -579,6 +579,13 @@ Ownership is intentionally split:
 | Agent, MCP, and Skill release identity | Assets |
 | Deployment and rollout | Workloads |
 
+Migration 063 persists the BuildRun subject as one closed relational union.
+External revisions and hosted Asset releases enter the same bounded A3S
+ORM-backed reservation transaction and the same BuildRun reconciler. Draft
+Agent and MCP releases are scanned only as missing work; PostgreSQL row locks,
+per-subject attempt uniqueness, and exact foreign keys repair restart gaps
+without introducing an Assets queue, Redis authority, or another Flow.
+
 Cloud does not create another Git runner, cache, image builder, or deployment
 path. Until Box supplies an authoritative durable build-log contract, BuildRun
 log endpoints return `503 Service Unavailable`; Cloud does not fabricate empty

@@ -4,7 +4,8 @@ use super::{
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
+    AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
+    SourceRevisionId,
 };
 use crate::modules::sources::domain::BuildPlatform;
 use a3s_cloud_contracts::{
@@ -443,6 +444,40 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
         now,
     );
     assert!(BuildRun::retry(&queued, now + Duration::milliseconds(3)).is_err());
+}
+
+#[test]
+fn hosted_release_build_retry_preserves_the_exact_subject_lineage() {
+    let now = Utc::now();
+    let organization_id = OrganizationId::new();
+    let asset_id = AssetId::new();
+    let asset_release_id = AssetReleaseId::new();
+    let mut failed =
+        BuildRun::reserve_asset_release(organization_id, asset_id, asset_release_id, now);
+    failed
+        .record_failure(
+            "hosted checkout failed".into(),
+            now + Duration::milliseconds(1),
+        )
+        .expect("record hosted failure");
+    failed
+        .complete(now + Duration::milliseconds(2))
+        .expect("complete hosted failure");
+
+    let retry = BuildRun::retry(&failed, now + Duration::milliseconds(3))
+        .expect("retry hosted release build");
+    assert_eq!(retry.organization_id, organization_id);
+    assert_eq!(retry.asset_id(), Some(asset_id));
+    assert_eq!(retry.asset_release_id(), Some(asset_release_id));
+    assert_eq!(retry.project_id(), None);
+    assert_eq!(retry.environment_id(), None);
+    assert_eq!(retry.source_revision_id(), None);
+    assert_eq!(retry.retry_of_build_run_id, Some(failed.id));
+    assert_eq!(
+        retry.id,
+        BuildRun::id_for_subject_attempt(retry.subject, 2).expect("hosted attempt identity")
+    );
+    assert!(BuildRun::restore(retry).is_ok());
 }
 
 fn artifact(fill: char) -> BuildArtifact {

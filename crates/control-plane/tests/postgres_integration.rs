@@ -256,7 +256,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 62);
+    assert_eq!(applied, 63);
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",
@@ -305,6 +305,39 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ("build_request_digest".into(), "text".into()),
         ]
     );
+    let build_subject_columns = database
+        .fetch_all_as(sql_query::<(String, String, String, Option<String>)>(
+            "select column_name, data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name in ('subject_kind', 'project_id', 'environment_id', 'source_revision_id', 'asset_id', 'asset_release_id') order by column_name",
+        ))
+        .await?;
+    assert_eq!(
+        build_subject_columns.rows,
+        vec![
+            ("asset_id".into(), "uuid".into(), "YES".into(), None),
+            ("asset_release_id".into(), "uuid".into(), "YES".into(), None,),
+            ("environment_id".into(), "uuid".into(), "YES".into(), None),
+            ("project_id".into(), "uuid".into(), "YES".into(), None),
+            (
+                "source_revision_id".into(),
+                "uuid".into(),
+                "YES".into(),
+                None,
+            ),
+            ("subject_kind".into(), "text".into(), "NO".into(), None),
+        ]
+    );
+    let build_subject_constraints = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_subject_shape_check', 'build_runs_asset_release_foreign_key')",
+        ))
+        .await?;
+    assert_eq!(build_subject_constraints, 2);
+    let build_subject_indexes = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_indexes where schemaname = 'public' and tablename = 'build_runs' and indexname in ('build_runs_external_subject_attempt_unique', 'build_runs_asset_release_attempt_unique')",
+        ))
+        .await?;
+    assert_eq!(build_subject_indexes, 2);
     let box_build_constraint_count = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_box_chain_check', 'build_runs_box_output_shape_check', 'build_runs_validated_output_check')",
@@ -338,6 +371,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert!(build_evidence_constraint.contains("verificationState"));
     assert!(build_evidence_constraint.contains("ed25519"));
     assert!(build_evidence_constraint.contains("publicKey"));
+    assert!(build_evidence_constraint.contains("assetReleaseId"));
+    assert!(build_evidence_constraint.contains("manifestDigest"));
     let route_ownership_predicate = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_expr(indpred, indrelid) from pg_index where indexrelid = 'routes_active_ownership_idx'::regclass",
@@ -866,6 +901,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "063",
+                "hosted Asset build run subjects",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/063_hosted_asset_build_runs.sql"
+                )),
+            ),
+            Migration::new(
+                "064",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),
@@ -1393,6 +1436,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         &response_id(&source)?,
     )
     .await?;
+    build_runs_support::exercise_hosted_build_run_persistence(&executor, &hosted_git_asset).await?;
 
     source_subscription_support::exercise_source_subscriptions(
         &app,

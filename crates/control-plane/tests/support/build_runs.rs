@@ -16,12 +16,17 @@ use a3s_cloud_control_plane::modules::artifacts::{
     OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
     ValidatedOciBuildOutput,
 };
+use a3s_cloud_control_plane::modules::assets::{
+    Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
+    CreateAssetReleaseWrite, IAssetRepository, PostgresAssetRepository,
+};
 use a3s_cloud_control_plane::modules::operations::{
     IOperationRepository, PostgresOperationRepository,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId,
+    NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::BuildPlatform;
 use a3s_cloud_control_plane::modules::workloads::{
@@ -790,6 +795,166 @@ pub async fn exercise_build_run_persistence(
                 .bind(organization_id.as_uuid())
                 .append(" and id = ")
                 .bind(node_id.as_uuid()),
+        )
+        .await?;
+    Ok(())
+}
+
+pub async fn exercise_hosted_build_run_persistence(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let assets = PostgresAssetRepository::new(executor.clone());
+    let release = AssetRelease::draft(
+        asset,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse("1.0.0")?,
+        GitCommitSha::parse("a".repeat(40))?,
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))?,
+        chrono::Utc::now().max(asset.updated_at),
+    )?;
+    let idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{}/assets/{}/releases",
+            asset.organization_id, asset.id
+        ),
+        "postgres-hosted-build-draft",
+        release.id.as_uuid().as_bytes(),
+    )?;
+    assets
+        .create_release(CreateAssetReleaseWrite {
+            event: AssetReleaseDrafted::envelope(&release, release.id.as_uuid())?,
+            release: release.clone(),
+            idempotency: idempotency.clone(),
+        })
+        .await?;
+
+    // A draft can be committed before a reconciler process observes it. Two
+    // restarted workers must repair that gap by reserving exactly one BuildRun.
+    let left_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let right_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let reserved_at = chrono::Utc::now().max(release.created_at);
+    let (left, right) = tokio::join!(
+        left_repository.reserve_pending(1, reserved_at),
+        right_repository.reserve_pending(1, reserved_at),
+    );
+    let mut reserved = left?;
+    reserved.extend(right?);
+    assert_eq!(reserved.len(), 1);
+    let mut build = reserved.pop().ok_or("hosted BuildRun was not reserved")?;
+    assert_eq!(build.organization_id, asset.organization_id);
+    assert_eq!(build.asset_id(), Some(asset.id));
+    assert_eq!(build.asset_release_id(), Some(release.id));
+    assert_eq!(build.project_id(), None);
+    assert_eq!(build.environment_id(), None);
+    assert_eq!(build.source_revision_id(), None);
+    assert_eq!(build.id, BuildRun::id_for_subject(build.subject));
+    assert_eq!(
+        left_repository
+            .find_by_asset_release(asset.organization_id, release.id)
+            .await?,
+        Some(build.clone())
+    );
+    assert!(left_repository
+        .find_by_asset_release(OrganizationId::new(), release.id)
+        .await?
+        .is_none());
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(String, Option<Uuid>, Option<Uuid>, Option<Uuid>, Uuid, Uuid)>(
+                    "select subject_kind, project_id, environment_id, source_revision_id, asset_id, asset_release_id from build_runs where organization_id = ",
+                )
+                .bind(asset.organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build.id.as_uuid()),
+            )
+            .await?,
+        (
+            "asset_release".into(),
+            None,
+            None,
+            None,
+            asset.id.as_uuid(),
+            release.id.as_uuid(),
+        )
+    );
+
+    let queued_version = build.aggregate_version;
+    build.begin_preparation(reserved_at + Duration::milliseconds(1))?;
+    build = left_repository.save(build, queued_version).await?;
+    assert_eq!(build.status, BuildRunStatus::Preparing);
+    assert_eq!(build.asset_id(), Some(asset.id));
+    assert_eq!(build.asset_release_id(), Some(release.id));
+
+    let operations = Arc::new(PostgresOperationRepository::new(executor.clone()));
+    let restarted = BuildRunReconciler::new(left_repository.clone(), operations.clone());
+    let repaired = restarted.run_once(10).await?;
+    assert_eq!(repaired.reserved, 0);
+    assert_eq!(repaired.started, 1);
+    assert_eq!(repaired.replayed, 0);
+    assert!(repaired.failures.is_empty());
+    let operation = operations
+        .find_request(build.operation_id)
+        .await?
+        .ok_or("hosted build operation was not enqueued")?;
+    assert_eq!(operation.organization_id, asset.organization_id);
+    assert_eq!(operation.workflow.name(), "cloud.build");
+    assert_eq!(operation.workflow.version(), BUILD_WORKFLOW_VERSION);
+    assert_eq!(
+        operation.input["buildRunId"],
+        serde_json::Value::String(build.id.to_string())
+    );
+    assert_eq!(
+        assets
+            .find_release(asset.organization_id, asset.id, release.id)
+            .await?
+            .map(|release| release.state),
+        Some(AssetReleaseState::Draft)
+    );
+
+    database
+        .execute(
+            sql_query::<()>("delete from operation_projections where operation_id = ")
+                .bind(build.operation_id.as_uuid()),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from operation_requests where operation_id = ")
+                .bind(build.operation_id.as_uuid()),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from build_runs where organization_id = ")
+                .bind(asset.organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build.id.as_uuid()),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from idempotency_records where scope_key = ")
+                .bind(idempotency.scope)
+                .append(" and idempotency_key = ")
+                .bind(idempotency.key),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from outbox_events where aggregate_id = ")
+                .bind(release.id.as_uuid()),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from asset_releases where organization_id = ")
+                .bind(asset.organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(release.id.as_uuid()),
         )
         .await?;
     Ok(())

@@ -1,7 +1,7 @@
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
-    RepositoryError, SourceRevisionId,
+    AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId,
+    ProjectId, RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -43,6 +43,12 @@ pub trait IBuildRunRepository: Send + Sync {
         &self,
         organization_id: OrganizationId,
         source_revision_id: SourceRevisionId,
+    ) -> Result<Option<BuildRun>, RepositoryError>;
+
+    async fn find_by_asset_release(
+        &self,
+        organization_id: OrganizationId,
+        asset_release_id: AssetReleaseId,
     ) -> Result<Option<BuildRun>, RepositoryError>;
 
     async fn list(

@@ -571,6 +571,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/062_runtime_artifact_json_contract.sql"
             )),
         ),
+        Migration::new(
+            "063",
+            "hosted Asset build run subjects",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/063_hosted_asset_build_runs.sql"
+            )),
+        ),
     ]
 }
 
