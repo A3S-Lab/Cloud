@@ -322,11 +322,16 @@ The current `G0` implementation includes:
   plus A3S Flow cancellation of known retired build histories on startup.
 
 The retained external-provider workflow certifies private GitHub resolution
-only. `G0` remains in progress until a revision-bound Linux gate certifies the
-exact Box build provider, external Registry and signing boundaries, command and
-Box-journal process-death replay, parent-cache reuse, and zero-residue removal.
-Durable BuildRun logs also remain unavailable until Box exposes the
-authoritative contract Cloud can transport.
+only. The Box provider workflow now defines a revision-bound real Linux build
+slice that kills the Agent-side process after Box completion and Artifact
+publication, replays the exact output through a reconstructed executor,
+hydrates a cleared native cache from the immediate parent's Artifact, and
+requires idempotent removal with operation receipts, ImageStore references, and
+node Artifact state restored to baseline. `G0` remains in progress until this
+gate has retained execution evidence together with external Registry and
+signing boundaries, complete Fleet/Flow interruption replay, and the published
+Workload handoff. Durable BuildRun logs also remain unavailable until Box
+exposes the authoritative contract Cloud can transport.
 
 `C0` now includes the initial `C0.1` automation slices:
 
@@ -607,13 +612,14 @@ shared-kernel execution requires an explicit `sandbox` selection.
 
 Next outcome:
 
-1. add a revision-bound Linux gate for the pinned Box build provider without
-   introducing another executor, cache, journal, image store, or scheduler;
-2. prove exact Fleet and Node Agent replay plus Box operation-journal recovery
-   across start and cleanup interruption boundaries;
-3. prove immediate-parent Box cache reuse, one external Registry publication,
-   one locally verified signature, one evidence document, and authoritative Box
-   removal with no node residue;
+1. execute and retain the defined revision-bound Linux Box build-consumer gate
+   without introducing another executor, cache, journal, image store, or
+   scheduler;
+2. extend its post-publication Agent-process replay through exact Fleet/Flow
+   start and cleanup interruption boundaries;
+3. combine the implemented immediate-parent Box cache hydration and
+   authoritative removal evidence with one external Registry publication, one
+   locally verified signature, and one persisted evidence document;
 4. expose build logs only after Box publishes its authoritative durable log
    contract; and
 5. promote `G0` only after the complete private-source-to-published-Workload

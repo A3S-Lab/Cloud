@@ -627,3 +627,6 @@ mod native {
 
 #[cfg(target_os = "linux")]
 pub(crate) use native::BoxBuildCommandExecutor;
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests;

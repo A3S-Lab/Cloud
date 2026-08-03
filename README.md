@@ -427,6 +427,16 @@ Retry can reuse only the immediate parent's matching Box cache receipt, and all
 dispatched outcomes pass through the same cancel, inspect, and remove cleanup
 chain before becoming terminal.
 
+The exact Box provider workflow now also defines a real Linux build-consumer
+gate. It builds a bounded `FROM scratch` source through the production Node
+Agent adapter, kills the Agent-side process after Box has completed and the OCI
+layout plus native cache have been uploaded, and requires a reconstructed
+executor to replay the byte-identical output. The gate then deletes the local
+native cache, hydrates it from the immediate parent's command-bound Artifact,
+rebuilds, removes both operations idempotently, and checks that Box references,
+operation receipts, and node Artifact state return to their prior baseline.
+The retained JSON evidence is bound to the exact Cloud and Box revisions.
+
 Migration `060` invalidates pre-Box BuildRuns as rebuild-required, cancels
 known `cloud.build@1` through `@4` histories through A3S Flow, and removes the
 old Runtime and Cloud-cache projections. Dockerfile remains a source-recipe
@@ -1076,11 +1086,13 @@ public BuildRun state.
 
 The `G0 external provider conformance` workflow binds its evidence to the exact
 Cloud revision. Its retained private-source job proves credential-free replay
-and checkout removal. Box-native build certification remains a separate open
-gate and must prove one remote OCI publication, one locally verified signature,
-one persisted evidence document, exact command and Box-journal replay, cache
-reuse, and authoritative Box removal. No build-log success is claimed while the
-Box log contract is absent.
+and checkout removal. The Box provider workflow now defines the complementary
+revision-bound native build, post-publication process-death replay,
+immediate-parent cache hydration, and authoritative removal evidence. `G0`
+still requires retained executions with the operator-owned HTTPS Registry and
+Vault Transit boundary, complete Fleet/Flow interruption coverage, and the
+published Workload handoff. No build-log success is claimed while the Box log
+contract is absent.
 
 The detailed request contracts, failure boundaries, and acceptance evidence
 remain in the [Development Plan](docs/development-plan.md).

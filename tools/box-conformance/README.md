@@ -41,6 +41,22 @@ cleanup gate requires empty Box records, execution directories, VolumeStore
 metadata and paths, Secret tmpfs, and node Artifact inventories; retained image
 cache and audit evidence are not treated as live workload state.
 
+The build consumer probe uses the same pinned Box revision and the production
+Node Agent `BoxBuildStart`/`BoxBuildInspect`/`BoxBuildRemove` adapter. A private
+test subprocess completes a real bounded Linux build and uploads its OCI layout
+and native cache, then is killed before it can return. A reconstructed executor
+must replay the exact output without another logical upload. The probe removes
+that operation, clears the sole native cache under the explicitly armed
+dedicated home, downloads the immediate-parent cache Artifact, proves native
+cache hydration, rebuilds, and removes again. Revision-bound JSON records every
+check; build receipts, operation-owned ImageStore references, and node Artifact
+files must return to their pre-test baseline. Shared content-addressed image and
+layer caches remain provider-owned reusable state rather than live operations.
+
+This local build-consumer gate does not replace operator-owned private source,
+HTTPS Registry, Vault Transit, Fleet/Flow interruption, or published-Workload
+evidence required to close `G0`.
+
 Real MicroVM and TEE profiles remain hardware-qualified in A3S Box. Cloud does
 not reimplement those provider tests.
 

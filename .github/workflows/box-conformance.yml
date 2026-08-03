@@ -368,6 +368,52 @@ jobs:
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
 
+      - name: Certify Box-native build replay, parent cache, and cleanup
+        env:
+          A3S_CLOUD_TEST_G0_BOX_BUILD: "1"
+          A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET: "1"
+          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+          A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_DEPS_STUB: "1"
+        run: |
+          test ! -e "$A3S_HOME/cloud-g0-box-build-conformance"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_CLOUD_TEST_G0_BOX_BUILD="$A3S_CLOUD_TEST_G0_BOX_BUILD" \
+            A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET="$A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET" \
+            A3S_CLOUD_TEST_G0_EVIDENCE_DIR="$A3S_CLOUD_TEST_G0_EVIDENCE_DIR" \
+            A3S_CLOUD_TEST_CLOUD_REVISION="$cloud_revision" \
+            A3S_CLOUD_TEST_BOX_REVISION="$A3S_CLOUD_TEST_BOX_REVISION" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-node-agent --lib \
+              box_build::tests::real_box_native_build_replays_after_process_death_reuses_parent_cache_and_cleans \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/cloud-box-build.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_G0_BOX_BUILD_CERTIFIED' \
+            "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/cloud-box-build.log" \
+            >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/box-build-certification.txt"
+          test "$(wc -l <"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/box-build-certification.txt")" -eq 1
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            '.schema == "a3s.cloud.g0-box-build-provider-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and ([.checks[]] | all)' \
+            "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/box-build-provider.json" >/dev/null
+
       - name: Verify provider cleanup
         if: always()
         env:
@@ -414,6 +460,19 @@ jobs:
           if test -n "$(sudo find "$A3S_HOME/runtime-secrets" -mindepth 1 -print -quit 2>/dev/null)"; then
             sudo find "$A3S_HOME/runtime-secrets" -mindepth 1 -maxdepth 2 -print \
               >"$EVIDENCE_DIR/leaked-secret-paths.txt"
+            cleanup_status=1
+          fi
+          if test -n "$(sudo find "$A3S_HOME/images/build-receipts/sha256" \
+              -mindepth 1 \
+              \( -name '*.json' -o -name '*.workspace' -o -name '*.cache' \) \
+              -print -quit 2>/dev/null)"; then
+            sudo find "$A3S_HOME/images/build-receipts/sha256" -mindepth 1 -maxdepth 2 -print \
+              >"$EVIDENCE_DIR/leaked-build-operation-paths.txt"
+            cleanup_status=1
+          fi
+          if test -e "$A3S_HOME/cloud-g0-box-build-conformance"; then
+            sudo find "$A3S_HOME/cloud-g0-box-build-conformance" -maxdepth 4 -print \
+              >"$EVIDENCE_DIR/leaked-cloud-build-test-paths.txt"
             cleanup_status=1
           fi
           if mountpoint -q "$A3S_HOME/runtime-secrets"; then
