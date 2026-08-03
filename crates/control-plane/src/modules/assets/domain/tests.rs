@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::artifacts::domain::OCI_IMAGE_INDEX_MEDIA_TYPE;
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, GitCommitSha, IdempotencyRequest, OrganizationId, ResourceName,
@@ -89,16 +90,43 @@ fn release_publication_binds_immutable_source_and_artifact_before_yanking() {
         release.commit_sha.clone(),
         release.manifest_digest.clone(),
     );
-    let artifact = oci_artifact();
-    let published_at = now() + Duration::seconds(1);
-    release
-        .publish(&asset, artifact.clone(), published_at)
-        .expect("publish");
+    let build = succeeded_hosted_build(asset.organization_id, asset.id, release.id, now());
+    let artifact = AssetReleaseArtifact::oci_service(
+        Sha256Digest::parse(
+            &build
+                .published_artifact
+                .as_ref()
+                .expect("published artifact")
+                .digest,
+        )
+        .expect("artifact digest"),
+        build
+            .published_artifact
+            .as_ref()
+            .expect("published artifact")
+            .media_type
+            .clone(),
+        build
+            .published_artifact
+            .as_ref()
+            .expect("published artifact")
+            .size_bytes,
+    )
+    .expect("release artifact");
+    let published_at = build.finished_at.expect("build finish time");
+    release.publish_from_build(&asset, &build).expect("publish");
     assert_eq!(release.state, AssetReleaseState::Published);
     assert_eq!(release.artifact, Some(artifact.clone()));
+    assert_eq!(
+        release
+            .provenance
+            .as_ref()
+            .map(AssetReleaseProvenance::build_run_id),
+        Some(build.id)
+    );
     assert_eq!(release.aggregate_version, 2);
     release
-        .publish(&asset, artifact, published_at + Duration::seconds(1))
+        .publish_from_build(&asset, &build)
         .expect("exact publication replay");
     assert_eq!(release.aggregate_version, 2);
 
@@ -114,25 +142,23 @@ fn release_publication_binds_immutable_source_and_artifact_before_yanking() {
         ),
         immutable_identity
     );
-    assert!(release
-        .publish(&asset, oci_artifact(), yanked_at + Duration::seconds(1))
-        .is_err());
+    assert!(release.publish_from_build(&asset, &build).is_err());
 }
 
 #[test]
 fn publication_profile_matches_the_exact_asset_kind() {
     let agent = asset(AssetKind::Agent);
     assert!(draft(&agent)
-        .publish(&agent, skill_artifact(), now() + Duration::seconds(1))
+        .publish_skill(&agent, skill_artifact(), now() + Duration::seconds(1))
         .is_err());
 
     let skill = asset(AssetKind::Skill);
     assert!(draft(&skill)
-        .publish(&skill, oci_artifact(), now() + Duration::seconds(1))
+        .publish_skill(&skill, oci_artifact(), now() + Duration::seconds(1))
         .is_err());
     let mut skill_release = draft(&skill);
     skill_release
-        .publish(&skill, skill_artifact(), now() + Duration::seconds(1))
+        .publish_skill(&skill, skill_artifact(), now() + Duration::seconds(1))
         .expect("publish Skill bundle");
     assert_eq!(skill_release.state, AssetReleaseState::Published);
 }
@@ -142,9 +168,12 @@ fn archived_asset_cannot_create_or_publish_a_release() {
     let mut asset = asset(AssetKind::Mcp);
     let mut existing = draft(&asset);
     let mut published = draft(&asset);
-    let artifact = oci_artifact();
+    let existing_build =
+        succeeded_hosted_build(asset.organization_id, asset.id, existing.id, now());
+    let published_build =
+        succeeded_hosted_build(asset.organization_id, asset.id, published.id, now());
     published
-        .publish(&asset, artifact.clone(), now() + Duration::seconds(1))
+        .publish_from_build(&asset, &published_build)
         .expect("publish before archive");
     asset
         .archive(now() + Duration::seconds(1))
@@ -159,10 +188,10 @@ fn archived_asset_cannot_create_or_publish_a_release() {
     )
     .is_err());
     assert!(existing
-        .publish(&asset, oci_artifact(), now() + Duration::seconds(2))
+        .publish_from_build(&asset, &existing_build)
         .is_err());
     published
-        .publish(&asset, artifact, now() + Duration::seconds(2))
+        .publish_from_build(&asset, &published_build)
         .expect("exact publication replay after archive");
 }
 
@@ -203,8 +232,9 @@ fn repository_writes_reject_forged_event_metadata_and_payloads() {
 
     let draft = draft(&asset);
     let mut published = draft.clone();
+    let build = succeeded_hosted_build(asset.organization_id, asset.id, draft.id, now());
     published
-        .publish(&asset, oci_artifact(), now() + Duration::seconds(1))
+        .publish_from_build(&asset, &build)
         .expect("publish");
     let mut published_event =
         AssetReleasePublished::envelope(&published, Uuid::now_v7()).expect("published event");

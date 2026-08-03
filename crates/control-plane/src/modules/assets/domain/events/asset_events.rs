@@ -1,3 +1,4 @@
+use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::assets::domain::{Asset, AssetRelease};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
@@ -96,6 +97,10 @@ pub struct AssetReleasePublished {
     pub version: String,
     pub artifact_kind: String,
     pub artifact_digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_run_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance_digest: Option<String>,
 }
 
 impl AssetReleasePublished {
@@ -114,6 +119,14 @@ impl AssetReleasePublished {
             version: release.version.as_str().into(),
             artifact_kind: artifact.kind().as_str().into(),
             artifact_digest: artifact.digest().as_str().into(),
+            build_run_id: release
+                .provenance
+                .as_ref()
+                .map(|provenance| provenance.build_run_id().as_uuid()),
+            provenance_digest: release
+                .provenance
+                .as_ref()
+                .map(|provenance| provenance.provenance_digest().as_str().into()),
         })
         .map_err(|error| error.to_string())?;
         Ok(release_event(
@@ -122,6 +135,25 @@ impl AssetReleasePublished {
             correlation_id,
             payload,
         ))
+    }
+
+    pub fn envelope_from_build(
+        release: &AssetRelease,
+        build: &BuildRun,
+    ) -> Result<DomainEventEnvelope, String> {
+        if release
+            .provenance
+            .as_ref()
+            .is_none_or(|provenance| provenance.build_run_id() != build.id)
+            || release.organization_id != build.organization_id
+            || build.asset_id() != Some(release.asset_id)
+            || build.asset_release_id() != Some(release.id)
+        {
+            return Err("published Asset release does not match its BuildRun provenance".into());
+        }
+        let mut event = Self::envelope(release, build.operation_id.as_uuid())?;
+        event.causation_id = Some(build.id.as_uuid());
+        Ok(event)
     }
 }
 
@@ -182,7 +214,11 @@ fn release_event(
     DomainEventEnvelope {
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
-        schema_version: 1,
+        schema_version: if event_key == "asset.release.published" && release.provenance.is_some() {
+            2
+        } else {
+            1
+        },
         organization_id: release.organization_id.as_uuid(),
         aggregate_id: release.id.as_uuid(),
         aggregate_version: release.aggregate_version,

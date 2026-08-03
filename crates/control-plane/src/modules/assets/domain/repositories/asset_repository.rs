@@ -1,6 +1,6 @@
 use crate::modules::assets::domain::{
-    Asset, AssetArchived, AssetCreated, AssetRelease, AssetReleaseDrafted, AssetReleasePublished,
-    AssetReleaseState, AssetReleaseYanked, AssetState,
+    Asset, AssetArchived, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted,
+    AssetReleasePublished, AssetReleaseState, AssetReleaseYanked, AssetState,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, IdempotencyRequest, OrganizationId, RepositoryError,
@@ -152,12 +152,17 @@ impl TransitionAssetReleaseWrite {
         }
         match (existing.state, self.release.state) {
             (AssetReleaseState::Draft, AssetReleaseState::Published)
-                if asset.state == AssetState::Active && existing.artifact.is_none() =>
+                if asset.state == AssetState::Active
+                    && asset.kind == AssetKind::Skill
+                    && existing.artifact.is_none()
+                    && existing.provenance.is_none()
+                    && self.release.provenance.is_none() =>
             {
                 Ok(())
             }
             (AssetReleaseState::Published, AssetReleaseState::Yanked)
-                if existing.artifact == self.release.artifact =>
+                if existing.artifact == self.release.artifact
+                    && existing.provenance == self.release.provenance =>
             {
                 Ok(())
             }
@@ -218,6 +223,7 @@ fn validate_event(
     if !event_metadata_matches(
         event,
         event_key,
+        1,
         asset.organization_id.as_uuid(),
         asset.id.as_uuid(),
         asset.aggregate_version,
@@ -257,9 +263,15 @@ fn validate_release_event(
     release: &AssetRelease,
     event_key: &str,
 ) -> Result<(), String> {
+    let schema_version = if event_key == "asset.release.published" && release.provenance.is_some() {
+        2
+    } else {
+        1
+    };
     if !event_metadata_matches(
         event,
         event_key,
+        schema_version,
         release.organization_id.as_uuid(),
         release.id.as_uuid(),
         release.aggregate_version,
@@ -294,6 +306,16 @@ fn validate_release_event(
                 && payload.version == release.version.as_str()
                 && payload.artifact_kind == artifact.kind().as_str()
                 && payload.artifact_digest == artifact.digest().as_str()
+                && payload.build_run_id
+                    == release
+                        .provenance
+                        .as_ref()
+                        .map(|provenance| provenance.build_run_id().as_uuid())
+                && payload.provenance_digest.as_deref()
+                    == release
+                        .provenance
+                        .as_ref()
+                        .map(|provenance| provenance.provenance_digest().as_str())
             {
                 Ok(())
             } else {
@@ -319,6 +341,7 @@ fn validate_release_event(
 fn event_metadata_matches(
     event: &DomainEventEnvelope,
     event_key: &str,
+    schema_version: u32,
     organization_id: uuid::Uuid,
     aggregate_id: uuid::Uuid,
     aggregate_version: u64,
@@ -330,7 +353,7 @@ fn event_metadata_matches(
             .causation_id
             .is_none_or(|causation_id| !causation_id.is_nil())
         && event.event_key == event_key
-        && event.schema_version == 1
+        && event.schema_version == schema_version
         && event.organization_id == organization_id
         && event.aggregate_id == aggregate_id
         && event.aggregate_version == aggregate_version

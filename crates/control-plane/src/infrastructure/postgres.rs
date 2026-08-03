@@ -579,6 +579,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/063_hosted_asset_build_runs.sql"
             )),
         ),
+        Migration::new(
+            "064",
+            "atomic hosted Asset release publication",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/064_atomic_hosted_release_publication.sql"
+            )),
+        ),
     ]
 }
 

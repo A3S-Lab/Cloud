@@ -18,8 +18,14 @@ use std::collections::BTreeMap;
 pub(super) fn evidence_for(
     build: &BuildRun,
     attested_at: DateTime<Utc>,
+    repository: &str,
+    commit_sha: &str,
+    manifest_digest: Option<&str>,
 ) -> Result<BuildEvidence, Box<dyn std::error::Error>> {
     let attested_at = postgres_timestamp(attested_at);
+    let repository = repository.to_owned();
+    let commit_sha = commit_sha.to_owned();
+    let manifest_digest = manifest_digest.map(str::to_owned);
     let artifact = build
         .published_artifact
         .clone()
@@ -125,9 +131,9 @@ pub(super) fn evidence_for(
             build_definition: SlsaBuildDefinition {
                 build_type: SLSA_BUILD_TYPE.into(),
                 external_parameters: SlsaExternalParameters {
-                    repository: "https://github.com/A3S-Lab/Cloud".into(),
-                    commit_sha: "a".repeat(40),
-                    manifest_digest: None,
+                    repository: repository.clone(),
+                    commit_sha: commit_sha.clone(),
+                    manifest_digest: manifest_digest.clone(),
                     source_content_digest: source_content_digest.clone(),
                     recipe: recipe.clone(),
                     recipe_digest: recipe_digest.clone(),
@@ -141,8 +147,8 @@ pub(super) fn evidence_for(
                     build_request_digest: build_request_digest.clone(),
                 },
                 resolved_dependencies: vec![SlsaResourceDescriptor {
-                    uri: "https://github.com/A3S-Lab/Cloud".into(),
-                    digest: BTreeMap::from([("gitCommit".into(), "a".repeat(40))]),
+                    uri: repository.clone(),
+                    digest: BTreeMap::from([("gitCommit".into(), commit_sha.clone())]),
                 }],
             },
             run_details: SlsaRunDetails {
@@ -183,9 +189,9 @@ pub(super) fn evidence_for(
         operation_id: build.operation_id,
         subject: BuildEvidenceSubject::from_build_subject(build.subject),
         attempt: build.attempt,
-        repository: "https://github.com/A3S-Lab/Cloud".into(),
-        commit_sha: "a".repeat(40),
-        manifest_digest: None,
+        repository,
+        commit_sha,
+        manifest_digest,
         source_content_digest,
         recipe,
         recipe_digest,

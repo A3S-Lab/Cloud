@@ -577,7 +577,15 @@ contexts' tables.
 - A published release is immutable.
 - `(asset_id, version)` is unique.
 - The release binds `commit_sha`, `manifest_digest`, and `artifact_digest`.
-- Agent and MCP releases require an OCI artifact and runtime contract.
+- Agent and MCP releases require an OCI artifact and runtime contract. Only a
+  successful hosted BuildRun may publish them, and the release permanently
+  stores that exact `build_run_id` plus the SHA-256 identity of its locally
+  verified provenance. The complete signed evidence remains authoritative on
+  the BuildRun.
+- Hosted BuildRun completion, release publication, provenance binding, and the
+  publication Outbox fact are one A3S ORM transaction. Exact finalization
+  replay can repair only the same binding; ordinary BuildRun saves and generic
+  Asset transitions cannot publish an Agent or MCP release.
 - Skill releases require a bundle artifact and cannot contain a workload spec.
 - A yanked release remains addressable by existing deployments but is hidden
   from new selection.

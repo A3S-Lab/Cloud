@@ -1,8 +1,9 @@
 use crate::modules::artifacts::domain::repositories::{
-    validate_build_run_retry, validate_build_run_transition,
+    validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
 };
 use crate::modules::artifacts::domain::{
-    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
+    BuildRun, BuildRunFinalization, BuildRunStatus, IBuildRunRepository,
+    RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
@@ -26,6 +27,7 @@ struct State {
     started_operations: BTreeSet<BuildRunId>,
     cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
     retry_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
+    hosted_publications: BTreeMap<(OrganizationId, AssetReleaseId), (BuildRunId, String)>,
 }
 
 #[derive(Clone)]
@@ -109,6 +111,19 @@ impl InMemoryBuildRunRepository {
             .await
             .started_operations
             .insert(build_run_id);
+    }
+
+    pub async fn hosted_release_publication(
+        &self,
+        organization_id: OrganizationId,
+        asset_release_id: AssetReleaseId,
+    ) -> Option<(BuildRunId, String)> {
+        self.state
+            .read()
+            .await
+            .hosted_publications
+            .get(&(organization_id, asset_release_id))
+            .cloned()
     }
 }
 
@@ -402,11 +417,63 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         state.builds.insert(key, build_run.clone());
         Ok(build_run)
     }
+
+    async fn finalize(
+        &self,
+        build_run: BuildRun,
+        expected_version: u64,
+    ) -> Result<BuildRunFinalization, RepositoryError> {
+        let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
+        let mut state = self.state.write().await;
+        let key = (build_run.organization_id, build_run.id);
+        let existing = state
+            .builds
+            .get(&key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        validate_build_run_finalization(&existing, &build_run, expected_version)?;
+        if let Some(asset_release_id) = build_run.asset_release_id() {
+            let publication_key = (build_run.organization_id, asset_release_id);
+            if build_run.status == BuildRunStatus::Succeeded {
+                let provenance_digest = build_run
+                    .evidence
+                    .as_deref()
+                    .ok_or_else(|| {
+                        RepositoryError::Conflict(
+                            "successful hosted BuildRun has no verified evidence".into(),
+                        )
+                    })?
+                    .provenance_digest
+                    .clone();
+                match state.hosted_publications.get(&publication_key) {
+                    Some((build_run_id, digest))
+                        if *build_run_id == build_run.id && digest == &provenance_digest => {}
+                    Some(_) => {
+                        return Err(RepositoryError::Conflict(
+                            "hosted release publication changed during replay".into(),
+                        ))
+                    }
+                    None => {
+                        state
+                            .hosted_publications
+                            .insert(publication_key, (build_run.id, provenance_digest));
+                    }
+                }
+            } else if state.hosted_publications.contains_key(&publication_key) {
+                return Err(RepositoryError::Conflict(
+                    "failed or cancelled hosted BuildRun cannot own a published release".into(),
+                ));
+            }
+        }
+        state.builds.insert(key, build_run.clone());
+        Ok(BuildRunFinalization::Completed(build_run))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::artifacts::domain::test_support::hosted_build_ready_for_completion;
     use crate::modules::artifacts::domain::BuildSubject;
     use chrono::Duration;
     use std::sync::Arc;
@@ -655,10 +722,19 @@ mod tests {
         completed
             .complete(requested_at + Duration::milliseconds(2))
             .expect("complete failure");
+        assert!(matches!(
+            repository
+                .save(completed.clone(), failed.aggregate_version)
+                .await,
+            Err(RepositoryError::Conflict(_))
+        ));
         let completed = repository
-            .save(completed, failed.aggregate_version)
+            .finalize(completed, failed.aggregate_version)
             .await
-            .expect("save terminal failure");
+            .expect("finalize terminal failure");
+        let BuildRunFinalization::Completed(completed) = completed else {
+            panic!("external BuildRun finalization was rejected");
+        };
         let retry = BuildRun::retry(&completed, requested_at + Duration::milliseconds(3))
             .expect("retry build");
         let idempotency = IdempotencyRequest::new(
@@ -727,5 +803,67 @@ mod tests {
             repository.request_retry(another).await,
             Err(RepositoryError::Conflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn hosted_success_finalizes_once_and_replays_the_same_publication_binding() {
+        let repository = InMemoryBuildRunRepository::new();
+        let organization_id = OrganizationId::new();
+        let asset_id = AssetId::new();
+        let asset_release_id = AssetReleaseId::new();
+        let requested_at = Utc::now();
+        repository
+            .add_asset_release(organization_id, asset_id, asset_release_id, requested_at)
+            .await;
+        let queued = repository
+            .reserve_pending(1, requested_at)
+            .await
+            .expect("reserve hosted build")
+            .pop()
+            .expect("queued hosted build");
+        let ready = hosted_build_ready_for_completion(
+            organization_id,
+            asset_id,
+            asset_release_id,
+            requested_at,
+        );
+        assert_eq!(ready.id, queued.id);
+        repository
+            .state
+            .write()
+            .await
+            .builds
+            .insert((organization_id, ready.id), ready.clone());
+
+        let expected = ready.aggregate_version;
+        let mut succeeded = ready;
+        succeeded
+            .complete(succeeded.updated_at + Duration::milliseconds(1))
+            .expect("complete hosted build");
+        assert!(matches!(
+            repository.save(succeeded.clone(), expected).await,
+            Err(RepositoryError::Conflict(_))
+        ));
+        let finalized = repository
+            .finalize(succeeded.clone(), expected)
+            .await
+            .expect("finalize hosted build");
+        assert_eq!(
+            finalized,
+            BuildRunFinalization::Completed(succeeded.clone())
+        );
+        let evidence = succeeded.evidence.as_deref().expect("hosted evidence");
+        assert_eq!(
+            repository
+                .hosted_release_publication(organization_id, asset_release_id)
+                .await,
+            Some((succeeded.id, evidence.provenance_digest.clone()))
+        );
+
+        let replayed = repository
+            .finalize(succeeded.clone(), succeeded.aggregate_version)
+            .await
+            .expect("replay hosted finalization");
+        assert_eq!(replayed, BuildRunFinalization::Completed(succeeded));
     }
 }
