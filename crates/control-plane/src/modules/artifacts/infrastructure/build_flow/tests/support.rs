@@ -43,8 +43,9 @@ use a3s_runtime::contract::{
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
@@ -646,24 +647,33 @@ impl IBuildEvidenceGenerator for RecordingEvidenceGenerator {
     }
 }
 
-pub(super) struct FailOnceStepCompletionStore {
+pub(super) struct FailStepCompletionStore {
     inner: InMemoryEventStore,
-    step_id: &'static str,
-    armed: AtomicBool,
+    step_ids: Mutex<VecDeque<&'static str>>,
 }
 
-impl FailOnceStepCompletionStore {
+impl FailStepCompletionStore {
     pub(super) fn new(step_id: &'static str) -> Self {
+        Self::sequence([step_id])
+    }
+
+    pub(super) fn sequence(step_ids: impl IntoIterator<Item = &'static str>) -> Self {
         Self {
             inner: InMemoryEventStore::new(),
-            step_id,
-            armed: AtomicBool::new(true),
+            step_ids: Mutex::new(step_ids.into_iter().collect()),
         }
+    }
+
+    pub(super) fn remaining(&self) -> Result<Vec<&'static str>, FlowError> {
+        self.step_ids
+            .lock()
+            .map(|step_ids| step_ids.iter().copied().collect())
+            .map_err(|_| FlowError::Store("fault-injection step lock was poisoned".into()))
     }
 }
 
 #[async_trait]
-impl FlowEventStore for FailOnceStepCompletionStore {
+impl FlowEventStore for FailStepCompletionStore {
     async fn append(&self, run_id: &str, event: FlowEvent) -> Result<FlowEventEnvelope, FlowError> {
         self.inner.append(run_id, event).await
     }
@@ -674,15 +684,23 @@ impl FlowEventStore for FailOnceStepCompletionStore {
         expected_sequence: u64,
         event: FlowEvent,
     ) -> Result<FlowEventEnvelope, FlowError> {
-        let is_target = matches!(
-            &event,
-            FlowEvent::StepCompleted { step_id, .. } if step_id == self.step_id
-        );
-        if is_target && self.armed.swap(false, Ordering::SeqCst) {
-            return Err(FlowError::Store(format!(
-                "injected loss before persisting {run_id} step {} completion",
-                self.step_id
-            )));
+        let completed_step = match &event {
+            FlowEvent::StepCompleted { step_id, .. } => Some(step_id.as_str()),
+            _ => None,
+        };
+        if let Some(completed_step) = completed_step {
+            let mut step_ids = self
+                .step_ids
+                .lock()
+                .map_err(|_| FlowError::Store("fault-injection step lock was poisoned".into()))?;
+            if step_ids.front().copied() == Some(completed_step) {
+                let step_id = step_ids
+                    .pop_front()
+                    .ok_or_else(|| FlowError::Store("fault-injection step disappeared".into()))?;
+                return Err(FlowError::Store(format!(
+                    "injected loss before persisting {run_id} step {step_id} completion"
+                )));
+            }
         }
         self.inner
             .append_if_sequence(run_id, expected_sequence, event)

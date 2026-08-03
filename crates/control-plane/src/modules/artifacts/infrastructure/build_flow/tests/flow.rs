@@ -20,7 +20,7 @@ async fn dispatch_replay_reuses_the_exact_box_start_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = BuildFixture::create(None).await?;
     let run_id = fixture.build.operation_id.to_string();
-    let store = Arc::new(FailOnceStepCompletionStore::new("dispatch"));
+    let store = Arc::new(FailStepCompletionStore::new("dispatch"));
     let engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
 
     let failure = engine
@@ -65,9 +65,7 @@ async fn process_restart_reuses_the_exact_box_cleanup_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = BuildFixture::create(None).await?;
     let run_id = fixture.build.operation_id.to_string();
-    let store = Arc::new(FailOnceStepCompletionStore::new(
-        "cleanup-cancel-dispatch-1",
-    ));
+    let store = Arc::new(FailStepCompletionStore::new("cleanup-cancel-dispatch-1"));
     let engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
     engine
         .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
@@ -150,6 +148,340 @@ async fn process_restart_reuses_the_exact_box_cleanup_command(
     assert_eq!(fixture.publisher.publications(), 1);
     assert_eq!(fixture.evidence.generations(), 1);
     assert_eq!(fixture.inputs.removals(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn fleet_flow_event_loss_replays_the_exact_start_and_cleanup_command_chain(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const INTERRUPTED_STEPS: [&str; 9] = [
+        "dispatch",
+        "observe-1-2",
+        "observe-1-3",
+        "cleanup-cancel-dispatch-1",
+        "cleanup-cancel-observe-1-2",
+        "cleanup-inspect-dispatch-2",
+        "cleanup-inspect-observe-2-2",
+        "cleanup-remove-dispatch-3",
+        "cleanup-remove-observe-3-2",
+    ];
+
+    let fixture = BuildFixture::create(None).await?;
+    let run_id = fixture.build.operation_id.to_string();
+    let store = Arc::new(FailStepCompletionStore::sequence(INTERRUPTED_STEPS));
+    let mut engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+
+    require_store_failure(
+        engine
+            .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+            .await,
+        "Box start dispatch",
+    )?;
+    let start_command_id = NodeCommandId::from_uuid(Uuid::new_v5(
+        &fixture.build.id.as_uuid(),
+        b"box-build-start",
+    ));
+    let start_before_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, start_command_id)
+        .await?
+        .ok_or("Box start command was not queued before Flow event loss")?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    let start_after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, start_command_id)
+        .await?
+        .ok_or("Box start command disappeared after Flow restart")?;
+    assert_eq!(start_after_restart, start_before_restart);
+
+    let start = lease_one(&fixture, 0).await?;
+    let build_request = request(&start)?.clone();
+    acknowledge(
+        &fixture,
+        &start,
+        NodeCommandResult::BoxBuildStarted {
+            started: NodeBoxBuildStartResult {
+                binding_digest: build_request.binding_digest()?,
+                phase: NodeBoxBuildPhase::Running,
+            },
+        },
+    )
+    .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(1))
+            .await,
+        "Box start acknowledgement observation",
+    )?;
+    let inspect_command_id = NodeCommandId::from_uuid(Uuid::new_v5(
+        &fixture.build.id.as_uuid(),
+        b"box-build-inspect:1",
+    ));
+    let inspect_before_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, inspect_command_id)
+        .await?
+        .ok_or("Box inspection command was not queued before Flow event loss")?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    let inspect_after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, inspect_command_id)
+        .await?
+        .ok_or("Box inspection command disappeared after Flow restart")?;
+    assert_eq!(inspect_after_restart, inspect_before_restart);
+
+    let inspect = lease_one(&fixture, start.sequence).await?;
+    let output = box_output_for(&build_request, fixture.outputs.artifact())?;
+    acknowledge(
+        &fixture,
+        &inspect,
+        NodeCommandResult::BoxBuildInspected {
+            inspection: Box::new(NodeBoxBuildInspection::Succeeded {
+                binding_digest: build_request.binding_digest()?,
+                output: Box::new(output.clone()),
+            }),
+        },
+    )
+    .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(2))
+            .await,
+        "Box output receipt observation",
+    )?;
+    assert_eq!(
+        fixture
+            .builds
+            .find(fixture.organization_id, fixture.build.id)
+            .await?
+            .box_build_output
+            .as_ref(),
+        Some(&output)
+    );
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    require_store_failure(
+        engine
+            .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+            .await,
+        "Box cancellation dispatch",
+    )?;
+    let cancel_command_id = fixture
+        .builds
+        .find(fixture.organization_id, fixture.build.id)
+        .await?
+        .cleanup_command_id
+        .ok_or("Box cancellation command identity was not persisted")?;
+    let cancel_before_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, cancel_command_id)
+        .await?
+        .ok_or("Box cancellation command was not queued before Flow event loss")?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    let cancel_after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, cancel_command_id)
+        .await?
+        .ok_or("Box cancellation command disappeared after Flow restart")?;
+    assert_eq!(cancel_after_restart, cancel_before_restart);
+
+    let cancel = lease_one(&fixture, inspect.sequence).await?;
+    acknowledge(
+        &fixture,
+        &cancel,
+        NodeCommandResult::BoxBuildCancelled {
+            cancelled: NodeBoxBuildCancelResult {
+                binding_digest: build_request.binding_digest()?,
+                operations: build_request
+                    .plans
+                    .iter()
+                    .map(|plan| NodeBoxBuildOperationCancellation {
+                        operation_id: plan.operation_id.clone(),
+                        outcome: NodeBoxBuildCancellation::Requested,
+                    })
+                    .collect(),
+            },
+        },
+    )
+    .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(3))
+            .await,
+        "Box cancellation acknowledgement observation",
+    )?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(4))
+            .await,
+        "Box cleanup inspection dispatch",
+    )?;
+    let cleanup_inspect_command_id = fixture
+        .builds
+        .find(fixture.organization_id, fixture.build.id)
+        .await?
+        .cleanup_command_id
+        .ok_or("Box cleanup inspection command identity was not persisted")?;
+    let cleanup_inspect_before_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, cleanup_inspect_command_id)
+        .await?
+        .ok_or("Box cleanup inspection was not queued before Flow event loss")?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    let cleanup_inspect_after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, cleanup_inspect_command_id)
+        .await?
+        .ok_or("Box cleanup inspection disappeared after Flow restart")?;
+    assert_eq!(
+        cleanup_inspect_after_restart,
+        cleanup_inspect_before_restart
+    );
+
+    let cleanup_inspect = lease_one(&fixture, cancel.sequence).await?;
+    acknowledge(
+        &fixture,
+        &cleanup_inspect,
+        NodeCommandResult::BoxBuildInspected {
+            inspection: Box::new(NodeBoxBuildInspection::Succeeded {
+                binding_digest: build_request.binding_digest()?,
+                output: Box::new(output.clone()),
+            }),
+        },
+    )
+    .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(5))
+            .await,
+        "Box cleanup inspection acknowledgement observation",
+    )?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(6))
+            .await,
+        "Box removal dispatch",
+    )?;
+    let remove_command_id = fixture
+        .builds
+        .find(fixture.organization_id, fixture.build.id)
+        .await?
+        .cleanup_command_id
+        .ok_or("Box removal command identity was not persisted")?;
+    let remove_before_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, remove_command_id)
+        .await?
+        .ok_or("Box removal was not queued before Flow event loss")?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    let remove_after_restart = fixture
+        .nodes
+        .find_command(fixture.node_id, remove_command_id)
+        .await?
+        .ok_or("Box removal disappeared after Flow restart")?;
+    assert_eq!(remove_after_restart, remove_before_restart);
+
+    let remove = lease_one(&fixture, cleanup_inspect.sequence).await?;
+    acknowledge(
+        &fixture,
+        &remove,
+        NodeCommandResult::BoxBuildRemoved {
+            removed: NodeBoxBuildRemoveResult {
+                binding_digest: build_request.binding_digest()?,
+                operations: build_request
+                    .plans
+                    .iter()
+                    .map(|plan| NodeBoxBuildOperationRemoval {
+                        operation_id: plan.operation_id.clone(),
+                        removed: true,
+                    })
+                    .collect(),
+                assembly_removed: build_request.assembly_reference.is_some(),
+            },
+        },
+    )
+    .await?;
+    require_store_failure(
+        engine
+            .resume_due_waits(Utc::now() + Duration::seconds(7))
+            .await,
+        "Box removal acknowledgement observation",
+    )?;
+
+    drop(engine);
+    engine = FlowEngine::new(store.clone(), Arc::new(fixture.runtime.clone()));
+    engine
+        .start_with_id(run_id.clone(), workflow_spec(), fixture.input())
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(fixture.inputs.prepares(), 1);
+    assert_eq!(fixture.outputs.validations(), 1);
+    assert_eq!(fixture.publisher.publications(), 1);
+    assert_eq!(fixture.evidence.generations(), 1);
+    assert_eq!(fixture.inputs.removals(), 1);
+    assert!(
+        start.sequence < inspect.sequence
+            && inspect.sequence < cancel.sequence
+            && cancel.sequence < cleanup_inspect.sequence
+            && cleanup_inspect.sequence < remove.sequence
+    );
+    let completed = fixture
+        .builds
+        .find(fixture.organization_id, fixture.build.id)
+        .await?;
+    assert_eq!(completed.status, BuildRunStatus::Succeeded);
+    assert!(completed.published_artifact.is_some());
+    assert!(completed.evidence.is_some());
+    assert!(store.remaining()?.is_empty());
+    println!(
+        "A3S_CLOUD_G0_FLEET_FLOW_REPLAY_CERTIFIED boundaries={} start={} cancel={} inspect={} remove={}",
+        INTERRUPTED_STEPS.len(),
+        start.command_id,
+        cancel.command_id,
+        cleanup_inspect.command_id,
+        remove.command_id
+    );
     Ok(())
 }
 
@@ -519,4 +851,15 @@ async fn acknowledge(
         )
         .await?;
     Ok(())
+}
+
+fn require_store_failure<T>(
+    result: Result<T, FlowError>,
+    boundary: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match result {
+        Err(FlowError::Store(_)) => Ok(()),
+        Err(error) => Err(format!("{boundary} failed outside the Flow store: {error}").into()),
+        Ok(_) => Err(format!("{boundary} did not lose its Flow completion event").into()),
+    }
 }

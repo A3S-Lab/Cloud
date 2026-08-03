@@ -53,9 +53,17 @@ check; build receipts, operation-owned ImageStore references, and node Artifact
 files must return to their pre-test baseline. Shared content-addressed image and
 layer caches remain provider-owned reusable state rather than live operations.
 
+The companion Fleet/Flow probe injects loss before persisting nine step
+completion events: start dispatch, start acknowledgement, output receipt, and
+each cancel/inspect/remove dispatch and acknowledgement. It reconstructs the
+Flow engine at every boundary and requires the complete Fleet command object to
+remain identical. Validation, publication, attestation, and cleanup counters
+must each record one logical effect. Its retained JSON evidence is bound to the
+same exact Cloud and Box revisions as the native build probe.
+
 This local build-consumer gate does not replace operator-owned private source,
-HTTPS Registry, Vault Transit, Fleet/Flow interruption, or published-Workload
-evidence required to close `G0`.
+HTTPS Registry, Vault Transit, OS-process interruption over persistent
+Fleet/Flow stores, or published-Workload evidence required to close `G0`.
 
 Real MicroVM and TEE profiles remain hardware-qualified in A3S Box. Cloud does
 not reimplement those provider tests.

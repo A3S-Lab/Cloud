@@ -327,11 +327,14 @@ slice that kills the Agent-side process after Box completion and Artifact
 publication, replays the exact output through a reconstructed executor,
 hydrates a cleared native cache from the immediate parent's Artifact, and
 requires idempotent removal with operation receipts, ImageStore references, and
-node Artifact state restored to baseline. `G0` remains in progress until this
-gate has retained execution evidence together with external Registry and
-signing boundaries, complete Fleet/Flow interruption replay, and the published
-Workload handoff. Durable BuildRun logs also remain unavailable until Box
-exposes the authoritative contract Cloud can transport.
+node Artifact state restored to baseline. The same workflow now defines a
+nine-boundary Fleet/Flow event-loss matrix across start dispatch and
+acknowledgement, output receipt persistence, and every cancel/inspect/remove
+dispatch and acknowledgement. `G0` remains in progress until these gates have
+retained execution evidence together with external Registry and signing
+boundaries, process-level persistent Fleet/Flow interruption replay, and the
+published Workload handoff. Durable BuildRun logs also remain unavailable until
+Box exposes the authoritative contract Cloud can transport.
 
 `C0` now includes the initial `C0.1` automation slices:
 
@@ -612,11 +615,11 @@ shared-kernel execution requires an explicit `sandbox` selection.
 
 Next outcome:
 
-1. execute and retain the defined revision-bound Linux Box build-consumer gate
-   without introducing another executor, cache, journal, image store, or
-   scheduler;
-2. extend its post-publication Agent-process replay through exact Fleet/Flow
-   start and cleanup interruption boundaries;
+1. execute and retain the defined revision-bound Linux Box build-consumer and
+   nine-boundary Fleet/Flow event-loss gates without introducing another
+   executor, cache, journal, image store, or scheduler;
+2. promote the exact Fleet/Flow matrix from injected completion-event loss to
+   OS-process interruption over persistent Flow and Fleet stores;
 3. combine the implemented immediate-parent Box cache hydration and
    authoritative removal evidence with one external Registry publication, one
    locally verified signature, and one persisted evidence document;

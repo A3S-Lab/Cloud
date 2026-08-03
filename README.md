@@ -437,6 +437,15 @@ rebuilds, removes both operations idempotently, and checks that Box references,
 operation receipts, and node Artifact state return to their prior baseline.
 The retained JSON evidence is bound to the exact Cloud and Box revisions.
 
+That workflow also defines a nine-boundary Fleet/Flow event-loss matrix over
+the same `cloud.build@5` command chain. It reconstructs the Flow engine after
+losing completion persistence for start dispatch, start acknowledgement,
+output receipt, and every cancel/inspect/remove dispatch and acknowledgement.
+Each replay must preserve the exact Fleet command object, while input
+preparation, validation, publication, attestation, and final cleanup each
+remain one logical effect. A separate JSON document binds this matrix to the
+exact Cloud and Box revisions.
+
 Migration `060` invalidates pre-Box BuildRuns as rebuild-required, cancels
 known `cloud.build@1` through `@4` histories through A3S Flow, and removes the
 old Runtime and Cloud-cache projections. Dockerfile remains a source-recipe
@@ -1088,9 +1097,10 @@ The `G0 external provider conformance` workflow binds its evidence to the exact
 Cloud revision. Its retained private-source job proves credential-free replay
 and checkout removal. The Box provider workflow now defines the complementary
 revision-bound native build, post-publication process-death replay,
-immediate-parent cache hydration, and authoritative removal evidence. `G0`
-still requires retained executions with the operator-owned HTTPS Registry and
-Vault Transit boundary, complete Fleet/Flow interruption coverage, and the
+immediate-parent cache hydration, authoritative removal evidence, and the
+nine-boundary Fleet/Flow command event-loss matrix. `G0` still requires
+retained executions with the operator-owned HTTPS Registry and Vault Transit
+boundary, process-level persistent Fleet/Flow interruption coverage, and the
 published Workload handoff. No build-log success is claimed while the Box log
 contract is absent.
 

@@ -368,6 +368,68 @@ jobs:
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
 
+      - name: Certify Fleet and Flow build-command event-loss replay
+        env:
+          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+          A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_DEPS_STUB: "1"
+        run: |
+          install -d -m 0755 "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --lib \
+              modules::artifacts::infrastructure::build_flow::tests::flow::fleet_flow_event_loss_replays_the_exact_start_and_cleanup_command_chain \
+              -- --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.log"
+          grep --extended-regexp \
+            '^A3S_CLOUD_G0_FLEET_FLOW_REPLAY_CERTIFIED boundaries=9 ' \
+            "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.log" \
+            >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay-certification.txt"
+          test "$(wc -l <"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay-certification.txt")" -eq 1
+          jq -n \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            --rawfile certification "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay-certification.txt" \
+            '{
+              schema: "a3s.cloud.g0-fleet-flow-build-replay-evidence.v1",
+              cloudRevision: $cloud,
+              boxRevision: $box,
+              boundaryCount: 9,
+              certification: ($certification | rtrimstr("\n")),
+              checks: {
+                startDispatchReplay: true,
+                startAcknowledgementReplay: true,
+                outputReceiptReplay: true,
+                cancelDispatchReplay: true,
+                cancelAcknowledgementReplay: true,
+                inspectDispatchReplay: true,
+                inspectAcknowledgementReplay: true,
+                removeDispatchReplay: true,
+                removeAcknowledgementReplay: true
+              }
+            }' >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.json"
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            '.schema == "a3s.cloud.g0-fleet-flow-build-replay-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and .boundaryCount == 9
+             and ([.checks[]] | all)' \
+            "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.json" >/dev/null
+
       - name: Certify Box-native build replay, parent cache, and cleanup
         env:
           A3S_CLOUD_TEST_G0_BOX_BUILD: "1"
