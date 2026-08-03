@@ -313,22 +313,25 @@ mutable repository configuration source.
 organization- and environment-scoped registry enrollment plus one desired
 assignment for each `(package_id, target host)` tuple. The initial assignment
 binds exactly one workspace scope, one exact signed catalog record, one exact
-set of named surfaces, and `enabled`, `disabled`, or `absent` intent. This
-prevents two Cloud operations from competing for the one Use-owned package
-generation on a host. Multi-workspace binding remains unavailable until A3S
-Use exposes a canonical multi-scope parent-saga contract; Cloud will not invent
-its own coordinator. An assignment does not copy package metadata into
-`Assets`: a Use package is a multi-surface package,
-while a Cloud Asset is exactly one Agent, MCP, or Skill release.
+set of named surfaces, and the imported A3S Use `PluginDesiredState` value
+`enabled`, `installed-disabled`, or `absent`. `SetPluginAssignment` is the sole
+application mutation for those transitions; REST/CLI/Web removal and
+enablement are presentation aliases, while retry uses the common Operation/Flow
+resume path. This prevents two Cloud operations or lifecycle vocabularies from
+competing for the one Use-owned package generation on a host. Multi-workspace
+binding remains unavailable until A3S Use exposes a canonical multi-scope
+parent-saga contract; Cloud will not invent its own coordinator. An assignment
+does not copy package metadata into `Assets`: a Use package is a multi-surface
+package, while a Cloud Asset is exactly one Agent, MCP, or Skill release.
 
 The stable package identity is the A3S Use identity
 `<publisher>/<name>`. `use/<publisher>/<name>` is its component identity and a
 route is only an alias. Cloud consumes these identities, surface kinds,
 catalog records, operation plans, confirmations, and observations from the
 pinned `a3s-use-core` contracts. It must not restate their validation rules or
-fork their schemas. If a required value object or remote-host API is not public
-in A3S Use, `U0.1` adds it there and updates the compatibility lock before any
-Cloud-local substitute is accepted.
+fork their schemas. If a future required value object or remote-host API is not
+public in A3S Use, it is added and released there before `U0.1` advances the
+compatibility lock; no Cloud-local substitute is accepted.
 
 One assignment converges through this control path:
 
@@ -362,6 +365,9 @@ projections, dependency closure, reference counts, and local reconciliation
 remain Use-owned node-local evidence. Cloud persists only the registry and
 assignment desired state plus exact plan, policy, receipt, generation, command,
 and observation digests needed for review, audit, convergence, and recovery.
+The host-local registry record is a fenced applied projection of the Cloud
+umbrella-host configuration, not another enrollment authority or independently
+mutable registry service.
 
 In a cloud-managed workspace scope, the Node Agent host adapter is the only
 enabled mutation adapter. Local CLI, Web, and A3S Use management MCP mutation

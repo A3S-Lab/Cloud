@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-08-02.**
+**Status as of 2026-08-03.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -542,15 +542,15 @@ Dependency rules:
 - `A1` extends Operations and Flow, Fleet node control, Workloads, Runtime,
   Artifacts, the transactional Outbox, and shared sequence streaming. It does
   not add another scheduler, job queue, node channel, or integration bus.
-- `U0.1` freezes the Cloud-to-Use host contract and consumes only canonical
-  `a3s-use-core` identities, catalog records, plans, confirmations, receipts,
-  and observations. `U0.2` may add read-only signed catalog discovery while
-  A3S Use completes its mutation saga. `U0.3` requires the shared Plugin
-  Manager and `C0.3` authorization/audit, and begins with one TUF registry and
-  one explicit host/workspace. Host-local executable surfaces in `U0.4` use
-  only the injected Runtime/Box and private Use bindings; a public or replicated
-  service remains an explicit A0/MCP0 Workload, and Secrets/Knowledge retain
-  their existing owners.
+- `U0.1` pins and adapts the frozen Cloud-to-Use host contract and consumes
+  only canonical `a3s-use-core` identities, desired state, catalog records,
+  plans, confirmations, receipts, and observations. `U0.2` may add read-only
+  signed catalog discovery while A3S Use completes its mutation saga. `U0.3`
+  requires the shared Plugin Manager and `C0.3` authorization/audit, and begins
+  with one TUF registry and one explicit host/workspace. Host-local executable
+  surfaces in `U0.4` use only the injected Runtime/Box and private Use bindings;
+  a public or replicated service remains an explicit A0/MCP0 Workload, and
+  Secrets/Knowledge retain their existing owners.
   Multi-host operations in `U0.5` consume existing H0/Fleet host membership
   and keep one independent assignment per host; they cannot add a plugin
   scheduler, group rollout controller, queue, or capability registry.
@@ -1104,19 +1104,31 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | Planned | Freeze exact Cloud/Use compatibility revisions, public typed package/surface/plan/confirmation/receipt/observation contracts, one Node Agent host adapter, managed-scope mutation fencing, and versioned Fleet payloads | A3S Use M0 contracts and M2 shared-manager API |
-| `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Web/Management MCP read parity and no package download | A3S Use M1/M4 and Cloud `C0.1`/`C0.2` |
-| `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C |
+| `U0.1` | Planned | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-1 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | A3S Use M0 contracts and the frozen managed-host contract; complete shared-manager composition still gates mutation |
+| `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Web/Management MCP read parity and no package download | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
+| `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
 
-The Cloud API has one assignment vocabulary. Creating or updating an
-assignment selects an exact verified catalog record, canonical surface set,
-workspace scope, target host, policy reference, and desired lifecycle of
-`enabled`, `disabled`, or `absent`. A newer registry release never changes an
+As of 2026-08-03, A3S Use already publishes the canonical managed-scope fence,
+host capabilities, package identity, plan, digest-only apply, enablement,
+observation, and `PluginHostManager` protocol-level-1 contracts. This upstream
+readiness does not advance `U0.1`: Cloud still has no plugin module or product
+capability until it pins an exact compatible Use revision and proves the Cloud
+adapter, Fleet payloads, fixtures, and managed-scope fencing together.
+
+The Cloud API has one assignment vocabulary and imports A3S Use's canonical
+`PluginDesiredState`; it does not define a parallel lifecycle enum. The sole
+assignment command selects an exact verified catalog record, canonical surface
+set, workspace scope, target host, policy reference, and desired state of
+`enabled`, `installed-disabled`, or `absent`. REST `DELETE`, CLI remove, and UI
+disable actions are presentation mappings to that command, not additional
+application handlers or workflows. A newer registry release never changes an
 assignment automatically. The reconciler maps desired/observed drift to the
 canonical Use install, upgrade, enable, disable, or uninstall operation; Cloud
-does not expose parallel lifecycle aggregates for those verbs.
+does not expose parallel lifecycle aggregates for those verbs. Retry and
+recovery use the existing Operation/Flow controls and resume the same
+`cloud.plugin-assignment@1` run; there is no plugin-specific retry mechanism.
 
 `U0.3` allows one workspace assignment for each package/host. A second
 workspace cannot drive a conflicting version or surface plan against the same

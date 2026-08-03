@@ -367,9 +367,12 @@ Supporting immutable records:
 The context exposes one desired-state mutation instead of separate Cloud
 install, upgrade, enable, disable, and uninstall engines. A changed exact
 catalog selection or surface set increments the assignment generation;
-`enabled`, `disabled`, or `absent` intent lets reconciliation choose the
-matching canonical A3S Use manager operation. Package dependencies are resolved
-and reference-counted by A3S Use and never become synthetic Cloud assignments.
+the imported A3S Use `PluginDesiredState` value `enabled`,
+`installed-disabled`, or `absent` lets reconciliation choose the matching
+canonical A3S Use manager operation. REST/CLI/Web lifecycle verbs map to the
+same `SetPluginAssignment` command, and retry maps to the shared Operation/Flow
+resume path. Package dependencies are resolved and reference-counted by A3S
+Use and never become synthetic Cloud assignments.
 
 The context delegates catalog/TUF validation and every package-generation side
 effect to the shared A3S Use Plugin Manager, orchestration to Flow and
@@ -612,9 +615,11 @@ contexts' tables.
   version, channel, target, package and manifest digests, plus a canonical
   sorted surface selection. Mutable tags, an unverified catalog listing, a
   route alias, or display metadata cannot become apply authority.
-- Desired lifecycle is exactly `enabled`, `disabled`, or `absent`. An explicit
-  update creates the next positive assignment generation; the reconciler never
-  changes a desired release merely because a registry publishes a newer one.
+- Desired state uses the canonical A3S Use `PluginDesiredState` values exactly:
+  `enabled`, `installed-disabled`, or `absent`. Cloud defines no parallel enum.
+  An explicit update creates the next positive assignment generation; the
+  reconciler never changes a desired release merely because a registry
+  publishes a newer one.
 - Each nonterminal generation owns one idempotent
   `cloud.plugin-assignment@1` Operation. Reusing an idempotency key with changed
   registry, package, surface, scope, host, policy, or desired lifecycle is a
@@ -1302,10 +1307,11 @@ Gateway revision.
 
 ### Plugin assignment convergence state (planned U0)
 
-`PluginAssignment` stores desired lifecycle rather than operation progress:
+`PluginAssignment` stores the canonical A3S Use desired state rather than
+operation progress:
 
 ```text
-enabled | disabled | absent
+enabled | installed-disabled | absent
 ```
 
 The user-visible Operation projection uses the common Operation lifecycle with
