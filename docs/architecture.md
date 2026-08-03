@@ -594,6 +594,16 @@ same identity. Ordinary BuildRun saves reject terminal transitions, and the
 generic Assets transition path publishes only Skill bundles, so Agent and MCP
 publication cannot fork into a second worker, queue, or release service.
 
+A failed or cancelled hosted BuildRun finalizes without changing its draft
+release. Recovery calls the existing organization-scoped BuildRun retry
+command, which preserves the closed Asset/AssetRelease subject and creates the
+next deterministic attempt. The existing reconciler enqueues that attempt as
+another `cloud.build@5` Operation. Parent locking, attempt uniqueness, and the
+shared idempotency record converge concurrent requests; the same atomic
+finalizer then converges concurrent successful completion on one release
+binding and one Outbox event. Assets therefore owns no retry queue, recovery
+worker, or second lifecycle.
+
 Cloud does not create another Git runner, cache, image builder, or deployment
 path. Until Box supplies an authoritative durable build-log contract, BuildRun
 log endpoints return `503 Service Unavailable`; Cloud does not fabricate empty

@@ -154,9 +154,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   identities plus draft, published, and yanked release state; route Agent and
   MCP publication through the sole hosted BuildRun finalizer; atomically bind
   the successful run, verified provenance digest, OCI artifact, and
-  transactional outbox event; and retain canonical SemVer, immutable source
-  identity, optimistic concurrency, replay-safe writes, and A3S ORM as the only
-  database boundary
+  transactional outbox event; recover a failed draft through the existing
+  idempotent BuildRun retry and `cloud.build@5` Flow; and retain canonical
+  SemVer, immutable source identity, optimistic concurrency, replay-safe
+  writes, and A3S ORM as the only database boundary
 - **Focused Web Operations**: Navigate responsive Overview, Workloads,
   Delivery, and Edge workspaces; route authorized search and validated deep
   links to the owning section; and inspect deployment history, route and
@@ -381,10 +382,14 @@ release worker. Migration 064 makes the existing BuildRun finalizer atomically
 commit successful terminal state, the OCI release, its immutable BuildRun and
 verified-provenance identity, and one schema-v2 Outbox fact. Exact replay repairs
 only that same binding; ordinary saves and generic Asset transitions cannot
-publish an Agent or MCP release. Failed-draft recovery, product yanking and
-deterministic selection, and management surfaces remain open `A0.3` work. Agent
-deployment, Skill binding, and catalog surfaces remain `A0.4` and `A0.5`, so
-the complete `A0` gate remains in progress.
+publish an Agent or MCP release. A failed hosted attempt leaves that exact
+release draft; the existing idempotent BuildRun retry creates its deterministic
+next attempt with the same subject, reconciler, Operation, and `cloud.build@5`
+Flow. Concurrent retry and finalization replay converge on one attempt, one
+publication binding, and one Outbox fact. Product yanking and deterministic
+selection, and management surfaces remain open `A0.3` work. Agent deployment,
+Skill binding, and catalog surfaces remain `A0.4` and `A0.5`, so the complete
+`A0` gate remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -908,10 +913,11 @@ selected explicitly, and neither path can fall back automatically.
 
 Applications use this path today. Agent, MCP, and Skill publication has a
 verified `A0.1` identity foundation and `A0.2` hosted Git repository boundary.
-The typed hosted-build input foundation is in progress under `A0.3`; hosted
-BuildRun reservation and restart repair are implemented, while release
-finalization, provenance, failed-draft recovery, yanking, and selection remain
-open.
+The typed hosted-build and publication foundation is in progress under `A0.3`;
+hosted BuildRun reservation, restart repair, atomic release finalization,
+verified provenance, and failed-draft recovery through the existing retry path
+are implemented, while product yanking, deterministic selection, and
+management surfaces remain open.
 Agent deployment, Skill binding, and catalog surfaces remain `A0.4` and
 `A0.5`. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,

@@ -669,7 +669,12 @@ pub async fn exercise_build_run_persistence(
     );
     let mut cancelled = cancelling.clone();
     cancelled.complete(cancellation_accepted_at + Duration::milliseconds(2))?;
-    let cancelled = builds.save(cancelled, cancelling.aggregate_version).await?;
+    let cancelled = builds
+        .finalize(cancelled, cancelling.aggregate_version)
+        .await?;
+    let BuildRunFinalization::Completed(cancelled) = cancelled else {
+        return Err("external BuildRun finalization was unexpectedly rejected".into());
+    };
     let retry = BuildRun::retry(
         &cancelled,
         cancellation_accepted_at + Duration::milliseconds(3),
@@ -916,10 +921,122 @@ pub async fn exercise_hosted_build_run_persistence(
         Some(AssetReleaseState::Draft)
     );
 
-    let published = drive_hosted_release_publication(executor, asset, &release, build).await?;
+    let publication_events = || {
+        database.fetch_one_as(
+            sql_query::<i64>("select count(*) from outbox_events where organization_id = ")
+                .bind(asset.organization_id.as_uuid())
+                .append(" and aggregate_id = ")
+                .bind(release.id.as_uuid())
+                .append(" and event_key = 'asset.release.published'"),
+        )
+    };
+    assert_eq!(publication_events().await?, 0);
+
+    // A terminal hosted failure keeps the immutable release draft recoverable.
+    // Recovery uses the generic BuildRun retry authority instead of creating an
+    // Asset-specific queue, worker, or state machine.
+    let first_attempt_id = build.id;
+    let expected = build.aggregate_version;
+    build.record_failure(
+        "injected hosted builder failure".into(),
+        build.updated_at + Duration::milliseconds(1),
+    )?;
+    build = left_repository.save(build, expected).await?;
+    let expected = build.aggregate_version;
+    build.complete(build.updated_at + Duration::milliseconds(1))?;
+    assert!(matches!(
+        left_repository.save(build.clone(), expected).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let failed = left_repository.finalize(build, expected).await?;
+    let BuildRunFinalization::Completed(failed) = failed else {
+        return Err("failed hosted Asset build was unexpectedly rejected".into());
+    };
+    assert_eq!(failed.status, BuildRunStatus::Failed);
+    assert_eq!(
+        assets
+            .find_release(asset.organization_id, asset.id, release.id)
+            .await?,
+        Some(release.clone())
+    );
+    assert_eq!(publication_events().await?, 0);
+
+    let retry = BuildRun::retry(&failed, failed.updated_at + Duration::milliseconds(1))?;
+    let retry_idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{}/build-runs/{}/retry",
+            asset.organization_id, failed.id
+        ),
+        "postgres-retry-hosted-build",
+        failed.id.to_string().as_bytes(),
+    )?;
+    let retry_request = RequestBuildRetryBundle {
+        retry: retry.clone(),
+        expected_previous_version: failed.aggregate_version,
+        idempotency: retry_idempotency.clone(),
+    };
+    let (left, right) = tokio::join!(
+        left_repository.request_retry(retry_request.clone()),
+        right_repository.request_retry(retry_request),
+    );
+    let retries = [left?, right?];
+    assert_eq!(retries.iter().filter(|result| result.replayed).count(), 1);
+    assert!(retries.iter().all(|result| result.value == retry));
+    assert_eq!(retry.attempt, 2);
+    assert_eq!(retry.retry_of_build_run_id, Some(first_attempt_id));
+    assert_eq!(retry.subject, failed.subject);
+    assert_eq!(retry.asset_id(), Some(asset.id));
+    assert_eq!(retry.asset_release_id(), Some(release.id));
+    assert_eq!(
+        left_repository
+            .find_by_asset_release(asset.organization_id, release.id)
+            .await?,
+        Some(retry.clone())
+    );
+    assert!(left_repository
+        .find_by_asset_release(OrganizationId::new(), release.id)
+        .await?
+        .is_none());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from build_runs where organization_id = ",)
+                    .bind(asset.organization_id.as_uuid())
+                    .append(" and asset_release_id = ")
+                    .bind(release.id.as_uuid()),
+            )
+            .await?,
+        2
+    );
+
+    // The retry is picked up by the same reconciler and cloud.build Flow.
+    let restarted = BuildRunReconciler::new(left_repository.clone(), operations.clone());
+    let repaired = restarted.run_once(10).await?;
+    assert_eq!(repaired.reserved, 0);
+    assert_eq!(repaired.started, 1);
+    assert_eq!(repaired.replayed, 0);
+    assert!(repaired.failures.is_empty());
+    let retry_operation = operations
+        .find_request(retry.operation_id)
+        .await?
+        .ok_or("hosted retry operation was not enqueued")?;
+    assert_eq!(retry_operation.organization_id, asset.organization_id);
+    assert_eq!(retry_operation.workflow.name(), BUILD_WORKFLOW_NAME);
+    assert_eq!(retry_operation.workflow.version(), BUILD_WORKFLOW_VERSION);
+    assert_eq!(
+        retry_operation.input["buildRunId"],
+        serde_json::Value::String(retry.id.to_string())
+    );
+
+    let mut retry = retry;
+    let queued_version = retry.aggregate_version;
+    retry.begin_preparation(retry.updated_at + Duration::milliseconds(1))?;
+    let retry = left_repository.save(retry, queued_version).await?;
+    let published = drive_hosted_release_publication(executor, asset, &release, retry).await?;
     assert_eq!(published.state, AssetReleaseState::Published);
     assert!(published.artifact.is_some());
     assert!(published.provenance.is_some());
+    assert_eq!(publication_events().await?, 1);
 
     Ok(())
 }
@@ -1158,10 +1275,19 @@ async fn drive_hosted_release_publication(
         builds.save(build.clone(), expected).await,
         Err(RepositoryError::Conflict(_))
     ));
-    let finalized = builds.finalize(build, expected).await?;
-    let BuildRunFinalization::Completed(succeeded) = finalized else {
+    let (left, right) = tokio::join!(
+        builds.finalize(build.clone(), expected),
+        builds.finalize(build, expected),
+    );
+    let finalized = [left?, right?];
+    let BuildRunFinalization::Completed(succeeded) = &finalized[0] else {
         return Err("active hosted Asset publication was unexpectedly rejected".into());
     };
+    let succeeded = succeeded.clone();
+    assert_eq!(
+        finalized[1],
+        BuildRunFinalization::Completed(succeeded.clone())
+    );
     assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
     let replayed = builds
         .finalize(succeeded.clone(), succeeded.aggregate_version)
