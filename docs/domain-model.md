@@ -1063,11 +1063,16 @@ tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
 the organization, project, environment, source revision, and BuildRun; derived
 rollback and Secret-rotation revisions preserve the reference, while ordinary
 manual Workload revisions do not invent one. The Artifacts context owns a
-deterministic initial `BuildRun` per accepted source revision plus a linear
-sequence of deterministic retry attempts. Every retry has a fresh BuildRun and
-Operation ID, records its attempt and immediate parent BuildRun, and retains the
-exact source revision. Each aggregate binds tenant/environment ownership, the
-exact `cloud.build@5` operation, immutable input and Box request/output
+deterministic initial `BuildRun` per typed build subject plus a linear sequence
+of deterministic retry attempts. A subject is exactly one external source
+revision with Project and Environment identity or one hosted AssetRelease with
+Asset identity. Migration 063 preserves that closed union, its foreign keys,
+and per-subject attempt uniqueness through A3S ORM; the bounded reconciler
+locks pending candidates from both owning contexts and repairs a
+draft-to-operation crash gap. Every retry has a fresh BuildRun and Operation
+ID, records its attempt and immediate parent BuildRun, and retains the exact
+subject. Each aggregate binds tenant and subject ownership, the exact
+`cloud.build@5` operation, immutable input and Box request/output
 identities, assigned node and command identities, validated OCI output,
 publication target/result, verified build evidence, terminal outcome, and
 cleanup. Box cache receipts remain inside the bound output rather than becoming

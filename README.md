@@ -370,11 +370,15 @@ sole `cloud.build@5` Flow. Hosted input is a deterministic archive of the exact
 reachable commit produced by the shared Git runner, admitted into the existing
 node Artifact store, and removed through the same build cleanup boundary.
 Build evidence and OCI publication targets now bind the typed source subject;
-the external-source wire identity remains unchanged. Durable hosted BuildRun
-reservation, atomic release finalization, immutable release provenance, draft
-recovery, yanking, and deterministic selection remain open `A0.3` work. Agent
-deployment, Skill binding, and catalog surfaces remain `A0.4` and `A0.5`, so
-the complete `A0` gate remains in progress.
+the external-source wire identity remains unchanged. Migration 063 persists
+that closed subject union through A3S ORM. The existing bounded BuildRun
+reconciler locks both pending external revisions and draft releases for active
+Agent or MCP Assets, reserves one deterministic BuildRun under concurrency, and
+repairs the draft-to-operation gap after restart without another queue or
+release worker. Atomic release finalization, immutable release provenance,
+failed-draft recovery, yanking and deterministic selection surfaces remain
+open `A0.3` work. Agent deployment, Skill binding, and catalog surfaces remain
+`A0.4` and `A0.5`, so the complete `A0` gate remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -898,8 +902,10 @@ selected explicitly, and neither path can fall back automatically.
 
 Applications use this path today. Agent, MCP, and Skill publication has a
 verified `A0.1` identity foundation and `A0.2` hosted Git repository boundary.
-The typed hosted-build input foundation is in progress under `A0.3`; atomic
-release finalization, provenance, recovery, yanking, and selection remain open.
+The typed hosted-build input foundation is in progress under `A0.3`; hosted
+BuildRun reservation and restart repair are implemented, while release
+finalization, provenance, failed-draft recovery, yanking, and selection remain
+open.
 Agent deployment, Skill binding, and catalog surfaces remain `A0.4` and
 `A0.5`. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
