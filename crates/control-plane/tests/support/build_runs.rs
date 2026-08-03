@@ -6,22 +6,23 @@ use a3s_cloud_contracts::{
     NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::modules::artifacts::application::{
-    BuildRunReconciler, BUILD_WORKFLOW_VERSION,
+    BuildRunReconciler, BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION,
 };
 use a3s_cloud_control_plane::modules::artifacts::domain::{
     RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, BuildRunStatus, BuildSubject, IBuildRunRepository, OciDescriptor,
-    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
-    ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, BuildRunFinalization, BuildRunStatus, BuildSubject,
+    IBuildRunRepository, OciDescriptor, OciPublicationTarget, PostgresBuildRunRepository,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
     CreateAssetReleaseWrite, IAssetRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    IOperationRepository, PostgresOperationRepository,
+    IOperationRepository, OperationRequest, OperationSubject, PostgresOperationRepository,
+    WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId,
@@ -915,49 +916,271 @@ pub async fn exercise_hosted_build_run_persistence(
         Some(AssetReleaseState::Draft)
     );
 
-    database
-        .execute(
-            sql_query::<()>("delete from operation_projections where operation_id = ")
-                .bind(build.operation_id.as_uuid()),
-        )
-        .await?;
-    database
-        .execute(
-            sql_query::<()>("delete from operation_requests where operation_id = ")
-                .bind(build.operation_id.as_uuid()),
-        )
-        .await?;
-    database
-        .execute(
-            sql_query::<()>("delete from build_runs where organization_id = ")
-                .bind(asset.organization_id.as_uuid())
-                .append(" and id = ")
-                .bind(build.id.as_uuid()),
-        )
-        .await?;
-    database
-        .execute(
-            sql_query::<()>("delete from idempotency_records where scope_key = ")
-                .bind(idempotency.scope)
-                .append(" and idempotency_key = ")
-                .bind(idempotency.key),
-        )
-        .await?;
-    database
-        .execute(
-            sql_query::<()>("delete from outbox_events where aggregate_id = ")
-                .bind(release.id.as_uuid()),
-        )
-        .await?;
-    database
-        .execute(
-            sql_query::<()>("delete from asset_releases where organization_id = ")
-                .bind(asset.organization_id.as_uuid())
-                .append(" and id = ")
-                .bind(release.id.as_uuid()),
-        )
-        .await?;
+    let published = drive_hosted_release_publication(executor, asset, &release, build).await?;
+    assert_eq!(published.state, AssetReleaseState::Published);
+    assert!(published.artifact.is_some());
+    assert!(published.provenance.is_some());
+
     Ok(())
+}
+
+pub async fn publish_hosted_release(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+    release: &AssetRelease,
+) -> Result<AssetRelease, Box<dyn std::error::Error>> {
+    let mut build = BuildRun::reserve_asset_release(
+        asset.organization_id,
+        asset.id,
+        release.id,
+        chrono::Utc::now().max(release.updated_at),
+    );
+    let database = Database::new(PostgresDialect, executor.clone());
+    let inserted = database
+        .execute(
+            sql_query::<()>(
+                "insert into build_runs (organization_id, subject_kind, project_id, environment_id, source_revision_id, asset_id, asset_release_id, id, attempt, retry_of_build_run_id, operation_id, status, evidence_required, aggregate_version, requested_at, updated_at) values (",
+            )
+            .bind(build.organization_id.as_uuid())
+            .append(", 'asset_release', null, null, null, ")
+            .bind(asset.id.as_uuid())
+            .append(", ")
+            .bind(release.id.as_uuid())
+            .append(", ")
+            .bind(build.id.as_uuid())
+            .append(", ")
+            .bind(build.attempt)
+            .append(", null, ")
+            .bind(build.operation_id.as_uuid())
+            .append(", ")
+            .bind(build.status.as_str())
+            .append(", ")
+            .bind(build.evidence_required)
+            .append(", ")
+            .bind(build.aggregate_version)
+            .append(", ")
+            .bind(build.requested_at)
+            .append(", ")
+            .bind(build.updated_at)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(inserted.rows_affected, 1);
+    let operation = OperationRequest::new(
+        build.operation_id,
+        build.organization_id,
+        OperationSubject::new("build_run", build.id.as_uuid())?,
+        WorkflowIdentity::new(BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)?,
+        serde_json::json!({
+            "organizationId": build.organization_id,
+            "buildRunId": build.id,
+        }),
+        build.requested_at,
+    );
+    PostgresOperationRepository::new(executor.clone())
+        .enqueue(operation)
+        .await?;
+    let expected = build.aggregate_version;
+    build.begin_preparation(build.updated_at + Duration::milliseconds(1))?;
+    let builds = PostgresBuildRunRepository::new(executor.clone());
+    build = builds.save(build, expected).await?;
+    drive_hosted_release_publication(executor, asset, release, build).await
+}
+
+async fn drive_hosted_release_publication(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+    release: &AssetRelease,
+    mut build: BuildRun,
+) -> Result<AssetRelease, Box<dyn std::error::Error>> {
+    if build.status != BuildRunStatus::Preparing
+        || build.organization_id != asset.organization_id
+        || build.asset_id() != Some(asset.id)
+        || build.asset_release_id() != Some(release.id)
+    {
+        return Err("hosted publication fixture received the wrong BuildRun".into());
+    }
+    let builds = PostgresBuildRunRepository::new(executor.clone());
+    let database = Database::new(PostgresDialect, executor.clone());
+    let node_id = NodeId::new();
+    let apply_command_id = NodeCommandId::new();
+    let cleanup_command_id = NodeCommandId::new();
+    let command_time = build.updated_at;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (",
+            )
+            .bind(asset.organization_id.as_uuid())
+            .append(", ")
+            .bind(node_id.as_uuid())
+            .append(", ")
+            .bind(format!("hosted build {}", build.id))
+            .append(", ")
+            .bind(format!("hosted-build-{}", build.id))
+            .append(", 'ready', ")
+            .bind(Uuid::now_v7())
+            .append(", 'test', 'test-runtime', 'test-runtime-1', ")
+            .bind(format!("sha256:{}", "f".repeat(64)))
+            .append(", ")
+            .bind(serde_json::json!({}))
+            .append(", ")
+            .bind(command_time)
+            .append(", ")
+            .bind(command_time)
+            .append(", 1)"),
+        )
+        .await?;
+    for (command_id, sequence, kind) in [
+        (apply_command_id, 1_i64, "box_build_start"),
+        (cleanup_command_id, 2_i64, "box_build_remove"),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into node_commands (id, node_id, sequence, aggregate_id, generation, command_kind, payload_schema, payload_digest, payload, issued_at, not_after, correlation_id) values (",
+                )
+                .bind(command_id.as_uuid())
+                .append(", ")
+                .bind(node_id.as_uuid())
+                .append(", ")
+                .bind(sequence)
+                .append(", ")
+                .bind(build.id.as_uuid())
+                .append(", 1, ")
+                .bind(kind)
+                .append(", 'test.command.v1', ")
+                .bind(format!("sha256:{}", "9".repeat(64)))
+                .append(", ")
+                .bind(serde_json::json!({}))
+                .append(", ")
+                .bind(command_time)
+                .append(", ")
+                .bind(command_time + Duration::minutes(1))
+                .append(", ")
+                .bind(build.id.as_uuid())
+                .append(")"),
+            )
+            .await?;
+    }
+
+    let mut at = build.updated_at;
+    let input_artifact = build_artifact('a', 4_096)?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_input(
+        format!("sha256:{}", "b".repeat(64)),
+        input_artifact.clone(),
+        at,
+    )?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.schedule(node_id, format!("sha256:{}", "c".repeat(64)), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.dispatch(apply_command_id, at)?;
+    build = builds.save(build, expected).await?;
+
+    let output_artifact = build_artifact('d', 8_192)?;
+    let box_output = box_output(&output_artifact, &input_artifact)?;
+    let descriptor = OciDescriptor::new(
+        box_output.descriptor.media_type.clone(),
+        box_output.descriptor.digest.clone(),
+        box_output.descriptor.size,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_validation(box_output, at)?;
+    build = builds.save(build, expected).await?;
+
+    let output = ValidatedOciBuildOutput {
+        artifact: output_artifact,
+        descriptor: descriptor.clone(),
+        platforms: vec![BuildPlatform::parse("linux/amd64")?],
+        content_bytes: 2_048,
+        blob_count: 3,
+    };
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_validated_output(output, at)?;
+    build = builds.save(build, expected).await?;
+
+    let target = OciPublicationTarget::new(
+        "registry.example.test",
+        format!("a3s/assets/{}/releases/{}", asset.id, release.id),
+        descriptor,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_publication(target.clone(), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_published_artifact(PublishedOciArtifact::from_target(&target), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_attestation(at)?;
+    build = builds.save(build, expected).await?;
+
+    let repository = format!(
+        "https://a3s.dev/cloud/assets/{}/releases/{}",
+        asset.id, release.id
+    );
+    let evidence = evidence_for(
+        &build,
+        at + Duration::milliseconds(1),
+        &repository,
+        release.commit_sha.as_str(),
+        Some(release.manifest_digest.as_str()),
+    )?;
+    let provenance_digest = evidence.provenance_digest.clone();
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_evidence(evidence, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_cleanup(cleanup_command_id, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.complete(at)?;
+    assert!(matches!(
+        builds.save(build.clone(), expected).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let finalized = builds.finalize(build, expected).await?;
+    let BuildRunFinalization::Completed(succeeded) = finalized else {
+        return Err("active hosted Asset publication was unexpectedly rejected".into());
+    };
+    assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
+    let replayed = builds
+        .finalize(succeeded.clone(), succeeded.aggregate_version)
+        .await?;
+    assert_eq!(replayed, BuildRunFinalization::Completed(succeeded.clone()));
+
+    let assets = PostgresAssetRepository::new(executor.clone());
+    let published = assets
+        .find_release(asset.organization_id, asset.id, release.id)
+        .await?
+        .ok_or("published hosted Asset release was not persisted")?;
+    assert_eq!(published.state, AssetReleaseState::Published);
+    let provenance = published
+        .provenance
+        .as_ref()
+        .ok_or("published hosted Asset release omitted provenance")?;
+    assert_eq!(provenance.build_run_id(), succeeded.id);
+    assert_eq!(provenance.provenance_digest().as_str(), provenance_digest);
+    Ok(published)
 }
 
 async fn attest_and_complete_published_build(
@@ -978,7 +1201,13 @@ async fn attest_and_complete_published_build(
 
     let mut attested = attesting.clone();
     let attested_at = attesting.updated_at + Duration::milliseconds(1);
-    let evidence = evidence_for(&attesting, attested_at)?;
+    let evidence = evidence_for(
+        &attesting,
+        attested_at,
+        "https://github.com/A3S-Lab/Cloud",
+        &"a".repeat(40),
+        None,
+    )?;
     attested.record_evidence(evidence.clone(), attested_at)?;
     let attested = builds.save(attested, attesting.aggregate_version).await?;
     assert_eq!(attested.evidence.as_deref(), Some(&evidence));
@@ -1004,7 +1233,18 @@ async fn attest_and_complete_published_build(
     let cleaning = builds.save(cleaning, attested.aggregate_version).await?;
     let mut succeeded = cleaning.clone();
     succeeded.complete(cleaning.updated_at + Duration::milliseconds(1))?;
-    let succeeded = builds.save(succeeded, cleaning.aggregate_version).await?;
+    assert!(matches!(
+        builds
+            .save(succeeded.clone(), cleaning.aggregate_version)
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let succeeded = builds
+        .finalize(succeeded, cleaning.aggregate_version)
+        .await?;
+    let BuildRunFinalization::Completed(succeeded) = succeeded else {
+        return Err("external BuildRun finalization was unexpectedly rejected".into());
+    };
     assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
     assert_eq!(succeeded.evidence.as_deref(), Some(&evidence));
     assert_eq!(builds.find(organization_id, build_id).await?, succeeded);

@@ -172,34 +172,14 @@ pub async fn exercise_assets(
         Err(RepositoryError::NotFound)
     );
 
-    let artifact =
-        AssetReleaseArtifact::oci_service(digest('1')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 4_096)?;
-    let mut published = release.clone();
-    published.publish(
-        &asset,
-        artifact.clone(),
-        release.updated_at + Duration::seconds(1),
-    )?;
-    repository
-        .transition_release(TransitionAssetReleaseWrite {
-            event: AssetReleasePublished::envelope(&published, Uuid::now_v7())?,
-            release: published.clone(),
-            expected_aggregate_version: release.aggregate_version,
-            idempotency: idempotency(
-                organization_id,
-                format!("assets/{}/releases", asset.id),
-                "publish-hosted-agent-1-0-0",
-                b"publish-hosted-agent-1.0.0",
-            )?,
-        })
-        .await?;
+    let published =
+        crate::build_runs_support::publish_hosted_release(executor, &asset, &release).await?;
+    let artifact = published
+        .artifact
+        .clone()
+        .ok_or("hosted Agent publication omitted its artifact")?;
 
-    let mut stale_publication = release.clone();
-    stale_publication.publish(
-        &asset,
-        artifact.clone(),
-        release.updated_at + Duration::seconds(2),
-    )?;
+    let stale_publication = published.clone();
     assert!(matches!(
         repository
             .transition_release(TransitionAssetReleaseWrite {
@@ -232,12 +212,14 @@ pub async fn exercise_assets(
             b"hosted-agent-2.0.0",
         )?)
         .await?;
-    let mut later_publication = later_release.clone();
-    later_publication.publish(
-        &asset,
-        AssetReleaseArtifact::oci_service(digest('4')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 8_192)?,
-        later_release.updated_at + Duration::seconds(1),
-    )?;
+    let mut forbidden_direct_publication = later_release.clone();
+    assert!(forbidden_direct_publication
+        .publish_skill(
+            &asset,
+            AssetReleaseArtifact::oci_service(digest('4')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 8_192,)?,
+            later_release.updated_at + Duration::seconds(1),
+        )
+        .is_err());
     let blocked_new_release = draft_release(
         &asset,
         AssetReleaseId::new(),
@@ -291,23 +273,6 @@ pub async fn exercise_assets(
             .await,
         Err(RepositoryError::Conflict(_))
     ));
-    assert!(matches!(
-        repository
-            .transition_release(TransitionAssetReleaseWrite {
-                event: AssetReleasePublished::envelope(&later_publication, Uuid::now_v7(),)?,
-                release: later_publication,
-                expected_aggregate_version: later_release.aggregate_version,
-                idempotency: idempotency(
-                    organization_id,
-                    format!("assets/{}/releases", asset.id),
-                    "publish-after-archive",
-                    b"publish-after-archive",
-                )?,
-            })
-            .await,
-        Err(RepositoryError::Conflict(_))
-    ));
-
     let mut changed_identity = published.clone();
     changed_identity.yank(archived.updated_at + Duration::seconds(1))?;
     changed_identity.version = AssetReleaseVersion::parse("9.9.9")?;
@@ -392,6 +357,7 @@ pub async fn exercise_assets(
         "failed publication after archive must not leak an outbox event",
     );
     exercise_mcp_service_profiles(
+        executor,
         &repository,
         organization_id,
         other_organization_id,
@@ -803,6 +769,7 @@ fn git_fixture(directory: &Path, arguments: &[&str]) -> TestResult {
 }
 
 async fn exercise_mcp_service_profiles(
+    executor: &PostgresExecutor,
     repository: &PostgresAssetRepository,
     organization_id: OrganizationId,
     other_organization_id: OrganizationId,
@@ -863,25 +830,8 @@ async fn exercise_mcp_service_profiles(
         Err(RepositoryError::Conflict(_))
     ));
 
-    let mut published = release.clone();
-    published.publish(
-        &asset,
-        AssetReleaseArtifact::oci_service(digest('c')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 4_096)?,
-        release.updated_at + Duration::seconds(2),
-    )?;
-    repository
-        .transition_release(TransitionAssetReleaseWrite {
-            event: AssetReleasePublished::envelope(&published, Uuid::now_v7())?,
-            release: published.clone(),
-            expected_aggregate_version: release.aggregate_version,
-            idempotency: idempotency(
-                organization_id,
-                format!("assets/{}/releases", asset.id),
-                "publish-weather-mcp-1-0-0",
-                b"publish-weather-mcp-1.0.0",
-            )?,
-        })
-        .await?;
+    let published =
+        crate::build_runs_support::publish_hosted_release(executor, &asset, &release).await?;
     let binding = McpServiceProfileBinding {
         organization_id,
         asset_id: asset.id,

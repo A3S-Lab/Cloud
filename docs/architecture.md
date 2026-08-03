@@ -586,6 +586,14 @@ Agent and MCP releases are scanned only as missing work; PostgreSQL row locks,
 per-subject attempt uniqueness, and exact foreign keys repair restart gaps
 without introducing an Assets queue, Redis authority, or another Flow.
 
+Migration 064 extends that same repository transaction into the successful
+hosted publication boundary. The BuildRun terminal CAS, draft-to-published OCI
+release transition, immutable BuildRun/provenance binding, and schema-v2 Outbox
+fact commit together through A3S ORM. Exact replay validates or repairs the
+same identity. Ordinary BuildRun saves reject terminal transitions, and the
+generic Assets transition path publishes only Skill bundles, so Agent and MCP
+publication cannot fork into a second worker, queue, or release service.
+
 Cloud does not create another Git runner, cache, image builder, or deployment
 path. Until Box supplies an authoritative durable build-log contract, BuildRun
 log endpoints return `503 Service Unavailable`; Cloud does not fabricate empty

@@ -20,6 +20,12 @@ pub struct RequestBuildRetryBundle {
     pub idempotency: IdempotencyRequest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildRunFinalization {
+    Completed(BuildRun),
+    Rejected(BuildRun),
+}
+
 #[async_trait]
 pub trait IBuildRunRepository: Send + Sync {
     async fn reserve_pending(
@@ -84,6 +90,18 @@ pub trait IBuildRunRepository: Send + Sync {
         build_run: BuildRun,
         expected_version: u64,
     ) -> Result<BuildRun, RepositoryError>;
+
+    async fn finalize(
+        &self,
+        build_run: BuildRun,
+        expected_version: u64,
+    ) -> Result<BuildRunFinalization, RepositoryError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuildRunFinalizationMode {
+    Transition,
+    Replay,
 }
 
 pub(crate) fn validate_build_run_retry(
@@ -183,14 +201,35 @@ pub(crate) fn validate_build_run_transition(
             matches_transition(existing, next, |candidate| {
                 candidate.retry_cleanup(command_id, at)
             })
-        })
-        || matches_transition(existing, next, |candidate| candidate.complete(at));
+        });
 
     if valid {
         Ok(())
     } else {
         Err(transition_conflict())
     }
+}
+
+pub(crate) fn validate_build_run_finalization(
+    existing: &BuildRun,
+    next: &BuildRun,
+    expected_version: u64,
+) -> Result<BuildRunFinalizationMode, RepositoryError> {
+    if existing == next && existing.status.is_terminal() {
+        return Ok(BuildRunFinalizationMode::Replay);
+    }
+    if !next.status.is_terminal()
+        || existing.aggregate_version != expected_version
+        || expected_version
+            .checked_add(1)
+            .is_none_or(|version| next.aggregate_version != version)
+        || !matches_transition(existing, next, |candidate| {
+            candidate.complete(next.updated_at)
+        })
+    {
+        return Err(transition_conflict());
+    }
+    Ok(BuildRunFinalizationMode::Transition)
 }
 
 fn matches_transition(

@@ -1,18 +1,26 @@
 use super::{
-    canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
+    canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildEvidence, BuildEvidenceBuilder,
     BuildEvidenceSigningKey, BuildEvidenceSubject, BuildEvidenceVerificationState, BuildRun,
-    DsseEnvelope, DsseSignature, InTotoSubject, SlsaBuildDefinition, SlsaBuilder,
-    SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
-    SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum,
-    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, BUILD_EVIDENCE_SCHEMA,
-    DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE,
-    SPDX_VERSION,
+    BuildSubject, DsseEnvelope, DsseSignature, InTotoSubject, OciDescriptor, OciPublicationTarget,
+    PublishedOciArtifact, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
+    SlsaInternalParameters, SlsaProvenancePredicate, SlsaProvenanceStatement,
+    SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo,
+    SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedOciBuildOutput,
+    BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE,
+    SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
-use crate::modules::shared_kernel::domain::canonical_timestamp;
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, AssetId, AssetReleaseId, NodeCommandId, NodeId, OrganizationId,
+};
+use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
+use a3s_cloud_contracts::{
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::collections::BTreeMap;
 
@@ -32,6 +40,21 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
         .clone()
         .expect("Box build request digest");
     let artifact_digest = digest_hex(&artifact.digest);
+    let (repository, commit_sha, manifest_digest) = match build.subject {
+        BuildSubject::ExternalSourceRevision { .. } => (
+            "https://github.com/A3S-Lab/Cloud".to_owned(),
+            "a".repeat(40),
+            None,
+        ),
+        BuildSubject::AssetRelease {
+            asset_id,
+            asset_release_id,
+        } => (
+            format!("https://a3s.dev/cloud/assets/{asset_id}/releases/{asset_release_id}"),
+            "a".repeat(40),
+            Some(format!("sha256:{}", "b".repeat(64))),
+        ),
+    };
     let recipe = BuildRecipe::dockerfile(
         BuildRecipe::SCHEMA,
         BuildRecipe::DOCKERFILE_KIND,
@@ -120,9 +143,9 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
             build_definition: SlsaBuildDefinition {
                 build_type: SLSA_BUILD_TYPE.into(),
                 external_parameters: SlsaExternalParameters {
-                    repository: "https://github.com/A3S-Lab/Cloud".into(),
-                    commit_sha: "a".repeat(40),
-                    manifest_digest: None,
+                    repository: repository.clone(),
+                    commit_sha: commit_sha.clone(),
+                    manifest_digest: manifest_digest.clone(),
                     source_content_digest: source_content_digest.clone(),
                     recipe: recipe.clone(),
                     recipe_digest: recipe_digest.clone(),
@@ -136,8 +159,8 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
                     build_request_digest: build_request_digest.clone(),
                 },
                 resolved_dependencies: vec![SlsaResourceDescriptor {
-                    uri: "https://github.com/A3S-Lab/Cloud".into(),
-                    digest: BTreeMap::from([("gitCommit".into(), "a".repeat(40))]),
+                    uri: repository.clone(),
+                    digest: BTreeMap::from([("gitCommit".into(), commit_sha.clone())]),
                 }],
             },
             run_details: SlsaRunDetails {
@@ -178,9 +201,9 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
         operation_id: build.operation_id,
         subject: BuildEvidenceSubject::from_build_subject(build.subject),
         attempt: build.attempt,
-        repository: "https://github.com/A3S-Lab/Cloud".into(),
-        commit_sha: "a".repeat(40),
-        manifest_digest: None,
+        repository,
+        commit_sha,
+        manifest_digest,
         source_content_digest,
         recipe,
         recipe_digest,
@@ -209,4 +232,183 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
 
 fn digest_hex(value: &str) -> &str {
     value.strip_prefix("sha256:").expect("SHA-256 digest")
+}
+
+pub(crate) fn hosted_build_ready_for_completion(
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    requested_at: DateTime<Utc>,
+) -> BuildRun {
+    let mut build =
+        BuildRun::reserve_asset_release(organization_id, asset_id, asset_release_id, requested_at);
+    build
+        .begin_preparation(requested_at + Duration::milliseconds(1))
+        .expect("begin hosted preparation");
+    let input = test_artifact('a', 1_024);
+    build
+        .record_input(
+            format!("sha256:{}", "b".repeat(64)),
+            input.clone(),
+            requested_at + Duration::milliseconds(2),
+        )
+        .expect("record hosted input");
+    build
+        .schedule(
+            NodeId::new(),
+            format!("sha256:{}", "c".repeat(64)),
+            requested_at + Duration::milliseconds(3),
+        )
+        .expect("schedule hosted build");
+    build
+        .dispatch(
+            NodeCommandId::new(),
+            requested_at + Duration::milliseconds(4),
+        )
+        .expect("dispatch hosted build");
+    let box_output = test_box_output(&input);
+    let output_artifact = BuildArtifact::new(
+        box_output.artifact.artifact.uri.clone(),
+        box_output.artifact.artifact.digest.clone(),
+        box_output.artifact.artifact.media_type.clone(),
+        box_output.artifact.size_bytes,
+    )
+    .expect("hosted output Artifact");
+    build
+        .begin_validation(box_output, requested_at + Duration::milliseconds(5))
+        .expect("begin hosted validation");
+    let output = ValidatedOciBuildOutput {
+        artifact: output_artifact,
+        descriptor: OciDescriptor::new(
+            "application/vnd.oci.image.manifest.v1+json",
+            format!("sha256:{}", "e".repeat(64)),
+            123,
+        )
+        .expect("hosted OCI descriptor"),
+        platforms: vec![BuildPlatform::parse("linux/amd64").expect("hosted platform")],
+        content_bytes: 456,
+        blob_count: 3,
+    };
+    build
+        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(6))
+        .expect("record hosted output");
+    let target = OciPublicationTarget::new(
+        "registry.example",
+        format!("a3s-cloud/assets/{asset_id}/releases/{asset_release_id}"),
+        output.descriptor,
+    )
+    .expect("hosted publication target");
+    build
+        .begin_publication(target.clone(), requested_at + Duration::milliseconds(7))
+        .expect("begin hosted publication");
+    build
+        .record_published_artifact(
+            PublishedOciArtifact::from_target(&target),
+            requested_at + Duration::milliseconds(8),
+        )
+        .expect("record hosted publication");
+    build
+        .begin_attestation(requested_at + Duration::milliseconds(9))
+        .expect("begin hosted attestation");
+    let evidence = evidence_for(&build, requested_at + Duration::milliseconds(10));
+    build
+        .record_evidence(evidence, requested_at + Duration::milliseconds(10))
+        .expect("record hosted evidence");
+    build
+        .begin_cleanup(
+            NodeCommandId::new(),
+            requested_at + Duration::milliseconds(11),
+        )
+        .expect("begin hosted cleanup");
+    build
+}
+
+pub(crate) fn succeeded_hosted_build(
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    requested_at: DateTime<Utc>,
+) -> BuildRun {
+    let mut build = hosted_build_ready_for_completion(
+        organization_id,
+        asset_id,
+        asset_release_id,
+        requested_at,
+    );
+    build
+        .complete(requested_at + Duration::milliseconds(12))
+        .expect("complete hosted build");
+    build
+}
+
+fn test_artifact(fill: char, size_bytes: u64) -> BuildArtifact {
+    let digest = format!("sha256:{}", fill.to_string().repeat(64));
+    BuildArtifact::new(
+        artifact_uri(&digest).expect("test Artifact URI"),
+        digest,
+        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+        size_bytes,
+    )
+    .expect("test Artifact")
+}
+
+fn test_box_output(source: &BuildArtifact) -> NodeBoxBuildOutput {
+    let output = test_artifact('d', 1_024);
+    let cache = test_artifact('8', 512);
+    let platform = NodeBoxBuildPlatform {
+        os: "linux".into(),
+        architecture: "amd64".into(),
+        variant: None,
+    };
+    let output = NodeBoxBuildOutput {
+        artifact: RuntimeOutputArtifact {
+            name: "oci-layout".into(),
+            artifact: ArtifactRef {
+                uri: output.uri,
+                digest: output.digest,
+                media_type: output.media_type,
+            },
+            size_bytes: output.size_bytes,
+        },
+        descriptor: NodeBoxBuildDescriptor {
+            media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            digest: format!("sha256:{}", "e".repeat(64)),
+            size: 123,
+        },
+        platforms: vec![platform.clone()],
+        manifest_count: 1,
+        content_bytes: 456,
+        blob_count: 3,
+        blob_inventory_digest: format!("sha256:{}", "7".repeat(64)),
+        caches: vec![NodeBoxBuildCacheOutput {
+            operation_id: "cloud-build-hosted-linux-amd64".into(),
+            artifact: RuntimeOutputArtifact {
+                name: "build-cache-hosted".into(),
+                artifact: ArtifactRef {
+                    uri: cache.uri,
+                    digest: cache.digest,
+                    media_type: cache.media_type,
+                },
+                size_bytes: cache.size_bytes,
+            },
+            receipt: NodeBoxBuildCacheReceipt {
+                schema: NodeBoxBuildCacheReceipt::SCHEMA.into(),
+                key: format!("sha256:{}", "9".repeat(64)),
+                source_digest: source.digest.clone(),
+                plan_digest: format!("sha256:{}", "6".repeat(64)),
+                descriptor: NodeBoxBuildDescriptor {
+                    media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+                    digest: format!("sha256:{}", "5".repeat(64)),
+                    size: 64,
+                },
+                platform,
+                content_bytes: 128,
+                entry_count: 1,
+                blob_count: 2,
+                blob_inventory_digest: format!("sha256:{}", "4".repeat(64)),
+            },
+        }],
+    };
+    output.validate().expect("test Box output");
+    output
 }

@@ -15,7 +15,8 @@ pub use entities::{
     OCI_IMAGE_MANIFEST_MEDIA_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use repositories::{
-    IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
+    BuildRunFinalization, IBuildRunRepository, RequestBuildCancellationBundle,
+    RequestBuildRetryBundle,
 };
 pub use services::{
     BuildArtifactPublicationError, BuildEvidenceGenerationError, BuildEvidenceSigningError,

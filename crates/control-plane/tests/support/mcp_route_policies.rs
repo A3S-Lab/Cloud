@@ -2,12 +2,10 @@ use a3s_cloud_contracts::{
     GatewayAckState, GatewayManagementProtocol, McpGrantProjection, McpLimitsProjection,
     NodeCommandPayload, NodeGatewayAck, MCP_PROTOCOL_VERSION,
 };
-use a3s_cloud_control_plane::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDIA_TYPE;
 use a3s_cloud_control_plane::modules::assets::{
-    Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseDrafted,
-    AssetReleasePublished, AssetReleaseVersion, CreateAssetReleaseWrite, CreateAssetWrite,
-    IAssetRepository, IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
-    McpServiceProfileSpec, PostgresAssetRepository, TransitionAssetReleaseWrite,
+    Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
+    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
+    McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
 use a3s_cloud_control_plane::modules::edge::{
@@ -197,25 +195,12 @@ pub async fn exercise(
             )?,
         })
         .await?;
-    let mut published = release.clone();
-    published.publish(
-        &asset,
-        AssetReleaseArtifact::oci_service(digest('c')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 4_096)?,
-        release.updated_at + Duration::milliseconds(1),
-    )?;
-    assets
-        .transition_release(TransitionAssetReleaseWrite {
-            release: published.clone(),
-            expected_aggregate_version: release.aggregate_version,
-            event: AssetReleasePublished::envelope(&published, Uuid::now_v7())?,
-            idempotency: idempotency(
-                organization_id,
-                format!("assets/{}/releases", asset.id),
-                "postgres-mcp-policy-publication",
-                b"mcp-policy-publication",
-            )?,
-        })
-        .await?;
+    let published =
+        crate::build_runs_support::publish_hosted_release(executor, &asset, &release).await?;
+    let published_artifact = published
+        .artifact
+        .as_ref()
+        .ok_or("published MCP release omitted its OCI artifact")?;
     let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
         protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
         endpoint_path: "/mcp".into(),
@@ -257,10 +242,10 @@ pub async fn exercise(
             artifact: OciArtifact {
                 uri: format!(
                     "oci://registry.integration.example/mcp/policy@{}",
-                    digest('c')?
+                    published_artifact.digest()
                 ),
-                digest: digest('c')?.to_string(),
-                media_type: OCI_IMAGE_MANIFEST_MEDIA_TYPE.into(),
+                digest: published_artifact.digest().to_string(),
+                media_type: published_artifact.media_type().into(),
             },
             process: ServiceProcess {
                 command: vec!["/app/mcp-server".into()],

@@ -1,8 +1,8 @@
 use super::*;
 use crate::modules::artifacts::domain::test_support::evidence_for;
 use crate::modules::artifacts::{
-    BuildArtifact, BuildRun, InMemoryBuildRunRepository, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, BuildRunFinalization, InMemoryBuildRunRepository, OciDescriptor,
+    OciPublicationTarget, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, SourceRevisionId};
 use crate::modules::sources::domain::BuildPlatform;
@@ -466,7 +466,12 @@ async fn succeed_build(
     let previous = build.aggregate_version;
     at += chrono::Duration::milliseconds(1);
     build.complete(at).map_err(BootError::Internal)?;
-    builds.save(build, previous).await.map_err(repository_error)
+    completed_build(
+        builds
+            .finalize(build, previous)
+            .await
+            .map_err(repository_error)?,
+    )
 }
 
 async fn finish_unsuccessfully(
@@ -492,7 +497,21 @@ async fn finish_unsuccessfully(
     build
         .complete(at + chrono::Duration::milliseconds(1))
         .map_err(BootError::Internal)?;
-    builds.save(build, previous).await.map_err(repository_error)
+    completed_build(
+        builds
+            .finalize(build, previous)
+            .await
+            .map_err(repository_error)?,
+    )
+}
+
+fn completed_build(finalization: BuildRunFinalization) -> Result<BuildRun> {
+    match finalization {
+        BuildRunFinalization::Completed(build) => Ok(build),
+        BuildRunFinalization::Rejected(_) => Err(BootError::Internal(
+            "external BuildRun finalization was unexpectedly rejected".into(),
+        )),
+    }
 }
 
 fn build_artifact(character: char) -> Result<BuildArtifact> {

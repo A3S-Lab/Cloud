@@ -151,10 +151,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   BuildRun logs until Box exposes an authoritative durable log contract; Cloud
   neither fabricates empty pages nor projects build logs from Runtime
 - **Hosted Asset Foundation**: Persist tenant-scoped Agent, MCP, and Skill
-  identities plus draft, published, and yanked release state; enforce canonical
-  SemVer, immutable Git and SHA-256 identities, typed OCI or Skill artifacts,
-  optimistic concurrency, replay-safe writes, and transactional outbox events
-  through A3S ORM
+  identities plus draft, published, and yanked release state; route Agent and
+  MCP publication through the sole hosted BuildRun finalizer; atomically bind
+  the successful run, verified provenance digest, OCI artifact, and
+  transactional outbox event; and retain canonical SemVer, immutable source
+  identity, optimistic concurrency, replay-safe writes, and A3S ORM as the only
+  database boundary
 - **Focused Web Operations**: Navigate responsive Overview, Workloads,
   Delivery, and Edge workspaces; route authorized search and validated deep
   links to the owning section; and inspect deployment history, route and
@@ -363,7 +365,7 @@ database completion preserves the journal for restart recovery. Backup and
 restore reuse the shared immutable-object client, and release admission reads
 only a pinned `.a3s/asset.acl` through `a3s-acl`.
 
-The first `A0.3` foundation extends that same manifest with one optional closed
+The current `A0.3` foundation extends that same manifest with one optional closed
 `build` block for Agent and MCP sources, resolves external revisions and hosted
 Asset releases through one typed `BuildSource`, and carries both through the
 sole `cloud.build@5` Flow. Hosted input is a deterministic archive of the exact
@@ -375,10 +377,14 @@ that closed subject union through A3S ORM. The existing bounded BuildRun
 reconciler locks both pending external revisions and draft releases for active
 Agent or MCP Assets, reserves one deterministic BuildRun under concurrency, and
 repairs the draft-to-operation gap after restart without another queue or
-release worker. Atomic release finalization, immutable release provenance,
-failed-draft recovery, yanking and deterministic selection surfaces remain
-open `A0.3` work. Agent deployment, Skill binding, and catalog surfaces remain
-`A0.4` and `A0.5`, so the complete `A0` gate remains in progress.
+release worker. Migration 064 makes the existing BuildRun finalizer atomically
+commit successful terminal state, the OCI release, its immutable BuildRun and
+verified-provenance identity, and one schema-v2 Outbox fact. Exact replay repairs
+only that same binding; ordinary saves and generic Asset transitions cannot
+publish an Agent or MCP release. Failed-draft recovery, product yanking and
+deterministic selection, and management surfaces remain open `A0.3` work. Agent
+deployment, Skill binding, and catalog surfaces remain `A0.4` and `A0.5`, so
+the complete `A0` gate remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
