@@ -446,6 +446,17 @@ preparation, validation, publication, attestation, and final cleanup each
 remain one logical effect. A separate JSON document binds this matrix to the
 exact Cloud and Box revisions.
 
+The same workflow now promotes that logical matrix to an OS-process boundary
+over PostgreSQL 17. Nine independent test-host subprocesses reconstruct the
+production Build Flow, PostgreSQL Flow store, Fleet repository, and BuildRun
+repository, durably pause immediately before one targeted `StepCompleted`
+append, and are terminated with `SIGKILL`. The next host must preserve the
+exact five Fleet command objects and their monotonic sequence, finish the
+published BuildRun with verified evidence, and leave exactly one preparation,
+validation, publication, attestation, and cleanup effect. Its retained JSON
+evidence records all nine kills and is revision-bound alongside the logical
+event-loss matrix.
+
 Migration `060` invalidates pre-Box BuildRuns as rebuild-required, cancels
 known `cloud.build@1` through `@4` histories through A3S Flow, and removes the
 old Runtime and Cloud-cache projections. Dockerfile remains a source-recipe
@@ -1098,11 +1109,11 @@ Cloud revision. Its retained private-source job proves credential-free replay
 and checkout removal. The Box provider workflow now defines the complementary
 revision-bound native build, post-publication process-death replay,
 immediate-parent cache hydration, authoritative removal evidence, and the
-nine-boundary Fleet/Flow command event-loss matrix. `G0` still requires
-retained executions with the operator-owned HTTPS Registry and Vault Transit
-boundary, process-level persistent Fleet/Flow interruption coverage, and the
-published Workload handoff. No build-log success is claimed while the Box log
-contract is absent.
+nine-boundary Fleet/Flow command event-loss matrix in both logical and
+PostgreSQL-backed `SIGKILL` forms. `G0` still requires a retained successful
+execution of the new persistent gate together with the operator-owned HTTPS
+Registry and Vault Transit boundary and the published Workload handoff. No
+build-log success is claimed while the Box log contract is absent.
 
 The detailed request contracts, failure boundaries, and acceptance evidence
 remain in the [Development Plan](docs/development-plan.md).

@@ -37,6 +37,20 @@ jobs:
     name: Real A3S Box provider
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: a3s-cloud-conformance
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
       A3S_HOME: /tmp/runtime-conformance-${{ github.run_id }}-${{ github.run_attempt }}
       A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
@@ -429,6 +443,79 @@ jobs:
              and .boundaryCount == 9
              and ([.checks[]] | all)' \
             "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.json" >/dev/null
+
+      - name: Certify persistent Fleet and Flow replay across SIGKILL
+        env:
+          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+          A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+          A3S_DEPS_STUB: "1"
+        run: |
+          install -d -m 0755 "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --test postgres_integration \
+              postgres_build_flow_survives_process_death_at_every_fleet_completion_boundary \
+              -- --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.log"
+          grep --extended-regexp \
+            '^A3S_CLOUD_G0_FLEET_FLOW_PROCESS_DEATH_CERTIFIED boundaries=9 sigkills=9 commands=5 status=succeeded store=postgresql ' \
+            "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.log" \
+            >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death-certification.txt"
+          test "$(wc -l <"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death-certification.txt")" -eq 1
+          jq -n \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            --rawfile certification "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death-certification.txt" \
+            '{
+              schema: "a3s.cloud.g0-fleet-flow-process-death-evidence.v1",
+              cloudRevision: $cloud,
+              boxRevision: $box,
+              postgresqlMajor: 17,
+              postgresImage: "postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413",
+              boundaryCount: 9,
+              sigkillCount: 9,
+              fleetCommandCount: 5,
+              certification: ($certification | rtrimstr("\n")),
+              checks: {
+                durableFlowHistory: true,
+                durableFleetCommands: true,
+                durableBuildRun: true,
+                exactCommandReplay: true,
+                monotonicCommandSequence: true,
+                exactOncePreparation: true,
+                exactOnceValidation: true,
+                exactOncePublication: true,
+                exactOnceEvidence: true,
+                exactOnceCleanup: true
+              }
+            }' >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.json"
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            '.schema == "a3s.cloud.g0-fleet-flow-process-death-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and .postgresqlMajor == 17
+             and .postgresImage == "postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413"
+             and .boundaryCount == 9
+             and .sigkillCount == 9
+             and .fleetCommandCount == 5
+             and ([.checks[]] | all)' \
+            "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.json" >/dev/null
 
       - name: Certify Box-native build replay, parent cache, and cleanup
         env:
